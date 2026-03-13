@@ -16,6 +16,7 @@ server/node_modules
 # Generated files
 .docusaurus
 .cache-loader
+*.tsbuildinfo
 
 # Misc
 .DS_Store

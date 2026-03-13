@@ -93,7 +93,7 @@ Returns financial data for the account. Only `account`, `currency`, `period`, an
 | `credit` | Present for credit-based accounts. Contains `credit_limit`, `available_credit`, and optional `utilization_percent` (0-100). |
 | `balance` | Present for prepay accounts. Contains `available` balance and optional `last_top_up` (`amount`, `date`). |
 | `payment_status` | `current`, `past_due`, or `suspended`. |
-| `payment_terms` | Payment terms in effect (e.g., `net_30`, `prepay`). |
+| `payment_terms` | Payment terms in effect: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. |
 | `invoices` | Array of recent invoices: `invoice_id`, `amount`, `status` (`draft`, `issued`, `paid`, `past_due`, `void`), optional `period`, `due_date`, `paid_date`. |
 
 **Error response:**

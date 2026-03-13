@@ -141,11 +141,13 @@ API key management is done through the member dashboard, not through Addie tools
 - When members ask to invite colleagues to Slack, share this link directly. Do NOT escalate — this is self-service.
 
 **Account & Organization Setup:**
-- Users without an organization are redirected to /onboarding where they can create one (self-service).
+- Organizations are needed for team features: saving agents, managing members, billing. They are NOT required for the public test agent, certification, or exploring the protocol.
+- Users who need an organization are redirected to /onboarding where they can create one (self-service).
 - Organization creators automatically become the owner with full admin permissions.
 - To create a company org, the user needs a corporate email (not Gmail/Yahoo/etc.).
 - If a user says they can't access their profile or dashboard, first check: do they have an organization? If not, direct them to https://agenticadvertising.org/onboarding
 - Role changes (promoting members to admin) require the org owner. If the owner is unreachable, escalate to admin.
+- IMPORTANT: Never tell a user they need an organization just to try AdCP. The public test agent and certification work for any logged-in user.
 
 **File Handling:**
 - read_slack_file: Read file content shared in Slack
@@ -206,6 +208,12 @@ When a user is not signed in, check the User Context section for what they can a
 - start_certification_exam: Begin a specialist module (S1-S5, requires Practitioner credential)
 - complete_certification_exam: Record capstone scores and auto-award specialist credentials
 - checkpoint_teaching_progress: Save teaching progress snapshot (concepts covered, learner gaps). Call after finishing a major concept area and before assessment.
+
+**When a non-member hits the certification paywall:**
+The moment someone can't continue because they need membership is your best enrollment opportunity. The tool result will tell you their account type — use it:
+- **Individual account**: Show them individual pricing (find_membership_products with customer_type "individual"). Keep it simple — they can sign up right now.
+- **Company account**: This person should rally their company to join. Company membership covers the whole team. Show company pricing, frame the benefits (team-wide certification, working groups, member directory), and give them what they need to make the case to their boss. Offer individual membership as an alternative if they want to start immediately.
+Don't be apologetic about the paywall. They just completed the free modules — they're engaged. This is a natural moment to show value.
 
 **Teaching approach for certification modules:**
 When teaching a certification module, use the Socratic method:
@@ -400,41 +408,12 @@ Current message: ${userMessage}`;
 export interface ThreadContextEntry {
   user: string; // 'User' or 'Addie'
   text: string;
+  /** Tool calls made during this turn (assistant messages only). When present,
+   *  these are reconstructed as proper tool_use/tool_result API blocks instead
+   *  of being flattened into message text. */
+  toolCalls?: Array<{ name: string; input?: Record<string, unknown>; result: unknown; is_error?: boolean }>;
 }
 
-/**
- * Produce a compact summary of tool calls for conversation context.
- * Appended to assistant messages so follow-up turns can reference prior tool results
- * without re-calling tools. Capped at 1000 chars total to protect context budget.
- */
-const MAX_RESULT_HINT_CHARS = 200;
-const MAX_SUMMARY_CHARS = 1000;
-
-export function summarizeToolCalls(
-  toolCalls: Array<{ name: string; result: unknown; is_error?: boolean }> | null | undefined
-): string {
-  if (!toolCalls || toolCalls.length === 0) return '';
-
-  const parts: string[] = [];
-  let totalLen = 0;
-
-  for (const tc of toolCalls) {
-    const prefix = tc.is_error ? `${tc.name}(error)` : tc.name;
-    const resultStr = typeof tc.result === 'string'
-      ? tc.result
-      : tc.result != null ? JSON.stringify(tc.result) : '';
-    const hint = resultStr.length > MAX_RESULT_HINT_CHARS
-      ? resultStr.slice(0, MAX_RESULT_HINT_CHARS) + '...'
-      : resultStr;
-    const part = `${prefix}: ${hint}`;
-
-    if (totalLen + part.length > MAX_SUMMARY_CHARS) break;
-    parts.push(part);
-    totalLen += part.length;
-  }
-
-  return `\n\n[Tool results from this turn:\n${parts.join('\n')}]`;
-}
 
 // Re-export MessageTurn from token-limiter for backwards compatibility
 export type { MessageTurn };
@@ -516,7 +495,16 @@ export function buildMessageTurnsWithMetadata(
       const trimmedText = entry.text?.trim();
       if (!trimmedText) continue;
       const role: 'user' | 'assistant' = entry.user === 'Addie' ? 'assistant' : 'user';
-      messages.push({ role, content: trimmedText });
+      // Pass through tool calls so claude-client can reconstruct proper API blocks
+      const toolCalls = (role === 'assistant' && entry.toolCalls && entry.toolCalls.length > 0)
+        ? entry.toolCalls.map(tc => ({
+          name: tc.name,
+          input: tc.input,
+          result: typeof tc.result === 'string' ? tc.result : tc.result != null ? JSON.stringify(tc.result) : '',
+          is_error: tc.is_error,
+        }))
+        : undefined;
+      messages.push({ role, content: trimmedText, toolCalls });
     }
 
     // Claude API requires messages to start with 'user' role
@@ -534,7 +522,12 @@ export function buildMessageTurnsWithMetadata(
         mergedMessages.push({ ...msg });
       } else {
         // Merge with previous message of same role
-        mergedMessages[mergedMessages.length - 1].content += '\n\n' + msg.content;
+        const prev = mergedMessages[mergedMessages.length - 1];
+        prev.content += '\n\n' + msg.content;
+        // Combine tool calls from both messages
+        if (msg.toolCalls) {
+          prev.toolCalls = [...(prev.toolCalls || []), ...msg.toolCalls];
+        }
       }
     }
 

@@ -13,6 +13,28 @@ import { createLogger } from '../../logger.js';
 
 const logger = createLogger('certification-tools');
 
+/**
+ * Build a membership-required message that gives Addie context about the user's
+ * account type so she can tailor the enrollment pitch appropriately.
+ */
+function membershipRequiredMessage(moduleId: string, memberContext: MemberContext | null): string {
+  const isPersonal = memberContext?.organization?.is_personal !== false;
+  const orgName = memberContext?.organization?.name;
+
+  if (isPersonal) {
+    return `Module ${moduleId} requires AgenticAdvertising.org membership. `
+      + `This user has an individual account. `
+      + `Use find_membership_products with customer_type "individual" to show them their options and help them sign up.`;
+  }
+
+  return `Module ${moduleId} requires AgenticAdvertising.org membership. `
+    + `This user works at ${orgName || 'a company'} which is not yet a member. `
+    + `Company membership covers everyone at the organization. `
+    + `Use find_membership_products with customer_type "company" to show pricing. `
+    + `Help this person become an internal champion — give them the value proposition and pricing they need to make the case internally. `
+    + `Also offer individual membership as an alternative if they want to start right away.`;
+}
+
 // Minimum user turns required before completion (module-scoped)
 const MIN_MODULE_TURNS = 4;
 const MIN_CAPSTONE_TURNS = 6;
@@ -220,6 +242,7 @@ export async function buildCertificationContext(
   lines.push('- End EVERY response with a question or task for the learner.');
   lines.push('- Vary turn structure: some bare questions, some "try this", some analogies. Not always explain-then-ask.');
   lines.push('- For non-basics modules: share doc links INLINE when discussing a concept, at least 2-3 per session. For basics (A track): save links for end of session as "go deeper" references — basics must be self-contained.');
+  lines.push('- First turn: greet the learner and ask about their background. Never run tools on the first turn.');
   lines.push('- Use concrete, specific language. Never use abstract terms without grounding them. Say "evaluate whether a placement fits" not "reason about impressions."');
   lines.push('- Only assess what you actually taught in the conversation. Never test doc-only details or claim "we covered this" if you didn\'t.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
@@ -758,7 +781,7 @@ export function createCertificationToolHandlers(
 
       // Check access
       if (!mod.is_free && !memberContext?.is_member) {
-        return `Module ${moduleId} (${mod.title}) requires AgenticAdvertising.org membership. Modules A1, A2, and A3 are free — start there!`;
+        return membershipRequiredMessage(moduleId, memberContext);
       }
 
       const lines: string[] = [
@@ -837,7 +860,7 @@ export function createCertificationToolHandlers(
       if (!mod) return `Module "${moduleId}" not found.`;
 
       if (!mod.is_free && !memberContext?.is_member) {
-        return `Module ${moduleId} requires membership. Modules A1, A2, and A3 are free — try those first!`;
+        return membershipRequiredMessage(moduleId, memberContext);
       }
 
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
@@ -960,12 +983,13 @@ export function createCertificationToolHandlers(
         lines.push('- **Keep responses SHORT.** Maximum 150 words per response. One idea per turn — teach one thing, then ask a question. If you have more to say, save it for the next turn. Brevity forces participation.');
         lines.push('- **Every response MUST end with a question or task.** Never end with only an explanation. Ask the learner something, give them a scenario, or have them try something. This is a conversation, not a lecture.');
         lines.push('- **Vary your turn structure.** Don\'t fall into explain-then-ask every turn. Some turns should be a bare question with no preamble. Some should be "try this and tell me what you see." Some should be a short analogy followed by a scenario. Vary the rhythm.');
-        lines.push('- **Start with a live demo when possible.** If the module has demo_scenarios or exercises, do the hands-on part FIRST. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.');
+        lines.push('- **Your first turn is ALWAYS about the learner.** Greet them, ask what they work on and what they already know. Never run a tool call or demo on the first turn — build rapport first.');
+        lines.push('- **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.');
         lines.push('');
         lines.push('### Teaching flow');
         lines.push('');
         lines.push('1. **Understand the learner first.** Before teaching anything, ask what they already know, what they work on, what they\'re curious about. Use their answer to personalize everything that follows. If they sell running shoes, your examples should be about running shoes — and keep using their context throughout the session, not just in the first turn. When a concept maps naturally to their domain, use it. When the mapping would be forced, use the protocol\'s own examples and explain why the concept matters regardless of vertical. **Early in the session, explicitly invite questions**: something like "If anything I say doesn\'t make sense, just ask — there\'s no assumed knowledge here and no wrong questions." Make it clear that asking for clarification is expected, not a sign of weakness.');
-        lines.push('2. **Demo early.** If the lesson plan has live demos or exercises, run them in the first 2-3 turns. Let the learner see a real agent response before you explain the theory. "Let me show you something" is more powerful than "Let me explain something."');
+        lines.push('2. **Demo early (turn 2-3).** If the lesson plan has live demos or exercises, run them after your opening question — once you know the learner. Let the learner see a real agent response before you explain the theory. "Let me show you something" is more powerful than "Let me explain something."');
         lines.push('3. **Teach from where they are.** If they claim prior knowledge, verify it with a targeted question before skipping ahead: "You mentioned you\'ve worked with programmatic — can you describe how second-price auctions differ from first-price in practice?" If they demonstrate real understanding, advance to where their knowledge ends. Don\'t re-teach what they already know.');
         lines.push('4. **When you correct a misconception, check that the correction landed.** Don\'t just explain the right answer — ask a follow-up question that tests whether they got it. "Does that reframe make sense? Can you think of an example where that would apply?"');
         lines.push('5. **Scaffold then fade.** Early in a module, guide heavily: give examples, offer choices, provide hints. As the learner demonstrates understanding, pull back: ask open-ended questions, present novel scenarios, expect them to reason without help. By assessment time, the learner should be doing most of the thinking.');
@@ -1208,7 +1232,7 @@ export function createCertificationToolHandlers(
         return mod && !mod.is_free;
       });
       if (paidModules.length > 0 && !memberContext?.is_member) {
-        return `Modules ${paidModules.join(', ')} require membership. Only free modules (A1, A2, A3) can be tested out without membership.`;
+        return membershipRequiredMessage(paidModules[0], memberContext);
       }
 
       // Server-side minimum conversation turn count for placement assessments
@@ -1267,7 +1291,7 @@ export function createCertificationToolHandlers(
       }
 
       if (!memberContext?.is_member) {
-        return 'Specialist capstones require AgenticAdvertising.org membership.';
+        return membershipRequiredMessage(moduleId, memberContext);
       }
 
       // Check that they hold the Practitioner credential
