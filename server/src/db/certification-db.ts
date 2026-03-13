@@ -743,6 +743,7 @@ export interface AdminOverviewMetrics {
     modules_completed: number;
     modules_started: number;
     abandoned: number;
+    total_sessions: number;
   };
   credentials_by_tier: Array<{ tier: number; name: string; count: number }>;
   module_completion: Array<{
@@ -754,6 +755,7 @@ export interface AdminOverviewMetrics {
     avg_score: number | null;
     avg_duration_minutes: number | null;
     abandoned: number;
+    sessions: number;
     dimensions: Array<{ name: string; avg_score: number }>;
   }>;
 }
@@ -763,13 +765,15 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
   const totalsResult = await query<{
     learners: string; credentials_issued: string;
     modules_completed: string; modules_started: string; abandoned: string;
+    total_sessions: string;
   }>(
     `SELECT
        (SELECT COUNT(DISTINCT workos_user_id) FROM learner_progress)::text AS learners,
        (SELECT COUNT(*) FROM user_credentials)::text AS credentials_issued,
        (SELECT COUNT(*) FROM learner_progress WHERE status IN ('completed', 'tested_out'))::text AS modules_completed,
        (SELECT COUNT(*) FROM learner_progress)::text AS modules_started,
-       (SELECT COUNT(*) FROM learner_progress WHERE status = 'in_progress' AND started_at < NOW() - INTERVAL '7 days')::text AS abandoned`
+       (SELECT COUNT(*) FROM learner_progress WHERE status = 'in_progress' AND started_at < NOW() - INTERVAL '7 days')::text AS abandoned,
+       (SELECT COUNT(DISTINCT thread_id) FROM teaching_checkpoints)::text AS total_sessions`
   );
   const t = totalsResult.rows[0];
 
@@ -786,6 +790,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
   const moduleResult = await query<{
     module_id: string; title: string; started: string; completed: string;
     avg_score: string | null; avg_duration_minutes: string | null; abandoned: string;
+    sessions: string;
   }>(
     `SELECT
        m.id AS module_id,
@@ -798,7 +803,8 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
        ROUND(AVG(CASE WHEN lp.completed_at IS NOT NULL AND lp.started_at IS NOT NULL
          THEN EXTRACT(EPOCH FROM (lp.completed_at - lp.started_at)) / 60
        END))::text AS avg_duration_minutes,
-       COUNT(CASE WHEN lp.status = 'in_progress' AND lp.started_at < NOW() - INTERVAL '7 days' THEN 1 END)::text AS abandoned
+       COUNT(CASE WHEN lp.status = 'in_progress' AND lp.started_at < NOW() - INTERVAL '7 days' THEN 1 END)::text AS abandoned,
+       COALESCE((SELECT COUNT(DISTINCT tc.thread_id) FROM teaching_checkpoints tc WHERE tc.module_id = m.id), 0)::text AS sessions
      FROM certification_modules m
      LEFT JOIN learner_progress lp ON lp.module_id = m.id
      GROUP BY m.id, m.title, m.track_id, m.sort_order
@@ -828,6 +834,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
       modules_completed: parseInt(t.modules_completed),
       modules_started: parseInt(t.modules_started),
       abandoned: parseInt(t.abandoned),
+      total_sessions: parseInt(t.total_sessions),
     },
     credentials_by_tier: credResult.rows.map(r => ({
       tier: r.tier, name: r.name, count: parseInt(r.count),
@@ -844,6 +851,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
         avg_score: r.avg_score ? parseInt(r.avg_score) : null,
         avg_duration_minutes: r.avg_duration_minutes ? parseInt(r.avg_duration_minutes) : null,
         abandoned: parseInt(r.abandoned),
+        sessions: parseInt(r.sessions),
         dimensions: dimsByModule.get(r.module_id) || [],
       };
     }),

@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-response.json",
   "title": "Build Creative Response",
-  "description": "Response containing the transformed or generated creative manifest, ready for use with preview_creative or sync_creatives. Returns either the complete creative manifest OR error information, never both.",
+  "description": "Response containing the transformed or generated creative manifest(s), ready for use with preview_creative or sync_creatives. Returns either a single creative_manifest, an array of creative_manifests (for multi-format requests), or error information.",
   "type": "object",
   "oneOf": [
     {
       "title": "BuildCreativeSuccess",
-      "description": "Success response - creative manifest generated successfully",
+      "description": "Single-format success response. Returned when the request used target_format_id.",
       "type": "object",
       "properties": {
         "creative_manifest": {
@@ -107,6 +107,40 @@
       },
       "required": [
         "creative_manifest"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "title": "BuildCreativeMultiSuccess",
+      "description": "Multi-format success response. Returned when the request used target_format_ids. Contains one manifest per requested format. Multi-format requests are atomic — all formats must succeed or the entire request fails with an error response. Array order corresponds to the target_format_ids request order.",
+      "type": "object",
+      "properties": {
+        "creative_manifests": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/core/creative-manifest.json"
+          },
+          "minItems": 1,
+          "description": "Array of generated creative manifests, one per requested format. Each manifest contains its own format_id identifying which format it was generated for."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the earliest generated asset URL expires across all manifests. Re-build after this time to get fresh URLs."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "creative_manifests"
       ],
       "additionalProperties": true
     },

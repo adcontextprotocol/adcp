@@ -86,6 +86,7 @@ import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
+import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
@@ -1013,6 +1014,9 @@ export class HTTPServer {
 
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());
+
+    // Mount training agent (embedded AdCP sales agent for testing and certification)
+    this.app.use('/api/training-agent', createTrainingAgentRouter());
 
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
@@ -5950,54 +5954,32 @@ Disallow: /api/admin/
           });
         }
 
-        // If user has a company domain, find orgs with admins from the same domain
+        // If user has a company domain, find orgs with a matching verified domain
         if (userDomain) {
-          // Get all organizations
-          const allOrgs = await workos!.organizations.listOrganizations({ limit: 100 });
+          const pool = getPool();
+          const domainOrgs = await pool.query<{ workos_organization_id: string; name: string }>(
+            `SELECT o.workos_organization_id, o.name
+             FROM organization_domains od
+             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+             WHERE od.domain = $1 AND od.verified = true AND o.is_personal = false`,
+            [userDomain]
+          );
 
-          for (const org of allOrgs.data) {
-            // Skip if user is already a member or if org is already in list
-            if (userOrgIds.has(org.id) || joinableOrgs.some(o => o.organization_id === org.id)) {
+          for (const org of domainOrgs.rows) {
+            if (userOrgIds.has(org.workos_organization_id) || joinableOrgs.some(o => o.organization_id === org.workos_organization_id)) {
               continue;
             }
 
-            // Get org's members to check admin domains
-            try {
-              const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-                organizationId: org.id,
-              });
+            const profile = await memberDb.getProfileByOrgId(org.workos_organization_id);
 
-              // Check if any admin/owner has the same company domain
-              const hasMatchingAdmin = orgMemberships.data.some(membership => {
-                const role = membership.role?.slug || 'member';
-                if (role !== 'admin' && role !== 'owner') {
-                  return false;
-                }
-                const memberEmail = membership.user?.email;
-                if (!memberEmail) {
-                  return false;
-                }
-                const memberDomain = getCompanyDomain(memberEmail);
-                return memberDomain === userDomain;
-              });
-
-              if (hasMatchingAdmin) {
-                // Try to get the member profile for logo/tagline
-                const profile = await memberDb.getProfileByOrgId(org.id);
-
-                joinableOrgs.push({
-                  organization_id: org.id,
-                  name: org.name,
-                  logo_url: profile?.resolved_brand?.logo_url || null,
-                  tagline: profile?.tagline || null,
-                  match_reason: 'domain',
-                  request_pending: pendingOrgIds.has(org.id),
-                });
-              }
-            } catch (error) {
-              // Skip orgs we can't get memberships for
-              logger.debug({ orgId: org.id, err: error }, 'Could not check org memberships');
-            }
+            joinableOrgs.push({
+              organization_id: org.workos_organization_id,
+              name: org.name,
+              logo_url: profile?.resolved_brand?.logo_url || null,
+              tagline: profile?.tagline || null,
+              match_reason: 'domain',
+              request_pending: pendingOrgIds.has(org.workos_organization_id),
+            });
           }
         }
 
@@ -6054,10 +6036,21 @@ Disallow: /api/admin/
 
           if (verifiedDomainResult.rows.length > 0) {
             // Domain is verified - auto-add user to organization
+            // If org has no admin/owner yet, promote this user to owner
+            const existingMembers = await workos!.userManagement.listOrganizationMemberships({
+              organizationId: organization_id,
+              limit: 100,
+            });
+            const hasAdmin = existingMembers.data.some((m) => {
+              const role = m.role?.slug;
+              return role === 'admin' || role === 'owner';
+            });
+            const roleSlug = hasAdmin ? 'member' : 'owner';
+
             const membership = await workos!.userManagement.createOrganizationMembership({
               userId: user.id,
               organizationId: organization_id,
-              roleSlug: 'member',
+              roleSlug,
             });
 
             // Get org name for response
@@ -6073,7 +6066,16 @@ Disallow: /api/admin/
               userId: user.id,
               orgId: organization_id,
               domain: userDomain,
+              role: roleSlug,
             }, 'User auto-added to organization via verified domain');
+
+            // Mirror membership locally so it's visible immediately
+            const pool2 = getPool();
+            await pool2.query(`
+              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
+              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
+              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
+            `, [user.id, organization_id, user.email, roleSlug]);
 
             // Record audit log
             await orgDb.recordAuditLog({
@@ -6086,18 +6088,21 @@ Disallow: /api/admin/
                 user_email: user.email,
                 method: 'verified_domain_auto_join',
                 domain: userDomain,
+                role: roleSlug,
               },
             });
 
             return res.status(201).json({
               success: true,
-              message: `You have been added to ${orgName}`,
+              message: roleSlug === 'owner'
+                ? `You've been added as the owner of ${orgName}`
+                : `You have been added to ${orgName}`,
               auto_joined: true,
               membership: {
                 id: membership.id,
                 organization_id: organization_id,
                 organization_name: orgName,
-                role: 'member',
+                role: roleSlug,
               },
             });
           }

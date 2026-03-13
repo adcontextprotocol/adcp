@@ -1,0 +1,36 @@
+name: Check Migration Numbers
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/src/db/migrations/**'
+  push:
+    branches: [main]
+    paths:
+      - 'server/src/db/migrations/**'
+
+jobs:
+  check:
+    name: No duplicate migration numbers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for duplicate migration number prefixes
+        run: |
+          dupes=$(ls server/src/db/migrations/*.sql \
+            | xargs -n1 basename \
+            | sed 's/_.*//' \
+            | sort \
+            | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "::error::Duplicate migration number prefixes found: $dupes"
+            echo ""
+            echo "These migration files share a number prefix:"
+            for prefix in $dupes; do
+              ls server/src/db/migrations/${prefix}_*.sql
+            done
+            exit 1
+          fi
+          echo "No duplicate migration numbers found."

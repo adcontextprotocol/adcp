@@ -438,6 +438,22 @@ export class PropertyDatabase {
   }
 
   /**
+   * Approve, publish, and update a property in a single atomic operation.
+   */
+  async approveAndPublishProperty(
+    domain: string,
+    adagentsJson: Record<string, unknown>
+  ): Promise<boolean> {
+    const result = await query(
+      `UPDATE hosted_properties
+       SET review_status = 'approved', is_public = true, adagents_json = $2
+       WHERE publisher_domain = $1 AND review_status = 'pending'`,
+      [domain.toLowerCase(), JSON.stringify(adagentsJson)]
+    );
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  /**
    * Edit a hosted property with revision tracking.
    * Rejects edits to authoritative (has matching discovered_properties) or pending records.
    */

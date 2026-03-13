@@ -1,14 +1,14 @@
 # fly.toml for AdCP Test Sales Agent
 # Deploy with: fly deploy -c fly.test-agent.toml
 #
-# This deploys the official AdCP test sales agent at testing.adcontextprotocol.org
+# This deploys the official AdCP test sales agent at test-agent.adcontextprotocol.org
 # using a published Docker image from the salesagent repository.
 
 app = "adcp-test-agent"
 primary_region = "iad"
 
 [build]
-  image = "docker.io/prebid/salesagent:latest"
+  image = "docker.io/prebid/salesagent:1.5.0"
 
 [http_service]
   internal_port = 8000

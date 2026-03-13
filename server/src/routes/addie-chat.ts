@@ -110,7 +110,6 @@ import {
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
-import { summarizeToolCalls } from "../addie/prompts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -703,13 +702,15 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
-      // Build context from history (last N messages), including tool result summaries
+      // Build context from history (last N messages), passing tool calls as structured
+      // data so they are reconstructed as proper tool_use/tool_result API blocks
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10)
         .map((m) => ({
           user: m.role === "user" ? "User" : "Addie",
-          text: m.content + summarizeToolCalls(m.tool_calls),
+          text: m.content,
+          toolCalls: m.tool_calls ?? undefined,
         }));
 
       // Build tiered access: anonymous gets Haiku + restricted tools,
@@ -935,13 +936,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
-      // Build context messages, including tool result summaries
+      // Build context messages, passing tool calls as structured data
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10)
         .map((m) => ({
           user: m.role === "user" ? "User" : "Addie",
-          text: m.content + summarizeToolCalls(m.tool_calls),
+          text: m.content,
+          toolCalls: m.tool_calls ?? undefined,
         }));
 
       // Build tiered access: anonymous gets Haiku + restricted tools,

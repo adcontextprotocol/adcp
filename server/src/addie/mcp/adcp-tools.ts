@@ -881,9 +881,9 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
   {
     name: 'build_creative',
     description:
-      'Generate a creative from a brief or transform an existing creative to a different format. Returns a complete creative manifest.',
+      'Generate a creative from a brief or transform an existing creative to a different format. Supports single-format (target_format_id) or multi-format (target_format_ids) requests. Returns one or more creative manifests.',
     usage_hints:
-      'use when the user wants to generate ad creatives, transform creative sizes, or build creative assets from a brief',
+      'use when the user wants to generate ad creatives, transform creative sizes, or build creative assets from a brief. Use target_format_ids when the user wants multiple formats generated in a single call.',
     input_schema: {
       type: 'object',
       properties: {
@@ -897,12 +897,36 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
         target_format_id: {
           type: 'object',
-          description: 'The format to generate',
+          description:
+            'Single format to generate. Exactly one of target_format_id or target_format_ids must be provided.',
           properties: {
             agent_url: { type: 'string' },
             id: { type: 'string' },
+            width: { type: 'integer', description: 'Width in pixels for visual formats' },
+            height: { type: 'integer', description: 'Height in pixels for visual formats' },
+            duration_ms: { type: 'number', description: 'Duration in ms for time-based formats' },
           },
           required: ['agent_url', 'id'],
+        },
+        target_format_ids: {
+          type: 'array',
+          description:
+            'Array of formats to generate in a single call. Exactly one of target_format_id or target_format_ids must be provided. Returns one manifest per format.',
+          items: {
+            type: 'object',
+            properties: {
+              agent_url: { type: 'string' },
+              id: { type: 'string' },
+              width: { type: 'integer', description: 'Width in pixels for visual formats' },
+              height: { type: 'integer', description: 'Height in pixels for visual formats' },
+              duration_ms: {
+                type: 'number',
+                description: 'Duration in ms for time-based formats',
+              },
+            },
+            required: ['agent_url', 'id'],
+          },
+          minItems: 1,
         },
         creative_manifest: {
           type: 'object',
@@ -973,7 +997,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'target_format_id'],
+      required: ['agent_url'],
     },
   },
   {

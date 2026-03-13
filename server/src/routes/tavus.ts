@@ -445,11 +445,13 @@ export function createTavusRouter() {
     // This gives voice Addie the same capabilities as chat Addie.
     let voiceRequestTools: RequestTools | undefined;
     let memberRequestContext = "";
+    let userDisplayName: string | null = null;
     if (threadId) {
       const threadService = getThreadService();
       try {
         const thread = await threadService.getThread(threadId);
         if (thread?.user_id && thread.channel === 'video') {
+          userDisplayName = thread.user_display_name;
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
@@ -484,12 +486,18 @@ export function createTavusRouter() {
       "like a person talking, not reading from a document.]\n\n";
     currentMessage = voicePrefix + currentMessage;
 
-    const voiceContext = [
+    const voiceContextLines = [
       "VOICE MODE: This is a live video call. Your response will be spoken aloud.",
+    ];
+    if (userDisplayName) {
+      voiceContextLines.push(`You are speaking with ${userDisplayName}. You already know their name — never ask for it.`);
+    }
+    voiceContextLines.push(
       "Match response length to the question — brief for simple questions, fuller for substantive ones.",
       "Never use formatting. Use conversational punctuation (ellipses, em-dashes) for natural pacing.",
       "When using tools, summarize results conversationally — don't read data verbatim.",
-    ].join("\n");
+    );
+    const voiceContext = voiceContextLines.join("\n");
 
     // Combine voice instructions with member context
     const requestContext = [voiceContext, memberRequestContext].filter(Boolean).join("\n\n");
