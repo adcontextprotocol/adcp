@@ -86,6 +86,7 @@ import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
+import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
@@ -1013,6 +1014,9 @@ export class HTTPServer {
 
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());
+
+    // Mount training agent (embedded AdCP sales agent for testing and certification)
+    this.app.use('/api/training-agent', createTrainingAgentRouter());
 
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
