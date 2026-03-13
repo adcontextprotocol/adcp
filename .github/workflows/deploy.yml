@@ -1,0 +1,64 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        run: flyctl deploy --remote-only --wait-timeout 300
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify all app machines are on same image
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "Checking that all app machines are running the same image..."
+
+          # Get image digests for app process group machines
+          images=$(flyctl machines list --json | \
+            jq -r '[.[] | select(.config.metadata.process_group == "app") | .image_ref.digest] | unique')
+
+          count=$(echo "$images" | jq 'length')
+
+          if [ "$count" -ne 1 ]; then
+            echo "❌ Deploy split detected! App machines are running different images:"
+            flyctl machines list
+            exit 1
+          fi
+
+          echo "✅ All app machines running the same image"
+
+      - name: Clean up stale console machines
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Destroy any leftover fly_app_console machines
+          consoles=$(flyctl machines list --json | \
+            jq -r '.[] | select(.config.metadata.process_group == "fly_app_console") | .id')
+
+          if [ -n "$consoles" ]; then
+            echo "Cleaning up stale console machines:"
+            for id in $consoles; do
+              echo "  Destroying $id"
+              flyctl machines destroy "$id" --force || true
+            done
+          else
+            echo "No stale console machines found"
+          fi
