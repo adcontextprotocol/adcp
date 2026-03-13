@@ -102,7 +102,8 @@
         },
         "payment_terms": {
           "type": "string",
-          "description": "Payment terms in effect (e.g., 'net_30', 'prepay')"
+          "enum": ["net_15", "net_30", "net_45", "net_60", "net_90", "prepay"],
+          "description": "Payment terms in effect for this account"
         },
         "invoices": {
           "type": "array",
