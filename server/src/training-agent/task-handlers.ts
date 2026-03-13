@@ -842,6 +842,28 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   update_media_buy: handleUpdateMediaBuy,
 };
 
+/**
+ * Execute a training agent tool in-process (no HTTP round-trip).
+ * Used by Addie's adcp-tools during certification demos.
+ */
+export function executeTrainingAgentTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  ctx: TrainingContext,
+): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const handler = HANDLER_MAP[toolName];
+  if (!handler) {
+    return { success: false, error: `Unknown tool: ${toolName}` };
+  }
+  try {
+    const result = handler(args, ctx);
+    return { success: true, data: result as Record<string, unknown> };
+  } catch (error) {
+    logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 // ── MCP Server factory ────────────────────────────────────────────
 
 /**
