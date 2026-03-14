@@ -56,7 +56,7 @@ CREATE INDEX idx_user_goal_history_prospect_org ON user_goal_history(prospect_or
 CREATE TABLE IF NOT EXISTS prospect_email_optouts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL,
-  unsubscribe_token TEXT NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex'),
+  unsubscribe_token TEXT NOT NULL,
   opted_out_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   source TEXT NOT NULL DEFAULT 'unsubscribe_link',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
