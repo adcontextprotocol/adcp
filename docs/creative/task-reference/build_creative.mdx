@@ -182,12 +182,12 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 The `CLICK_URL` macro was substituted with the provided value; `CACHEBUSTER` remains as a placeholder for the sales agent to resolve at serve time.
 
 <Note>
-**Cross-agent workflow**: When the creative agent and sales agent are different systems, use `build_creative` on the creative agent to produce a manifest with tags, then [`sync_creatives`](/docs/creative/task-reference/sync_creatives) on the sales agent to upload it. For example: `list_creatives` on Flashtalking → `build_creative` on Flashtalking → `sync_creatives` on the DSP.
+**Cross-agent workflow**: When creative generation and media buying are handled by different agents, use `build_creative` on the creative agent to produce a manifest with tags, then [`sync_creatives`](/docs/creative/task-reference/sync_creatives) on the sales agent to upload it. When the sales agent implements both protocols, this happens on a single endpoint — see [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 </Note>
 
 ### Multi-format generation
 
-Generate creatives for multiple formats in a single call using `target_format_ids`. The creative agent produces one manifest per format from the same source assets and brief:
+Generate creatives for multiple formats in a single call using `target_format_ids`. The agent produces one manifest per format from the same source assets and brief:
 
 ```json
 {

@@ -14,7 +14,7 @@ A creative agent is a service that:
 - **Builds creatives** (optional) - Generates manifests from natural language briefs or retrieves them from a library
 - **Hosts a creative library** (optional) - Lets buyers browse and filter existing creatives
 
-Creative agents are independent of sales agents. An ad server (CM360, Flashtalking), creative management platform, creative agency, or publisher can implement a creative agent.
+An ad server (CM360, Flashtalking), creative management platform, creative agency, publisher, or sales agent can implement a creative agent. Sales agents that implement the Creative Protocol alongside the Media Buy Protocol serve both roles from a single endpoint — see [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 ## Core requirements
 
@@ -379,6 +379,7 @@ The creative protocol requires `list_creative_formats` and `preview_creative` fr
 | Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
 | Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_generation: true` |
 | Format conversion service | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_transformation: true` |
+| Sales agent with creative capabilities | `list_creative_formats`, `preview_creative` | `sync_creatives` (with `assignments`), `get_creative_delivery`, `build_creative` | `supports_generation: true` or `has_creative_library: true` |
 
 Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/docs/creative/specification#interaction-models) in the spec.
 

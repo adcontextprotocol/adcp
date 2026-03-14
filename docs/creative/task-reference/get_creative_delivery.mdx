@@ -3,7 +3,9 @@ title: get_creative_delivery
 ---
 
 
-Retrieve creative delivery data from a creative agent, including variant-level breakdowns with manifests and metrics. This task returns what variants were created from your creatives, what they looked like (via manifests), and how they performed.
+Retrieve creative delivery data including variant-level breakdowns with manifests and metrics. This task returns what variants were created from your creatives, what they looked like (via manifests), and how they performed.
+
+This is a Creative Protocol task. Call it on any agent that declares `"creative"` in `supported_protocols` and `"delivery"` in its [creative agent capabilities](#capability-declaration) — whether that's a dedicated creative service or a [sales agent implementing the Creative Protocol](/docs/creative/sales-agent-creative-capabilities).
 
 **Request Schema**: [`/schemas/v3/creative/get-creative-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-request.json)
 **Response Schema**: [`/schemas/v3/creative/get-creative-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-response.json)
@@ -288,21 +290,28 @@ Use `preview_creative` with `request_type: "variant"` to see what a specific var
 
 Since each variant includes its full `manifest`, you can also pass the manifest directly to `preview_creative` as a standard single request to re-render it.
 
-## Relationship to Delivery Reporting
+## Relationship to delivery reporting
 
-| Data Source | Task | What It Provides |
+| Task | Protocol | What it provides |
 |---|---|---|
-| Sales agent | `get_media_buy_delivery` | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
-| Creative agent | `get_creative_delivery` | WHAT RAN and HOW: variant manifests and variant-level metrics |
+| `get_media_buy_delivery` | Media Buy | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
+| `get_creative_delivery` | Creative | WHAT RAN and HOW: variant manifests and variant-level metrics |
 
-Use `media_buy_id` + `creative_id` as join keys to correlate data across both sources.
+Use `media_buy_id` + `creative_id` as join keys to correlate data across both responses.
 
-## Creative Agent Capability
+When a sales agent implements both protocols, both tasks are available on the same agent URL. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) for the full pattern.
 
-Creative agents that support this task declare `"delivery"` in their capabilities:
+## Capability declaration
+
+Agents that support this task declare `"delivery"` in their `capabilities` array within `list_creative_formats` responses:
 
 ```json
 {
-  "capabilities": ["validation", "assembly", "preview", "delivery"]
+  "creative_agents": [{
+    "agent_url": "https://ads.seller-example.com",
+    "capabilities": ["validation", "assembly", "preview", "delivery"]
+  }]
 }
 ```
+
+Buyers discover this by calling `list_creative_formats` and checking the `creative_agents` array for agents with `"delivery"` in their capabilities. This applies to any agent implementing the Creative Protocol, including sales agents.

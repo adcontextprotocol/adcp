@@ -187,12 +187,72 @@ For custom publisher formats, specify the source:
 }
 ```
 
-## Next Steps
+## Seller-side generation (brief in media buy)
 
-- **Browse Examples**: See [Task Reference](/docs/creative/task-reference/build_creative) for detailed examples
-- **Learn Advanced Features**: Explore real-time inference and dynamic creative generation
-- **Integration Guide**: Learn how to integrate with your existing creative workflows
-- **Best Practices**: Asset organization and creative optimization strategies
+The examples above use `build_creative` to generate creatives interactively. A different pattern applies when the seller generates creatives at serve time — contextual ads, page-matched display, or AI-generated native.
+
+In this flow, the sales agent implements both the Media Buy Protocol and the Creative Protocol. The buyer provides a brief as part of `create_media_buy`, and the seller generates creatives at serve time without any separate `build_creative` call.
+
+### How it works
+
+1. **Discover generative formats** — Call `list_creative_formats` on the sales agent. Look for formats where `format_id.agent_url` points to the sales agent itself.
+
+2. **Submit brief in media buy** — Include a creative with the brief as an asset:
+
+```json
+{
+  "packages": [{
+    "buyer_ref": "pkg_contextual",
+    "product_id": "premium_display",
+    "pricing_option_id": "cpm_standard",
+    "budget": 50000,
+    "creatives": [{
+      "creative_id": "brand_contextual_brief",
+      "name": "Contextual campaign brief",
+      "format_id": {
+        "agent_url": "https://ads.seller-example.com",
+        "id": "contextual_display_generative"
+      },
+      "assets": {
+        "brief": {
+          "content": "Highlight our sustainability story. Match tone to editorial context. Avoid competitor comparisons."
+        }
+      }
+    }]
+  }]
+}
+```
+
+3. **Seller generates at serve time** — The seller uses the brief plus the buyer's [brand identity](/docs/brand-protocol/brand-json) to generate page-tailored creatives per impression or per page context. No buyer action is required for ongoing generation.
+
+4. **Review generated variants** — Call `get_creative_delivery` on the sales agent (it implements the Creative Protocol) to see what was generated, including variant manifests and generation context:
+
+```json
+{
+  "media_buy_ids": ["mb_12345"],
+  "max_variants": 20
+}
+```
+
+The response includes variant-level manifests showing exactly what was served, along with the generation context (page topic, device class, etc.).
+
+### Key differences from `build_creative`
+
+| Aspect | `build_creative` | Brief in media buy |
+|---|---|---|
+| When generation happens | On demand, before campaign starts | At serve time, throughout campaign |
+| Who generates | Standalone creative agent or sales agent | Sales agent (integrated) |
+| Buyer interaction | Interactive — review, iterate, approve | Set-and-forget — brief is the approval |
+| Variant visibility | Immediate (returned in response) | After serving (via `get_creative_delivery`) |
+| Format authority | `format_id.agent_url` points to the agent that owns the format | `format_id.agent_url` is the sales agent itself |
+
+See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) for the full pattern.
+
+## Next steps
+
+- **Browse examples**: See [Task reference](/docs/creative/task-reference/build_creative) for `build_creative` examples
+- **Sales agent creative flow**: See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) for seller-side generation
+- **Delivery reporting**: See [get_creative_delivery](/docs/creative/task-reference/get_creative_delivery) for variant-level analytics
 
 ## Common Issues
 
