@@ -104,8 +104,8 @@ Response contains results in order:
 {
   "response_type": "batch",
   "results": [
-    { "success": true, "response": { "previews": [...], "expires_at": "..." } },
-    { "success": true, "response": { "previews": [...], "expires_at": "..." } }
+    { "success": true, "creative_id": "creative_1", "response": { "previews": [...], "expires_at": "..." } },
+    { "success": true, "creative_id": "creative_2", "response": { "previews": [...], "expires_at": "..." } }
   ]
 }
 ```
@@ -239,7 +239,7 @@ Generate multiple preview variants by providing different contexts:
   results: Array<{
     success: boolean;
     response?: { previews: Preview[]; expires_at: string; };
-    error?: { code: string; message: string; };
+    errors?: Array<{ code: string; message: string; }>;
   }>;
 }
 ```
