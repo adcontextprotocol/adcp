@@ -177,8 +177,9 @@
           {
             "group": "Brand Protocol",
             "pages": [
-              "docs/brand-protocol/index",
               "docs/brand-protocol/why-brand-json",
+              "docs/brand-protocol/index",
+              "docs/brand-protocol/for-advertisers",
               "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",
               "docs/brand-protocol/building-a-brand-agent",
@@ -187,7 +188,8 @@
                 "pages": [
                   "docs/brand-protocol/tasks/get_brand_identity",
                   "docs/brand-protocol/tasks/get_rights",
-                  "docs/brand-protocol/tasks/acquire_rights"
+                  "docs/brand-protocol/tasks/acquire_rights",
+                  "docs/brand-protocol/tasks/update_rights"
                 ]
               }
             ]
@@ -558,8 +560,9 @@
           {
             "group": "Brand Protocol",
             "pages": [
-              "docs/brand-protocol/index",
               "docs/brand-protocol/why-brand-json",
+              "docs/brand-protocol/index",
+              "docs/brand-protocol/for-advertisers",
               "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",
               "docs/brand-protocol/building-a-brand-agent",
@@ -568,7 +571,8 @@
                 "pages": [
                   "docs/brand-protocol/tasks/get_brand_identity",
                   "docs/brand-protocol/tasks/get_rights",
-                  "docs/brand-protocol/tasks/acquire_rights"
+                  "docs/brand-protocol/tasks/acquire_rights",
+                  "docs/brand-protocol/tasks/update_rights"
                 ]
               }
             ]

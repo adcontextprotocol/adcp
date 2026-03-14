@@ -63,6 +63,20 @@
       "required": ["description", "uses"],
       "additionalProperties": true
     },
+    "revocation_webhook": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Webhook for rights revocation notifications. If the rights holder needs to revoke rights (talent scandal, contract violation, etc.), they POST a revocation-notification to this URL. The buyer is responsible for stopping creative delivery upon receipt."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Webhook for async status updates if the acquisition requires approval. The rights agent sends a webhook notification when the status transitions to acquired or rejected."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response rather than creating a duplicate acquisition.",
+      "minLength": 8,
+      "maxLength": 255
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -70,6 +84,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["rights_id", "pricing_option_id", "buyer", "campaign"],
+  "required": ["rights_id", "pricing_option_id", "buyer", "campaign", "revocation_webhook"],
   "additionalProperties": true
 }

@@ -75,7 +75,7 @@
                   },
                   "existing_exclusives": {
                     "type": "array",
-                    "description": "Active exclusivity commitments that may affect availability",
+                    "description": "Active exclusivity commitments that may affect availability. Implementers should use vague descriptions ('exclusive commitment in this category') rather than specific deal terms to protect confidential business relationships.",
                     "items": { "type": "string" }
                   }
                 },
@@ -120,7 +120,15 @@
             "properties": {
               "brand_id": { "type": "string" },
               "name": { "type": "string" },
-              "reason": { "type": "string" }
+              "reason": {
+                "type": "string",
+                "description": "Why this result was excluded. May be sanitized to protect confidential brand rules."
+              },
+              "suggestions": {
+                "type": "array",
+                "description": "Actionable alternatives if the exclusion is fixable (e.g., 'Available in BE and DE markets'). Absent if the exclusion is final.",
+                "items": { "type": "string" }
+              }
             },
             "required": ["brand_id", "reason"],
             "additionalProperties": true

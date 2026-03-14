@@ -22,57 +22,8 @@
           "description": "Brand identifier of the rights subject"
         },
         "terms": {
-          "type": "object",
-          "description": "Agreed contractual terms",
-          "properties": {
-            "pricing_option_id": { "type": "string" },
-            "amount": { "type": "number", "minimum": 0 },
-            "currency": {
-              "type": "string",
-              "pattern": "^[A-Z]{3}$"
-            },
-            "period": {
-              "type": "string",
-              "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "one_time"]
-            },
-            "uses": {
-              "type": "array",
-              "items": { "$ref": "/schemas/enums/right-use.json" }
-            },
-            "impression_cap": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "overage_cpm": {
-              "type": "number",
-              "minimum": 0
-            },
-            "start_date": {
-              "type": "string",
-              "format": "date"
-            },
-            "end_date": {
-              "type": "string",
-              "format": "date"
-            },
-            "exclusivity": {
-              "type": "object",
-              "description": "Exclusivity terms if applicable",
-              "properties": {
-                "scope": { "type": "string" },
-                "countries": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[A-Z]{2}$"
-                  }
-                }
-              },
-              "additionalProperties": true
-            }
-          },
-          "required": ["pricing_option_id", "amount", "currency", "uses"],
-          "additionalProperties": true
+          "$ref": "/schemas/brand/rights-terms.json",
+          "description": "Agreed contractual terms"
         },
         "generation_credentials": {
           "type": "array",
@@ -103,9 +54,8 @@
           "additionalProperties": true
         },
         "approval_webhook": {
-          "type": "string",
-          "format": "uri",
-          "description": "Webhook URL for submitting creatives for approval"
+          "$ref": "/schemas/core/push-notification-config.json",
+          "description": "Authenticated webhook for submitting creatives for approval. POST a creative-approval-request to the URL using the provided authentication. The response is a creative-approval-response."
         },
         "usage_reporting_url": {
           "type": "string",
@@ -123,7 +73,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["rights_id", "status", "brand_id", "terms"],
+      "required": ["rights_id", "status", "brand_id", "terms", "generation_credentials", "rights_constraint"],
       "additionalProperties": true,
       "not": { "required": ["errors"] }
     },
@@ -176,7 +126,12 @@
         },
         "reason": {
           "type": "string",
-          "description": "Why the rights request was rejected"
+          "description": "Why the rights request was rejected. May be sanitized to protect confidential brand rules — e.g., 'This violates our public figures brand guidelines' rather than naming the specific rule."
+        },
+        "suggestions": {
+          "type": "array",
+          "description": "Actionable alternatives the buyer can try. If present, the rejection is fixable — the buyer can adjust their request. If absent, the rejection is final for this talent/rights combination.",
+          "items": { "type": "string" }
         },
         "context": {
           "$ref": "/schemas/core/context.json"

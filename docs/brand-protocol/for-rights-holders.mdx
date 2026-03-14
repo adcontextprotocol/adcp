@@ -54,10 +54,41 @@ Your agency or management company operates as your **rights agent** in the proto
 
 The rights agent handles discovery, negotiation, credential issuance, and usage tracking. Your involvement is limited to setting preferences and reviewing creative concepts that require approval.
 
+## The long-tail opportunity
+
+Traditional endorsement deals require photo shoots, contract negotiations, and weeks of back-and-forth. The transaction costs mean only big brands can afford to work with you. A local restaurant, a regional gym chain, a neighborhood car dealership — they would love to feature you, but the deal is too small to justify the process.
+
+AdCP changes the math. Because discovery, negotiation, and credential issuance are automated, small deals become viable. A steakhouse in Amsterdam can license your likeness for EUR 350 per month. A fitness studio in Rotterdam can license your voice for EUR 200 per month. Individually, these are small. Collectively, they add up.
+
+Twenty local businesses at EUR 350 per month is EUR 84,000 per year — revenue from deals that would never have happened through traditional channels. Your agency sets the price, the protocol handles the rest, and you approve the creatives that need your sign-off.
+
+## What the approval experience looks like
+
+When a brand wants to use your likeness in a campaign, you or your representative see a notification. The delivery method depends on the platform your agency uses — it could be an email, a dashboard alert, or a push notification in an app.
+
+The notification includes the key details:
+
+- Which brand is making the request
+- What they want to create (a video ad, a display banner, a voice spot)
+- Which formats and dimensions
+- Where it will run (countries, channels)
+- How long the license lasts
+
+From there, you or your representative have three options: approve the request, request changes, or reject it. There is no ambiguity and no pressure to respond immediately — the creative cannot be generated until a decision is recorded.
+
+If you approve, the brand receives generation credentials scoped to exactly what was agreed. If you reject, no credentials are issued and the brand cannot generate content using your likeness for that campaign. If you request changes, the brand can revise and resubmit.
+
+In protocol terms, "request changes" is a rejection with suggestions. Your agent rejects the request but includes actionable alternatives — "available in a different market" or "try a shorter license period." The buyer's agent sees the suggestions and can adjust automatically. A rejection without suggestions signals "no, full stop" — the buyer moves on without knowing your internal reasons.
+
+Every decision is logged. Your agency has a complete record of what was requested, what was approved, and what was denied.
+
 ## Addressing common concerns
 
 **"Someone will generate my likeness without permission."**
 AdCP-compliant providers check for rights credentials before generating content using a known identity. Without a valid credential, generation is blocked. The protocol does not prevent all unauthorized use — bad actors can still misuse open-source models — but it creates a clear, enforceable standard for the legitimate advertising ecosystem.
+
+**"What happens if someone uses my likeness without going through AdCP?"**
+Your agency can use the audit trail from legitimate AdCP usage to establish what authorized use looks like. If unauthorized use appears in the market, that trail becomes evidence. AdCP does not police the internet — but it creates the paper trail that your legal team needs.
 
 **"I will lose control once I license my rights."**
 Licenses are scoped by use, geography, time period, and content type. A license to use your likeness in video ads for a restaurant in the Netherlands does not grant rights to use your voice in audio ads for a car brand in Japan. Each dimension is independently controlled.
@@ -72,7 +103,7 @@ You set the price. The protocol supports multiple pricing models — CPM-based r
 
 The protocol is honest about its current limitations:
 
-- **Mid-contract revocation** is not supported in the current version. If you license your rights for three months, the license runs for three months. Future versions will address early termination and revocation workflows.
+- **Mid-contract revocation** is supported through a revocation webhook. If something goes wrong — a talent controversy, a contract violation, a brand conflict — your agency can revoke rights immediately. The buyer provides a revocation webhook when they acquire rights, and your agency sends a notification with a reason and effective date. The buyer is responsible for stopping creative delivery. However, the protocol does not yet enforce revocation at the provider level — credential invalidation depends on provider cooperation.
 - **Open-source model enforcement** is outside the protocol's scope. AdCP works with providers who participate in the credential system. It cannot prevent someone from using an uncontrolled model to generate your likeness.
 - **Deepfake detection** is a separate problem. AdCP handles authorized use. Detecting and responding to unauthorized synthetic content requires different tools.
 
@@ -80,8 +111,12 @@ The protocol is honest about its current limitations:
 
 If you are a rights holder or represent one:
 
-- **Talk to your agency** about supporting AdCP for rights management. The protocol is open and free to implement.
-- **Contact AgenticAdvertising.org** to learn how your representation can connect to the ecosystem. Member organizations are building the tools that make this work.
-- **Read the [rights discovery](/docs/brand-protocol/tasks/get_rights) and [rights acquisition](/docs/brand-protocol/tasks/acquire_rights) documentation** for a deeper look at how the protocol operates.
+1. **Ask your agency if they work with an AdCP-compatible rights management platform.** Many talent agencies and management companies already use platforms that support the protocol. If yours does, the setup is straightforward — your agency configures your preferences and approval rules on the platform they already use.
+
+2. **If they do not, have them visit the [AgenticAdvertising.org member directory](https://agenticadvertising.org/members) to find a platform partner.** Member organizations build the tools that connect talent rights to the advertising ecosystem. Your agency picks a platform, and that platform handles the technical integration.
+
+3. **The platform partner handles the technical setup — you configure your preferences and approval rules.** You decide what is available, where, at what price, and what requires your personal sign-off. The platform translates those preferences into protocol-compliant rights listings that AI media buyers can discover and negotiate against.
+
+For a deeper look at how the protocol operates, read the [rights discovery](/docs/brand-protocol/tasks/get_rights) and [rights acquisition](/docs/brand-protocol/tasks/acquire_rights) documentation.
 
 The advertising industry is adopting AI-generated content. The question for rights holders is whether that adoption happens with your participation and compensation, or without it. AdCP is designed to make sure you have a seat at the table.

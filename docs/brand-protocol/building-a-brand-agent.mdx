@@ -42,6 +42,31 @@ server.tool("get_adcp_capabilities", {}, async () => ({
 }));
 ```
 
+## Transport and HTTP setup
+
+Wire the MCP server to an HTTP endpoint so buyer agents can reach it over the network:
+
+```typescript
+import express from "express";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+const app = express();
+app.use(express.json());
+
+app.post("/mcp", async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  res.on("close", () => transport.close());
+  await server.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+});
+
+app.listen(3000, () => console.log("Brand agent listening on port 3000"));
+```
+
+This gives you a stateless HTTP endpoint at `/mcp`. For production, add authentication middleware and CORS headers.
+
 ## Tier 1: identity only
 
 Implement `get_brand_identity` to serve brand data from your DAM or brand portal.
@@ -160,7 +185,55 @@ server.tool(
 );
 ```
 
-`acquire_rights` follows the same pattern — accept a `rights_id` and `pricing_option_id` from `get_rights`, clear against existing contracts, and return terms with generation credentials. See the [acquire_rights task reference](/docs/brand-protocol/tasks/acquire_rights) for the full schema.
+`acquire_rights` follows the same pattern — accept a `rights_id` and `pricing_option_id` from `get_rights`, clear against existing contracts, and return terms with generation credentials. The response includes an authenticated `approval_webhook` (using [`push-notification-config`](https://adcontextprotocol.org/schemas/latest/core/push-notification-config.json)) so buyers can submit creatives for review. See the [acquire_rights task reference](/docs/brand-protocol/tasks/acquire_rights) for the full schema.
+
+## Confidential brand rules
+
+Brands often have rules they cannot disclose — public figure policies, internal exclusion lists, legal restrictions. Your agent evaluates these internally and returns a sanitized reason without revealing the rule itself.
+
+The protocol supports this through a simple convention: if the rejection includes `suggestions`, the buyer can fix the problem. If it doesn't, the rejection is final and the buyer should move on.
+
+```typescript
+async function evaluateAcquisition(request, talent) {
+  // Confidential rules — buyer never sees these
+  const confidentialResult = await evaluateConfidentialRules(request, talent);
+  if (confidentialResult.blocked) {
+    return {
+      status: "rejected",
+      reason: confidentialResult.sanitized_reason,
+      // No suggestions — this is final, nothing the buyer can change
+    };
+  }
+
+  // Actionable rejection — buyer can adjust their request
+  const exclusivityConflict = await checkExclusivity(request, talent);
+  if (exclusivityConflict) {
+    return {
+      status: "rejected",
+      reason: `Exclusive conflict in ${exclusivityConflict.country} through ${exclusivityConflict.end_date}`,
+      suggestions: [
+        `Available in ${exclusivityConflict.alternative_countries.join(", ")}`,
+        `Available after ${exclusivityConflict.end_date}`,
+      ],
+    };
+  }
+
+  // Approved — proceed with terms
+  return { status: "acquired", /* ... */ };
+}
+```
+
+The same pattern applies to `get_rights` exclusions: include `suggestions` on excluded results when the buyer can adjust their query (different market, different dates), omit them when the exclusion is non-negotiable.
+
+### Defending against probing
+
+A determined buyer agent could call `get_rights` with slight variations — different brands, industries, countries — to map out your confidential rules through the pattern of rejections. Mitigate this by:
+
+- **Using consistent generic language** across similar confidential rejections. If three different rules all produce "This conflicts with our talent lifestyle guidelines," the buyer learns nothing from repeated attempts.
+- **Returning the same reason regardless of which specific rule triggered it.** Don't vary the wording based on the rule — that creates a side channel.
+- **Rate limiting discovery calls** per buyer. Track query volume per `buyer_brand` and return progressively less specific reasons after a threshold.
+
+The `exclusivity_status.existing_exclusives` field in `get_rights` responses deserves special care. Populating it with specific deal terms ("exclusive with Acme Sports in NL through Q3") reveals competitive intelligence. Use vague descriptions ("exclusive commitment in this category") or omit the field entirely when confidentiality is a concern.
 
 ## Field selection and use case
 
@@ -204,6 +277,78 @@ Each brand in your roster should also appear in your `brand.json` file's `brands
 Buyers establish authorization by calling [`sync_accounts`](/docs/accounts/tasks/sync_accounts) on your agent. After linking, their subsequent `get_brand_identity` requests are recognized as authorized.
 
 Implement the [accounts protocol](/docs/accounts/overview) to support this. The linked account is identified by the caller's credentials in the MCP transport — you do not need to pass account IDs in brand protocol requests.
+
+### Extracting caller identity
+
+```typescript
+async function checkLinkedAccount(extra: any): Promise<boolean> {
+  // The caller's identity comes from your auth middleware.
+  // After sync_accounts links a buyer, store their credentials
+  // and check them on subsequent requests.
+  const sessionId = extra?.sessionId;
+  if (!sessionId) return false;
+  return await db.isLinkedAccount(sessionId);
+}
+```
+
+How you identify callers depends on your authentication setup. The MCP transport provides session information; your auth middleware maps that to a linked account. See the [authentication guide](/docs/building/integration/authentication) for patterns.
+
+## Rights and creative integration
+
+After a buyer acquires rights through `acquire_rights`, they receive `generation_credentials` and a `rights_constraint`. These connect the rights grant to creative production.
+
+### From the brand agent's perspective
+
+When implementing `acquire_rights`, return both pieces in the response:
+
+```typescript
+// In your acquire_rights handler, after approval:
+const response = {
+  status: "acquired",
+  rights_id: "rgt_dj_001",
+  terms: { /* ... pricing, dates, restrictions */ },
+  generation_credentials: [
+    {
+      provider: "midjourney",
+      rights_key: "rk_dj_likeness_2026_abc",
+      uses: ["likeness"],
+      expires_at: "2026-06-15T00:00:00Z",
+    },
+  ],
+  rights_constraint: {
+    rights_id: "rgt_dj_001",
+    rights_agent: { url: "https://rights.lotientertainment.com/mcp", id: "loti_entertainment" },
+    valid_from: "2026-03-15T00:00:00Z",
+    valid_until: "2026-06-15T23:59:59Z",
+    uses: ["likeness"],
+    countries: ["NL"],
+    impression_cap: 100000,
+    approval_status: "approved",
+  },
+};
+```
+
+### How buyers use these
+
+The buyer's orchestrator passes `generation_credentials` to their creative agent, which uses them with the AI provider. The `rights_constraint` is embedded in the creative manifest's `rights` array — it travels with the creative through the supply chain so every system in the chain knows the usage terms.
+
+```typescript
+// Buyer-side: passing rights to a creative agent
+const creative = await creativeAgent.callTool({
+  name: "build_creative",
+  arguments: {
+    brand: { domain: "bistro-oranje.nl" },
+    format_id: { agent_url: "https://ads.example.com", id: "video_social_1080x1920" },
+    brief: "15-second vertical video featuring Daan Janssen endorsing Bistro Oranje",
+    generation_credentials: acquireResponse.generation_credentials,
+    rights: [acquireResponse.rights_constraint],
+  },
+});
+```
+
+The creative agent uses the `generation_credentials` to authenticate with the AI provider (Midjourney, ElevenLabs, etc.) and produces the asset. The `rights` array becomes part of the creative manifest metadata — downstream systems (ad servers, verification vendors) can inspect it to confirm the creative is properly licensed.
+
+For the full creative manifest specification, see [creative manifests](/docs/creative/creative-manifests).
 
 ## Testing
 

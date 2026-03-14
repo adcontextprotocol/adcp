@@ -98,6 +98,7 @@ import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-do
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
+import { BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers } from './mcp/brand-sandbox-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
@@ -795,6 +796,13 @@ async function createUserScopedTools(
   const brandHandlers = createBrandToolHandlers();
   allTools.push(...BRAND_TOOLS);
   for (const [name, handler] of brandHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add brand sandbox tools (certification exercises)
+  const brandSandboxHandlers = createBrandSandboxToolHandlers();
+  allTools.push(...BRAND_SANDBOX_TOOLS);
+  for (const [name, handler] of brandSandboxHandlers) {
     allHandlers.set(name, handler);
   }
 

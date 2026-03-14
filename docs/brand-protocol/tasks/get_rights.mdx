@@ -77,7 +77,8 @@ Typically 2-10 seconds. The agent may perform compatibility checks against the b
     {
       "brand_id": "pieter_van_dijk",
       "name": "Pieter van Dijk",
-      "reason": "Dietary lifestyle conflict with steakhouse brand"
+      "reason": "Dietary lifestyle conflict with steakhouse brand",
+      "suggestions": ["Available for plant-based and health food brands"]
     }
   ]
 }
@@ -119,6 +120,7 @@ Typically 2-10 seconds. The agent may perform compatibility checks against the b
 | `rights[].content_restrictions` | string[] | Content restrictions or approval requirements |
 | `rights[].preview_assets` | object[] | Preview-only assets for evaluation |
 | `excluded` | object[] | Filtered results with reasons (only when `include_excluded: true`) |
+| `excluded[].suggestions` | string[] | Actionable alternatives if the exclusion is fixable. Absent if the exclusion is final. |
 
 ### Rights pricing options
 
@@ -142,6 +144,24 @@ Request multiple uses (e.g., `["likeness", "voice"]`) and the agent bundles them
 ## Buyer brand filtering
 
 When `buyer_brand` is provided, the agent fetches the buyer's brand.json and uses it for compatibility filtering. For example, a vegetarian athlete would be excluded from steakhouse campaigns. Set `include_excluded: true` to see filtered results with reasons.
+
+## Music licensing and DDEX
+
+<Note>This section is for implementers building music rights agents. If you're a buyer using the brand protocol, the standard `get_rights` and `acquire_rights` flow works identically for music — you don't need to know DDEX.</Note>
+
+The rights protocol supports music licensing alongside talent rights. Music sync platforms implement `get_rights` with `right_type: "music"` and return pricing options for sync/background use.
+
+AdCP's rights model draws from the [DDEX](https://ddex.net/) Party Information Exchange (PIE) pattern — each `get_rights` response is a stateless snapshot of current availability rather than a delta against previous state. Key mappings for implementers familiar with DDEX:
+
+| AdCP concept | DDEX equivalent | Notes |
+|---|---|---|
+| `rights_id` | ISRC / ISWC | AdCP uses agent-scoped IDs; include standard identifiers in `ext` |
+| `available_uses` | Use types (sync, background, etc.) | AdCP uses `right-use` enum values |
+| `pricing_options` | License offers | Same concept, different structure |
+| `content_restrictions` | Territorial/usage restrictions | AdCP is less granular than DDEX |
+| `acquire_rights` | License grant | Returns generation credentials for AI music production |
+
+Music rights agents should include standard identifiers (ISRC, ISWC) in the `ext` field of rights responses for interoperability with existing music licensing systems.
 
 ## Next steps
 

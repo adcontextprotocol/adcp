@@ -533,6 +533,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Why brand.json', url: `${DOCS_BASE}/docs/brand-protocol/why-brand-json` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
     { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
@@ -575,19 +576,28 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   ],
   C2: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
-    { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Why brand.json', url: `${DOCS_BASE}/docs/brand-protocol/why-brand-json` },
+    { label: 'brand.json specification', url: `${DOCS_BASE}/docs/brand-protocol/brand-json` },
+    { label: 'For advertisers', url: `${DOCS_BASE}/docs/brand-protocol/for-advertisers` },
+    { label: 'get_brand_identity task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/get_brand_identity` },
+    { label: 'get_rights task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/get_rights` },
+    { label: 'acquire_rights task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/acquire_rights` },
+    { label: 'update_rights task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/update_rights` },
+    { label: 'For rights holders', url: `${DOCS_BASE}/docs/brand-protocol/for-rights-holders` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
   ],
   C3: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
     { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
+    { label: 'Brand identity for creatives', url: `${DOCS_BASE}/docs/brand-protocol/tasks/get_brand_identity` },
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
     { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
+    { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'sync_creatives task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/sync_creatives` },
@@ -597,6 +607,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   D1: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
     { label: 'MCP server implementation', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
+    { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
@@ -627,6 +638,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   S2: [
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
     { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
+    { label: 'Brand identity for creatives', url: `${DOCS_BASE}/docs/brand-protocol/tasks/get_brand_identity` },
+    { label: 'Visual guidelines in brand.json', url: `${DOCS_BASE}/docs/brand-protocol/brand-json#visual-guidelines` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
   ],
   S3: [

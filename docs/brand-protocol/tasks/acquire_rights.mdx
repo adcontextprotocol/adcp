@@ -33,11 +33,26 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
     "uses": ["likeness", "voice"],
     "countries": ["NL"],
     "format_ids": [
-      { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_social", "width": 1080, "height": 1920, "duration_ms": 15000 }
+      { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_social_1080x1920" }
     ],
     "estimated_impressions": 50000,
     "start_date": "2026-04-01",
     "end_date": "2026-06-30"
+  },
+  "revocation_webhook": {
+    "url": "https://buyer.bistro-oranje.nl/webhooks/revocation",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "whsk_bo_abc123...shared_secret_min_32_chars"
+    }
+  },
+  "idempotency_key": "acq_bo_janssen_2026q2_001",
+  "push_notification_config": {
+    "url": "https://buyer.bistro-oranje.nl/webhooks/adcp/acquire_rights/op_abc123",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "whsk_bo_xyz789...shared_secret_min_32_chars"
+    }
   }
 }
 ```
@@ -76,6 +91,17 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
       "expires_at": "2026-06-30T23:59:59Z"
     }
   ],
+  "rights_constraint": {
+    "rights_id": "janssen_likeness_voice",
+    "rights_agent": { "url": "https://agent.lotientertainment.com/mcp", "id": "loti_entertainment" },
+    "valid_from": "2026-04-01T00:00:00Z",
+    "valid_until": "2026-06-30T23:59:59Z",
+    "uses": ["likeness", "voice"],
+    "countries": ["NL"],
+    "impression_cap": 100000,
+    "approval_status": "approved",
+    "verification_url": "https://agent.lotientertainment.com/rights/rts_abc123/verify"
+  },
   "restrictions": [
     "All generated creatives must be submitted for approval before distribution",
     "No modification of talent likeness beyond approved AI generation parameters"
@@ -84,7 +110,13 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
     "required": true,
     "text": "Features AI-generated likeness of Daan Janssen, used under license from Loti Entertainment"
   },
-  "approval_webhook": "https://agent.lotientertainment.com/rights/rts_abc123/approve",
+  "approval_webhook": {
+    "url": "https://agent.lotientertainment.com/rights/rts_abc123/approve",
+    "authentication": {
+      "schemes": ["Bearer"],
+      "credentials": "rk_approve_abc123...token_min_32_chars"
+    }
+  },
   "usage_reporting_url": "https://agent.lotientertainment.com/rights/rts_abc123/usage"
 }
 ```
@@ -99,12 +131,36 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 }
 ```
 
-```json Response (rejected)
+```json Response (rejected — actionable)
 {
   "rights_id": "janssen_likeness_voice",
   "status": "rejected",
   "brand_id": "daan_janssen",
-  "reason": "Active exclusivity with another brand for food/restaurant in NL through 2026-09-30"
+  "reason": "Active exclusivity with another brand for food/restaurant in NL through 2026-09-30",
+  "suggestions": [
+    "Available in BE and DE markets",
+    "Available in NL after 2026-10-01"
+  ]
+}
+```
+
+```json Response (rejected — final)
+{
+  "rights_id": "janssen_likeness_voice",
+  "status": "rejected",
+  "brand_id": "daan_janssen",
+  "reason": "This violates our public figures brand guidelines"
+}
+```
+
+```json Response (error)
+{
+  "errors": [
+    {
+      "code": "pricing_option_unavailable",
+      "message": "Pricing option 'monthly_exclusive' is no longer available for this rights offering"
+    }
+  ]
 }
 ```
 </CodeGroup>
@@ -125,6 +181,9 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 | `campaign.estimated_impressions` | integer | No | Estimated total impressions |
 | `campaign.start_date` | date | No | Campaign start date |
 | `campaign.end_date` | date | No | Campaign end date |
+| `revocation_webhook` | push-notification-config | Yes | Webhook for revocation notifications. If the rights holder needs to revoke rights, they POST a [revocation-notification](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to this URL. |
+| `idempotency_key` | string | No | Client-generated key for safe retries. Resubmitting with the same key returns the original response. |
+| `push_notification_config` | push-notification-config | No | Webhook for async status updates if the acquisition requires approval. See [push notifications](/docs/building/implementation/webhooks). |
 
 ### Response statuses
 
@@ -134,7 +193,9 @@ The response uses a discriminated union on `status`:
 |--------|-------------|------------|
 | `acquired` | Rights cleared, credentials issued | `terms`, `generation_credentials`, `rights_constraint`, `disclosure` |
 | `pending_approval` | Requires rights holder review | `detail`, `estimated_response_time` |
-| `rejected` | Request denied | `reason` |
+| `rejected` | Request denied | `reason`, `suggestions` (optional) |
+
+When `suggestions` is present on a rejected response, the rejection is actionable — the buyer can adjust their request and retry. When `suggestions` is absent, the rejection is final and the buyer should not retry for this rights/talent combination. This convention applies consistently across `acquire_rights` rejections, `get_rights` excluded results, and creative approval rejections.
 
 ## Generation credentials
 
@@ -168,15 +229,48 @@ After acquiring rights:
 
 1. **Generate**: Creative agent uses `generation_credentials` to produce content
 2. **Manifest**: Embed the `rights_constraint` from the `acquire_rights` response directly into the creative manifest's `rights` array. The rights agent pre-builds this constraint with the correct validity period, country restrictions, and impression cap from the agreed terms.
-3. **Approve**: Submit creative to `approval_webhook` if required
+3. **Approve**: POST a [`creative-approval-request`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-request.json) to the `approval_webhook` URL, authenticating with the provided credentials. The response is a [`creative-approval-response`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-response.json) with status `approved`, `rejected`, or `pending_review`. If `pending_review`, poll the returned `status_url` for updates (suggested: every 5 minutes, back off to every 30 minutes after 1 hour).
 4. **Serve**: Place approved creative via `create_media_buy`, respecting country and date restrictions
 5. **Report**: Use [`report_usage`](/docs/accounts/tasks/report_usage) with `rights_id` for cap tracking and billing
 
-If `acquire_rights` returns `pending_approval`, poll the rights agent by calling `get_rights` with the same `brand_id` to check when the status resolves. Set `approval_status: 'pending'` on any creative manifests built during this period.
+If `acquire_rights` returns `pending_approval` and you provided `push_notification_config`, you'll receive a webhook notification when the status changes to `acquired` or `rejected`. Otherwise, re-call `acquire_rights` with the same `rights_id` and `idempotency_key` after the `estimated_response_time` interval. Set `approval_status: 'pending'` on any creative manifests built during this period.
+
+## Revocation
+
+If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains a `notification_id` (for deduplication), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
+
+The buyer is responsible for:
+- Deduplicating by `notification_id` — the same revocation may be delivered multiple times
+- Stopping creative delivery by `effective_at`
+- Removing or replacing affected creatives from active campaigns
+- Ceasing use of generation credentials (providers may also invalidate credentials independently)
+
+Partial revocation is supported — if `revoked_uses` is present, only those uses are revoked (e.g., voice revoked but likeness remains).
+
+### Acknowledging revocations
+
+Return HTTP `200` immediately upon receiving and validating a revocation notification. The rights holder retries on non-`2xx` responses using exponential backoff (1s, 5s, 30s, 5m, 30m). After 6 failed attempts, the rights holder may escalate through other channels.
+
+All webhook authentication uses the AdCP [push notification signing convention](/docs/building/implementation/webhooks#hmac-sha256-recommended-for-production) — `X-ADCP-Signature` and `X-ADCP-Timestamp` headers with HMAC-SHA256.
+
+## Impression caps and overage
+
+When `terms.impression_cap` is set, it is a **soft cap**. Delivery is not automatically halted at the cap — the buyer is responsible for monitoring usage via `report_usage` and managing delivery accordingly. Impressions beyond the cap are billed at `terms.overage_cpm`. If the rights holder wants a hard cap (no delivery beyond the limit), they specify this in `restrictions`.
+
+## Usage reporting
+
+The `usage_reporting_url` in the acquired response is a convenience endpoint provided by the rights agent for HTTP-based impression reporting. It accepts the same payload as the [`report_usage`](/docs/accounts/tasks/report_usage) MCP task. Use whichever integration is simpler for your pipeline — the MCP tool for agent-to-agent workflows, or the URL for direct HTTP calls from ad servers.
+
+## Renewal and updates
+
+To extend a rights grant, adjust impression caps, change pricing, or pause/resume, use [`update_rights`](/docs/brand-protocol/tasks/update_rights). Extended grants receive re-issued generation credentials and an updated `rights_constraint` for re-embedding in manifests.
 
 ## Next steps
 
 <CardGroup cols={2}>
+  <Card title="update_rights" icon="rotate" href="/docs/brand-protocol/tasks/update_rights">
+    Extend, adjust, or pause an existing rights grant.
+  </Card>
   <Card title="report_usage" icon="chart-line" href="/docs/accounts/tasks/report_usage">
     Report impressions against rights grants for billing and cap tracking.
   </Card>

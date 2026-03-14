@@ -73,6 +73,11 @@
       "enum": ["pending", "approved", "rejected"],
       "description": "Approval status from the rights holder at manifest creation time (snapshot, not a live value)"
     },
+    "verification_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where downstream supply chain participants can verify this rights grant is active. Returns HTTP 200 with the current grant status, or 404 if revoked. Enables SSPs and verification vendors to confirm rights before serving."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
