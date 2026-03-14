@@ -58,13 +58,14 @@ Sales agents that already implement the [accounts protocol](/docs/accounts/overv
 
 Sales agents that receive creatives — whether via inline attachment in `create_media_buy` or via `sync_creatives` — may perform creative review before serving. This mirrors real publisher and SSP workflows where creatives are scanned for policy compliance, malware, or brand safety violations.
 
-Creative review status is communicated through the creative's status in [`list_creatives`](/docs/creative/task-reference/list_creatives) or in the media buy response. The protocol does not prescribe specific review states, but common patterns include:
+Creative review status is surfaced at two levels:
 
-- **Pending review** — the creative has been received but not yet approved
-- **Approved** — the creative passed review and is eligible to serve
-- **Rejected** — the creative failed review, with a reason provided in the response
+- **Creative library**: The `status` field on each creative in [`list_creatives`](/docs/creative/task-reference/list_creatives) uses the creative status enum: `processing`, `pending_review`, `approved`, `rejected`, or `archived`.
+- **Package level**: The `approval_status` field on each creative in [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) responses uses the creative approval status enum: `pending_review`, `approved`, or `rejected`. Rejected creatives include a `rejection_reason` with a human-readable explanation.
 
-Agents that perform automated or manual review SHOULD communicate review status promptly. Buyers SHOULD check creative status after syncing or submitting a media buy with new creatives, especially for publishers with strict creative policies.
+A creative may be `approved` in the library but `rejected` at the package level if it violates placement-specific policies (e.g., a video creative on an audio-only placement).
+
+Buyers SHOULD poll `list_creatives` or `get_media_buys` after syncing or submitting a media buy with new creatives, especially for publishers with strict creative policies.
 
 For generative formats where the seller generates at serve time, creative review applies to the brief and brand identity rather than individual creatives. The seller validates that the brief's constraints and brand assets meet its policies before generation begins.
 
