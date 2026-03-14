@@ -35,7 +35,7 @@ Response:
       "input": { "name": "Default", "macros": {} }
     }
   ],
-  "expires_at": "2025-02-15T18:00:00Z"
+  "expires_at": "2027-02-15T18:00:00Z"
 }
 ```
 
@@ -76,7 +76,8 @@ Response contains raw HTML:
       ],
       "input": { "name": "Default", "macros": {} }
     }
-  ]
+  ],
+  "expires_at": "2027-02-15T18:00:00Z"
 }
 ```
 
@@ -159,7 +160,7 @@ Response:
       }
     }
   },
-  "expires_at": "2026-02-15T18:00:00Z"
+  "expires_at": "2027-02-15T18:00:00Z"
 }
 ```
 
@@ -238,6 +239,7 @@ Generate multiple preview variants by providing different contexts:
   response_type: "batch";
   results: Array<{
     success: boolean;
+    creative_id: string;
     response?: { previews: Preview[]; expires_at: string; };
     errors?: Array<{ code: string; message: string; }>;
   }>;

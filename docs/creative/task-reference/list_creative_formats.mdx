@@ -10,8 +10,8 @@ Discover creative formats supported by a creative agent. Returns full format spe
 
 **Authentication**: None required (public endpoint for format discovery)
 
-**Request Schema**: [`/schemas/v2/media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json)
-**Response Schema**: [`/schemas/v2/media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json)
+**Request Schema**: [`/schemas/v3/creative/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-request.json)
+**Response Schema**: [`/schemas/v3/creative/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-response.json)
 
 ## Behavior by agent type
 
@@ -65,7 +65,7 @@ Formats may produce multiple rendered pieces (e.g., video + companion banner). D
 | `formats` | Array of full format definitions (format_id, name, assets, renders). The `type` field is deprecated and may be omitted. |
 | `creative_agents` | Optional array of other creative agents providing additional formats |
 
-See [Format schema](https://adcontextprotocol.org/schemas/v2/core/format.json) for complete format object structure.
+See [Format schema](https://adcontextprotocol.org/schemas/v3/core/format.json) for complete format object structure.
 
 ### Recursive Discovery
 
@@ -675,6 +675,6 @@ After discovering formats:
 
 ## Learn More
 
-- [Format Schema](https://adcontextprotocol.org/schemas/v2/core/format.json) - Complete format structure
+- [Format Schema](https://adcontextprotocol.org/schemas/v3/core/format.json) - Complete format structure
 - [Asset Types](/docs/creative/asset-types) - Asset specification details
 - [Standard Formats](/docs/media-buy/capability-discovery/implementing-standard-formats) - IAB-compatible reference formats
