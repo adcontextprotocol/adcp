@@ -715,8 +715,12 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   B2: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Creative libraries', url: `${DOCS_BASE}/docs/creative/creative-libraries` },
+    { label: 'Implementing creative agents', url: `${DOCS_BASE}/docs/creative/implementing-creative-agents` },
+    { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
     { label: 'Sales agent creative capabilities', url: `${DOCS_BASE}/docs/creative/sales-agent-creative-capabilities` },
     { label: 'List creative formats task', url: `${DOCS_BASE}/docs/creative/task-reference/list_creative_formats` },
+    { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
   ],
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -753,6 +757,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   C3: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Creative libraries', url: `${DOCS_BASE}/docs/creative/creative-libraries` },
     { label: 'Sales agent creative capabilities', url: `${DOCS_BASE}/docs/creative/sales-agent-creative-capabilities` },
     { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
     { label: 'Preview creative task', url: `${DOCS_BASE}/docs/creative/task-reference/preview_creative` },
@@ -765,7 +770,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
-    { label: 'sync_creatives task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/sync_creatives` },
+    { label: 'sync_creatives task reference', url: `${DOCS_BASE}/docs/creative/task-reference/sync_creatives` },
     { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
   ],
   // Track D: Platform / Infrastructure
@@ -804,6 +809,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   ],
   S2: [
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Creative libraries', url: `${DOCS_BASE}/docs/creative/creative-libraries` },
     { label: 'Sales agent creative capabilities', url: `${DOCS_BASE}/docs/creative/sales-agent-creative-capabilities` },
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
     { label: 'Implementing creative agents', url: `${DOCS_BASE}/docs/creative/implementing-creative-agents` },

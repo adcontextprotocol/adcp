@@ -69,6 +69,25 @@ Buyers SHOULD poll `list_creatives` or `get_media_buys` after syncing or submitt
 
 For generative formats where the seller generates at serve time, creative review applies to the brief and brand identity rather than individual creatives. The seller validates that the brief's constraints and brand assets meet its policies before generation begins.
 
+### Implementation checklist for generative creative
+
+Sales agents offering generative creative should:
+
+1. **Declare capabilities** in `get_adcp_capabilities`:
+   - `supports_generation: true` in creative capabilities
+   - `"creative"` in `supported_protocols`
+   - `inline_creative_management: true` if creatives travel with the media buy
+
+2. **Define generative formats** via `list_creative_formats` where `format_id.agent_url` points to your own agent. Include descriptive format names and asset requirements (at minimum a `brief` asset).
+
+3. **Implement `preview_creative`** — return representative previews for pre-flight review. Support `context_description` inputs so buyers can simulate different serve-time conditions. For conversational formats, include `interactive_url` for sandbox testing.
+
+4. **Implement `get_creative_delivery`** — return variant manifests showing what was generated and served. Include `generation_context` (context_type, topic, device_class) and delivery metrics per variant. Plan for variant retention: retain at least 90 days of variant data for post-flight audit.
+
+5. **Validate briefs at buy time** — when a buyer submits a brief in `create_media_buy`, validate that the brief's constraints (brand identity, guardrails, required disclosures) are compatible with your generation capabilities. Reject with a clear error if not.
+
+6. **Handle creative review for briefs** — for generative formats, review applies to the brief and brand identity rather than individual creatives. Communicate review status via `approval_status` on the package in `get_media_buys`.
+
 ## Generative formats on sales agents
 
 A seller that generates creatives at serve time — contextual ads, page-matched display, AI-generated native — hosts its own generative format. The `format_id.agent_url` points to the sales agent itself:

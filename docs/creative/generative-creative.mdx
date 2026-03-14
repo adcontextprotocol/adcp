@@ -349,6 +349,8 @@ Preview doesn't require the media buy to be active — you can preview with just
 
 The response includes variant-level manifests showing exactly what was served, along with the generation context (page topic, device class, etc.).
 
+**Variant retention**: Agents are not required to retain variant data indefinitely. When calling `get_creative_delivery`, use `max_variants` to control how many variants are returned per creative. Agents select which variants to return based on their own criteria — typically by impression volume (most-served first), but some may use recency or representative sampling. For high-volume generative campaigns, expect that only a subset of all generated variants is retained. Request `max_variants` early and often during the campaign rather than relying on a single post-flight pull.
+
 ### Key differences from `build_creative`
 
 | Aspect | `build_creative` | Brief in media buy |
@@ -564,13 +566,30 @@ If you get a format error, the publisher may not support that format. Try:
 2. Check the publisher's `list_creative_formats` endpoint
 3. Verify the `format_id.agent_url` is correct
 
+### Understanding the quality model
+
+Creative quality has two independent axes:
+
+- **Build quality** (`quality` on `build_creative`): Controls generation fidelity — how much compute goes into producing the creative. `draft` produces rough concepts fast (lower-resolution images, simplified layouts). `production` produces polished, final-quality output.
+- **Preview quality** (`quality` on `preview_creative`, `preview_quality` on `build_creative`): Controls render fidelity — how the creative is visualized for review. `draft` produces fast, lower-fidelity renderings for rapid iteration. `production` produces full-quality renderings for stakeholder review.
+
+These axes are independent. Common combinations:
+
+| Build | Preview | Use case |
+|---|---|---|
+| draft | draft | Rapid exploration — fast concepts, fast previews |
+| draft | production | Stakeholder review of rough concepts — full-quality rendering of draft creative |
+| production | production | Final review — polished creative, polished preview |
+| production | draft | Thumbnail grid — final creative shown as quick thumbnails for selection |
+
+Agents that support only one quality level silently ignore the parameter they don't support. There is no echo-back field — verify quality by inspection.
+
 ### Creative Quality Issues
 To improve creative output:
-1. **Build quality** controls generation fidelity — `quality: "draft"` in `build_creative` produces rough concepts fast (lower-resolution images, simplified layouts). Switch to `quality: "production"` once you like the direction. See [`build_creative`](/docs/creative/task-reference/build_creative).
-2. **Preview quality** controls render fidelity — `quality: "draft"` in `preview_creative` produces fast, lower-fidelity renderings for rapid iteration. Use `quality: "production"` for stakeholder review. See [`preview_creative`](/docs/creative/task-reference/preview_creative#previewing-generative-creative).
-3. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
-4. Provide comprehensive brand identity with assets and guidelines
-5. Iterate using [refinement](/docs/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest with a new message, or update the brief asset
+1. **Build quality** and **preview quality** are independent axes — see [Understanding the quality model](#understanding-the-quality-model) above. Use `draft` for iteration, `production` for final review.
+2. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
+3. Provide comprehensive brand identity with assets and guidelines
+4. Iterate using [refinement](/docs/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest with a new message, or update the brief asset
 
 ### Asset Management
 Assets are provided via [brand identity](/docs/brand-protocol/brand-json):

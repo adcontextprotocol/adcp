@@ -331,6 +331,7 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
+              "docs/creative/ai-creative-overview",
               "docs/creative/specification",
               "docs/creative/formats",
               "docs/creative/asset-types",
@@ -340,6 +341,7 @@
               "docs/creative/implementing-creative-agents",
               "docs/creative/sales-agent-creative-capabilities",
               "docs/creative/creative-libraries",
+              "docs/creative/multi-agent-orchestration",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
@@ -350,6 +352,7 @@
                 "group": "Channel Guides",
                 "pages": [
                   "docs/creative/channels/video",
+                  "docs/creative/channels/ctv",
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",
@@ -735,6 +738,7 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
+              "docs/creative/ai-creative-overview",
               "docs/creative/specification",
               "docs/creative/formats",
               "docs/creative/asset-types",
@@ -744,6 +748,7 @@
               "docs/creative/implementing-creative-agents",
               "docs/creative/sales-agent-creative-capabilities",
               "docs/creative/creative-libraries",
+              "docs/creative/multi-agent-orchestration",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
@@ -754,6 +759,7 @@
                 "group": "Channel Guides",
                 "pages": [
                   "docs/creative/channels/video",
+                  "docs/creative/channels/ctv",
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",

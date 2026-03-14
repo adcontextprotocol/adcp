@@ -287,7 +287,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'Upload and manage creative assets for a campaign. Supports upsert semantics with optional assignment to packages.',
     usage_hints:
-      'use when the user wants to upload creatives, add creative assets, or assign creatives to campaign packages',
+      'use when the user wants to upload creatives, add creative assets, or assign creatives to campaign packages. Also use when guiding a seller or platform on how to accept and manage creative assets via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -488,7 +488,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'View supported creative specifications from a sales or creative agent. Returns format definitions with dimensions and asset requirements.',
     usage_hints:
-      'use when the user wants to see what creative formats are supported, understand creative specs, or check dimension requirements',
+      'use when the user wants to see what creative formats are supported, understand creative specs, or check dimension requirements. Also use when guiding a seller or platform on how to define and expose their creative formats via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -892,7 +892,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Generate a creative from a brief or transform an existing creative to a different format. Supports single-format (target_format_id) or multi-format (target_format_ids) requests. Returns one or more creative manifests.',
     usage_hints:
-      'use when the user wants to generate ad creatives, transform creative sizes, or build creative assets from a brief. Use target_format_ids when the user wants multiple formats generated in a single call.',
+      'use when the user wants to generate ad creatives, transform creative sizes, or build creative assets from a brief. Use target_format_ids when the user wants multiple formats generated in a single call. Also use when guiding a seller or creative agent implementer on how to handle build requests via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1020,7 +1020,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Generate visual previews of creative manifests. Returns preview URLs or HTML.',
     usage_hints:
-      'use when the user wants to see how a creative will look, preview ad renderings, or validate creative output',
+      'use when the user wants to see how a creative will look, preview ad renderings, or validate creative output. Also use when guiding a seller or creative agent implementer on how to support preview rendering via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1065,6 +1065,69 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
       },
       required: ['agent_url', 'request_type'],
+    },
+  },
+  {
+    name: 'get_creative_delivery',
+    description:
+      'Retrieve variant-level creative delivery data from a creative agent. Returns what was generated, served, and how each variant performed. Requires at least one scoping filter: media_buy_ids, media_buy_buyer_refs, or creative_ids.',
+    usage_hints:
+      'use when the user wants to see what creative variants were generated or served, review delivery data for generative campaigns, or audit creative performance across media buys. Also use when guiding a seller or creative agent implementer on how to expose delivery data via AdCP.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The creative agent URL (must be HTTPS)',
+        },
+        media_buy_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to specific media buys by publisher ID.',
+        },
+        media_buy_buyer_refs: {
+          type: 'array',
+          items: { type: 'string' },
+          description: "Filter to specific media buys by buyer reference ID. Alternative to media_buy_ids when the buyer doesn't have the publisher's identifiers.",
+        },
+        creative_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to specific creatives by ID.',
+        },
+        start_date: {
+          type: 'string',
+          description: 'Start date for delivery period (YYYY-MM-DD).',
+        },
+        end_date: {
+          type: 'string',
+          description: 'End date for delivery period (YYYY-MM-DD).',
+        },
+        max_variants: {
+          type: 'integer',
+          description: 'Maximum number of variants to return per creative. Useful for generative creatives that produce large numbers of variants.',
+        },
+        pagination: {
+          type: 'object',
+          description: 'Cursor-based pagination parameters.',
+          properties: {
+            max_results: { type: 'integer', description: 'Max items per page (1-100)' },
+            cursor: { type: 'string', description: 'Cursor from previous response' },
+          },
+        },
+        account: {
+          type: 'object',
+          description: 'Account for routing and scoping.',
+          properties: {
+            account_id: { type: 'string', description: 'Seller-assigned account identifier' },
+          },
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
+      },
+      required: ['agent_url'],
     },
   },
 ];

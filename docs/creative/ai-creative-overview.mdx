@@ -1,0 +1,99 @@
+---
+title: AI creative for campaign teams
+---
+
+AI creative in AdCP means you write a brief and an AI agent handles production. It generates ads from your direction, adapts them across formats, and can personalize them at serve time. You stay in control of the brand. The AI does the heavy lifting.
+
+This page explains how it works in terms you already use.
+
+## How it works
+
+The workflow mirrors what you do with a production team, except the team is an AI agent.
+
+### 1. Write the brief
+
+You describe what you want in plain language, the same way you'd brief a creative team.
+
+*"Create a holiday promotion for our outdoor gear line. Earth tones, active lifestyle imagery. Headline should emphasize the limited-time offer."*
+
+The brief can include a message (what to say), brand identity assets (logos, colors, fonts), and constraints (tone of voice, topics to avoid). The more specific you are, the better the output.
+
+### 2. Review concepts
+
+The AI generates options. You see previews — rough concepts for direction, or polished versions for stakeholder review. Browse them the way you'd review comps from a production studio.
+
+You control the quality level:
+
+- **Draft mode** gives you fast, rough concepts for exploration. Think tissue session.
+- **Production mode** gives you polished, client-ready output. Think final comps.
+
+### 3. Iterate
+
+Give feedback in the language you'd use with any creative team.
+
+*"Make the headline more urgent."*
+*"Try a warmer color palette."*
+*"Keep the layout but swap in the lifestyle photo instead of the product shot."*
+
+The AI revises and returns updated previews.
+
+### 4. Approve and traffic
+
+Lock in the final creative. It gets synced to your campaigns — assigned to media buys, matched to placements, ready to serve.
+
+### 5. Monitor what actually ran
+
+After launch, review what the AI served. Every variant, every context. Full audit trail. If the AI personalized headlines per audience, you can see each version and how it performed.
+
+## Quality control
+
+AI creative has two separate quality dimensions. Understanding both prevents surprises.
+
+**Concept quality** is about the creative itself. Draft mode produces fast, rough ideas — useful when you're exploring directions and don't need pixel-perfect output. Production mode produces finished work suitable for client review and launch. You choose which mode based on where you are in the process.
+
+**Preview quality** is about how you view the output. Quick thumbnails let you scan many options fast. Full-fidelity renders show exactly how the ad will look at final size and resolution. These are independent of concept quality — you can get a high-fidelity render of a draft concept, or a quick thumbnail of a production-ready piece.
+
+Think of it as the difference between a tissue session (rough concepts, fast iteration) and a final presentation (polished work, high-res mockups).
+
+## Brand safety
+
+Four layers keep your brand protected throughout the process.
+
+**The brief itself.** Your creative direction sets the boundaries. Specify tone, topics to include, topics to avoid, and any do's and don'ts. The AI works within these constraints.
+
+**Brand identity.** Logos, color palettes, typography, and brand guidelines are provided as structured assets. The AI references them during generation, not just as suggestions but as requirements.
+
+**Pre-launch review.** Before anything goes live, preview what the AI will generate. Review concepts, test edge cases, and approve the system before it serves a single impression.
+
+**Post-launch audit.** After launch, see every variant that was actually served. Not a summary — the actual creative outputs, with context about when and where each ran.
+
+## What to expect
+
+AI-generated ads work differently from traditional production in a few important ways.
+
+**Previews are representative, not exact.** Because the AI can generate per-impression (adapting to context, audience, or placement), a pre-launch preview shows you what the AI *will* generate, not the one fixed ad it will serve. The preview is accurate to the brief and brand identity, but the live campaign may produce variations.
+
+**Conversational formats need guardrail testing.** If your ad includes an interactive chatbot or conversational element, test the boundaries. What happens when someone asks about a competitor? What if they ask an off-topic question? Pre-launch review should include these scenarios.
+
+**You approve the system, not every individual ad.** With traditional creative, you approve each finished ad. With AI creative, you approve the combination of brief, brand identity, and guardrails that the AI uses to generate ads. This is what makes personalization at scale possible — and why getting the brief and guardrails right matters more than reviewing every output.
+
+## Protocol terms in agency language
+
+| What you call it | What AdCP calls it |
+|---|---|
+| Creative brief | `message` or `assets.brief` in `build_creative` |
+| Comp / mockup | Preview from `preview_creative` |
+| Ad unit spec sheet | Creative manifest |
+| Production studio | Creative agent |
+| Placement size | Format (e.g., `display_300x250`) |
+| Trafficking | `sync_creatives` or inline attachment on `create_media_buy` |
+| Campaign report (variant-level) | `get_creative_delivery` |
+
+## Next steps
+
+When you're ready to go deeper:
+
+- **Technical workflow** -- [Generative creative](/docs/creative/generative-creative) walks through the API step by step
+- **Library management** -- [Creative libraries and concepts](/docs/creative/creative-libraries) covers organizing and syncing assets
+- **Brand safety details** -- [Sales agent creative capabilities](/docs/creative/sales-agent-creative-capabilities) explains guardrails and inline creative management
+- **Learning** -- The [certification program](/docs/learning/overview) teaches AdCP through interactive modules with Addie

@@ -304,6 +304,54 @@ You provide enhanced versions of standard formats:
 }
 ```
 
+### Pattern 4: feed-native/social format agent
+
+You host ad formats that render as native content within your platform's feed:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.socialplatform.com",
+    "id": "promoted_post"
+  },
+  "name": "Promoted post",
+  "type": "native",
+  "description": "Sponsored content that appears in the feed alongside organic posts. Renders with platform chrome (user avatar, engagement buttons, community badge).",
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": { "max_length": 300 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "body",
+      "asset_type": "text",
+      "required": false,
+      "requirements": { "max_length": 1000 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "image",
+      "asset_type": "image",
+      "required": false,
+      "requirements": { "max_width": 1200, "max_height": 628, "accepted_types": ["image/jpeg", "image/png"] }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "click_url",
+      "asset_type": "url",
+      "required": true,
+      "requirements": {}
+    }
+  ]
+}
+```
+
+Platform-specific rendering (dark mode, community context, engagement UI) is handled by the agent at preview and serve time — the format definition specifies only the buyer-provided assets. The agent wraps these assets in the platform's native chrome.
+
 ## Platform mapping
 
 If you're wrapping an existing ad server or creative management platform, this section shows how common platform concepts map to the creative protocol.
@@ -323,6 +371,7 @@ If you're wrapping an existing ad server or creative management platform, this s
 | Placement / ad unit | Package within a media buy | The buy context where a creative is assigned |
 | DCO variables / dynamic fields | `variables` array (via `include_variables=true`) | Named slots with types and defaults |
 | Data feed / targeting rules | Not modeled | AdCP models the variable *slots*, not the optimization rules |
+| CTV/OTT ad server (Innovid, Brightcove) | Same as ad server, plus VAST/SSAI delivery model | VAST tags in `vast`-type assets; companion ads via multi-render formats |
 
 ### Tag generation models
 
@@ -368,6 +417,17 @@ Platforms use their own macro syntax internally. The `macro_values` parameter in
 | `TIMESTAMP` | `%t` | `[timestamp]` |
 
 The creative agent handles translation — callers always use universal macros.
+
+### Re-submission after rejection
+
+When `sync_creatives` or creative review results in a rejection, the fix-and-resubmit flow uses upsert semantics:
+
+1. Check rejection reason via `list_creatives` (library `status: "rejected"`) or `get_media_buys` (package `approval_status: "rejected"` with `rejection_reason`)
+2. Fix the creative (update assets, adjust copy, replace media)
+3. Re-submit via `sync_creatives` with the same `creative_id` — the agent updates the existing creative and re-triggers review
+4. Poll `list_creatives` until `status` transitions from `pending_review` to `approved` or `rejected`
+
+Re-submission resets the review clock. The agent treats the updated creative as a new submission for review purposes.
 
 ### Which tasks to implement
 

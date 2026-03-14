@@ -301,6 +301,15 @@ Use `media_buy_id` + `creative_id` as join keys to correlate data across both re
 
 When a sales agent implements both protocols, both tasks are available on the same agent URL. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) for the full pattern.
 
+## Cross-agent aggregation
+
+When running campaigns across multiple sellers, call `get_creative_delivery` on each agent separately and correlate results:
+
+- **Join key**: Use `creative_id` (buyer-assigned) to correlate the same creative across agents. If you used `concept_id` during upload, filter by concept to group related creatives.
+- **`variant_id` scope**: Variant IDs are unique within an agent and creative, not globally. Two agents may generate variants with the same `variant_id` value. Prefix with the agent URL when building aggregated dashboards.
+- **Timezone handling**: Each agent may report in its own timezone via `reporting_period.timezone`. Normalize to a common timezone before aggregating metrics.
+- **`max_variants` selection**: Agents choose which variants to return when `max_variants` limits the result set. Most agents prioritize by impression volume (most-served first). For representative sampling, make multiple calls with different time ranges rather than relying on a single large `max_variants` value.
+
 ## Capability declaration
 
 Agents that support this task declare `"delivery"` in their `capabilities` array within `list_creative_formats` responses:
