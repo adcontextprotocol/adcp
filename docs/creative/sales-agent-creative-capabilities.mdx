@@ -33,7 +33,7 @@ A sales agent declares Creative Protocol support in `get_adcp_capabilities`:
 
 Note that `inline_creative_management` (a media buy feature for attaching creatives to packages at buy time) and Creative Protocol support are independent. A sales agent can support one, the other, or both.
 
-`inline_creative_management` allows attaching creatives directly to packages in `create_media_buy` — the creative travels with the buy order. Creative Protocol support (`"creative"` in `supported_protocols`) means the agent implements creative tasks like `build_creative`, `list_creative_formats`, and `sync_creatives`. A sales agent might support inline creative management without implementing the Creative Protocol (the buyer manages creatives externally and just references them in the buy), or implement the Creative Protocol without inline management (creatives are synced separately via `sync_creatives` before being assigned to packages).
+`inline_creative_management` allows attaching creatives directly to packages in `create_media_buy` — the creative travels with the buy order. Creative Protocol support (`"creative"` in `supported_protocols`) means the agent implements creative tasks like `build_creative`, `list_creative_formats`, and [`sync_creatives`](/docs/creative/task-reference/sync_creatives). A sales agent might support inline creative management without implementing the Creative Protocol (the buyer manages creatives externally and just references them in the buy), or implement the Creative Protocol without inline management (creatives are synced separately via `sync_creatives` before being assigned to packages).
 
 The buyer calls all tasks — media buy and creative — on the same agent URL. The protocol the task belongs to determines the schema, not the type of agent.
 
@@ -58,7 +58,7 @@ Sales agents that already implement the [accounts protocol](/docs/accounts/overv
 
 Sales agents that receive creatives — whether via inline attachment in `create_media_buy` or via `sync_creatives` — may perform creative review before serving. This mirrors real publisher and SSP workflows where creatives are scanned for policy compliance, malware, or brand safety violations.
 
-Creative review status is communicated through the creative's status in `list_creatives` or in the media buy response. The protocol does not prescribe specific review states, but common patterns include:
+Creative review status is communicated through the creative's status in [`list_creatives`](/docs/creative/task-reference/list_creatives) or in the media buy response. The protocol does not prescribe specific review states, but common patterns include:
 
 - **Pending review** — the creative has been received but not yet approved
 - **Approved** — the creative passed review and is eligible to serve

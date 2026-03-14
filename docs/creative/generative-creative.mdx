@@ -58,7 +58,36 @@ You'll receive a structured creative manifest:
 }
 ```
 
-### Step 3: Refine Your Creative
+### Step 3: Preview Your Creative
+
+Preview the manifest to see what it looks like before iterating:
+
+```json
+{
+  "request_type": "single",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_native"
+    },
+    "assets": {
+      "headline": {
+        "content": "20% Off All Drinks This Week!"
+      },
+      "description": {
+        "content": "Visit our cozy coffee shop and enjoy premium coffee at an unbeatable price."
+      },
+      "call_to_action": {
+        "content": "Visit Today"
+      }
+    }
+  }
+}
+```
+
+The response includes a preview URL you can embed in an iframe. See [`preview_creative`](/docs/creative/task-reference/preview_creative) for device variants, batch preview, and output format options.
+
+### Step 4: Refine Your Creative
 
 Iterate by passing the previous output's `creative_manifest` back with a new `message`. Alternatively, update the brief asset (`assets.brief`) to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
 
@@ -439,6 +468,32 @@ When the preview response includes an `interactive_url`, reviewers can interact 
 
 Review these previews carefully — they reveal how the agent handles edge cases that the happy-path previews won't surface.
 
+For conversational formats, the preview response may include an `interactive_url` where reviewers can test the conversation live:
+
+```json
+{
+  "response_type": "single",
+  "previews": [
+    {
+      "preview_id": "prev_hiker",
+      "renders": [
+        {
+          "render_id": "render_1",
+          "output_format": "url",
+          "preview_url": "https://ads.seller-example.com/preview/conv_hiker_001",
+          "role": "primary"
+        }
+      ],
+      "input": { "name": "Hiking enthusiast", "context_description": "User reading an article about day hikes near Portland" }
+    }
+  ],
+  "interactive_url": "https://ads.seller-example.com/sandbox/conv_hiker_001",
+  "expires_at": "2026-04-01T00:00:00Z"
+}
+```
+
+The `interactive_url` provides a sandbox where reviewers can have a real conversation with the agent, testing different paths and verifying guardrails interactively. Static previews show a representative first interaction; the sandbox shows how the agent actually behaves.
+
 ### Variant manifests for conversations
 
 After the campaign runs, `get_creative_delivery` returns variant manifests that capture what the agent produced. For conversational formats, each variant represents a conversation session:
@@ -490,6 +545,8 @@ Conversational formats raise considerations that static ads do not:
 - **Escalation**: Define what the agent should do when it cannot answer ("If the user asks about returns, provide a link to our help center"). Without explicit guidance, agent behavior on out-of-scope questions is undefined.
 - **User data in transcripts**: Variant manifests from `get_creative_delivery` may include user messages. For regulated industries, confirm the agent's data handling practices (anonymization, retention limits) before launch.
 - **Cost implications**: Conversational ads with per-engagement or per-turn pricing can have variable costs. Review the product's pricing model in `get_products` to understand how conversation depth affects spend.
+
+These constraints are expressed in natural language in the brief. The protocol does not enforce them at runtime — verify compliance through post-flight variant review via [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery).
 
 See [Previewing generative creative](/docs/creative/task-reference/preview_creative#conversational-and-interactive-formats) for the full mental model on previewing stateful formats.
 
