@@ -1,0 +1,30 @@
+[
+  {
+    "filename": "images/concepts/fragmentation-problem.png",
+    "prompt": "An infographic-style illustration showing the advertising fragmentation problem. Left side: five different advertising platforms as distinct colored islands, each with their own unique API connector shapes that don't fit together. Developers on each island speak different 'languages' shown as incompatible speech bubbles. Center: a frustrated orchestrator trying to connect them all with tangled mismatched cables. The scene shows complexity and incompatibility clearly. Educational diagram style with graphic novel aesthetics."
+  },
+  {
+    "filename": "images/concepts/protocol-architecture.png",
+    "prompt": "A layered architecture diagram in graphic novel style. Top layer: business principals (a human marketer and a human publisher) connected by a handshake. Middle layer: an orchestration platform with five specialized agent robots arranged in a star pattern — media buying, creative, signals, governance, and accounts. Bottom layer: execution platforms and ad servers shown as server racks. Clean arrows show how information flows top to bottom: strategy flows down, results flow up. Each layer is clearly labeled with visual separation. Educational diagram."
+  },
+  {
+    "filename": "images/concepts/three-party-governance.png",
+    "prompt": "A triangular diagram showing three parties in the governance model. Top vertex: an orchestrator robot proposing a campaign plan. Bottom-left vertex: a governance robot with a shield, validating the plan against policies. Bottom-right vertex: a seller robot confirming execution capabilities. Arrows flow clockwise: propose, validate, confirm. In the center of the triangle: the campaign plan document with a seal showing it was verified by all three parties. Each vertex has a label showing what that party checks. Educational diagram with graphic novel style."
+  },
+  {
+    "filename": "images/concepts/agent-communication.png",
+    "prompt": "Two robots facing each other with a structured message passing between them. The message is shown as a clean JSON-like card with labeled fields: task name, request payload, response. Above the robots, two transport method options are shown: (1) MCP - where the left robot calls the right robot as a tool, and (2) A2A - where both robots exchange messages as peers. The two transport methods are shown side by side with a 'vs' divider. Clean, educational style with graphic novel aesthetics."
+  },
+  {
+    "filename": "images/concepts/media-buy-lifecycle.png",
+    "prompt": "A horizontal pipeline showing the media buy lifecycle as five connected stages, each in its own panel. Stage 1: Discovery (magnifying glass over product cards). Stage 2: Planning (blueprint being drawn). Stage 3: Execution (rocket launching). Stage 4: Optimization (dials being tuned). Stage 5: Reporting (dashboard with charts). Below each stage, small icons show which AdCP tasks are used. Arrows flow left to right showing progression. Educational diagram with graphic novel style."
+  },
+  {
+    "filename": "images/concepts/content-standards-calibration.png",
+    "prompt": "A three-phase diagram showing content standards calibration. Phase 1 (Calibrate): A governance robot and a publisher robot sit together reviewing sample content. The governance robot shows its standards, the publisher robot shows its content. They agree on how to interpret the standards. Phase 2 (Execute locally): The publisher robot runs checks on its own content independently, using what it learned. A lock icon shows data stays local. Phase 3 (Validate): The governance robot spot-checks results from a distance, verifying the publisher got it right. Privacy-preserving theme throughout. Educational diagram."
+  },
+  {
+    "filename": "images/concepts/budget-commitment-phases.png",
+    "prompt": "A three-step commitment diagram. Step 1 (Proposed): A campaign plan floats in the air — it has a price tag but the money is not spent yet. A dotted outline shows it's hypothetical. Budget bar shows full budget available. Step 2 (Execute): The plan activates — a seller robot runs the campaign. The price tag becomes solid. Budget bar shows the amount is reserved but not final. Step 3 (Committed): Campaign completes — actual spend amount is recorded. Budget bar updates to show real committed amount (slightly different from estimate). A ledger records the final number. Educational diagram with graphic novel style."
+  }
+]

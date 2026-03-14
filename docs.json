@@ -59,6 +59,7 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
+              "docs/walkthrough-adcp",
               "docs/agentic-advertising",
               "docs/faq",
               "docs/protocol/architecture",
@@ -126,6 +127,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/walkthrough-governance",
               "docs/governance/policy-registry",
               {
                 "group": "Property Governance",
@@ -259,6 +261,7 @@
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
+              "docs/media-buy/walkthrough-media-buy",
               "docs/media-buy/specification",
               {
                 "group": "Task Reference",
@@ -461,6 +464,7 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
+              "docs/walkthrough-adcp",
               "docs/agentic-advertising",
               "docs/faq",
               "docs/protocol/architecture",
@@ -528,6 +532,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/walkthrough-governance",
               "docs/governance/policy-registry",
               {
                 "group": "Property Governance",
@@ -661,6 +666,7 @@
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
+              "docs/media-buy/walkthrough-media-buy",
               "docs/media-buy/specification",
               {
                 "group": "Task Reference",

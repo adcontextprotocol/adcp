@@ -1,0 +1,30 @@
+[
+  {
+    "filename": "images/walkthrough/governance-01-no-oversight.png",
+    "prompt": "A robot arm reaches for a big red 'BUY' button on a control panel. The button is labeled with a large dollar amount ($50,000). No human is present — the room is empty except for the robot. Warning lights are dim and unmonitored. Stacks of campaign documents pile up unchecked. The scene feels risky and unsupervised. Graphic novel panel style with slight tension."
+  },
+  {
+    "filename": "images/walkthrough/governance-02-plan-synced.png",
+    "prompt": "The buying robot creates a campaign plan document that glows with teal light. The document floats across to a separate governance robot stationed at a security desk. The governance robot has a shield emblem and reads the plan carefully. Between them, a secure connection line shows the plan being transmitted. The buying robot waits patiently. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/governance-03-checks.png",
+    "prompt": "The governance robot performs its review. Around it, three floating inspection panels show different checks: (1) a budget bar chart with a threshold line, (2) a brand safety shield with content categories, (3) a compliance checklist with regulatory icons. The robot marks each panel with status indicators. Two panels show green checkmarks, but the budget panel shows an amber warning — the bar exceeds the threshold line. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/governance-04-escalation.png",
+    "prompt": "The governance robot raises an amber flag and routes the campaign plan upward to a human reviewer. The human (a woman with dark hair at a glass desk) receives the flagged plan on her screen. A speech bubble from the governance robot says the budget exceeds the agent's authority level. The human examines the details thoughtfully. An escalation arrow flows from robot to human. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/governance-05-approved.png",
+    "prompt": "The human reviewer stamps the campaign plan with a green approval seal, but adds a condition note attached to it (a small yellow tag). She sends it back down to the buying robot, who receives the approved plan with conditions. The approval flows back through the governance robot who records it in a ledger. Three parties are visible: buyer robot, governance robot, human. Graphic novel panel style with warm approval glow."
+  },
+  {
+    "filename": "images/walkthrough/governance-06-running.png",
+    "prompt": "The campaign is now live. Ads appear on screens across a cityscape — billboards, phones, laptops. The governance robot monitors from a watchtower, scanning the live campaign with a teal beam. Real-time metrics stream upward from the city to the watchtower. Everything is running within the approved parameters. The feeling is confident oversight, not heavy-handed control. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/governance-07-audit-trail.png",
+    "prompt": "A timeline ribbon stretches across the panel from left to right, showing every decision point as a node on the timeline. Each node has a small icon: plan created, governance check, human review, approval, launch, delivery. Below the timeline, a detailed log book lies open showing structured records of each decision. The governance robot presents this to a team of three humans gathered around a table. Complete transparency. Graphic novel panel style."
+  }
+]

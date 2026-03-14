@@ -286,3 +286,46 @@ When building new features (member profiles, dashboards, community pages):
 ### Security
 
 Module and exam completion is only available through Addie's tool calls — never through REST API. This prevents users from self-reporting scores without actual assessment.
+
+## Illustrated Documentation
+
+### Gemini image generation style guide
+
+Walkthrough and overview pages use AI-generated illustrations in a consistent graphic novel style. When generating images with Gemini, use this prompt structure:
+
+**Model**: `gemini-2.5-flash-image` (via `responseModalities: ["TEXT", "IMAGE"]`)
+
+**Base style prompt** (include in every image request):
+```
+Flat illustration, teal/emerald color palette (#047857 primary, #0d9488 secondary, #134e4a dark accents).
+Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients.
+Tech-forward but warm. No real brand names or logos.
+Wide aspect ratio suitable for documentation headers (roughly 16:9).
+Characters should have simple but expressive faces. Use white/light backgrounds for readability.
+```
+
+**Per-panel additions**: Describe the scene, characters, and key visual elements. Keep characters consistent within a walkthrough (same hair, glasses, outfit). Use the same robot design for AI agents across all illustrations.
+
+**Generation script**: `scripts/generate-images.ts` — accepts a JSON prompt file and generates images via Gemini API. Run with `npx tsx scripts/generate-images.ts <prompt-file.json>`.
+
+**Image locations**:
+- `images/walkthrough/` — narrative panels for walkthrough pages
+- `images/concepts/` — educational diagrams for concept explanations and curriculum
+
+Mintlify serves from `/images/...`.
+
+**Pages with illustrated walkthrough treatment**:
+- `docs/walkthrough-adcp.mdx` — AdCP overview (5 panels)
+- `docs/media-buy/walkthrough-media-buy.mdx` — media buy lifecycle (7 panels)
+- `docs/governance/walkthrough-governance.mdx` — governance trust model (7 panels)
+- `docs/creative/index.mdx` — creative campaign workflow (7 panels, from PR #1447)
+
+### Documentation nav structure
+
+Walkthrough pages use progressive disclosure — grouped by reader intent:
+1. **Top level**: Overview + visual walkthrough (front door for everyone)
+2. **Concepts**: Strategic/conceptual content with concept diagrams
+3. **Implementation**: Integration guides for builders
+4. **Reference**: Task reference and specification pages
+
+Apply this pattern when restructuring protocol sections.

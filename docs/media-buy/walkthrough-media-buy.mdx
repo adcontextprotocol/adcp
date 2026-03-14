@@ -1,0 +1,193 @@
+---
+title: Media buy walkthrough
+sidebarTitle: Visual walkthrough
+description: "Follow Sam through a complete media buy — from writing a brief to monitoring delivery — a visual walkthrough of the AdCP Media Buy protocol."
+---
+
+<img src="/images/walkthrough/media-buy-01-fragmented.png" alt="A media buyer overwhelmed by four different platform dashboards" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+Sam is a media buyer at Pinnacle Agency. He manages campaigns across four publishers, each with its own dashboard, its own API, and its own way of doing things. Comparing inventory across platforms means exporting CSVs and building spreadsheets by hand. Launching a campaign means logging into four systems and entering the same information four different ways.
+
+This walkthrough follows Sam as he runs the same campaign using AdCP — a single protocol that works across every platform.
+
+## Step 1: Write the brief
+
+Sam starts with what he knows: the campaign objectives.
+
+```json
+{
+  "brief": "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50,000 budget. Targeting adults 25-54 in US and Canada. Brand: Acme Outdoor.",
+  "budget": { "amount": 50000, "currency": "USD" }
+}
+```
+
+In AdCP, the brief is a natural language description inside `get_products`. Sam doesn't need to know each publisher's targeting taxonomy or inventory categories — he describes what he wants, and the protocol translates.
+
+## Step 2: Discover inventory
+
+<img src="/images/walkthrough/media-buy-02-brief-sent.png" alt="Sam's brief radiates outward to three publisher robots, each examining it with interest" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam's platform sends the brief to every connected sales agent simultaneously:
+
+```javascript
+const products = await agent.getProducts({
+  brief: "Premium video inventory on sports and outdoor lifestyle publishers...",
+  budget: { amount: 50000, currency: "USD" },
+  flight: {
+    start_date: "2026-04-01",
+    end_date: "2026-06-30"
+  }
+});
+```
+
+Each sales agent interprets the brief against its own inventory and returns standardized product proposals. Same JSON structure whether it's a CTV network, a podcast platform, or a display exchange.
+
+## Step 3: Compare proposals
+
+<img src="/images/walkthrough/media-buy-03-products-return.png" alt="Three publisher robots present their offerings back to Sam, who reviews them on a single comparable screen" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Products come back in a standard format. Sam sees pricing, delivery forecasts, targeting options, and creative requirements — all side by side:
+
+| Seller | Product | CPM | Forecast | Format |
+|---|---|---|---|---|
+| StreamHaus | CTV sports pre-roll | $28 | 890K impressions | SSAI 30s video |
+| OutdoorNet | Adventure lifestyle display | $12 | 2.1M impressions | 300x250, 728x90 |
+| PodTrail | Outdoor podcast mid-roll | $22 | 340K impressions | Audio 30s + companion |
+
+Sam can refine by sending a follow-up brief — "show me only guaranteed packages with completion rate guarantees" — and the agents adjust their proposals.
+
+<Accordion title="What refinement looks like in the protocol">
+
+```javascript
+const refined = await agent.getProducts({
+  brief: "Only guaranteed packages. Must include completion rate SLA above 80%.",
+  context_id: products.context_id  // continues the conversation
+});
+```
+
+The `context_id` links this to the previous discovery, so the agent understands Sam is narrowing, not starting over.
+
+</Accordion>
+
+## Step 4: Match creatives to formats
+
+<img src="/images/walkthrough/media-buy-04-creatives-matched.png" alt="Creative format templates and actual assets snapping together like puzzle pieces" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Each product has creative requirements. Sam's platform calls `list_creative_formats` to understand exactly what each seller needs:
+
+- StreamHaus needs SSAI-compatible 30s video (MP4, specific codecs)
+- OutdoorNet needs display banners (300x250 and 728x90)
+- PodTrail needs 30s audio plus a 300x250 companion banner
+
+Sam's creative team already has assets in their library. The platform matches existing manifests to each seller's format requirements and flags gaps — PodTrail needs an audio file that doesn't exist yet.
+
+```javascript
+const creatives = await agent.syncCreatives({
+  account_id: "acme-outdoor-account",
+  creatives: [
+    { manifest_id: "video_30s_trail_pro", format_id: { agent_url: "https://streamhaus.example", id: "ssai_30s" } },
+    { manifest_id: "display_trail_pro", format_id: { agent_url: "https://outdoornet.example", id: "display_300x250" } }
+  ]
+});
+```
+
+## Step 5: Launch the campaign
+
+<img src="/images/walkthrough/media-buy-05-campaign-created.png" alt="Sam presses a button and a holographic campaign blueprint materializes showing the structure with budget flowing along branches" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam creates the media buy. One call per seller, same structure everywhere:
+
+```javascript
+const buy = await agent.createMediaBuy({
+  account_id: "acme-outdoor-account",
+  name: "Acme Outdoor Q2 - Trail Pro 3000",
+  packages: [{
+    name: "CTV Sports Pre-Roll",
+    tactics: [{
+      name: "Sports audiences 25-54",
+      budget: { amount: 25000, currency: "USD" },
+      flight: { start_date: "2026-04-01", end_date: "2026-06-30" },
+      pricing: { model: "cpm", amount: 28.00 },
+      creatives: [{ manifest_id: "video_30s_trail_pro" }]
+    }]
+  }]
+});
+```
+
+The seller receives the buy, validates the creatives, and either approves it or sends it through their review process. Sam doesn't need to log into any dashboard — the protocol handles status updates.
+
+## Step 6: Governance checks
+
+<img src="/images/walkthrough/media-buy-06-governance-check.png" alt="Campaign blueprint passes through a checkpoint where a guardian robot scans it and applies approval stamps" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Before any money moves, Sam's governance agent validates the buy:
+
+- **Budget**: $50K total is within Sam's authorized spending limit
+- **Brand safety**: All selected publishers pass the brand's property list filters
+- **Compliance**: Targeting parameters meet regulatory requirements for US and Canada
+- **Creative**: All creatives carry required provenance metadata
+
+If the buy exceeds Sam's authority — say, if the total across all sellers hit $75K — the governance agent escalates to Sam's manager for approval. The campaign pauses at `pending_approval` until a human signs off.
+
+<Accordion title="What governance looks like in the protocol">
+
+```javascript
+const check = await governance.checkGovernance({
+  plan_id: "acme-q2-trail-pro",
+  buyer_campaign_ref: "acme-q2-ctv",
+  binding: "proposed",
+  caller: "https://orchestrator.pinnacle-agency.example",
+  tool: "create_media_buy",
+  phase: "purchase",
+  payload: buy,
+  governance_context: {
+    total_budget: { amount: 50000, currency: "USD" },
+    seller_url: "https://streamhaus.example"
+  }
+});
+
+if (check.status === "denied" || check.status === "escalated") {
+  // Escalate to human — don't proceed
+}
+```
+
+</Accordion>
+
+## Step 7: Monitor delivery
+
+<img src="/images/walkthrough/media-buy-07-delivery.png" alt="Sam relaxes at his desk with a single clean dashboard showing unified performance across all sellers" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The campaign is running. Sam monitors delivery through a single view — his platform calls `get_media_buy_delivery` on each seller and merges the results:
+
+```javascript
+const delivery = await agent.getMediaBuyDelivery({
+  account_id: "acme-outdoor-account",
+  media_buy_id: buy.media_buy_id,
+  dimensions: ["tactic", "creative", "date"]
+});
+```
+
+Every seller reports in the same format: impressions, clicks, spend, completion rates. Sam sees one dashboard instead of four. When StreamHaus underdelivers on the CTV package, he reallocates budget to OutdoorNet's display — one `update_media_buy` call instead of logging into two platforms.
+
+## The full picture
+
+<img src="/images/concepts/media-buy-lifecycle.png" alt="The five stages of a media buy: discovery, planning, execution, optimization, and reporting" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam went from four dashboards to one protocol. The same tasks that bought CTV inventory also bought display and audio — no platform-specific code, no manual data translation, no spreadsheet reconciliation.
+
+| Before AdCP | With AdCP |
+|---|---|
+| 4 dashboards, 4 logins | 1 protocol, 1 view |
+| Manual CSV comparison | Standardized product proposals |
+| Platform-specific creative specs | `list_creative_formats` on any seller |
+| 4 campaign setup workflows | `create_media_buy` everywhere |
+| Manual reporting reconciliation | `get_media_buy_delivery` aggregated |
+
+## Go deeper
+
+- **Product discovery**: [How `get_products` works](/docs/media-buy/product-discovery/media-products) — briefs, wholesale mode, proposals, and refinement
+- **Campaign lifecycle**: [Managing media buys](/docs/media-buy/media-buys/index) — status transitions, updates, and approvals
+- **Optimization**: [Delivery and reporting](/docs/media-buy/media-buys/optimization-reporting) — metrics, dimensional breakdowns, and feedback loops
+- **Governance**: [Campaign governance walkthrough](/docs/governance/walkthrough-governance) — how the three-party trust model protects Sam's spend
+- **Creative**: [Creative walkthrough](/docs/creative/index) — how Maya builds the creatives Sam uses
+- **Get certified**: The [Buyer track](/docs/learning/tracks/buyer) teaches the full media buy workflow through interactive modules

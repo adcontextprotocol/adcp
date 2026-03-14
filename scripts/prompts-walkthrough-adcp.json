@@ -1,0 +1,22 @@
+[
+  {
+    "filename": "images/walkthrough/adcp-01-fragmentation.png",
+    "prompt": "A marketing team of three people sitting at a conference table, overwhelmed. Each person has a different laptop showing a different advertising platform interface. Cables and API connectors tangle between them like spaghetti. Post-it notes everywhere. One person has their head in their hands. The monitors show incompatible data formats. Above them, thought bubbles show different JSON structures that don't match. Panel title area at top. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/adcp-02-one-protocol.png",
+    "prompt": "A glowing hexagonal hub in the center labeled with a simple protocol icon (not text). From it, clean straight lines radiate outward to six different platform icons arranged in a circle — a TV, a phone, a laptop, a billboard, a shopping cart, and a podcast microphone. Each connection is the same clean teal line, showing standardization. The tangled cables from the previous scene are gone, replaced by elegant simplicity. Bright, optimistic tone. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/adcp-03-agent-ecosystem.png",
+    "prompt": "Five friendly robots of different sizes and shapes, each specialized for a different task, collaborating around a shared workspace. One robot holds a magnifying glass (discovery), one holds a paintbrush (creative), one holds a clipboard with checkmarks (governance), one holds a megaphone (signals), and one in the center coordinates them all (orchestrator). They pass documents and creative assets between each other smoothly. The workspace is clean and organized. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/adcp-04-workflow.png",
+    "prompt": "A horizontal timeline flowing left to right showing a campaign coming to life. Left: a person types a brief on a laptop. Middle: the brief transforms into a glowing document that three robots receive simultaneously — each robot produces a different ad format (a video frame, a banner, a social post). Right: these ads appear on screens in a city — a billboard, a phone, a TV in a store window. Arrows show the smooth flow from brief to live ads. Graphic novel panel style."
+  },
+  {
+    "filename": "images/walkthrough/adcp-05-governance.png",
+    "prompt": "A protective shield or safety net hovering over a city of advertising screens. A friendly guardian robot with a magnifying glass inspects campaigns as they flow through a checkpoint. One campaign has a green checkmark and flows through. Another has an amber warning and is routed to a human reviewer sitting at a desk, who gives a thumbs up after review. The overall feeling is trust and safety, not restriction. Graphic novel panel style."
+  }
+]

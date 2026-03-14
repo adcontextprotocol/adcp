@@ -1,0 +1,92 @@
+---
+title: What is AdCP?
+sidebarTitle: Visual overview
+description: "A visual walkthrough of how AdCP connects the fragmented advertising ecosystem through a single protocol — from the problem to the solution."
+---
+
+<img src="/images/walkthrough/adcp-01-fragmentation.png" alt="A marketing team overwhelmed by different platform dashboards and incompatible data formats" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+Every advertising platform speaks its own language. Different APIs. Different data formats. Different workflows. A team running campaigns across five platforms needs five integrations, five dashboards, and five sets of tribal knowledge. Adding a sixth platform means starting from scratch.
+
+This is the fragmentation problem. It's why scaling media partnerships is expensive, slow, and fragile.
+
+## One protocol, every platform
+
+<img src="/images/walkthrough/adcp-02-one-protocol.png" alt="A central protocol hub with clean connections radiating to TV, phone, laptop, billboard, shopping cart, and podcast" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+AdCP (Ad Context Protocol) replaces platform-specific integrations with a single open standard. Instead of learning each platform's API, agents use the same tasks everywhere:
+
+| What you need to do | AdCP task | Works across |
+|---|---|---|
+| Find inventory | `get_products` | Every publisher and SSP |
+| Buy media | `create_media_buy` | Every ad server and platform |
+| Build creatives | `build_creative` | Every creative tool |
+| Activate audiences | `activate_signal` | Every data provider |
+| Check compliance | `check_governance` | Every governance vendor |
+
+One integration. Every platform. The same JSON schema whether you're buying CTV inventory or activating retail media audiences.
+
+## Specialized agents collaborate
+
+<img src="/images/walkthrough/adcp-03-agent-ecosystem.png" alt="Five specialized robots collaborating around a shared workspace — discovery, creative, governance, signals, and orchestrator" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+AdCP doesn't assume a single AI handles everything. Instead, specialized agents handle what they're best at:
+
+- **Media buying agents** discover inventory and execute campaigns
+- **Creative agents** generate and adapt ads across formats
+- **Signals agents** find and activate audiences
+- **Governance agents** enforce brand safety and compliance
+- **Orchestrators** coordinate the workflow and make sure humans approve what matters
+
+These agents communicate over two transport protocols: **MCP** (for AI assistants calling tools) and **A2A** (for agent-to-agent collaboration). Same tasks, same schemas, different transport.
+
+## Brief to live ads
+
+<img src="/images/walkthrough/adcp-04-workflow.png" alt="A horizontal flow from a person writing a brief, through agents producing different ad formats, to ads running on screens across a city" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Here's what a real workflow looks like:
+
+1. **You write a brief**: "Find premium video inventory on sports publishers for Q2 with a $50K budget"
+2. **Agents discover options**: `get_products` goes to every connected seller simultaneously
+3. **You compare proposals**: Products come back in a standard format — pricing, forecasts, targeting options — all comparable
+4. **Agents build creatives**: `build_creative` adapts your assets to each seller's formats
+5. **You approve and launch**: `create_media_buy` executes across platforms in one call
+6. **You monitor delivery**: `get_media_buy_delivery` aggregates performance from every seller into one view
+
+Each step uses a standard AdCP task with a JSON Schema-defined request and response. No platform-specific code. No manual translation between systems.
+
+## Governance watches everything
+
+<img src="/images/walkthrough/adcp-05-governance.png" alt="A guardian robot inspects campaigns at a checkpoint, approving compliant ones and routing flagged ones to a human reviewer" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+When AI agents spend money autonomously, trust requires structure. AdCP's governance layer provides it:
+
+- **Before a campaign launches**: `check_governance` validates budget limits, brand safety, and regulatory compliance
+- **If something exceeds authority**: The governance agent escalates to a human — your team approves, not the AI
+- **While campaigns run**: Governance agents monitor delivery against approved parameters
+- **After delivery**: `get_plan_audit_logs` provides a complete decision trail — who proposed what, who approved it, what actually ran
+
+Governance isn't a gate that slows things down. It's the safety net that lets you give agents more autonomy over time. Start in audit mode (observe only), move to advisory (warn on issues), then enforce (block violations) as you build confidence.
+
+## Go deeper
+
+<CardGroup cols={2}>
+  <Card title="How agents communicate" icon="arrows-split-up-and-left" href="/docs/guides/how-agents-communicate">
+    MCP vs A2A, what agents exchange, and a worked multi-platform example
+  </Card>
+  <Card title="Media buy walkthrough" icon="cart-shopping" href="/docs/media-buy/walkthrough-media-buy">
+    Follow Sam through a complete campaign — from brief to delivery reporting
+  </Card>
+  <Card title="Creative walkthrough" icon="paintbrush" href="/docs/creative/index">
+    Follow Maya through creative generation, distribution, and variant tracking
+  </Card>
+  <Card title="Governance walkthrough" icon="shield-halved" href="/docs/governance/walkthrough-governance">
+    Why governance exists and how the three-party trust model protects your spend
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/docs/quickstart">
+    Run your first AdCP task in 5 minutes
+  </Card>
+  <Card title="Get certified" icon="graduation-cap" href="/docs/learning/overview">
+    Learn the protocol through interactive modules with Addie
+  </Card>
+</CardGroup>

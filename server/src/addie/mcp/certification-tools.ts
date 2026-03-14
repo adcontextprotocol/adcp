@@ -685,6 +685,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track A: Basics (all free)
   A1: [
     { label: 'Introduction to AdCP', url: `${DOCS_BASE}/docs/intro` },
+    { label: 'Visual overview — what is AdCP?', url: `${DOCS_BASE}/docs/walkthrough-adcp` },
     { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
@@ -692,12 +693,14 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   A2: [
     { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Media buy visual walkthrough', url: `${DOCS_BASE}/docs/media-buy/walkthrough-media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
   ],
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
+    { label: 'Governance visual walkthrough', url: `${DOCS_BASE}/docs/governance/walkthrough-governance` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
@@ -738,6 +741,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   C1: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Media buy visual walkthrough', url: `${DOCS_BASE}/docs/media-buy/walkthrough-media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
@@ -746,6 +750,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'Governance visual walkthrough', url: `${DOCS_BASE}/docs/governance/walkthrough-governance` },
     { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
@@ -776,6 +781,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Agent-to-Agent protocol', url: `${DOCS_BASE}/docs/building/integration/a2a-guide` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'Governance visual walkthrough', url: `${DOCS_BASE}/docs/governance/walkthrough-governance` },
     { label: 'Campaign governance specification', url: `${DOCS_BASE}/docs/governance/campaign/specification` },
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
@@ -795,6 +801,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track S: Specialist deep dives
   S1: [
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Media buy visual walkthrough', url: `${DOCS_BASE}/docs/media-buy/walkthrough-media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'Targeting strategies', url: `${DOCS_BASE}/docs/media-buy/advanced-topics/targeting` },
   ],
@@ -810,6 +817,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   ],
   S4: [
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
+    { label: 'Governance visual walkthrough', url: `${DOCS_BASE}/docs/governance/walkthrough-governance` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
