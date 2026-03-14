@@ -441,12 +441,19 @@ export async function buildCertificationContext(
         lines.push(isBasics
           ? `  **Links for future reference** (share at end of session, not during teaching):`
           : `  **Links to share inline during teaching** (include in your response when discussing the topic):`);
-        const hasIllustrations = resources.some(r => r.url.match(/\.(png|jpg|gif)$/i));
         for (const r of resources) {
           lines.push(`    - [${r.label}](${r.url})`);
         }
-        if (hasIllustrations) {
-          lines.push(`  **Illustrations**: When explaining visual concepts, embed illustrations using markdown image syntax: ![description](url). The images render in both web chat and Slack.`);
+      }
+      // Inject topic-matched illustrations from the registry (cap at 4 to control context size)
+      const illustrationTopics = MODULE_ILLUSTRATION_TOPICS[p.module_id];
+      if (illustrationTopics) {
+        const illustrations = getIllustrations(illustrationTopics).slice(0, 4);
+        if (illustrations.length > 0) {
+          lines.push(`  **Illustrations** (embed with ![alt](url) syntax — renders in both web chat and Slack):`);
+          for (const ill of illustrations) {
+            lines.push(`    - ![${ill.alt}](${ill.url})`);
+          }
         }
       }
       // Include latest teaching checkpoint for cross-session resume
@@ -679,11 +686,63 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
 ];
 
+const DOCS_BASE = 'https://docs.adcontextprotocol.org';
+
+// =====================================================
+// ILLUSTRATION REGISTRY — single source of truth for all walkthrough images
+// =====================================================
+// Topic tags determine which illustrations are relevant to each module.
+// When teaching, Addie receives matching illustrations automatically.
+
+interface Illustration {
+  filename: string;
+  alt: string;
+  topics: string[];
+}
+
+const ILLUSTRATIONS: Illustration[] = [
+  // Diagrams — conceptual/technical
+  { filename: 'diagram-five-protocols.png', alt: 'The five AdCP protocols and how they connect', topics: ['protocol-overview', 'media-buy', 'governance', 'creative', 'signals'] },
+  { filename: 'diagram-format-manifest-render.png', alt: 'How formats define slots, manifests fill them, and the result renders', topics: ['creative-formats', 'creative-manifests', 'creative-workflow'] },
+  { filename: 'diagram-generative-tiers.png', alt: 'Tier 1 static, Tier 2 optimized, Tier 3 AI-generated creative', topics: ['generative-creative', 'creative-workflow', 'ai-creative'] },
+  { filename: 'diagram-governance-triangle.png', alt: 'Three-party governance: buyer, seller, and independent governance agent', topics: ['governance', 'campaign-governance'] },
+  { filename: 'diagram-orchestrator-sequence.png', alt: 'Orchestrator API flow: capabilities, formats, build, sync, delivery', topics: ['orchestration', 'creative-workflow', 'multi-agent'] },
+  { filename: 'diagram-01-format-discovery.png', alt: 'Agency platform discovers formats from three sellers', topics: ['creative-formats', 'creative-workflow', 'orchestration'] },
+  { filename: 'diagram-02-generate-route.png', alt: 'Brief routed to video, display, and social agents', topics: ['creative-workflow', 'generative-creative', 'orchestration'] },
+  { filename: 'diagram-03-distribute.png', alt: 'Creatives distributed via sync_creatives to sellers', topics: ['creative-workflow', 'orchestration', 'sync-creatives'] },
+  { filename: 'diagram-04-delivery-aggregation.png', alt: 'Delivery data collected from three sellers and merged', topics: ['creative-delivery', 'creative-workflow', 'orchestration'] },
+  { filename: 'diagram-05-lifecycle.png', alt: 'Full creative lifecycle from brief to delivery and back', topics: ['creative-workflow', 'protocol-overview'] },
+  // Panels — narrative scenes from the Maya walkthrough
+  { filename: 'panel-01-strategist-desk.png', alt: 'A creative strategist reviews ad mockups across formats', topics: ['creative-workflow'] },
+  { filename: 'panel-02-brief-radiates.png', alt: 'A creative brief radiates to TV, phone, laptop, and billboard', topics: ['creative-workflow', 'build-creative'] },
+  { filename: 'panel-03-agents-collaborate.png', alt: 'Three AI agents collaborate at a workbench', topics: ['multi-agent', 'orchestration', 'ai-creative'] },
+  { filename: 'panel-04-draft-to-production.png', alt: 'Draft mockup transforms into polished production creative', topics: ['creative-workflow', 'generative-creative'] },
+  { filename: 'panel-05-distribute.png', alt: 'Strategist presses Launch while publisher connections light up', topics: ['sync-creatives', 'creative-workflow'] },
+  { filename: 'panel-06-delivery-dashboard.png', alt: 'Unified dashboard merging data from three sellers', topics: ['creative-delivery', 'creative-workflow'] },
+  { filename: 'panel-07-variant-replay.png', alt: 'Grid of ad variants with performance ratings', topics: ['creative-delivery', 'generative-creative'] },
+];
+
+/** Get illustration URLs matching any of the given topics */
+function getIllustrations(topics: string[]): { alt: string; url: string }[] {
+  return ILLUSTRATIONS
+    .filter(ill => ill.topics.some(t => topics.includes(t)))
+    .map(ill => ({ alt: ill.alt, url: `${DOCS_BASE}/images/walkthrough/${ill.filename}` }));
+}
+
+// Topic mapping for certification modules
+const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
+  A1: ['protocol-overview'],
+  A3: ['protocol-overview', 'governance', 'creative-workflow'],
+  B2: ['creative-formats', 'creative-manifests', 'creative-workflow', 'sync-creatives'],
+  C2: ['governance', 'campaign-governance'],
+  C3: ['creative-workflow', 'generative-creative', 'creative-delivery', 'orchestration'],
+  C4: ['orchestration', 'multi-agent', 'sync-creatives'],
+  S2: ['creative-formats', 'creative-manifests', 'generative-creative', 'orchestration'],
+};
+
 // =====================================================
 // LEARNING RESOURCES — links Addie can share with learners
 // =====================================================
-
-const DOCS_BASE = 'https://docs.adcontextprotocol.org';
 
 const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track A: Basics (all free)
@@ -708,8 +767,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
-    { label: 'Illustration: five protocol map', url: `${DOCS_BASE}/images/walkthrough/diagram-five-protocols.png` },
-    { label: 'Illustration: creative lifecycle', url: `${DOCS_BASE}/images/walkthrough/diagram-05-lifecycle.png` },
   ],
   // Track B: Publisher / Seller
   B1: [
@@ -730,9 +787,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
     { label: 'Creative protocol overview (illustrated walkthrough)', url: `${DOCS_BASE}/docs/creative` },
-    { label: 'Illustration: format discovery flow', url: `${DOCS_BASE}/images/walkthrough/diagram-01-format-discovery.png` },
-    { label: 'Illustration: creative distribution', url: `${DOCS_BASE}/images/walkthrough/diagram-03-distribute.png` },
-    { label: 'Illustration: format-manifest-render anatomy', url: `${DOCS_BASE}/images/walkthrough/diagram-format-manifest-render.png` },
   ],
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -780,10 +834,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'AI creative overview', url: `${DOCS_BASE}/docs/creative/ai-creative-overview` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
     { label: 'Creative protocol overview (illustrated walkthrough)', url: `${DOCS_BASE}/docs/creative` },
-    { label: 'Illustration: generate and route brief', url: `${DOCS_BASE}/images/walkthrough/diagram-02-generate-route.png` },
-    { label: 'Illustration: delivery aggregation', url: `${DOCS_BASE}/images/walkthrough/diagram-04-delivery-aggregation.png` },
-    { label: 'Illustration: generative creative tiers', url: `${DOCS_BASE}/images/walkthrough/diagram-generative-tiers.png` },
-    { label: 'Illustration: format-manifest-render anatomy', url: `${DOCS_BASE}/images/walkthrough/diagram-format-manifest-render.png` },
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },

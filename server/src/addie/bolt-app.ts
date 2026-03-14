@@ -1289,16 +1289,21 @@ async function handleUserMessage({
         }
       }
 
-      // Stop the stream with feedback buttons and any inline images
+      // Stop the stream with feedback buttons and any inline images.
+      // The streamed text may contain raw ![alt](url) syntax — we extract
+      // images and replace the message text with a cleaned version.
       try {
-        const { images: streamImages } = extractMarkdownImages(fullText);
+        const { text: cleanedStreamText, images: streamImages } = extractMarkdownImages(fullText);
+        const MAX_SLACK_IMAGES = 3;
+        const imageBlocks = streamImages.slice(0, MAX_SLACK_IMAGES).map(img => ({
+          type: 'image' as const,
+          image_url: img.url,
+          alt_text: img.alt,
+        }));
         await streamer.stop({
+          markdown_text: wrapUrlsForSlack(cleanedStreamText),
           blocks: [
-            ...streamImages.map(img => ({
-              type: 'image' as const,
-              image_url: img.url,
-              alt_text: img.alt,
-            })),
+            ...imageBlocks,
             buildFeedbackBlock(),
           ],
         });
@@ -1326,7 +1331,7 @@ async function handleUserMessage({
                 text: slackText,
               },
             },
-            ...images.map(img => ({
+            ...images.slice(0, 3).map(img => ({
               type: 'image' as const,
               image_url: img.url,
               alt_text: img.alt,

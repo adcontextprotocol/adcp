@@ -313,14 +313,6 @@ No real brand names or logos. Wide aspect ratio for documentation headers.
 
 **Image location**: `images/walkthrough/` at repo root. Mintlify serves from `/images/...`.
 
-**Pages with illustrations**:
-- `docs/creative/index.mdx` — 7 graphic novel panels + 5 illustrated diagrams (full walkthrough)
-- `docs/creative/creative-manifests.mdx` — format-manifest-render anatomy diagram
-- `docs/creative/generative-creative.mdx` — generative tiers diagram (Tier 1/2/3)
-- `docs/creative/multi-agent-orchestration.mdx` — orchestrator API sequence diagram
-- `docs/governance/campaign/index.mdx` — three-party governance triangle
-- `docs/intro.mdx` — five-protocol map
-- Future candidates: implementing-creative-agents, creative-libraries, ai-creative-overview
 
 ### Documentation nav structure
 

@@ -58,4 +58,25 @@ describe('extractMarkdownImages', () => {
       { alt: 'Image', url: `${ALLOWED_BASE}/no-alt.png` },
     ]);
   });
+
+  it('rejects http:// URLs even on the allowed domain', () => {
+    const text = '![insecure](http://docs.adcontextprotocol.org/images/test.png)';
+    const result = extractMarkdownImages(text);
+    expect(result.images).toEqual([]);
+    expect(result.text).toBe(text);
+  });
+
+  it('extracts URLs with query strings and fragments', () => {
+    const url = `${ALLOWED_BASE}/diagram.png?v=2#section`;
+    const text = `![Diagram](${url})`;
+    const result = extractMarkdownImages(text);
+    expect(result.images).toEqual([{ alt: 'Diagram', url }]);
+  });
+
+  it('rejects subdomain spoofing attempts', () => {
+    const text = '![Spoof](https://docs.adcontextprotocol.org.evil.com/img.png)';
+    const result = extractMarkdownImages(text);
+    expect(result.images).toEqual([]);
+    expect(result.text).toBe(text);
+  });
 });

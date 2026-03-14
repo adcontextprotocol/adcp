@@ -255,15 +255,19 @@ export interface ImageExtractionResult {
 
 export function extractMarkdownImages(text: string): ImageExtractionResult {
   const images: ExtractedImage[] = [];
-  const ALLOWED_HOST = 'https://docs.adcontextprotocol.org/';
 
   // Match ![alt](url) syntax — only extract from allowed hosts
   const cleaned = text.replace(
     /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g,
     (_match, alt, url) => {
-      if (url.startsWith(ALLOWED_HOST)) {
-        images.push({ alt: alt || 'Image', url });
-        return '';
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'https:' && parsed.hostname === 'docs.adcontextprotocol.org') {
+          images.push({ alt: (alt || 'Image').substring(0, 2000), url });
+          return '';
+        }
+      } catch {
+        // Malformed URL, skip extraction
       }
       return _match; // Leave non-allowed host images as-is
     }
