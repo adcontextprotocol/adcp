@@ -1193,6 +1193,49 @@ export class ThreadService {
   }
 
   // =====================================================
+  // PERSON RELATIONSHIP THREADS
+  // =====================================================
+
+  /**
+   * Get all threads linked to a person
+   */
+  async getPersonThreads(personId: string, limit = 50): Promise<Thread[]> {
+    const result = await query<Thread>(
+      `SELECT * FROM addie_threads
+       WHERE person_id = $1
+       ORDER BY last_message_at DESC
+       LIMIT $2`,
+      [personId, limit]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Link an existing thread to a person
+   */
+  async linkThreadToPerson(threadId: string, personId: string): Promise<void> {
+    await query(
+      `UPDATE addie_threads SET person_id = $1, updated_at = NOW() WHERE thread_id = $2`,
+      [personId, threadId]
+    );
+  }
+
+  /**
+   * Get recent messages across all threads for a person
+   */
+  async getPersonRecentMessages(personId: string, limit = 30): Promise<ThreadMessage[]> {
+    const result = await query<ThreadMessage>(
+      `SELECT m.* FROM addie_thread_messages m
+       JOIN addie_threads t ON t.thread_id = m.thread_id
+       WHERE t.person_id = $1
+       ORDER BY m.created_at DESC
+       LIMIT $2`,
+      [personId, limit]
+    );
+    return result.rows;
+  }
+
+  // =====================================================
   // CLEANUP
   // =====================================================
 

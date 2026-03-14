@@ -30,7 +30,7 @@ export async function listGoals(options?: {
 }): Promise<OutreachGoal[]> {
   let sql = `
     SELECT
-      id, name, category, description, success_insight_type,
+      id, name, category, channel, description, success_insight_type,
       requires_mapped, requires_company_type, requires_persona, requires_min_engagement,
       requires_insights, excludes_insights, base_priority,
       message_template, follow_up_on_question, is_enabled,
@@ -304,6 +304,35 @@ export async function getUserGoalHistory(
 }
 
 /**
+ * Get goal history for a prospect organization (email outreach)
+ */
+export async function getProspectGoalHistory(
+  prospectOrgId: string,
+  options?: {
+    status?: GoalStatus[];
+    goalIds?: number[];
+  }
+): Promise<UserGoalHistory[]> {
+  let sql = `SELECT * FROM user_goal_history WHERE prospect_org_id = $1`;
+  const params: unknown[] = [prospectOrgId];
+
+  if (options?.status && options.status.length > 0) {
+    params.push(options.status);
+    sql += ` AND status = ANY($${params.length})`;
+  }
+
+  if (options?.goalIds && options.goalIds.length > 0) {
+    params.push(options.goalIds);
+    sql += ` AND goal_id = ANY($${params.length})`;
+  }
+
+  sql += ` ORDER BY updated_at DESC`;
+
+  const result = await query(sql, params);
+  return result.rows.map(rowToHistory);
+}
+
+/**
  * Mark all pending "Link Account" goal_history entries as succeeded for a user.
  * Called from every code path that links a Slack account to a website account.
  */
@@ -325,43 +354,59 @@ export async function markLinkAccountGoalsSucceeded(slackUserId: string): Promis
  * Record a new goal attempt
  */
 export async function recordGoalAttempt(params: {
-  slack_user_id: string;
+  slack_user_id?: string;
   goal_id: number;
   planner_reason: string;
   planner_score: number;
   decision_method: PlannerDecisionMethod;
+  channel?: 'slack' | 'email';
   outreach_id?: number;
   thread_id?: string;
+  prospect_org_id?: string;
+  email_subject?: string;
+  email_body?: string;
 }): Promise<UserGoalHistory> {
-  // Check for existing history
-  const existing = await query(
-    `SELECT id, attempt_count FROM user_goal_history
-     WHERE slack_user_id = $1 AND goal_id = $2
-     ORDER BY created_at DESC LIMIT 1`,
-    [params.slack_user_id, params.goal_id]
-  );
+  const channel = params.channel ?? 'slack';
+
+  // Look up existing history by slack_user_id or prospect_org_id
+  const lookupSql = params.slack_user_id
+    ? `SELECT id, attempt_count FROM user_goal_history
+       WHERE slack_user_id = $1 AND goal_id = $2
+       ORDER BY created_at DESC LIMIT 1`
+    : `SELECT id, attempt_count FROM user_goal_history
+       WHERE prospect_org_id = $1 AND goal_id = $2
+       ORDER BY created_at DESC LIMIT 1`;
+  const lookupKey = params.slack_user_id ?? params.prospect_org_id;
+
+  const existing = await query(lookupSql, [lookupKey, params.goal_id]);
 
   if (existing.rows[0]) {
     // Update existing record
     const result = await query(
       `UPDATE user_goal_history SET
         status = 'sent',
+        channel = $2,
         attempt_count = attempt_count + 1,
         last_attempt_at = NOW(),
-        planner_reason = $2,
-        planner_score = $3,
-        decision_method = $4,
-        outreach_id = COALESCE($5, outreach_id),
-        thread_id = COALESCE($6, thread_id)
+        planner_reason = $3,
+        planner_score = $4,
+        decision_method = $5,
+        outreach_id = COALESCE($6, outreach_id),
+        thread_id = COALESCE($7, thread_id),
+        email_subject = COALESCE($8, email_subject),
+        email_body = COALESCE($9, email_body)
       WHERE id = $1
       RETURNING *`,
       [
         existing.rows[0].id,
+        channel,
         params.planner_reason,
         params.planner_score,
         params.decision_method,
         params.outreach_id ?? null,
         params.thread_id ?? null,
+        params.email_subject ?? null,
+        params.email_body ?? null,
       ]
     );
     return rowToHistory(result.rows[0]);
@@ -370,18 +415,23 @@ export async function recordGoalAttempt(params: {
   // Create new record
   const result = await query(
     `INSERT INTO user_goal_history (
-      slack_user_id, goal_id, status, attempt_count, last_attempt_at,
-      planner_reason, planner_score, decision_method, outreach_id, thread_id
-    ) VALUES ($1, $2, 'sent', 1, NOW(), $3, $4, $5, $6, $7)
+      slack_user_id, goal_id, status, channel, attempt_count, last_attempt_at,
+      planner_reason, planner_score, decision_method, outreach_id, thread_id,
+      prospect_org_id, email_subject, email_body
+    ) VALUES ($1, $2, 'sent', $3, 1, NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING *`,
     [
-      params.slack_user_id,
+      params.slack_user_id ?? null,
       params.goal_id,
+      channel,
       params.planner_reason,
       params.planner_score,
       params.decision_method,
       params.outreach_id ?? null,
       params.thread_id ?? null,
+      params.prospect_org_id ?? null,
+      params.email_subject ?? null,
+      params.email_body ?? null,
     ]
   );
   return rowToHistory(result.rows[0]);
@@ -601,6 +651,7 @@ function rowToGoal(row: Record<string, unknown>): OutreachGoal {
     id: row.id as number,
     name: row.name as string,
     category: row.category as GoalCategory,
+    channel: (row.channel as OutreachGoal['channel']) ?? 'slack',
     description: row.description as string | null,
     success_insight_type: row.success_insight_type as string | null,
     requires_mapped: row.requires_mapped as boolean,
@@ -642,9 +693,10 @@ function rowToOutcome(row: Record<string, unknown>): GoalOutcome {
 function rowToHistory(row: Record<string, unknown>): UserGoalHistory {
   return {
     id: row.id as number,
-    slack_user_id: row.slack_user_id as string,
+    slack_user_id: row.slack_user_id as string | null,
     goal_id: row.goal_id as number,
     status: row.status as GoalStatus,
+    channel: (row.channel as 'slack' | 'email') ?? 'slack',
     attempt_count: row.attempt_count as number,
     last_attempt_at: row.last_attempt_at ? new Date(row.last_attempt_at as string) : null,
     next_attempt_at: row.next_attempt_at ? new Date(row.next_attempt_at as string) : null,
@@ -657,6 +709,9 @@ function rowToHistory(row: Record<string, unknown>): UserGoalHistory {
     decision_method: row.decision_method as PlannerDecisionMethod | null,
     outreach_id: row.outreach_id as number | null,
     thread_id: row.thread_id as string | null,
+    prospect_org_id: row.prospect_org_id as string | null,
+    email_subject: row.email_subject as string | null,
+    email_body: row.email_body as string | null,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   };

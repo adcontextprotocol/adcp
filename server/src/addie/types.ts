@@ -169,7 +169,7 @@ export type OutcomeType = 'success' | 'defer' | 'clarify' | 'decline' | 'escalat
 /**
  * Planner decision method
  */
-export type PlannerDecisionMethod = 'rule_match' | 'llm' | 'admin_override';
+export type PlannerDecisionMethod = 'rule_match' | 'llm' | 'admin_override' | 'engagement_planner';
 
 /**
  * Rehearsal session status
@@ -179,10 +179,13 @@ export type RehearsalStatus = 'active' | 'completed' | 'abandoned';
 /**
  * Outreach goal definition
  */
+export type OutreachChannel = 'slack' | 'email' | 'any';
+
 export interface OutreachGoal {
   id: number;
   name: string;
   category: GoalCategory;
+  channel: OutreachChannel;
   description: string | null;
   success_insight_type: string | null;
 
@@ -245,10 +248,11 @@ export interface GoalOutcome {
  */
 export interface UserGoalHistory {
   id: number;
-  slack_user_id: string;
+  slack_user_id: string | null;
   goal_id: number;
 
   status: GoalStatus;
+  channel: 'slack' | 'email';
 
   // Attempts
   attempt_count: number;
@@ -269,6 +273,11 @@ export interface UserGoalHistory {
   // Links
   outreach_id: number | null;
   thread_id: string | null;
+
+  // Email outreach (null for Slack)
+  prospect_org_id: string | null;
+  email_subject: string | null;
+  email_body: string | null;
 
   created_at: Date;
   updated_at: Date;
@@ -369,7 +378,7 @@ export interface MemberCapabilities {
  */
 export interface PlannerContext {
   user: {
-    slack_user_id: string;
+    slack_user_id?: string;
     workos_user_id?: string;
     display_name?: string;
     is_mapped: boolean;
@@ -401,6 +410,10 @@ export interface PlannerContext {
     reason: string;
     next_contact_date?: Date;
   };
+  /** Which channels are available for reaching this person */
+  available_channels: Array<'slack' | 'email'>;
+  /** For email-only prospects, the organization ID */
+  prospect_org_id?: string;
 }
 
 /**
@@ -412,6 +425,8 @@ export interface PlannedAction {
   priority_score: number;
   alternative_goals: OutreachGoal[];
   decision_method: PlannerDecisionMethod;
+  /** The channel selected for this outreach */
+  channel: 'slack' | 'email';
 }
 
 /**

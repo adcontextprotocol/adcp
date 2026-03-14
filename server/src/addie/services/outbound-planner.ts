@@ -44,11 +44,12 @@ export class OutboundPlanner {
    */
   async planNextAction(ctx: PlannerContext): Promise<PlannedAction | null> {
     const startTime = Date.now();
+    const availableChannels = ctx.available_channels ?? ['slack'];
 
     // Can't contact user? No action.
     if (!ctx.contact_eligibility.can_contact) {
       logger.debug({
-        slack_user_id: ctx.user.slack_user_id,
+        user_id: ctx.user.slack_user_id ?? ctx.prospect_org_id,
         reason: ctx.contact_eligibility.reason,
       }, 'Planner: Cannot contact user');
       return null;
@@ -56,12 +57,22 @@ export class OutboundPlanner {
 
     // STAGE 1: Get enabled goals and filter by eligibility (rule-based, fast)
     const allGoals = await outboundDb.listGoals({ enabledOnly: true });
-    let eligible = allGoals.filter(g => this.isEligible(g, ctx));
+
+    // Filter by channel compatibility: goal must match at least one available channel
+    const channelFiltered = allGoals.filter(g => {
+      if (g.channel === 'any') return true;
+      return availableChannels.includes(g.channel as 'slack' | 'email');
+    });
+
+    let eligible = channelFiltered.filter(g => this.isEligible(g, ctx));
+
+    const userId = ctx.user.slack_user_id ?? ctx.prospect_org_id ?? 'unknown';
 
     if (eligible.length === 0) {
       logger.debug({
-        slack_user_id: ctx.user.slack_user_id,
+        user_id: userId,
         total_goals: allGoals.length,
+        channel_filtered: channelFiltered.length,
       }, 'Planner: No eligible goals');
       return null;
     }
@@ -71,7 +82,7 @@ export class OutboundPlanner {
 
     if (eligible.length === 0) {
       logger.debug({
-        slack_user_id: ctx.user.slack_user_id,
+        user_id: userId,
         total_goals: allGoals.length,
       }, 'Planner: No eligible goals after async checks');
       return null;
@@ -82,19 +93,29 @@ export class OutboundPlanner {
 
     if (available.length === 0) {
       logger.debug({
-        slack_user_id: ctx.user.slack_user_id,
+        user_id: userId,
         eligible_count: eligible.length,
       }, 'Planner: No available goals (all attempted recently)');
       return null;
     }
 
+    // Determine channel for the result
+    const resolveChannel = (goal: OutreachGoal): 'slack' | 'email' => {
+      if (goal.channel === 'email') return 'email';
+      if (goal.channel === 'slack') return 'slack';
+      // For 'any' goals, prefer Slack if available
+      return availableChannels.includes('slack') ? 'slack' : 'email';
+    };
+
     // STAGE 3: Quick match for obvious cases (rule-based)
     const quickMatch = this.quickMatch(available, ctx);
     if (quickMatch) {
       quickMatch.decision_method = 'rule_match';
+      quickMatch.channel = resolveChannel(quickMatch.goal);
       logger.debug({
-        slack_user_id: ctx.user.slack_user_id,
+        user_id: userId,
         goal: quickMatch.goal.name,
+        channel: quickMatch.channel,
         reason: quickMatch.reason,
         latency_ms: Date.now() - startTime,
       }, 'Planner: Quick match selected goal');
@@ -103,9 +124,11 @@ export class OutboundPlanner {
 
     // STAGE 4: LLM-based selection among candidates (nuanced)
     const llmResult = await this.llmSelect(available, ctx, startTime);
+    llmResult.channel = resolveChannel(llmResult.goal);
     logger.debug({
-      slack_user_id: ctx.user.slack_user_id,
+      user_id: userId,
       goal: llmResult.goal.name,
+      channel: llmResult.channel,
       reason: llmResult.reason,
       latency_ms: Date.now() - startTime,
     }, 'Planner: LLM selected goal');
@@ -262,6 +285,7 @@ export class OutboundPlanner {
         priority_score: goals[0].base_priority,
         alternative_goals: [],
         decision_method: 'rule_match',
+        channel: 'slack',
       };
     }
 
@@ -278,6 +302,7 @@ export class OutboundPlanner {
           priority_score: 85,
           alternative_goals: goals.filter(g => g.id !== profileGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -294,6 +319,7 @@ export class OutboundPlanner {
           priority_score: 75,
           alternative_goals: goals.filter(g => g.id !== communityGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -308,6 +334,7 @@ export class OutboundPlanner {
           priority_score: 95,
           alternative_goals: goals.filter(g => g.id !== deadlineGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -323,6 +350,7 @@ export class OutboundPlanner {
           priority_score: 80,
           alternative_goals: goals.filter(g => g.id !== inviteGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -341,6 +369,7 @@ export class OutboundPlanner {
           priority_score: 75,
           alternative_goals: goals.filter(g => g.id !== vendorGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -360,6 +389,7 @@ export class OutboundPlanner {
           priority_score: 70,
           alternative_goals: goals.filter(g => g.id !== wgGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -376,6 +406,7 @@ export class OutboundPlanner {
           priority_score: 72,
           alternative_goals: goals.filter(g => g.id !== personaGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -392,6 +423,7 @@ export class OutboundPlanner {
           priority_score: 60,
           alternative_goals: goals.filter(g => g.id !== reengageGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -406,6 +438,7 @@ export class OutboundPlanner {
           priority_score: infoGoal.base_priority,
           alternative_goals: goals.filter(g => g.id !== infoGoal.id).slice(0, 3),
           decision_method: 'rule_match',
+          channel: 'slack',
         };
       }
     }
@@ -448,6 +481,7 @@ export class OutboundPlanner {
         priority_score: sorted[0].base_priority,
         alternative_goals: sorted.slice(1, 4),
         decision_method: 'rule_match',
+        channel: 'slack', // Will be overridden by caller
       };
     }
   }
@@ -568,6 +602,7 @@ Respond ONLY with valid JSON (no markdown code blocks):
         priority_score: selectedGoal.base_priority,
         alternative_goals: alternativeGoals,
         decision_method: 'llm',
+        channel: 'slack', // Will be overridden by caller
       };
     } catch (error) {
       logger.warn({
@@ -580,6 +615,7 @@ Respond ONLY with valid JSON (no markdown code blocks):
         priority_score: goals[0].base_priority,
         alternative_goals: goals.slice(1, 4),
         decision_method: 'llm',
+        channel: 'slack', // Will be overridden by caller
       };
     }
   }
