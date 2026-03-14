@@ -7,6 +7,8 @@ This guide covers how AdCP represents CTV (connected TV) advertising, including 
 
 CTV differs from web video in fundamental ways: there is no mouse or touch input, viewers sit 6-10 feet from the screen, audio is always on, and ads are typically non-skippable. These constraints shape how formats, assets, and interactions are defined in AdCP.
 
+The protocol-level operations (`list_creative_formats`, `build_creative`, `sync_creatives`, `get_creative_delivery`) work identically for CTV as for any other format. The CTV-specific details are in format definitions, asset requirements, and delivery models covered below. For distributing CTV creatives across multiple sellers, see [Multi-agent creative orchestration](/docs/creative/multi-agent-orchestration).
+
 ## Delivery models
 
 CTV ads reach the screen through two delivery paths. The delivery model determines what kind of creative asset the seller's format requires.
@@ -568,9 +570,69 @@ After the campaign runs, the buyer agent can review delivery data to understand 
 - **QR scan rate** -- Requires the QR landing URL to be trackable. Low single-digit percentages are normal.
 - **Content genre breakdown** -- Which content environments drove the most completions and companion clicks.
 
+### 6. Review delivery data
+
+Call `get_creative_delivery` on the seller to see variant-level CTV performance:
+
+```json
+{
+  "media_buy_ids": ["nova-streamhaus-q2"],
+  "creative_ids": ["nova_spring_ctv_30s"],
+  "max_variants": 10
+}
+```
+
+The response includes per-format breakdowns. For CTV campaigns using both SSAI and CSAI, you see separate metrics for each delivery path:
+
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "nova_spring_ctv_30s",
+      "format_id": {
+        "agent_url": "https://sales.streamhaus.example",
+        "id": "ctv_30s_ssai_companion"
+      },
+      "totals": {
+        "impressions": 250000,
+        "spend": 12500,
+        "completion_rate": 0.97
+      },
+      "variants": [{
+        "variant_id": "ssai_default",
+        "impressions": 250000,
+        "completion_rate": 0.97
+      }]
+    },
+    {
+      "creative_id": "nova_spring_ctv_30s",
+      "format_id": {
+        "agent_url": "https://sales.streamhaus.example",
+        "id": "ctv_30s_interactive"
+      },
+      "totals": {
+        "impressions": 85000,
+        "spend": 5100,
+        "completion_rate": 0.95,
+        "clicks": 2550
+      },
+      "variants": [{
+        "variant_id": "interactive_default",
+        "impressions": 85000,
+        "completion_rate": 0.95,
+        "clicks": 2550
+      }]
+    }
+  ]
+}
+```
+
+SSAI typically shows higher completion rates (97%+) because the ad is stitched into the stream. CSAI rates are slightly lower but include click data from interactive elements.
+
 ## Related documentation
 
 - [Video ads](/docs/creative/channels/video) -- Video format specs, codecs, and encoding details
 - [Display ads](/docs/creative/channels/display) -- Companion banner format patterns
+- [Multi-agent creative orchestration](/docs/creative/multi-agent-orchestration) -- Distributing CTV creatives across multiple sellers
 - [Universal macros](/docs/creative/universal-macros) -- Complete macro reference including CTV-specific macros
 - [Creative manifests](/docs/creative/creative-manifests) -- Manifest structure and asset specifications

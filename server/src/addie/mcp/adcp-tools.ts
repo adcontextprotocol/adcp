@@ -488,7 +488,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'View supported creative specifications from a sales or creative agent. Returns format definitions with dimensions and asset requirements.',
     usage_hints:
-      'use when the user wants to see what creative formats are supported, understand creative specs, or check dimension requirements. Also use when guiding a seller or platform on how to define and expose their creative formats via AdCP.',
+      'use when the user wants to see what creative formats are supported, understand creative specs, check dimension requirements, discover CTV/video/display/audio/DOOH formats, find generative formats on a sales agent, or build a format catalog across multiple agents for orchestration. Also use when guiding a seller or platform on how to define and expose their creative formats via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -892,7 +892,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Generate a creative from a brief or transform an existing creative to a different format. Supports single-format (target_format_id) or multi-format (target_format_ids) requests. Returns one or more creative manifests.',
     usage_hints:
-      'use when the user wants to generate ad creatives, transform creative sizes, or build creative assets from a brief. Use target_format_ids when the user wants multiple formats generated in a single call. Also use when guiding a seller or creative agent implementer on how to handle build requests via AdCP.',
+      'use when the user wants to generate ad creatives, transform creative sizes, build creative assets from a brief, generate VAST tags for CTV/video, produce serving tags from an ad server library, or create multi-format packages. Use target_format_ids when the user wants multiple formats generated in a single call. Also use when guiding a seller or creative agent implementer on how to handle build requests via AdCP, or when discussing brief-in-media-buy seller-side generation patterns.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1020,7 +1020,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Generate visual previews of creative manifests. Returns preview URLs or HTML.',
     usage_hints:
-      'use when the user wants to see how a creative will look, preview ad renderings, or validate creative output. Also use when guiding a seller or creative agent implementer on how to support preview rendering via AdCP.',
+      'use when the user wants to see how a creative will look, preview ad renderings, validate creative output, test generative briefs with simulated contexts, replay served variants from get_creative_delivery, preview CTV/video/conversational formats, or test guardrails with adversarial inputs. Also use when guiding a seller or creative agent implementer on how to support preview rendering via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1030,8 +1030,23 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
         request_type: {
           type: 'string',
-          enum: ['single', 'batch'],
-          description: 'Single preview or batch of multiple creatives',
+          enum: ['single', 'batch', 'variant'],
+          description: "Single preview, batch of multiple creatives, or variant replay (pass variant_id from get_creative_delivery to see what was actually served)",
+        },
+        variant_id: {
+          type: 'string',
+          description: 'For request_type "variant": the variant ID from get_creative_delivery to replay. Returns the exact creative that was served.',
+        },
+        inputs: {
+          type: 'array',
+          description: 'Context inputs for generative previews. Each entry has a name and context_description simulating serve-time conditions (e.g., page topic, device). Used with brief-based manifests to preview what the agent would generate.',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Label for this input scenario' },
+              context_description: { type: 'string', description: 'Description of the serve-time context to simulate' },
+            },
+          },
         },
         format_id: {
           type: 'object',
@@ -1072,7 +1087,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Retrieve variant-level creative delivery data from a creative agent. Returns what was generated, served, and how each variant performed. Requires at least one scoping filter: media_buy_ids, media_buy_buyer_refs, or creative_ids.',
     usage_hints:
-      'use when the user wants to see what creative variants were generated or served, review delivery data for generative campaigns, or audit creative performance across media buys. Also use when guiding a seller or creative agent implementer on how to expose delivery data via AdCP.',
+      'use when the user wants to see what creative variants were generated or served, review delivery data for generative campaigns, audit creative performance across media buys, aggregate delivery across multiple sellers, correlate variants using concept_id or creative_id, or build cross-agent dashboards. Also use when guiding a seller or creative agent implementer on how to expose delivery data via AdCP.',
     input_schema: {
       type: 'object',
       properties: {

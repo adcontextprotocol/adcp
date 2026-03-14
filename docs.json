@@ -356,7 +356,8 @@
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",
-                  "docs/creative/channels/carousels"
+                  "docs/creative/channels/carousels",
+                  "docs/creative/channels/social-native"
                 ]
               },
               {
@@ -763,7 +764,8 @@
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",
-                  "docs/creative/channels/carousels"
+                  "docs/creative/channels/carousels",
+                  "docs/creative/channels/social-native"
                 ]
               },
               {

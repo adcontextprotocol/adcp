@@ -308,8 +308,19 @@ When an agent is unreachable, the orchestrator should:
 
 A creative approved on one seller and rejected on another is normal, not an error. The orchestrator should surface this clearly to the campaign team rather than treating it as a failure. If the rejection is due to a fixable issue (wrong aspect ratio, missing click URL), update the creative and re-sync to the rejecting seller only.
 
+## Specialized format orchestration
+
+The patterns on this page apply to all creative formats — display, video, CTV, conversational, audio, DOOH. The protocol-level operations (`list_creative_formats`, `sync_creatives`, `get_creative_delivery`) work identically regardless of format type. The format-specific differences are in asset requirements and preview behavior:
+
+- **CTV formats** produce multi-render previews (primary video + companion). See [CTV and connected TV](/docs/creative/channels/ctv).
+- **Conversational formats** return `interactive_url` in previews for sandbox testing, and variant manifests include conversation transcripts. See [Conversational formats](/docs/creative/generative-creative#conversational-and-interactive-formats).
+- **Feed-native/social formats** have platform-owned chrome that wraps buyer assets at render time. See [Pattern 4](/docs/creative/implementing-creative-agents#pattern-4-feed-nativesocial-format-agent).
+
+The orchestrator does not need format-specific logic for routing or syncing — the `format_id.agent_url` and capability map handle that. Format-specific knowledge matters only when interpreting previews and delivery data for display to campaign teams.
+
 ## Next steps
 
+- [Orchestrator design patterns](/docs/building/implementation/orchestrator-design) — State machines, persistence, and retry patterns for multi-agent systems
 - [Creative libraries and concepts](/docs/creative/creative-libraries) — Managing creatives in a single agent's library
 - [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) — When the seller manages both media and creative
 - [Generative creative](/docs/creative/generative-creative) — AI-powered creative generation workflows

@@ -69,6 +69,8 @@ Buyers SHOULD poll `list_creatives` or `get_media_buys` after syncing or submitt
 
 For generative formats where the seller generates at serve time, creative review applies to the brief and brand identity rather than individual creatives. The seller validates that the brief's constraints and brand assets meet its policies before generation begins.
 
+**Platform and community guidelines**: Social platforms, UGC sites, and community-driven publishers often enforce content policies beyond standard ad policy (e.g., community standards, promoted content guidelines, category-specific restrictions). These platform-specific policies are surfaced through the same `rejection_reason` field — the buyer does not need a separate mechanism to handle them. When a creative is rejected for a community guideline violation, the `rejection_reason` explains what policy was violated so the buyer can fix and re-submit.
+
 ### Implementation checklist for generative creative
 
 Sales agents offering generative creative should:

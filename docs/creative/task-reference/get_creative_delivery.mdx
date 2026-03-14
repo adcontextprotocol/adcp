@@ -310,6 +310,56 @@ When running campaigns across multiple sellers, call `get_creative_delivery` on 
 - **Timezone handling**: Each agent may report in its own timezone via `reporting_period.timezone`. Normalize to a common timezone before aggregating metrics.
 - **`max_variants` selection**: Agents choose which variants to return when `max_variants` limits the result set. Most agents prioritize by impression volume (most-served first). For representative sampling, make multiple calls with different time ranges rather than relying on a single large `max_variants` value.
 
+## Building a cross-agent dashboard
+
+When aggregating delivery data from multiple agents into a unified view, follow this sequence:
+
+1. **Collect**: Call `get_creative_delivery` on each agent in parallel, using the same `creative_ids` filter.
+
+2. **Normalize timezones**: Convert each agent's `reporting_period` to a common timezone before summing.
+
+3. **Merge by `creative_id`**: Group results by `creative_id` across agents. Sum `totals` (impressions, spend, clicks). Do not average derived metrics like `ctr` — recompute them from the summed components.
+
+4. **Prefix `variant_id`**: Create globally unique variant keys by combining `agent_url + variant_id` (e.g., `https://sales.pinnaclemedia-example.com/var_a1b2c3`). This prevents collisions when two agents assign the same variant ID independently.
+
+5. **Group by `concept_id`**: For campaign-level roll-ups, use `concept_id` to group related creatives across sizes and sellers. Pull the concept-to-creative mapping from `list_creatives` on each agent.
+
+```javascript
+// Pseudocode: aggregate delivery from 3 sellers
+const agents = [pinnacle, novaSports, streamhaus];
+const results = await Promise.all(
+  agents.map(agent =>
+    agent.getCreativeDelivery({
+      creative_ids: ['acme_holiday_300x250'],
+      start_date: '2026-11-01',
+      end_date: '2026-11-15',
+    })
+  )
+);
+
+const merged = {};
+for (const [i, result] of results.entries()) {
+  if (result.errors) continue; // skip failed agents, retry later
+  for (const creative of result.creatives) {
+    const key = creative.creative_id;
+    if (!merged[key]) merged[key] = { impressions: 0, spend: 0, clicks: 0, variants: [] };
+    merged[key].impressions += creative.totals.impressions;
+    merged[key].spend += creative.totals.spend;
+    merged[key].clicks += creative.totals.clicks || 0;
+    for (const v of creative.variants || []) {
+      merged[key].variants.push({
+        ...v,
+        variant_id: `${agents[i].url}/${v.variant_id}`, // globally unique
+      });
+    }
+  }
+}
+// Recompute derived metrics
+for (const c of Object.values(merged)) {
+  c.ctr = c.impressions > 0 ? c.clicks / c.impressions : 0;
+}
+```
+
 ## Capability declaration
 
 Agents that support this task declare `"delivery"` in their `capabilities` array within `list_creative_formats` responses:

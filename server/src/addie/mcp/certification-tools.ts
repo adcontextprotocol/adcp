@@ -721,6 +721,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Sales agent creative capabilities', url: `${DOCS_BASE}/docs/creative/sales-agent-creative-capabilities` },
     { label: 'List creative formats task', url: `${DOCS_BASE}/docs/creative/task-reference/list_creative_formats` },
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
+    { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
   ],
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -762,6 +763,9 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
     { label: 'Preview creative task', url: `${DOCS_BASE}/docs/creative/task-reference/preview_creative` },
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
+    { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
+    { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
+    { label: 'Multi-agent creative orchestration', url: `${DOCS_BASE}/docs/creative/multi-agent-orchestration` },
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
@@ -772,6 +776,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'sync_creatives task reference', url: `${DOCS_BASE}/docs/creative/task-reference/sync_creatives` },
     { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
+    { label: 'Multi-agent creative orchestration', url: `${DOCS_BASE}/docs/creative/multi-agent-orchestration` },
   ],
   // Track D: Platform / Infrastructure
   D1: [
@@ -817,6 +822,9 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Preview creative task', url: `${DOCS_BASE}/docs/creative/task-reference/preview_creative` },
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
+    { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
+    { label: 'Multi-agent creative orchestration', url: `${DOCS_BASE}/docs/creative/multi-agent-orchestration` },
+    { label: 'AI creative overview', url: `${DOCS_BASE}/docs/creative/ai-creative-overview` },
   ],
   S3: [
     { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
