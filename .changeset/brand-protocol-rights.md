@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Add brand protocol tasks: get_brand_identity, get_rights, acquire_rights. Adds rights discovery, pricing, and acquisition with generation credentials for LLM providers. Extends creative manifest with rights constraints and report_usage with rights_id.
+Add brand protocol rights lifecycle: get_rights, acquire_rights, update_rights with generation credentials, creative approval, revocation notifications, and usage reporting. Includes rights-terms shared schema, authenticated webhooks (HMAC-SHA256), actionable vs final rejection convention, DDEX PIE mapping for music licensing, and sandbox tooling for scenario testing.
