@@ -123,6 +123,7 @@ SELECT
     ELSE 'prospect'
   END,
   COALESCE(sm.last_outreach_at, sm.created_at),
+  sm.last_outreach_at,
   COALESCE(sm.outreach_opt_out, FALSE),
   sm.created_at
 FROM slack_user_mappings sm
