@@ -178,119 +178,142 @@ export const PERSONAS: SimulatedPersona[] = [
 // Simulation Engine
 // ---------------------------------------------------------------------------
 
+/** Stage cooldowns in days — mirrors STAGE_COOLDOWNS in engagement-planner.ts */
+const SIM_COOLDOWNS: Record<RelationshipStage, number> = {
+  prospect: 0,
+  welcomed: 3,
+  exploring: 7,
+  participating: 14,
+  contributing: 30,
+  leading: 30,
+};
+
+const MAX_UNREPLIED_BEFORE_PULSE = 3;
+const MONTHLY_PULSE_DAYS = 30;
+
 /**
  * Run a simulation for a persona over N days.
- * Uses the real shouldContact() rules but simulates time progression.
+ * Reimplements shouldContact() rules with simulated time so we don't fight
+ * Date.now() mismatches. This is the pure, deterministic version.
  */
 export function simulate(persona: SimulatedPersona, durationDays: number = 60): SimulationResult {
   const events: SimulatedEvent[] = [];
 
-  // Create a synthetic relationship
-  const relationship: PersonRelationship = {
-    id: 'sim-' + Math.random().toString(36).slice(2),
-    slack_user_id: persona.hasSlack ? 'USIM' + Math.random().toString(36).slice(2, 8).toUpperCase() : null,
-    workos_user_id: null,
-    email: persona.hasEmail ? `sim@${persona.company?.name.toLowerCase().replace(/\s/g, '')}.com` : null,
-    prospect_org_id: persona.hasEmail && !persona.hasSlack ? 'org_sim_' + Math.random().toString(36).slice(2) : null,
-    display_name: persona.name,
-    stage: persona.stage,
-    stage_changed_at: new Date(),
-    last_addie_message_at: null,
-    last_person_message_at: null,
-    last_interaction_channel: null,
-    next_contact_after: null,
-    contact_preference: null as 'slack' | 'email' | null,
-    slack_dm_channel_id: null,
-    slack_dm_thread_ts: null,
-    sentiment_trend: 'neutral' as const,
-    interaction_count: 0,
-    unreplied_outreach_count: 0,
-    opted_out: false,
-    created_at: new Date(),
-    updated_at: new Date(),
-  };
-
+  // State tracking (not a real PersonRelationship — just the fields we need)
+  let stage: RelationshipStage = persona.stage;
+  let unrepliedCount = 0;
+  let lastAddieMessageDay: number | null = null;
+  let lastPersonMessageDay: number | null = null;
+  let nextContactAfterDay: number | null = null;
+  let interactionCount = 0;
   let messagesSentToPersona = 0;
 
-  // Simulate day by day
+  // Pending response (queued for a future day)
+  let pendingResponseDay: number | null = null;
+
   for (let day = 0; day < durationDays; day++) {
-    // Advance the simulated clock
-    const simDate = new Date();
-    simDate.setDate(simDate.getDate() + day);
-
-    // Override Date.now for shouldContact (it checks cooldowns against current time)
-    // Instead, we'll manually check the rules by manipulating the relationship dates
-    // to be relative to "today" being `day` days from start
-
-    // Check if Addie would contact this person
-    const decision = shouldContact(relationship);
-
-    if (!decision.shouldContact) {
+    // Process pending response first
+    if (pendingResponseDay !== null && day >= pendingResponseDay) {
       events.push({
         day,
-        action: relationship.unreplied_outreach_count >= 3 ? 'blocked' : 'skipped',
-        reason: decision.reason,
-        stage: relationship.stage,
-        unrepliedCount: relationship.unreplied_outreach_count,
-      });
-      continue;
-    }
-
-    // Addie decides to contact
-    events.push({
-      day,
-      action: 'contacted',
-      reason: decision.reason,
-      channel: decision.channel,
-      stage: relationship.stage,
-      unrepliedCount: relationship.unreplied_outreach_count,
-    });
-
-    messagesSentToPersona++;
-
-    // Update relationship state (what happens after sending)
-    relationship.last_addie_message_at = simDate;
-    relationship.unreplied_outreach_count++;
-    relationship.interaction_count++;
-
-    // Welcome → stage transition
-    if (relationship.stage === 'prospect' && messagesSentToPersona === 1) {
-      relationship.stage = 'welcomed';
-      relationship.stage_changed_at = simDate;
-    }
-
-    // Set next contact based on stage cooldown
-    const nextContact = computeNextContactDate(relationship.stage);
-    // Adjust to be relative to the simulation day
-    const cooldownMs = nextContact.getTime() - Date.now();
-    const simNextContact = new Date(simDate.getTime() + cooldownMs);
-    relationship.next_contact_after = simNextContact;
-
-    // Simulate person response
-    const responds = personResponds(persona, messagesSentToPersona);
-    if (responds) {
-      // Simulate response happening 1-2 days later
-      const responseDay = Math.min(day + 1 + Math.floor(Math.random() * 2), durationDays - 1);
-      const responseDate = new Date();
-      responseDate.setDate(responseDate.getDate() + responseDay);
-
-      events.push({
-        day: responseDay,
         action: 'person_responded',
         reason: 'simulated response',
-        stage: relationship.stage,
+        stage,
         unrepliedCount: 0,
       });
-
-      relationship.last_person_message_at = responseDate;
-      relationship.unreplied_outreach_count = 0;
-      relationship.interaction_count++;
+      lastPersonMessageDay = day;
+      unrepliedCount = 0;
+      interactionCount++;
+      pendingResponseDay = null;
 
       // Advance stage on response
-      if (relationship.stage === 'welcomed') {
-        relationship.stage = 'exploring';
-        relationship.stage_changed_at = responseDate;
+      if (stage === 'welcomed') {
+        stage = 'exploring';
       }
+    }
+
+    // Determine channel
+    let channel: 'slack' | 'email';
+    if (persona.hasSlack) {
+      channel = 'slack';
+    } else if (persona.hasEmail) {
+      channel = 'email';
+    } else {
+      continue; // no channel
+    }
+
+    // Apply shouldContact rules with simulated time
+    let shouldContact = true;
+    let reason = 'eligible for proactive contact';
+
+    // Rule 1: 3+ unreplied — switch to monthly pulse
+    if (unrepliedCount >= MAX_UNREPLIED_BEFORE_PULSE) {
+      if (lastAddieMessageDay !== null) {
+        const daysSinceLast = day - lastAddieMessageDay;
+        if (daysSinceLast < MONTHLY_PULSE_DAYS) {
+          events.push({ day, action: 'blocked', reason: `${unrepliedCount} unreplied — monthly pulse in ${MONTHLY_PULSE_DAYS - daysSinceLast}d`, stage, unrepliedCount });
+          continue;
+        }
+      }
+      // 30+ days since last message — allow monthly pulse
+      reason = 'monthly pulse — low-key update';
+      // Skip remaining cooldown checks — pulse overrides them
+    } else {
+      // Rule 2: next_contact_after cooldown
+      if (nextContactAfterDay !== null && day < nextContactAfterDay) {
+        shouldContact = false;
+        reason = `cooldown — next contact after day ${nextContactAfterDay}`;
+        events.push({ day, action: 'skipped', reason, stage, unrepliedCount });
+        continue;
+      }
+
+      // Rule 3: Stage-based cooldown on last_addie_message_at
+      if (lastAddieMessageDay !== null) {
+        const daysSinceLast = day - lastAddieMessageDay;
+        let cooldown = SIM_COOLDOWNS[stage];
+        // Escalate if 2+ unreplied
+        if (unrepliedCount >= 2) {
+          const currentIdx = STAGE_ORDER.indexOf(stage);
+          const nextStage = STAGE_ORDER[Math.min(currentIdx + 1, STAGE_ORDER.length - 1)];
+          cooldown = Math.max(cooldown, SIM_COOLDOWNS[nextStage]);
+        }
+        if (daysSinceLast < cooldown) {
+          shouldContact = false;
+          reason = `stage cooldown — ${stage} requires ${cooldown}d, only ${daysSinceLast}d`;
+          events.push({ day, action: 'skipped', reason, stage, unrepliedCount });
+          continue;
+        }
+      }
+
+      // Rule 4: New prospect welcome
+      if (stage === 'prospect' && lastAddieMessageDay === null) {
+        reason = 'new prospect — welcome message';
+      }
+    }
+
+    if (!shouldContact) continue;
+
+    // Contact!
+    events.push({ day, action: 'contacted', reason, channel, stage, unrepliedCount });
+    messagesSentToPersona++;
+    lastAddieMessageDay = day;
+    unrepliedCount++;
+    interactionCount++;
+
+    // Stage transition: prospect → welcomed on first message
+    if (stage === 'prospect' && messagesSentToPersona === 1) {
+      stage = 'welcomed';
+    }
+
+    // Set next contact cooldown
+    nextContactAfterDay = day + SIM_COOLDOWNS[stage];
+
+    // Check if person responds
+    const responds = personResponds(persona, messagesSentToPersona);
+    if (responds) {
+      // Response comes 1-2 days later
+      pendingResponseDay = day + 1 + Math.floor(Math.random() * 2);
+      if (pendingResponseDay >= durationDays) pendingResponseDay = null;
     }
   }
 
@@ -314,8 +337,8 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
       totalSkips: events.filter(e => e.action === 'skipped').length,
       totalBlocks: events.filter(e => e.action === 'blocked').length,
       personResponses: events.filter(e => e.action === 'person_responded').length,
-      finalStage: relationship.stage,
-      finalUnreplied: relationship.unreplied_outreach_count,
+      finalStage: stage,
+      finalUnreplied: unrepliedCount,
       daysBetweenContacts: daysBetween,
       averageDaysBetweenContacts: daysBetween.length > 0
         ? Math.round(daysBetween.reduce((a, b) => a + b, 0) / daysBetween.length * 10) / 10

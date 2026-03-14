@@ -334,7 +334,8 @@ export async function runOutreachScheduler(options: {
       // 6. Compose message via Sonnet
       const composed = await composeMessage(
         { ...context, availableActions },
-        channel
+        channel,
+        decision.reason
       );
 
       if (!composed) {

@@ -86,11 +86,13 @@ Guidelines:
 - One clear next step or question, max. Don't overwhelm.
 - No marketing language, no exclamation marks in subject lines
 - Sign as "Addie" with no last name
-- Be genuine. If you don't have something specific to say, don't force it — return empty.
+- If the reason for contact is "monthly pulse", this person hasn't responded in a while. Share something genuinely useful — a relevant community update, event, or resource. Do NOT reference their silence, do NOT mention that you've reached out before, do NOT say "I don't want to keep pinging you." Just share something valuable as if catching up with a colleague.
+- Vary your suggestions. Don't always suggest the same action (like linking accounts). Pick the most relevant one for THIS person.
+- Be genuine. If you have nothing meaningful to say AND this is not a welcome message, respond with skip. But welcome messages to new prospects should NEVER be skipped — every new member deserves a greeting.
 
 For Slack: respond with just the message text.
 For email: respond with JSON: {"subject": "...", "body": "..."}
-If you have nothing meaningful to say, respond with: {"skip": true, "reason": "..."}`;
+If you have nothing meaningful to say (and this is NOT a welcome), respond with: {"skip": true, "reason": "..."}`;
 
 // -----------------------------------------------------------------------------
 // Client
@@ -119,12 +121,21 @@ export function shouldContact(relationship: PersonRelationship): EngagementDecis
     return no('opted out');
   }
 
-  // Annoyance prevention: stop proactive outreach after too many unreplied messages.
+  // Annoyance prevention: after 3+ unreplied, switch to monthly pulse.
   // After 2 unreplied: back off to next stage's cooldown.
-  // After 3 unreplied: stop entirely until they respond.
-  const MAX_UNREPLIED = 3;
-  if (relationship.unreplied_outreach_count >= MAX_UNREPLIED) {
-    return no(`${relationship.unreplied_outreach_count} unreplied messages — waiting for response`);
+  // After 3+ unreplied: monthly pulse only (30-day minimum spacing).
+  const MAX_UNREPLIED_BEFORE_PULSE = 3;
+  const MONTHLY_PULSE_DAYS = 30;
+  if (relationship.unreplied_outreach_count >= MAX_UNREPLIED_BEFORE_PULSE) {
+    if (relationship.last_addie_message_at) {
+      const daysSinceLast =
+        (Date.now() - relationship.last_addie_message_at.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceLast < MONTHLY_PULSE_DAYS) {
+        return no(`${relationship.unreplied_outreach_count} unreplied — monthly pulse in ${Math.ceil(MONTHLY_PULSE_DAYS - daysSinceLast)}d`);
+      }
+    }
+    // 30+ days since last message — allow monthly pulse
+    return { shouldContact: true, reason: 'monthly pulse — low-key update', channel: relationship.contact_preference ?? (relationship.slack_user_id ? 'slack' : 'email') };
   }
 
   if (relationship.next_contact_after && relationship.next_contact_after > new Date()) {
@@ -181,9 +192,10 @@ export function shouldContact(relationship: PersonRelationship): EngagementDecis
  */
 export async function composeMessage(
   ctx: RelationshipContext,
-  channel: 'slack' | 'email'
+  channel: 'slack' | 'email',
+  contactReason?: string
 ): Promise<ComposedMessage | null> {
-  const userPrompt = buildComposePrompt(ctx, channel);
+  const userPrompt = buildComposePrompt(ctx, channel, contactReason);
 
   const response = await client.messages.create({
     model: ModelConfig.primary,
@@ -327,7 +339,7 @@ export function computeNextContactDate(stage: RelationshipStage): Date {
 // Helpers
 // -----------------------------------------------------------------------------
 
-function buildComposePrompt(ctx: RelationshipContext, channel: 'slack' | 'email'): string {
+function buildComposePrompt(ctx: RelationshipContext, channel: 'slack' | 'email', contactReason?: string): string {
   const r = ctx.relationship;
 
   const firstName = r.display_name?.trim().split(' ')[0] ?? 'there';
@@ -378,7 +390,10 @@ function buildComposePrompt(ctx: RelationshipContext, channel: 'slack' | 'email'
       ? ctx.availableActions.map(a => `- ${a}`).join('\n')
       : 'None — they seem to have everything set up.';
 
-  return `## Person
+  return `## Contact reason
+${contactReason ?? 'proactive outreach'}
+
+## Person
 - Name: ${firstName}
 - Company: ${companyLine}
 - Relationship stage: ${r.stage}
