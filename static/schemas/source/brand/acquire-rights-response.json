@@ -112,6 +112,10 @@
           "format": "uri",
           "description": "Endpoint for reporting usage against these rights"
         },
+        "rights_constraint": {
+          "$ref": "/schemas/core/rights-constraint.json",
+          "description": "Pre-built rights constraint for embedding in creative manifests. Populated from the agreed terms — the buyer does not need to construct it manually."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },

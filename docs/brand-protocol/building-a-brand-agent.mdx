@@ -1,0 +1,244 @@
+---
+title: Building a brand agent
+description: How to build an MCP server that serves brand identity and rights data through AdCP.
+---
+
+A brand agent is an MCP server that implements brand protocol tasks. DAMs, talent agencies, and brand portals build brand agents to make their data available to buyer agents over AdCP.
+
+The agent declares `supported_protocols: ["brand"]` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). The specific tasks it implements define its role:
+
+| Role | Tasks | Example |
+|------|-------|---------|
+| Identity provider | `get_brand_identity` | Acme DAM serving brand assets and guidelines |
+| Rights manager | `get_rights` + `acquire_rights` | Pinnacle Agency licensing talent |
+| Both | All three | Nova Talent managing identity and rights |
+
+## Server setup
+
+Every brand agent starts with an MCP server that registers AdCP tasks as tools.
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { z } from "zod";
+
+const server = new McpServer({
+  name: "acme-brand-agent",
+  version: "1.0.0",
+});
+```
+
+Register `get_adcp_capabilities` so buyer agents can discover your supported protocols:
+
+```typescript
+server.tool("get_adcp_capabilities", {}, async () => ({
+  content: [{
+    type: "text",
+    text: JSON.stringify({
+      supported_protocols: ["brand"],
+      supported_tasks: ["get_brand_identity"],
+    }),
+  }],
+}));
+```
+
+## Tier 1: identity only
+
+Implement `get_brand_identity` to serve brand data from your DAM or brand portal.
+
+```typescript
+const FIELDS_ENUM = [
+  "description", "industry", "keller_type", "logos", "colors",
+  "fonts", "visual_guidelines", "tone", "tagline",
+  "voice_synthesis", "assets", "rights",
+] as const;
+
+server.tool(
+  "get_brand_identity",
+  "Returns brand identity data. Core fields are always public.",
+  {
+    brand_id: z.string().describe("Brand identifier"),
+    fields: z.array(z.enum(FIELDS_ENUM)).optional()
+      .describe("Sections to include. Omit for all authorized sections."),
+    use_case: z.string().optional()
+      .describe("Intended use case — agent tailors content accordingly"),
+  },
+  async ({ brand_id, fields, use_case }, extra) => {
+    const brand = await loadBrand(brand_id);
+    if (!brand) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          errors: [{ code: "brand_not_found", message: `No brand with id '${brand_id}'` }],
+        }) }],
+        isError: true,
+      };
+    }
+
+    const isAuthorized = await checkLinkedAccount(extra);
+    const response = buildIdentityResponse(brand, { fields, use_case, isAuthorized });
+
+    return { content: [{ type: "text", text: JSON.stringify(response) }] };
+  }
+);
+```
+
+## Public vs authorized data
+
+Every `get_brand_identity` response includes the public baseline: `brand_id`, `house`, `names`, `description`, `industry`, `keller_type`, basic `logos`, and `tagline`. No authentication required.
+
+Authorized callers — linked via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) — get deeper data on top of that baseline: high-res assets, voice synthesis configs, tone guidelines, and rights availability.
+
+```typescript
+function buildIdentityResponse(brand, { fields, use_case, isAuthorized }) {
+  // Core fields are always returned
+  const response = {
+    brand_id: brand.id,
+    house: brand.house,
+    names: brand.names,
+  };
+
+  // Determine which sections to include
+  const publicFields = ["description", "industry", "keller_type", "logos", "tagline"];
+  const authorizedFields = ["colors", "fonts", "visual_guidelines", "tone",
+                            "voice_synthesis", "assets", "rights"];
+
+  const requested = fields ?? [...publicFields, ...authorizedFields];
+  const withheld = [];
+
+  for (const field of requested) {
+    if (publicFields.includes(field)) {
+      response[field] = brand[field];
+    } else if (isAuthorized) {
+      response[field] = brand[field];
+    } else {
+      withheld.push(field);
+    }
+  }
+
+  // Signal what's behind auth
+  if (withheld.length > 0) {
+    response.available_fields = withheld;
+  }
+
+  return response;
+}
+```
+
+When a public caller requests `fields: ["logos", "tone"]`, they get logos but not tone. The response includes `available_fields: ["tone"]` so the caller knows what linking their account would unlock.
+
+## Tier 2: rights only
+
+Add `get_rights` and `acquire_rights` for rights discovery and licensing. This is the path for talent agencies and music sync platforms.
+
+```typescript
+server.tool(
+  "get_rights",
+  "Search for licensable rights with pricing",
+  {
+    query: z.string().describe("Natural language description of desired rights"),
+    uses: z.array(z.string()).describe("Rights uses: likeness, voice, name, endorsement"),
+    buyer_brand: z.object({
+      domain: z.string(),
+      brand_id: z.string().optional(),
+    }).optional(),
+    brand_id: z.string().optional(),
+    include_excluded: z.boolean().optional(),
+  },
+  async ({ query, uses, buyer_brand, brand_id, include_excluded }) => {
+    const matches = await searchRights({ query, uses, brand_id });
+
+    // Filter by buyer compatibility when buyer_brand is provided
+    const { rights, excluded } = buyer_brand
+      ? await filterByBuyerCompatibility(matches, buyer_brand)
+      : { rights: matches, excluded: [] };
+
+    const response = { rights };
+    if (include_excluded) response.excluded = excluded;
+
+    return { content: [{ type: "text", text: JSON.stringify(response) }] };
+  }
+);
+```
+
+`acquire_rights` follows the same pattern — accept a `rights_id` and `pricing_option_id` from `get_rights`, clear against existing contracts, and return terms with generation credentials. See the [acquire_rights task reference](/docs/brand-protocol/tasks/acquire_rights) for the full schema.
+
+## Field selection and use case
+
+The `fields` parameter lets callers request only the sections they need. Implement this efficiently — avoid loading expensive data (asset catalogs, voice configs) when not requested:
+
+```typescript
+async function loadBrandData(brand_id, fields) {
+  const brand = await db.getBrandCore(brand_id);
+  if (!fields || fields.includes("assets")) {
+    brand.assets = await db.getBrandAssets(brand_id);
+  }
+  if (!fields || fields.includes("voice_synthesis")) {
+    brand.voice_synthesis = await voiceProvider.getConfig(brand_id);
+  }
+  return brand;
+}
+```
+
+The `use_case` parameter is advisory — it tailors content within returned sections but does not override `fields`. A `"likeness"` use case prioritizes action photos in the `logos` section; a `"creative_production"` use case prioritizes vector logos and brand marks.
+
+## Multi-tenancy
+
+A single MCP endpoint can serve multiple brands. The `brand_id` parameter in every request disambiguates which brand the caller is asking about.
+
+```typescript
+// One agent, many brands
+const brands = {
+  "emma_torres": { house: { domain: "pinnacleagency.com", name: "Pinnacle Agency" }, ... },
+  "kai_nakamura": { house: { domain: "pinnacleagency.com", name: "Pinnacle Agency" }, ... },
+};
+
+async function loadBrand(brand_id) {
+  return brands[brand_id] ?? null;
+}
+```
+
+Each brand in your roster should also appear in your `brand.json` file's `brands` array so buyer agents can discover them before making MCP calls.
+
+## Account linking
+
+Buyers establish authorization by calling [`sync_accounts`](/docs/accounts/tasks/sync_accounts) on your agent. After linking, their subsequent `get_brand_identity` requests are recognized as authorized.
+
+Implement the [accounts protocol](/docs/accounts/overview) to support this. The linked account is identified by the caller's credentials in the MCP transport — you do not need to pass account IDs in brand protocol requests.
+
+## Testing
+
+Use the `validate_brand_agent` MCP tool to verify your agent is reachable and responding correctly. For automated testing during development, use the MCP SDK's in-memory transport:
+
+```typescript
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+const result = await client.callTool({
+  name: "get_brand_identity",
+  arguments: { brand_id: "emma_torres" },
+});
+```
+
+Key things to verify: core fields returned for public callers, deeper data for authorized callers, `available_fields` lists withheld sections, and `brand_not_found` errors for invalid IDs.
+
+## Deployment checklist
+
+- [ ] `brand.json` hosted at `/.well-known/brand.json` with `brand_agent.url` pointing to your MCP endpoint
+- [ ] `get_adcp_capabilities` returns `supported_protocols: ["brand"]`
+- [ ] `get_brand_identity` returns core fields for public callers
+- [ ] `get_brand_identity` returns deeper data for authorized callers
+- [ ] `available_fields` correctly lists withheld sections
+- [ ] Error responses use the `errors` array format
+- [ ] If implementing rights: `get_rights` returns pricing options and `acquire_rights` returns terms
+
+## Related
+
+- [Brand protocol overview](/docs/brand-protocol/index) — How brand discovery works
+- [brand.json spec](/docs/brand-protocol/brand-json) — File format for brand declaration
+- [get_brand_identity](/docs/brand-protocol/tasks/get_brand_identity) — Identity task reference
+- [get_rights](/docs/brand-protocol/tasks/get_rights) — Rights discovery task reference
+- [acquire_rights](/docs/brand-protocol/tasks/acquire_rights) — Rights acquisition task reference
+- [Accounts overview](/docs/accounts/overview) — How account linking works

@@ -23,7 +23,9 @@ Brand identity is public data. Any agent can call `get_brand_identity` without a
 
 The registry enforces this: every brand indexed from `brand.json` is publicly discoverable. You can always find out what house a brand belongs to, what it's called, and what it does.
 
-Authorized callers (linked via [`sync_accounts`](/docs/accounts/overview)) get deeper data on top of the public baseline:
+Authorized callers (linked via [`sync_accounts`](/docs/accounts/overview)) get deeper data on top of the public baseline.
+
+Account linking is a one-time setup: a buyer agent calls [`sync_accounts`](/docs/accounts/tasks/sync_accounts) on the brand agent, providing its brand reference. After that, the buyer's `get_brand_identity` requests are recognized as authorized.
 
 | Level | What you get |
 |-------|-------------|
@@ -91,6 +93,45 @@ If a request includes `fields` that require authorization the caller does not ha
 </CodeGroup>
 
 <CodeGroup>
+```json Request (creative production)
+{
+  "brand_id": "daan_janssen",
+  "fields": ["colors", "fonts", "visual_guidelines"],
+  "use_case": "creative_production"
+}
+```
+
+```json Response (authorized)
+{
+  "brand_id": "daan_janssen",
+  "house": { "domain": "lotientertainment.com", "name": "Loti Entertainment" },
+  "names": [{"en": "Daan Janssen"}],
+  "colors": {
+    "primary": "#FF6600",
+    "secondary": "#1A1A2E",
+    "accent": "#FBA007"
+  },
+  "fonts": {
+    "primary": "Montserrat",
+    "secondary": "Open Sans",
+    "font_urls": ["https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700"]
+  },
+  "visual_guidelines": {
+    "photography": {
+      "realism": "photorealistic",
+      "lighting": "bright, natural",
+      "framing": ["medium shot", "action shot"]
+    },
+    "restrictions": [
+      "Never place text over the athlete",
+      "No competitor brand logos in frame"
+    ]
+  }
+}
+```
+</CodeGroup>
+
+<CodeGroup>
 ```json Response (error)
 {
   "errors": [
@@ -107,10 +148,22 @@ If a request includes `fields` that require authorization the caller does not ha
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `brand_id` | string | Yes | Brand identifier from the agent's brand.json brands array |
-| `fields` | string[] | No | Optional sections to include. Omit for all authorized sections. Core fields (`brand_id`, `house`, `names`) are always returned and do not need to be requested. |
+| `fields` | string[] | No | Optional sections to include (e.g., `logos`, `colors`, `fonts`, `visual_guidelines`, `tone`). Omit for all authorized sections. Core fields (`brand_id`, `house`, `names`) are always returned and do not need to be requested. |
 | `use_case` | string | No | Intended use case (e.g., "endorsement", "voice_synthesis", "likeness"). Agent tailors content within the returned sections — a "likeness" use case returns action photos, a "voice_synthesis" use case returns voice configs. Does not override `fields`. |
 
-Valid `fields` values: `description`, `industry`, `keller_type`, `logos`, `colors`, `fonts`, `tone`, `tagline`, `voice_synthesis`, `assets`, `rights`
+Valid `fields` values: `description`, `industry`, `keller_type`, `logos`, `colors`, `fonts`, `visual_guidelines`, `tone`, `tagline`, `voice_synthesis`, `assets`, `rights`
+
+Recommended `use_case` values:
+
+| Value | Agent behavior |
+|-------|---------------|
+| `endorsement` | Prioritize action photos, endorsement tone, brand story |
+| `voice_synthesis` | Return voice synthesis config, pronunciation guides |
+| `likeness` | High-res photos, appearance guidelines |
+| `creative_production` | Full visual identity: colors, fonts, visual_guidelines, logos |
+| `media_planning` | Basic identity and rights availability summary |
+
+`use_case` is advisory — it tailors content within returned sections but does not override `fields`.
 
 ### Response
 
@@ -127,7 +180,8 @@ The response mirrors the brand.json brand definition, extended with dynamic data
 | `logos` | object[] | No | Brand logos (matches brand.json logo shape: `url`, `variant`, `orientation`, `background`, `tags`) |
 | `colors` | object | No | Brand color palette with structured roles (`primary`, `secondary`, `accent`, `background`, `text`) |
 | `fonts` | object | No | Brand typography (`primary`, `secondary`, `font_urls`) |
-| `tone` | object | No | Brand voice and messaging guidelines (`voice`, `attributes`, `dos`, `donts`) |
+| `visual_guidelines` | object | No | Photography, graphic style, colorways, type scale, motion rules, restrictions |
+| `tone` | object | No | Brand voice and messaging guidelines. Sub-fields: `voice` (personality adjectives), `attributes` (prompt guidance traits), `dos` (approved approaches), `donts` (prohibited topics) |
 | `tagline` | string | No | Brand tagline or slogan |
 | `voice_synthesis` | object | No | TTS voice synthesis configuration (`provider`, `voice_id`, `settings`) |
 | `assets` | object[] | No | Available brand assets — matches brand.json asset shape (`asset_id`, `asset_type`, `url`, `tags`) |

@@ -1,0 +1,87 @@
+---
+title: For talent and rights holders
+description: How AdCP protects and monetizes your likeness, voice, and endorsement rights in AI-generated advertising.
+---
+
+AI can generate your face, your voice, and your endorsement — without asking. Generative tools are already creating synthetic celebrity content for advertising, and the legal frameworks have not caught up. If you are a public figure with licensable rights, the question is not whether AI will use your likeness. It is whether you will have any control over how.
+
+The Ad Context Protocol (AdCP) gives you that control. It is an open standard that lets your agency or management team set the rules for how AI systems use your identity in advertising — and enforce those rules at the point of generation.
+
+## How it works, in plain terms
+
+Imagine you are Daan Janssen, a Dutch Olympic speed skater. Your management agency, Loti Entertainment, represents your commercial rights. Here is what happens with AdCP in place:
+
+1. **Your agency publishes your availability.** Loti registers your rights in the protocol: what is available (likeness, voice, endorsement), where (Netherlands, Belgium, Germany), and at what price. They also list what is off-limits — product categories, competitors, content types.
+
+2. **A brand searches for you.** A restaurant chain in Amsterdam asks their AI media buyer to find a Dutch athlete for a campaign. The agent discovers your profile through AdCP, sees that you are available for food brands in the Netherlands, and that you fit their budget.
+
+3. **The brand requests your rights.** The agent submits a formal request: what they want to create, which formats, what countries, how many impressions, and for how long. This is a binding contractual request, not a casual inquiry.
+
+4. **Your agency reviews and approves.** Loti reviews the request against your preferences and existing contracts. If another food brand already has exclusivity in the Netherlands, the request is rejected automatically. If it passes, Loti sets the terms.
+
+5. **Time-limited credentials are issued.** The brand receives generation credentials — keys that allow specific AI providers (image generators, voice synthesis tools) to produce content using your likeness. These credentials expire when the contract ends. After that date, no provider will generate your likeness for that buyer.
+
+6. **Every use is tracked and reported.** Impressions are reported back to your agency for billing and cap enforcement. If the contract allows 100,000 impressions and the brand hits that limit, generation stops until they renegotiate.
+
+## What you control
+
+AdCP puts several mechanisms in your agency's hands:
+
+**Approval requirements.** Every creative can require your sign-off before it runs. The protocol supports a `pending_approval` status — nothing goes live until you or your representative says yes.
+
+**Content restrictions.** Your agency defines what is and is not acceptable. Categories, contexts, adjacent content, modification limits. These restrictions travel with the license.
+
+**Geographic limits.** Rights can be scoped to specific countries. A license for the Netherlands does not grant rights in the United States.
+
+**Time-bound credentials.** Generation credentials have hard expiration dates. When the license period ends, AI providers stop generating. This is not a policy — it is a technical constraint enforced by the provider.
+
+**Pricing transparency.** Your agency sets pricing: per-impression royalties, flat monthly rates, or both. Buyers see the price before they commit. No back-channel negotiations or opaque rate cards.
+
+**Disclosure requirements.** Every license can require that the brand disclose the use of AI-generated content featuring you. The disclosure text is part of the contract terms.
+
+**Exclusivity enforcement.** If a brand has exclusive rights to your likeness for restaurant advertising in the Netherlands, the protocol automatically rejects competing requests in that category and geography.
+
+## What your agency does
+
+Your agency or management company operates as your **rights agent** in the protocol. They do not need to build technology. They work with a platform that implements AdCP and configure your preferences:
+
+- Which rights are available (likeness, voice, name, endorsement)
+- Geographic availability
+- Pricing tiers and models
+- Category exclusions (products or industries you will not endorse)
+- Approval workflows (automatic for some categories, manual review for others)
+- Exclusivity terms
+
+The rights agent handles discovery, negotiation, credential issuance, and usage tracking. Your involvement is limited to setting preferences and reviewing creative concepts that require approval.
+
+## Addressing common concerns
+
+**"Someone will generate my likeness without permission."**
+AdCP-compliant providers check for rights credentials before generating content using a known identity. Without a valid credential, generation is blocked. The protocol does not prevent all unauthorized use — bad actors can still misuse open-source models — but it creates a clear, enforceable standard for the legitimate advertising ecosystem.
+
+**"I will lose control once I license my rights."**
+Licenses are scoped by use, geography, time period, and content type. A license to use your likeness in video ads for a restaurant in the Netherlands does not grant rights to use your voice in audio ads for a car brand in Japan. Each dimension is independently controlled.
+
+**"I won't know how my likeness is being used."**
+Usage reporting is built into the protocol. Every impression against your rights is tracked and reported back to your agency. This creates an audit trail for billing, compliance, and contract enforcement.
+
+**"Pricing will be a race to the bottom."**
+You set the price. The protocol supports multiple pricing models — CPM-based royalties, flat rates, impression caps with overage charges. Buyers see transparent pricing and either accept it or move on. There is no auction or price compression mechanism.
+
+## What AdCP does not solve yet
+
+The protocol is honest about its current limitations:
+
+- **Mid-contract revocation** is not supported in the current version. If you license your rights for three months, the license runs for three months. Future versions will address early termination and revocation workflows.
+- **Open-source model enforcement** is outside the protocol's scope. AdCP works with providers who participate in the credential system. It cannot prevent someone from using an uncontrolled model to generate your likeness.
+- **Deepfake detection** is a separate problem. AdCP handles authorized use. Detecting and responding to unauthorized synthetic content requires different tools.
+
+## Next steps
+
+If you are a rights holder or represent one:
+
+- **Talk to your agency** about supporting AdCP for rights management. The protocol is open and free to implement.
+- **Contact AgenticAdvertising.org** to learn how your representation can connect to the ecosystem. Member organizations are building the tools that make this work.
+- **Read the [rights discovery](/docs/brand-protocol/tasks/get_rights) and [rights acquisition](/docs/brand-protocol/tasks/acquire_rights) documentation** for a deeper look at how the protocol operates.
+
+The advertising industry is adopting AI-generated content. The question for rights holders is whether that adoption happens with your participation and compensation, or without it. AdCP is designed to make sure you have a seat at the table.

@@ -62,7 +62,7 @@
     "impression_cap": {
       "type": "integer",
       "minimum": 1,
-      "description": "Maximum total impressions allowed under these rights terms for the full validity period"
+      "description": "Maximum total impressions allowed for the full validity period (valid_from to valid_until). This is the absolute cap across all creatives using this rights grant, not a per-creative or per-period limit."
     },
     "right_type": {
       "$ref": "/schemas/enums/right-type.json",

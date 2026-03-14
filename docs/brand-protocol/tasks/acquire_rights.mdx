@@ -132,7 +132,7 @@ The response uses a discriminated union on `status`:
 
 | Status | Description | Key fields |
 |--------|-------------|------------|
-| `acquired` | Rights cleared, credentials issued | `terms`, `generation_credentials`, `disclosure` |
+| `acquired` | Rights cleared, credentials issued | `terms`, `generation_credentials`, `rights_constraint`, `disclosure` |
 | `pending_approval` | Requires rights holder review | `detail`, `estimated_response_time` |
 | `rejected` | Request denied | `reason` |
 
@@ -154,15 +154,25 @@ When rights are acquired, the agent coordinates with LLM providers to issue scop
 | `expires_at` | datetime | When the credential expires (provider-determined) |
 | `endpoint` | uri | Provider endpoint for rights-scoped generation (optional, uses provider default if omitted) |
 
+## Rights constraint
+
+When `status` is `acquired`, the response includes a `rights_constraint` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rights_constraint` | object | Pre-built constraint for creative manifests. Contains validity period, country restrictions, and impression cap from agreed terms. Embed directly in the manifest's `rights` array. |
+
 ## Creative lifecycle
 
 After acquiring rights:
 
 1. **Generate**: Creative agent uses `generation_credentials` to produce content
-2. **Manifest**: Creative manifest includes a `rights` array with validity period and constraints
+2. **Manifest**: Embed the `rights_constraint` from the `acquire_rights` response directly into the creative manifest's `rights` array. The rights agent pre-builds this constraint with the correct validity period, country restrictions, and impression cap from the agreed terms.
 3. **Approve**: Submit creative to `approval_webhook` if required
 4. **Serve**: Place approved creative via `create_media_buy`, respecting country and date restrictions
 5. **Report**: Use [`report_usage`](/docs/accounts/tasks/report_usage) with `rights_id` for cap tracking and billing
+
+If `acquire_rights` returns `pending_approval`, poll the rights agent by calling `get_rights` with the same `brand_id` to check when the status resolves. Set `approval_status: 'pending'` on any creative manifests built during this period.
 
 ## Next steps
 

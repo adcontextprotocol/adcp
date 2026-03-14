@@ -178,7 +178,10 @@
             "group": "Brand Protocol",
             "pages": [
               "docs/brand-protocol/index",
+              "docs/brand-protocol/why-brand-json",
+              "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",
+              "docs/brand-protocol/building-a-brand-agent",
               {
                 "group": "Tasks",
                 "pages": [
@@ -556,7 +559,10 @@
             "group": "Brand Protocol",
             "pages": [
               "docs/brand-protocol/index",
+              "docs/brand-protocol/why-brand-json",
+              "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",
+              "docs/brand-protocol/building-a-brand-agent",
               {
                 "group": "Tasks",
                 "pages": [

@@ -113,22 +113,30 @@
           },
           "additionalProperties": true
         },
+        "visual_guidelines": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Structured visual rules for generative creative systems (photography, graphic_style, colorways, type_scale, motion). Matches brand.json visual_guidelines definition. Authorized callers only."
+        },
         "tone": {
           "type": "object",
           "description": "Brand voice and messaging guidelines",
           "properties": {
-            "voice": { "type": "string" },
+            "voice": { "type": "string", "description": "Brand personality described as comma-separated adjectives (e.g., 'enthusiastic, warm, competitive')" },
             "attributes": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": { "type": "string" },
+              "description": "Personality traits that characterize the brand voice, used as prompt guidance"
             },
             "dos": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": { "type": "string" },
+              "description": "Approved messaging approaches, content themes, and reference points"
             },
             "donts": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": { "type": "string" },
+              "description": "Prohibited topics, competitor references, and phrasings to avoid"
             }
           },
           "additionalProperties": true
@@ -223,6 +231,7 @@
               "logos",
               "colors",
               "fonts",
+              "visual_guidelines",
               "tone",
               "tagline",
               "voice_synthesis",
