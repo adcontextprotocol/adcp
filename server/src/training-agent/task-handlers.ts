@@ -13,13 +13,62 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState } from './types.js';
 import { buildCatalog } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
+import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
 
 const logger = createLogger('training-agent');
+
+/** Map natural vocabulary to terms that match signal tags and descriptions. */
+const SYNONYM_MAP: Record<string, string[]> = {
+  geographic: ['geo'],
+  geospatial: ['geo'],
+  geofence: ['geo'],
+  geofencing: ['geo'],
+  geotargeting: ['geo'],
+  audience: ['segment'],
+  audiences: ['segment'],
+  segments: ['segment'],
+  location: ['geo', 'proximity'],
+  locations: ['geo', 'proximity'],
+  identity: ['demographic', 'identity'],
+  identities: ['demographic', 'identity'],
+  purchase: ['retail', 'purchase'],
+  purchases: ['retail', 'purchase'],
+  buying: ['retail', 'purchase'],
+  automotive: ['automotive'],
+  auto: ['automotive'],
+  car: ['automotive'],
+  vehicle: ['automotive'],
+  cars: ['automotive'],
+  vehicles: ['automotive'],
+  mobility: ['geo', 'behavioral'],
+  movement: ['geo', 'behavioral'],
+  travel: ['geo', 'behavioral'],
+  footfall: ['geo', 'foot_traffic'],
+  targeting: ['targeting', 'target'],
+  credit: ['demographic', 'financial', 'credit'],
+  loyalty: ['retail', 'behavioral', 'loyalty'],
+  attribution: ['measurement'],
+  shopper: ['retail', 'purchase'],
+  brand: ['brand', 'retail'],
+  buyer: ['retail', 'purchase'],
+  basket: ['retail', 'purchase'],
+  conquest: ['conquest', 'acquisition'],
+  affinity: ['loyalty', 'behavioral'],
+  frequency: ['frequency', 'behavioral'],
+  dwell: ['dwell', 'behavioral'],
+  engagement: ['engagement', 'behavioral'],
+  sentiment: ['contextual', 'sentiment'],
+  household: ['household', 'demographic'],
+  income: ['income', 'financial'],
+  demographic: ['demographic', 'identity'],
+  contextual: ['contextual', 'content'],
+  subscriber: ['subscriber', 'engagement'],
+};
 
 /** Derive lifecycle status from stored status and flight dates. */
 function deriveStatus(mb: MediaBuyState): string {
@@ -198,6 +247,39 @@ const TOOLS = [
         end_time: { type: 'string' },
       },
       required: ['media_buy_id'] as const,
+    },
+  },
+  {
+    name: 'get_signals',
+    description: 'Discover signals matching campaign criteria. Supports natural language discovery via signal_spec or exact lookup via signal_ids. Returns signals with deployment status, pricing, and activation keys. Use this to find targetable audiences, contextual categories, geographic regions, and other data attributes.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        signal_spec: { type: 'string', description: 'Natural language description of desired signals' },
+        signal_ids: { type: 'array', items: { type: 'object' }, description: 'Specific signals to look up by ID' },
+        account: { type: 'object' },
+        destinations: { type: 'array', items: { type: 'object' }, description: 'Filter to specific deployment targets' },
+        countries: { type: 'array', items: { type: 'string' } },
+        filters: { type: 'object' },
+        max_results: { type: 'integer' },
+      },
+    },
+  },
+  {
+    name: 'activate_signal',
+    description: 'Activate a signal for use on a specific platform or agent. Requires signal_agent_segment_id from get_signals and at least one destination. Returns deployment status with activation keys.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        signal_agent_segment_id: { type: 'string' },
+        action: { type: 'string', enum: ['activate', 'deactivate'] },
+        destinations: { type: 'array', items: { type: 'object' } },
+        pricing_option_id: { type: 'string' },
+        account: { type: 'object' },
+      },
+      required: ['signal_agent_segment_id', 'destinations', 'account'] as const,
     },
   },
 ];
@@ -827,6 +909,277 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   return result;
 }
 
+// ── Signal task handlers ──────────────────────────────────────────
+
+const MAX_SIGNAL_RESULTS = 10;
+
+function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  // Accept both signal_spec (protocol) and brief (SDK test tool)
+  const signalSpec = (args.signal_spec || args.brief) as string | undefined;
+  const signalIds = args.signal_ids as Array<Record<string, unknown>> | undefined;
+  const filters = args.filters as Record<string, unknown> | undefined;
+  const maxResults = Math.min(Math.max((args.max_results as number) || MAX_SIGNAL_RESULTS, 1), 50);
+  const destinations = args.destinations as Array<Record<string, unknown>> | undefined;
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+
+  if (!signalSpec && !signalIds?.length) {
+    return {
+      errors: [{ code: 'validation_error', message: 'Either signal_spec or signal_ids is required' }],
+    };
+  }
+
+  const allSignals = getAllSignals();
+  let results = allSignals;
+
+  // Exact lookup by signal_ids
+  if (signalIds?.length) {
+    const idSet = new Set(signalIds.map(sid => sid.id as string));
+    results = results.filter(s => idSet.has(s.signalAgentSegmentId));
+  }
+
+  // Natural language search via signal_spec
+  const rawTerms = signalSpec ? signalSpec.toLowerCase().split(/\s+/) : [];
+  if (signalSpec) {
+    const expanded = new Set<string>();
+    for (const t of rawTerms) {
+      expanded.add(t);
+      const synonyms = SYNONYM_MAP[t];
+      if (synonyms) {
+        for (const s of synonyms) expanded.add(s);
+      }
+    }
+    const terms = [...expanded];
+    const scored = results
+      .map(s => {
+        const text = `${s.name} ${s.description} ${s.tags.join(' ')} ${s.providerName}`.toLowerCase();
+        const matchCount = terms.filter(t => text.includes(t)).length;
+        return { signal: s, matchCount };
+      })
+      .filter(s => s.matchCount > 0 || signalIds?.length) // keep exact matches even without keyword hit
+      .sort((a, b) => b.matchCount - a.matchCount);
+    results = scored.map(s => s.signal);
+  }
+
+  // Apply filters
+  if (filters) {
+    const maxCpm = filters.max_cpm as number | undefined;
+    if (maxCpm !== undefined) {
+      results = results.filter(s =>
+        s.pricingOptions.some(po => po.model === 'cpm' && po.cpm !== undefined && po.cpm <= maxCpm),
+      );
+    }
+    const dataProviders = filters.data_providers as string[] | undefined;
+    if (dataProviders?.length) {
+      const providerSet = new Set(dataProviders.map(d => d.toLowerCase()));
+      results = results.filter(s => providerSet.has(s.providerName.toLowerCase()));
+    }
+    const catalogTypes = filters.catalog_types as string[] | undefined;
+    if (catalogTypes?.length) {
+      results = results.filter(s => catalogTypes.includes(s.signalType));
+    }
+  }
+
+  // Cap results
+  results = results.slice(0, maxResults);
+
+  // Build the training agent URL for deployment targets
+  const agentUrl = getAgentUrl();
+
+  // Build response signals with deployments
+  const signals = results.map(s => {
+    // Check if this signal has been activated in this session
+    const activationKey = `${s.signalAgentSegmentId}:${agentUrl}`;
+    const activation = session.signalActivations.get(activationKey);
+    const isLive = activation?.isLive ?? false;
+
+    const deployment: Record<string, unknown> = {
+      type: 'agent',
+      agent_url: agentUrl,
+      is_live: isLive,
+    };
+
+    // Include activation key when live
+    if (isLive) {
+      deployment.activation_key = {
+        type: 'key_value',
+        key: 'audience_segment',
+        value: s.signalAgentSegmentId,
+      };
+      deployment.deployed_at = activation?.activatedAt;
+    } else {
+      deployment.estimated_activation_duration_minutes = 0; // sandbox: instant
+    }
+
+    const signal: Record<string, unknown> = {
+      signal_agent_segment_id: s.signalAgentSegmentId,
+      signal_id: {
+        source: 'catalog',
+        data_provider_domain: s.providerDomain,
+        id: s.signalAgentSegmentId,
+      },
+      name: s.name,
+      description: s.description,
+      value_type: s.valueType,
+      signal_type: s.signalType,
+      data_provider: s.providerName,
+      coverage_percentage: s.coveragePercentage,
+      deployments: [deployment],
+      pricing_options: s.pricingOptions.map(po => {
+        const option: Record<string, unknown> = {
+          pricing_option_id: po.pricingOptionId,
+          model: po.model,
+          currency: po.currency,
+        };
+        if (po.model === 'cpm') option.cpm = po.cpm;
+        if (po.model === 'percent_of_media') {
+          option.percent = po.percent;
+          if (po.maxCpm !== undefined) option.max_cpm = po.maxCpm;
+        }
+        if (po.model === 'flat_fee') {
+          option.amount = po.amount;
+          option.period = po.period;
+        }
+        return option;
+      }),
+    };
+
+    // Include value type metadata
+    if (s.valueType === 'categorical' && s.categories) {
+      signal.categories = s.categories;
+    }
+    if (s.valueType === 'numeric' && s.range) {
+      signal.range = s.range;
+    }
+
+    return signal;
+  });
+
+  // Scope boundary note for identity resolution queries
+  const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
+  const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
+  const response: Record<string, unknown> = { signals, sandbox: true };
+  if (hasIdentityTerm) {
+    const isCreditQuery = rawTerms.includes('credit');
+    response.note = isCreditQuery
+      ? 'AdCP signals support credit-derived audience segments (credit activity, income tiers) but not raw credit scores, FICO data, or credit risk models. Signals represent targeting segments, not underlying financial data. Credit-derived signals may carry additional regulatory obligations (FCRA).'
+      : 'AdCP signals support identity-derived attributes (age, income, life stage) but not identity resolution itself. Identity graphs, match rates, and cross-publisher deduplication are outside the current protocol scope.';
+  }
+  return response;
+}
+
+function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  // Accept both signal_agent_segment_id (protocol) and signal_id (SDK test tool)
+  const segmentId = (args.signal_agent_segment_id || args.signal_id) as string;
+  const action = (args.action as string) || 'activate';
+  // Accept both destinations (array, protocol) and destination (singular, SDK test tool)
+  let destinations = args.destinations as Array<Record<string, unknown>> | undefined;
+  if (!destinations?.length && args.destination) {
+    const dest = args.destination as Record<string, unknown>;
+    // SDK sends platform + account_id; normalize to protocol format
+    destinations = [{
+      type: dest.type || 'platform',
+      platform: dest.platform,
+      account: dest.account || dest.account_id,
+      ...(dest.agent_url ? { agent_url: dest.agent_url } : {}),
+    }];
+  }
+  const pricingOptionId = args.pricing_option_id as string | undefined;
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+
+  if (!segmentId) {
+    return { errors: [{ code: 'validation_error', message: 'signal_agent_segment_id is required' }] };
+  }
+  if (!destinations?.length) {
+    return { errors: [{ code: 'validation_error', message: 'destinations array is required' }] };
+  }
+
+  // Find the signal in our catalog
+  const allSignals = getAllSignals();
+  const signal = allSignals.find(s => s.signalAgentSegmentId === segmentId);
+  if (!signal) {
+    return {
+      errors: [{
+        code: 'SIGNAL_AGENT_SEGMENT_NOT_FOUND',
+        message: `Signal not found: ${segmentId}. Use get_signals to discover available signals.`,
+      }],
+    };
+  }
+
+  // Validate pricing option if provided
+  if (pricingOptionId) {
+    const validPricing = signal.pricingOptions.find(po => po.pricingOptionId === pricingOptionId);
+    if (!validPricing) {
+      return {
+        errors: [{
+          code: 'INVALID_PRICING_MODEL',
+          message: `Pricing option not found: ${pricingOptionId}. Available: ${signal.pricingOptions.map(po => po.pricingOptionId).join(', ')}`,
+        }],
+      };
+    }
+  }
+
+  const agentUrl = getAgentUrl();
+  const now = new Date().toISOString();
+
+  if (action === 'deactivate') {
+    // Remove activations for this signal
+    for (const dest of destinations) {
+      const destId = (dest.agent_url as string) || (dest.platform as string) || agentUrl;
+      const activationKey = `${segmentId}:${destId}`;
+      session.signalActivations.delete(activationKey);
+    }
+
+    return {
+      deployments: destinations.map(dest => {
+        const d: Record<string, unknown> = {
+          type: dest.type || 'agent',
+          is_live: false,
+          deployed_at: now,
+        };
+        if (dest.agent_url) d.agent_url = dest.agent_url;
+        if (dest.platform) d.platform = dest.platform;
+        if (dest.account) d.account = dest.account;
+        return d;
+      }),
+      sandbox: true,
+    };
+  }
+
+  // Activate: store activation state and return deployment info
+  const deployments = destinations.map(dest => {
+    const destId = (dest.agent_url as string) || (dest.platform as string) || agentUrl;
+    const activationKey = `${segmentId}:${destId}`;
+
+    const activationState: SignalActivationState = {
+      signalAgentSegmentId: segmentId,
+      destinationType: (dest.type as 'platform' | 'agent') || 'agent',
+      destinationId: destId,
+      account: dest.account as string | undefined,
+      pricingOptionId,
+      isLive: true,
+      activatedAt: now,
+    };
+    session.signalActivations.set(activationKey, activationState);
+
+    const d: Record<string, unknown> = {
+      type: dest.type || 'agent',
+      is_live: true,
+      activation_key: {
+        type: 'key_value',
+        key: 'audience_segment',
+        value: segmentId,
+      },
+      deployed_at: now,
+    };
+    if (dest.agent_url) d.agent_url = dest.agent_url;
+    if (dest.platform) d.platform = dest.platform;
+    if (dest.account) d.account = dest.account;
+    return d;
+  });
+
+  return { deployments, sandbox: true };
+}
+
 // ── Handler dispatch ──────────────────────────────────────────────
 
 type ToolHandler = (args: Record<string, unknown>, ctx: TrainingContext) => Record<string, unknown>;
@@ -840,6 +1193,8 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   sync_creatives: handleSyncCreatives,
   list_creatives: handleListCreatives,
   update_media_buy: handleUpdateMediaBuy,
+  get_signals: handleGetSignals,
+  activate_signal: handleActivateSignal,
 };
 
 /**

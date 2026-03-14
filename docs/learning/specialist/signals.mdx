@@ -1,7 +1,7 @@
 ---
 title: "S3: Signals and audiences"
 sidebarTitle: "S3: Signals"
-description: Specialist deep dive in measurement, attribution, and optimization — audience activation, signal discovery, event tracking, and privacy.
+description: Specialist deep dive in signal discovery, activation, measurement, and the ecosystem of data providers, publishers, retailers, and identity companies.
 ---
 
 # S3: Signals and audiences
@@ -10,18 +10,30 @@ description: Specialist deep dive in measurement, attribution, and optimization 
 **Members only** — Requires Practitioner credential. ~45 minutes with Addie. Combines hands-on lab and adaptive exam.
 </Info>
 
-This specialist module tests your mastery of the signals protocol. You'll work with sandbox agents to discover available measurement signals, activate them on campaigns, manage audience segments, configure event tracking, and design optimization loops. Addie evaluates both your hands-on work and your conceptual understanding.
+This specialist module tests your mastery of the signals protocol. You'll work with sandbox signal providers — automotive data, geo/mobility, retail purchase data, identity/demographics, publisher contextual signals, and CDP audiences — to discover signals, activate them, manage privacy, and design optimization loops. Addie adapts the experience to your role in the ecosystem.
 
 Passing earns the **AdCP specialist — Signals** credential.
 
+<Note>
+**Scope of AdCP signals**
+
+Before investing time in training, it helps to know what the protocol covers today and where boundaries exist.
+
+- **In scope**: Identity-derived attributes (income tiers, life stages), behavioral signals (purchase intent, visit frequency), contextual signals (content category, sentiment), geographic audiences (trade areas, store visitors)
+- **Not yet in scope**: Identity resolution and matching (linking devices to people), real-time geofencing triggers (push when someone enters a zone), measurement and attribution pipelines
+
+If your company works in the "not yet" areas, you can still publish the **audience segments** your data produces — the protocol covers the targeting output even when it doesn't cover the underlying infrastructure.
+</Note>
+
 ## What you'll demonstrate
 
-- Discover and evaluate available measurement signals across publishers
+- Discover and evaluate signals from multiple provider types (data providers, retailers, publishers, CDPs)
 - Activate appropriate signals for different campaign objectives
-- Manage audience activation with `sync_audiences` including privacy considerations
+- Understand signal value types (binary, categorical, numeric) and how they affect targeting
+- Manage audience activation including privacy considerations and deactivation
 - Configure event tracking with `sync_event_sources` and `log_event`
 - Design optimization loops using signals and delivery data
-- Reason about attribution models, data quality, and measurement methodology
+- Reason about the signals ecosystem — who provides data, who consumes it, and how authorization works
 
 ## Prerequisite reading
 
@@ -29,16 +41,16 @@ Passing earns the **AdCP specialist — Signals** credential.
 
 <CardGroup cols={2}>
   <Card title="get_signals" icon="signal" href="/docs/signals/tasks/get_signals">
-    Signal discovery: what measurement data is available from each publisher.
+    Signal discovery: find targetable audiences, contextual categories, and measurement data.
   </Card>
   <Card title="activate_signal" icon="toggle-on" href="/docs/signals/tasks/activate_signal">
-    Enabling specific measurement on a campaign — viewability, brand lift, conversions.
+    Activate signals for campaign targeting or measurement.
   </Card>
 </CardGroup>
 
 ### Supporting concepts
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card title="Signals overview" icon="chart-mixed" href="/docs/signals/overview">
     The signals protocol: audience segments, contextual signals, measurement, and optimization.
   </Card>
@@ -46,40 +58,67 @@ Passing earns the **AdCP specialist — Signals** credential.
     Formal specification for the signals protocol.
   </Card>
   <Card title="Data providers" icon="database" href="/docs/signals/data-providers">
-    Guide for data providers exposing signals through AdCP.
+    How data providers publish signal catalogs via adagents.json.
   </Card>
-  <Card title="get_media_buy_delivery" icon="chart-line" href="/docs/media-buy/task-reference/get_media_buy_delivery">
-    Delivery metrics that complement signals for campaign optimization.
-  </Card>
-  <Card title="Optimization and reporting" icon="chart-bar" href="/docs/media-buy/media-buys/optimization-reporting">
-    How signals feed into campaign optimization decisions.
+  <Card title="Signals ecosystem" icon="diagram-project" href="/docs/guides/signals-ecosystem">
+    How different company types — retailers, publishers, CDPs, identity companies — participate in signals.
   </Card>
   <Card title="Conversion tracking" icon="bullseye" href="/docs/media-buy/conversion-tracking/index">
     Event sources, `log_event`, and attribution setup.
   </Card>
-  <Card title="sync_event_sources" icon="link" href="/docs/media-buy/task-reference/sync_event_sources">
-    Configuring event sources for conversion measurement.
-  </Card>
-  <Card title="log_event" icon="pen" href="/docs/media-buy/task-reference/log_event">
-    Logging conversion events for attribution.
+  <Card title="Optimization and reporting" icon="chart-bar" href="/docs/media-buy/media-buys/optimization-reporting">
+    How signals feed into campaign optimization decisions.
   </Card>
 </CardGroup>
 
 ## Lab exercises
 
-1. **Signal discovery** — Query sandbox agents for available signals, compare measurement capabilities
-2. **Signal activation** — Activate viewability and conversion signals on a sandbox campaign
-3. **Audience management** — Sync audience segments and manage privacy-compliant activation
-4. **Optimization loop design** — Given delivery data and signals, propose and execute campaign optimizations
+The sandbox training agent includes signal providers representing different ecosystem roles. You'll work with all of them:
+
+| Provider | Type | Signals |
+|----------|------|---------|
+| Trident Auto Data | Data provider | EV buyers, vehicle ownership, purchase propensity, service due, service history |
+| Meridian Geo | Geo/mobility | Competitor visitors, visit frequency, trade area, commute pattern, dwell time, day-part visitation |
+| ShopGrid Shopper Insights | Retailer | Category buyer, loyalty tier, basket value, new to brand, purchase frequency, brand affinity |
+| Keystone Identity | Identity | Household income, life stage, cross-device reach, credit activity, household composition |
+| Pinnacle News Signals | Publisher | Content category, engaged reader, subscriber tenure, sentiment, page type |
+| Prism CDP | CDP | High LTV, cart abandoner, engagement score, churn risk, cross-device |
+
+### Exercise 1: Signal discovery
+
+Query the sandbox signals agent for signals matching different campaign objectives. Compare signals across provider types — what does a data provider's automotive signal look like versus a retailer's purchase signal?
+
+### Exercise 2: Signal activation
+
+Activate signals for a sandbox campaign. Observe how activation keys work and how deployment status changes.
+
+### Exercise 3: Audience management
+
+Activate and deactivate signals. Consider privacy: when does a signal need to be deactivated? How does consent affect signal availability?
+
+### Exercise 4: Ecosystem scenarios
+
+Addie will present a scenario from a specific perspective — you might be building a signal catalog for a retail media network, choosing signals for an agency's client campaign, or designing a CDP integration. Apply your protocol knowledge to the scenario.
+
+### Exercise 5: Build a signal catalog (provider perspective)
+
+The previous exercises focus on the buyer side — discovering and activating signals. This exercise shifts to the provider side. Construct an `adagents.json` signals entry for a fictional data provider of your choice (geo, retail, identity, etc.). Your catalog should include:
+
+- At least one signal of each value type (`binary`, `categorical`, `numeric`)
+- Descriptive IDs, tags, and metadata following the [data provider guide](/docs/signals/data-providers)
+- An `authorized_agents` entry authorizing a signals agent to resell your catalog
+
+Verify your catalog by checking that the signals appear correctly in `get_signals` results when queried by tag or description.
 
 ## Assessment
 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
-| Protocol mastery | 30% | Complete signals lifecycle |
-| Privacy compliance | 25% | Handles consent and deactivation correctly |
-| Measurement skill | 25% | Configures conversion tracking and attribution |
-| Analytical skill | 20% | Evaluates signal value and campaign performance |
+| Protocol mastery | 25% | Complete signals lifecycle (discovery → activation → targeting → deactivation) |
+| Privacy compliance | 20% | Handles consent, deactivation, and data governance correctly |
+| Measurement skill | 20% | Configures conversion tracking and attribution |
+| Ecosystem understanding | 20% | Explains how different provider types fit into signals |
+| Ecosystem scenarios | 15% | Constructs valid signal catalogs, understands both buyer and provider perspectives, reasons about activation destinations (agent vs platform) |
 
 Passing threshold: 70%.
 

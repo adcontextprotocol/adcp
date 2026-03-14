@@ -68,12 +68,23 @@ export interface CatalogProduct {
 export interface SessionState {
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
+  signalActivations: Map<string, SignalActivationState>;
   lastGetProductsContext?: {
     products: Record<string, unknown>[];
     proposals?: Record<string, unknown>[];
   };
   createdAt: Date;
   lastAccessedAt: Date;
+}
+
+export interface SignalActivationState {
+  signalAgentSegmentId: string;
+  destinationType: 'platform' | 'agent';
+  destinationId: string;
+  account?: string;
+  pricingOptionId?: string;
+  isLive: boolean;
+  activatedAt: string;
 }
 
 export interface MediaBuyState {

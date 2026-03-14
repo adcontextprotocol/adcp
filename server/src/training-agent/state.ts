@@ -23,6 +23,7 @@ function createSession(): SessionState {
   return {
     mediaBuys: new Map(),
     creatives: new Map(),
+    signalActivations: new Map(),
     createdAt: now,
     lastAccessedAt: now,
   };
