@@ -127,6 +127,12 @@ How to expose delivery data, measurement signals, and optimization levers throug
   <Card title="Accounts overview" icon="building" href="/docs/accounts/overview">
     The commercial layer: advertisers, operators, authentication, and billing.
   </Card>
+  <Card title="Campaign governance" icon="shield-check" href="/docs/governance/campaign">
+    Seller-side governance checks: validate buyer purchases before executing them.
+  </Card>
+  <Card title="check_governance task" icon="clipboard-check" href="/docs/governance/campaign/tasks/check_governance">
+    The governance validation task: proposed vs committed bindings, statuses, and planned delivery.
+  </Card>
 </CardGroup>
 
 ### Key concepts
@@ -135,6 +141,8 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Signals framework** — `get_signals` and `activate_signal` replace fragmented measurement vendor integrations
 - **Audience handling** — `sync_audiences` for accepting buyer audience data
 - **Account management** — `sync_accounts`, `list_accounts` for managing buyer relationships
+- **Seller-side governance** — when a buyer account has `governance_agents`, call `check_governance` with binding `committed` before confirming media buys
+- **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
 
 <Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/addie">
   "I'd like to start certification module B3."
@@ -183,5 +191,5 @@ After completing B1–B4, you've earned the **AdCP practitioner** credential. Fr
 - [S1: Media buy](/docs/learning/specialist/media-buy) — transaction flows, pricing, orchestration
 - [S2: Creative](/docs/learning/specialist/creative) — asset workflows, format compliance
 - [S3: Signals](/docs/learning/specialist/signals) — measurement, attribution, optimization
-- [S4: Governance](/docs/learning/specialist/governance) — brand safety, compliance, content standards
+- [S4: Governance](/docs/learning/specialist/governance) — brand safety, campaign governance, compliance, policy registry
 - [S5: Sponsored Intelligence](/docs/learning/specialist/sponsored-intelligence) — conversational brand experiences

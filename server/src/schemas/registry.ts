@@ -323,3 +323,64 @@ export const PropertyActivitySchema = z
   })
   .openapi("PropertyActivity");
 
+// ── Policy Registry ────────────────────────────────────────────
+
+const PolicyExemplarSchema = z.object({
+  scenario: z.string().openapi({ example: "Ad for alcohol shown during children's programming" }),
+  explanation: z.string().openapi({ example: "Violates watershed timing rules for alcohol advertising" }),
+});
+
+export const PolicySchema = z
+  .object({
+    policy_id: z.string().openapi({ example: "gdpr_consent" }),
+    version: z.string().openapi({ example: "1.0.0" }),
+    name: z.string().openapi({ example: "GDPR Consent Requirements" }),
+    description: z.string().nullable().openapi({ example: "Requirements for valid consent under GDPR" }),
+    category: z.enum(["regulation", "standard"]),
+    enforcement: z.enum(["must", "should", "may"]),
+    jurisdictions: z.array(z.string()).openapi({ example: ["EU", "EEA"] }),
+    region_aliases: z.record(z.string(), z.array(z.string())).openapi({ example: { EU: ["DE", "FR", "IT"] } }),
+    verticals: z.array(z.string()).openapi({ example: ["finance", "healthcare"] }),
+    channels: z.array(z.string()).nullable().openapi({ example: ["display", "video"] }),
+    governance_domains: z.array(z.string()).openapi({ example: ["campaign", "creative"] }),
+    effective_date: z.string().nullable().openapi({ example: "2025-05-25" }),
+    sunset_date: z.string().nullable(),
+    source_url: z.string().nullable().openapi({ example: "https://eur-lex.europa.eu/eli/reg/2016/679/oj" }),
+    source_name: z.string().nullable().openapi({ example: "EUR-Lex" }),
+    policy: z.string().openapi({ example: "Data subjects must provide freely given, specific, informed and unambiguous consent..." }),
+    guidance: z.string().nullable(),
+    exemplars: z
+      .object({
+        pass: z.array(PolicyExemplarSchema).optional(),
+        fail: z.array(PolicyExemplarSchema).optional(),
+      })
+      .nullable(),
+    ext: z.record(z.string(), z.unknown()).nullable(),
+    source_type: z.enum(["registry", "community"]),
+    review_status: z.enum(["pending", "approved"]),
+    created_at: z.string().openapi({ example: "2026-03-01T12:00:00.000Z" }),
+    updated_at: z.string().openapi({ example: "2026-03-01T12:00:00.000Z" }),
+  })
+  .openapi("Policy");
+
+export const PolicySummarySchema = PolicySchema
+  .omit({ policy: true, guidance: true, exemplars: true, ext: true })
+  .openapi("PolicySummary");
+
+const PolicyRevisionEntrySchema = z.object({
+  revision_number: z.number().int().openapi({ example: 2 }),
+  editor_name: z.string().openapi({ example: "Pinnacle Media" }),
+  edit_summary: z.string().openapi({ example: "Clarified consent requirements for minors" }),
+  is_rollback: z.boolean(),
+  rolled_back_to: z.number().int().optional().openapi({ description: "Revision number that was restored; only present when is_rollback is true" }),
+  created_at: z.string().openapi({ example: "2026-03-01T12:34:56Z" }),
+});
+
+export const PolicyHistorySchema = z
+  .object({
+    policy_id: z.string().openapi({ example: "gdpr_consent" }),
+    total: z.number().int().openapi({ example: 3 }),
+    revisions: z.array(PolicyRevisionEntrySchema),
+  })
+  .openapi("PolicyHistory");
+

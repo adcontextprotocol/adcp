@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { createHash } from 'node:crypto';
 import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
@@ -6,6 +7,7 @@ import { createLogger } from '../logger.js';
 import { isWebUserAAOAdmin, isWebUserAAOCouncil } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
+import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -43,6 +45,15 @@ setInterval(() => {
     logger.debug({ cleaned, remaining: sessionCache.size }, 'Cleaned expired session cache entries');
   }
 }, 5 * 60 * 1000);
+
+// Clean up expired DB session refresh entries (every 10 minutes)
+setInterval(() => {
+  cleanExpiredRefreshes().then(cleaned => {
+    if (cleaned > 0) {
+      logger.debug({ cleaned }, 'Cleaned expired session refresh DB entries');
+    }
+  });
+}, 10 * 60 * 1000);
 
 // Platform ban cache - avoids DB hit on every request
 interface CachedBanCheck {
@@ -97,15 +108,8 @@ function sendBanResponse(res: Response, ban: Ban): void {
   res.status(403).json(body);
 }
 
-// Simple hash function for cache key (we don't need crypto-strength, just uniqueness)
 function hashSessionCookie(cookie: string): string {
-  let hash = 0;
-  for (let i = 0; i < cookie.length; i++) {
-    const char = cookie.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return hash.toString(36);
+  return createHash('sha256').update(cookie).digest('hex');
 }
 
 /**
@@ -476,7 +480,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   logger.debug({ path: req.path, hasCookie: !!sessionCookie, isHtmlRequest }, 'Authentication check');
 
   if (!sessionCookie) {
-    logger.debug('No session cookie found');
+    logger.info({ path: req.path, isHtmlRequest }, 'No wos-session cookie present — user not logged in');
     if (isHtmlRequest) {
       return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
     }
@@ -530,7 +534,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     // If authentication failed, try to refresh the session (this makes an API call)
     if (!result.authenticated || !('user' in result) || !result.user) {
-      logger.debug('Session authentication failed, attempting refresh');
+      const reason = !result.authenticated ? 'not_authenticated'
+        : !('user' in result) ? 'no_user_field'
+        : 'user_null';
+      logger.info({ path: req.path, reason }, 'Session JWT expired, attempting refresh');
+
+      let refreshFailed = false;
 
       try {
         const refreshResult = await session.refresh({
@@ -538,10 +547,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         });
 
         if (refreshResult.authenticated && refreshResult.sealedSession) {
-          // Refresh succeeded - update the cookie and re-authenticate
-          logger.debug('Session refreshed successfully');
+          logger.info({ path: req.path }, 'Session refresh succeeded');
           newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
+
+          // Store in DB so other machines can find this refreshed session
+          storeRefreshedSession(cacheKey, refreshResult.sealedSession).catch(() => {});
 
           // Re-authenticate with the new session (local validation)
           const newSession = workos.userManagement.loadSealedSession({
@@ -549,16 +560,71 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
             cookiePassword: WORKOS_COOKIE_PASSWORD,
           });
           result = await newSession.authenticate();
+        } else {
+          logger.warn(
+            { path: req.path, authenticated: refreshResult.authenticated },
+            'Session refresh returned but was not usable'
+          );
+          refreshFailed = true;
         }
       } catch (refreshError) {
-        logger.debug({ err: refreshError }, 'Session refresh failed');
-        // Continue with the original failed result
+        logger.warn({ err: refreshError, path: req.path }, 'Session refresh threw an error');
+        refreshFailed = true;
+      }
+
+      // If refresh failed (likely consumed by another machine), check DB for a shared refresh
+      if (refreshFailed) {
+        try {
+          const sharedSession = await getRefreshedSession(cacheKey);
+          if (sharedSession) {
+            logger.info({ path: req.path }, 'Found shared refreshed session from another machine');
+
+            const sharedSessionObj = workos.userManagement.loadSealedSession({
+              sessionData: sharedSession,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            result = await sharedSessionObj.authenticate();
+
+            // If the shared session's JWT is also expired, refresh it
+            if (!result.authenticated || !('user' in result) || !result.user) {
+              logger.info({ path: req.path }, 'Shared session JWT expired, refreshing');
+              try {
+                const sharedRefresh = await sharedSessionObj.refresh({
+                  cookiePassword: WORKOS_COOKIE_PASSWORD,
+                });
+                if (sharedRefresh.authenticated && sharedRefresh.sealedSession) {
+                  logger.info({ path: req.path }, 'Shared session refresh succeeded');
+                  newSealedSession = sharedRefresh.sealedSession;
+                  setSessionCookie(res, sharedRefresh.sealedSession);
+                  storeRefreshedSession(cacheKey, sharedRefresh.sealedSession).catch(() => {});
+
+                  const refreshedObj = workos.userManagement.loadSealedSession({
+                    sessionData: sharedRefresh.sealedSession,
+                    cookiePassword: WORKOS_COOKIE_PASSWORD,
+                  });
+                  result = await refreshedObj.authenticate();
+                }
+              } catch (innerRefreshErr) {
+                logger.warn({ err: innerRefreshErr, path: req.path },
+                  'Shared session refresh also failed');
+              }
+            } else {
+              newSealedSession = sharedSession;
+              setSessionCookie(res, sharedSession);
+            }
+          }
+        } catch (dbError) {
+          logger.warn({ err: dbError, path: req.path }, 'Failed to look up shared session');
+        }
       }
     }
 
     // Final check after potential refresh
     if (!result.authenticated || !('user' in result) || !result.user) {
-      logger.debug('Session validation failed (even after refresh attempt)');
+      const reason = !result.authenticated ? 'not_authenticated'
+        : !('user' in result) ? 'no_user_field'
+        : 'user_null';
+      logger.warn({ path: req.path, reason }, 'Session invalid after refresh attempt — user will be logged out');
       // Remove any stale cache entry
       sessionCache.delete(cacheKey);
       if (isHtmlRequest) {
@@ -619,7 +685,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     next();
   } catch (error) {
-    logger.error({ err: error }, 'Authentication middleware error');
+    logger.error({ err: error, path: req.path }, 'Authentication middleware threw unexpectedly — user will be logged out');
     if (isHtmlRequest) {
       return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
     }
@@ -1210,27 +1276,70 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
     // If authentication failed, try to refresh the session (API call)
     if (!result.authenticated || !('user' in result) || !result.user) {
+      let refreshFailed = false;
+
       try {
         const refreshResult = await session.refresh({
           cookiePassword: WORKOS_COOKIE_PASSWORD,
         });
 
         if (refreshResult.authenticated && refreshResult.sealedSession) {
-          // Refresh succeeded - update the cookie and re-authenticate
           logger.debug('Session refreshed successfully (optional auth)');
           newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
+          storeRefreshedSession(cacheKey, refreshResult.sealedSession).catch(() => {});
 
-          // Re-authenticate with the new session (local validation)
           const newSession = workos.userManagement.loadSealedSession({
             sessionData: refreshResult.sealedSession,
             cookiePassword: WORKOS_COOKIE_PASSWORD,
           });
           result = await newSession.authenticate();
+        } else {
+          refreshFailed = true;
         }
       } catch (refreshError) {
-        // Silently fail refresh for optional auth
         logger.debug({ err: refreshError }, 'Optional auth refresh failed');
+        refreshFailed = true;
+      }
+
+      // If refresh failed, check DB for a shared refresh from another machine
+      if (refreshFailed) {
+        try {
+          const sharedSession = await getRefreshedSession(cacheKey);
+          if (sharedSession) {
+            logger.debug('Found shared refreshed session (optional auth)');
+            const sharedSessionObj = workos.userManagement.loadSealedSession({
+              sessionData: sharedSession,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            result = await sharedSessionObj.authenticate();
+
+            if (!result.authenticated || !('user' in result) || !result.user) {
+              try {
+                const sharedRefresh = await sharedSessionObj.refresh({
+                  cookiePassword: WORKOS_COOKIE_PASSWORD,
+                });
+                if (sharedRefresh.authenticated && sharedRefresh.sealedSession) {
+                  newSealedSession = sharedRefresh.sealedSession;
+                  setSessionCookie(res, sharedRefresh.sealedSession);
+                  storeRefreshedSession(cacheKey, sharedRefresh.sealedSession).catch(() => {});
+                  const refreshedObj = workos.userManagement.loadSealedSession({
+                    sessionData: sharedRefresh.sealedSession,
+                    cookiePassword: WORKOS_COOKIE_PASSWORD,
+                  });
+                  result = await refreshedObj.authenticate();
+                }
+              } catch (innerRefreshErr) {
+                logger.debug({ err: innerRefreshErr }, 'Shared session refresh also failed (optional auth)');
+              }
+            } else {
+              newSealedSession = sharedSession;
+              setSessionCookie(res, sharedSession);
+            }
+          }
+        } catch (dbError) {
+          logger.debug({ err: dbError }, 'Failed to look up shared session (optional auth)');
+        }
       }
     }
 
