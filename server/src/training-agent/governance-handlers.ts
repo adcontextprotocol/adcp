@@ -65,6 +65,7 @@ export const GOVERNANCE_TOOLS = [
               regions: { type: 'array', items: { type: 'string' } },
               policy_ids: { type: 'array', items: { type: 'string' } },
               custom_policies: { type: 'array', items: { type: 'string' } },
+              mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Governance enforcement mode. Defaults to enforce.' },
               approved_sellers: { type: ['array', 'null'] },
               delegations: {
                 type: 'array',
@@ -101,6 +102,7 @@ export const GOVERNANCE_TOOLS = [
         caller: { type: 'string', format: 'uri' },
         tool: { type: 'string' },
         payload: { type: 'object' },
+        governance_context: { type: 'object', description: 'Normalized governance fields (budget, countries, channels, flight). Preferred over parsing payload.' },
         media_buy_id: { type: 'string' },
         buyer_ref: { type: 'string' },
         phase: { type: 'string', enum: ['purchase', 'modification', 'delivery'] },
@@ -213,7 +215,7 @@ export function handleSyncPlans(args: Record<string, unknown>, ctx: TrainingCont
       approvedSellers: plan.approved_sellers as string[] | null | undefined,
       policyIds: plan.policy_ids as string[] | undefined,
       customPolicies: plan.custom_policies as string[] | undefined,
-      mode: 'enforce',
+      mode: (plan.mode as GovernancePlanState['mode']) || 'enforce',
       committedBudget: existing?.committedBudget ?? 0,
       syncedAt: new Date().toISOString(),
     };
@@ -242,6 +244,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
   const caller = args.caller as string;
   const tool = args.tool as string | undefined;
   const payload = args.payload as Record<string, unknown> | undefined;
+  const governanceContext = args.governance_context as Record<string, unknown> | undefined;
   const phase = (args.phase as string) || 'purchase';
   const plannedDelivery = args.planned_delivery as Record<string, unknown> | undefined;
   const deliveryMetrics = args.delivery_metrics as Record<string, unknown> | undefined;
@@ -296,13 +299,12 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
   }
 
   // Proposed binding: validate payload against plan
-  if (binding === 'proposed' && payload) {
-    const budgetInfo = extractBudget(payload);
-    const payloadBudget = budgetInfo?.amount;
-    const budgetFieldPath = budgetInfo?.fieldPath ?? 'budget.total';
-    const payloadCountries = extractCountries(payload);
-    const payloadChannels = extractChannels(payload);
-    const payloadFlight = extractFlight(payload);
+  // Prefer governance_context (canonical shape) over payload heuristics
+  if (binding === 'proposed' && (governanceContext || payload)) {
+    const { budget: payloadBudget, budgetFieldPath, countries: payloadCountries, channels: payloadChannels, flight: payloadFlight } =
+      governanceContext
+        ? extractFromGovernanceContext(governanceContext)
+        : extractFromPayload(payload!);
 
     // Budget compliance
     categoriesEvaluated.push('budget_authority');
@@ -499,7 +501,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
 
   if (shouldEscalate) {
     status = 'escalated';
-  } else if (criticalFindings.length > 0 && conditions.length === 0) {
+  } else if (criticalFindings.length > 0) {
     status = 'denied';
   } else if (conditions.length > 0) {
     status = 'conditions';
@@ -571,22 +573,18 @@ export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: Trai
   const findings: GovernanceFinding[] = [];
 
   if (outcome === 'completed' && sellerResponse) {
-    // Extract committed budget from seller response
-    const packages = sellerResponse.packages as Array<Record<string, unknown>> | undefined;
-    if (packages?.length) {
-      committedBudget = packages.reduce((sum, pkg) => {
-        const b = pkg.budget;
-        if (typeof b === 'number') return sum + b;
-        if (b && typeof b === 'object') return sum + ((b as Record<string, unknown>).total as number || 0);
-        return sum;
-      }, 0);
-    }
-    // Or use a referenced check's payload budget as estimate
-    if (committedBudget === 0 && checkId) {
-      const check = session.governanceChecks.get(checkId);
-      if (check?.findings) {
-        // Use planned budget from the check context
-        committedBudget = 0;
+    // Prefer committed_budget when present (canonical); fall back to summing packages
+    if (typeof sellerResponse.committed_budget === 'number') {
+      committedBudget = sellerResponse.committed_budget as number;
+    } else {
+      const packages = sellerResponse.packages as Array<Record<string, unknown>> | undefined;
+      if (packages?.length) {
+        committedBudget = packages.reduce((sum, pkg) => {
+          const b = pkg.budget;
+          if (typeof b === 'number') return sum + b;
+          if (b && typeof b === 'object') return sum + ((b as Record<string, unknown>).total as number || 0);
+          return sum;
+        }, 0);
       }
     }
 
@@ -655,8 +653,13 @@ export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: Trai
 export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const planIds = (args.plan_ids as string[]) || [];
+  const portfolioPlanIds = (args.portfolio_plan_ids as string[]) || [];
   const includeEntries = args.include_entries as boolean || false;
   const campaignFilter = args.buyer_campaign_ref as string | undefined;
+
+  if (!planIds.length && !portfolioPlanIds.length) {
+    return { errors: [{ code: 'validation_error', message: 'plan_ids or portfolio_plan_ids is required' }] };
+  }
 
   const results: Record<string, unknown>[] = [];
 
@@ -809,6 +812,40 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
 
 // ── Helpers ─────────────────────────────────────────────────────
 
+interface ExtractedFields {
+  budget: number | undefined;
+  budgetFieldPath: string;
+  countries: string[];
+  channels: string[];
+  flight: { start?: string; end?: string };
+}
+
+function extractFromGovernanceContext(ctx: Record<string, unknown>): ExtractedFields {
+  const totalBudget = ctx.total_budget as Record<string, unknown> | undefined;
+  const flight = ctx.flight as Record<string, unknown> | undefined;
+  return {
+    budget: totalBudget?.amount as number | undefined,
+    budgetFieldPath: 'governance_context.total_budget.amount',
+    countries: (ctx.countries as string[]) || [],
+    channels: (ctx.channels as string[]) || [],
+    flight: {
+      start: flight?.start as string | undefined,
+      end: flight?.end as string | undefined,
+    },
+  };
+}
+
+function extractFromPayload(payload: Record<string, unknown>): ExtractedFields {
+  const budgetInfo = extractBudget(payload);
+  return {
+    budget: budgetInfo?.amount,
+    budgetFieldPath: budgetInfo?.fieldPath ?? 'budget.total',
+    countries: extractCountries(payload),
+    channels: extractChannels(payload),
+    flight: extractFlight(payload),
+  };
+}
+
 function extractBudget(payload: Record<string, unknown>): { amount: number; fieldPath: string } | undefined {
   // Try total_budget.amount first
   const totalBudget = payload.total_budget as Record<string, unknown> | undefined;
@@ -909,6 +946,8 @@ function buildCheckResponse(check: GovernanceCheckState): Record<string, unknown
     buyer_campaign_ref: check.buyerCampaignRef,
     explanation: check.explanation,
     mode: check.mode,
+    categories_evaluated: check.categoriesEvaluated,
+    policies_evaluated: check.policiesEvaluated,
   };
 
   if (check.findings.length > 0) {
