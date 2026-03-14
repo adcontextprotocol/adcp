@@ -251,9 +251,9 @@ Generate multiple preview variants by providing different contexts:
   preview_id: string;
   renders: Array<{
     render_id: string;
-    output_format: "url" | "html";
-    preview_url?: string;     // When output_format is "url"
-    preview_html?: string;    // When output_format is "html"
+    output_format: "url" | "html" | "both";
+    preview_url?: string;     // When output_format is "url" or "both"
+    preview_html?: string;    // When output_format is "html" or "both"
     role: string;             // "primary", "companion", etc.
     dimensions?: { width: number; height: number; };
   }>;

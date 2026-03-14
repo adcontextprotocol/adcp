@@ -173,8 +173,7 @@ Code-based creatives are indicated by the asset structure in the response — th
     },
     "assets": {
       "code": {
-        "content": "<script>/* weather-responsive logic */</script>",
-        "asset_type": "code"
+        "content": "<script>/* weather-responsive logic */</script>"
       },
       "headline_warm": {
         "content": "Cool Down with Our Iced Collection"
@@ -189,7 +188,7 @@ Code-based creatives are indicated by the asset structure in the response — th
 
 ### Attaching creatives to a media buy
 
-Once you've built and previewed your creative, attach it to a media buy. Pass the manifest from `build_creative` as a creative in `create_media_buy`:
+Once you've built and previewed your creative, attach it to a media buy. Pass the manifest from `build_creative` as a creative in `create_media_buy` (see [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for the full request structure):
 
 ```json
 {
@@ -489,7 +488,7 @@ Conversational formats raise considerations that static ads do not:
 
 - **Turn limits**: Include turn or duration limits in the brief ("End the conversation gracefully after 5 exchanges"). Agents may also enforce their own limits — check the format description in `list_creative_formats`.
 - **Escalation**: Define what the agent should do when it cannot answer ("If the user asks about returns, provide a link to our help center"). Without explicit guidance, agent behavior on out-of-scope questions is undefined.
-- **User data in transcripts**: Variant manifests from `get_creative_delivery` may include user messages. Agents that declare `supports_compliance: true` apply data handling policies (anonymization, retention limits) to transcript data. For regulated industries, confirm the agent's data handling practices before launch.
+- **User data in transcripts**: Variant manifests from `get_creative_delivery` may include user messages. For regulated industries, confirm the agent's data handling practices (anonymization, retention limits) before launch.
 - **Cost implications**: Conversational ads with per-engagement or per-turn pricing can have variable costs. Review the product's pricing model in `get_products` to understand how conversation depth affects spend.
 
 See [Previewing generative creative](/docs/creative/task-reference/preview_creative#conversational-and-interactive-formats) for the full mental model on previewing stateful formats.
