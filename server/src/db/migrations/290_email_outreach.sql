@@ -1,4 +1,4 @@
--- Migration: 287_email_outreach.sql
+-- Migration: 290_email_outreach.sql
 -- Add email channel support to the outbound planner system.
 -- Enables Addie to send proactive emails to prospects alongside Slack DMs.
 
