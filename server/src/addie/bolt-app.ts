@@ -76,6 +76,7 @@ import {
   sanitizeInput,
   validateOutput,
   wrapUrlsForSlack,
+  extractMarkdownImages,
   logInteraction,
 } from './security.js';
 import type { RequestTools } from './claude-client.js';
@@ -1288,10 +1289,18 @@ async function handleUserMessage({
         }
       }
 
-      // Stop the stream with feedback buttons attached
+      // Stop the stream with feedback buttons and any inline images
       try {
+        const { images: streamImages } = extractMarkdownImages(fullText);
         await streamer.stop({
-          blocks: [buildFeedbackBlock()],
+          blocks: [
+            ...streamImages.map(img => ({
+              type: 'image' as const,
+              image_url: img.url,
+              alt_text: img.alt,
+            })),
+            buildFeedbackBlock(),
+          ],
         });
       } catch (stopError) {
         logger.warn({ stopError }, 'Addie Bolt: Stream stop failed');
@@ -1302,9 +1311,10 @@ async function handleUserMessage({
       response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
       fullText = response.text;
 
-      // Send response via say() with feedback buttons
+      // Send response via say() with feedback buttons and inline images
       const outputValidation = validateOutput(response.text);
-      const slackText = wrapUrlsForSlack(outputValidation.sanitized);
+      const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
+      const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
         await say({
           text: slackText,
@@ -1316,6 +1326,11 @@ async function handleUserMessage({
                 text: slackText,
               },
             },
+            ...images.map(img => ({
+              type: 'image' as const,
+              image_url: img.url,
+              alt_text: img.alt,
+            })),
             buildFeedbackBlock(),
           ],
         });

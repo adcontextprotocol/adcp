@@ -4,6 +4,8 @@ title: Multi-agent creative orchestration
 
 Agency platforms and holding company systems often sit between a brand team and dozens of agents: creative tools, ad servers, and sales agents across publishers. The orchestrator's job is to route creative requests to the right agent, distribute finished creatives to sellers, and aggregate delivery data back into a unified view.
 
+<img src="/images/walkthrough/diagram-orchestrator-sequence.png" alt="Sequence diagram showing an orchestrator calling get_adcp_capabilities, list_creative_formats, build_creative, sync_creatives, and get_creative_delivery across multiple agents" style={{ width: '100%', borderRadius: '12px', marginBottom: '1.5rem' }} />
+
 This page covers the patterns for building that orchestration layer on top of AdCP.
 
 ## The orchestrator role

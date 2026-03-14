@@ -441,8 +441,12 @@ export async function buildCertificationContext(
         lines.push(isBasics
           ? `  **Links for future reference** (share at end of session, not during teaching):`
           : `  **Links to share inline during teaching** (include in your response when discussing the topic):`);
+        const hasIllustrations = resources.some(r => r.url.match(/\.(png|jpg|gif)$/i));
         for (const r of resources) {
           lines.push(`    - [${r.label}](${r.url})`);
+        }
+        if (hasIllustrations) {
+          lines.push(`  **Illustrations**: When explaining visual concepts, embed illustrations using markdown image syntax: ![description](url). The images render in both web chat and Slack.`);
         }
       }
       // Include latest teaching checkpoint for cross-session resume
@@ -704,6 +708,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
+    { label: 'Illustration: five protocol map', url: `${DOCS_BASE}/images/walkthrough/diagram-five-protocols.png` },
+    { label: 'Illustration: creative lifecycle', url: `${DOCS_BASE}/images/walkthrough/diagram-05-lifecycle.png` },
   ],
   // Track B: Publisher / Seller
   B1: [
@@ -724,6 +730,9 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
     { label: 'Creative protocol overview (illustrated walkthrough)', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Illustration: format discovery flow', url: `${DOCS_BASE}/images/walkthrough/diagram-01-format-discovery.png` },
+    { label: 'Illustration: creative distribution', url: `${DOCS_BASE}/images/walkthrough/diagram-03-distribute.png` },
+    { label: 'Illustration: format-manifest-render anatomy', url: `${DOCS_BASE}/images/walkthrough/diagram-format-manifest-render.png` },
   ],
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -771,6 +780,10 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'AI creative overview', url: `${DOCS_BASE}/docs/creative/ai-creative-overview` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
     { label: 'Creative protocol overview (illustrated walkthrough)', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Illustration: generate and route brief', url: `${DOCS_BASE}/images/walkthrough/diagram-02-generate-route.png` },
+    { label: 'Illustration: delivery aggregation', url: `${DOCS_BASE}/images/walkthrough/diagram-04-delivery-aggregation.png` },
+    { label: 'Illustration: generative creative tiers', url: `${DOCS_BASE}/images/walkthrough/diagram-generative-tiers.png` },
+    { label: 'Illustration: format-manifest-render anatomy', url: `${DOCS_BASE}/images/walkthrough/diagram-format-manifest-render.png` },
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
