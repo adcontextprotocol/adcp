@@ -27,6 +27,7 @@
         label: 'Relationships',
         items: [
           { href: '/admin/people', label: 'People', icon: '👥' },
+          { href: '/admin/simulations', label: 'Simulator', icon: '🧪' },
         ]
       },
       {

@@ -33,6 +33,7 @@ import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
 import { setupBanRoutes } from "./admin/bans.js";
 import { setupGeoRoutes } from "./admin/geo.js";
 import { setupRelationshipRoutes } from "./admin/relationships.js";
+import { setupSimulationRoutes } from "./admin/simulations.js";
 
 const logger = createLogger("admin-routes");
 
@@ -94,6 +95,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/simulations", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-simulations.html").catch((err) => {
+      logger.error({ err }, "Error serving simulations page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
@@ -136,6 +144,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Relationship and person events routes
   setupRelationshipRoutes(apiRouter);
+
+  // Outreach simulation and assessment routes
+  setupSimulationRoutes(apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
