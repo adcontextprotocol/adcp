@@ -80,7 +80,13 @@ Think of yourself as a private tutor, not a proctor. Your job is to help every l
 - **Keep responses SHORT.** Maximum 150 words per response. One idea per turn — teach one thing, then ask a question. If you have more to say, save it for the next turn. Brevity forces participation.
 - **Most responses should end with a question or task.** But when a learner gives a strong answer, it's OK to affirm and teach the next concept without immediately asking another question. Back-to-back questions without teaching feel like an interrogation, not a conversation. Aim for rhythm: question → answer → you build on it → question. Some turns can just be "Here's what that means in practice..." without a trailing question.
 - **Vary your turn structure.** Don't fall into explain-then-ask every turn. Some turns should be a bare question with no preamble. Some should be "try this and tell me what you see." Some should be a short analogy followed by a scenario. Vary the rhythm.
-- **Your first turn is ALWAYS about the learner.** Greet them, ask what they work on and what they already know. Never run a tool call or demo on the first turn — build rapport first.
+- **Your first turn is ALWAYS about the learner — but answer their question first.** If the learner stated a specific concern or question (e.g., "how do I know agents won't go rogue?"), give a one-sentence concrete answer using the module's key concepts BEFORE asking about their background. Then ask what they work on and what they already know. Never leave a direct question unanswered in your first turn — that makes learners feel unheard.
+- **When redirecting for prerequisites, lead with value.** If a learner asks to start a module they can't access yet, FIRST answer their question or name the mechanism that addresses their concern. THEN preview what the target module covers. THEN explain the prerequisite path. The prerequisite is logistics — it should come after the motivation, not before it. Frame prerequisites as "what the protocol assumes you know" not "what you're missing."
+- **Never offer documentation as an alternative to certification.** If a learner asked to start a module, they chose certification. Respect that choice. Docs are supplementary reading, not a replacement path.
+- **Name governance mechanisms concretely — especially campaign governance.** When a learner asks about trust, compliance, rogue agents, budget controls, or "how do we prevent bad things": name campaign governance and its tasks (check_governance, sync_plans). Do NOT default to brand.json when the question is about runtime enforcement or budget controls — brand.json is identity, campaign governance is enforcement. Be specific: name the task, name the flow, name the protection.
+- **Three-party validation is the headline.** When explaining campaign governance, always mention: the orchestrator proposes, an independent governance agent validates, and the seller confirms. No party grades its own homework. This is what makes AdCP governance different from existing brand safety tools.
+- **Media plans already exist.** Never frame campaign plans as a new concept. Say "media plans already exist — campaign governance ties your campaigns to those plans." Buyers already have plans. We're just enforcing them automatically.
+- **Use exact terminology.** There is no "Brand Standards Protocol." The correct terms are: brand.json (identity), content standards (compliance checking), campaign governance (transaction validation). Do not invent protocol names.
 - **NEVER re-ask information the learner already provided.** This is the #1 complaint from real learners. If they said "I work at an audio SSP" do NOT later ask "are you on the buy side or sell side?" If they said "I run programmatic at an agency" do NOT ask "what is your role?" Before asking ANY question about the learner, mentally check: did they already answer this? If yes, reference what they said instead of asking again.
 - **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.
 
@@ -681,6 +687,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Introduction to AdCP', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
+    { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
   ],
   A2: [
     { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
@@ -691,6 +698,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
+    { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
     { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
@@ -713,6 +722,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Delivery reporting', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_media_buy_delivery` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
+    { label: 'Campaign governance — seller perspective', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'check_governance task', url: `${DOCS_BASE}/docs/governance/campaign/tasks/check_governance` },
   ],
   B4: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -734,6 +745,9 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
+    { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },
+    { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
   C3: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
@@ -761,6 +775,9 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
     { label: 'Agent-to-Agent protocol', url: `${DOCS_BASE}/docs/building/integration/a2a-guide` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
+    { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'Campaign governance specification', url: `${DOCS_BASE}/docs/governance/campaign/specification` },
+    { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
   D3: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
@@ -795,6 +812,14 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
+    { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },
+    { label: 'Campaign governance specification', url: `${DOCS_BASE}/docs/governance/campaign/specification` },
+    { label: 'check_governance task', url: `${DOCS_BASE}/docs/governance/campaign/tasks/check_governance` },
+    { label: 'sync_plans task', url: `${DOCS_BASE}/docs/governance/campaign/tasks/sync_plans` },
+    { label: 'report_plan_outcome task', url: `${DOCS_BASE}/docs/governance/campaign/tasks/report_plan_outcome` },
+    { label: 'get_plan_audit_logs task', url: `${DOCS_BASE}/docs/governance/campaign/tasks/get_plan_audit_logs` },
+    { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
   S5: [
     { label: 'Sponsored Intelligence overview', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
@@ -1002,7 +1027,25 @@ export function createCertificationToolHandlers(
 
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
       if (!prereqs.met) {
-        return `You need to complete these modules first: ${prereqs.missing.join(', ')}`;
+        // Include target module context so Addie can name specific mechanisms even in prereq redirects
+        const lp = mod.lesson_plan as certDb.LessonPlan | null;
+        const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
+        // Extract key concept topics so Addie knows what mechanisms to reference
+        const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
+        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
+        // Frame as destination-first, not as a gate
+        const prereqLines = [
+          `${mod.id} (${mod.title}) teaches:`,
+          mod.description || '',
+          conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
+          '',
+          `The learner needs ${prereqs.missing.join(', ')} first. Offer placement assessment to skip.`,
+          '',
+          `Your response MUST follow this template:`,
+          `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${prereqs.missing.join(', ')} is assumed — want a placement assessment to skip it? [Socratic question about their domain]."`,
+          `Under 100 words. No docs alternative.`,
+        ];
+        return prereqLines.join('\n');
       }
 
       // Prevent resetting completed or tested-out modules
@@ -1373,7 +1416,22 @@ export function createCertificationToolHandlers(
       // Check prerequisites
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
       if (!prereqs.met) {
-        return `You need to complete these modules first: ${prereqs.missing.join(', ')}`;
+        const lp = mod.lesson_plan as certDb.LessonPlan | null;
+        const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
+        const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
+        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
+        // Frame as destination-first with path, not as a gate
+        const prereqLines = [
+          `${mod.id} (${mod.title}) teaches:`,
+          mod.description || '',
+          conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
+          '',
+          `The learner needs to complete ${prereqs.missing.join(', ')} first. With their experience, placement assessments can fast-track this.`,
+          '',
+          `Your response MUST follow this template:`,
+          `"${mod.id} covers [2-3 mechanisms from key concepts above, using task names like check_governance, sync_plans]. [One sentence connecting to their stated goal]. The path there goes through ${prereqs.missing.join(' → ')}, but placement assessments can fast-track based on what you already know. [Socratic question about their domain experience]."`,
+        ];
+        return prereqLines.join('\n');
       }
 
       // Check for existing active attempt

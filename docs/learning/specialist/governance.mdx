@@ -1,16 +1,16 @@
 ---
-title: "S4: Governance and brand safety"
+title: "S4: Governance"
 sidebarTitle: "S4: Governance"
-description: Specialist deep dive in brand safety, supply chain compliance, content standards, property governance, and creative governance.
+description: Specialist deep dive in governance protocol mastery — content standards, property governance, creative governance, campaign governance, the policy registry, multi-party validation, and compliance automation.
 ---
 
-# S4: Governance and brand safety
+# S4: Governance
 
 <Info>
-**Members only** — Requires Practitioner credential. ~45 minutes with Addie. Combines hands-on lab and adaptive exam.
+**Members only** — Requires Practitioner credential. ~60 minutes with Addie. Combines hands-on lab and adaptive exam.
 </Info>
 
-This specialist module tests your mastery of the governance protocol. You'll work with sandbox agents to manage the full CRUD lifecycle of content standards and property lists, calibrate content, validate delivery, and verify supply chain compliance. Addie evaluates both your hands-on work and your conceptual understanding.
+This specialist module tests your mastery of the full governance protocol. You'll work with sandbox agents to manage content standards and property lists, execute the campaign governance lifecycle (plans, validation, outcomes, audit), resolve compliance policies from the registry, and reason about how governance domains compose. Addie evaluates both your hands-on work and your conceptual understanding.
 
 Passing earns the **AdCP specialist — Governance** credential.
 
@@ -19,8 +19,11 @@ Passing earns the **AdCP specialist — Governance** credential.
 - Create, update, list, and delete content standards
 - Create, update, list, and delete property lists
 - Calibrate content against standards and interpret results
-- Verify supply chain compliance and delivery validation
-- Reason about brand safety, transparency, and regulatory requirements
+- Create and validate campaign plans with budget authority and policy configuration
+- Execute the full governance loop: `sync_plans`, `check_governance` (proposed + committed), `report_plan_outcome`
+- Use the policy registry to resolve and apply compliance policies
+- Interpret audit logs and reason about drift metrics
+- Explain how governance domains compose — campaign, property, content standards, creative
 
 ## Prerequisite reading
 
@@ -39,13 +42,37 @@ Passing earns the **AdCP specialist — Governance** credential.
   <Card title="validate_property_delivery" icon="clipboard-check" href="/docs/governance/property/tasks/validate_property_delivery">
     Verify that ads were delivered to authorized properties.
   </Card>
+  <Card title="sync_plans" icon="file-circle-plus" href="/docs/governance/campaign/tasks/sync_plans">
+    Create and update campaign plans that define authorized parameters.
+  </Card>
+  <Card title="check_governance" icon="shield-check" href="/docs/governance/campaign/tasks/check_governance">
+    Validate proposed and committed actions against the campaign plan.
+  </Card>
+  <Card title="report_plan_outcome" icon="flag-checkered" href="/docs/governance/campaign/tasks/report_plan_outcome">
+    Report confirmed outcomes and commit budget against the plan.
+  </Card>
+  <Card title="get_plan_audit_logs" icon="scroll" href="/docs/governance/campaign/tasks/get_plan_audit_logs">
+    Review governance decisions, findings, and drift metrics.
+  </Card>
 </CardGroup>
 
 ### Supporting concepts
 
 <CardGroup cols={2}>
   <Card title="Governance overview" icon="building-columns" href="/docs/governance/overview">
-    The governance protocol: property, brand, content standards, creative, and campaign governance.
+    The governance protocol: property, content standards, creative, and campaign governance.
+  </Card>
+  <Card title="Campaign governance" icon="shield-check" href="/docs/governance/campaign">
+    Multi-party validation, budget authority, governance modes, and the trust model.
+  </Card>
+  <Card title="Campaign governance safety model" icon="lock" href="/docs/governance/campaign/safety-model">
+    Three-party trust model: orchestrator, governance agent, and seller.
+  </Card>
+  <Card title="Campaign governance specification" icon="file-code" href="/docs/governance/campaign/specification">
+    Full technical specification: validation categories, enforcement levels, budget tracking.
+  </Card>
+  <Card title="Policy registry" icon="book" href="/docs/governance/policy-registry">
+    Community-maintained compliance policies: regulations (COPPA, GDPR, HFSS) and standards (alcohol, pharma).
   </Card>
   <Card title="Property governance" icon="shield-check" href="/docs/governance/property/index">
     Identity, authorization, and data enrichment for publishers.
@@ -82,15 +109,17 @@ Passing earns the **AdCP specialist — Governance** credential.
 2. **Property list management** — Create inclusion and exclusion lists for supply path control
 3. **Content calibration** — Calibrate sample content against your standards and interpret results
 4. **Compliance verification** — Verify that sandbox campaign deliveries meet governance requirements
+5. **Campaign governance lifecycle** — Create a campaign plan, validate actions (proposed + committed), handle denials and conditions, report outcomes, and review audit logs
+6. **Policy resolution and compliance** — Resolve policies from the registry, configure jurisdiction-scoped enforcement, verify that violations are caught
 
 ## Assessment
 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
-| Protocol mastery | 30% | Complete governance protocol mastery |
-| Safety expertise | 25% | Understands brand safety at scale |
-| Oracle understanding | 25% | Understands AI-driven evaluation models |
-| Compliance skill | 20% | Handles regulatory and compliance requirements |
+| Protocol mastery | 25% | Full governance protocol mastery across all domains including campaign governance lifecycle |
+| Safety expertise | 25% | Understands the three-party trust model, separation of duties, and how governance domains compose |
+| Oracle understanding | 20% | Understands AI-driven evaluation models and policy registry integration |
+| Compliance skill | 30% | Handles regulatory requirements, policy resolution, jurisdiction scoping, and audit interpretation |
 
 Passing threshold: 70%.
 
