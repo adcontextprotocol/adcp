@@ -997,6 +997,11 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
             required: ['name'],
           },
         },
+        preview_quality: {
+          type: 'string',
+          enum: ['draft', 'production'],
+          description: "Render quality for inline previews. Independent of build quality — you can build at draft and preview at production. Only used when include_preview is true.",
+        },
         preview_output_format: {
           type: 'string',
           enum: ['url', 'html'],

@@ -223,9 +223,35 @@ In this flow, the sales agent implements both the Media Buy Protocol and the Cre
 }
 ```
 
-3. **Seller generates at serve time** — The seller uses the brief plus the buyer's [brand identity](/docs/brand-protocol/brand-json) to generate page-tailored creatives per impression or per page context. No buyer action is required for ongoing generation.
+3. **Preview before launch** — Call `preview_creative` on the sales agent with the brief manifest and `context_description` inputs to see representative samples of what the agent will generate. Use `quality: "draft"` for fast iteration, `quality: "production"` for stakeholder review. These are illustrative — real output depends on live signals at serve time.
 
-4. **Review generated variants** — Call `get_creative_delivery` on the sales agent (it implements the Creative Protocol) to see what was generated, including variant manifests and generation context:
+```json
+{
+  "request_type": "single",
+  "quality": "draft",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.seller-example.com",
+      "id": "contextual_display_generative"
+    },
+    "assets": {
+      "brief": {
+        "content": "Highlight our sustainability story. Match tone to editorial context. Avoid competitor comparisons."
+      }
+    }
+  },
+  "inputs": [
+    { "name": "Tech article", "context_description": "Article about semiconductor manufacturing" },
+    { "name": "Travel blog", "context_description": "Blog post about eco-friendly travel" }
+  ]
+}
+```
+
+Preview doesn't require the media buy to be active — you can preview with just the brief manifest before calling `create_media_buy`. See [Previewing generative creative](/docs/creative/task-reference/preview_creative#previewing-generative-creative) for the full mental model.
+
+4. **Seller generates at serve time** — The seller uses the brief plus the buyer's [brand identity](/docs/brand-protocol/brand-json) to generate page-tailored creatives per impression or per page context. The brief and brand identity act as guardrails — the agent generates within these constraints. No buyer action is required for ongoing generation.
+
+5. **Review generated variants** — Call `get_creative_delivery` on the sales agent (it implements the Creative Protocol) to see what was generated, including variant manifests and generation context:
 
 ```json
 {
@@ -242,11 +268,23 @@ The response includes variant-level manifests showing exactly what was served, a
 |---|---|---|
 | When generation happens | On demand, before campaign starts | At serve time, throughout campaign |
 | Who generates | Standalone creative agent or sales agent | Sales agent (integrated) |
-| Buyer interaction | Interactive — review, iterate, approve | Set-and-forget — brief is the approval |
+| Pre-launch preview | Immediate (manifest is the creative) | Representative samples (brief + simulated context) |
+| Buyer interaction | Interactive — review, iterate, approve | Preview samples, then set-and-forget — brief is the ongoing constraint |
 | Variant visibility | Immediate (returned in response) | After serving (via `get_creative_delivery`) |
 | Format authority | `format_id.agent_url` points to the agent that owns the format | `format_id.agent_url` is the sales agent itself |
 
 See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) for the full pattern.
+
+### Guardrails for serve-time generation
+
+When the seller generates creatives at serve time, the buyer's controls are:
+
+- **The brief** — explicit instructions on tone, topics, exclusions ("Avoid competitor comparisons")
+- **Brand identity** — colors, logos, voice guidelines, approved assets via [brand.json](/docs/brand-protocol/brand-json)
+- **Pre-flight preview** — sample what the agent generates across contexts before launch
+- **Post-flight audit** — review variant manifests and generation context via `get_creative_delivery`, replay specific variants via `preview_creative` variant mode
+
+If post-flight review reveals off-brand variants, update the brief with more specific constraints and re-submit via `create_media_buy`. For regulated categories (financial services, pharma), include compliance requirements in the brief — agents that declare `supports_compliance: true` in their creative capabilities validate disclosures and required elements during generation.
 
 ## Next steps
 

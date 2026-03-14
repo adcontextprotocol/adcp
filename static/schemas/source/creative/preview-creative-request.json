@@ -158,6 +158,10 @@
           "minItems": 1,
           "maxItems": 50
         },
+        "quality": {
+          "$ref": "/schemas/enums/creative-quality.json",
+          "description": "Default render quality for all requests in this batch. Individual requests can override this. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings."
+        },
         "output_format": {
           "$ref": "/schemas/enums/preview-output-format.json",
           "default": "url",

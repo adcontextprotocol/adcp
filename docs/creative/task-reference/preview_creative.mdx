@@ -178,9 +178,10 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 |-----------|------|----------|-------------|
 | `request_type` | string | Yes | `"batch"` |
 | `requests` | array | Yes | Array of 1-50 preview requests |
+| `quality` | string | No | Default quality for all requests: `"draft"` or `"production"` |
 | `output_format` | string | No | Default output format for all requests |
 
-Each item in `requests` also accepts `quality` and `item_limit` to override batch-level defaults for that individual preview.
+Each item in `requests` also accepts `quality`, `output_format`, and `item_limit` to override batch-level defaults for that individual preview.
 
 ### Input Sets
 
@@ -306,6 +307,25 @@ The response includes the variant's actual manifest — the specific headline, i
 | Number of variants | Typically 1 (or a few device variants) | Potentially thousands — one per context |
 
 For generative formats where every impression produces a different creative (like AI chat or real-time contextual), pre-flight previews are best understood as *samples from a distribution* rather than *the ad*. The brief and brand identity constrain the distribution; previews let you verify the agent interprets those constraints correctly.
+
+### Conversational and interactive formats
+
+For formats where the ad is stateful — AI chat, interactive experiences, conversational native — preview takes on additional meaning:
+
+- **Pre-flight** renders a representative first interaction or simulated conversation. The `interactive_url` field in the preview response (when present) provides a sandbox where reviewers can interact with the experience directly. Use `context_description` to simulate different conversation entry points.
+- **Post-flight** variant replay shows the actual exchange that occurred. For multi-turn formats, the variant manifest captures the full content the agent produced (message sequence, responses, media assets shown). The level of detail depends on the agent — some provide full transcripts, others provide summarized content with anonymized user signals.
+
+These formats have the widest gap between pre-flight and post-flight: a pre-flight preview can only approximate one possible conversation path, while the live experience adapts to each user. Preview enough scenarios to verify tone, guardrails, and brand consistency.
+
+### Quality mismatch
+
+If the requested quality level is not supported, the agent renders at the best quality it can provide. The protocol does not require agents to support both levels — an agent that only generates at one fidelity ignores the parameter. There is no response field echoing back the actual quality used, so if quality accuracy matters for your workflow, verify by visual inspection or ask the agent about its capabilities through `list_creative_formats`.
+
+### Preview expiration and variant retention
+
+All previews have an `expires_at` timestamp. After expiration, preview URLs return errors and must be re-generated. For generative creative, re-generating a pre-flight preview may produce different output — the same brief and context can yield different creative each time.
+
+Variant previews (post-flight) depend on the agent retaining variant data. Agents are not required to retain variant data indefinitely. If you request a variant preview for a variant the agent has purged, expect a standard error response. For long-running campaigns, retrieve and archive variant previews periodically rather than assuming they will remain available.
 
 ## Examples
 

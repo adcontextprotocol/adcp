@@ -101,10 +101,44 @@ The seller generates creatives at serve time using this brief and the buyer's br
 
 For generative formats, `preview_creative` serves two purposes:
 
-- **Before the campaign** — pass the brief manifest with `context_description` inputs to see representative samples of what the agent could generate. Use `quality: "draft"` for fast iteration on creative direction, `quality: "production"` for stakeholder review. These previews are illustrative — real output depends on live signals at serve time.
-- **After the campaign** — pass a `variant_id` from `get_creative_delivery` to replay exactly what was served for a specific context.
+**Before the campaign** — pass the brief manifest with `context_description` inputs to see representative samples of what the agent could generate:
 
-See [Previewing generative creative](/docs/creative/task-reference/preview_creative#previewing-generative-creative) for examples and expectations.
+```json
+{
+  "request_type": "single",
+  "quality": "draft",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.seller-example.com",
+      "id": "contextual_display_generative"
+    },
+    "assets": {
+      "brief": {
+        "content": "Highlight our sustainability story. Match tone to editorial context."
+      }
+    }
+  },
+  "inputs": [
+    { "name": "Tech article", "context_description": "Article about semiconductor manufacturing" },
+    { "name": "Lifestyle blog", "context_description": "Blog post about sustainable living" }
+  ]
+}
+```
+
+Use `quality: "draft"` for fast iteration on creative direction, `quality: "production"` for stakeholder review. These previews are illustrative — real output depends on live signals at serve time. Preview doesn't require an active media buy — you can preview before calling `create_media_buy`.
+
+**After the campaign** — pass a `variant_id` from `get_creative_delivery` to replay exactly what was served:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_tech_mobile_001"
+}
+```
+
+The response includes the variant's actual manifest and a rendered preview. This is a faithful replay, not a re-generation.
+
+See [Previewing generative creative](/docs/creative/task-reference/preview_creative#previewing-generative-creative) for the full mental model and expectations table.
 
 ## Delivery reporting
 
