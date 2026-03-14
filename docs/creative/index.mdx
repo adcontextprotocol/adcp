@@ -47,24 +47,7 @@ Before generating anything, Maya's platform checks what formats each seller acce
 
 Her platform calls `list_creative_formats` on each connected agent:
 
-```mermaid
-sequenceDiagram
-    participant Platform as Maya's Agency Platform
-    participant CTV as StreamHaus (CTV seller)
-    participant Display as Pinnacle Media (display)
-    participant Social as CommHub (social platform)
-
-    par Discover formats
-        Platform->>CTV: list_creative_formats
-        CTV-->>Platform: SSAI 30s, CSAI 15s/30s, companion 300×250
-        Platform->>Display: list_creative_formats
-        Display-->>Platform: display 300×250, 728×90, 160×600
-        Platform->>Social: list_creative_formats
-        Social-->>Platform: promoted post, promoted carousel
-    end
-
-    Note over Platform: Build unified format catalog
-```
+<img src="/images/walkthrough/diagram-01-format-discovery.png" alt="Agency platform calls list_creative_formats on three sellers: StreamHaus returns CTV formats, Pinnacle Media returns display sizes, CommHub returns social formats" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Now Maya's platform knows: StreamHaus needs video files and VAST tags. Pinnacle needs display banners. CommHub needs feed-native content assets. One brief, three different output types.
 
@@ -74,22 +57,7 @@ Now Maya's platform knows: StreamHaus needs video files and VAST tags. Pinnacle 
 
 Maya's platform routes the brief to the right creative agents. A CTV specialist handles video. A display agent handles banners. The social platform generates feed-native content that matches each community's voice.
 
-```mermaid
-sequenceDiagram
-    participant Platform as Agency Platform
-    participant Video as Video Creative Agent
-    participant Display as Display Creative Agent
-    participant Social as CommHub (generates natively)
-
-    Platform->>Video: build_creative (brief + target: SSAI 30s)
-    Video-->>Platform: Video manifest (draft quality)
-
-    Platform->>Display: build_creative (brief + target: 300×250, 728×90)
-    Display-->>Platform: Display manifests (draft quality)
-
-    Platform->>Social: create_media_buy (brief embedded)
-    Note over Social: Social platform generates at serve time<br/>using community context
-```
+<img src="/images/walkthrough/diagram-02-generate-route.png" alt="Agency platform routes the brief to three agents: Video Agent receives build_creative for SSAI 30s, Display Agent receives build_creative for banner sizes, Social Platform receives create_media_buy with brief embedded" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 For CTV and display, Maya gets back draft-quality manifests she can preview immediately. For social, the platform will generate at serve time — but Maya can still preview what it would look like.
 
@@ -122,24 +90,7 @@ When Maya's happy, she promotes to production quality:
 
 Now the finished creatives need to reach each seller. Maya's platform calls `sync_creatives` on each one — same creative, adapted to each seller's required format:
 
-```mermaid
-sequenceDiagram
-    participant Platform as Agency Platform
-    participant CTV as StreamHaus
-    participant Display as Pinnacle Media
-    participant Social as CommHub
-
-    par Distribute creatives
-        Platform->>CTV: sync_creatives (SSAI video + companion)
-        CTV-->>Platform: ✓ pending_review
-        Platform->>Display: sync_creatives (300×250, 728×90)
-        Display-->>Platform: ✓ approved
-        Platform->>Social: sync_creatives (post assets)
-        Social-->>Platform: ✓ pending_review (community guidelines check)
-    end
-
-    Note over Platform: Track approval status per seller
-```
+<img src="/images/walkthrough/diagram-03-distribute.png" alt="Creative agency platform distributes creatives via sync_creatives to three sellers: CTV seller returns pending review, Display seller returns approved, Social platform returns pending review for community guidelines" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Different sellers have different review processes. Pinnacle auto-approves based on brand safety rules. StreamHaus and CommHub do manual review. Maya's platform tracks approval state per seller — a creative approved on one and pending on another is normal, not an error.
 
@@ -159,24 +110,7 @@ Maya doesn't manage any of this. The protocol handles it. But she can see everyt
 
 One week in, Maya pulls delivery data. Her platform calls `get_creative_delivery` on each agent and merges the results:
 
-```mermaid
-sequenceDiagram
-    participant Platform as Agency Platform
-    participant CTV as StreamHaus
-    participant Display as Pinnacle Media
-    participant Social as CommHub
-
-    par Collect delivery data
-        Platform->>CTV: get_creative_delivery
-        CTV-->>Platform: 1 variant, 150K impressions, 72% completion
-        Platform->>Display: get_creative_delivery
-        Display-->>Platform: 4 variants (optimized combos), 200K impressions
-        Platform->>Social: get_creative_delivery
-        Social-->>Platform: 12 variants (AI-generated), 85K impressions + engagement
-    end
-
-    Note over Platform: Merge by creative_id, normalize timezones,<br/>prefix variant_ids with agent URL
-```
+<img src="/images/walkthrough/diagram-04-delivery-aggregation.png" alt="Three sellers report delivery data back to agency platform: CTV seller shows 1 variant with 150K impressions, Display seller shows 4 variants with 200K impressions, Social platform shows 12 AI-generated variants with 85K impressions plus engagement metrics" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 The social platform's response includes engagement metrics in the `ext` field — upvotes, comments, shares — alongside standard delivery metrics. Display variants include the manifest showing which headline/image combination each variant used. CTV includes completion rates and quartile data.
 
@@ -197,23 +131,7 @@ The platform renders exactly what was served — the generated headline, the com
 
 ## The full picture
 
-```mermaid
-flowchart LR
-    A[Write brief] --> B[Discover formats]
-    B --> C[Generate + preview]
-    C --> D[Iterate at draft quality]
-    D --> E[Promote to production]
-    E --> F[Distribute to sellers]
-    F --> G[Campaign runs]
-    G --> H[Pull delivery data]
-    H --> I[Replay variants]
-    I --> J[Inform next brief]
-    J --> A
-
-    style A fill:#047857,color:#fff
-    style E fill:#047857,color:#fff
-    style I fill:#047857,color:#fff
-```
+<img src="/images/walkthrough/diagram-05-lifecycle.png" alt="The full creative lifecycle: Write brief, Discover formats, Generate and preview, Iterate and approve, Distribute to sellers, Campaign runs, Review delivery and replay variants, then Inform next brief — completing the cycle" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Every step uses a standard AdCP task. Every agent — creative tools, publishers, social platforms — speaks the same protocol. Maya writes one brief, and AdCP handles the rest: format adaptation, multi-agent routing, cross-seller distribution, variant tracking, and unified reporting.
 
