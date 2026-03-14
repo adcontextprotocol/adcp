@@ -103,6 +103,10 @@ Publishers can return **proposals** alongside products — structured media plan
 
 ### Accounts
 
+<Tip>
+**Migrating from v2?** Accounts are entirely new in v3 — there is no v2 equivalent to migrate from. Start with [Accounts and Agents](/docs/building/integration/accounts-and-agents) for the setup guide.
+</Tip>
+
 Formal billing relationships between buyers and sellers via `sync_accounts`.
 
 **Four entities:**
@@ -139,6 +143,10 @@ Formats declare what catalogs they need via `catalog_requirements`. Creatives re
 ### Capability discovery
 
 `get_adcp_capabilities` replaces static agent card extensions with runtime capability discovery. It returns supported protocols, account billing models, portfolio information, targeting systems, and governance features — all schema-validated.
+
+<Warning>
+**`adcp-extension.json` is removed.** If your v2 integration reads capability data from the agent card extension file, switch to calling `get_adcp_capabilities` at runtime. The agent card extension is no longer published.
+</Warning>
 
 | Agent card extension | get_adcp_capabilities |
 |---------------------|----------------------|

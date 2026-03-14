@@ -130,9 +130,9 @@ export const ROUTING_RULES = {
       description: 'Questions about what Addie can help with - respond with capability overview',
     },
     adcp_protocol: {
-      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief'],
+      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief', 'ai media', 'ai platform', 'ai ad network', 'ai assistant', 'sponsored response', 'ad network', 'aggregator', 'migration', 'upgrade', 'breaking change', 'v2 to v3', 'deprecated', 'what changed', 'reversed data flow', 'catalog sync', 'buy ads', 'buying ads', 'advertise on', 'advertising on', 'brand safety', 'content standards', 'product feed', 'shopify', 'agency buying', 'agency integration', 'brand identity'],
       tools: ['search_docs'],
-      description: 'AdCP protocol questions - understanding how things work',
+      description: 'AdCP protocol questions - understanding how things work, migration, AI media',
     },
     salesagent: {
       patterns: ['salesagent', 'sales agent', 'open source agent', 'reference implementation'],

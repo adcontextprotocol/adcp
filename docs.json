@@ -67,6 +67,7 @@
                 "group": "AdCP 3.0",
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -375,6 +376,7 @@
               "docs/guides/commerce-media",
               "docs/guides/ai-media",
               "docs/guides/ai-media-buying",
+              "docs/guides/buying-ai-media",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
               "docs/guides/industry-landscape"
@@ -470,6 +472,7 @@
                 "group": "AdCP 3.0",
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -778,6 +781,7 @@
               "docs/guides/commerce-media",
               "docs/guides/ai-media",
               "docs/guides/ai-media-buying",
+              "docs/guides/buying-ai-media",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
               "docs/guides/industry-landscape"

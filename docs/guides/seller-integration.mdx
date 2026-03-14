@@ -103,6 +103,15 @@ Your platform processes the buy according to your normal workflow — whether th
 
 </Steps>
 
+## Industry-specific guidance
+
+The core integration steps above apply to all sellers. If you're an **ad network aggregating across multiple platforms**, see the [network aggregation pattern](/docs/guides/ai-media#ad-networks-the-aggregation-pattern) in the AI media guide for product modeling, account chains, catalog forwarding, and `adagents.json` for networks.
+
+For vertical-specific product modeling, pricing patterns, and measurement:
+
+- **AI platforms and AI ad networks**: See the [AI media guide](/docs/guides/ai-media) for sponsored responses, AI search products, generative creative from catalogs, and Sponsored Intelligence handoffs.
+- **Retail media networks**: See the [commerce media guide](/docs/guides/commerce-media) for sponsored product listings, closed-loop attribution, and in-store measurement.
+
 ## Accounts and sandbox
 
 Production sales agents should implement the accounts protocol. [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) let buyers establish billing relationships, track spend per advertiser, and manage multiple operators buying on behalf of different brands through a single agent.
@@ -119,6 +128,32 @@ See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for fu
 ## Optional: delivery reporting
 
 Implement `get_media_buy_delivery` to let buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually.
+
+## Governance enforcement
+
+Buyer agents increasingly require governance compliance before committing spend. Implementing governance makes your inventory eligible for brand-safe campaigns, reduces post-campaign disputes, and signals to buyer agents that your platform takes brand suitability seriously. Three governance domains are relevant to sellers.
+
+### Property governance via adagents.json
+
+Your `adagents.json` file is the foundation of property governance. It declares which properties you sell, which agents are authorized to sell them, and which governance agents have data about your inventory. Buyer agents use this to verify supply path authorization and discover property intelligence — if your `adagents.json` is missing or incomplete, buyer agents cannot verify that you are authorized to sell what you claim.
+
+Declare `property_features` entries to point buyers toward governance agents that score your properties for quality, sustainability, or brand safety. See the [property governance specification](/docs/governance/property/specification) for the full schema and the [adagents.json tech spec](/docs/governance/property/adagents) for publisher-side setup.
+
+### Content standards enforcement
+
+When a buyer includes a `content_standards_ref` in a `get_products` or `create_media_buy` request, they are asking you to enforce brand suitability rules during delivery. Your responsibilities: fetch the standards from the referenced governance agent, evaluate whether you can enforce them, reject the buy if you cannot, and calibrate your local evaluation model against the governance agent via `calibrate_content`. After delivery, push content artifacts back to the buyer so they can validate compliance independently.
+
+If you cannot meaningfully enforce a buyer's content standards, reject the buy rather than accepting it and failing silently. See the [content standards implementation guide](/docs/governance/content-standards/implementation-guide) for the full sales agent workflow.
+
+### Creative governance
+
+Buyer agents may require creative evaluation before delivery — security scanning, content categorization, or quality scoring. As a seller, you participate by submitting creative manifests to governance agents via `get_creative_features` and honoring the feature requirements the buyer sets (for example, blocking creatives flagged for `auto_redirect` or `credential_harvest`). You do not need to implement the evaluation yourself; specialist governance agents handle that.
+
+See the [creative governance overview](/docs/governance/creative/index) for the feature-based evaluation model and multi-agent collaboration pattern.
+
+### For AI media sellers: generation-time enforcement
+
+Traditional sellers apply governance as a post-delivery filter — classify content, then block what fails. AI media platforms generate creative at serve time, which means governance rules can be enforced during generation rather than after the fact. When a buyer pushes content standards, apply them as constraints on your generation pipeline so unsuitable content is never produced. This gives brands a fundamentally stronger guarantee: suitability is built into the output, not bolted on as a check afterward. See the [AI media guide](/docs/guides/ai-media) for how content standards integrate with catalog-driven creative generation.
 
 ## How it connects to your existing stack
 
@@ -145,5 +180,11 @@ AdCP sits alongside your existing APIs and dashboards. It doesn't replace your s
   </Card>
   <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">
     Ask questions about implementing AdCP for your platform — no code required.
+  </Card>
+  <Card title="AI media guide" icon="microchip" href="/docs/guides/ai-media">
+    Product modeling and workflows for AI platforms and AI ad networks.
+  </Card>
+  <Card title="Commerce media guide" icon="cart-shopping" href="/docs/guides/commerce-media">
+    Product modeling and workflows for retail media networks.
   </Card>
 </CardGroup>

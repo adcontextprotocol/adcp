@@ -8,6 +8,26 @@ The `brand.json` file provides a standardized way for brands to claim their iden
 `brand.json` is the canonical source of brand identity data. The brand object defined here (logos, colors, tone, tagline) is the single brand definition used across AdCP. Tasks reference brands by domain and brand_id — the system resolves full identity from `brand.json` or the [registry](/docs/registry/index).
 </Info>
 
+## Why brand identity matters for AI media
+
+When AI platforms generate ads from your brand's data, the quality of that output depends on the quality of the brand identity you provide. Your `brand.json` tells every platform your brand voice, visual guidelines, tagline, logos, and positioning — so the AI generates content that sounds and looks like your brand, not a generic approximation.
+
+Without `brand.json`, platforms have to guess. With it, every AI-generated sponsored response, search result, and brand experience starts from your actual brand guidelines. Your marketing team or brand manager should own this file — it's the same brand identity information in your style guide, published in a format that AI agents and platforms can read.
+
+See the [AI media guide](/docs/guides/ai-media) for how brand identity fits into the full data pipeline.
+
+### What goes in a brand.json
+
+At its core, a brand.json file contains the same information in your brand style guide:
+
+- **Brand name and tagline** — how the brand introduces itself
+- **Logos** — primary, wordmark, and icon in multiple formats
+- **Colors** — primary, secondary, and accent palettes with hex values
+- **Tone of voice** — how the brand speaks (e.g., "confident but approachable, never sarcastic")
+- **Positioning** — what the brand stands for and who it serves
+
+Your brand team or marketing manager provides this information. Your technical team or agency publishes the file. The rest of this page covers the specification details.
+
 ## File location
 
 Brands host the `brand.json` file at:

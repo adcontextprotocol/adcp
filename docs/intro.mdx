@@ -19,6 +19,14 @@ AdCP (Ad Context Protocol) is an open standard that gives AI agents a shared lan
 
 You set the strategy. Agents handle the execution. You approve what matters.
 
+## Not sure where to start?
+
+If you're new to agentic advertising entirely, start with the [FAQ](/docs/faq) — it explains what agentic advertising is and why it matters.
+
+If you're evaluating AI media buying for your agency or brand — not building protocol integrations — start with the [buyer's guide to AI media](/docs/guides/buying-ai-media). It explains what AI advertising requires, what data you need to provide, and how to get started, without protocol detail.
+
+If you're building, keep reading.
+
 ## How it works
 
 AdCP defines **tasks** — discrete advertising operations like `get_products`, `create_media_buy`, or `activate_signal`. Each task has a JSON Schema-defined request and response. Agents call tasks through two transport protocols:
@@ -92,6 +100,12 @@ The agent queries connected signals agents with a natural language brief, evalua
 
 The agent resolves brand identity via `brand.json`, retrieves brand assets (logos, colors, tone), discovers available formats from creative agents, syncs the product catalog, and generates on-brand creatives.
 
+### Buy sponsored responses on AI platforms
+
+> "Push our product catalog and brand guidelines to AI assistants so they can generate great sponsored responses for our wireless headphones."
+
+AI media reverses the traditional programmatic flow — instead of sending bid requests out, buyers push catalogs, conversion events, brand identity, and content standards into the platform. The agent syncs the brand's product catalog via `sync_catalogs`, pushes conversion events via `sync_event_sources`, discovers AI media products with `channels: ["ai_media"]`, and creates a media buy. The platform's LLM has full context to generate the right ad in the right moment.
+
 ### Engage users conversationally
 
 > "A user in our AI assistant is asking about running shoes. Connect them with the brand's agent for a personalized experience."
@@ -108,7 +122,7 @@ The agent evaluates provenance claims on each creative via `get_creative_feature
 
 AI is buying ads. Make sure it can buy yours.
 
-If you operate a DSP, SSP, publisher, data platform, creative platform, governance service, or any ad tech solution, AdCP lets AI agents discover and transact with your platform. To get started:
+If you operate a DSP, SSP, publisher, AI platform, AI ad network, retail media network, data platform, creative platform, governance service, or any ad tech solution, AdCP lets AI agents discover and transact with your platform. To get started:
 
 1. **Implement an AdCP agent** — Expose your platform's capabilities as AdCP tasks over MCP or A2A. Start with `get_adcp_capabilities`.
 2. **Publish your adagents.json** — Declare your properties and authorized agents so buyers can discover you.
@@ -116,6 +130,8 @@ If you operate a DSP, SSP, publisher, data platform, creative platform, governan
 
 Implement the protocol domains relevant to your business:
 - **Publishers and SSPs**: [Media Buy](/docs/media-buy) and [adagents.json](/docs/governance/property)
+- **AI platforms and AI ad networks**: [AI media guide](/docs/guides/ai-media) and [Media Buy](/docs/media-buy)
+- **Retail media networks**: [Commerce media guide](/docs/guides/commerce-media) and [Media Buy](/docs/media-buy)
 - **Data providers**: [Signals](/docs/signals/overview) and [data provider guide](/docs/signals/data-providers)
 - **Creative platforms**: [Creative](/docs/creative)
 - **Governance vendors**: [Governance protocol](/docs/governance/overview)
@@ -123,13 +139,13 @@ Implement the protocol domains relevant to your business:
 
 ## For advertisers and agencies
 
-Run campaigns across more platforms without scaling your team.
+AI platforms generate ads from your brand's data — products, brand voice, content standards. Your job shifts from building creative and setting up campaigns to providing great ingredients and defining goals.
 
-AdCP-enabled agents work across all your media partners through a single interface — the same tasks buy CTV inventory, activate audience data, and manage creatives regardless of which platform you're working with.
+Start with the [buyer's guide to AI media](/docs/guides/buying-ai-media) for a non-technical overview. Then:
 
 1. **Check platform support** — See which of your media partners support AdCP, or browse the [registry](/docs/registry).
 2. **Try it with Addie** — [Ask Addie](https://adcontextprotocol.org/chat) to walk you through the protocol — no code required.
-3. **Connect with your team** — Share the [quickstart guide](/docs/quickstart) with your technical team to integrate client libraries.
+3. **Connect with your team** — Share the [AI media guide](/docs/guides/ai-media) and [quickstart](/docs/quickstart) with your technical team.
 
 ### Client libraries
 
@@ -144,6 +160,25 @@ pip install adcp
 
 - **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
 - **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-python)
+
+## Industry guides
+
+AdCP supports industry-specific workflows. These guides show how the protocol maps to each vertical's terminology, products, and measurement patterns.
+
+<CardGroup cols={2}>
+  <Card title="AI media" icon="microchip" href="/docs/guides/ai-media">
+    Sponsored responses in AI assistants, AI search ads, generative display, and brand experience handoffs
+  </Card>
+  <Card title="Commerce media" icon="cart-shopping" href="/docs/guides/commerce-media">
+    Sponsored product listings, on-site display, off-site audience extension, and closed-loop attribution
+  </Card>
+  <Card title="Seller integration" icon="store" href="/docs/guides/seller-integration">
+    How publishers, SSPs, and ad platforms expose inventory to AI buyer agents
+  </Card>
+  <Card title="All guides" icon="book" href="/docs/guides">
+    Browse all industry and foundational guides
+  </Card>
+</CardGroup>
 
 ## Reference implementations
 

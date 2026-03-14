@@ -10,7 +10,13 @@ The Governance Protocol provides standardized mechanisms for compliance, brand s
 
 > Define and operate transparent, privacy-safe, brand-suitable campaign governance that encodes human heuristics in open protocol objects, making campaigns easy to launch, safe to scale, and measurable against verifiable outcomes for buyers, sellers, and auditors.
 
-## Protocol Domains
+## What this means for your brand
+
+If you're a brand leader or agency evaluating governance: AdCP governance lets you define how AI platforms talk about your brand — your suitability rules, your content standards, your approved contexts — and push those rules into every platform programmatically. On AI media platforms, your content standards are enforced at generation time: the AI won't produce content that violates your rules, rather than catching it after the fact. This is a fundamentally stronger guarantee than traditional brand safety vendors that classify content post-delivery.
+
+Traditional verification vendors (IAS, DoubleVerify, etc.) still have a role for traditional programmatic — classifying content, verifying viewability, measuring adjacency. But on AI media platforms, the content is generated, not classified. The governance mechanism shifts from post-delivery verification to pre-generation constraints. Both approaches can coexist: use traditional vendors for traditional channels, and protocol-level governance for AI media channels. See [content standards](/docs/governance/content-standards/index) for how to define your rules and [campaign governance](/docs/governance/campaign/index) for budget controls and approval workflows.
+
+## Protocol domains
 
 The Governance Protocol covers six governance domains:
 
@@ -45,6 +51,10 @@ Governance agents operate across the **full campaign lifecycle**:
 - **Setup time**: Configure property lists, brand requirements, and compliance rules
 - **Execution time**: Filter inventory and validate placements through cached rules and scoring
 - **Post-delivery**: Measurement, verification, and reporting on compliance
+
+<Note>
+**AI media platforms** can enforce governance at generation time — content standards become constraints on the LLM pipeline so unsuitable content is never produced, rather than filtered after the fact. See the [AI media guide](/docs/guides/ai-media) and [seller integration — generation-time enforcement](/docs/guides/seller-integration#for-ai-media-sellers-generation-time-enforcement) for details.
+</Note>
 
 ```mermaid
 flowchart TB

@@ -571,15 +571,15 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
-    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist"',
+    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Generative Advertising). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
+    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "generative advertising", "ai media"',
     input_schema: {
       type: 'object',
       properties: {
         module_id: {
           type: 'string',
           enum: ['S1', 'S2', 'S3', 'S4', 'S5'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence)',
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising)',
         },
       },
       required: ['module_id'],
@@ -711,6 +711,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Get products task', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
+    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
   ],
   B2: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -770,6 +772,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'MCP server implementation', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
+    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
   ],
   D2: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
@@ -822,9 +825,15 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
   S5: [
+    { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
+    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Media channel taxonomy — ai_media', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
+    { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Sponsored Intelligence overview', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'SI specification', url: `${DOCS_BASE}/docs/sponsored-intelligence/specification` },
-    { label: 'Implementing SI agents', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-agents` },
+    { label: 'Implementing SI hosts', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-hosts` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
+    { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
 };
 
@@ -1399,7 +1408,7 @@ export function createCertificationToolHandlers(
       // Validate it's a capstone module
       const mod = await certDb.getModule(moduleId);
       if (!mod || mod.format !== 'capstone') {
-        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence).`;
+        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising).`;
       }
 
       if (!memberContext?.is_member) {
