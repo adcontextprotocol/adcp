@@ -722,6 +722,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'List creative formats task', url: `${DOCS_BASE}/docs/creative/task-reference/list_creative_formats` },
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
+    { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
   ],
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -766,6 +767,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
     { label: 'Multi-agent creative orchestration', url: `${DOCS_BASE}/docs/creative/multi-agent-orchestration` },
+    { label: 'AI creative overview', url: `${DOCS_BASE}/docs/creative/ai-creative-overview` },
+    { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
@@ -825,6 +828,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
     { label: 'Multi-agent creative orchestration', url: `${DOCS_BASE}/docs/creative/multi-agent-orchestration` },
     { label: 'AI creative overview', url: `${DOCS_BASE}/docs/creative/ai-creative-overview` },
+    { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
   ],
   S3: [
     { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },

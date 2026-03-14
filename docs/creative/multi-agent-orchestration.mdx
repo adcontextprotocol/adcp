@@ -308,6 +308,17 @@ When an agent is unreachable, the orchestrator should:
 
 A creative approved on one seller and rejected on another is normal, not an error. The orchestrator should surface this clearly to the campaign team rather than treating it as a failure. If the rejection is due to a fixable issue (wrong aspect ratio, missing click URL), update the creative and re-sync to the rejecting seller only.
 
+### Rate limiting and concurrency
+
+When calling many agents in parallel (common for cross-seller sync and delivery aggregation), expect that agents may rate-limit requests. Handle this with standard HTTP patterns:
+
+- Respect `429 Too Many Requests` responses and the `Retry-After` header
+- Use exponential backoff with jitter for retries
+- Set reasonable concurrency limits per agent (start with 5 concurrent requests per agent, adjust based on observed behavior)
+- Log rate-limit events per agent to identify which agents need lower concurrency
+
+Rate-limiting behavior is agent-specific and not standardized by AdCP. Some agents may return `429` with a `Retry-After` header; others may slow responses without explicit signaling. Build your orchestrator to handle both patterns.
+
 ## Specialized format orchestration
 
 The patterns on this page apply to all creative formats — display, video, CTV, conversational, audio, DOOH. The protocol-level operations (`list_creative_formats`, `sync_creatives`, `get_creative_delivery`) work identically regardless of format type. The format-specific differences are in asset requirements and preview behavior:

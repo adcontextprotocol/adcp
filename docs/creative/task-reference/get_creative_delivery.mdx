@@ -23,7 +23,7 @@ At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creati
 | `start_date` | string | No | Start date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `end_date` | string | No | End date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `max_variants` | integer | No | Maximum variants to return per creative. Useful for generative creatives with large variant counts. |
-| `pagination` | object | No | Pagination parameters (`limit`, `offset`) for the creatives array. When omitted, all matching creatives are returned. |
+| `pagination` | object | No | Cursor-based pagination parameters (`max_results`, `cursor`) for the creatives array. When omitted, all matching creatives are returned. |
 
 \* At least one of `media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids` must be provided.
 
@@ -37,7 +37,7 @@ At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creati
 | `currency` | ISO 4217 currency code for monetary values (e.g., 'USD', 'EUR') |
 | `reporting_period` | Date range with start/end timestamps and `timezone` (IANA identifier — platforms report in their native timezone) |
 | `creatives` | Array of creative delivery data with variant breakdowns |
-| `pagination` | (Optional) Pagination info with `limit`, `offset`, `has_more`, and optional `total`. Present when the request included pagination parameters. |
+| `pagination` | (Optional) Pagination info with `max_results`, `cursor`, and `has_more`. Present when the request included pagination parameters. |
 
 ### Creative Object
 
@@ -59,6 +59,7 @@ Each variant represents a specific execution: a fixed creative (Tier 1), an asse
 | `variant_id` | Platform-assigned variant identifier |
 | `manifest` | (Optional) The rendered creative manifest — the actual output that was served, not the input assets. Contains format_id and resolved assets. Not all platforms can provide manifests for every variant. |
 | `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. When content context is managed through AdCP content standards, includes an `artifact` reference linking to the specific content artifact. Supports `ext` for vendor-specific context structures. |
+| `ext` | (Optional) Platform-specific data. Social platforms use this for engagement metrics (upvotes, comments, shares) that vary by platform. |
 | Standard metrics | All delivery metrics (impressions, spend, clicks, ctr, etc.) |
 
 Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are platform-calculated and may not equal naive division of their component fields due to rounding, attribution windows, or filtered impressions.
@@ -102,6 +103,29 @@ One creative maps 1:1 to one variant. The variant metrics match the creative tot
   ]
 }
 ```
+
+### Platform engagement metrics
+
+Social and feed-native platforms include engagement data in the `ext` field on each variant, since engagement types vary by platform:
+
+```json
+{
+  "variant_id": "promoted_post_running_community",
+  "impressions": 85000,
+  "spend": 4250,
+  "clicks": 2550,
+  "ctr": 0.03,
+  "ext": {
+    "upvotes": 1240,
+    "comments": 87,
+    "shares": 34,
+    "saves": 156,
+    "comment_sentiment": "positive"
+  }
+}
+```
+
+The `ext` field is not standardized across platforms — each platform defines its own engagement schema. Buyers aggregating across social platforms should map platform-specific fields to a common model.
 
 ### Tier 2: Asset Group Optimization
 

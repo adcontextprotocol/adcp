@@ -488,7 +488,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'View supported creative specifications from a sales or creative agent. Returns format definitions with dimensions and asset requirements.',
     usage_hints:
-      'use when the user wants to see what creative formats are supported, understand creative specs, check dimension requirements, discover CTV/video/display/audio/DOOH formats, find generative formats on a sales agent, or build a format catalog across multiple agents for orchestration. Also use when guiding a seller or platform on how to define and expose their creative formats via AdCP.',
+      'use when the user wants to see what creative formats are supported, understand creative specs, check dimension requirements, discover CTV/video/display/audio/DOOH/social/native/feed-native formats, find generative formats on a sales agent, or build a format catalog across multiple agents for orchestration. Also use when guiding a seller or platform on how to define and expose their creative formats via AdCP — including social platforms with promoted posts and community-specific rendering.',
     input_schema: {
       type: 'object',
       properties: {
@@ -771,7 +771,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'Query and search the creative library with filtering, sorting, and pagination. Supports filtering by format, status, tags, dates, and assignments.',
     usage_hints:
-      'use when the user wants to browse creatives, search the creative library, or find specific creative assets',
+      'use when the user wants to browse creatives, search the creative library, find specific creative assets, check creative approval status across sellers, or monitor rejection reasons for cross-seller distribution workflows',
     input_schema: {
       type: 'object',
       properties: {
@@ -1020,7 +1020,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Generate visual previews of creative manifests. Returns preview URLs or HTML.',
     usage_hints:
-      'use when the user wants to see how a creative will look, preview ad renderings, validate creative output, test generative briefs with simulated contexts, replay served variants from get_creative_delivery, preview CTV/video/conversational formats, or test guardrails with adversarial inputs. Also use when guiding a seller or creative agent implementer on how to support preview rendering via AdCP.',
+      'use when the user wants to see how a creative will look, preview ad renderings, validate creative output, test generative briefs with simulated contexts, replay served variants from get_creative_delivery, preview CTV/video/conversational/social/feed-native formats, test how promoted posts render in different community contexts, or test guardrails with adversarial inputs. Also use when guiding a seller or creative agent implementer on how to support preview rendering via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1087,7 +1087,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Retrieve variant-level creative delivery data from a creative agent. Returns what was generated, served, and how each variant performed. Requires at least one scoping filter: media_buy_ids, media_buy_buyer_refs, or creative_ids.',
     usage_hints:
-      'use when the user wants to see what creative variants were generated or served, review delivery data for generative campaigns, audit creative performance across media buys, aggregate delivery across multiple sellers, correlate variants using concept_id or creative_id, or build cross-agent dashboards. Also use when guiding a seller or creative agent implementer on how to expose delivery data via AdCP.',
+      'use when the user wants to see what creative variants were generated or served, review delivery data for generative campaigns, review generation_context to understand what triggered each variant, see platform engagement metrics (likes, shares, comments) in the ext field, audit creative performance across media buys, aggregate delivery across multiple sellers, correlate variants using concept_id or creative_id, or build cross-agent dashboards. Also use when guiding a seller or creative agent implementer on how to expose delivery data via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
