@@ -97,7 +97,7 @@ INSERT INTO person_relationships (
   opted_out,
   created_at
 )
-SELECT
+SELECT DISTINCT ON (COALESCE(sm.workos_user_id, sm.slack_user_id))
   sm.slack_user_id,
   sm.workos_user_id,
   sm.slack_email,
@@ -129,6 +129,7 @@ SELECT
 FROM slack_user_mappings sm
 WHERE sm.slack_is_bot = FALSE
   AND sm.slack_is_deleted = FALSE
+ORDER BY COALESCE(sm.workos_user_id, sm.slack_user_id), sm.last_outreach_at DESC NULLS LAST
 ON CONFLICT (slack_user_id) DO NOTHING;
 
 -- ─── Backfill from email-only prospects ─────────────────────────────────────
@@ -143,7 +144,7 @@ INSERT INTO person_relationships (
   last_addie_message_at,
   created_at
 )
-SELECT
+SELECT DISTINCT ON (o.prospect_contact_email)
   o.prospect_contact_email,
   o.workos_organization_id,
   COALESCE(o.prospect_contact_name, o.name),
@@ -168,6 +169,7 @@ WHERE o.prospect_owner = 'addie'
     SELECT 1 FROM person_relationships pr
     WHERE pr.prospect_org_id = o.workos_organization_id
   )
+ORDER BY o.prospect_contact_email, o.last_email_outreach_at DESC NULLS LAST
 ON CONFLICT DO NOTHING;
 
 -- ─── Link existing threads to relationships ─────────────────────────────────
