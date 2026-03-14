@@ -9,7 +9,7 @@ Universal governance check for campaign actions. Both the orchestrator (buyer-si
 
 | Binding | Who calls | Purpose | Key fields |
 |---------|-----------|---------|------------|
-| `proposed` | Orchestrator | Advisory check before sending to a seller. No budget committed. | `tool`, `payload` |
+| `proposed` | Orchestrator | Advisory check before sending to a seller. No budget committed. | `tool`, `payload`, `governance_context` |
 | `committed` | Seller | Binding check before executing. Validates planned delivery against the plan. Budget is committed later via `report_plan_outcome`. | `media_buy_id`, `buyer_ref`, `phase`, `planned_delivery` |
 
 The governance agent maintains all state. Callers do not chain check IDs or track conversation history -- they post the action, and the governance agent correlates by `plan_id` + `buyer_campaign_ref`.
@@ -106,10 +106,21 @@ The presence of `next_check` in a response is the signal that the governance age
         "start": "2026-03-15T00:00:00Z",
         "end": "2026-06-15T00:00:00Z"
       }
+    },
+    "governance_context": {
+      "total_budget": { "amount": 150000, "currency": "USD" },
+      "countries": ["US"],
+      "channels": ["olv"],
+      "flight": {
+        "start": "2026-03-15T00:00:00Z",
+        "end": "2026-06-15T00:00:00Z"
+      }
     }
   }
 }
 ```
+
+When `governance_context` is present, the governance agent uses it for plan validation instead of parsing tool-specific payload structures. The caller extracts governance-relevant fields into this canonical shape so the governance agent doesn't need to understand every tool's payload format.
 
 ### Committed -- purchase
 
@@ -222,6 +233,8 @@ The presence of `next_check` in a response is the signal that the governance age
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
   "explanation": "Proposed create_media_buy is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
+  "categories_evaluated": ["budget_authority", "geo_compliance", "channel_compliance", "flight_compliance", "delegation_authority"],
+  "policies_evaluated": ["us_coppa", "alcohol_advertising"],
   "expires_at": "2026-03-15T01:00:00Z"
 }
 ```
@@ -405,6 +418,7 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `caller` | string (URI) | Yes | URL of the agent making the request (orchestrator for proposed, seller for committed). |
 | `tool` | string | Proposed | The AdCP tool being checked. Required for `proposed` checks. |
 | `payload` | object | Proposed | Full tool arguments as they would be sent to the seller. Required for `proposed` checks. |
+| `governance_context` | object | No | Normalized governance-relevant fields extracted from the payload. When present, the governance agent SHOULD use these fields for plan validation instead of parsing the payload directly. See [governance context schema](/schemas/latest/governance/governance-context.json). |
 | `media_buy_id` | string | Committed | Seller's media buy identifier. Required for `committed` checks. |
 | `buyer_ref` | string | No | Buyer's reference identifier from the `create_media_buy` request. |
 | `phase` | enum | Committed | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Required for `committed` checks. |
@@ -438,6 +452,8 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `findings` | array | Per-category issues found. Present when status is `denied`, `conditions`, or `escalated`. MAY also be present on `approved` for advisory findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. |
 | `conditions` | array | Present when status is `conditions`. Adjustments the caller must make before re-calling. |
 | `mode` | enum | The governance mode under which this check was evaluated (`audit`, `advisory`, or `enforce`). Present so audit trails can distinguish advisory denials from enforced denials. |
+| `categories_evaluated` | string[] | Governance categories evaluated during this check (e.g., `budget_authority`, `geo_compliance`, `channel_compliance`). Useful for verifying which validations ran. |
+| `policies_evaluated` | string[] | Registry policy IDs evaluated during this check. |
 | `escalation` | object | Present when status is `escalated`. Contains `reason`, `severity`, `requires_human`, and optionally `approval_tier` (the organizational role required to resolve, e.g., `"manager"`, `"director"`, `"legal"`). |
 | `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
 | `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
