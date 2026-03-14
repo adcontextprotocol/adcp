@@ -198,6 +198,11 @@
             "required": ["member_plan_ids"],
             "additionalProperties": false
           },
+          "mode": {
+            "$ref": "/schemas/enums/governance-mode.json",
+            "description": "Governance enforcement mode for this plan. 'enforce': denied actions are blocked. 'advisory': denied actions proceed with findings logged. 'audit': all actions proceed, findings logged. Defaults to 'enforce' if omitted.",
+            "default": "enforce"
+          },
           "ext": {
             "$ref": "/schemas/core/ext.json"
           }

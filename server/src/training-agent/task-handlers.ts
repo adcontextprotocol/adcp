@@ -18,6 +18,14 @@ import { buildCatalog } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
+import {
+  GOVERNANCE_TOOLS,
+  handleSyncPlans,
+  handleCheckGovernance,
+  handleReportPlanOutcome,
+  handleGetPlanAuditLogs,
+} from './governance-handlers.js';
+
 
 const logger = createLogger('training-agent');
 
@@ -200,6 +208,7 @@ const TOOLS = [
       required: ['media_buy_id'] as const,
     },
   },
+  ...GOVERNANCE_TOOLS,
 ];
 
 // ── Task handler implementations ──────────────────────────────────
@@ -840,6 +849,10 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   sync_creatives: handleSyncCreatives,
   list_creatives: handleListCreatives,
   update_media_buy: handleUpdateMediaBuy,
+  sync_plans: handleSyncPlans,
+  check_governance: handleCheckGovernance,
+  report_plan_outcome: handleReportPlanOutcome,
+  get_plan_audit_logs: handleGetPlanAuditLogs,
 };
 
 /**

@@ -119,6 +119,7 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].regions` | array | No | ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., `US-MA`). When present, restricts buys to these regions rather than the full country. |
 | `plans[].policy_ids` | array | No | Registry policy IDs to enforce for this plan. Intersected with the plan's countries/regions to activate only geographically relevant policies. |
 | `plans[].custom_policies` | array | No | Natural language policy statements specific to this campaign (e.g., "No advertising adjacent to competitor content"). |
+| `plans[].mode` | enum | No | Governance enforcement mode for this plan: `enforce`, `advisory`, or `audit`. Defaults to `enforce`. See [governance modes](/docs/governance/campaign/specification#governance-modes). |
 | `plans[].approved_sellers` | array/null | No | List of approved seller agent URLs. `null` means any seller. |
 | `plans[].delegations` | array | No | Agents authorized to execute against this plan. See [specification](/docs/governance/campaign/specification#delegations). |
 | `plans[].delegations[].agent_url` | string | Yes | URL of the delegated agent. |
