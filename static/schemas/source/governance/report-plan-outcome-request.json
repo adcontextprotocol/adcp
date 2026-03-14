@@ -33,11 +33,22 @@
           "type": "string",
           "description": "The buyer reference echoed back by the seller."
         },
+        "committed_budget": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total budget committed across all confirmed packages. When present, the governance agent uses this directly instead of summing package budgets."
+        },
         "packages": {
           "type": "array",
           "description": "Confirmed packages with actual budget and targeting.",
           "items": {
             "type": "object",
+            "properties": {
+              "budget": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
             "additionalProperties": true
           }
         },
