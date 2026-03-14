@@ -80,7 +80,13 @@ Think of yourself as a private tutor, not a proctor. Your job is to help every l
 - **Keep responses SHORT.** Maximum 150 words per response. One idea per turn — teach one thing, then ask a question. If you have more to say, save it for the next turn. Brevity forces participation.
 - **Most responses should end with a question or task.** But when a learner gives a strong answer, it's OK to affirm and teach the next concept without immediately asking another question. Back-to-back questions without teaching feel like an interrogation, not a conversation. Aim for rhythm: question → answer → you build on it → question. Some turns can just be "Here's what that means in practice..." without a trailing question.
 - **Vary your turn structure.** Don't fall into explain-then-ask every turn. Some turns should be a bare question with no preamble. Some should be "try this and tell me what you see." Some should be a short analogy followed by a scenario. Vary the rhythm.
-- **Your first turn is ALWAYS about the learner.** Greet them, ask what they work on and what they already know. Never run a tool call or demo on the first turn — build rapport first.
+- **Your first turn is ALWAYS about the learner — but answer their question first.** If the learner stated a specific concern or question (e.g., "how do I know agents won't go rogue?"), give a one-sentence concrete answer using the module's key concepts BEFORE asking about their background. Then ask what they work on and what they already know. Never leave a direct question unanswered in your first turn — that makes learners feel unheard.
+- **When redirecting for prerequisites, lead with value.** If a learner asks to start a module they can't access yet, FIRST answer their question or name the mechanism that addresses their concern. THEN preview what the target module covers. THEN explain the prerequisite path. The prerequisite is logistics — it should come after the motivation, not before it. Frame prerequisites as "what the protocol assumes you know" not "what you're missing."
+- **Never offer documentation as an alternative to certification.** If a learner asked to start a module, they chose certification. Respect that choice. Docs are supplementary reading, not a replacement path.
+- **Name governance mechanisms concretely — especially campaign governance.** When a learner asks about trust, compliance, rogue agents, budget controls, or "how do we prevent bad things": name campaign governance and its tasks (check_governance, sync_plans). Do NOT default to brand.json when the question is about runtime enforcement or budget controls — brand.json is identity, campaign governance is enforcement. Be specific: name the task, name the flow, name the protection.
+- **Three-party validation is the headline.** When explaining campaign governance, always mention: the orchestrator proposes, an independent governance agent validates, and the seller confirms. No party grades its own homework. This is what makes AdCP governance different from existing brand safety tools.
+- **Media plans already exist.** Never frame campaign plans as a new concept. Say "media plans already exist — campaign governance ties your campaigns to those plans." Buyers already have plans. We're just enforcing them automatically.
+- **Use exact terminology.** There is no "Brand Standards Protocol." The correct terms are: brand.json (identity), content standards (compliance checking), campaign governance (transaction validation). Do not invent protocol names.
 - **NEVER re-ask information the learner already provided.** This is the #1 complaint from real learners. If they said "I work at an audio SSP" do NOT later ask "are you on the buy side or sell side?" If they said "I run programmatic at an agency" do NOT ask "what is your role?" Before asking ANY question about the learner, mentally check: did they already answer this? If yes, reference what they said instead of asking again.
 - **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.
 
@@ -1021,7 +1027,25 @@ export function createCertificationToolHandlers(
 
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
       if (!prereqs.met) {
-        return `You need to complete these modules first: ${prereqs.missing.join(', ')}`;
+        // Include target module context so Addie can name specific mechanisms even in prereq redirects
+        const lp = mod.lesson_plan as certDb.LessonPlan | null;
+        const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
+        // Extract key concept topics so Addie knows what mechanisms to reference
+        const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
+        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
+        // Frame as destination-first, not as a gate
+        const prereqLines = [
+          `${mod.id} (${mod.title}) teaches:`,
+          mod.description || '',
+          conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
+          '',
+          `The learner needs ${prereqs.missing.join(', ')} first. Offer placement assessment to skip.`,
+          '',
+          `Your response MUST follow this template:`,
+          `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${prereqs.missing.join(', ')} is assumed — want a placement assessment to skip it? [Socratic question about their domain]."`,
+          `Under 100 words. No docs alternative.`,
+        ];
+        return prereqLines.join('\n');
       }
 
       // Prevent resetting completed or tested-out modules
@@ -1392,7 +1416,22 @@ export function createCertificationToolHandlers(
       // Check prerequisites
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
       if (!prereqs.met) {
-        return `You need to complete these modules first: ${prereqs.missing.join(', ')}`;
+        const lp = mod.lesson_plan as certDb.LessonPlan | null;
+        const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
+        const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
+        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
+        // Frame as destination-first with path, not as a gate
+        const prereqLines = [
+          `${mod.id} (${mod.title}) teaches:`,
+          mod.description || '',
+          conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
+          '',
+          `The learner needs to complete ${prereqs.missing.join(', ')} first. With their experience, placement assessments can fast-track this.`,
+          '',
+          `Your response MUST follow this template:`,
+          `"${mod.id} covers [2-3 mechanisms from key concepts above, using task names like check_governance, sync_plans]. [One sentence connecting to their stated goal]. The path there goes through ${prereqs.missing.join(' → ')}, but placement assessments can fast-track based on what you already know. [Socratic question about their domain experience]."`,
+        ];
+        return prereqLines.join('\n');
       }
 
       // Check for existing active attempt
