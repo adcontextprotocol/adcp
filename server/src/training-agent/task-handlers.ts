@@ -538,6 +538,10 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
         paused: pkg.paused,
         start_time: pkg.startTime,
         end_time: pkg.endTime,
+        creative_approvals: pkg.creativeAssignments.map(cid => ({
+          creative_id: cid,
+          approval_status: 'approved',
+        })),
       })),
     };
     }),
@@ -699,7 +703,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
       creativeId,
       formatId,
       name: creative.name as string | undefined,
-      status: 'active',
+      status: 'approved',
       syncedAt: new Date().toISOString(),
       manifest: creative.manifest as Record<string, unknown> | undefined,
     });
@@ -707,7 +711,6 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     results.push({
       creative_id: creativeId,
       action: existing ? 'updated' : 'created',
-      status: 'active',
     });
   }
 

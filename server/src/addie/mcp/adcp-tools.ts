@@ -1054,6 +1054,11 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           enum: ['url', 'html'],
           description: 'Output format (default: url)',
         },
+        quality: {
+          type: 'string',
+          enum: ['draft', 'production'],
+          description: "Render quality for the preview. 'draft' produces fast, lower-fidelity renderings for rapid iteration. 'production' produces full-quality renderings for final review.",
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',

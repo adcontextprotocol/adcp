@@ -755,6 +755,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
     { label: 'Sales agent creative capabilities', url: `${DOCS_BASE}/docs/creative/sales-agent-creative-capabilities` },
     { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
+    { label: 'Preview creative task', url: `${DOCS_BASE}/docs/creative/task-reference/preview_creative` },
+    { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
@@ -806,6 +808,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
     { label: 'Implementing creative agents', url: `${DOCS_BASE}/docs/creative/implementing-creative-agents` },
     { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
+    { label: 'Preview creative task', url: `${DOCS_BASE}/docs/creative/task-reference/preview_creative` },
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
   ],
