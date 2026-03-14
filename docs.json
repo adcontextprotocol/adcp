@@ -331,24 +331,36 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/ai-creative-overview",
               "docs/creative/walkthrough-creative-campaign",
-              "docs/creative/specification",
-              "docs/creative/formats",
-              "docs/creative/asset-types",
-              "docs/creative/creative-manifests",
-              "docs/creative/private-assets",
-              "docs/creative/universal-macros",
-              "docs/creative/implementing-creative-agents",
-              "docs/creative/sales-agent-creative-capabilities",
-              "docs/creative/creative-libraries",
-              "docs/creative/multi-agent-orchestration",
-              "docs/creative/generative-creative",
-              "docs/creative/template-format-ids",
-              "docs/creative/catalogs",
-              "docs/creative/catalog-schemas",
-              "docs/creative/accessibility",
-              "docs/creative/provenance",
+              {
+                "group": "Concepts",
+                "pages": [
+                  "docs/creative/ai-creative-overview",
+                  "docs/creative/generative-creative",
+                  "docs/creative/creative-libraries",
+                  "docs/creative/catalogs",
+                  "docs/creative/catalog-schemas"
+                ]
+              },
+              {
+                "group": "Building Creative Agents",
+                "pages": [
+                  "docs/creative/implementing-creative-agents",
+                  "docs/creative/sales-agent-creative-capabilities",
+                  "docs/creative/multi-agent-orchestration",
+                  "docs/creative/creative-manifests",
+                  "docs/creative/private-assets"
+                ]
+              },
+              {
+                "group": "Formats and Assets",
+                "pages": [
+                  "docs/creative/formats",
+                  "docs/creative/asset-types",
+                  "docs/creative/template-format-ids",
+                  "docs/creative/universal-macros"
+                ]
+              },
               {
                 "group": "Channel Guides",
                 "pages": [
@@ -362,8 +374,16 @@
                 ]
               },
               {
-                "group": "Task Reference",
+                "group": "Compliance",
                 "pages": [
+                  "docs/creative/accessibility",
+                  "docs/creative/provenance"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "docs/creative/specification",
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
@@ -740,24 +760,36 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/ai-creative-overview",
               "docs/creative/walkthrough-creative-campaign",
-              "docs/creative/specification",
-              "docs/creative/formats",
-              "docs/creative/asset-types",
-              "docs/creative/creative-manifests",
-              "docs/creative/private-assets",
-              "docs/creative/universal-macros",
-              "docs/creative/implementing-creative-agents",
-              "docs/creative/sales-agent-creative-capabilities",
-              "docs/creative/creative-libraries",
-              "docs/creative/multi-agent-orchestration",
-              "docs/creative/generative-creative",
-              "docs/creative/template-format-ids",
-              "docs/creative/catalogs",
-              "docs/creative/catalog-schemas",
-              "docs/creative/accessibility",
-              "docs/creative/provenance",
+              {
+                "group": "Concepts",
+                "pages": [
+                  "docs/creative/ai-creative-overview",
+                  "docs/creative/generative-creative",
+                  "docs/creative/creative-libraries",
+                  "docs/creative/catalogs",
+                  "docs/creative/catalog-schemas"
+                ]
+              },
+              {
+                "group": "Building Creative Agents",
+                "pages": [
+                  "docs/creative/implementing-creative-agents",
+                  "docs/creative/sales-agent-creative-capabilities",
+                  "docs/creative/multi-agent-orchestration",
+                  "docs/creative/creative-manifests",
+                  "docs/creative/private-assets"
+                ]
+              },
+              {
+                "group": "Formats and Assets",
+                "pages": [
+                  "docs/creative/formats",
+                  "docs/creative/asset-types",
+                  "docs/creative/template-format-ids",
+                  "docs/creative/universal-macros"
+                ]
+              },
               {
                 "group": "Channel Guides",
                 "pages": [
@@ -771,8 +803,16 @@
                 ]
               },
               {
-                "group": "Task Reference",
+                "group": "Compliance",
                 "pages": [
+                  "docs/creative/accessibility",
+                  "docs/creative/provenance"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "docs/creative/specification",
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",

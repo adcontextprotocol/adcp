@@ -892,7 +892,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Generate a creative from a brief or transform an existing creative to a different format. Supports single-format (target_format_id) or multi-format (target_format_ids) requests. Returns one or more creative manifests.',
     usage_hints:
-      'use when the user wants to generate ad creatives, transform creative sizes, build creative assets from a brief, generate VAST tags for CTV/video, produce serving tags from an ad server library, or create multi-format packages. Use target_format_ids when the user wants multiple formats generated in a single call. Also use when guiding a seller or creative agent implementer on how to handle build requests via AdCP, or when discussing brief-in-media-buy seller-side generation patterns.',
+      'use when the user wants to generate ad creatives, transform creative sizes, build creative assets from a brief, generate VAST tags for CTV/video, produce serving tags from an ad server library, or create multi-format packages. Use target_format_ids when the user wants multiple formats generated in a single call. Also use when guiding a seller or creative agent implementer on how to handle build requests via AdCP, or when discussing brief-in-media-buy seller-side generation patterns. For a visual end-to-end walkthrough of the creative workflow, reference the "Running a multi-format campaign" guide.',
     input_schema: {
       type: 'object',
       properties: {
