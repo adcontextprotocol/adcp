@@ -1,196 +1,227 @@
 ---
-title: Creative
+title: Creative protocol
 sidebarTitle: Overview
+description: "Follow a creative strategist from brief to delivery across CTV, display, and social — a visual walkthrough of the AdCP creative workflow."
 ---
 
+<img src="/images/walkthrough/panel-01-strategist-desk.png" alt="A creative strategist reviews ad mockups across multiple formats on her monitor" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-One upload, every format. This guide explains how creatives work in AdCP, from defining format requirements to assembling and delivering ads.
+Maya is a creative strategist at a mid-size agency. She's launching a holiday campaign for Acme Outdoor across three channels: CTV, display, and social. She has one brief. She needs it running everywhere by Friday.
 
-## The Four Key Concepts
+This walkthrough follows her journey through AdCP — from brief to delivery reporting — showing how the protocol connects creative tools, publishers, and AI agents into a single workflow.
 
-### 1. **Assets**
+## Step 1: Write the brief
 
-Assets are the individual building blocks used to compose a creative. Each asset has a defined type that determines how it is used and validated.
+Maya starts with what she knows best: the creative direction.
 
-**Examples:**
-- An image file (PNG, JPG, WebP)
-- A video file (MP4, WebM, MOV)
-- A block of text (headline or CTA)
-- An audio file (MP3, M4A)
-- An HTML or JavaScript tag
-- A tracking or clickthrough URL
+<img src="/images/walkthrough/panel-02-brief-radiates.png" alt="A creative brief radiates outward to TV, phone, laptop, and billboard screens" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-### 2. **Formats**
+In AdCP, the brief is the `message` field on `build_creative`. Maya doesn't need to write JSON — her agency platform translates her direction into the protocol format:
 
-Formats define how assets are assembled and rendered, based on IAB format taxonomy. A format specifies:
-- Media family (e.g., Display, Video, Audio, Native)
-- The required asset types
-- Technical constraints (duration, dimensions, codecs, file size)
-- Rendering and interaction expectations
-
-**Examples:**
-- A Video format may require one video asset (MP4, 30 seconds, defined resolution and codec) and one clickthrough URL
-- A Display format may require one or more image or HTML assets, optional text assets, and tracking URLs
-
-### 3. **Manifests**
-
-Manifests define a creative preset: a reusable configuration that captures what a brand wants to say and show, independent of where or how it is ultimately delivered.
-
-A manifest does not describe an ad format or rendering logic. Instead, it declares a named set of creative choices—media, messaging, destinations, and tracking intent—that can be applied consistently wherever a compatible format is supported.
-
-**Example**: A manifest for "video_30s" provides the URL to your actual 30-second video file, plus tracking pixels and landing page URL.
-
-### 4. **Creative Agents**
-
-Creative agents are services that:
-- Define and document formats (authoritative source)
-- Explain how each format renders
-- Validate manifests against format requirements
-- Generate previews showing how creatives will appear
-- Optionally build manifests from natural-language briefs
-
-Each format identifies its authoritative creative agent.
-
-## How They Fit Together
-
-```
-Format Definition (by Creative Agent)
-  ↓
-  "video_30s format requires:
-   - One video file asset (MP4, 30s, 1920x1080)
-   - One clickthrough URL"
-
-Creative Manifest (by Buyer)
-  ↓
-  "Here's my actual video file:
-   https://cdn.brand.com/spring_30s.mp4
-   Landing page: https://brand.com/spring-sale"
-
-Sales Agent (validates & delivers)
-  ↓
-  - Checks: Is this really 30 seconds? Is it MP4?
-  - Adds: Impression tracking, click tracking
-  - Delivers: Creative to ad server
+```json
+{
+  "message": "Holiday campaign for Acme Outdoor. Warm, adventurous tone. Hero product: Trail Pro 3000 hiking boot. Key message: 'Gift the adventure.' Use brand colors and winter imagery.",
+  "brand": { "domain": "acme-outdoor-example.com" },
+  "quality": "draft"
+}
 ```
 
-## The Workflow
+The brand identity — colors, logos, typography, tone — lives at `acme-outdoor-example.com/.well-known/brand.json`. Every agent in the chain reads it from there. Maya's team maintains it once.
 
-### 1. **Discovery** - "What formats do you support?"
+<Accordion title="Agency language → protocol terms">
 
-Buyers call `list_creative_formats` on sales or creative agents to discover available formats and their full specifications. Each format includes an `agent_url` identifying the creative agent that is authoritative for that format.
+| What Maya says | What the protocol calls it |
+|---|---|
+| Creative brief | `message` on `build_creative` |
+| Brand guidelines | `brand.json` at `/.well-known/brand.json` |
+| Comp / mockup | Preview (from `preview_creative`) |
+| Final creative | Production-quality manifest |
+| Trafficking | `sync_creatives` to each seller |
+| Campaign report | `get_creative_delivery` across agents |
 
-See [Creative Formats](/docs/creative/formats) for format discovery details.
+</Accordion>
 
-### 2. **Assembly** - "Here are my assets"
+## Step 2: Discover what each seller supports
 
-Buyers create manifests that provide assets fulfilling the selected format's requirements. Manifests pair format specifications with actual asset URLs, text, and tracking data.
+Before generating anything, Maya's platform checks what formats each seller accepts. This happens automatically — but here's what's going on under the hood.
 
-See [Creative Manifests](/docs/creative/creative-manifests) for manifest structure details.
+Her platform calls `list_creative_formats` on each connected agent:
 
-### 3. **Validation** - "Does this match the requirements?"
+```mermaid
+sequenceDiagram
+    participant Platform as Maya's Agency Platform
+    participant CTV as StreamHaus (CTV seller)
+    participant Display as Pinnacle Media (display)
+    participant Social as CommHub (social platform)
 
-Creative agents validate manifests by checking:
-- Are all required assets present?
-- Do assets meet technical constraints (duration, dimensions, file type, file size)?
-- Are tracking URLs and macros correctly formatted?
+    par Discover formats
+        Platform->>CTV: list_creative_formats
+        CTV-->>Platform: SSAI 30s, CSAI 15s/30s, companion 300×250
+        Platform->>Display: list_creative_formats
+        Display-->>Platform: display 300×250, 728×90, 160×600
+        Platform->>Social: list_creative_formats
+        Social-->>Platform: promoted post, promoted carousel
+    end
 
-### 4. **Delivery** - "Traffic this to the ad server"
+    Note over Platform: Build unified format catalog
+```
 
-Sales agents deliver validated creatives to their ad servers, translating AdCP universal concepts to platform-specific formats.
+Now Maya's platform knows: StreamHaus needs video files and VAST tags. Pinnacle needs display banners. CommHub needs feed-native content assets. One brief, three different output types.
 
-## Core Concepts
+## Step 3: Generate and preview
 
-### Assets & Asset Types
+<img src="/images/walkthrough/panel-03-agents-collaborate.png" alt="Three AI agents collaborate at a workbench, passing creative assets between them" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Assets are the raw materials of a creative. Each asset has a type that defines its role:
-- **image**: Static images (JPEG, PNG, WebP)
-- **video**: Video files (MP4, WebM, MOV) or VAST tags
-- **audio**: Audio files (MP3, M4A) or DAAST tags
-- **text**: Headlines, descriptions, CTAs
-- **html**: HTML5 creatives or third-party tags
-- **javascript**: JavaScript tags
-- **url**: Tracking pixels, clickthrough URLs, webhooks
+Maya's platform routes the brief to the right creative agents. A CTV specialist handles video. A display agent handles banners. The social platform generates feed-native content that matches each community's voice.
 
-See [Asset Types](/docs/creative/asset-types) for detailed specifications.
+```mermaid
+sequenceDiagram
+    participant Platform as Agency Platform
+    participant Video as Video Creative Agent
+    participant Display as Display Creative Agent
+    participant Social as CommHub (generates natively)
 
-### Formats & Format Authority
+    Platform->>Video: build_creative (brief + target: SSAI 30s)
+    Video-->>Platform: Video manifest (draft quality)
 
-Each format has an authoritative source—the creative agent that defines it (indicated by `agent_url`). That agent:
-- Hosts the definitive documentation
-- Explains how to assemble assets
-- Describes how the format renders
-- Provides validation rules
+    Platform->>Display: build_creative (brief + target: 300×250, 728×90)
+    Display-->>Platform: Display manifests (draft quality)
 
-**Standard vs. Custom Formats:**
-- **Standard formats** are based on IAB specifications and hosted by the reference creative agent (`https://creative.adcontextprotocol.org`)
-- **Custom formats** are defined by individual publishers or creative platforms for specialized inventory
-- Technically, both work the same way—the `agent_url` field identifies which agent is authoritative for each format
+    Platform->>Social: create_media_buy (brief embedded)
+    Note over Social: Social platform generates at serve time<br/>using community context
+```
 
-See the [Channel Guides](/docs/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
+For CTV and display, Maya gets back draft-quality manifests she can preview immediately. For social, the platform will generate at serve time — but Maya can still preview what it would look like.
 
-### Manifests
+<img src="/images/walkthrough/panel-04-draft-to-production.png" alt="Split screen showing a rough draft mockup transforming into a polished production creative" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Manifests are JSON structures that pair format-defined asset IDs with actual asset content. They supply the URLs, text values, and tracking endpoints required to assemble a complete creative.
+Maya asks to see the CTV spot in a living room context and the social post in two different communities:
 
-See [Creative Manifests](/docs/creative/creative-manifests) for detailed documentation.
+```json
+{
+  "request_type": "single",
+  "creative_manifest": { "...": "video manifest from build_creative" },
+  "inputs": [
+    { "name": "Living room primetime", "context_description": "CTV app, evening, family household" },
+    { "name": "Mobile commute", "context_description": "Phone screen, morning, commuter" }
+  ]
+}
+```
 
-### Universal Macros
+She reviews the drafts. The CTV spot needs a warmer color grade. She sends feedback via another `build_creative` call with an updated message. The agent iterates. This is the tissue session — fast, low-fidelity, focused on getting the direction right.
 
-AdCP defines universal macros that work across platforms. Sales agents translate these macros into their ad server's native syntax.
+When Maya's happy, she promotes to production quality:
 
-- **For impression tracking**: Sales agents translate AdCP macros into the ad server's native macro format before serving the impression tracking URL.
-- **For click tracking**: In addition to macro translation, sales agents replace `{REDIRECT_URL}` with the final destination click URL and serve the click tracking URL as the destination URL in the ad server, ensuring proper redirection after the click is recorded.
+```json
+{ "quality": "production" }
+```
 
-See [Universal Macros](/docs/creative/universal-macros) for complete reference.
+## Step 4: Distribute to sellers
 
-## Common Patterns
+<img src="/images/walkthrough/panel-05-distribute.png" alt="A strategist presses Launch while publisher connections light up in sequence" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-### Third-Party Tags
+Now the finished creatives need to reach each seller. Maya's platform calls `sync_creatives` on each one — same creative, adapted to each seller's required format:
 
-Some formats support creatives that are served by third-party systems rather than assembled from first-party media elements.
+```mermaid
+sequenceDiagram
+    participant Platform as Agency Platform
+    participant CTV as StreamHaus
+    participant Display as Pinnacle Media
+    participant Social as CommHub
 
-In this pattern, the creative is provided as an HTML tag or a JavaScript tag. The format definition specifies the required element type and any applicable constraints (such as sandboxing or tracking expectations). Rendering, asset loading, and interaction logic are handled externally by the third-party system.
+    par Distribute creatives
+        Platform->>CTV: sync_creatives (SSAI video + companion)
+        CTV-->>Platform: ✓ pending_review
+        Platform->>Display: sync_creatives (300×250, 728×90)
+        Display-->>Platform: ✓ approved
+        Platform->>Social: sync_creatives (post assets)
+        Social-->>Platform: ✓ pending_review (community guidelines check)
+    end
 
-This pattern is most commonly used with Display formats. See the [Display Channel Guide](/docs/creative/channels/display) for third-party tag examples.
+    Note over Platform: Track approval status per seller
+```
 
-### Repeatable Asset Groups
+Different sellers have different review processes. Pinnacle auto-approves based on brand safety rules. StreamHaus and CommHub do manual review. Maya's platform tracks approval state per seller — a creative approved on one and pending on another is normal, not an error.
 
-Some formats allow or require repeated sets of creative elements under a common structure. This pattern is used for creatives such as carousels, slideshows, story-style sequences, and playlists or product lists.
+CommHub also checks community guidelines beyond standard ad policy. If a promoted post is rejected from a specific community, `list_creatives` shows the `rejection_reason` referencing that community's rules.
 
-Each repetition contains the same logical element roles (for example: image, text, and URL), with the number of repetitions defined or constrained by the format. Repeatable element groups describe structural patterns, not formats or layout guarantees, and may be used across Display, Native, or other compatible formats.
+## Step 5: Campaign runs — AI generates variants
 
-See the [Carousel & Multi-Asset Formats](/docs/creative/channels/carousels) guide for detailed documentation.
+The campaign goes live. Here's where it gets interesting.
 
-### DOOH Impression Tracking
+On StreamHaus, the CTV spot runs as-is — one creative, one variant (Tier 1). On Pinnacle, the display ads run with asset group optimization — the platform tests different headline and image combinations (Tier 2). On CommHub, the social platform generates promoted posts that match each community's voice and trending topics (Tier 3).
 
-Digital Out-of-Home (DOOH) environments require different measurement semantics than personal-device environments.
+Maya doesn't manage any of this. The protocol handles it. But she can see everything that happened.
 
-In this pattern:
-- Impressions are tracked using venue- or screen-level identifiers
-- Device-based identifiers are not used
-- Tracking relies on environment-specific macros
+## Step 6: Review delivery and variants
 
-This affects measurement and reporting only and does not change creative format classification or asset requirements. See the [DOOH Channel Guide](/docs/creative/channels/dooh) for DOOH-specific macro details.
+<img src="/images/walkthrough/panel-06-delivery-dashboard.png" alt="A unified dashboard merging data from three sellers into combined performance charts" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-## Channel-Specific Information
+One week in, Maya pulls delivery data. Her platform calls `get_creative_delivery` on each agent and merges the results:
 
-For detailed information on creatives by channel and format family, see [Creative Manifests](/docs/creative/creative-manifests), including:
+```mermaid
+sequenceDiagram
+    participant Platform as Agency Platform
+    participant CTV as StreamHaus
+    participant Display as Pinnacle Media
+    participant Social as CommHub
 
-- **Video Ads** - In-stream and outstream video formats (including CTV environments)
-- **Display Ads** - Standard display formats (e.g., banners and interstitials)
-- **Audio Ads** - In-stream audio formats (with optional companion display)
-- **DOOH** - Digital out-of-home inventory and venue-based delivery environments
+    par Collect delivery data
+        Platform->>CTV: get_creative_delivery
+        CTV-->>Platform: 1 variant, 150K impressions, 72% completion
+        Platform->>Display: get_creative_delivery
+        Display-->>Platform: 4 variants (optimized combos), 200K impressions
+        Platform->>Social: get_creative_delivery
+        Social-->>Platform: 12 variants (AI-generated), 85K impressions + engagement
+    end
 
-## Getting Started
+    Note over Platform: Merge by creative_id, normalize timezones,<br/>prefix variant_ids with agent URL
+```
 
-1. **Discover formats**: Call `list_creative_formats` to see what's available
-2. **Choose your channel guide**: Pick the guide that matches your campaign type
-3. **Build your manifest**: Follow the format requirements
-4. **Use universal macros**: Add tracking with standardized macros
-5. **Preview**: Use `preview_creative` to see how it looks
-6. **Submit**: Include manifests in your `create_media_buy` request
+The social platform's response includes engagement metrics in the `ext` field — upvotes, comments, shares — alongside standard delivery metrics. Display variants include the manifest showing which headline/image combination each variant used. CTV includes completion rates and quartile data.
 
-## Additional Resources
+## Step 7: Replay what ran
 
-- [Creative Task Reference](/docs/creative/task-reference/list_creative_formats) - API documentation for creative tasks
-- [Generative Creative](/docs/creative/generative-creative) - AI-powered creative generation guide
+<img src="/images/walkthrough/panel-07-variant-replay.png" alt="A strategist views a grid of ad variants with performance ratings, one highlighted as top performer" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Maya wants to see exactly what CommHub's AI generated for the hiking community. She finds the top-performing variant in the delivery data and replays it:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_hiking_community_v3"
+}
+```
+
+The platform renders exactly what was served — the generated headline, the community-adapted imagery, the engagement UI. Maya can see that the AI leaned into trail photography and used language that resonated with the hiking community. She takes this insight back to her next brief.
+
+## The full picture
+
+```mermaid
+flowchart LR
+    A[Write brief] --> B[Discover formats]
+    B --> C[Generate + preview]
+    C --> D[Iterate at draft quality]
+    D --> E[Promote to production]
+    E --> F[Distribute to sellers]
+    F --> G[Campaign runs]
+    G --> H[Pull delivery data]
+    H --> I[Replay variants]
+    I --> J[Inform next brief]
+    J --> A
+
+    style A fill:#047857,color:#fff
+    style E fill:#047857,color:#fff
+    style I fill:#047857,color:#fff
+```
+
+Every step uses a standard AdCP task. Every agent — creative tools, publishers, social platforms — speaks the same protocol. Maya writes one brief, and AdCP handles the rest: format adaptation, multi-agent routing, cross-seller distribution, variant tracking, and unified reporting.
+
+## Go deeper
+
+- **Key concepts**: [Assets, formats, manifests, and creative agents](/docs/creative/key-concepts) — the building blocks behind this walkthrough
+- **AI creative**: [AI creative for campaign teams](/docs/creative/ai-creative-overview) — the strategic view for non-engineers
+- **Generative creative**: [Generative creative](/docs/creative/generative-creative) — Tier 1, 2, and 3 in depth
+- **Build an agent**: [Implementing creative agents](/docs/creative/implementing-creative-agents) — make your platform speak AdCP
+- **Orchestrate**: [Multi-agent orchestration](/docs/creative/multi-agent-orchestration) — the engineering patterns behind Maya's platform
+- **Get certified**: The [Buyer track](/docs/learning/tracks/buyer) teaches the full creative workflow through interactive modules

@@ -331,10 +331,10 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/walkthrough-creative-campaign",
               {
                 "group": "Concepts",
                 "pages": [
+                  "docs/creative/key-concepts",
                   "docs/creative/ai-creative-overview",
                   "docs/creative/generative-creative",
                   "docs/creative/creative-libraries",
@@ -760,10 +760,10 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/walkthrough-creative-campaign",
               {
                 "group": "Concepts",
                 "pages": [
+                  "docs/creative/key-concepts",
                   "docs/creative/ai-creative-overview",
                   "docs/creative/generative-creative",
                   "docs/creative/creative-libraries",
