@@ -264,10 +264,11 @@ If you get a format error, the publisher may not support that format. Try:
 
 ### Creative Quality Issues
 To improve creative output:
-1. Use `quality: "draft"` for fast iteration, then switch to `quality: "production"` for final renders
-2. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
-3. Provide comprehensive brand identity with assets and guidelines
-4. Iterate using [refinement](/docs/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest with a new message, or update the brief asset
+1. **Build quality** controls generation fidelity — `quality: "draft"` in `build_creative` produces rough concepts fast (lower-resolution images, simplified layouts). Switch to `quality: "production"` once you like the direction. See [`build_creative`](/docs/creative/task-reference/build_creative).
+2. **Preview quality** controls render fidelity — `quality: "draft"` in `preview_creative` produces fast, lower-fidelity renderings for rapid iteration. Use `quality: "production"` for stakeholder review. See [`preview_creative`](/docs/creative/task-reference/preview_creative#previewing-generative-creative).
+3. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
+4. Provide comprehensive brand identity with assets and guidelines
+5. Iterate using [refinement](/docs/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest with a new message, or update the brief asset
 
 ### Asset Management
 Assets are provided via [brand identity](/docs/brand-protocol/brand-json):

@@ -168,6 +168,7 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 | `format_id` | FormatID | No | Format identifier (agent_url + id). Defaults to `creative_manifest.format_id` if omitted. |
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets for the format. |
 | `inputs` | array | No | Array of input sets for multiple preview variants |
+| `quality` | string | No | `"draft"` (fast, lower-fidelity) or `"production"` (full quality). If omitted, the agent uses its own default. |
 | `output_format` | string | No | `"url"` (default) or `"html"` |
 | `item_limit` | integer | No | Maximum catalog items to render per preview variant. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large. |
 
@@ -179,7 +180,7 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 | `requests` | array | Yes | Array of 1-50 preview requests |
 | `output_format` | string | No | Default output format for all requests |
 
-Each item in `requests` also accepts `item_limit` to cap catalog rendering for that individual preview.
+Each item in `requests` also accepts `quality` and `item_limit` to override batch-level defaults for that individual preview.
 
 ### Input Sets
 
@@ -247,6 +248,64 @@ Generate multiple preview variants by providing different contexts:
 ```
 
 **Multi-render formats**: Some formats produce multiple pieces (video + companion banner). Each has its own `render_id` and `role`.
+
+## Previewing generative creative
+
+For generative formats — contextual display, AI-generated native, conversational ads — the creative doesn't exist until serve time. Preview serves two distinct purposes:
+
+### Pre-flight: representative samples
+
+Before the campaign runs, use single or batch mode to preview what the agent *could* generate given different contexts. Pass `inputs` with `context_description` to simulate serve-time conditions:
+
+```json
+{
+  "$schema": "/schemas/creative/preview-creative-request.json",
+  "request_type": "single",
+  "quality": "draft",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.seller-example.com",
+      "id": "contextual_display_generative"
+    },
+    "assets": {
+      "brief": {
+        "content": "Highlight our sustainability story. Match tone to editorial context."
+      }
+    }
+  },
+  "inputs": [
+    { "name": "Tech article", "context_description": "Article about semiconductor manufacturing" },
+    { "name": "Lifestyle blog", "context_description": "Blog post about sustainable living" }
+  ]
+}
+```
+
+These previews are *representative*, not definitive. Real serve-time output depends on live signals (actual page content, user device, time of day) that can't be fully simulated. Use draft quality for fast iteration on the brief and creative direction, then production quality for stakeholder review.
+
+### Post-flight: exact replay
+
+After the campaign runs, use variant mode to see exactly what was served. Pass a `variant_id` from `get_creative_delivery`:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_tech_mobile_001"
+}
+```
+
+The response includes the variant's actual manifest — the specific headline, image, and layout the agent generated for that context. This is a faithful replay, not a re-generation.
+
+### Setting expectations
+
+| Aspect | Standard creative | Generative creative |
+|---|---|---|
+| Pre-flight preview | Exact — what you see is what runs | Representative — shows the agent's interpretation of the brief under simulated conditions |
+| Post-flight preview | Same as pre-flight | Exact — faithful replay of served output via variant mode |
+| `quality: "draft"` | Fast wireframe-quality render | Fast, lower-fidelity generation for reviewing creative direction |
+| `quality: "production"` | Full-fidelity render | Full-quality generation for stakeholder sign-off |
+| Number of variants | Typically 1 (or a few device variants) | Potentially thousands — one per context |
+
+For generative formats where every impression produces a different creative (like AI chat or real-time contextual), pre-flight previews are best understood as *samples from a distribution* rather than *the ad*. The brief and brand identity constrain the distribution; previews let you verify the agent interprets those constraints correctly.
 
 ## Examples
 

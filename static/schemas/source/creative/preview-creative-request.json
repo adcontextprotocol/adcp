@@ -54,6 +54,10 @@
           "type": "string",
           "description": "Specific template ID for custom format rendering"
         },
+        "quality": {
+          "$ref": "/schemas/enums/creative-quality.json",
+          "description": "Render quality for the preview. 'draft' produces fast, lower-fidelity renderings for rapid iteration. 'production' produces full-quality renderings for final review. If omitted, the creative agent uses its own default."
+        },
         "output_format": {
           "$ref": "/schemas/enums/preview-output-format.json",
           "default": "url",
@@ -132,6 +136,10 @@
               "template_id": {
                 "type": "string",
                 "description": "Specific template ID for custom format rendering"
+              },
+              "quality": {
+                "$ref": "/schemas/enums/creative-quality.json",
+                "description": "Render quality for this preview. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings. Overrides any batch-level default."
               },
               "output_format": {
                 "$ref": "/schemas/enums/preview-output-format.json",

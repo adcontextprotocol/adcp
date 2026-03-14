@@ -97,6 +97,15 @@ The buyer discovers this format through `list_creative_formats` on the sales age
 
 The seller generates creatives at serve time using this brief and the buyer's brand identity. No separate `build_creative` call is needed — the brief travels with the media buy.
 
+## Previewing generative output
+
+For generative formats, `preview_creative` serves two purposes:
+
+- **Before the campaign** — pass the brief manifest with `context_description` inputs to see representative samples of what the agent could generate. Use `quality: "draft"` for fast iteration on creative direction, `quality: "production"` for stakeholder review. These previews are illustrative — real output depends on live signals at serve time.
+- **After the campaign** — pass a `variant_id` from `get_creative_delivery` to replay exactly what was served for a specific context.
+
+See [Previewing generative creative](/docs/creative/task-reference/preview_creative#previewing-generative-creative) for examples and expectations.
+
 ## Delivery reporting
 
 A sales agent implementing both protocols provides two complementary views of delivery data:
