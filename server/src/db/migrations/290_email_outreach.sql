@@ -109,6 +109,7 @@ INSERT INTO outreach_goals (
 -- UPDATE VIEW: include channel in goals summary
 -- ============================================================================
 
+DROP VIEW IF EXISTS outreach_goals_summary;
 CREATE OR REPLACE VIEW outreach_goals_summary AS
 SELECT
   g.id,
