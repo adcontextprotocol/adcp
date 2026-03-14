@@ -418,7 +418,7 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `caller` | string (URI) | Yes | URL of the agent making the request (orchestrator for proposed, seller for committed). |
 | `tool` | string | Proposed | The AdCP tool being checked. Required for `proposed` checks. |
 | `payload` | object | Proposed | Full tool arguments as they would be sent to the seller. Required for `proposed` checks. |
-| `governance_context` | object | No | Normalized governance-relevant fields extracted from the payload. When present, the governance agent SHOULD use these fields for plan validation instead of parsing the payload directly. See [governance context schema](/schemas/latest/governance/governance-context.json). |
+| `governance_context` | object | No | Normalized governance-relevant fields extracted from the payload. When present, the governance agent SHOULD use these fields for plan validation instead of parsing the payload directly. See the [governance context schema](https://adcontextprotocol.org/schemas/latest/governance/governance-context.json). |
 | `media_buy_id` | string | Committed | Seller's media buy identifier. Required for `committed` checks. |
 | `buyer_ref` | string | No | Buyer's reference identifier from the `create_media_buy` request. |
 | `phase` | enum | Committed | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Required for `committed` checks. |
