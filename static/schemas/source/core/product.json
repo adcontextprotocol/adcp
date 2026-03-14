@@ -278,6 +278,20 @@
       ],
       "additionalProperties": true
     },
+    "show_ids": {
+      "type": "array",
+      "description": "References to shows in the response's top-level shows array. When present, the product covers inventory associated with these shows. A product can span multiple shows (e.g., a podcast network bundle).",
+      "items": {
+        "type": "string"
+      }
+    },
+    "episodes": {
+      "type": "array",
+      "description": "Specific episodes included in this product. Each episode references its parent show via show_id when the product spans multiple shows. When absent with show_ids present, the product covers the shows broadly (run-of-show).",
+      "items": {
+        "$ref": "/schemas/core/episode.json"
+      }
+    },
     "enforced_policies": {
       "type": "array",
       "description": "Registry policy IDs the seller enforces for this product. Enforcement level comes from the policy registry. Buyers can filter products by required policies.",

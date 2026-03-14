@@ -19,6 +19,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `format_ids` (list[FormatID], required): Structured format ID references. See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
+- `show_ids` (list[string], optional): Show IDs available within this product. When provided, buyers can target specific shows. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes).
+- `episodes` (list[Episode], optional): Specific episodes available within this product. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
 - `delivery_measurement` (object, optional): Who measures ad delivery — the ad server and viewability vendor used to count impressions (e.g., "Google Ad Manager with IAS viewability"). When absent, buyers should apply their own measurement defaults. See [Delivery Measurement](#delivery-measurement).
@@ -244,6 +246,12 @@ When creating a media buy, buyers can assign different creatives to different pl
 ```
 
 See [Creative Assignment and Placement Targeting](/docs/media-buy/media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
+
+### Shows and episodes
+
+Shows are a third product dimension alongside formats and placements. While placements describe *where* an ad appears and formats describe *what* the ad looks like, shows describe the *content context* — the programming a viewer is watching. Products can declare `show_ids` and `episodes` so buyers can target specific shows or episodes when purchasing inventory.
+
+See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) for the full model, examples, and targeting details.
 
 ### Property Targeting
 

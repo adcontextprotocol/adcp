@@ -1,0 +1,664 @@
+---
+title: Shows and episodes
+testable: true
+---
+
+<!-- Using latest because this schema is not yet released in any version.
+     Update to correct version alias after the next release. -->
+
+A [product](/docs/media-buy/product-discovery/media-products) describes inventory along three independent axes:
+
+- **Publisher properties** — WHERE the ad runs (youtube.com, spotify.com)
+- **Shows / episodes** — WHAT CONTENT the ad runs in or around (a specific series and its installments)
+- **Placements** — WHAT POSITION the ad appears in (pre-roll, mid-roll, host read)
+
+Shows and placements are parallel dimensions, not hierarchical. "Pre-roll" is a position. "Pinnacle Challenge" is content. A product combines them: "pre-roll on Pinnacle Challenge on Acme Streaming."
+
+## The show object
+
+A show is a persistent content program that produces episodes over time. Shows work like properties — they are reusable objects declared once in a `get_products` response, and multiple products reference the same show by `show_id`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `show_id` | string | Yes | Seller-assigned identifier. Unique within one `get_products` response, not globally. Use distribution identifiers for cross-seller matching. |
+| `name` | string | Yes | Human-readable show name |
+| `description` | string | No | What the show is about |
+| `genre` | string[] | No | Genre tags. When `genre_taxonomy` is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0). Otherwise free-form. |
+| `genre_taxonomy` | string | No | Taxonomy system for genre values (e.g., `iab_content_3.0`). Recommended for machine-readable brand safety. |
+| `language` | string | No | Primary language (BCP 47) |
+| `content_rating` | object | No | Baseline rating: `system` + `rating`. Systems: `tv_parental`, `mpaa`, `podcast`, `esrb`, `bbfc`, `fsk`, `acb`, `custom`. Episodes can override. |
+| `cadence` | string | No | `daily`, `weekly`, `seasonal`, `event`, `irregular` |
+| `season` | string | No | Current or most recent season identifier (e.g., `"3"`, `"2026"`) |
+| `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
+| `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
+| `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
+| `distribution` | array | No | Where this show is distributed, with platform-specific identifiers per publisher. |
+| `related_shows` | array | No | Relationships to other shows: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `show_id` + `relationship`. References are scoped to the same `get_products` response. Symmetric types (`companion`, `crossover`) do not require both shows to declare. |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/show.json",
+  "show_id": "pinnacle_challenge",
+  "name": "The Pinnacle Challenge",
+  "description": "Competition reality show with extreme physical and mental challenges",
+  "genre": ["IAB1", "IAB1-6"],
+  "genre_taxonomy": "iab_content_3.0",
+  "language": "en",
+  "content_rating": {
+    "system": "tv_parental",
+    "rating": "TV-PG"
+  },
+  "cadence": "weekly",
+  "season": "1",
+  "status": "active",
+  "production_quality": "professional",
+  "talent": [
+    {
+      "role": "host",
+      "name": "Jordan Vega",
+      "brand_url": "https://jordanvega.example.com/brand.json"
+    }
+  ],
+  "distribution": [
+    {
+      "publisher_domain": "youtube.com",
+      "identifiers": [
+        { "type": "youtube_channel_id", "value": "UCexample123456" }
+      ]
+    },
+    {
+      "publisher_domain": "acmestreaming.example.com",
+      "identifiers": [
+        { "type": "imdb_id", "value": "tt9876543" }
+      ]
+    }
+  ]
+}
+```
+
+## The episode object
+
+An episode is a specific installment of a show. Not all episodes will be known in advance — a weekly podcast may only have next week's episode scheduled, and some episodes may be tentative (a playoff Game 7 depends on Game 6).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `episode_id` | string | Yes | Unique identifier within the show |
+| `show_id` | string | When needed | Parent show. Required when the product spans multiple shows. |
+| `name` | string | No | Episode title |
+| `season` | string | No | Season identifier (e.g., `"1"`, `"2026"`) |
+| `episode_number` | string | No | Episode number within the season |
+| `scheduled_at` | datetime | No | When the episode airs or publishes |
+| `status` | string | No | `scheduled`, `tentative`, `live`, `postponed`, `cancelled`, `aired`, `published` |
+| `duration_seconds` | integer | No | Expected duration |
+| `flexible_end` | boolean | No | Whether end time is approximate (live events) |
+| `valid_until` | datetime | No | When this data expires. Agents should re-query before committing budget to tentative episodes. |
+| `content_rating` | object | No | Overrides the show's baseline when present |
+| `topics` | string[] | No | Episode-level content topics for brand safety. Uses show's `genre_taxonomy` when present. |
+| `guest_talent` | array | No | Episode-specific guests. Additive to the show's recurring `talent`. |
+| `ad_inventory` | object | No | Break-based ad inventory configuration |
+| `derivative_of` | object | No | When this episode is a clip, highlight, or recap derived from a full episode. Has `episode_id` + `type` (`clip`, `highlight`, `recap`, `trailer`, `bonus`). Source `episode_id` must be in the same response. |
+
+### Episode status lifecycle
+
+| Status | Meaning |
+|--------|---------|
+| `scheduled` | Confirmed, will happen |
+| `tentative` | May not happen (depends on external conditions) |
+| `live` | Currently airing or streaming right now |
+| `postponed` | Was scheduled but delayed to a future date |
+| `cancelled` | Will not happen |
+| `aired` | Already broadcast — for back-catalog and replay inventory |
+| `published` | Already released — for on-demand catch-up inventory |
+
+Expected transitions: `scheduled` or `tentative` → `live` → `aired` or `published`. A `scheduled` episode may become `postponed` (delayed) or `cancelled`. A `postponed` episode returns to `scheduled` when rescheduled. A `tentative` episode resolves to `scheduled`, `cancelled`, or `postponed`.
+
+### Inheritance from shows
+
+Episodes inherit show-level fields they do not override:
+
+- **`content_rating`**: Episode value overrides show baseline. When absent, the show's rating applies.
+- **`guest_talent`**: Additive to the show's recurring `talent` — does not replace it.
+- **`topics`**: Additive context for brand safety, not a replacement for the show's `genre`.
+
+Buyer agents evaluate both levels: the show baseline provides the default safety profile, and episode fields refine it for specific installments.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/episode.json",
+  "episode_id": "s1e03_the_wall",
+  "show_id": "pinnacle_challenge",
+  "name": "The Wall",
+  "season": "1",
+  "episode_number": "3",
+  "scheduled_at": "2026-04-07T20:00:00Z",
+  "status": "scheduled",
+  "duration_seconds": 3600,
+  "valid_until": "2026-04-06T20:00:00Z",
+  "content_rating": {
+    "system": "tv_parental",
+    "rating": "TV-14"
+  },
+  "topics": ["IAB17-18"],
+  "guest_talent": [
+    {
+      "role": "guest",
+      "name": "Samira Okafor",
+      "brand_url": "https://samiraokafor.example.com/brand.json"
+    }
+  ],
+  "ad_inventory": {
+    "expected_breaks": 4,
+    "total_ad_seconds": 480,
+    "max_ad_duration_seconds": 120,
+    "unplanned_breaks": false,
+    "supported_formats": ["video", "audio"]
+  }
+}
+```
+
+## How products reference shows
+
+Products reference shows via `show_ids` — an array, since a single product can span multiple shows (e.g., a network bundle). Episodes are listed per-product in the `episodes` array, since different products may scope different episodes of the same show.
+
+### Run-of-show (no specific episodes)
+
+A product can reference a show without listing episodes. This means "inventory across this show, whatever episodes air during the flight dates":
+
+```json
+{
+  "product_id": "pinnacle_run_of_show",
+  "name": "Pinnacle Challenge Run of Show",
+  "show_ids": ["pinnacle_challenge"],
+  "placements": [
+    { "placement_id": "pre_roll", "name": "Pre-roll" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    { "pricing_option_id": "cpm", "pricing_model": "cpm", "floor_price": 25.00, "currency": "USD" }
+  ]
+}
+```
+
+### Specific episodes
+
+For premium or guaranteed buys, the seller scopes to specific episodes:
+
+```json
+{
+  "product_id": "pinnacle_finale",
+  "name": "Pinnacle Challenge Season Finale Sponsorship",
+  "show_ids": ["pinnacle_challenge"],
+  "episodes": [
+    {
+      "episode_id": "s1e10_finale",
+      "name": "The Grand Finale",
+      "scheduled_at": "2026-06-02T20:00:00Z",
+      "status": "scheduled",
+      "ad_inventory": {
+        "expected_breaks": 6,
+        "total_ad_seconds": 720,
+        "unplanned_breaks": false
+      }
+    }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    { "pricing_option_id": "flat", "pricing_model": "flat_rate", "fixed_price": 2000000, "currency": "USD" }
+  ]
+}
+```
+
+## get_products response structure
+
+Shows are returned as a top-level `shows` array in the `get_products` response, alongside `products`. Products reference shows by ID instead of embedding them, so the same show is not duplicated when multiple products reference it.
+
+The `shows` array MUST only include shows referenced by the returned products. Under pagination, each page includes all show objects needed for that page's products.
+
+```json
+{
+  "shows": [
+    {
+      "show_id": "pinnacle_challenge",
+      "name": "The Pinnacle Challenge",
+      "genre": ["IAB1", "IAB1-6"],
+      "genre_taxonomy": "iab_content_3.0",
+      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
+      "cadence": "weekly",
+      "status": "active",
+      "talent": [
+        { "role": "host", "name": "Jordan Vega", "brand_url": "https://jordanvega.example.com/brand.json" }
+      ],
+      "distribution": [
+        {
+          "publisher_domain": "acmestreaming.example.com",
+          "identifiers": [{ "type": "imdb_id", "value": "tt9876543" }]
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "product_id": "pinnacle_april_bundle",
+      "name": "Pinnacle Challenge April Sponsorship",
+      "show_ids": ["pinnacle_challenge"],
+      "episodes": [
+        {
+          "episode_id": "s1e03",
+          "name": "The Wall",
+          "scheduled_at": "2026-04-07T20:00:00Z",
+          "status": "scheduled",
+          "content_rating": { "system": "tv_parental", "rating": "TV-14" },
+          "guest_talent": [{ "role": "guest", "name": "Samira Okafor" }],
+          "valid_until": "2026-04-06T20:00:00Z"
+        },
+        {
+          "episode_id": "s1e04",
+          "name": "TBD",
+          "scheduled_at": "2026-04-14T20:00:00Z",
+          "status": "tentative",
+          "valid_until": "2026-04-07T20:00:00Z"
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll" },
+        { "placement_id": "mid_roll", "name": "Mid-roll" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "flat", "pricing_model": "flat_rate", "fixed_price": 500000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+## Discovery examples
+
+### CTV show with episodes
+
+A streaming platform selling sponsorships against a known show with upcoming episodes:
+
+```json
+{
+  "shows": [
+    {
+      "show_id": "nova_kitchen",
+      "name": "Nova Kitchen",
+      "description": "Celebrity cooking competition filmed in real time",
+      "genre": ["IAB8", "IAB8-5"],
+      "genre_taxonomy": "iab_content_3.0",
+      "content_rating": { "system": "tv_parental", "rating": "TV-G" },
+      "cadence": "weekly",
+      "status": "active",
+      "talent": [
+        { "role": "host", "name": "Elara Chen" }
+      ],
+      "distribution": [
+        {
+          "publisher_domain": "novastreaming.example.com",
+          "identifiers": [{ "type": "imdb_id", "value": "tt1122334" }]
+        },
+        {
+          "publisher_domain": "youtube.com",
+          "identifiers": [{ "type": "youtube_channel_id", "value": "UCnovakitchen" }]
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "product_id": "nova_kitchen_april",
+      "name": "Nova Kitchen - April Episodes",
+      "show_ids": ["nova_kitchen"],
+      "publisher_properties": [{
+        "publisher_domain": "novastreaming.example.com",
+        "selection_type": "all"
+      }],
+      "episodes": [
+        {
+          "episode_id": "s3e09",
+          "name": "Fire and Ice",
+          "scheduled_at": "2026-04-05T21:00:00Z",
+          "status": "scheduled",
+          "duration_seconds": 2700,
+          "ad_inventory": {
+            "expected_breaks": 3,
+            "total_ad_seconds": 360,
+            "max_ad_duration_seconds": 30,
+            "unplanned_breaks": false,
+            "supported_formats": ["video"]
+          }
+        },
+        {
+          "episode_id": "s3e10",
+          "scheduled_at": "2026-04-12T21:00:00Z",
+          "status": "tentative",
+          "valid_until": "2026-04-06T00:00:00Z"
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" },
+        { "placement_id": "mid_roll", "name": "Mid-roll (30s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "fixed_price": 38.00, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+### Related shows and derivative content
+
+A streaming platform offering a main show and its companion after-show, plus highlight clips:
+
+```json
+{
+  "shows": [
+    {
+      "show_id": "nova_kitchen",
+      "name": "Nova Kitchen",
+      "genre": ["IAB8", "IAB8-5"],
+      "genre_taxonomy": "iab_content_3.0",
+      "content_rating": { "system": "tv_parental", "rating": "TV-G" },
+      "status": "active",
+      "production_quality": "professional",
+      "related_shows": [
+        { "show_id": "nova_kitchen_afterhours", "relationship": "companion" }
+      ]
+    },
+    {
+      "show_id": "nova_kitchen_afterhours",
+      "name": "Nova Kitchen: After Hours",
+      "genre": ["IAB8", "IAB8-5"],
+      "genre_taxonomy": "iab_content_3.0",
+      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
+      "status": "active",
+      "production_quality": "prosumer"
+    }
+  ],
+  "products": [
+    {
+      "product_id": "nova_highlights",
+      "name": "Nova Kitchen Highlights Package",
+      "show_ids": ["nova_kitchen"],
+      "episodes": [
+        {
+          "episode_id": "s3e09",
+          "name": "Fire and Ice",
+          "status": "aired",
+          "duration_seconds": 2700
+        },
+        {
+          "episode_id": "s3e09_highlights",
+          "name": "Fire and Ice - Best Moments",
+          "status": "published",
+          "duration_seconds": 180,
+          "derivative_of": {
+            "episode_id": "s3e09",
+            "type": "highlight"
+          }
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" }
+      ],
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm", "pricing_model": "cpm", "floor_price": 12.00, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+The highlight clip references its source episode via `derivative_of`. The companion after-show is linked via `related_shows` on the main show — buyers targeting Nova Kitchen can discover the after-show as an additional reach opportunity.
+
+### Podcast with distribution
+
+A podcast network selling across multiple distribution platforms. The show object captures the full distribution footprint:
+
+```json
+{
+  "shows": [
+    {
+      "show_id": "wonderstruck_weekly",
+      "name": "Wonderstruck Weekly",
+      "genre": ["technology", "business"],
+      "content_rating": { "system": "podcast", "rating": "explicit" },
+      "cadence": "weekly",
+      "status": "active",
+      "talent": [
+        { "role": "host", "name": "Maren Solberg", "brand_url": "https://marensolberg.example.com/brand.json" }
+      ],
+      "distribution": [
+        {
+          "publisher_domain": "spotify.com",
+          "identifiers": [{ "type": "spotify_show_id", "value": "4rOoJ6Egrf8K2IrywzwOMk" }]
+        },
+        {
+          "publisher_domain": "apple.com",
+          "identifiers": [{ "type": "apple_podcast_id", "value": "1234567890" }]
+        },
+        {
+          "publisher_domain": "youtube.com",
+          "identifiers": [{ "type": "youtube_channel_id", "value": "UCwonderstruck" }]
+        },
+        {
+          "publisher_domain": "wonderstruck.example.com",
+          "identifiers": [{ "type": "domain", "value": "wonderstruck.example.com" }]
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "product_id": "wonderstruck_april",
+      "name": "Wonderstruck Weekly - April Episodes",
+      "show_ids": ["wonderstruck_weekly"],
+      "episodes": [
+        {
+          "episode_id": "ep47",
+          "name": "The future of autonomous supply chains",
+          "scheduled_at": "2026-04-07T10:00:00Z",
+          "status": "scheduled",
+          "guest_talent": [
+            { "role": "guest", "name": "Kai Tanaka", "brand_url": "https://kaitanaka.example.com/brand.json" }
+          ]
+        },
+        {
+          "episode_id": "ep48",
+          "scheduled_at": "2026-04-14T10:00:00Z",
+          "status": "tentative"
+        },
+        {
+          "episode_id": "ep49",
+          "scheduled_at": "2026-04-21T10:00:00Z",
+          "status": "tentative"
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (30s)" },
+        { "placement_id": "mid_roll", "name": "Mid-roll host read (60s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "flat_monthly", "pricing_model": "flat_rate", "fixed_price": 15000, "currency": "USD" },
+        { "pricing_option_id": "per_episode", "pricing_model": "flat_rate", "fixed_price": 5000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+Tentative episodes (ep48, ep49) have no names or guest info — they have not been produced yet. The buyer evaluates based on the show's baseline profile and the known details of ep47.
+
+### Discovering shows
+
+Buyers discover shows through the standard `get_products` workflow. Natural language briefs drive show selection:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Podcast sponsorships for technology shows reaching startup founders in April",
+  "filters": {
+    "channels": ["podcast"],
+    "start_date": "2026-04-01",
+    "end_date": "2026-04-30"
+  }
+}
+```
+
+The seller returns products referencing shows from the top-level `shows` array. There is no separate show discovery endpoint — shows surface through product discovery.
+
+### Declaring shows in adagents.json
+
+Publishers can declare shows in their [adagents.json](/docs/governance/property/adagents) file alongside properties. This makes the show catalog discoverable for buyers that crawl adagents.json files. Products in `get_products` responses reference these same show IDs.
+
+## Brand safety
+
+Shows provide a two-level brand safety model: a show baseline and per-episode overrides.
+
+### Show baseline
+
+A show's default brand safety profile comes from:
+- `content_rating` — the show's declared rating system and value
+- `genre` — content categories (ideally using `genre_taxonomy` for machine-readable evaluation)
+- `talent` — hosts and recurring cast, with optional [brand.json](/docs/brand-protocol/brand-json) references for deeper evaluation
+
+This is what buyers evaluate when individual episode content is not yet known.
+
+### Episode overrides
+
+When episode details are available, they can shift the safety profile:
+- A `content_rating` that differs from the show baseline (this week is TV-14 instead of TV-PG)
+- `guest_talent` that changes the talent profile (a controversial guest)
+- `topics` that add episode-specific content signals
+
+### What is not modeled
+
+AdCP does not predict content safety for unknown future episodes. A buyer who commits to "all April episodes" buys based on the show's baseline profile, accepting variation. The seller's content standards and the show's track record are the buyer's basis for that decision.
+
+## Distribution identifiers
+
+Each show's `distribution` array maps it to specific publisher platforms with platform-specific identifiers. This enables cross-seller matching: when two different sellers both offer products for the same show, a buyer agent can match them via shared identifiers.
+
+### Cross-seller matching
+
+Platform-independent identifiers are the most reliable for deduplication:
+
+| Type | Example | Notes |
+|------|---------|-------|
+| `imdb_id` | `tt1234567` | Universal cross-platform reference |
+| `gracenote_id` | `EP012345678` | Industry standard for TV metadata |
+| `eidr_id` | `10.5240/XXXX-XXXX-XXXX-XXXX-XXXX-C` | ISO 10528 for audiovisual content |
+
+Shows SHOULD include at least one platform-independent identifier when available.
+
+### Platform-specific identifiers
+
+<CodeGroup>
+
+```json Podcast
+{
+  "distribution": [
+    {
+      "publisher_domain": "spotify.com",
+      "identifiers": [{ "type": "spotify_show_id", "value": "4rOoJ6Egrf8K2IrywzwOMk" }]
+    },
+    {
+      "publisher_domain": "apple.com",
+      "identifiers": [{ "type": "apple_podcast_id", "value": "1234567890" }]
+    },
+    {
+      "publisher_domain": "feeds.example.com",
+      "identifiers": [{ "type": "rss_url", "value": "https://feeds.example.com/show.xml" }]
+    }
+  ]
+}
+```
+
+```json Video / CTV
+{
+  "distribution": [
+    {
+      "publisher_domain": "youtube.com",
+      "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }]
+    },
+    {
+      "publisher_domain": "acmestreaming.example.com",
+      "identifiers": [{ "type": "amazon_title_id", "value": "B0DFBT5GBP" }]
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+Available podcast types: `apple_podcast_id`, `spotify_show_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`.
+
+## Ad inventory
+
+Episodes declare break-based ad inventory in the `ad_inventory` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `expected_breaks` | integer | Number of planned ad breaks |
+| `total_ad_seconds` | integer | Total seconds of ad time across all breaks |
+| `max_ad_duration_seconds` | integer | Maximum duration for a single ad within a break |
+| `unplanned_breaks` | boolean | `false`: all breaks pre-defined. `true`: breaks driven by live conditions (sports timeouts, live news). |
+| `supported_formats` | string[] | Format types supported in breaks (e.g., `"video"`, `"audio"`) |
+
+For non-break ad formats like host reads, custom integrations, or sponsorships, use product [placements](/docs/media-buy/product-discovery/media-products#placements) instead. A podcast product might have a placement for "mid-roll host read (60s)" — that is a placement on the product, not part of `ad_inventory`.
+
+## Relationship to LEAP
+
+The episode model aligns with IAB Tech Lab's LEAP Forecasting API for live streaming events:
+
+| LEAP concept | AdCP equivalent |
+|-------------|----------------|
+| UpcomingEvent | Episode (`scheduled_at` + `status`) |
+| Content (AdCOM 1.0) | Show metadata (`genre`, `content_rating`, `talent`) |
+| AdInventoryConfiguration | Episode `ad_inventory` + product placements |
+| Event status | Episode `status` (`scheduled`, `tentative`, `cancelled`) |
+| Unplanned breaks | `ad_inventory.unplanned_breaks` |
+| Flexible end time | Episode `flexible_end` |
+
+LEAP targets SSP-to-DSP plumbing. AdCP operates at the agent-to-agent negotiation layer where buying decisions happen.
+
+## Multi-show bundles
+
+A single product can span multiple shows by listing multiple entries in `show_ids`. When a product has multiple shows, each episode MUST include `show_id` so the buyer agent knows which show each episode belongs to.
+
+```json
+{
+  "shows": [
+    { "show_id": "tech_weekly", "name": "Tech Weekly", "genre": ["IAB19"], "genre_taxonomy": "iab_content_3.0", "status": "active" },
+    { "show_id": "startup_hour", "name": "The Startup Hour", "genre": ["IAB3"], "genre_taxonomy": "iab_content_3.0", "status": "active" }
+  ],
+  "products": [
+    {
+      "product_id": "technet_april_bundle",
+      "name": "TechNet Podcast Bundle - April",
+      "show_ids": ["tech_weekly", "startup_hour"],
+      "episodes": [
+        { "episode_id": "tw_ep12", "show_id": "tech_weekly", "scheduled_at": "2026-04-07T10:00:00Z", "status": "scheduled" },
+        { "episode_id": "tw_ep13", "show_id": "tech_weekly", "scheduled_at": "2026-04-14T10:00:00Z", "status": "tentative" },
+        { "episode_id": "sh_ep30", "show_id": "startup_hour", "scheduled_at": "2026-04-09T14:00:00Z", "status": "scheduled" },
+        { "episode_id": "sh_ep31", "show_id": "startup_hour", "scheduled_at": "2026-04-16T14:00:00Z", "status": "tentative" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "bundle", "pricing_model": "flat_rate", "fixed_price": 25000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+## See also
+
+- [Media products](/docs/media-buy/product-discovery/media-products) — the full product model
+- [brand.json](/docs/brand-protocol/brand-json) — talent identity and brand safety evaluation
+- [Product discovery](/docs/media-buy/product-discovery) — how buyers discover inventory via `get_products`

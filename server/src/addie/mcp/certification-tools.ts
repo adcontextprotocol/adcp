@@ -709,6 +709,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   B1: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
     { label: 'Get products task', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
+    { label: 'Media products', url: `${DOCS_BASE}/docs/media-buy/product-discovery/media-products` },
+    { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
   ],
@@ -716,6 +718,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
     { label: 'List creative formats task', url: `${DOCS_BASE}/docs/creative/task-reference/list_creative_formats` },
+    { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
   ],
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -744,6 +747,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   C2: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Shows and episodes — talent linking', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },
@@ -811,6 +815,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   S4: [
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
+    { label: 'Shows and episodes — brand safety', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },

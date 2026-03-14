@@ -90,6 +90,13 @@
           },
           "minItems": 1
         },
+        "shows": {
+          "type": "array",
+          "description": "Shows produced or distributed by this publisher. Declares the content programs whose inventory is sold through authorized agents. Products in get_products responses reference these shows by show_id.",
+          "items": {
+            "$ref": "/schemas/core/show.json"
+          }
+        },
         "tags": {
           "type": "object",
           "description": "Metadata for each tag referenced by properties. Provides human-readable context for property tag values.",
