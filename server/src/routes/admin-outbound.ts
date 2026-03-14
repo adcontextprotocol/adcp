@@ -468,6 +468,7 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
           can_contact: contactEligibility.canContact,
           reason: contactEligibility.reason ?? 'Eligible',
         },
+        available_channels: ['slack'],
       };
 
       const planned = await planner.planNextAction(ctx);
@@ -566,6 +567,7 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
           can_contact: contactEligibility.canContact,
           reason: contactEligibility.reason ?? 'Eligible',
         },
+        available_channels: ['slack'],
       };
 
       // Get planner's recommendation

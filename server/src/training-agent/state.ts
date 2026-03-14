@@ -22,6 +22,9 @@ function createSession(): SessionState {
   const now = new Date();
   return {
     mediaBuys: new Map(),
+    governancePlans: new Map(),
+    governanceChecks: new Map(),
+    governanceOutcomes: new Map(),
     creatives: new Map(),
     createdAt: now,
     lastAccessedAt: now,

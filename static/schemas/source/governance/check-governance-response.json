@@ -131,6 +131,16 @@
       "type": "string",
       "format": "date-time",
       "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
+    },
+    "categories_evaluated": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Governance categories evaluated during this check."
+    },
+    "policies_evaluated": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Registry policy IDs evaluated during this check."
     }
   },
   "required": ["check_id", "status", "binding", "plan_id", "buyer_campaign_ref", "explanation"],

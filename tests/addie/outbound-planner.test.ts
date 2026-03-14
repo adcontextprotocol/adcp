@@ -60,6 +60,7 @@ function makeGoal(overrides: Partial<OutreachGoal> = {}): OutreachGoal {
     max_attempts: 3,
     days_between_attempts: 7,
     is_enabled: true,
+    channel: 'any',
     created_by: null,
     created_at: new Date('2025-01-01'),
     updated_at: new Date('2025-01-01'),
@@ -74,6 +75,7 @@ function makeHistory(overrides: Partial<UserGoalHistory> = {}): UserGoalHistory 
     slack_user_id: 'U123',
     goal_id: 1,
     status: 'sent',
+    channel: 'slack',
     attempt_count: 1,
     last_attempt_at: null,
     next_attempt_at: null,
@@ -86,6 +88,9 @@ function makeHistory(overrides: Partial<UserGoalHistory> = {}): UserGoalHistory 
     decision_method: null,
     outreach_id: null,
     thread_id: null,
+    prospect_org_id: null,
+    email_subject: null,
+    email_body: null,
     created_at: new Date('2025-01-01'),
     updated_at: new Date('2025-01-01'),
     ...overrides,
@@ -108,6 +113,7 @@ function makeContext(overrides: Partial<PlannerContext> = {}): PlannerContext {
       can_contact: true,
       reason: 'eligible',
     },
+    available_channels: ['slack'],
     ...overrides,
   };
 }

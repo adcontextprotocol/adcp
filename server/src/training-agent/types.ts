@@ -68,6 +68,9 @@ export interface CatalogProduct {
 export interface SessionState {
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
+  governancePlans: Map<string, GovernancePlanState>;
+  governanceChecks: Map<string, GovernanceCheckState>;
+  governanceOutcomes: Map<string, GovernanceOutcomeState>;
   lastGetProductsContext?: {
     products: Record<string, unknown>[];
     proposals?: Record<string, unknown>[];
@@ -113,4 +116,92 @@ export interface CreativeState {
   status: string;
   syncedAt: string;
   manifest?: Record<string, unknown>;
+}
+
+// ── Governance types ────────────────────────────────────────────
+
+export interface GovernanceDelegation {
+  agentUrl: string;
+  authority: string;
+  budgetLimit?: { amount: number; currency: string };
+  markets?: string[];
+  expiresAt?: string;
+}
+
+export interface GovernancePlanState {
+  planId: string;
+  version: number;
+  status: 'active' | 'suspended' | 'completed';
+  brand: Record<string, unknown>;
+  objectives: string;
+  budget: {
+    total: number;
+    currency: string;
+    authorityLevel: string;
+    perSellerMaxPct?: number;
+    reallocationThreshold?: number;
+  };
+  channels?: {
+    required?: string[];
+    allowed?: string[];
+    mixTargets?: Record<string, { min_pct?: number; max_pct?: number }>;
+  };
+  flight: { start: string; end: string };
+  countries?: string[];
+  regions?: string[];
+  delegations?: GovernanceDelegation[];
+  approvedSellers?: string[] | null;
+  policyIds?: string[];
+  customPolicies?: string[];
+  mode: 'enforce' | 'advisory' | 'audit';
+  committedBudget: number;
+  syncedAt: string;
+}
+
+export interface GovernanceCheckState {
+  checkId: string;
+  planId: string;
+  buyerCampaignRef: string;
+  binding: 'proposed' | 'committed';
+  status: 'approved' | 'denied' | 'conditions' | 'escalated';
+  caller: string;
+  tool?: string;
+  phase?: string;
+  findings: GovernanceFinding[];
+  conditions?: GovernanceCondition[];
+  escalation?: Record<string, unknown>;
+  explanation: string;
+  mode: string;
+  categoriesEvaluated: string[];
+  policiesEvaluated: string[];
+  mediaBuyId?: string;
+  timestamp: string;
+  expiresAt?: string;
+}
+
+export interface GovernanceFinding {
+  categoryId: string;
+  severity: string;
+  explanation: string;
+  policyId?: string;
+  confidence?: number;
+  details?: Record<string, unknown>;
+}
+
+export interface GovernanceCondition {
+  field: string;
+  requiredValue?: unknown;
+  reason: string;
+}
+
+export interface GovernanceOutcomeState {
+  outcomeId: string;
+  planId: string;
+  checkId?: string;
+  buyerCampaignRef: string;
+  outcomeType: 'completed' | 'failed' | 'delivery';
+  committedBudget: number;
+  mediaBuyId?: string;
+  findings: GovernanceFinding[];
+  timestamp: string;
 }
