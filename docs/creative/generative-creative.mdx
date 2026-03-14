@@ -25,11 +25,10 @@ Here's the simplest possible request to generate a native display ad:
 ```json
 {
   "message": "Create a simple ad for a coffee shop promotion - 20% off all drinks this week",
-  "format_id": {
+  "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_native"
-  },
-  "output_mode": "manifest"
+  }
 }
 ```
 
@@ -93,14 +92,13 @@ Provide brand context for better creative generation:
 ```json
 {
   "message": "Create a display ad for our coffee shop promotion",
-  "format_id": {
+  "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
   },
   "brand": {
     "domain": "mycoffeeshop.com"
-  },
-  "output_mode": "manifest"
+  }
 }
 ```
 
@@ -109,7 +107,7 @@ Provide brand context for better creative generation:
 ```json
 {
   "message": "Create a coffee shop ad",
-  "format_id": {
+  "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_native"
   },
@@ -155,11 +153,10 @@ For real-time personalization, use code mode:
 ```json
 {
   "message": "Create a weather-responsive coffee ad that shows hot drinks when cold, iced drinks when warm",
-  "format_id": {
+  "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_native"
-  },
-  "output_mode": "code"
+  }
 }
 ```
 
@@ -179,11 +176,10 @@ For custom publisher formats, specify the source:
 ```json
 {
   "message": "Create a premium video ad",
-  "format_id": {
+  "target_format_id": {
     "agent_url": "https://premium-publisher.com",
     "id": "premium_video_15s"
-  },
-  "output_mode": "manifest"
+  }
 }
 ```
 
@@ -286,8 +282,135 @@ When the seller generates creatives at serve time, the buyer's controls are:
 
 If post-flight review reveals off-brand variants, update the brief with more specific constraints and re-submit via `create_media_buy`. For regulated categories (financial services, pharma), include compliance requirements in the brief — agents that declare `supports_compliance: true` in their creative capabilities validate disclosures and required elements during generation.
 
+## Conversational and interactive formats
+
+Some generative formats are stateful — AI chat, interactive experiences, conversational native ads. These follow the same brief-in-media-buy pattern but have unique characteristics worth understanding.
+
+### Format discovery
+
+A conversational format in `list_creative_formats` might look like:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.seller-example.com",
+    "id": "conversational_native"
+  },
+  "name": "Conversational native ad",
+  "type": "native",
+  "media_family": "display",
+  "description": "AI-powered conversational ad that responds to user messages within the content feed. Adapts tone and recommendations based on conversation context."
+}
+```
+
+### Brief structure
+
+The brief for a conversational format includes persona, topic boundaries, and guardrails:
+
+```json
+{
+  "packages": [{
+    "buyer_ref": "pkg_chat_q2",
+    "product_id": "premium_native",
+    "pricing_option_id": "cpm_engaged",
+    "budget": 25000,
+    "creatives": [{
+      "creative_id": "brand_chat_brief",
+      "name": "Product advisor chat",
+      "format_id": {
+        "agent_url": "https://ads.seller-example.com",
+        "id": "conversational_native"
+      },
+      "assets": {
+        "brief": {
+          "content": "Act as a helpful product advisor for our outdoor gear line. Recommend products based on the user's activity interests. Keep responses concise (2-3 sentences). Never discuss competitor products. Always include a product link when recommending."
+        }
+      }
+    }]
+  }]
+}
+```
+
+### Previewing conversations
+
+Pre-flight previews for conversational formats produce a representative first interaction. Use `context_description` to simulate different entry points:
+
+```json
+{
+  "request_type": "batch",
+  "quality": "production",
+  "requests": [
+    {
+      "creative_manifest": {
+        "format_id": {
+          "agent_url": "https://ads.seller-example.com",
+          "id": "conversational_native"
+        },
+        "assets": {
+          "brief": {
+            "content": "Act as a helpful product advisor for our outdoor gear line. Recommend products based on the user's activity interests."
+          }
+        }
+      },
+      "inputs": [
+        { "name": "Hiking enthusiast", "context_description": "User reading an article about day hikes near Portland" },
+        { "name": "Runner", "context_description": "User browsing a running shoe review page" }
+      ]
+    }
+  ]
+}
+```
+
+When the preview response includes an `interactive_url`, reviewers can interact with the experience directly in a sandbox — testing different conversation paths, verifying guardrails, and checking tone.
+
+### Variant manifests for conversations
+
+After the campaign runs, `get_creative_delivery` returns variant manifests that capture what the agent produced. For conversational formats, each variant represents a conversation session:
+
+```json
+{
+  "variant_id": "conv_hiker_session_042",
+  "generation_context": {
+    "context_type": "conversational",
+    "topic": "outdoor recreation, hiking gear",
+    "device_class": "mobile",
+    "ext": {
+      "turn_count": 4,
+      "engagement_duration_seconds": 45
+    }
+  },
+  "manifest": {
+    "format_id": {
+      "agent_url": "https://ads.seller-example.com",
+      "id": "conversational_native"
+    },
+    "assets": {
+      "greeting": {
+        "asset_type": "text",
+        "content": "Planning a hike? I can help you find the right gear for the trail."
+      },
+      "transcript": {
+        "asset_type": "text",
+        "content": "Agent: Planning a hike? I can help you find the right gear for the trail.\nUser: Looking for a lightweight daypack\nAgent: For day hikes near Portland, I'd recommend our TrailLite 22L — it's 380g with a built-in rain cover. [link]\nUser: What about trekking poles?\nAgent: The CompactTrek poles fold to 36cm and weigh just 240g per pair. Great for the elevation changes on trails like Dog Mountain. [link]"
+      },
+      "products_shown": {
+        "asset_type": "text",
+        "content": "TrailLite 22L Daypack, CompactTrek Folding Poles"
+      }
+    }
+  },
+  "impressions": 1,
+  "clicks": 2
+}
+```
+
+The level of detail in variant manifests depends on the agent. Some provide full transcripts (as shown above), others provide summarized exchanges with anonymized user signals. The key is that the buyer can audit what the brand's AI said to users.
+
+See [Previewing generative creative](/docs/creative/task-reference/preview_creative#conversational-and-interactive-formats) for the full mental model on previewing stateful formats.
+
 ## Next steps
 
+- **Multi-format generation**: Generate creatives for multiple sizes in one call with `target_format_ids` — see [Multi-format generation](/docs/creative/task-reference/build_creative#multi-format-generation)
 - **Browse examples**: See [Task reference](/docs/creative/task-reference/build_creative) for `build_creative` examples
 - **Sales agent creative flow**: See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) for seller-side generation
 - **Delivery reporting**: See [get_creative_delivery](/docs/creative/task-reference/get_creative_delivery) for variant-level analytics

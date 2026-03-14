@@ -245,6 +245,9 @@ if (managesCreatives) {
   if (supports_generation) {
     // Agent generates creatives — look for generative formats
     const formats = await agent.listCreativeFormats({});
+    if (formats.errors) {
+      console.error('Format discovery failed:', formats.errors);
+    }
   }
 
   if (has_creative_library) {
@@ -252,6 +255,9 @@ if (managesCreatives) {
     const creatives = await agent.listCreatives({
       account: { account_id: 'acc_123' }
     });
+    if (creatives.errors) {
+      console.error('Library browse failed:', creatives.errors);
+    }
   }
 }
 ```

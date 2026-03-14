@@ -444,12 +444,14 @@ You can combine steps 1 and 2 by setting `include_preview: true` on the build re
 Use `preview_quality` to control render fidelity independently from build quality. For example, build at `quality: "draft"` (fast concept generation) but preview at `preview_quality: "production"` (full-fidelity render to show stakeholders the layout). If `preview_quality` is omitted, the agent uses its own default.
 
 ```json
-// Build + preview in one call
+// Build at draft quality, but preview at production quality for stakeholder review
 {
   "message": "Create a display banner for our winter sale",
   "target_format_id": {"agent_url": "...", "id": "display_300x250_generative"},
   "brand": { "domain": "mybrand.com" },
+  "quality": "draft",
   "include_preview": true,
+  "preview_quality": "production",
   "creative_manifest": {
     "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
     "assets": {
