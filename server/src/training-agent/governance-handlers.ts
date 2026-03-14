@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   TrainingContext,
   GovernancePlanState,
+  GovernanceDelegation,
   GovernanceCheckState,
   GovernanceOutcomeState,
   GovernanceFinding,
@@ -155,6 +156,7 @@ const GOVERNANCE_CATEGORIES = [
   'channel_compliance',
   'flight_compliance',
   'delegation_authority',
+  'seller_compliance',
   'seller_concentration',
   'delivery_pacing',
 ];
@@ -281,19 +283,32 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
 
   // Delegation authority check
   categoriesEvaluated.push('delegation_authority');
+  let callerDelegation: GovernanceDelegation | undefined;
   if (plan.delegations?.length) {
-    const delegation = plan.delegations.find(d => d.agentUrl === caller);
-    if (!delegation) {
+    callerDelegation = plan.delegations.find(d => d.agentUrl === caller);
+    if (!callerDelegation) {
       findings.push({
         categoryId: 'delegation_authority',
         severity: 'critical',
         explanation: `Caller ${caller} is not in the plan's delegations list.`,
       });
-    } else if (delegation.expiresAt && new Date(delegation.expiresAt) < new Date()) {
+    } else if (callerDelegation.expiresAt && new Date(callerDelegation.expiresAt) < new Date()) {
       findings.push({
         categoryId: 'delegation_authority',
         severity: 'critical',
-        explanation: `Delegation for ${caller} expired at ${delegation.expiresAt}.`,
+        explanation: `Delegation for ${caller} expired at ${callerDelegation.expiresAt}.`,
+      });
+    }
+  }
+
+  // Approved sellers check
+  if (plan.approvedSellers !== undefined && plan.approvedSellers !== null) {
+    categoriesEvaluated.push('seller_compliance');
+    if (!plan.approvedSellers.includes(caller)) {
+      findings.push({
+        categoryId: 'seller_compliance',
+        severity: 'critical',
+        explanation: `Caller ${caller} is not in the plan's approved sellers list.`,
       });
     }
   }
@@ -305,6 +320,30 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
       governanceContext
         ? extractFromGovernanceContext(governanceContext)
         : extractFromPayload(payload!);
+
+    // Delegation budget_limit enforcement
+    if (callerDelegation?.budgetLimit && payloadBudget !== undefined) {
+      if (payloadBudget > callerDelegation.budgetLimit.amount) {
+        findings.push({
+          categoryId: 'delegation_authority',
+          severity: 'critical',
+          explanation: `Proposed budget $${payloadBudget} exceeds delegation budget limit of $${callerDelegation.budgetLimit.amount} for ${caller}.`,
+        });
+      }
+    }
+
+    // Delegation markets enforcement
+    if (callerDelegation?.markets?.length && payloadCountries.length > 0) {
+      const delegationMarketSet = new Set(callerDelegation.markets);
+      const unauthorized = payloadCountries.filter(c => !delegationMarketSet.has(c));
+      if (unauthorized.length > 0) {
+        findings.push({
+          categoryId: 'delegation_authority',
+          severity: 'critical',
+          explanation: `Unauthorized markets for delegated agent ${caller}: ${unauthorized.join(', ')}. Delegation allows: ${callerDelegation.markets.join(', ')}.`,
+        });
+      }
+    }
 
     // Budget compliance
     categoriesEvaluated.push('budget_authority');
