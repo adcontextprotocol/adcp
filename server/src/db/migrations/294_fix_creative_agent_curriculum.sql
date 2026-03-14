@@ -1,7 +1,7 @@
--- Fix curriculum content that treats "creative agent" as a distinct entity type
--- separate from sales agents. In reality, any agent implementing the Creative
--- Protocol is a creative agent — including sales agents that declare both
--- media_buy and creative in supported_protocols.
+-- Migration 294: Fix curriculum content that treats "creative agent" as a
+-- distinct entity type separate from sales agents. In reality, any agent
+-- implementing the Creative Protocol is a creative agent — including sales
+-- agents that declare both media_buy and creative in supported_protocols.
 
 -- A2: Fix "Agent roles in action" to explain protocol composition
 UPDATE certification_modules SET lesson_plan = jsonb_set(
