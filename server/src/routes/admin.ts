@@ -87,6 +87,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/people", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-people.html").catch((err) => {
+      logger.error({ err }, "Error serving people page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
