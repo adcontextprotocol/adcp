@@ -1,0 +1,340 @@
+---
+title: Multi-agent creative orchestration
+---
+
+Agency platforms and holding company systems often sit between a brand team and dozens of agents: creative tools, ad servers, and sales agents across publishers. The orchestrator's job is to route creative requests to the right agent, distribute finished creatives to sellers, and aggregate delivery data back into a unified view.
+
+<img src="/images/walkthrough/diagram-orchestrator-sequence.png" alt="Sequence diagram showing an orchestrator calling get_adcp_capabilities, list_creative_formats, build_creative, sync_creatives, and get_creative_delivery across multiple agents" style={{ width: '100%', borderRadius: '12px', marginBottom: '1.5rem' }} />
+
+This page covers the patterns for building that orchestration layer on top of AdCP.
+
+## The orchestrator role
+
+An orchestrator is a buyer-side system that connects to multiple AdCP agents and coordinates creative workflows across them. It does not implement the Creative Protocol itself — it consumes it. Typical orchestrators include agency platforms (think a holding company's internal toolchain), brand-side creative hubs, and multi-publisher campaign management systems.
+
+The orchestrator's responsibilities:
+
+- **Discover** what each connected agent can do
+- **Route** creative requests to the agent best suited for the job
+- **Distribute** finished creatives to every seller that needs them
+- **Aggregate** delivery data across agents into a single reporting view
+
+## Capability discovery
+
+Before routing any requests, the orchestrator needs a map of what each agent supports. Call `get_adcp_capabilities` on every connected agent and index the `creative` section of each response.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "adcp": { "major_versions": [3] },
+  "supported_protocols": ["creative"],
+  "creative": {
+    "has_creative_library": true,
+    "supports_generation": false,
+    "supports_transformation": true,
+    "supports_compliance": false
+  }
+}
+```
+
+Build a capability map from the responses:
+
+| Agent | `supports_generation` | `supports_transformation` | `has_creative_library` |
+|---|---|---|---|
+| `https://creative.novastudio-example.com` | true | true | false |
+| `https://ads.flashtalking-example.com` | false | false | true |
+| `https://sales.pinnaclemedia-example.com` | true | true | true |
+
+Cache this map and refresh it periodically — the `last_updated` field on the capabilities response tells you when an agent's capabilities last changed.
+
+## Format discovery across agents
+
+Call `list_creative_formats` on each agent in parallel. Each agent returns a `formats` array where every format includes a `format_id` with an `agent_url` identifying which agent owns that format definition.
+
+```json
+{
+  "formats": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.novastudio-example.com",
+        "id": "display_300x250"
+      },
+      "name": "Display 300x250",
+      "renders": [{
+        "role": "primary",
+        "dimensions": { "width": 300, "height": 250, "unit": "px" }
+      }]
+    }
+  ]
+}
+```
+
+Merge the results into a unified format catalog. When the same standard format (same dimensions, same type) is available from multiple agents, keep all entries — the `agent_url` in each `format_id` distinguishes them. At routing time, prefer the agent whose capabilities best match the request (a generative agent for briefs, a library agent for tag retrieval).
+
+Some agents also return a `creative_agents` array pointing to additional agents the orchestrator can query. Follow these references to discover formats from agents not already in your connection list, but track visited URLs to avoid infinite loops.
+
+## Routing creative requests
+
+Use the capability map and format catalog to route each request to the right agent.
+
+**Brief with no existing creative** — the brand team provides creative direction but no assets. Route to an agent with `supports_generation: true`. The agent accepts a natural language brief via `build_creative` and returns a manifest with generated assets.
+
+**Existing creative needs resizing** — the buyer has a manifest for one format and needs it adapted to another. Route to an agent with `supports_transformation: true`. Pass the existing `creative_manifest` and a `target_format_id` for the desired output.
+
+**Retrieve tags from an ad server** — the creative already exists in a platform library. Route to the agent with `has_creative_library: true` that hosts it. Pass the `creative_id` and `target_format_id` to `build_creative` to get a serving tag.
+
+**Target format determines the agent** — when the request targets a specific format (CTV, DOOH, a publisher's proprietary unit), route to the agent whose `format_id.agent_url` matches. That agent is the authority for that format and will produce the most reliable output.
+
+When multiple agents qualify, prefer agents that combine capabilities. A sales agent with `supports_generation: true` and `has_creative_library: true` can generate a creative and store it in one step, avoiding a separate sync.
+
+## Build once, distribute to many
+
+The core multi-agent workflow: generate or build a creative once, then distribute it to every seller that needs it.
+
+### Step 1: Build the creative
+
+Call `build_creative` on your creative agent to produce a manifest:
+
+```json
+{
+  "message": "Create a holiday display campaign for Acme Corp featuring winter products",
+  "target_format_id": {
+    "agent_url": "https://creative.novastudio-example.com",
+    "id": "display_300x250"
+  },
+  "concept_id": "concept_holiday_2026"
+}
+```
+
+The agent returns a manifest with the generated assets. Assign your own `creative_id` to the result — this ID stays consistent everywhere you send the creative.
+
+### Step 2: Sync to each seller
+
+Call `sync_creatives` on each sales agent, using the same `creative_id` and `concept_id`:
+
+<CodeGroup>
+```json Pinnacle Media
+{
+  "account": { "account_id": "acct_acme_pinnacle" },
+  "creatives": [{
+    "creative_id": "acme_holiday_300x250",
+    "name": "Holiday 2026 - Medium Rectangle",
+    "concept_id": "concept_holiday_2026",
+    "format_id": {
+      "agent_url": "https://creative.novastudio-example.com",
+      "id": "display_300x250"
+    },
+    "assets": {
+      "image": {
+        "url": "https://cdn.acme-example.com/holiday-300x250.png",
+        "width": 300,
+        "height": 250
+      },
+      "click_url": {
+        "url": "https://acme-example.com/holiday-sale"
+      }
+    }
+  }],
+  "assignments": [{
+    "creative_id": "acme_holiday_300x250",
+    "package_id": "pkg_premium_display"
+  }]
+}
+```
+
+```json Nova Sports
+{
+  "account": { "account_id": "acct_acme_novasports" },
+  "creatives": [{
+    "creative_id": "acme_holiday_300x250",
+    "name": "Holiday 2026 - Medium Rectangle",
+    "concept_id": "concept_holiday_2026",
+    "format_id": {
+      "agent_url": "https://creative.novastudio-example.com",
+      "id": "display_300x250"
+    },
+    "assets": {
+      "image": {
+        "url": "https://cdn.acme-example.com/holiday-300x250.png",
+        "width": 300,
+        "height": 250
+      },
+      "click_url": {
+        "url": "https://acme-example.com/holiday-sale"
+      }
+    }
+  }],
+  "assignments": [{
+    "creative_id": "acme_holiday_300x250",
+    "package_id": "pkg_sports_display"
+  }]
+}
+```
+</CodeGroup>
+
+Both calls use the same `creative_id` (`acme_holiday_300x250`) and `concept_id` (`concept_holiday_2026`). These become the keys for cross-agent correlation later.
+
+### Step 3: Track approval status
+
+Each seller reviews the creative independently. Poll `list_creatives` on each agent to check status:
+
+```json
+{
+  "filters": {
+    "creative_ids": ["acme_holiday_300x250"]
+  }
+}
+```
+
+The `status` field on each creative tells you where it is: `processing`, `pending_review`, `approved`, `rejected`, or `archived`. Build a consolidated view:
+
+| Seller | `creative_id` | Status |
+|---|---|---|
+| Pinnacle Media | `acme_holiday_300x250` | `approved` |
+| Nova Sports | `acme_holiday_300x250` | `pending_review` |
+
+A creative can be approved by one seller and rejected by another — each seller applies its own policies. See [creative review](/docs/creative/sales-agent-creative-capabilities#creative-review) for how status transitions work.
+
+## Cross-agent delivery aggregation
+
+Once creatives are live, call `get_creative_delivery` on each agent to collect performance data. The response includes a `creatives` array with variant-level breakdowns:
+
+```json
+{
+  "reporting_period": {
+    "start": "2026-11-01T00:00:00-05:00",
+    "end": "2026-11-15T00:00:00-05:00",
+    "timezone": "America/New_York"
+  },
+  "currency": "USD",
+  "creatives": [{
+    "creative_id": "acme_holiday_300x250",
+    "format_id": {
+      "agent_url": "https://creative.novastudio-example.com",
+      "id": "display_300x250"
+    },
+    "totals": {
+      "impressions": 145000,
+      "clicks": 2900,
+      "spend": 1450.00
+    },
+    "variant_count": 3,
+    "variants": [{
+      "variant_id": "var_a1b2c3",
+      "impressions": 80000,
+      "clicks": 1700,
+      "spend": 800.00
+    }]
+  }]
+}
+```
+
+### Correlating across agents
+
+**`creative_id`** is the primary correlation key. Because you assigned the same `creative_id` when syncing to each seller, you can match delivery records across agents directly.
+
+**`concept_id`** groups related creatives. When you need aggregate metrics for the "Holiday 2026" campaign across all sizes and sellers, filter by `concept_id` on each agent's `list_creatives` to get the set of `creative_id` values, then pull delivery for all of them.
+
+**`variant_id`** is scoped to a single agent and creative. Two agents may independently assign the same `variant_id` string. When aggregating variants across agents, prefix with the agent URL to create a globally unique key: `https://sales.pinnaclemedia-example.com/var_a1b2c3`.
+
+### Normalizing timezones
+
+Each agent reports in its own timezone via `reporting_period.timezone`. Before summing metrics across agents, convert all timestamps to a common timezone. The `timezone` field uses IANA identifiers (`America/New_York`, `Europe/London`, `UTC`), so standard timezone libraries handle conversion.
+
+## `concept_id` as a correlation key
+
+Concepts are buyer-assigned groupings — the protocol does not enforce them. The orchestrator decides what constitutes a concept and assigns the `concept_id` consistently when syncing related creatives to different agents.
+
+A typical mapping: one concept per campaign idea, with multiple creatives per concept (different sizes, formats, or variations).
+
+```
+concept_holiday_2026
+  ├── acme_holiday_300x250   (display, synced to Pinnacle Media + Nova Sports)
+  ├── acme_holiday_728x90    (display, synced to Pinnacle Media)
+  └── acme_holiday_video_30s (video, synced to Nova Sports)
+```
+
+Assign `concept_id` at sync time via the `concept_id` field on each creative in `sync_creatives`. Use it to:
+
+- Filter `list_creatives` with `concept_ids` to see all creatives in a concept on a given agent
+- Group `get_creative_delivery` results by concept for roll-up reporting
+- Track approval status across sizes and sellers for the same campaign idea
+
+## Error handling across agents
+
+Multi-agent operations produce partial failures. One seller accepts a creative while another rejects it, or an agent is temporarily unreachable. Design for this from the start.
+
+### Partial sync failures
+
+`sync_creatives` returns per-creative results. Check the `action` field on each item in the response:
+
+```json
+{
+  "creatives": [
+    { "creative_id": "acme_holiday_300x250", "action": "created" },
+    { "creative_id": "acme_holiday_728x90", "action": "failed", "errors": ["Format not supported"] }
+  ]
+}
+```
+
+When the response has top-level `errors` instead of `creatives`, the entire operation failed (authentication, network, invalid request). Retry the whole call.
+
+When individual creatives fail within a successful operation, handle them individually — fix the issue and re-sync just the failed creatives using the `creative_ids` filter:
+
+```json
+{
+  "account": { "account_id": "acct_acme_pinnacle" },
+  "creative_ids": ["acme_holiday_728x90"],
+  "creatives": [{
+    "creative_id": "acme_holiday_728x90",
+    "name": "Holiday 2026 - Leaderboard",
+    "format_id": {
+      "agent_url": "https://creative.novastudio-example.com",
+      "id": "display_728x90"
+    },
+    "assets": { }
+  }]
+}
+```
+
+### Agent unavailability
+
+When an agent is unreachable, the orchestrator should:
+
+1. Record which syncs or queries failed and for which agent
+2. Continue processing other agents — do not block the entire workflow
+3. Retry failed agents with exponential backoff
+4. Use `idempotency_key` on `sync_creatives` so retries are safe
+
+### Inconsistent approval states
+
+A creative approved on one seller and rejected on another is normal, not an error. The orchestrator should surface this clearly to the campaign team rather than treating it as a failure. If the rejection is due to a fixable issue (wrong aspect ratio, missing click URL), update the creative and re-sync to the rejecting seller only.
+
+### Rate limiting and concurrency
+
+When calling many agents in parallel (common for cross-seller sync and delivery aggregation), expect that agents may rate-limit requests. Handle this with standard HTTP patterns:
+
+- Respect `429 Too Many Requests` responses and the `Retry-After` header
+- Use exponential backoff with jitter for retries
+- Set reasonable concurrency limits per agent (start with 5 concurrent requests per agent, adjust based on observed behavior)
+- Log rate-limit events per agent to identify which agents need lower concurrency
+
+Rate-limiting behavior is agent-specific and not standardized by AdCP. Some agents may return `429` with a `Retry-After` header; others may slow responses without explicit signaling. Build your orchestrator to handle both patterns.
+
+## Specialized format orchestration
+
+The patterns on this page apply to all creative formats — display, video, CTV, conversational, audio, DOOH. The protocol-level operations (`list_creative_formats`, `sync_creatives`, `get_creative_delivery`) work identically regardless of format type. The format-specific differences are in asset requirements and preview behavior:
+
+- **CTV formats** produce multi-render previews (primary video + companion). See [CTV and connected TV](/docs/creative/channels/ctv).
+- **Conversational formats** return `interactive_url` in previews for sandbox testing, and variant manifests include conversation transcripts. See [Conversational formats](/docs/creative/generative-creative#conversational-and-interactive-formats).
+- **Feed-native/social formats** have platform-owned chrome that wraps buyer assets at render time. See [Pattern 4](/docs/creative/implementing-creative-agents#pattern-4-feed-nativesocial-format-agent).
+
+The orchestrator does not need format-specific logic for routing or syncing — the `format_id.agent_url` and capability map handle that. Format-specific knowledge matters only when interpreting previews and delivery data for display to campaign teams.
+
+## Next steps
+
+- [Orchestrator design patterns](/docs/building/implementation/orchestrator-design) — State machines, persistence, and retry patterns for multi-agent systems
+- [Creative libraries and concepts](/docs/creative/creative-libraries) — Managing creatives in a single agent's library
+- [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) — When the seller manages both media and creative
+- [Generative creative](/docs/creative/generative-creative) — AI-powered creative generation workflows
+- [Specification](/docs/creative/specification) — Full Creative Protocol specification and interaction models
