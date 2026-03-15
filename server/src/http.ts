@@ -1057,7 +1057,17 @@ export class HTTPServer {
     this.app.use('/api/training-agent', createTrainingAgentRouter());
 
     // Mount reference creative agent (canonical format definitions and preview rendering)
-    this.app.use('/api/creative-agent', createCreativeAgentRouter());
+    const creativeAgentRouter = createCreativeAgentRouter();
+    this.app.use('/api/creative-agent', creativeAgentRouter);
+
+    // Host-based routing: creative.adcontextprotocol.org serves the creative agent at root
+    // This preserves backward compatibility with the old standalone agent URL scheme
+    this.app.use((req, res, next) => {
+      if (req.hostname === 'creative.adcontextprotocol.org') {
+        return creativeAgentRouter(req, res, next);
+      }
+      next();
+    });
 
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
