@@ -197,7 +197,6 @@
                   "docs/media-buy/specification",
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
-                  "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/get_media_buys",
@@ -610,7 +609,6 @@
                   "docs/media-buy/specification",
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
-                  "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/get_media_buys",
@@ -1129,6 +1127,10 @@
     {
       "source": "/docs/media-buy/advanced-topics/orchestrator-design",
       "destination": "/docs/building/implementation/orchestrator-design"
+    },
+    {
+      "source": "/docs/media-buy/task-reference/list_creative_formats",
+      "destination": "/docs/creative/task-reference/list_creative_formats"
     },
     {
       "source": "/docs/media-buy/task-reference/list_creatives",
