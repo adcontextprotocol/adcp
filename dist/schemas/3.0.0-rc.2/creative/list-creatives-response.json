@@ -1,0 +1,400 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/creative/list-creatives-response.json",
+  "title": "List Creatives Response",
+  "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
+  "type": "object",
+  "properties": {
+    "query_summary": {
+      "type": "object",
+      "description": "Summary of the query that was executed",
+      "properties": {
+        "total_matching": {
+          "type": "integer",
+          "description": "Total number of creatives matching filters (across all pages)",
+          "minimum": 0
+        },
+        "returned": {
+          "type": "integer",
+          "description": "Number of creatives returned in this response",
+          "minimum": 0
+        },
+        "filters_applied": {
+          "type": "array",
+          "description": "List of filters that were applied to the query",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sort_applied": {
+          "type": "object",
+          "description": "Sort order that was applied",
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "direction": {
+              "$ref": "/schemas/3.0.0-rc.2/enums/sort-direction.json"
+            }
+          }
+        }
+      },
+      "required": ["total_matching", "returned"],
+      "additionalProperties": true
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.2/core/pagination-response.json"
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Array of creative assets matching the query",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Unique identifier for the creative"
+          },
+          "account": {
+            "$ref": "/schemas/3.0.0-rc.2/core/account.json",
+            "description": "Account that owns this creative"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable creative name"
+          },
+          "format_id": {
+            "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+            "description": "Format identifier specifying which format this creative conforms to"
+          },
+          "status": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/creative-status.json",
+            "description": "Current approval status of the creative"
+          },
+          "created_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was created"
+          },
+          "updated_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was last modified"
+          },
+          "assets": {
+            "type": "object",
+            "description": "Assets for this creative, keyed by asset_id",
+            "patternProperties": {
+              "^[a-z0-9_]+$": {
+                "anyOf": [
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/image-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/video-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/audio-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/vast-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/text-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/url-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/html-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/javascript-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/webhook-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/css-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/daast-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/markdown-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/brief-asset.json" },
+                  { "$ref": "/schemas/3.0.0-rc.2/core/assets/catalog-asset.json" }
+                ]
+              }
+            },
+            "additionalProperties": true
+          },
+          "tags": {
+            "type": "array",
+            "description": "User-defined tags for organization and searchability",
+            "items": {
+              "type": "string"
+            }
+          },
+          "concept_id": {
+            "type": "string",
+            "description": "Creative concept this creative belongs to. Concepts group related creatives across sizes and formats."
+          },
+          "concept_name": {
+            "type": "string",
+            "description": "Human-readable concept name"
+          },
+          "variables": {
+            "type": "array",
+            "description": "Dynamic content variables (DCO slots) for this creative. Included when include_variables=true.",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.2/core/creative-variable.json"
+            }
+          },
+          "assignments": {
+            "type": "object",
+            "description": "Current package assignments (included when include_assignments=true)",
+            "properties": {
+              "assignment_count": {
+                "type": "integer",
+                "description": "Total number of active package assignments",
+                "minimum": 0
+              },
+              "assigned_packages": {
+                "type": "array",
+                "description": "List of packages this creative is assigned to",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "description": "Package identifier"
+                    },
+                    "buyer_ref": {
+                      "type": "string",
+                      "description": "Buyer's reference identifier for this package"
+                    },
+                    "assigned_date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this assignment was created"
+                    }
+                  },
+                  "required": [
+                    "package_id",
+                    "assigned_date"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [
+              "assignment_count"
+            ],
+            "additionalProperties": true
+          },
+          "snapshot": {
+            "type": "object",
+            "description": "Lightweight delivery snapshot (included when include_snapshot=true). For detailed performance analytics, use get_creative_delivery.",
+            "properties": {
+              "as_of": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When this snapshot was captured by the platform"
+              },
+              "staleness_seconds": {
+                "type": "integer",
+                "description": "Maximum age of this data in seconds. For example, 3600 means the data may be up to 1 hour old.",
+                "minimum": 0
+              },
+              "impressions": {
+                "type": "integer",
+                "description": "Lifetime impressions across all assignments. Not scoped to any date range.",
+                "minimum": 0
+              },
+              "last_served": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last time this creative served an impression. Absent when the creative has never served."
+              }
+            },
+            "required": [
+              "as_of",
+              "staleness_seconds",
+              "impressions"
+            ],
+            "additionalProperties": true
+          },
+          "snapshot_unavailable_reason": {
+            "type": "string",
+            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative.",
+            "enum": [
+              "SNAPSHOT_UNSUPPORTED",
+              "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
+              "SNAPSHOT_PERMISSION_DENIED"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "description": "Items for multi-asset formats like carousels and native ads (included when include_items=true)",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.2/core/creative-item.json"
+            }
+          }
+        },
+        "required": [
+          "creative_id",
+          "name",
+          "format_id",
+          "status",
+          "created_date",
+          "updated_date"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "format_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by format. Keys are agent-defined format identifiers, optionally including dimensions (e.g., 'display_static_300x250', 'video_30s_vast'). Key construction is platform-specific — there is no required format.",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "integer",
+          "description": "Number of creatives with this format",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "status_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by status",
+      "properties": {
+        "processing": {
+          "type": "integer",
+          "description": "Number of creatives being processed",
+          "minimum": 0
+        },
+        "approved": {
+          "type": "integer",
+          "description": "Number of approved creatives",
+          "minimum": 0
+        },
+        "pending_review": {
+          "type": "integer",
+          "description": "Number of creatives pending review",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "description": "Number of rejected creatives",
+          "minimum": 0
+        },
+        "archived": {
+          "type": "integer",
+          "description": "Number of archived creatives",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors (e.g., invalid filters, account not found)",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "query_summary",
+    "pagination",
+    "creatives"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Library query with creatives and variables",
+      "data": {
+        "query_summary": {
+          "total_matching": 2,
+          "returned": 2,
+          "filters_applied": [
+            "concept_ids=concept_holiday_2026",
+            "statuses=approved"
+          ]
+        },
+        "pagination": {
+          "has_more": false,
+          "total_count": 2
+        },
+        "creatives": [
+          {
+            "creative_id": "ft_88201",
+            "name": "Holiday Sale - Medium Rectangle",
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 300,
+              "height": 250
+            },
+            "status": "approved",
+            "created_date": "2026-01-10T14:00:00Z",
+            "updated_date": "2026-02-20T09:30:00Z",
+            "assets": {
+              "banner_image": {
+                "url": "https://cdn.example.com/holiday_300x250.png",
+                "width": 300,
+                "height": 250
+              },
+              "clickthrough_url": {
+                "url": "https://acmecorp.example.com/holiday-sale"
+              }
+            },
+            "tags": ["holiday_2026", "display"],
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
+            "variables": [
+              {
+                "variable_id": "headline_text",
+                "name": "Headline",
+                "variable_type": "text",
+                "default_value": "Holiday Sale - 50% Off",
+                "required": true
+              },
+              {
+                "variable_id": "hero_image",
+                "name": "Hero Image",
+                "variable_type": "image",
+                "required": false
+              }
+            ]
+          },
+          {
+            "creative_id": "ft_88202",
+            "name": "Holiday Sale - Leaderboard",
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 728,
+              "height": 90
+            },
+            "status": "approved",
+            "created_date": "2026-01-10T14:30:00Z",
+            "updated_date": "2026-02-20T09:35:00Z",
+            "assets": {
+              "banner_image": {
+                "url": "https://cdn.example.com/holiday_728x90.png",
+                "width": 728,
+                "height": 90
+              },
+              "clickthrough_url": {
+                "url": "https://acmecorp.example.com/holiday-sale"
+              }
+            },
+            "tags": ["holiday_2026", "display"],
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
+            "variables": []
+          }
+        ],
+        "format_summary": {
+          "display_static_300x250": 1,
+          "display_static_728x90": 1
+        },
+        "status_summary": {
+          "approved": 2,
+          "pending_review": 0,
+          "rejected": 0,
+          "archived": 0
+        }
+      }
+    }
+  ]
+}

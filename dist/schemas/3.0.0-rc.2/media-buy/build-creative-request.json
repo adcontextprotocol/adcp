@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/media-buy/build-creative-request.json",
+  "title": "Build Creative Request",
+  "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes."
+    },
+    "creative_manifest": {
+      "$ref": "/schemas/3.0.0-rc.2/core/creative-manifest.json",
+      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets. For transformation (e.g., resizing, reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation."
+    },
+    "concept_id": {
+      "type": "string",
+      "description": "Creative concept containing the creative. Creative agents SHOULD assign globally unique creative_id values; when they cannot guarantee uniqueness, concept_id is REQUIRED to disambiguate."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Buyer's media buy reference for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms). This is the buyer's reference — the same value used as buyer_ref in create_media_buy."
+    },
+    "package_id": {
+      "type": "string",
+      "description": "Buyer's package or line item reference within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package."
+    },
+    "target_format_id": {
+      "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+      "description": "Single format ID to generate. Mutually exclusive with target_format_ids. The format definition specifies required input assets and output structure."
+    },
+    "target_format_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/format-id.json"
+      },
+      "minItems": 1,
+      "description": "Array of format IDs to generate in a single call. Mutually exclusive with target_format_id. The creative agent produces one manifest per format. Each format definition specifies its own required input assets and output structure."
+    },
+    "brand": {
+      "$ref": "/schemas/3.0.0-rc.2/core/brand-ref.json",
+      "description": "Brand reference for creative generation. Resolved to full brand identity (colors, logos, tone) at execution time."
+    },
+    "quality": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/creative-quality.json",
+      "description": "Quality tier for generation. 'draft' produces fast, lower-fidelity output for iteration and review. 'production' produces full-quality output for final delivery. If omitted, the creative agent uses its own default. For non-generative transforms (e.g., format resizing), creative agents MAY ignore this field."
+    },
+    "item_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of catalog items to use when generating. When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets."
+    },
+    "include_preview": {
+      "type": "boolean",
+      "description": "When true, requests the creative agent to include preview renders in the response alongside the manifest. Agents that support this return a 'preview' object in the response using the same structure as preview_creative. Agents that do not support inline preview simply omit the field. This avoids a separate preview_creative round trip for platforms that generate previews as a byproduct of building."
+    },
+    "preview_inputs": {
+      "type": "array",
+      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids — multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad')"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to use for this preview variant",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "preview_quality": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/creative-quality.json",
+      "description": "Render quality for inline preview when include_preview is true. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings. Independent of the build quality parameter — you can build at draft quality and preview at production quality, or vice versa. If omitted, the creative agent uses its own default. Ignored when include_preview is false or omitted."
+    },
+    "preview_output_format": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/preview-output-format.json",
+      "default": "url",
+      "description": "Output format for preview renders when include_preview is true. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML). Ignored when include_preview is false or omitted."
+    },
+    "macro_values": {
+      "type": "object",
+      "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are the substitution strings. The creative agent translates universal macros to its platform's native syntax. Substitution is literal — all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time. Creative agents MUST ignore keys they do not recognize — unknown macro names are not an error.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["target_format_id"],
+      "properties": { "target_format_ids": false }
+    },
+    {
+      "required": ["target_format_ids"],
+      "properties": { "target_format_id": false }
+    }
+  ],
+  "additionalProperties": true
+}

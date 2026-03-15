@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/exclusivity.json",
+  "title": "Exclusivity",
+  "description": "Whether a product offers exclusive access to its inventory",
+  "type": "string",
+  "enum": [
+    "none",
+    "category",
+    "exclusive"
+  ],
+  "enumDescriptions": {
+    "none": "No exclusivity — multiple advertisers can buy this product simultaneously",
+    "category": "Category-exclusive — only one advertiser per industry category (e.g., one auto brand per show sponsorship)",
+    "exclusive": "Sole sponsorship — only one advertiser can buy this product"
+  }
+}

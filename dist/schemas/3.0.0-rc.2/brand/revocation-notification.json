@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/brand/revocation-notification.json",
+  "title": "Revocation Notification",
+  "description": "Payload sent by a rights holder to a buyer's revocation_webhook when rights are revoked. The buyer must cease creative delivery by effective_at. Partial revocation is supported — if revoked_uses is present, only those uses are revoked.",
+  "type": "object",
+  "properties": {
+    "notification_id": {
+      "type": "string",
+      "description": "Unique identifier for this notification. Buyers use this for deduplication — the same revocation may be delivered multiple times."
+    },
+    "rights_id": {
+      "type": "string",
+      "description": "The revoked rights grant identifier"
+    },
+    "brand_id": {
+      "type": "string",
+      "description": "Brand identifier of the rights subject"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable reason for revocation"
+    },
+    "effective_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the revocation takes effect. Immediate revocations use current time. Grace periods use a future time. The buyer must stop serving creative using these rights by this time."
+    },
+    "revoked_uses": {
+      "type": "array",
+      "description": "If present, only these uses are revoked (partial revocation). If absent, all uses under the grant are revoked.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/right-use.json"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["notification_id", "rights_id", "brand_id", "reason", "effective_at"],
+  "additionalProperties": true
+}

@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/media-buy/sync-audiences-request.json",
+  "title": "Sync Audiences Request",
+  "description": "Request parameters for managing CRM-based audiences on an account with upsert semantics. Existing audiences matched by audience_id are updated, new ones are created. Members are specified as delta operations: add appends new members, remove drops existing ones. Recommend no more than 100,000 members per call; for larger lists, chunk and call incrementally using add/remove deltas. When delete_missing is true, buyer-managed audiences on the account not in this request are removed — do not combine with omitted audiences or all buyer-managed audiences will be deleted. When audiences is omitted, the call is discovery-only: it returns all audiences on the account without modification.",
+  "type": "object",
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.2/core/account-ref.json",
+      "description": "Account to manage audiences for."
+    },
+    "audiences": {
+      "type": "array",
+      "description": "Audiences to sync (create or update). When omitted, the call is discovery-only and returns all existing audiences on the account without modification.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "audience_id": {
+            "type": "string",
+            "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this audience"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of this audience's composition or purpose (e.g., 'High-value customers who purchased in the last 90 days')."
+          },
+          "audience_type": {
+            "type": "string",
+            "enum": ["crm", "suppression", "lookalike_seed"],
+            "description": "Intended use for this audience. 'crm': target these users. 'suppression': exclude these users from delivery. 'lookalike_seed': use as a seed for the seller's lookalike modeling. Sellers may handle audiences differently based on type (e.g., suppression lists bypass minimum size requirements on some platforms)."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Buyer-defined tags for organizing and filtering audiences (e.g., 'holiday_2026', 'high_ltv'). Tags are stored by the seller and returned in discovery-only calls.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "add": {
+            "type": "array",
+            "description": "Members to add to this audience. Hashed before sending — normalize emails to lowercase+trim, phones to E.164.",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.2/core/audience-member.json"
+            },
+            "minItems": 1
+          },
+          "remove": {
+            "type": "array",
+            "description": "Members to remove from this audience. If the same identifier appears in both add and remove in a single request, remove takes precedence.",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.2/core/audience-member.json"
+            },
+            "minItems": 1
+          },
+          "delete": {
+            "type": "boolean",
+            "description": "When true, delete this audience from the account entirely. All other fields on this audience object are ignored. Use this to delete a specific audience without affecting others."
+          },
+          "consent_basis": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/consent-basis.json",
+            "description": "GDPR lawful basis for processing this audience list. Informational — not validated by the protocol, but required by some sellers operating in regulated markets (e.g. EU). When omitted, the buyer asserts they have a lawful basis appropriate to their jurisdiction."
+          }
+        },
+        "required": ["audience_id"],
+        "additionalProperties": true
+      }
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, buyer-managed audiences on the account not included in this sync will be removed. Does not affect seller-managed audiences. Do not combine with an omitted audiences array or all buyer-managed audiences will be deleted."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["account"],
+  "if": {
+    "properties": { "delete_missing": { "const": true } },
+    "required": ["delete_missing"]
+  },
+  "then": {
+    "required": ["audiences"]
+  },
+  "additionalProperties": true
+}
