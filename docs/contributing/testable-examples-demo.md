@@ -1,6 +1,6 @@
 ---
 title: Testable examples demo
-description: Demonstration of the testable documentation system showing validated JSON and executable code blocks.
+description: "AdCP testable documentation demo: validated JSON schemas and executable JavaScript code blocks that run against a live test agent."
 "og:title": "AdCP — Testable examples demo"
 testable: true
 ---

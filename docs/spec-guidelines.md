@@ -1,6 +1,6 @@
 ---
 title: Specification Guidelines
-description: Style and formatting guidelines for writing AdCP specification pages.
+description: "AdCP specification guidelines: type naming rules, discriminated union patterns, field naming conventions, and style standards for writing protocol spec pages."
 "og:title": "AdCP — Specification Guidelines"
 ---
 
