@@ -14,7 +14,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState } from './types.js';
-import { buildCatalog } from './product-factory.js';
+import { buildCatalog, buildShowsForProducts } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
@@ -403,7 +403,10 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   // Store context for refine
   session.lastGetProductsContext = { products };
 
-  return { products, sandbox: true };
+  const shows = buildShowsForProducts(products);
+  const response: Record<string, unknown> = { products, sandbox: true };
+  if (shows.length > 0) response.shows = shows;
+  return response;
 }
 
 function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
