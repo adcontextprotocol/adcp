@@ -319,15 +319,15 @@ Maintain consistency with companies already in use across docs:
 
 | Interaction | Characters | Protocol domain | Direction |
 |-------------|-----------|-----------------|-----------|
-| Sam discovers inventory | Sam -> Priya | Media buy (get_products) | Buyer -> Seller |
-| Sam executes campaign | Sam -> Priya | Media buy (create_media_buy) | Buyer -> Seller |
-| Jordan governs Sam's spend | Jordan <-> Sam | Governance (check_governance) | Internal |
-| Maya distributes creatives | Maya -> Priya | Creative (sync_creatives) | Buyer -> Seller |
-| Kai provides targeting data | Kai -> Sam | Signals (get_signals, activate_signal) | Provider -> Buyer |
-| Tomoko defines brand rules | Tomoko -> Maya | Brand protocol (brand.json) | Brand -> Agency |
-| Tomoko authorizes Pinnacle | Tomoko -> Sam | Accounts (sync_accounts) | Brand -> Agency |
-| Priya validates brand claims | Priya -> Tomoko | Accounts (brand.json verification) | Seller -> Brand |
-| Alex evaluates the ecosystem | Alex -> all | Intro/overview | Evaluator -> ecosystem |
+| Sam discovers inventory | Sam →Priya | Media buy (get_products) | Buyer →Seller |
+| Sam executes campaign | Sam →Priya | Media buy (create_media_buy) | Buyer →Seller |
+| Jordan governs Sam's spend | Jordan ↔ Sam | Governance (check_governance) | Internal |
+| Maya distributes creatives | Maya →Priya | Creative (sync_creatives) | Buyer →Seller |
+| Kai provides targeting data | Kai →Sam | Signals (get_signals, activate_signal) | Provider →Buyer |
+| Tomoko defines brand rules | Tomoko →Maya | Brand protocol (brand.json) | Brand →Agency |
+| Tomoko authorizes Pinnacle | Tomoko →Sam | Accounts (sync_accounts) | Brand →Agency |
+| Priya validates brand claims | Priya →Tomoko | Accounts (brand.json verification) | Seller →Brand |
+| Alex evaluates the ecosystem | Alex →all | Intro/overview | Evaluator →ecosystem |
 
 ---
 
@@ -433,7 +433,7 @@ These changes don't require rewriting narrative -- just updating names, descript
 ### Phase 3: Update certification and tests
 
 1. Update `certification-tools.ts` MODULE_RESOURCES with character references.
-2. Update simulation archetypes to use canonical character names where they overlap (Alex Chen -> Alex Reeves, Sam Okafor -> Sam Adeyemi, Jordan Rivera -> Jordan Ochoa).
+2. Update simulation archetypes to use canonical character names where they overlap (Alex Chen →Alex Reeves, Sam Okafor →Sam Adeyemi, Jordan Rivera →Jordan Ochoa).
 3. Create certification scenario descriptions that reference the character bible.
 
 ### Phase 4: Regenerate illustrations
