@@ -1,24 +1,24 @@
 ---
 title: Signals protocol
 sidebarTitle: Overview
-description: "Follow a media planner from campaign brief to signal activation across automotive, geo, and retail data — a visual walkthrough of the AdCP signals workflow."
+description: "Follow a media buyer from campaign brief to signal activation across automotive, geo, and retail data — a visual walkthrough of the AdCP signals workflow."
 ---
 
 <img src="/images/walkthrough/signals-01-planner-brief.png" alt="Sam stands at a whiteboard sketching a targeting plan, surrounded by floating holographic data icons — audiences, locations, purchase behavior" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-Kai is a media planner at a mid-size agency. His client, Nova Motors, is launching the Volta EV — their first electric vehicle. The brief: reach in-market auto buyers with high purchase propensity, near dealerships, and focus on consumers who haven't bought a Nova vehicle before.
+Sam is a senior media buyer at Pinnacle Agency. His client, Nova Motors, is launching the Volta EV — their first electric vehicle. The brief: reach in-market auto buyers with high purchase propensity, near dealerships, and focus on consumers who haven't bought a Nova vehicle before.
 
-Without AdCP, Kai would be emailing three data providers for segment availability, waiting for IO sign-offs, then uploading CSV segment files to two separate DSP platforms — a process that takes days and breaks every time a provider updates their taxonomy. With AdCP, his agency platform handles it in minutes.
+Without AdCP, Sam would be emailing three data providers for segment availability, waiting for IO sign-offs, then uploading CSV segment files to two separate DSP platforms — a process that takes days and breaks every time a provider updates their taxonomy. With AdCP, his agency platform handles it in minutes.
 
-This walkthrough follows Kai from brief to live targeting.
+This walkthrough follows Sam from brief to live targeting.
 
 ## Step 1: Describe what you need
 
-Kai starts with what he wants to accomplish, not a segment taxonomy.
+Sam starts with what he wants to accomplish, not a segment taxonomy.
 
 <img src="/images/walkthrough/signals-02-natural-language-search.png" alt="Sam types a search on his laptop as three data streams flow outward to location, retail, and audience data provider icons — one query, three sources" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-His agency platform translates the brief into a `get_signals` call. No need to know which providers have what — the signal agent searches across all of them:
+Sam's agency platform translates the brief into a `get_signals` call. No need to know which providers have what — the signal agent searches across all of them:
 
 ```json
 {
@@ -33,7 +33,7 @@ The signal agent searches catalogs from every authorized data provider — autom
 
 <Accordion title="Agency language → protocol terms">
 
-| What Kai says | What the protocol calls it |
+| What Sam says | What the protocol calls it |
 |---|---|
 | Target audience | Signal (from `get_signals`) |
 | Segment taxonomy | Signal catalog (`adagents.json`) |
@@ -52,7 +52,7 @@ The signal agent returns matches from multiple providers. Each signal has a valu
 
 ```mermaid
 sequenceDiagram
-    participant Platform as Kai's Agency Platform
+    participant Platform as Sam's Agency Platform
     participant Agent as Signal Agent
     participant Auto as Trident Auto Data
     participant Geo as Meridian Geo
@@ -72,17 +72,17 @@ sequenceDiagram
     Agent-->>Platform: 8 matching signals with pricing
 ```
 
-Kai sees signals from three providers he didn't have to find or negotiate with individually:
+Sam sees signals from three providers he didn't have to find or negotiate with individually:
 
 - **Trident Auto Data** — `purchase_propensity` (numeric, 0-1 score). CPM: $1.50. `likely_ev_buyers` (binary). CPM: $2.50.
 - **Meridian Geo** — `competitor_visitors` (binary, people who visited competing dealerships). CPM: $2.00.
 - **ShopGrid Retail** — `new_to_brand` (binary). CPM: $3.50. `category_buyer` (categorical: electronics, automotive, home). CPM: $3.00.
 
-Kai notices that `purchase_propensity` is numeric — his agent can set a threshold (score > 0.7) to focus budget on high-intent prospects rather than a blunt include/exclude. He also sees that `category_buyer` is categorical, so he can target "automotive" specifically without paying for the full ShopGrid audience. He picks three signals: `purchase_propensity` for intent scoring, `competitor_visitors` for conquest targeting near rival dealerships, and `new_to_brand` to reach households that haven't bought a Nova before.
+Sam notices that `purchase_propensity` is numeric — his agent can set a threshold (score > 0.7) to focus budget on high-intent prospects rather than a blunt include/exclude. He also sees that `category_buyer` is categorical, so he can target "automotive" specifically without paying for the full ShopGrid audience. The `competitor_visitors` signal catches his eye — it comes from Meridian Geo, a data company founded by Kai Lindstr&#246;m to make location and behavioral data accessible through open protocols. Sam picks three signals: `purchase_propensity` for intent scoring, Meridian Geo's `competitor_visitors` for conquest targeting near rival dealerships, and `new_to_brand` to reach households that haven't bought a Nova before.
 
 ## Step 3: Verify and select
 
-Before activating third-party data, Kai's agency requires verification. His platform fetches the data provider's catalog directly:
+Before activating third-party data, Pinnacle Agency requires verification. Sam's platform fetches the data provider's catalog directly:
 
 ```
 https://shopgrid.example/.well-known/adagents.json
@@ -93,13 +93,13 @@ And confirms:
 2. The signal agent is listed in `authorized_agents`
 3. The authorization covers retail signals (via `signal_tags: ["retail"]`)
 
-If the authorization check had failed — say ShopGrid had revoked the agent's access — Kai would see the signal flagged before spending a dollar on it. This independent verification means buyers don't have to take the signal agent's word for data provenance.
+If the authorization check had failed — say ShopGrid had revoked the agent's access — Sam would see the signal flagged before spending a dollar on it. This independent verification means buyers don't have to take the signal agent's word for data provenance.
 
 ## Step 4: Activate on your platforms
 
 <img src="/images/walkthrough/signals-04-activation-flow.png" alt="Split scene — Sam activates signal segments from his tablet below, data streams flow up to platforms, while Kai monitors activation metrics on his laptop above" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Kai activates his three signals on two DSPs — Nova DSP for programmatic display (broad reach, lower CPMs) and StreamHaus for premium CTV inventory (household-level targeting for the brand spot):
+Sam activates his three signals on two DSPs — Nova DSP for programmatic display (broad reach, lower CPMs) and StreamHaus for premium CTV inventory (household-level targeting for the brand spot):
 
 ```mermaid
 sequenceDiagram
@@ -144,22 +144,22 @@ Each activation call specifies the destination platform and account:
 }
 ```
 
-The signal agent pushes segment membership to each platform. Kai gets back deployment IDs he can reference when building media buys.
+The signal agent pushes segment membership to each platform. Sam gets back deployment IDs he can reference when building media buys.
 
 ## Step 5: Build the campaign
 
 <img src="/images/walkthrough/signals-05-campaign-targeting.png" alt="Sam views three targeting layers stacking on a large screen — location, audience, and purchase data overlap and glow where they intersect" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Now the signals are live on both platforms. Kai's agent builds media buys using [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). The activated signals are already available as targeting segments on each DSP — the media buy references the products discovered via [`get_products`](/docs/media-buy/task-reference/get_products), and the DSP applies the signal-based targeting automatically.
+Now the signals are live on both platforms. Sam's agent builds media buys using [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). The activated signals are already available as targeting segments on each DSP — the media buy references the products discovered via [`get_products`](/docs/media-buy/task-reference/get_products), and the DSP applies the signal-based targeting automatically.
 
-- **Display (Nova DSP)**: Kai selects a display product that targets `purchase_propensity > 0.7` AND `competitor_visitors = true`. This reaches high-intent auto buyers who've been visiting competing dealerships.
-- **CTV (StreamHaus)**: Kai selects a CTV product targeting `new_to_brand = true`. This reaches households that haven't purchased a Nova vehicle with a brand awareness spot.
+- **Display (Nova DSP)**: Sam selects a display product that targets `purchase_propensity > 0.7` AND `competitor_visitors = true`. This reaches high-intent auto buyers who've been visiting competing dealerships.
+- **CTV (StreamHaus)**: Sam selects a CTV product targeting `new_to_brand = true`. This reaches households that haven't purchased a Nova vehicle with a brand awareness spot.
 
-The key point: signals and media buys are separate concerns. The Signals Protocol gets data onto platforms. The [Media Buy Protocol](/docs/media-buy/index) gets campaigns running on those platforms. They compose together — Kai didn't need a custom integration between his signal providers and his DSPs.
+The key point: signals and media buys are separate concerns. The Signals Protocol gets data onto platforms. The [Media Buy Protocol](/docs/media-buy/index) gets campaigns running on those platforms. They compose together — Sam didn't need a custom integration between his signal providers and his DSPs.
 
 ## Step 6: Manage and measure
 
-The campaign runs. Two weeks in, display CPAs are running 40% above target while CTV is pacing well. Kai reallocates: he deactivates the geo signal on Nova DSP to reduce display data costs:
+The campaign runs. Two weeks in, display CPAs are running 40% above target while CTV is pacing well. Sam reallocates: he deactivates the geo signal on Nova DSP to reduce display data costs:
 
 ```json
 {
@@ -182,7 +182,7 @@ Deactivation removes the segment from the platform. Billing stops. The CTV signa
 
 <img src="/images/walkthrough/signals-06-ecosystem-view.png" alt="Sam and Kai stand together in front of a large display showing the signals marketplace — data providers flowing through a hub to buyers, collaborating across the ecosystem" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-Every step uses a standard AdCP task. Kai didn't need to know which data providers exist, negotiate individual contracts, or build custom integrations per DSP. The signal agent handles discovery across catalogs, and each platform handles targeting with its standard tools once segments arrive.
+Every step uses a standard AdCP task. Sam didn't need to know which data providers exist, negotiate individual contracts, or build custom integrations per DSP. Data providers like Kai Lindstr&#246;m's Meridian Geo publish their catalogs once, and the signal agent handles discovery across all of them. Each platform handles targeting with its standard tools once segments arrive.
 
 ## Go deeper
 
