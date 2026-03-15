@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/update-rights-response.json",
+  "title": "Update Rights Response",
+  "description": "Result of a rights update request. Returns updated terms and re-issued credentials on success, or errors if the update cannot be applied.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "UpdateRightsSuccess",
+      "properties": {
+        "rights_id": {
+          "type": "string",
+          "description": "Rights grant identifier"
+        },
+        "terms": {
+          "$ref": "/schemas/brand/rights-terms.json",
+          "description": "Updated contractual terms (same shape as acquire_rights acquired response)"
+        },
+        "generation_credentials": {
+          "type": "array",
+          "description": "Re-issued credentials reflecting updated terms (new expiration dates, adjusted caps)",
+          "items": {
+            "$ref": "/schemas/core/generation-credential.json"
+          }
+        },
+        "rights_constraint": {
+          "$ref": "/schemas/core/rights-constraint.json",
+          "description": "Updated rights constraint for re-embedding in creative manifests"
+        },
+        "paused": {
+          "type": "boolean",
+          "description": "Whether the grant is currently paused. Included when the update changes pause state."
+        },
+        "implementation_date": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "When changes take effect (null if pending approval from rights holder)"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["rights_id", "terms"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "UpdateRightsError",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["rights_id"] },
+          { "required": ["terms"] }
+        ]
+      }
+    }
+  ]
+}

@@ -59,6 +59,10 @@
           "standards_id": {
             "type": "string",
             "description": "Content standards configuration identifier. Required for governance agents."
+          },
+          "rights_id": {
+            "type": "string",
+            "description": "Rights grant identifier from acquire_rights. Required for brand/rights agents. Links usage records to specific rights grants for cap tracking, billing verification, and overage calculation."
           }
         },
         "required": ["account", "vendor_cost", "currency"],

@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/creative-approval-response.json",
+  "title": "Creative Approval Response",
+  "description": "Response from the approval_webhook after reviewing a submitted creative. Uses discriminated union on status field: approved, rejected, or pending_review.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "CreativeApproved",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "approved",
+          "description": "Creative has been approved for distribution"
+        },
+        "rights_id": {
+          "type": "string"
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Echo of the buyer's creative identifier"
+        },
+        "creative_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "conditions": {
+          "type": "array",
+          "description": "Conditions on the approval (e.g., 'approved for NL market only')",
+          "items": { "type": "string" }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["status", "rights_id"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "CreativeRejected",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "rejected",
+          "description": "Creative was rejected"
+        },
+        "rights_id": {
+          "type": "string"
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Echo of the buyer's creative identifier"
+        },
+        "creative_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the creative was rejected"
+        },
+        "suggestions": {
+          "type": "array",
+          "description": "Actionable feedback for revision. If present, the buyer can revise and resubmit the creative. If absent, the rejection is final for this creative concept.",
+          "items": { "type": "string" }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["status", "rights_id", "reason"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "CreativePendingReview",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "pending_review",
+          "description": "Creative is queued for review"
+        },
+        "rights_id": {
+          "type": "string"
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Echo of the buyer's creative identifier"
+        },
+        "creative_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "estimated_response_time": {
+          "type": "string",
+          "description": "Expected time for review (e.g., '24h', '2 business days')"
+        },
+        "status_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to poll for updated approval status. GET this URL to receive a creative-approval-response. Poll at reasonable intervals (suggested: every 5 minutes, back off after 1 hour to every 30 minutes). Stop polling after estimated_response_time has elapsed and the status is still pending_review."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["status", "rights_id"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "CreativeApprovalError",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["status"] }
+        ]
+      }
+    }
+  ]
+}
