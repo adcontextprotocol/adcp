@@ -1,0 +1,310 @@
+---
+title: Creative capabilities on sales agents
+sidebarTitle: Sales agent creatives
+description: How sales agents implement the Creative Protocol alongside Media Buy for inline creative management, generative formats, and variant-level delivery reporting.
+---
+
+Sales agents can implement the Creative Protocol alongside the Media Buy Protocol. When they do, a single agent endpoint handles both media buying and creative management — the buyer doesn't need to discover and connect to a separate service.
+
+This is the common case for sellers that generate creatives at serve time, manage a creative library internally, or offer format-specific creative services as part of their ad product.
+
+## How it works
+
+A sales agent declares Creative Protocol support in `get_adcp_capabilities`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "adcp": { "major_versions": [3] },
+  "supported_protocols": ["media_buy", "creative"],
+  "media_buy": {
+    "features": {
+      "inline_creative_management": true
+    }
+  },
+  "creative": {
+    "has_creative_library": true,
+    "supports_generation": true,
+    "supports_transformation": false,
+    "supports_compliance": false
+  }
+}
+```
+
+Note that `inline_creative_management` (a media buy feature for attaching creatives to packages at buy time) and Creative Protocol support are independent. A sales agent can support one, the other, or both.
+
+`inline_creative_management` allows attaching creatives directly to packages in `create_media_buy` — the creative travels with the buy order. Creative Protocol support (`"creative"` in `supported_protocols`) means the agent implements creative tasks like `build_creative`, `list_creative_formats`, and [`sync_creatives`](/docs/creative/task-reference/sync_creatives). A sales agent might support inline creative management without implementing the Creative Protocol (the buyer manages creatives externally and just references them in the buy), or implement the Creative Protocol without inline management (creatives are synced separately via `sync_creatives` before being assigned to packages).
+
+The buyer calls all tasks — media buy and creative — on the same agent URL. The protocol the task belongs to determines the schema, not the type of agent.
+
+## Available creative tasks
+
+When a sales agent declares `"creative"` in `supported_protocols`, it can implement any Creative Protocol task:
+
+| Task | When to implement |
+|---|---|
+| `list_creative_formats` | Always — buyers need to discover supported formats |
+| `sync_creatives` | When the agent hosts a creative library. Sales agents SHOULD support the `assignments` field for bulk creative-to-package mapping. |
+| `list_creatives` | When buyers need to browse the library |
+| `build_creative` | When the agent generates or transforms creatives |
+| `preview_creative` | When the agent can render previews |
+| `get_creative_delivery` | When the agent can report variant-level delivery data |
+
+These are the same tasks a standalone creative agent implements. The difference is operational, not protocol-level: the buyer doesn't need to discover and connect to a separate service.
+
+Sales agents that already implement the [accounts protocol](/docs/accounts/overview) for media buys do not need additional account setup for creative tasks — the same account covers both protocols.
+
+## Creative review
+
+Sales agents that receive creatives — whether via inline attachment in `create_media_buy` or via `sync_creatives` — may perform creative review before serving. This mirrors real publisher and SSP workflows where creatives are scanned for policy compliance, malware, or brand safety violations.
+
+Creative review status is surfaced at two levels:
+
+- **Creative library**: The `status` field on each creative in [`list_creatives`](/docs/creative/task-reference/list_creatives) uses the creative status enum: `processing`, `pending_review`, `approved`, `rejected`, or `archived`.
+- **Package level**: The `approval_status` field on each creative in [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) responses uses the creative approval status enum: `pending_review`, `approved`, or `rejected`. Rejected creatives include a `rejection_reason` with a human-readable explanation.
+
+A creative may be `approved` in the library but `rejected` at the package level if it violates placement-specific policies (e.g., a video creative on an audio-only placement).
+
+Buyers SHOULD poll `list_creatives` or `get_media_buys` after syncing or submitting a media buy with new creatives, especially for publishers with strict creative policies.
+
+For generative formats where the seller generates at serve time, creative review applies to the brief and brand identity rather than individual creatives. The seller validates that the brief's constraints and brand assets meet its policies before generation begins.
+
+**Platform and community guidelines**: Social platforms, UGC sites, and community-driven publishers often enforce content policies beyond standard ad policy (e.g., community standards, promoted content guidelines, category-specific restrictions). These platform-specific policies are surfaced through the same `rejection_reason` field — the buyer does not need a separate mechanism to handle them. When a creative is rejected for a community guideline violation, the `rejection_reason` explains what policy was violated so the buyer can fix and re-submit.
+
+### Implementation checklist for generative creative
+
+Sales agents offering generative creative should:
+
+1. **Declare capabilities** in `get_adcp_capabilities`:
+   - `supports_generation: true` in creative capabilities
+   - `"creative"` in `supported_protocols`
+   - `inline_creative_management: true` if creatives travel with the media buy
+
+2. **Define generative formats** via `list_creative_formats` where `format_id.agent_url` points to your own agent. Include descriptive format names and asset requirements (at minimum a `brief` asset).
+
+3. **Implement `preview_creative`** — return representative previews for pre-flight review. Support `context_description` inputs so buyers can simulate different serve-time conditions. For conversational formats, include `interactive_url` for sandbox testing.
+
+4. **Implement `get_creative_delivery`** — return variant manifests showing what was generated and served. Include `generation_context` (context_type, topic, device_class) and delivery metrics per variant. Plan for variant retention: retain at least 90 days of variant data for post-flight audit.
+
+5. **Validate briefs at buy time** — when a buyer submits a brief in `create_media_buy`, validate that the brief's constraints (brand identity, guardrails, required disclosures) are compatible with your generation capabilities. Reject with a clear error if not.
+
+6. **Handle creative review for briefs** — for generative formats, review applies to the brief and brand identity rather than individual creatives. Communicate review status via `approval_status` on the package in `get_media_buys`.
+
+## Generative formats on sales agents
+
+A seller that generates creatives at serve time — contextual ads, page-matched display, AI-generated native — hosts its own generative format. The `format_id.agent_url` points to the sales agent itself:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.seller-example.com",
+    "id": "contextual_display_generative"
+  },
+  "name": "Contextual display (AI-generated)",
+  "type": "display",
+  "description": "Display ads generated at serve time based on page context and brand brief"
+}
+```
+
+The buyer discovers this format through `list_creative_formats` on the sales agent, then provides a brief when creating the media buy:
+
+```json
+{
+  "packages": [{
+    "buyer_ref": "pkg_contextual_q2",
+    "product_id": "premium_display",
+    "pricing_option_id": "cpm_standard",
+    "budget": 50000,
+    "creatives": [{
+      "creative_id": "brand_contextual_brief",
+      "name": "Q2 contextual campaign brief",
+      "format_id": {
+        "agent_url": "https://ads.seller-example.com",
+        "id": "contextual_display_generative"
+      },
+      "assets": {
+        "brief": {
+          "content": "Highlight our sustainability story. Match tone to editorial context."
+        }
+      }
+    }]
+  }]
+}
+```
+
+The seller generates creatives at serve time using this brief and the buyer's brand identity. No separate `build_creative` call is needed — the brief travels with the media buy.
+
+For regulated categories (financial services, pharma), look for `supports_compliance: true` in the agent's creative capabilities. Compliance-aware agents validate required disclosures and regulatory elements during generation — include compliance requirements in the brief so the agent can enforce them.
+
+## Previewing generative output
+
+For generative formats, `preview_creative` serves two purposes:
+
+**Before the campaign** — pass the brief manifest with `context_description` inputs to see representative samples of what the agent could generate:
+
+```json
+{
+  "request_type": "single",
+  "quality": "draft",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.seller-example.com",
+      "id": "contextual_display_generative"
+    },
+    "assets": {
+      "brief": {
+        "content": "Highlight our sustainability story. Match tone to editorial context."
+      }
+    }
+  },
+  "inputs": [
+    { "name": "Tech article", "context_description": "Article about semiconductor manufacturing" },
+    { "name": "Lifestyle blog", "context_description": "Blog post about sustainable living" }
+  ]
+}
+```
+
+Use `quality: "draft"` for fast iteration on creative direction, `quality: "production"` for stakeholder review. These previews are illustrative — real output depends on live signals at serve time. Preview doesn't require an active media buy — you can preview before calling `create_media_buy`.
+
+**After the campaign** — pass a `variant_id` from `get_creative_delivery` to replay exactly what was served:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_tech_mobile_001"
+}
+```
+
+The response includes the variant's actual manifest and a rendered preview. This is a faithful replay, not a re-generation.
+
+See [Previewing generative creative](/docs/creative/task-reference/preview_creative#previewing-generative-creative) for the full mental model and expectations table.
+
+## Delivery reporting
+
+A sales agent implementing both protocols provides two complementary views of delivery data:
+
+| Task | Protocol | What it provides |
+|---|---|---|
+| `get_media_buy_delivery` | Media Buy | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
+| `get_creative_delivery` | Creative | WHAT RAN and HOW: variant manifests, generation context, variant-level metrics |
+
+Both tasks are called on the same agent URL. Use `media_buy_id` and `creative_id` as join keys to correlate data across both responses.
+
+For generative formats, `get_creative_delivery` is where the buyer sees what was actually generated. Each variant includes a manifest (the actual rendered creative — headline text, image URLs, format) and generation context (the signals that triggered generation, like page topic or device class). `get_media_buy_delivery` provides the aggregate view with spend, pacing, and dimensional breakdowns.
+
+### Example: variant-level reporting on a sales agent
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "currency": "USD",
+  "reporting_period": {
+    "start": "2026-03-01T00:00:00-05:00",
+    "end": "2026-03-08T23:59:59-05:00",
+    "timezone": "America/New_York"
+  },
+  "creatives": [
+    {
+      "creative_id": "brand_contextual_brief",
+      "format_id": {
+        "agent_url": "https://ads.seller-example.com",
+        "id": "contextual_display_generative"
+      },
+      "totals": {
+        "impressions": 300000,
+        "spend": 15000,
+        "clicks": 12000,
+        "ctr": 0.04
+      },
+      "variant_count": 47,
+      "variants": [
+        {
+          "variant_id": "gen_tech_mobile_001",
+          "generation_context": {
+            "context_type": "web_page",
+            "topic": "technology, semiconductors",
+            "device_class": "mobile"
+          },
+          "manifest": {
+            "format_id": {
+              "agent_url": "https://ads.seller-example.com",
+              "id": "contextual_display_generative"
+            },
+            "assets": {
+              "headline": {
+                "asset_type": "text",
+                "content": "Sustainable tech for a better tomorrow"
+              },
+              "hero_image": {
+                "asset_type": "image",
+                "url": "https://cdn.seller-example.com/generated/tech_mobile_001.jpg",
+                "width": 300,
+                "height": 250
+              }
+            }
+          },
+          "impressions": 45000,
+          "spend": 2250,
+          "clicks": 2700,
+          "ctr": 0.06
+        }
+      ]
+    }
+  ]
+}
+```
+
+## When to use a separate creative agent
+
+A separate creative agent makes sense when:
+
+- The creative service is **independent of any seller** — a creative management platform, ad server, or format conversion service
+- Multiple sellers need to **serve the same creatives** — the buyer manages creatives in one place and distributes them
+- The buyer wants **centralized creative analytics** across sellers
+
+When the seller's ad product includes creative generation or management as an integrated capability, implementing both protocols on the sales agent is simpler for everyone.
+
+## Capability discovery
+
+Buyers check `get_adcp_capabilities` to understand what a sales agent supports:
+
+```javascript
+const caps = await agent.getAdcpCapabilities({});
+
+if (caps.errors) {
+  throw new Error(`Capabilities check failed: ${caps.errors[0].message}`);
+}
+
+const sellsMedia = caps.supported_protocols.includes('media_buy');
+const managesCreatives = caps.supported_protocols.includes('creative');
+
+if (managesCreatives) {
+  const { has_creative_library, supports_generation } = caps.creative;
+
+  if (supports_generation) {
+    // Agent generates creatives — look for generative formats
+    const formats = await agent.listCreativeFormats({});
+    if (formats.errors) {
+      console.error('Format discovery failed:', formats.errors);
+    }
+  }
+
+  if (has_creative_library) {
+    // Agent hosts a library — can sync and browse creatives
+    const creatives = await agent.listCreatives({
+      account: { account_id: 'acc_123' }
+    });
+    if (creatives.errors) {
+      console.error('Library browse failed:', creatives.errors);
+    }
+  }
+}
+```
+
+## Related
+
+- [Creative Specification](/docs/creative/specification) — Protocol requirements for creative agents
+- [Implementing Creative Agents](/docs/creative/implementing-creative-agents) — Implementation guide for standalone creative agents
+- [Generative Creative](/docs/creative/generative-creative) — Using `build_creative` for AI-powered generation
+- [get_creative_delivery](/docs/creative/task-reference/get_creative_delivery) — Variant-level delivery reporting
+- [get_media_buy_delivery](/docs/media-buy/task-reference/get_media_buy_delivery) — Media buy delivery reporting

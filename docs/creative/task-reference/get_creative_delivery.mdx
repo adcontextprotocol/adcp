@@ -3,7 +3,9 @@ title: get_creative_delivery
 ---
 
 
-Retrieve creative delivery data from a creative agent, including variant-level breakdowns with manifests and metrics. This task returns what variants were created from your creatives, what they looked like (via manifests), and how they performed.
+Retrieve creative delivery data including variant-level breakdowns with manifests and metrics. This task returns what variants were created from your creatives, what they looked like (via manifests), and how they performed.
+
+This is a Creative Protocol task. Call it on any agent that declares `"creative"` in `supported_protocols` and `"delivery"` in its [creative agent capabilities](#capability-declaration) — whether that's a dedicated creative service or a [sales agent implementing the Creative Protocol](/docs/creative/sales-agent-creative-capabilities).
 
 **Request Schema**: [`/schemas/v3/creative/get-creative-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-request.json)
 **Response Schema**: [`/schemas/v3/creative/get-creative-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-response.json)
@@ -21,7 +23,7 @@ At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creati
 | `start_date` | string | No | Start date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `end_date` | string | No | End date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `max_variants` | integer | No | Maximum variants to return per creative. Useful for generative creatives with large variant counts. |
-| `pagination` | object | No | Pagination parameters (`limit`, `offset`) for the creatives array. When omitted, all matching creatives are returned. |
+| `pagination` | object | No | Cursor-based pagination parameters (`max_results`, `cursor`) for the creatives array. When omitted, all matching creatives are returned. |
 
 \* At least one of `media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids` must be provided.
 
@@ -35,7 +37,7 @@ At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creati
 | `currency` | ISO 4217 currency code for monetary values (e.g., 'USD', 'EUR') |
 | `reporting_period` | Date range with start/end timestamps and `timezone` (IANA identifier — platforms report in their native timezone) |
 | `creatives` | Array of creative delivery data with variant breakdowns |
-| `pagination` | (Optional) Pagination info with `limit`, `offset`, `has_more`, and optional `total`. Present when the request included pagination parameters. |
+| `pagination` | (Optional) Pagination info with `max_results`, `cursor`, and `has_more`. Present when the request included pagination parameters. |
 
 ### Creative Object
 
@@ -57,6 +59,7 @@ Each variant represents a specific execution: a fixed creative (Tier 1), an asse
 | `variant_id` | Platform-assigned variant identifier |
 | `manifest` | (Optional) The rendered creative manifest — the actual output that was served, not the input assets. Contains format_id and resolved assets. Not all platforms can provide manifests for every variant. |
 | `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. When content context is managed through AdCP content standards, includes an `artifact` reference linking to the specific content artifact. Supports `ext` for vendor-specific context structures. |
+| `ext` | (Optional) Platform-specific data. Social platforms use this for engagement metrics (upvotes, comments, shares) that vary by platform. |
 | Standard metrics | All delivery metrics (impressions, spend, clicks, ctr, etc.) |
 
 Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are platform-calculated and may not equal naive division of their component fields due to rounding, attribution windows, or filtered impressions.
@@ -100,6 +103,29 @@ One creative maps 1:1 to one variant. The variant metrics match the creative tot
   ]
 }
 ```
+
+### Platform engagement metrics
+
+Social and feed-native platforms include engagement data in the `ext` field on each variant, since engagement types vary by platform:
+
+```json
+{
+  "variant_id": "promoted_post_running_community",
+  "impressions": 85000,
+  "spend": 4250,
+  "clicks": 2550,
+  "ctr": 0.03,
+  "ext": {
+    "upvotes": 1240,
+    "comments": 87,
+    "shares": 34,
+    "saves": 156,
+    "comment_sentiment": "positive"
+  }
+}
+```
+
+The `ext` field is not standardized across platforms — each platform defines its own engagement schema. Buyers aggregating across social platforms should map platform-specific fields to a common model.
 
 ### Tier 2: Asset Group Optimization
 
@@ -288,21 +314,87 @@ Use `preview_creative` with `request_type: "variant"` to see what a specific var
 
 Since each variant includes its full `manifest`, you can also pass the manifest directly to `preview_creative` as a standard single request to re-render it.
 
-## Relationship to Delivery Reporting
+## Relationship to delivery reporting
 
-| Data Source | Task | What It Provides |
+| Task | Protocol | What it provides |
 |---|---|---|
-| Sales agent | `get_media_buy_delivery` | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
-| Creative agent | `get_creative_delivery` | WHAT RAN and HOW: variant manifests and variant-level metrics |
+| `get_media_buy_delivery` | Media Buy | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
+| `get_creative_delivery` | Creative | WHAT RAN and HOW: variant manifests and variant-level metrics |
 
-Use `media_buy_id` + `creative_id` as join keys to correlate data across both sources.
+Use `media_buy_id` + `creative_id` as join keys to correlate data across both responses.
 
-## Creative Agent Capability
+When a sales agent implements both protocols, both tasks are available on the same agent URL. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities) for the full pattern.
 
-Creative agents that support this task declare `"delivery"` in their capabilities:
+## Cross-agent aggregation
+
+When running campaigns across multiple sellers, call `get_creative_delivery` on each agent separately and correlate results:
+
+- **Join key**: Use `creative_id` (buyer-assigned) to correlate the same creative across agents. If you used `concept_id` during upload, filter by concept to group related creatives.
+- **`variant_id` scope**: Variant IDs are unique within an agent and creative, not globally. Two agents may generate variants with the same `variant_id` value. Prefix with the agent URL when building aggregated dashboards.
+- **Timezone handling**: Each agent may report in its own timezone via `reporting_period.timezone`. Normalize to a common timezone before aggregating metrics.
+- **`max_variants` selection**: Agents choose which variants to return when `max_variants` limits the result set. Most agents prioritize by impression volume (most-served first). For representative sampling, make multiple calls with different time ranges rather than relying on a single large `max_variants` value.
+
+## Building a cross-agent dashboard
+
+When aggregating delivery data from multiple agents into a unified view, follow this sequence:
+
+1. **Collect**: Call `get_creative_delivery` on each agent in parallel, using the same `creative_ids` filter.
+
+2. **Normalize timezones**: Convert each agent's `reporting_period` to a common timezone before summing.
+
+3. **Merge by `creative_id`**: Group results by `creative_id` across agents. Sum `totals` (impressions, spend, clicks). Do not average derived metrics like `ctr` — recompute them from the summed components.
+
+4. **Prefix `variant_id`**: Create globally unique variant keys by combining `agent_url + variant_id` (e.g., `https://sales.pinnaclemedia-example.com/var_a1b2c3`). This prevents collisions when two agents assign the same variant ID independently.
+
+5. **Group by `concept_id`**: For campaign-level roll-ups, use `concept_id` to group related creatives across sizes and sellers. Pull the concept-to-creative mapping from `list_creatives` on each agent.
+
+```javascript
+// Pseudocode: aggregate delivery from 3 sellers
+const agents = [pinnacle, novaSports, streamhaus];
+const results = await Promise.all(
+  agents.map(agent =>
+    agent.getCreativeDelivery({
+      creative_ids: ['acme_holiday_300x250'],
+      start_date: '2026-11-01',
+      end_date: '2026-11-15',
+    })
+  )
+);
+
+const merged = {};
+for (const [i, result] of results.entries()) {
+  if (result.errors) continue; // skip failed agents, retry later
+  for (const creative of result.creatives) {
+    const key = creative.creative_id;
+    if (!merged[key]) merged[key] = { impressions: 0, spend: 0, clicks: 0, variants: [] };
+    merged[key].impressions += creative.totals.impressions;
+    merged[key].spend += creative.totals.spend;
+    merged[key].clicks += creative.totals.clicks || 0;
+    for (const v of creative.variants || []) {
+      merged[key].variants.push({
+        ...v,
+        variant_id: `${agents[i].url}/${v.variant_id}`, // globally unique
+      });
+    }
+  }
+}
+// Recompute derived metrics
+for (const c of Object.values(merged)) {
+  c.ctr = c.impressions > 0 ? c.clicks / c.impressions : 0;
+}
+```
+
+## Capability declaration
+
+Agents that support this task declare `"delivery"` in their `capabilities` array within `list_creative_formats` responses:
 
 ```json
 {
-  "capabilities": ["validation", "assembly", "preview", "delivery"]
+  "creative_agents": [{
+    "agent_url": "https://ads.seller-example.com",
+    "capabilities": ["validation", "assembly", "preview", "delivery"]
+  }]
 }
 ```
+
+Buyers discover this by calling `list_creative_formats` and checking the `creative_agents` array for agents with `"delivery"` in their capabilities. This applies to any agent implementing the Creative Protocol, including sales agents.

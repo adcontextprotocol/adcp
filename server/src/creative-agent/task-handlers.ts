@@ -203,7 +203,7 @@ function renderSinglePreview(
     if (outputFormat === 'url' || outputFormat === 'both') {
       render.output_format = outputFormat === 'both' ? 'both' : 'url';
       expiresAt = storePreview(previewId, html);
-      render.preview_url = `${baseUrl}/api/creative-agent/preview/${previewId}`;
+      render.preview_url = `${baseUrl}/preview/${previewId}`;
     }
 
     return {
@@ -268,9 +268,8 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
 
 // ── Server factory ──────────────────────────────────────────────────
 
-export function createCreativeAgentServer(baseUrl: string) {
-  const agentUrl = `${baseUrl}/api/creative-agent`;
-  const formats = buildReferenceFormats(agentUrl);
+export function createCreativeAgentServer(agentBaseUrl: string) {
+  const formats = buildReferenceFormats(agentBaseUrl);
 
   const server = new McpServer({
     name: 'AdCP Reference Creative Agent',
@@ -330,7 +329,7 @@ export function createCreativeAgentServer(baseUrl: string) {
     async (args) => ({
       content: [{
         type: 'text' as const,
-        text: JSON.stringify(handlePreviewCreative(args as Record<string, unknown>, formats, baseUrl)),
+        text: JSON.stringify(handlePreviewCreative(args as Record<string, unknown>, formats, agentBaseUrl)),
       }],
     }),
   );
