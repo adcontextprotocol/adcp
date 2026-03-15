@@ -10,7 +10,7 @@
  */
 
 import { PERSONAS, type SimulatedPersona } from '../server/src/addie/services/outreach-simulator.js';
-import { composeMessage, getAvailableActions } from '../server/src/addie/services/engagement-planner.js';
+import { composeMessage, computeEngagementOpportunities } from '../server/src/addie/services/engagement-planner.js';
 import type { RelationshipContext } from '../server/src/addie/services/engagement-planner.js';
 import type { PersonRelationship, RelationshipStage } from '../server/src/db/relationship-db.js';
 
@@ -97,7 +97,18 @@ function buildContext(persona: SimulatedPersona, scenario: Scenario): { ctx: Rel
       break;
   }
 
-  const availableActions = getAvailableActions(base, null);
+  const engagementOpportunities = computeEngagementOpportunities({
+    relationship: base,
+    capabilities: null,
+    insights: [],
+    company: persona.company ? {
+      name: persona.company.name,
+      type: persona.company.type,
+      is_member: persona.company.is_member,
+    } : null,
+    recentMessages,
+    certification: null,
+  });
 
   const ctx: RelationshipContext = {
     relationship: base,
@@ -111,7 +122,7 @@ function buildContext(persona: SimulatedPersona, scenario: Scenario): { ctx: Rel
         is_member: persona.company.is_member,
       } : null,
     },
-    availableActions,
+    engagementOpportunities,
   };
 
   return { ctx, channel };

@@ -12,7 +12,14 @@
  */
 
 import { createLogger } from '../../logger.js';
-import { shouldContact, composeMessage, computeNextContactDate, getAvailableActions } from './engagement-planner.js';
+import {
+  shouldContact,
+  composeMessage,
+  computeNextContactDate,
+  STAGE_COOLDOWNS,
+  MAX_UNREPLIED_BEFORE_PULSE,
+  MONTHLY_PULSE_DAYS,
+} from './engagement-planner.js';
 import type { RelationshipContext, ComposedMessage } from './engagement-planner.js';
 import type { PersonRelationship, RelationshipStage } from '../../db/relationship-db.js';
 import { STAGE_ORDER } from '../../db/relationship-db.js';
@@ -178,18 +185,7 @@ export const PERSONAS: SimulatedPersona[] = [
 // Simulation Engine
 // ---------------------------------------------------------------------------
 
-/** Stage cooldowns in days — mirrors STAGE_COOLDOWNS in engagement-planner.ts */
-const SIM_COOLDOWNS: Record<RelationshipStage, number> = {
-  prospect: 0,
-  welcomed: 3,
-  exploring: 7,
-  participating: 14,
-  contributing: 30,
-  leading: 30,
-};
-
-const MAX_UNREPLIED_BEFORE_PULSE = 3;
-const MONTHLY_PULSE_DAYS = 30;
+// Simulator uses the same constants as the real engagement planner (imported above)
 
 /**
  * Run a simulation for a persona over N days.
@@ -270,12 +266,12 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
       // Rule 3: Stage-based cooldown on last_addie_message_at
       if (lastAddieMessageDay !== null) {
         const daysSinceLast = day - lastAddieMessageDay;
-        let cooldown = SIM_COOLDOWNS[stage];
+        let cooldown = STAGE_COOLDOWNS[stage];
         // Escalate if 2+ unreplied
         if (unrepliedCount >= 2) {
           const currentIdx = STAGE_ORDER.indexOf(stage);
           const nextStage = STAGE_ORDER[Math.min(currentIdx + 1, STAGE_ORDER.length - 1)];
-          cooldown = Math.max(cooldown, SIM_COOLDOWNS[nextStage]);
+          cooldown = Math.max(cooldown, STAGE_COOLDOWNS[nextStage]);
         }
         if (daysSinceLast < cooldown) {
           shouldContact = false;
@@ -306,7 +302,7 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
     }
 
     // Set next contact cooldown
-    nextContactAfterDay = day + SIM_COOLDOWNS[stage];
+    nextContactAfterDay = day + STAGE_COOLDOWNS[stage];
 
     // Check if person responds
     const responds = personResponds(persona, messagesSentToPersona);
