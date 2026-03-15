@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/get-rights-request.json",
+  "title": "Get Rights Request",
+  "description": "Search for licensable rights across a brand agent's roster. Returns matches with pricing. Discovery is natural-language-first — no taxonomy for categories. The agent interprets intent from the query and filters based on the buyer's brand compatibility.",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Natural language description of desired rights. The agent interprets intent, budget signals, and compatibility from this text.",
+      "maxLength": 2000
+    },
+    "uses": {
+      "type": "array",
+      "description": "Rights uses being requested. The agent returns options covering these uses, potentially bundled into composite pricing.",
+      "items": {
+        "$ref": "/schemas/enums/right-use.json"
+      },
+      "minItems": 1
+    },
+    "buyer_brand": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "The buyer's brand. The agent fetches the buyer's brand.json for compatibility filtering (e.g., dietary conflicts, competitor exclusions)."
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where rights are needed (ISO 3166-1 alpha-2). Filters to rights available in these markets.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "brand_id": {
+      "type": "string",
+      "description": "Search within a specific brand's rights. If omitted, searches across the agent's full roster."
+    },
+    "right_type": {
+      "$ref": "/schemas/enums/right-type.json",
+      "description": "Filter by type of rights (talent, music, stock_media, etc.)"
+    },
+    "include_excluded": {
+      "type": "boolean",
+      "description": "Include filtered-out results in the excluded array with reasons. Defaults to false.",
+      "default": false
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json",
+      "description": "Pagination parameters for large result sets"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["query", "uses"],
+  "additionalProperties": true
+}

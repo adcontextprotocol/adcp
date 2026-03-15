@@ -677,7 +677,8 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('check_governance');
     expect(toolNames).toContain('report_plan_outcome');
     expect(toolNames).toContain('get_plan_audit_logs');
-    expect(toolNames).toHaveLength(15);
+    expect(toolNames).toContain('get_adcp_capabilities');
+    expect(toolNames).toHaveLength(16);
   });
 
   it('returns error for unknown tool', async () => {
@@ -1184,7 +1185,6 @@ describe('sync_creatives handler', () => {
     // Per sync-creatives-response.json, each item requires creative_id and action
     expect(creatives[0].creative_id).toBe('cr_test_001');
     expect(creatives[0].action).toBe('created');
-    expect(creatives[0].status).toBe('active');
   });
 
   it('returns "updated" action for existing creative', async () => {
@@ -1398,7 +1398,7 @@ describe('list_creatives handler', () => {
     expect(creatives).toHaveLength(1);
     expect(creatives[0].creative_id).toBe('cr_list_1');
     expect(creatives[0].name).toBe('Test');
-    expect(creatives[0].status).toBe('active');
+    expect(creatives[0].status).toBe('approved');
     expect(creatives[0].format_id).toBeDefined();
   });
 });
@@ -2778,6 +2778,8 @@ describe('activate_signal handler', () => {
   afterEach(() => {
     clearSessions();
     stopSessionCleanup();
+
+    stopSessionCleanup();
   });
 
   it('activates a signal and returns deployment with activation key', async () => {
@@ -3130,5 +3132,272 @@ describe('get_creative_delivery handler', () => {
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives.length).toBe(1);
     expect(creatives[0].creative_id).toBe('ref_creative');
+  });
+});
+
+// ── get_adcp_capabilities handler ─────────────────────────────────
+
+describe('get_adcp_capabilities handler', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns protocol version and supported protocols', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    expect(result.adcp).toEqual({ major_versions: [3] });
+    expect(result.protocol_version).toBe('3.0');
+    expect(result.supported_protocols).toEqual(['media_buy', 'governance']);
+  });
+
+  it('lists protocol tasks without get_adcp_capabilities itself', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    const tasks = result.tasks as string[];
+    expect(tasks).toContain('create_media_buy');
+    expect(tasks).toContain('check_governance');
+    expect(tasks).not.toContain('get_adcp_capabilities');
+  });
+
+  it('derives channels from the publisher catalog', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    const mediaBuy = result.media_buy as Record<string, unknown>;
+    const portfolio = mediaBuy.portfolio as Record<string, unknown>;
+    const channels = portfolio.channels as string[];
+
+    // Channels should match what publishers actually offer
+    const publisherChannels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
+    expect(channels).toEqual(publisherChannels);
+    expect(channels.length).toBeGreaterThan(4);
+  });
+});
+
+// ── Governance: seller compliance ──────────────────────────────────
+
+describe('check_governance seller compliance', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const PLAN_BASE = {
+    plan_id: 'plan-seller',
+    brand: { name: 'Test' },
+    objectives: 'test seller compliance',
+    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+  };
+
+  it('approves caller in approved_sellers list', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, approved_sellers: ['https://seller-a.example'] }],
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-seller',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://seller-a.example',
+    });
+
+    expect(result.status).toBe('approved');
+  });
+
+  it('denies caller not in approved_sellers list', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, approved_sellers: ['https://seller-a.example'] }],
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-seller',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://unauthorized.example',
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => f.category_id === 'seller_compliance')).toBe(true);
+  });
+
+  it('denies all callers when approved_sellers is empty array', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, approved_sellers: [] }],
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-seller',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://any-seller.example',
+    });
+
+    expect(result.status).toBe('denied');
+  });
+
+  it('skips seller check when approved_sellers is omitted (undefined)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [PLAN_BASE], // no approved_sellers field
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-seller',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://any-seller.example',
+    });
+
+    expect(result.status).toBe('approved');
+    const categories = result.categories_evaluated as string[];
+    expect(categories).not.toContain('seller_compliance');
+  });
+
+  it('skips seller check when approved_sellers is null (unrestricted)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{ ...PLAN_BASE, approved_sellers: null }],
+    });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-seller',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://any-seller.example',
+    });
+
+    expect(result.status).toBe('approved');
+    const categories = result.categories_evaluated as string[];
+    expect(categories).not.toContain('seller_compliance');
+  });
+});
+
+// ── Governance: delegation budget and market enforcement ────────────
+
+describe('check_governance delegation enforcement', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const DELEGATED_PLAN = {
+    plan_id: 'plan-deleg',
+    brand: { name: 'Test' },
+    objectives: 'test delegation limits',
+    budget: { total: 100000, currency: 'USD', authority_level: 'agent_full' },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    countries: ['US', 'GB', 'DE'],
+    delegations: [{
+      agent_url: 'https://delegated.example',
+      authority: 'execute_only',
+      budget_limit: { amount: 25000, currency: 'USD' },
+      markets: ['US', 'GB'],
+    }],
+  };
+
+  it('approves delegation within budget limit', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-deleg',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://delegated.example',
+      governance_context: {
+        total_budget: { amount: 20000, currency: 'USD' },
+        countries: ['US'],
+        channels: [],
+      },
+    });
+
+    expect(result.status).toBe('approved');
+  });
+
+  it('denies delegation exceeding budget limit', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-deleg',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://delegated.example',
+      governance_context: {
+        total_budget: { amount: 30000, currency: 'USD' },
+        countries: ['US'],
+        channels: [],
+      },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f =>
+      f.category_id === 'delegation_authority' &&
+      (f.explanation as string).includes('budget limit'),
+    )).toBe(true);
+  });
+
+  it('denies delegation targeting unauthorized markets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-deleg',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://delegated.example',
+      governance_context: {
+        total_budget: { amount: 10000, currency: 'USD' },
+        countries: ['US', 'DE'],
+        channels: [],
+      },
+    });
+
+    expect(result.status).toBe('denied');
+    const findings = result.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f =>
+      f.category_id === 'delegation_authority' &&
+      (f.explanation as string).includes('DE'),
+    )).toBe(true);
+  });
+
+  it('approves delegation within allowed markets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-deleg',
+      buyer_campaign_ref: 'camp-1',
+      binding: 'proposed',
+      caller: 'https://delegated.example',
+      governance_context: {
+        total_budget: { amount: 10000, currency: 'USD' },
+        countries: ['US', 'GB'],
+        channels: [],
+      },
+    });
+
+    expect(result.status).toBe('approved');
   });
 });

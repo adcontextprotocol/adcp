@@ -8,7 +8,7 @@
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2026-02-27",
+  "lastUpdated": "2026-03-13",
   "baseUrl": "/schemas/latest",
   "schemas": {
     "core": {
@@ -81,6 +81,14 @@
         "error": {
           "$ref": "/schemas/core/error.json",
           "description": "Standard error structure"
+        },
+        "generation-credential": {
+          "$ref": "/schemas/core/generation-credential.json",
+          "description": "Scoped credential for generating rights-cleared content via LLM providers"
+        },
+        "rights-constraint": {
+          "$ref": "/schemas/core/rights-constraint.json",
+          "description": "Rights metadata attached to creative manifests for tracking validity and constraints"
         },
         "pagination-request": {
           "$ref": "/schemas/core/pagination-request.json",
@@ -550,7 +558,15 @@
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
-          "description": "AdCP protocol domains (media-buy, signals, governance, creative)"
+          "description": "AdCP protocol domains (media-buy, signals, governance, creative, brand)"
+        },
+        "right-use": {
+          "$ref": "/schemas/enums/right-use.json",
+          "description": "Types of rights usage (likeness, voice, endorsement, sync, etc.)"
+        },
+        "right-type": {
+          "$ref": "/schemas/enums/right-type.json",
+          "description": "Categories of licensable rights (talent, music, brand_ip, stock_media)"
         },
         "http-method": {
           "$ref": "/schemas/enums/http-method.json",
@@ -1361,6 +1377,39 @@
       "$ref": "/schemas/brand.json",
       "file_location": "/.well-known/brand.json",
       "purpose": "Declares brand identity and agent for a domain, enabling brand discovery and verification"
+    },
+    "brand-protocol": {
+      "description": "Brand protocol schemas for identity retrieval, rights discovery, and rights acquisition",
+      "schemas": {
+        "get-brand-identity-request": {
+          "$ref": "/schemas/brand/get-brand-identity-request.json",
+          "description": "Request brand identity data from a brand agent"
+        },
+        "get-brand-identity-response": {
+          "$ref": "/schemas/brand/get-brand-identity-response.json",
+          "description": "Brand identity data response"
+        },
+        "get-rights-request": {
+          "$ref": "/schemas/brand/get-rights-request.json",
+          "description": "Search for licensable rights with pricing"
+        },
+        "get-rights-response": {
+          "$ref": "/schemas/brand/get-rights-response.json",
+          "description": "Matching rights with pricing options"
+        },
+        "acquire-rights-request": {
+          "$ref": "/schemas/brand/acquire-rights-request.json",
+          "description": "Acquire rights with contractual clearance"
+        },
+        "acquire-rights-response": {
+          "$ref": "/schemas/brand/acquire-rights-response.json",
+          "description": "Rights acquisition result with terms and generation credentials"
+        },
+        "rights-pricing-option": {
+          "$ref": "/schemas/brand/rights-pricing-option.json",
+          "description": "Pricing option for licensable rights"
+        }
+      }
     },
     "extensions": {
       "description": "Typed extension schemas for vendor-specific or domain-specific data. Extensions define the structure of data within the ext.{namespace} field. Agents declare which extensions they support in their agent card.",

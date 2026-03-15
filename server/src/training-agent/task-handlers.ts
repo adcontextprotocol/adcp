@@ -26,6 +26,7 @@ import {
   handleReportPlanOutcome,
   handleGetPlanAuditLogs,
 } from './governance-handlers.js';
+import { PUBLISHERS } from './publishers.js';
 
 
 const logger = createLogger('training-agent');
@@ -184,6 +185,9 @@ const TOOLS = [
         total_budget: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
         start_time: { type: 'string', description: 'ISO 8601 date-time or "asap"' },
         end_time: { type: 'string' },
+        channel: { type: 'string', description: 'Primary channel for governance compliance (display, video, native, audio)' },
+        channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
       },
       required: ['buyer_ref', 'account', 'brand', 'start_time', 'end_time'],
     },
@@ -306,6 +310,15 @@ const TOOLS = [
     },
   },
   ...GOVERNANCE_TOOLS,
+  {
+    name: 'get_adcp_capabilities',
+    description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
 ];
 
 // ── Task handler implementations ──────────────────────────────────
@@ -939,6 +952,31 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   return result;
 }
 
+function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
+  const tasks = TOOLS
+    .map(t => t.name)
+    .filter(name => name !== 'get_adcp_capabilities');
+  const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
+  return {
+    adcp: { major_versions: [3] },
+    supported_protocols: ['media_buy', 'governance'],
+    protocol_version: '3.0',
+    tasks,
+    media_buy: {
+      features: {
+        inline_creative_management: true,
+      },
+      portfolio: {
+        channels,
+      },
+    },
+    agent: {
+      name: 'AdCP Training Agent',
+      description: 'Training agent for AdCP protocol testing and certification',
+    },
+  };
+}
+
 // ── Signal task handlers ──────────────────────────────────────────
 
 const MAX_SIGNAL_RESULTS = 10;
@@ -1353,6 +1391,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   check_governance: handleCheckGovernance,
   report_plan_outcome: handleReportPlanOutcome,
   get_plan_audit_logs: handleGetPlanAuditLogs,
+  get_adcp_capabilities: handleGetAdcpCapabilities,
 };
 
 /**

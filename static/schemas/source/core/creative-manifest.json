@@ -62,6 +62,13 @@
       },
       "additionalProperties": true
     },
+    "rights": {
+      "type": "array",
+      "description": "Rights constraints attached to this creative. Each entry represents constraints from a single rights holder. A creative may combine multiple rights constraints (e.g., talent likeness + music license). For v1, rights constraints are informational metadata — the buyer/orchestrator manages creative lifecycle against these terms.",
+      "items": {
+        "$ref": "/schemas/core/rights-constraint.json"
+      }
+    },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this creative manifest. Serves as the default provenance for all assets in this manifest. An asset with its own provenance replaces this object entirely (no field-level merging)."
