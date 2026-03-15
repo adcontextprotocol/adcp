@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/brand/creative-approval-request.json",
+  "title": "Creative Approval Request",
+  "description": "Payload submitted by the buyer to the approval_webhook URL from acquire_rights. Contains the creative for rights holder review before distribution.",
+  "type": "object",
+  "properties": {
+    "rights_id": {
+      "type": "string",
+      "description": "Rights grant this creative was produced under"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Buyer-assigned creative identifier. Equivalent to OpenRTB crid. Used to track approval status across resubmissions."
+    },
+    "creative_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where the creative asset can be retrieved for review"
+    },
+    "creative_format": {
+      "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+      "description": "Format of the creative being submitted"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the creative for reviewer context"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional creative metadata (duration, dimensions, target audience, etc.)",
+      "additionalProperties": true
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response.",
+      "minLength": 8,
+      "maxLength": 255
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["rights_id", "creative_url"],
+  "additionalProperties": true
+}

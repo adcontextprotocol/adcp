@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/brand/rights-pricing-option.json",
+  "title": "Rights Pricing Option",
+  "description": "A pricing option for licensable rights. Separate from media-buy pricing options — rights pricing includes period, impression caps, overage rates, and use-type scoping.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option. Referenced in acquire_rights and report_usage."
+    },
+    "model": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/pricing-model.json",
+      "description": "Pricing model (cpm, flat_rate, etc.)"
+    },
+    "price": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Price amount. Interpretation depends on model: CPM = cost per 1,000 impressions, flat_rate = fixed cost per period."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code"
+    },
+    "uses": {
+      "type": "array",
+      "description": "Which rights uses this pricing option covers. A single option can bundle multiple uses (e.g., likeness + voice).",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/right-use.json"
+      },
+      "minItems": 1
+    },
+    "period": {
+      "type": "string",
+      "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "one_time"],
+      "description": "Billing period for flat_rate and time-based models"
+    },
+    "impression_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum impressions included in this pricing option per period"
+    },
+    "overage_cpm": {
+      "type": "number",
+      "minimum": 0,
+      "description": "CPM rate applied to impressions exceeding the impression_cap"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of this pricing option"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["pricing_option_id", "model", "price", "currency", "uses"],
+  "additionalProperties": true
+}

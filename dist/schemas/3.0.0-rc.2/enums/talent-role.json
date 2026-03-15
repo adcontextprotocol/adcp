@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/talent-role.json",
+  "title": "Talent Role",
+  "description": "Role of a person associated with a show or episode",
+  "type": "string",
+  "enum": [
+    "host",
+    "guest",
+    "creator",
+    "cast",
+    "narrator",
+    "producer",
+    "correspondent"
+  ],
+  "enumDescriptions": {
+    "host": "Primary host or anchor of the show",
+    "guest": "Guest appearing on a specific episode",
+    "creator": "Show creator or showrunner",
+    "cast": "Regular or recurring cast member",
+    "narrator": "Narrator or voiceover",
+    "producer": "Executive or lead producer with on-screen presence",
+    "correspondent": "Reporter or field correspondent"
+  }
+}

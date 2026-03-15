@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/creative/list-creatives-request.json",
+  "title": "List Creatives Request",
+  "description": "Request parameters for querying creative assets from a creative library with filtering, sorting, and pagination. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative platforms) and sales agents that manage creatives.",
+  "type": "object",
+  "properties": {
+    "filters": {
+      "$ref": "/schemas/3.0.0-rc.2/core/creative-filters.json"
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "$ref": "/schemas/3.0.0-rc.2/enums/creative-sort-field.json",
+          "default": "created_date",
+          "description": "Field to sort by"
+        },
+        "direction": {
+          "$ref": "/schemas/3.0.0-rc.2/enums/sort-direction.json",
+          "default": "desc",
+          "description": "Sort direction"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.2/core/pagination-request.json"
+    },
+    "include_assignments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include package assignment information in response"
+    },
+    "include_snapshot": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include a lightweight delivery snapshot per creative (lifetime impressions and last-served date). For detailed performance analytics, use get_creative_delivery."
+    },
+    "include_items": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include items for multi-asset formats like carousels and native ads"
+    },
+    "include_variables": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include dynamic content variable definitions (DCO slots) for each creative"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "creative_id",
+          "name",
+          "format_id",
+          "status",
+          "created_date",
+          "updated_date",
+          "tags",
+          "assignments",
+          "snapshot",
+          "items",
+          "variables",
+          "concept"
+        ]
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List all approved video creatives",
+      "data": {
+        "filters": {
+          "format_types": ["video"],
+          "statuses": ["approved"]
+        }
+      }
+    },
+    {
+      "description": "List creatives in a specific concept matching a format",
+      "data": {
+        "filters": {
+          "concept_ids": ["concept_holiday_2026"],
+          "format_ids": [
+            {
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 300,
+              "height": 250
+            }
+          ]
+        },
+        "include_variables": true
+      }
+    },
+    {
+      "description": "Find DCO creatives for dynamic campaigns",
+      "data": {
+        "filters": {
+          "has_variables": true,
+          "statuses": ["approved"]
+        },
+        "include_variables": true
+      }
+    },
+    {
+      "description": "Lightweight list with minimal fields",
+      "data": {
+        "fields": [
+          "creative_id",
+          "name",
+          "status"
+        ],
+        "include_assignments": false
+      }
+    }
+  ]
+}
