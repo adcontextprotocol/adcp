@@ -10,22 +10,23 @@ Discover creative formats supported by a creative agent. Returns full format spe
 
 **Authentication**: None required (public endpoint for format discovery)
 
-**Request Schema**: [`/schemas/v2/media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json)
-**Response Schema**: [`/schemas/v2/media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json)
+**Request Schema**: [`/schemas/v3/creative/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-request.json)
+**Response Schema**: [`/schemas/v3/creative/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-response.json)
 
-## Sales Agent vs Creative Agent Behavior
+## Behavior by agent type
 
-Both sales agents and creative agents implement `list_creative_formats`, but with different behaviors:
+Any agent implementing the Creative Protocol can serve `list_creative_formats`. The response varies based on what the agent does:
 
-**Creative agents** (like `https://creative.adcontextprotocol.org`):
+**Dedicated creative agents** (like `https://creative.adcontextprotocol.org`):
 - Return **authoritative format definitions** they own
-- May reference other creative agents for additional formats
 - Provide full specifications for building and validating creatives
 
-**Sales agents** (like `https://test-agent.adcontextprotocol.org`):
+**Sales agents implementing only Media Buy Protocol** (like `https://test-agent.adcontextprotocol.org`):
 - Return **only formats used by active products**
-- Reference creative agents for format specifications
+- Reference creative agents for authoritative format specifications
 - Filter results based on what's actually purchasable
+
+**Sales agents implementing both protocols** — return their own self-hosted format definitions alongside referenced formats. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 See [list_creative_formats (Sales Agent)](/docs/media-buy/task-reference/list_creative_formats) for sales agent-specific behavior.
 
@@ -64,7 +65,7 @@ Formats may produce multiple rendered pieces (e.g., video + companion banner). D
 | `formats` | Array of full format definitions (format_id, name, assets, renders). The `type` field is deprecated and may be omitted. |
 | `creative_agents` | Optional array of other creative agents providing additional formats |
 
-See [Format schema](https://adcontextprotocol.org/schemas/v2/core/format.json) for complete format object structure.
+See [Format schema](https://adcontextprotocol.org/schemas/v3/core/format.json) for complete format object structure.
 
 ### Recursive Discovery
 
@@ -674,6 +675,6 @@ After discovering formats:
 
 ## Learn More
 
-- [Format Schema](https://adcontextprotocol.org/schemas/v2/core/format.json) - Complete format structure
+- [Format Schema](https://adcontextprotocol.org/schemas/v3/core/format.json) - Complete format structure
 - [Asset Types](/docs/creative/asset-types) - Asset specification details
 - [Standard Formats](/docs/media-buy/capability-discovery/implementing-standard-formats) - IAB-compatible reference formats

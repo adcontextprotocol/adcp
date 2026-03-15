@@ -28,6 +28,13 @@ All documentation and examples MUST match JSON schemas in `static/schemas/source
 - Remove examples that don't match schema (don't mark as `test=false`)
 - Test with: `npm test -- --file docs/path/to/file.mdx`
 
+### Expert Review Scenarios
+When running expert agents against documentation changes, test both:
+- **Conceptual correctness** — Is the framing right? Are terms used consistently?
+- **End-to-end buyer workflows** — Walk through actual buyer journeys (discovery → preview → serve → audit). Include generative-specific flows (brief → pre-flight preview → live campaign → post-flight replay) and edge cases (conversational formats, quality mismatches, multi-format pipelines).
+
+Conceptual reviews miss workflow gaps. Workflow reviews miss framing errors. Run both.
+
 ### Discriminated Union Error Handling
 Always check for errors before accessing success fields:
 ```javascript
@@ -286,3 +293,48 @@ When building new features (member profiles, dashboards, community pages):
 ### Security
 
 Module and exam completion is only available through Addie's tool calls — never through REST API. This prevents users from self-reporting scores without actual assessment.
+
+## Illustrated Documentation
+
+### Gemini image generation style guide
+
+Walkthrough and overview pages use AI-generated illustrations in a consistent graphic novel style. When generating images with Gemini, use this prompt structure:
+
+**Model**: `gemini-3.1-flash-image-preview` (via `responseModalities: ["TEXT", "IMAGE"]`)
+
+**Base style prompt** (include in every image request):
+```
+Flat illustration, teal/emerald color palette (#047857 primary, #0d9488 secondary, #134e4a dark accents).
+Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients.
+Tech-forward but warm. No real brand names or logos.
+Wide aspect ratio suitable for documentation headers (roughly 16:9).
+Characters should have simple but expressive faces. Use white/light backgrounds for readability.
+```
+
+**Per-panel additions**: Describe the scene, characters, and key visual elements. Keep characters consistent within a walkthrough (same hair, glasses, outfit). Use the same robot design for AI agents across all illustrations.
+
+**Generation script**: `scripts/generate-images.ts` — accepts a JSON prompt file and generates images via Gemini API. Run with `npx tsx scripts/generate-images.ts <prompt-file.json>`.
+
+**Image locations**:
+- `images/walkthrough/` — narrative panels for walkthrough pages
+- `images/concepts/` — educational diagrams for concept explanations and curriculum
+
+Mintlify serves from `/images/...`.
+
+**Pages with illustrated walkthrough treatment**:
+- `docs/intro.mdx` — AdCP overview with Alex's fragmentation story (5 panels)
+- `docs/media-buy/index.mdx` — Sam's media buy journey (7 panels)
+- `docs/governance/overview.mdx` — Jordan's governance setup (7 panels)
+- `docs/creative/index.mdx` — Maya's creative campaign workflow (7 panels)
+- `docs/governance/embedded-human-judgment.mdx` — EHJ manifesto (references concept diagrams from governance overview)
+- `docs/protocol/architecture.mdx` — Protocol architecture (2 concept diagrams: domain map, ecosystem layers)
+
+### Documentation nav structure
+
+Walkthrough pages use progressive disclosure — grouped by reader intent:
+1. **Top level**: Overview + visual walkthrough (front door for everyone)
+2. **Concepts**: Strategic/conceptual content with concept diagrams
+3. **Implementation**: Integration guides for builders
+4. **Reference**: Task reference and specification pages
+
+Apply this pattern when restructuring protocol sections.

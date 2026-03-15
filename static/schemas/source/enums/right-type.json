@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/right-type.json",
+  "title": "Right Type",
+  "description": "Categories of intellectual property rights that can be licensed through the brand protocol.",
+  "type": "string",
+  "enum": [
+    "talent",
+    "character",
+    "brand_ip",
+    "music",
+    "stock_media"
+  ],
+  "enumDescriptions": {
+    "talent": "Rights to a real person's likeness, voice, name, or endorsement (athletes, celebrities, influencers)",
+    "character": "Rights to fictional characters for advertising or co-branding",
+    "brand_ip": "Rights to brand intellectual property (logos, trademarks, trade dress)",
+    "music": "Rights to musical compositions or recordings (sync, background music)",
+    "stock_media": "Rights to stock photography, video, or audio collections"
+  }
+}

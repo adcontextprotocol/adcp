@@ -73,6 +73,21 @@ The Brand Protocol (`brand.json`), content standards, and how brand agents enfor
   <Card title="brand.json specification" icon="file-code" href="/docs/brand-protocol/brand-json">
     The brand.json format: identity, logos, colors, guidelines, and agent declarations.
   </Card>
+  <Card title="For advertisers" icon="bullhorn" href="/docs/brand-protocol/for-advertisers">
+    How advertisers license talent rights through the brand protocol — pricing, scopes, and what you get.
+  </Card>
+  <Card title="get_rights task" icon="key" href="/docs/brand-protocol/tasks/get_rights">
+    Search for licensable talent rights — pricing, availability, and exclusion filtering.
+  </Card>
+  <Card title="acquire_rights task" icon="handshake" href="/docs/brand-protocol/tasks/acquire_rights">
+    License talent rights: generation credentials, rights constraints, revocation, and approval workflows.
+  </Card>
+  <Card title="update_rights task" icon="rotate" href="/docs/brand-protocol/tasks/update_rights">
+    Extend, adjust, or pause an existing rights grant.
+  </Card>
+  <Card title="For rights holders" icon="shield" href="/docs/brand-protocol/for-rights-holders">
+    How rights holders monetize talent through the brand protocol.
+  </Card>
   <Card title="Content standards" icon="scale-balanced" href="/docs/governance/content-standards/index">
     How content standards define what's appropriate, how calibration works, and local execution.
   </Card>
@@ -95,7 +110,7 @@ The Brand Protocol (`brand.json`), content standards, and how brand agents enfor
 
 ### Key concepts
 
-- **Brand identity protocol** — `brand.json` at `/.well-known/adcp/brand.json` declares brand identity
+- **Brand identity protocol** — `brand.json` at `/.well-known/brand.json` declares brand identity
 - **Content standards** — automated compliance checking via MCP-based brand agents
 - **The Oracle model** — using AI to evaluate brand safety at scale
 - **Supply chain preferences** — suitability, safety, and sustainability requirements
@@ -143,8 +158,9 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 
 ### Key concepts
 
-- **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives`
-- **Cross-platform adaptation** — creative agents adapt assets across display, video, audio, native formats
+- **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives` — callable on any agent implementing the Creative Protocol, including sales agents
+- **Cross-platform adaptation** — agents adapt assets across display, video, audio, native formats
+- **Seller-side generation** — sales agents can generate creatives at serve time from a brief provided in the media buy
 - **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control
 
 <Card title="Start C3 with Addie" icon="play" href="https://agenticadvertising.org/addie">

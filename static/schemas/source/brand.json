@@ -319,9 +319,9 @@
           },
           "description": "Legal disclaimers for creatives"
         },
-        "voice": {
+        "voice_synthesis": {
           "type": "object",
-          "description": "TTS voice configuration",
+          "description": "TTS voice synthesis configuration for AI-generated audio",
           "properties": {
             "provider": { "type": "string" },
             "voice_id": { "type": "string" },
@@ -346,6 +346,10 @@
         "brand_agent": {
           "$ref": "#/definitions/brand_agent",
           "description": "Brand agent that provides dynamic brand data via MCP"
+        },
+        "rights_agent": {
+          "$ref": "#/definitions/rights_agent",
+          "description": "Rights licensing agent for this brand"
         },
         "contact": {
           "type": "object",
@@ -403,6 +407,45 @@
         }
       },
       "required": ["url", "id"],
+      "additionalProperties": true
+    },
+    "rights_agent": {
+      "type": "object",
+      "description": "Rights licensing agent for this brand. Provides discovery, pricing, and acquisition of licensable rights via MCP. Use get_rights and acquire_rights tasks to interact.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Rights agent MCP endpoint URL"
+        },
+        "id": {
+          "type": "string",
+          "description": "Agent identifier",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "available_uses": {
+          "type": "array",
+          "description": "Rights uses available for licensing through this agent",
+          "items": { "$ref": "/schemas/enums/right-use.json" },
+          "minItems": 1
+        },
+        "right_types": {
+          "type": "array",
+          "description": "Types of rights available",
+          "items": { "$ref": "/schemas/enums/right-type.json" },
+          "minItems": 1
+        },
+        "countries": {
+          "type": "array",
+          "description": "Countries where rights are available (ISO 3166-1 alpha-2)",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        }
+      },
+      "required": ["url", "id", "available_uses"],
       "additionalProperties": true
     },
     "authorized_operator": {

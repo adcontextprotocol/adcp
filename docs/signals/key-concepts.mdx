@@ -1,0 +1,148 @@
+---
+title: Key concepts
+description: "Signal types, discovery, activation, and the data flow from catalog to campaign targeting."
+---
+
+# Key concepts
+
+The Signals Protocol enables AI agents to discover, activate, and manage data signals for advertising campaigns. Signals represent targetable audiences, contextual categories, geographic regions, and other data attributes.
+
+## What are signals?
+
+Signals are data segments used for targeting or measurement in advertising campaigns:
+
+- **Audience signals**: User segments based on demographics, interests, or behaviors
+- **Contextual signals**: Content categories or page contexts
+- **Geographic signals**: Location-based targeting data
+- **Temporal signals**: Time-based targeting patterns
+- **Multi-dimensional signals**: Combined or custom signal types
+
+## Signal value types
+
+Every signal has a `value_type` that determines how buyers construct targeting expressions:
+
+### Binary
+
+User either matches or doesn't. The most common type.
+
+```json
+{
+  "id": "likely_ev_buyers",
+  "name": "Likely EV Buyers",
+  "value_type": "binary",
+  "tags": ["automotive", "purchase_intent"]
+}
+```
+
+**Targeting**: Include or exclude users matching this signal.
+
+### Categorical
+
+User has one of several possible values.
+
+```json
+{
+  "id": "vehicle_ownership",
+  "name": "Current Vehicle Ownership",
+  "value_type": "categorical",
+  "allowed_values": ["luxury_ev", "luxury_non_ev", "mid_range", "economy", "none"]
+}
+```
+
+**Targeting**: Target users with specific values (e.g., "users who own a luxury EV or luxury non-EV").
+
+### Numeric
+
+User has a score or measurement within a range.
+
+```json
+{
+  "id": "purchase_propensity",
+  "name": "Auto Purchase Propensity",
+  "value_type": "numeric",
+  "range": { "min": 0, "max": 1, "unit": "score" }
+}
+```
+
+**Targeting**: Target users within a value range (e.g., "propensity score > 0.7").
+
+## Signal sources
+
+Signal IDs use `source` as a discriminator:
+
+| Source | Fields | Verification |
+|--------|--------|--------------|
+| `catalog` | `data_provider_domain` + `id` | Verifiable via data provider's adagents.json |
+| `agent` | `agent_url` + `id` | Trust-based — buyer trusts the agent |
+
+**Catalog signals** come from external data providers who publish their offerings at `/.well-known/adagents.json`. Buyers can independently verify that a signal agent is authorized to resell them.
+
+**Agent-native signals** are proprietary to the signal agent — custom models, first-party data, or composite segments the agent builds from multiple sources.
+
+## The two tasks
+
+| Task | Purpose |
+|------|---------|
+| [`get_signals`](/docs/signals/tasks/get_signals) | Discover signals matching campaign criteria |
+| [`activate_signal`](/docs/signals/tasks/activate_signal) | Activate a signal for use in campaigns |
+
+### Discovery with get_signals
+
+Buyers describe what they need in natural language. The signal agent searches across all its data providers' catalogs and its own proprietary signals:
+
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    "signal_spec": "In-market auto buyers with high purchase propensity"
+  }
+}
+```
+
+The response includes matching signals with pricing, size estimates, and value type metadata — everything a buyer agent needs to make a targeting decision.
+
+### Activation with activate_signal
+
+Once a buyer selects a signal, they activate it on their DSP or data platform:
+
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "signal_agent_segment_id": "trident_likely_ev_buyers",
+    "pricing_option_id": "po_trident_ev_cpm",
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "the-trade-desk",
+        "account": "agency-seat-123"
+      }
+    ]
+  }
+}
+```
+
+The signal agent pushes segment membership to the specified platform. The buyer's campaign can then target against it using the platform's standard tools.
+
+## Agent integration
+
+The Signals Protocol operates within the broader [AdCP ecosystem](/docs/intro#the-adcp-ecosystem-layers). Signal agents integrate directly with decisioning platforms (DSPs, orchestration platforms), eliminating intermediary reporting and usage tracking. Signal agents advertise their available data providers via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+
+Once signals are activated on a platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
+
+## Authorization and trust
+
+Data providers control who can resell their signals via the `authorized_agents` array in their `adagents.json`. Two patterns:
+
+- **Signal IDs**: Authorize specific signals by ID — fine-grained control
+- **Signal tags**: Authorize all signals with certain tags — scales as catalogs grow
+
+Buyers can verify authorization by fetching the data provider's `adagents.json` and checking whether the signal agent appears in `authorized_agents`.
+
+## Go deeper
+
+- [Data provider guide](/docs/signals/data-providers) — how to publish a signal catalog
+- [Signals ecosystem](/docs/guides/signals-ecosystem) — how each type of company participates
+- [Protocol specification](/docs/signals/specification) — formal conformance requirements
+- [get_signals task reference](/docs/signals/tasks/get_signals) — discovery API details
+- [activate_signal task reference](/docs/signals/tasks/activate_signal) — activation API details

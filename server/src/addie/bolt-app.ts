@@ -76,6 +76,7 @@ import {
   sanitizeInput,
   validateOutput,
   wrapUrlsForSlack,
+  extractMarkdownImages,
   logInteraction,
 } from './security.js';
 import type { RequestTools } from './claude-client.js';
@@ -98,6 +99,7 @@ import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-do
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
+import { BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers } from './mcp/brand-sandbox-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
@@ -798,6 +800,13 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
 
+  // Add brand sandbox tools (certification exercises)
+  const brandSandboxHandlers = createBrandSandboxToolHandlers();
+  allTools.push(...BRAND_SANDBOX_TOOLS);
+  for (const [name, handler] of brandSandboxHandlers) {
+    allHandlers.set(name, handler);
+  }
+
   // Add collaboration tools (DMs between members)
   const collaborationHandlers = createCollaborationToolHandlers(memberContext, slackUserId, threadId);
   allTools.push(...COLLABORATION_TOOLS);
@@ -1288,10 +1297,23 @@ async function handleUserMessage({
         }
       }
 
-      // Stop the stream with feedback buttons attached
+      // Stop the stream with feedback buttons and any inline images.
+      // The streamed text may contain raw ![alt](url) syntax — we extract
+      // images and replace the message text with a cleaned version.
       try {
+        const { text: cleanedStreamText, images: streamImages } = extractMarkdownImages(fullText);
+        const MAX_SLACK_IMAGES = 3;
+        const imageBlocks = streamImages.slice(0, MAX_SLACK_IMAGES).map(img => ({
+          type: 'image' as const,
+          image_url: img.url,
+          alt_text: img.alt,
+        }));
         await streamer.stop({
-          blocks: [buildFeedbackBlock()],
+          markdown_text: wrapUrlsForSlack(cleanedStreamText),
+          blocks: [
+            ...imageBlocks,
+            buildFeedbackBlock(),
+          ],
         });
       } catch (stopError) {
         logger.warn({ stopError }, 'Addie Bolt: Stream stop failed');
@@ -1302,9 +1324,10 @@ async function handleUserMessage({
       response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
       fullText = response.text;
 
-      // Send response via say() with feedback buttons
+      // Send response via say() with feedback buttons and inline images
       const outputValidation = validateOutput(response.text);
-      const slackText = wrapUrlsForSlack(outputValidation.sanitized);
+      const { text: textWithoutImages, images } = extractMarkdownImages(outputValidation.sanitized);
+      const slackText = wrapUrlsForSlack(textWithoutImages);
       try {
         await say({
           text: slackText,
@@ -1316,6 +1339,11 @@ async function handleUserMessage({
                 text: slackText,
               },
             },
+            ...images.slice(0, 3).map(img => ({
+              type: 'image' as const,
+              image_url: img.url,
+              alt_text: img.alt,
+            })),
             buildFeedbackBlock(),
           ],
         });

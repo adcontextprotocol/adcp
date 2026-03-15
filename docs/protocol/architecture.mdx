@@ -11,39 +11,7 @@ AdCP operates at multiple layers, providing a clean separation between business 
 
 ## Protocol domain map
 
-```mermaid
-flowchart TB
-    subgraph Identity["Identity layer"]
-        BP["**Brand Protocol**<br/>brand.json — buy-side identity"]
-        REG["**Registry**<br/>Entity resolution, agent discovery"]
-        ACCT["**Accounts**<br/>Billing relationships, usage reporting"]
-    end
-
-    subgraph Core["Transaction domains"]
-        MB["**Media Buy**<br/>Inventory discovery, campaign management,<br/>delivery reporting"]
-        CR["**Creative**<br/>Format discovery, AI creative generation,<br/>catalogs"]
-        SIG["**Signals**<br/>Audience and targeting data<br/>discovery and activation"]
-        SI["**Sponsored Intelligence**<br/>Conversational brand experiences<br/>in AI assistants"]
-    end
-
-    subgraph Cross["Cross-cutting"]
-        GOV["**Governance**<br/>Brand suitability, property lists,<br/>content standards, creative governance"]
-    end
-
-    BP --> ACCT
-    REG --> ACCT
-    ACCT --> MB
-    ACCT --> CR
-    ACCT --> SIG
-    ACCT --> SI
-    GOV -.-> MB
-    GOV -.-> CR
-    GOV -.-> SIG
-    GOV -.-> SI
-    CR --> MB
-    SIG --> MB
-    BP --> CR
-```
+<img src="/images/concepts/protocol-domain-map.png" alt="Three-layer architecture diagram showing identity layer (brand, registry, accounts) at top, transaction domains (media buy, creative, signals, sponsored intelligence) in the middle, and governance as a cross-cutting layer connecting to all transaction domains" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 ### Identity layer
 
@@ -79,42 +47,7 @@ Human-in-the-loop approval checkpoints are supported at any stage — campaign a
 
 The protocol domain map above shows how AdCP tasks relate to each other. The diagram below shows how these map to real-world roles and systems.
 
-```mermaid
-flowchart TB
-    subgraph Business["Business principals"]
-        BP["**Buying principal**<br/>Advertiser, agency, retail media network, curator"]
-        MS["**Media seller**<br/>Publisher, sales house, rep firm, SSP, or ad network"]
-        BP <-->|"imps & money"| MS
-    end
-
-    subgraph Orchestration["Orchestration layer"]
-        MOP["**Media orchestration platform**<br/>Evaluates sellers and audiences; executes strategies"]
-        SA["**Signals agent**<br/>Signals discovery and activation"]
-        SalesA["**Sales agent**<br/>Media product discovery and execution"]
-        CA["**Creative agent**<br/>Format discovery and ad generation"]
-        MOP -->|"MCP"| SA
-        MOP -->|"MCP"| SalesA
-        MOP -->|"MCP"| CA
-    end
-
-    subgraph Technical["Technical execution"]
-        AXE["**Agentic eXecution Engine (AXE)**<br/>Real-time decisioning for brand suitability, frequency caps, 1p data"]
-        DP["**Decisioning platform**<br/>Selects impression to serve (direct or programmatic)"]
-        AXE <-->|"KV or RTB"| DP
-    end
-
-    subgraph Governance["Governance (cross-cutting)"]
-        GOV["**Governance agents**<br/>Brand suitability, quality, property lists, compliance"]
-        HITL["**Human oversight**<br/>Manual approval checkpoints"]
-    end
-
-    Business --> Orchestration
-    Orchestration --> Technical
-    GOV -.-> Business
-    GOV -.-> Orchestration
-    GOV -.-> Technical
-    HITL -.-> Orchestration
-```
+<img src="/images/concepts/ecosystem-layers.png" alt="Four-tier ecosystem diagram showing business principals at top, orchestration layer with specialized agents in the middle, technical execution below, and governance with human oversight spanning all layers" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 ### Business principals
 

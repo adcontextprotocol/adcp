@@ -13,9 +13,10 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState } from './types.js';
 import { buildCatalog } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
+import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
 import {
@@ -25,9 +26,58 @@ import {
   handleReportPlanOutcome,
   handleGetPlanAuditLogs,
 } from './governance-handlers.js';
+import { PUBLISHERS } from './publishers.js';
 
 
 const logger = createLogger('training-agent');
+
+/** Map natural vocabulary to terms that match signal tags and descriptions. */
+const SYNONYM_MAP: Record<string, string[]> = {
+  geographic: ['geo'],
+  geospatial: ['geo'],
+  geofence: ['geo'],
+  geofencing: ['geo'],
+  geotargeting: ['geo'],
+  audience: ['segment'],
+  audiences: ['segment'],
+  segments: ['segment'],
+  location: ['geo', 'proximity'],
+  locations: ['geo', 'proximity'],
+  identity: ['demographic', 'identity'],
+  identities: ['demographic', 'identity'],
+  purchase: ['retail', 'purchase'],
+  purchases: ['retail', 'purchase'],
+  buying: ['retail', 'purchase'],
+  automotive: ['automotive'],
+  auto: ['automotive'],
+  car: ['automotive'],
+  vehicle: ['automotive'],
+  cars: ['automotive'],
+  vehicles: ['automotive'],
+  mobility: ['geo', 'behavioral'],
+  movement: ['geo', 'behavioral'],
+  travel: ['geo', 'behavioral'],
+  footfall: ['geo', 'foot_traffic'],
+  targeting: ['targeting', 'target'],
+  credit: ['demographic', 'financial', 'credit'],
+  loyalty: ['retail', 'behavioral', 'loyalty'],
+  attribution: ['measurement'],
+  shopper: ['retail', 'purchase'],
+  brand: ['brand', 'retail'],
+  buyer: ['retail', 'purchase'],
+  basket: ['retail', 'purchase'],
+  conquest: ['conquest', 'acquisition'],
+  affinity: ['loyalty', 'behavioral'],
+  frequency: ['frequency', 'behavioral'],
+  dwell: ['dwell', 'behavioral'],
+  engagement: ['engagement', 'behavioral'],
+  sentiment: ['contextual', 'sentiment'],
+  household: ['household', 'demographic'],
+  income: ['income', 'financial'],
+  demographic: ['demographic', 'identity'],
+  contextual: ['contextual', 'content'],
+  subscriber: ['subscriber', 'engagement'],
+};
 
 /** Derive lifecycle status from stored status and flight dates. */
 function deriveStatus(mb: MediaBuyState): string {
@@ -135,6 +185,9 @@ const TOOLS = [
         total_budget: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
         start_time: { type: 'string', description: 'ISO 8601 date-time or "asap"' },
         end_time: { type: 'string' },
+        channel: { type: 'string', description: 'Primary channel for governance compliance (display, video, native, audio)' },
+        channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
       },
       required: ['buyer_ref', 'account', 'brand', 'start_time', 'end_time'],
     },
@@ -193,6 +246,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_creative_delivery',
+    description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids, media_buy_buyer_refs, or creative_ids.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: { type: 'object' },
+        media_buy_ids: { type: 'array', items: { type: 'string' } },
+        media_buy_buyer_refs: { type: 'array', items: { type: 'string' } },
+        creative_ids: { type: 'array', items: { type: 'string' } },
+        max_variants: { type: 'number' },
+      },
+    },
+  },
+  {
     name: 'update_media_buy',
     description: 'Update an existing media buy. Supports changing package budget, paused state, and end_time. Cannot add new packages or change product_id/pricing_option_id — only update existing package fields. Not for creating new buys (use create_media_buy).',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
@@ -208,7 +276,49 @@ const TOOLS = [
       required: ['media_buy_id'] as const,
     },
   },
+  {
+    name: 'get_signals',
+    description: 'Discover signals matching campaign criteria. Supports natural language discovery via signal_spec or exact lookup via signal_ids. Returns signals with deployment status, pricing, and activation keys. Use this to find targetable audiences, contextual categories, geographic regions, and other data attributes.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        signal_spec: { type: 'string', description: 'Natural language description of desired signals' },
+        signal_ids: { type: 'array', items: { type: 'object' }, description: 'Specific signals to look up by ID' },
+        account: { type: 'object' },
+        destinations: { type: 'array', items: { type: 'object' }, description: 'Filter to specific deployment targets' },
+        countries: { type: 'array', items: { type: 'string' } },
+        filters: { type: 'object' },
+        max_results: { type: 'integer' },
+      },
+    },
+  },
+  {
+    name: 'activate_signal',
+    description: 'Activate a signal for use on a specific platform or agent. Requires signal_agent_segment_id from get_signals and at least one destination. Returns deployment status with activation keys.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        signal_agent_segment_id: { type: 'string' },
+        action: { type: 'string', enum: ['activate', 'deactivate'] },
+        destinations: { type: 'array', items: { type: 'object' } },
+        pricing_option_id: { type: 'string' },
+        account: { type: 'object' },
+      },
+      required: ['signal_agent_segment_id', 'destinations', 'account'] as const,
+    },
+  },
   ...GOVERNANCE_TOOLS,
+  {
+    name: 'get_adcp_capabilities',
+    description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
 ];
 
 // ── Task handler implementations ──────────────────────────────────
@@ -532,6 +642,10 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
         paused: pkg.paused,
         start_time: pkg.startTime,
         end_time: pkg.endTime,
+        creative_approvals: pkg.creativeAssignments.map(cid => ({
+          creative_id: cid,
+          approval_status: 'approved',
+        })),
       })),
     };
     }),
@@ -693,7 +807,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
       creativeId,
       formatId,
       name: creative.name as string | undefined,
-      status: 'active',
+      status: 'approved',
       syncedAt: new Date().toISOString(),
       manifest: creative.manifest as Record<string, unknown> | undefined,
     });
@@ -701,7 +815,6 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     results.push({
       creative_id: creativeId,
       action: existing ? 'updated' : 'created',
-      status: 'active',
     });
   }
 
@@ -836,6 +949,425 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   return result;
 }
 
+function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
+  const tasks = TOOLS
+    .map(t => t.name)
+    .filter(name => name !== 'get_adcp_capabilities');
+  const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
+  return {
+    adcp: { major_versions: [3] },
+    supported_protocols: ['media_buy', 'governance'],
+    protocol_version: '3.0',
+    tasks,
+    media_buy: {
+      features: {
+        inline_creative_management: true,
+      },
+      portfolio: {
+        channels,
+      },
+    },
+    agent: {
+      name: 'AdCP Training Agent',
+      description: 'Training agent for AdCP protocol testing and certification',
+    },
+  };
+}
+
+// ── Signal task handlers ──────────────────────────────────────────
+
+const MAX_SIGNAL_RESULTS = 10;
+
+function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  // Accept both signal_spec (protocol) and brief (SDK test tool)
+  const signalSpec = (args.signal_spec || args.brief) as string | undefined;
+  const signalIds = args.signal_ids as Array<Record<string, unknown>> | undefined;
+  const filters = args.filters as Record<string, unknown> | undefined;
+  const maxResults = Math.min(Math.max((args.max_results as number) || MAX_SIGNAL_RESULTS, 1), 50);
+  const destinations = args.destinations as Array<Record<string, unknown>> | undefined;
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+
+  if (!signalSpec && !signalIds?.length) {
+    return {
+      errors: [{ code: 'validation_error', message: 'Either signal_spec or signal_ids is required' }],
+    };
+  }
+
+  const allSignals = getAllSignals();
+  let results = allSignals;
+
+  // Exact lookup by signal_ids
+  if (signalIds?.length) {
+    const idSet = new Set(signalIds.map(sid => sid.id as string));
+    results = results.filter(s => idSet.has(s.signalAgentSegmentId));
+  }
+
+  // Natural language search via signal_spec
+  const rawTerms = signalSpec ? signalSpec.toLowerCase().split(/\s+/) : [];
+  if (signalSpec) {
+    const expanded = new Set<string>();
+    for (const t of rawTerms) {
+      expanded.add(t);
+      const synonyms = SYNONYM_MAP[t];
+      if (synonyms) {
+        for (const s of synonyms) expanded.add(s);
+      }
+    }
+    const terms = [...expanded];
+    const scored = results
+      .map(s => {
+        const text = `${s.name} ${s.description} ${s.tags.join(' ')} ${s.providerName}`.toLowerCase();
+        const matchCount = terms.filter(t => text.includes(t)).length;
+        return { signal: s, matchCount };
+      })
+      .filter(s => s.matchCount > 0 || signalIds?.length) // keep exact matches even without keyword hit
+      .sort((a, b) => b.matchCount - a.matchCount);
+    results = scored.map(s => s.signal);
+  }
+
+  // Apply filters
+  if (filters) {
+    const maxCpm = filters.max_cpm as number | undefined;
+    if (maxCpm !== undefined) {
+      results = results.filter(s =>
+        s.pricingOptions.some(po => po.model === 'cpm' && po.cpm !== undefined && po.cpm <= maxCpm),
+      );
+    }
+    const dataProviders = filters.data_providers as string[] | undefined;
+    if (dataProviders?.length) {
+      const providerSet = new Set(dataProviders.map(d => d.toLowerCase()));
+      results = results.filter(s => providerSet.has(s.providerName.toLowerCase()));
+    }
+    const catalogTypes = filters.catalog_types as string[] | undefined;
+    if (catalogTypes?.length) {
+      results = results.filter(s => catalogTypes.includes(s.signalType));
+    }
+  }
+
+  // Cap results
+  results = results.slice(0, maxResults);
+
+  // Build the training agent URL for deployment targets
+  const agentUrl = getAgentUrl();
+
+  // Build response signals with deployments
+  const signals = results.map(s => {
+    // Check if this signal has been activated in this session
+    const activationKey = `${s.signalAgentSegmentId}:${agentUrl}`;
+    const activation = session.signalActivations.get(activationKey);
+    const isLive = activation?.isLive ?? false;
+
+    const deployment: Record<string, unknown> = {
+      type: 'agent',
+      agent_url: agentUrl,
+      is_live: isLive,
+    };
+
+    // Include activation key when live
+    if (isLive) {
+      deployment.activation_key = {
+        type: 'key_value',
+        key: 'audience_segment',
+        value: s.signalAgentSegmentId,
+      };
+      deployment.deployed_at = activation?.activatedAt;
+    } else {
+      deployment.estimated_activation_duration_minutes = 0; // sandbox: instant
+    }
+
+    const signal: Record<string, unknown> = {
+      signal_agent_segment_id: s.signalAgentSegmentId,
+      signal_id: {
+        source: 'catalog',
+        data_provider_domain: s.providerDomain,
+        id: s.signalAgentSegmentId,
+      },
+      name: s.name,
+      description: s.description,
+      value_type: s.valueType,
+      signal_type: s.signalType,
+      data_provider: s.providerName,
+      coverage_percentage: s.coveragePercentage,
+      deployments: [deployment],
+      pricing_options: s.pricingOptions.map(po => {
+        const option: Record<string, unknown> = {
+          pricing_option_id: po.pricingOptionId,
+          model: po.model,
+          currency: po.currency,
+        };
+        if (po.model === 'cpm') option.cpm = po.cpm;
+        if (po.model === 'percent_of_media') {
+          option.percent = po.percent;
+          if (po.maxCpm !== undefined) option.max_cpm = po.maxCpm;
+        }
+        if (po.model === 'flat_fee') {
+          option.amount = po.amount;
+          option.period = po.period;
+        }
+        return option;
+      }),
+    };
+
+    // Include value type metadata
+    if (s.valueType === 'categorical' && s.categories) {
+      signal.categories = s.categories;
+    }
+    if (s.valueType === 'numeric' && s.range) {
+      signal.range = s.range;
+    }
+
+    return signal;
+  });
+
+  // Scope boundary note for identity resolution queries
+  const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
+  const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
+  const response: Record<string, unknown> = { signals, sandbox: true };
+  if (hasIdentityTerm) {
+    const isCreditQuery = rawTerms.includes('credit');
+    response.note = isCreditQuery
+      ? 'AdCP signals support credit-derived audience segments (credit activity, income tiers) but not raw credit scores, FICO data, or credit risk models. Signals represent targeting segments, not underlying financial data. Credit-derived signals may carry additional regulatory obligations (FCRA).'
+      : 'AdCP signals support identity-derived attributes (age, income, life stage) but not identity resolution itself. Identity graphs, match rates, and cross-publisher deduplication are outside the current protocol scope.';
+  }
+  return response;
+}
+
+function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  // Accept both signal_agent_segment_id (protocol) and signal_id (SDK test tool)
+  const segmentId = (args.signal_agent_segment_id || args.signal_id) as string;
+  const action = (args.action as string) || 'activate';
+  // Accept both destinations (array, protocol) and destination (singular, SDK test tool)
+  let destinations = args.destinations as Array<Record<string, unknown>> | undefined;
+  if (!destinations?.length && args.destination) {
+    const dest = args.destination as Record<string, unknown>;
+    // SDK sends platform + account_id; normalize to protocol format
+    destinations = [{
+      type: dest.type || 'platform',
+      platform: dest.platform,
+      account: dest.account || dest.account_id,
+      ...(dest.agent_url ? { agent_url: dest.agent_url } : {}),
+    }];
+  }
+  const pricingOptionId = args.pricing_option_id as string | undefined;
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+
+  if (!segmentId) {
+    return { errors: [{ code: 'validation_error', message: 'signal_agent_segment_id is required' }] };
+  }
+  if (!destinations?.length) {
+    return { errors: [{ code: 'validation_error', message: 'destinations array is required' }] };
+  }
+
+  // Find the signal in our catalog
+  const allSignals = getAllSignals();
+  const signal = allSignals.find(s => s.signalAgentSegmentId === segmentId);
+  if (!signal) {
+    return {
+      errors: [{
+        code: 'SIGNAL_AGENT_SEGMENT_NOT_FOUND',
+        message: `Signal not found: ${segmentId}. Use get_signals to discover available signals.`,
+      }],
+    };
+  }
+
+  // Validate pricing option if provided
+  if (pricingOptionId) {
+    const validPricing = signal.pricingOptions.find(po => po.pricingOptionId === pricingOptionId);
+    if (!validPricing) {
+      return {
+        errors: [{
+          code: 'INVALID_PRICING_MODEL',
+          message: `Pricing option not found: ${pricingOptionId}. Available: ${signal.pricingOptions.map(po => po.pricingOptionId).join(', ')}`,
+        }],
+      };
+    }
+  }
+
+  const agentUrl = getAgentUrl();
+  const now = new Date().toISOString();
+
+  if (action === 'deactivate') {
+    // Remove activations for this signal
+    for (const dest of destinations) {
+      const destId = (dest.agent_url as string) || (dest.platform as string) || agentUrl;
+      const activationKey = `${segmentId}:${destId}`;
+      session.signalActivations.delete(activationKey);
+    }
+
+    return {
+      deployments: destinations.map(dest => {
+        const d: Record<string, unknown> = {
+          type: dest.type || 'agent',
+          is_live: false,
+          deployed_at: now,
+        };
+        if (dest.agent_url) d.agent_url = dest.agent_url;
+        if (dest.platform) d.platform = dest.platform;
+        if (dest.account) d.account = dest.account;
+        return d;
+      }),
+      sandbox: true,
+    };
+  }
+
+  // Activate: store activation state and return deployment info
+  const deployments = destinations.map(dest => {
+    const destId = (dest.agent_url as string) || (dest.platform as string) || agentUrl;
+    const activationKey = `${segmentId}:${destId}`;
+
+    const activationState: SignalActivationState = {
+      signalAgentSegmentId: segmentId,
+      destinationType: (dest.type as 'platform' | 'agent') || 'agent',
+      destinationId: destId,
+      account: dest.account as string | undefined,
+      pricingOptionId,
+      isLive: true,
+      activatedAt: now,
+    };
+    session.signalActivations.set(activationKey, activationState);
+
+    const d: Record<string, unknown> = {
+      type: dest.type || 'agent',
+      is_live: true,
+      activation_key: {
+        type: 'key_value',
+        key: 'audience_segment',
+        value: segmentId,
+      },
+      deployed_at: now,
+    };
+    if (dest.agent_url) d.agent_url = dest.agent_url;
+    if (dest.platform) d.platform = dest.platform;
+    if (dest.account) d.account = dest.account;
+    return d;
+  });
+
+  return { deployments, sandbox: true };
+}
+
+function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const agentUrl = getAgentUrl();
+
+  // Resolve media buy IDs from multiple input formats
+  const mediaBuyIds = args.media_buy_ids as string[] | undefined;
+  const buyerRefs = args.media_buy_buyer_refs as string[] | undefined;
+  const creativeIds = args.creative_ids as string[] | undefined;
+  const maxVariants = (args.max_variants as number) || 10;
+
+  if (!mediaBuyIds?.length && !buyerRefs?.length && !creativeIds?.length) {
+    return {
+      errors: [{ code: 'validation_error', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
+    };
+  }
+
+  // Find matching media buys
+  const matchingBuys: MediaBuyState[] = [];
+  for (const mb of session.mediaBuys.values()) {
+    if (mediaBuyIds?.includes(mb.mediaBuyId)) matchingBuys.push(mb);
+    else if (buyerRefs?.includes(mb.buyerRef)) matchingBuys.push(mb);
+  }
+
+  // Collect assigned creatives from matching buys, tracking which buy each belongs to
+  const relevantCreativeIds = new Set<string>();
+  const creativeToBuy = new Map<string, string>();
+  if (creativeIds?.length) {
+    creativeIds.forEach(id => relevantCreativeIds.add(id));
+  }
+  for (const mb of matchingBuys) {
+    for (const pkg of mb.packages) {
+      pkg.creativeAssignments.forEach(id => {
+        relevantCreativeIds.add(id);
+        creativeToBuy.set(id, mb.mediaBuyId);
+      });
+    }
+  }
+
+  if (relevantCreativeIds.size === 0) {
+    return {
+      reporting_period: {
+        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date().toISOString(),
+        timezone: 'America/New_York',
+      },
+      currency: 'USD',
+      creatives: [],
+      sandbox: true,
+    };
+  }
+
+  const now = new Date();
+  const creatives: Record<string, unknown>[] = [];
+
+  for (const cid of relevantCreativeIds) {
+    const creative = session.creatives.get(cid);
+    if (!creative) continue;
+
+    // Generate deterministic variant-level delivery based on creative ID
+    const variantCount = Math.min(maxVariants, 3);
+    const idHash = Array.from(cid).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+    const totalImpressions = 50000 + Math.abs(idHash % 100000);
+    const totalSpend = Math.round(totalImpressions * 0.05 * 100) / 100;
+    const totalClicks = Math.round(totalImpressions * 0.03);
+    const variants: Record<string, unknown>[] = [];
+
+    const topics = ['technology', 'lifestyle', 'finance', 'health', 'sports'];
+    const devices = ['mobile', 'desktop', 'tablet'];
+
+    for (let i = 0; i < variantCount; i++) {
+      const share = i === 0 ? 0.5 : (0.5 / (variantCount - 1));
+      const vImpressions = Math.round(totalImpressions * share);
+      const vSpend = Math.round(totalSpend * share * 100) / 100;
+      const vClicks = Math.round(totalClicks * share);
+
+      variants.push({
+        variant_id: `gen_${cid}_${i}`,
+        generation_context: {
+          context_type: 'web_page',
+          topic: topics[i % topics.length],
+          device_class: devices[i % devices.length],
+        },
+        manifest: {
+          format_id: creative.formatId || { agent_url: agentUrl, id: 'display_300x250' },
+          assets: {
+            headline: { asset_type: 'text', content: `Generated variant ${i + 1} for ${creative.name || cid}` },
+            hero_image: { asset_type: 'image', url: `https://cdn.example.com/generated/${cid}_v${i}.jpg`, width: 300, height: 250 },
+          },
+        },
+        impressions: vImpressions,
+        spend: vSpend,
+        clicks: vClicks,
+        ctr: vImpressions > 0 ? Math.round((vClicks / vImpressions) * 10000) / 10000 : 0,
+      });
+    }
+
+    creatives.push({
+      creative_id: cid,
+      media_buy_id: creativeToBuy.get(cid) || matchingBuys[0]?.mediaBuyId,
+      format_id: creative.formatId,
+      totals: {
+        impressions: totalImpressions,
+        spend: totalSpend,
+        clicks: totalClicks,
+        ctr: totalImpressions > 0 ? Math.round((totalClicks / totalImpressions) * 10000) / 10000 : 0,
+      },
+      variant_count: variantCount,
+      variants,
+    });
+  }
+
+  return {
+    reporting_period: {
+      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      end: now.toISOString(),
+      timezone: 'America/New_York',
+    },
+    currency: 'USD',
+    creatives,
+    sandbox: true,
+  };
+}
+
 // ── Handler dispatch ──────────────────────────────────────────────
 
 type ToolHandler = (args: Record<string, unknown>, ctx: TrainingContext) => Record<string, unknown>;
@@ -846,13 +1378,17 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   create_media_buy: handleCreateMediaBuy,
   get_media_buys: handleGetMediaBuys,
   get_media_buy_delivery: handleGetMediaBuyDelivery,
+  get_creative_delivery: handleGetCreativeDelivery,
   sync_creatives: handleSyncCreatives,
   list_creatives: handleListCreatives,
   update_media_buy: handleUpdateMediaBuy,
+  get_signals: handleGetSignals,
+  activate_signal: handleActivateSignal,
   sync_plans: handleSyncPlans,
   check_governance: handleCheckGovernance,
   report_plan_outcome: handleReportPlanOutcome,
   get_plan_audit_logs: handleGetPlanAuditLogs,
+  get_adcp_capabilities: handleGetAdcpCapabilities,
 };
 
 /**

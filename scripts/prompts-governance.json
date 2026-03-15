@@ -1,0 +1,30 @@
+[
+  {
+    "filename": "images/walkthrough/governance-01-no-oversight.png",
+    "prompt": "A robot arm reaches for a large glowing red BUY button with '$50,000' displayed on it. The room is dim with blinking warning lights. No human is present. Unchecked documents pile up on a desk beside the button. A monitor shows a campaign ready to launch. The scene feels tense and unsupervised — this is the nightmare scenario of AI spending money without oversight. Moody lighting with red accents against the dark teal palette. The robot is powerful but unchecked."
+  },
+  {
+    "filename": "images/walkthrough/governance-02-plan-synced.png",
+    "prompt": "A buying robot (sleek, teal-accented) creates a glowing campaign plan document — it's a structured blueprint with budget, flight dates, and brand name visible. The document floats across the scene along a clean pathway to a governance robot sitting behind an official-looking security desk. The governance desk has a shield emblem on the front. The governance robot carefully receives the document and begins examining it with a magnifying glass. Professional, orderly atmosphere — the opposite of the chaos in scene 1."
+  },
+  {
+    "filename": "images/walkthrough/governance-03-checks.png",
+    "prompt": "The governance robot reviews three floating inspection panels arranged side by side. The budget panel shows a bar chart that's nearly at the limit — the bar glows amber as a warning. The brand safety panel has a clean green checkmark with a shield icon. The compliance panel has a green checkmark with a map/flag icon. The governance robot points at the amber budget panel with concern, while the other two panels glow reassuringly green. Clean, clinical lighting — this is a thorough inspection, not a rubber stamp."
+  },
+  {
+    "filename": "images/walkthrough/governance-04-escalation.png",
+    "prompt": "The governance robot raises an amber flag — it's a physical flag on a pole, glowing amber/yellow. A glowing path leads from the governance desk to a human reviewer: Jordan, a woman with dark hair in professional attire, sitting at a modern glass desk. She examines the flagged campaign document thoughtfully, one hand on her chin. The document shows the $25,000 amount highlighted in amber. Between the governance robot and Jordan, the path is clearly structured — this isn't a panic, it's a designed escalation workflow. Calm but serious tone."
+  },
+  {
+    "filename": "images/walkthrough/governance-05-approved.png",
+    "prompt": "Jordan presses a green approval stamp onto the campaign plan. Attached to the approved plan is a yellow condition tag that reads 'weekly reporting required' in small text. The approved plan flows back along a path — through the governance robot who records it in an open ledger book — and continues toward the buying robot waiting in the background. The governance robot adds an entry to its ledger with a pen. Green seal, yellow condition tag, orderly flow. The tone is decisive and structured — human judgment enhancing automated workflow."
+  },
+  {
+    "filename": "images/walkthrough/governance-06-running.png",
+    "prompt": "A cityscape scene with ads running across multiple surfaces: a billboard on a building, a phone screen held by a pedestrian, a TV visible through an apartment window. Above the city, the governance robot watches from a watchtower, scanning the scene with a wide teal beam of light. Metrics and data points stream upward from each ad placement toward the watchtower. The scene feels active and alive — the campaign is running, and governance is watching everything. Evening lighting, the city glows with activity."
+  },
+  {
+    "filename": "images/walkthrough/governance-07-audit-trail.png",
+    "prompt": "A horizontal timeline ribbon stretches across the scene, with glowing nodes at each decision point: 'Plan created' (document icon), 'Check flagged' (amber warning), 'Human reviewed' (person icon), 'Approved' (green stamp), 'Launched' (rocket), 'Delivered' (chart). Below the timeline, the governance robot presents an open, detailed log book to three humans standing together (including Jordan). The log book shows structured entries with timestamps. Clean, comprehensive, trustworthy — this is the complete record. Well-lit, professional setting."
+  }
+]

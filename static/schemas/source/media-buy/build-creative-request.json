@@ -87,6 +87,10 @@
       },
       "minItems": 1
     },
+    "preview_quality": {
+      "$ref": "/schemas/enums/creative-quality.json",
+      "description": "Render quality for inline preview when include_preview is true. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings. Independent of the build quality parameter — you can build at draft quality and preview at production quality, or vice versa. If omitted, the creative agent uses its own default. Ignored when include_preview is false or omitted."
+    },
     "preview_output_format": {
       "$ref": "/schemas/enums/preview-output-format.json",
       "default": "url",

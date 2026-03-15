@@ -395,6 +395,114 @@ A full signal catalog for an automotive data provider:
 }
 ```
 
+## Location data provider example
+
+A geo/mobility provider's signal catalog uses the same structure but with location-specific signals. Here's the `signals` array for a provider publishing foot traffic and mobility data:
+
+```json
+{
+  "signals": [
+    {
+      "id": "store_visitors",
+      "name": "Store Visitors",
+      "description": "Consumers who visited a specified retail location in the past 30 days based on opted-in mobile device data",
+      "value_type": "binary",
+      "tags": ["geo", "foot_traffic"]
+    },
+    {
+      "id": "visit_frequency",
+      "name": "Location Visit Frequency",
+      "description": "Monthly visit count to a specified location category",
+      "value_type": "numeric",
+      "range": { "min": 0, "max": 30, "unit": "visits_per_month" },
+      "tags": ["geo", "frequency"]
+    },
+    {
+      "id": "commute_pattern",
+      "name": "Commute Pattern",
+      "description": "Categorized daily commute behavior based on observed travel patterns",
+      "value_type": "categorical",
+      "allowed_values": ["urban_transit", "suburban_driver", "remote_worker", "hybrid"],
+      "tags": ["geo", "behavioral"]
+    }
+  ]
+}
+```
+
+Note how the three value types map to different geo concepts: `binary` for yes/no store visitation, `numeric` for visit frequency with a meaningful range, and `categorical` for classified mobility behavior.
+
+## Identity / demographic provider example
+
+An identity company's signal catalog publishes consumer segments derived from financial records, surveys, and public data. Note: these are **targeting segments**, not raw data. Credit-derived signals may carry regulatory obligations (FCRA) — consult your compliance team before publishing.
+
+```json
+{
+  "signals": [
+    {
+      "id": "household_income",
+      "name": "Household Income Tier",
+      "description": "Modeled household income bracket based on financial and demographic indicators",
+      "value_type": "categorical",
+      "allowed_values": ["under_50k", "50k_75k", "75k_100k", "100k_150k", "150k_250k", "over_250k"],
+      "tags": ["demographic", "income"]
+    },
+    {
+      "id": "life_stage",
+      "name": "Life Stage",
+      "description": "Life stage classification derived from demographic and behavioral indicators",
+      "value_type": "categorical",
+      "allowed_values": ["young_adult", "early_career", "established_family", "empty_nester", "retired"],
+      "tags": ["demographic", "life_stage"]
+    },
+    {
+      "id": "credit_active",
+      "name": "Active Credit Seeker",
+      "description": "Consumer has actively applied for new credit products in the past 90 days",
+      "value_type": "binary",
+      "tags": ["financial", "in_market", "credit"]
+    }
+  ]
+}
+```
+
+Identity companies often also provide cross-device identity graphs, but identity resolution as a service (matching Device A to Person B) is not yet part of the AdCP protocol. See the [signals ecosystem guide](/docs/guides/signals-ecosystem#identity-companies) for more on this boundary.
+
+## Retail media provider example
+
+Retailers have first-party purchase data that doubles as high-value targeting signals. A retail media network can publish signals alongside its properties in the same `adagents.json`:
+
+```json
+{
+  "signals": [
+    {
+      "id": "category_buyer",
+      "name": "Category Buyer",
+      "description": "Purchased in the specified product category within the past 90 days",
+      "value_type": "categorical",
+      "allowed_values": ["electronics", "home", "beauty", "grocery", "fashion"],
+      "tags": ["retail", "purchase"]
+    },
+    {
+      "id": "purchase_frequency",
+      "name": "Monthly Purchase Frequency",
+      "description": "Number of purchases in a product category over the trailing 90 days",
+      "value_type": "numeric",
+      "range": { "min": 0, "max": 50, "unit": "purchases" },
+      "tags": ["retail", "frequency"]
+    },
+    {
+      "id": "new_to_brand",
+      "name": "New to Brand",
+      "description": "Consumer has no prior purchase history with the specified brand in the trailing 12 months",
+      "value_type": "binary",
+      "tags": ["retail", "conquest"]
+    }
+  ]
+}
+```
+
+Retail signals are especially valuable because they're deterministic — based on actual purchases, not modeled behavior. See the [signals ecosystem guide](/docs/guides/signals-ecosystem#retail-media-networks) for the dual-role pattern (publisher + data provider).
+
 ## Validation
 
 Use the [AdAgents.json Builder](https://adcontextprotocol.org/adagents) to validate your signal catalog, or validate programmatically:
