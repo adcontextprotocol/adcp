@@ -25,7 +25,9 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 5. **Property Governance Integration** — Optional `property_list` parameter on `get_products` for filtering products by governance-evaluated property lists. `property_list_applied` response field confirms filtering.
 
-6. **Account Model Simplification** — Removed `account_resolution` capability. `require_operator_auth` now determines both auth model and account reference style.
+6. **Campaign Governance and Policy Registry** — `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs` for plan-level governance. Adds audit/advisory/enforce modes, delegated budget authority, seller-side governance checks, portfolio governance, and registry-backed shared policies.
+
+7. **Account Model Simplification** — Removed `account_resolution` capability. `require_operator_auth` now determines both auth model and account reference style.
 
 ### Breaking Changes
 

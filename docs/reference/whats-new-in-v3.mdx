@@ -12,7 +12,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 |------|------|------|
 | **Protocol scope** | Media Buy, Signals, Creative | Adds Brand Protocol, Governance, Sponsored Intelligence |
 | **Brand identity** | No standard mechanism | `brand.json` + community brand registry |
-| **Governance** | No brand suitability protocol | Property lists, content standards, and brand calibration |
+| **Governance** | No brand suitability protocol | Property lists, content standards, campaign governance, policy registry, and brand calibration |
 | **Sponsored Intelligence** | No conversational brand protocol | Consent-first brand sessions in AI assistants |
 | **Accounts Protocol** | No formal account model | Named protocol layer: `sync_accounts`, `list_accounts`, `report_usage`, brand registry-grounded identity |
 | **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 13 catalog types |
@@ -194,6 +194,8 @@ Formats declare what catalogs they need via `catalog_requirements`. Creatives re
 ### Governance Protocol
 
 Brand suitability and inventory curation. Governance agents manage **property lists** (curated sets of properties for targeting or exclusion) and **content standards** (brand suitability policies with per-category block/allow rules). Buyers pass property lists to `get_products` for filtered inventory discovery, and use `calibrate_content` for collaborative alignment between brand and governance agent. Governance agents can enforce `provenance_required` on creative policy and support third-party AI content verification via the `verification` array on provenance claims.
+
+Campaign governance extends this with plan-level policy and budget enforcement via `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`. Governance agents can operate in `audit`, `advisory`, or `enforce` mode, validate seller-side actions against delegated authority, and resolve standardized policies through the shared [policy registry](/docs/governance/policy-registry).
 
 <Card title="Governance Protocol" icon="arrow-right" href="/docs/governance/overview">
   Full specification including property lists, content standards, and calibration.
