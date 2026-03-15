@@ -1,3 +1,9 @@
+---
+title: Learner test personas
+description: "AdCP documentation test personas for evaluating how content serves different user types — from legacy builders to enterprise buyers."
+"og:title": "AdCP — Learner test personas"
+---
+
 # Learner test personas
 
 Six personas for testing how well the AdCP documentation, website, and Addie serve different user types. Personas 1-3 are build-side (engineering implementation). Personas 4-6 are buy-side (strategy and adoption at different scales). Each represents a realistic browsing session and set of questions.

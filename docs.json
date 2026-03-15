@@ -1,6 +1,17 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
+  "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
+  "metadata": {
+    "og:site_name": "AdCP — Ad Context Protocol",
+    "og:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png",
+    "og:image:width": "1200",
+    "og:image:height": "630",
+    "og:description": "AdCP is the open protocol for agentic advertising. It standardizes how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
+    "og:type": "article",
+    "twitter:card": "summary_large_image",
+    "twitter:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png"
+  },
   "logo": {
     "light": "/logo/AAo-dark.svg",
     "dark": "/logo/AAo.svg",
@@ -195,7 +206,6 @@
                   "docs/media-buy/specification",
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
-                  "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/get_media_buys",
@@ -617,7 +627,6 @@
                   "docs/media-buy/specification",
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
-                  "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/get_media_buys",
@@ -1136,6 +1145,10 @@
     {
       "source": "/docs/media-buy/advanced-topics/orchestrator-design",
       "destination": "/docs/building/implementation/orchestrator-design"
+    },
+    {
+      "source": "/docs/media-buy/task-reference/list_creative_formats",
+      "destination": "/docs/creative/task-reference/list_creative_formats"
     },
     {
       "source": "/docs/media-buy/task-reference/list_creatives",
