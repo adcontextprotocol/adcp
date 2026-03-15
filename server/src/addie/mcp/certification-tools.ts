@@ -772,6 +772,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   B1: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
     { label: 'Get products task', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
+    { label: 'Media products', url: `${DOCS_BASE}/docs/media-buy/product-discovery/media-products` },
+    { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
   ],
@@ -783,6 +785,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
     { label: 'Sales agent creative capabilities', url: `${DOCS_BASE}/docs/creative/sales-agent-creative-capabilities` },
     { label: 'List creative formats task', url: `${DOCS_BASE}/docs/creative/task-reference/list_creative_formats` },
+    { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
@@ -823,6 +826,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'acquire_rights task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/acquire_rights` },
     { label: 'update_rights task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/update_rights` },
     { label: 'For rights holders', url: `${DOCS_BASE}/docs/brand-protocol/for-rights-holders` },
+    { label: 'Shows and episodes — talent linking', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
@@ -922,6 +926,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   S4: [
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
+    { label: 'Shows and episodes — brand safety', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },

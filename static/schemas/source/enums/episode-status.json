@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/episode-status.json",
+  "title": "Episode Status",
+  "description": "Lifecycle status of an episode",
+  "type": "string",
+  "enum": [
+    "scheduled",
+    "tentative",
+    "live",
+    "postponed",
+    "cancelled",
+    "aired",
+    "published"
+  ],
+  "enumDescriptions": {
+    "scheduled": "Confirmed, will happen as planned",
+    "tentative": "May not happen (e.g., playoff Game 7 depends on Game 6)",
+    "live": "Currently airing or streaming right now",
+    "postponed": "Was scheduled but delayed to a future date",
+    "cancelled": "Will not happen",
+    "aired": "Already broadcast (live/linear content)",
+    "published": "Already released (on-demand content)"
+  }
+}

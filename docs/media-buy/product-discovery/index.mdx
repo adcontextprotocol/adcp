@@ -55,13 +55,14 @@ Instead, describe your campaign naturally:
 Learn more in [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations).
 
 ### Product Model
-Products represent sellable advertising inventory with:
-- **Audience targeting** built into the product definition
-- **Creative format requirements** for asset compatibility
-- **Pricing structure** (fixed rates or auction guidance)
-- **Delivery characteristics** (guaranteed reach vs best-effort)
+Products describe sellable inventory along three independent dimensions:
+- **Publisher properties** — WHERE the ad runs (the website, app, or platform)
+- **Shows and episodes** — WHAT CONTENT the ad runs in or around (a series, podcast, or live event)
+- **Placements** — WHAT POSITION the ad appears in (pre-roll, mid-roll, host read)
 
-Understand the complete product structure in [Media Products](/docs/media-buy/product-discovery/media-products).
+Each product also includes audience targeting, creative format requirements, pricing, and delivery characteristics. When products reference shows, the `get_products` response includes a top-level `shows` array with full show metadata (talent, genre, content ratings, distribution identifiers).
+
+Understand the complete product structure in [Media Products](/docs/media-buy/product-discovery/media-products). For show-centric inventory like podcasts, CTV series, and live events, see [Shows and Episodes](/docs/media-buy/product-discovery/shows-and-episodes).
 
 ### Catalog-driven discovery
 For catalog-driven campaigns (retail media, job boards, travel), pass a `catalog` on `get_products` to find products that match your catalog items. Products declare which catalog types they support via `catalog_types`, and the response includes `catalog_match` with matched item counts. See [Catalogs](/docs/creative/catalogs#catalogs-in-the-media-buy-lifecycle).

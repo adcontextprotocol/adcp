@@ -51,6 +51,10 @@
     "delivery_type": {
       "$ref": "/schemas/enums/delivery-type.json"
     },
+    "exclusivity": {
+      "$ref": "/schemas/enums/exclusivity.json",
+      "description": "Whether this product offers exclusive access to its inventory. Defaults to 'none' when absent. Most relevant for guaranteed products tied to specific shows or placements."
+    },
     "pricing_options": {
       "type": "array",
       "description": "Available pricing models for this product",
@@ -277,6 +281,20 @@
         "manifest"
       ],
       "additionalProperties": true
+    },
+    "show_ids": {
+      "type": "array",
+      "description": "References to shows in the response's top-level shows array. When present, the product covers inventory associated with these shows. A product can span multiple shows (e.g., a podcast network bundle).",
+      "items": {
+        "type": "string"
+      }
+    },
+    "episodes": {
+      "type": "array",
+      "description": "Specific episodes included in this product. Each episode references its parent show via show_id when the product spans multiple shows. When absent with show_ids present, the product covers the shows broadly (run-of-show).",
+      "items": {
+        "$ref": "/schemas/core/episode.json"
+      }
     },
     "enforced_policies": {
       "type": "array",

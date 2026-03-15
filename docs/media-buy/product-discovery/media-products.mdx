@@ -19,7 +19,10 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `format_ids` (list[FormatID], required): Structured format ID references. See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
+- `show_ids` (list[string], optional): Show IDs available within this product. When provided, buyers can target specific shows. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes).
+- `episodes` (list[Episode], optional): Specific episodes available within this product. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
+- `exclusivity` (string, optional): Whether this product offers exclusive access. `"none"` (default when absent) — multiple advertisers can buy simultaneously. `"category"` — one advertiser per industry category. `"exclusive"` — sole sponsorship. Most relevant for guaranteed products tied to specific shows or placements.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
 - `delivery_measurement` (object, optional): Who measures ad delivery — the ad server and viewability vendor used to count impressions (e.g., "Google Ad Manager with IAS viewability"). When absent, buyers should apply their own measurement defaults. See [Delivery Measurement](#delivery-measurement).
 - `outcome_measurement` (OutcomeMeasurement, optional): Business outcome measurement included with the product — incremental sales lift, brand lift studies, etc. Common for retail media products.
@@ -244,6 +247,90 @@ When creating a media buy, buyers can assign different creatives to different pl
 ```
 
 See [Creative Assignment and Placement Targeting](/docs/media-buy/media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
+
+### Shows and episodes
+
+Shows are a third product dimension alongside formats and placements. While placements describe *where* an ad appears and formats describe *what* the ad looks like, shows describe the *content context* — the programming a viewer is watching. Products can declare `show_ids` and `episodes` so buyers can target specific shows or episodes when purchasing inventory.
+
+See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) for the full model, examples, and targeting details.
+
+### Exclusivity
+
+The `exclusivity` field indicates whether a product offers exclusive access to its inventory. Defaults to `"none"` when absent.
+
+| Value | Meaning |
+|---|---|
+| `none` | Multiple advertisers can buy this product simultaneously |
+| `category` | One advertiser per industry category (e.g., one auto brand per show sponsorship) |
+| `exclusive` | Sole sponsorship — only one advertiser can buy this product |
+
+Exclusivity is most relevant for guaranteed products tied to specific shows or placements, where advertisers want brand separation or sole ownership of a content association.
+
+#### When to use each level
+
+- **`none`**: Programmatic inventory, run-of-network, open auction products. Multiple advertisers sharing the same inventory is expected.
+- **`category`**: Podcast or CTV sponsorships where competitive separation matters. One auto brand per show, one fintech brand per episode — but multiple non-competing advertisers can buy simultaneously.
+- **`exclusive`**: Sole sponsorship of a single show or event. The advertiser is the only brand associated with the content.
+
+Publishers SHOULD include `exclusivity` on guaranteed products with `show_ids`. The implicit default of `"none"` is ambiguous for show-level inventory — buyers cannot tell whether the publisher intends shared inventory or simply omitted the field.
+
+#### Content sponsorship pattern
+
+A product combining `delivery_type: "guaranteed"`, `exclusivity: "exclusive"`, and `show_ids` represents a content sponsorship — the advertiser becomes the sole sponsor of specific content. This is the standard pattern for podcast title sponsorships, CTV show sponsorships, and event-based takeovers.
+
+```json
+{
+  "product_id": "signal_noise_sponsor",
+  "name": "Signal & Noise — Exclusive Sponsorship",
+  "description": "Sole sponsorship of Signal & Noise, a weekly technology podcast. Includes pre-roll and mid-roll placements across all episodes.",
+  "publisher_properties": [
+    { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
+  ],
+  "show_ids": ["signal_noise"],
+  "delivery_type": "guaranteed",
+  "exclusivity": "exclusive",
+  "pricing_options": [
+    {
+      "pricing_option_id": "flat_monthly",
+      "pricing_model": "flat_rate",
+      "fixed_price": 25000,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+Category exclusivity works for multi-show bundles where the publisher separates competing brands across a network but still sells to multiple non-competing advertisers:
+
+```json
+{
+  "product_id": "crest_business_bundle",
+  "name": "Crest Business Podcast Bundle — Category Sponsorship",
+  "description": "Sponsorship across three business podcasts. One advertiser per industry category across all shows.",
+  "publisher_properties": [
+    { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
+  ],
+  "show_ids": ["signal_noise", "market_beat", "founder_stories"],
+  "delivery_type": "guaranteed",
+  "exclusivity": "category",
+  "pricing_options": [
+    {
+      "pricing_option_id": "flat_quarterly",
+      "pricing_model": "flat_rate",
+      "fixed_price": 60000,
+      "currency": "USD"
+    }
+  ]
+}
+```
 
 ### Property Targeting
 

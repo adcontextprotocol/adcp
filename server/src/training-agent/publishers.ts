@@ -6,7 +6,7 @@
  * factory uses these to generate schema-compliant products.
  */
 
-import type { PublisherProfile } from './types.js';
+import type { PublisherProfile, ShowDefinition } from './types.js';
 
 export const PUBLISHERS: PublisherProfile[] = [
   {
@@ -52,6 +52,52 @@ export const PUBLISHERS: PublisherProfile[] = [
         tags: ['news', 'premium', 'ctv', 'streaming'],
       },
     ],
+    shows: [
+      {
+        showId: 'pinnacle_show_nightline',
+        name: 'Pinnacle Nightline',
+        genre: ['news', 'current_affairs'],
+        cadence: 'daily',
+        status: 'active',
+        description: 'Nightly news program covering national and international stories. Pinnacle\'s flagship broadcast.',
+        contentRatings: [
+          { system: 'tv_parental', rating: 'TV-PG' },
+          { system: 'bbfc', rating: 'PG' },
+        ],
+        talent: [
+          { name: 'David Chen', role: 'anchor' },
+          { name: 'Priya Nair', role: 'correspondent' },
+        ],
+        channels: ['ctv', 'olv'],
+        episodes: [
+          { episodeId: 'pn_ep_20260313', title: 'Trade policy shifts and market impact', status: 'aired', scheduledAt: '2026-03-13T23:00:00Z', duration: 'PT60M' },
+          { episodeId: 'pn_ep_20260314', title: 'AI regulation roundtable', status: 'live', scheduledAt: '2026-03-14T23:00:00Z', duration: 'PT60M' },
+          { episodeId: 'pn_ep_20260315', title: 'Weekend edition', status: 'scheduled', scheduledAt: '2026-03-15T23:00:00Z' },
+        ],
+      },
+      {
+        showId: 'pinnacle_show_the_ember',
+        name: 'The Ember',
+        genre: ['drama', 'food'],
+        cadence: 'weekly',
+        status: 'active',
+        description: 'Award-winning drama series following a chef navigating the pressure of running a top restaurant.',
+        contentRatings: [
+          { system: 'tv_parental', rating: 'TV-MA' },
+          { system: 'bbfc', rating: '15' },
+        ],
+        talent: [
+          { name: 'Marcus Reed', role: 'lead' },
+          { name: 'Sofia Alvarez', role: 'supporting' },
+        ],
+        channels: ['ctv'],
+        episodes: [
+          { episodeId: 'ember_s3_e01', title: 'New kitchen, old ghosts', status: 'aired', scheduledAt: '2026-02-28T21:00:00Z', duration: 'PT42M' },
+          { episodeId: 'ember_s3_e02', title: 'The investor', status: 'aired', scheduledAt: '2026-03-07T21:00:00Z', duration: 'PT44M' },
+          { episodeId: 'ember_s3_e03', title: 'Fire walk', status: 'scheduled', scheduledAt: '2026-03-14T21:00:00Z' },
+        ],
+      },
+    ],
   },
 
   {
@@ -85,6 +131,55 @@ export const PUBLISHERS: PublisherProfile[] = [
         identifierValue: 'podcasts.wavelengthaudio.example',
         channels: ['podcast'],
         tags: ['audio', 'podcast'],
+      },
+    ],
+    shows: [
+      {
+        showId: 'wavelength_show_signal_noise',
+        name: 'Signal & Noise',
+        genre: ['technology', 'business'],
+        cadence: 'weekly',
+        status: 'active',
+        description: 'Weekly deep-dive into ad tech, AI, and the future of media buying. Hosted by Maren Solberg.',
+        contentRatings: [{ system: 'tv_parental', rating: 'TV-PG' }],
+        talent: [
+          { name: 'Maren Solberg', role: 'host' },
+          { name: 'Kai Petrov', role: 'co_host' },
+        ],
+        distribution: [
+          { publisherDomain: 'podcasts.wavelengthaudio.example', identifiers: [
+            { type: 'spotify_show_id', value: '4xR2nPmkQL9dWgT3E7aN' },
+            { type: 'apple_podcast_id', value: '1678234567' },
+            { type: 'rss_url', value: 'https://feeds.wavelengthaudio.example/signal-noise' },
+          ]},
+        ],
+        channels: ['podcast', 'streaming_audio'],
+        episodes: [
+          { episodeId: 'sn_ep_042', title: 'Why agents are replacing DSPs', status: 'aired', scheduledAt: '2026-03-07T10:00:00Z', duration: 'PT45M' },
+          { episodeId: 'sn_ep_043', title: 'The LEAP standard: friend or foe?', status: 'aired', scheduledAt: '2026-03-14T10:00:00Z', duration: 'PT38M' },
+          { episodeId: 'sn_ep_044', title: 'Cross-seller matching in practice', status: 'scheduled', scheduledAt: '2026-03-21T10:00:00Z' },
+        ],
+      },
+      {
+        showId: 'wavelength_show_founders_freq',
+        name: 'Founders Frequency',
+        genre: ['business', 'entrepreneurship'],
+        cadence: 'biweekly',
+        status: 'active',
+        description: 'Interviews with founders building the next wave of media and commerce companies.',
+        contentRatings: [{ system: 'tv_parental', rating: 'TV-PG' }],
+        talent: [{ name: 'Lina Torres', role: 'host' }],
+        distribution: [
+          { publisherDomain: 'podcasts.wavelengthaudio.example', identifiers: [
+            { type: 'spotify_show_id', value: '7yQ4nRkPL3dWgT3E9bZ' },
+            { type: 'apple_podcast_id', value: '1678234890' },
+          ]},
+        ],
+        channels: ['podcast'],
+        episodes: [
+          { episodeId: 'ff_ep_018', title: 'Scaling a retail media network from zero', status: 'aired', scheduledAt: '2026-03-01T08:00:00Z', duration: 'PT52M' },
+          { episodeId: 'ff_ep_019', title: 'When your buyer is an AI agent', status: 'scheduled', scheduledAt: '2026-03-15T08:00:00Z' },
+        ],
       },
     ],
   },
@@ -245,6 +340,53 @@ export const PUBLISHERS: PublisherProfile[] = [
         identifierValue: 'viewpointsports.example',
         channels: ['olv'],
         tags: ['sports', 'live', 'web'],
+      },
+    ],
+    shows: [
+      {
+        showId: 'viewpoint_show_championship',
+        name: 'Championship League Live',
+        genre: ['sports', 'live_event'],
+        cadence: 'weekly',
+        status: 'active',
+        description: 'Live coverage of Championship League matches with pre-game analysis, in-game commentary, and post-game highlights.',
+        contentRatings: [{ system: 'tv_parental', rating: 'TV-G' }],
+        talent: [
+          { name: 'James Okoro', role: 'commentator' },
+          { name: 'Elena Voss', role: 'analyst' },
+        ],
+        channels: ['ctv', 'olv', 'linear_tv'],
+        episodes: [
+          {
+            episodeId: 'cl_match_20260315',
+            title: 'Quarterfinal: Northside FC vs Metro United',
+            status: 'scheduled',
+            scheduledAt: '2026-03-15T19:00:00Z',
+            duration: 'PT180M',
+          },
+          {
+            episodeId: 'cl_match_20260316',
+            title: 'Quarterfinal: Harbor City vs Crestwood Athletic',
+            status: 'scheduled',
+            scheduledAt: '2026-03-16T15:00:00Z',
+            duration: 'PT180M',
+          },
+        ],
+      },
+      {
+        showId: 'viewpoint_show_sports_desk',
+        name: 'The Sports Desk',
+        genre: ['sports', 'news'],
+        cadence: 'daily',
+        status: 'active',
+        description: 'Daily sports news roundup with scores, trades, and analysis.',
+        contentRatings: [{ system: 'tv_parental', rating: 'TV-PG' }],
+        talent: [{ name: 'Rachel Kim', role: 'anchor' }],
+        channels: ['ctv', 'olv'],
+        episodes: [
+          { episodeId: 'sd_20260314', title: 'Friday edition — playoff preview', status: 'aired', scheduledAt: '2026-03-14T18:00:00Z', duration: 'PT30M' },
+          { episodeId: 'sd_20260315', title: 'Saturday edition', status: 'scheduled', scheduledAt: '2026-03-15T18:00:00Z' },
+        ],
       },
     ],
   },
