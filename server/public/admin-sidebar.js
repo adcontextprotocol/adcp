@@ -24,6 +24,12 @@
         ]
       },
       {
+        label: 'Relationships',
+        items: [
+          { href: '/admin/people', label: 'People', icon: '👥' },
+        ]
+      },
+      {
         label: 'Community',
         items: [
           { href: '/admin/events', label: 'Events', icon: '📅' },
@@ -37,6 +43,12 @@
         items: [
           { href: '/admin/products', label: 'Products', icon: '💳' },
           { href: '/admin/billing', label: 'Stripe Linking', icon: '🔗' },
+        ]
+      },
+      {
+        label: 'Registry',
+        items: [
+          { href: '/admin/policies', label: 'Policy Registry', icon: '📜' },
         ]
       },
       {

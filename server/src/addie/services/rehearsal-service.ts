@@ -369,6 +369,7 @@ export class RehearsalService {
         can_contact: true,
         reason: 'Rehearsal mode',
       },
+      available_channels: ['slack'],
     };
   }
 
@@ -443,6 +444,7 @@ export class RehearsalService {
       if (nextGoal) {
         return {
           goal: nextGoal,
+          channel: 'slack',
           reason: 'Suggested follow-up after successful response',
           priority_score: nextGoal.base_priority,
           alternative_goals: [],

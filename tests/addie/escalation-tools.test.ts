@@ -52,6 +52,7 @@ const mockMemberContext: MemberContext = {
 };
 
 beforeEach(() => {
+  jest.resetModules();
   jest.clearAllMocks();
   mockListEscalationsForUser.mockResolvedValue([]);
 });

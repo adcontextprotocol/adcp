@@ -60,6 +60,7 @@ function makeGoal(overrides: Partial<OutreachGoal> = {}): OutreachGoal {
     max_attempts: 3,
     days_between_attempts: 7,
     is_enabled: true,
+    channel: 'any',
     created_by: null,
     created_at: new Date('2025-01-01'),
     updated_at: new Date('2025-01-01'),
@@ -74,6 +75,7 @@ function makeHistory(overrides: Partial<UserGoalHistory> = {}): UserGoalHistory 
     slack_user_id: 'U123',
     goal_id: 1,
     status: 'sent',
+    channel: 'slack',
     attempt_count: 1,
     last_attempt_at: null,
     next_attempt_at: null,
@@ -86,6 +88,9 @@ function makeHistory(overrides: Partial<UserGoalHistory> = {}): UserGoalHistory 
     decision_method: null,
     outreach_id: null,
     thread_id: null,
+    prospect_org_id: null,
+    email_subject: null,
+    email_body: null,
     created_at: new Date('2025-01-01'),
     updated_at: new Date('2025-01-01'),
     ...overrides,
@@ -108,6 +113,7 @@ function makeContext(overrides: Partial<PlannerContext> = {}): PlannerContext {
       can_contact: true,
       reason: 'eligible',
     },
+    available_channels: ['slack'],
     ...overrides,
   };
 }
@@ -320,6 +326,91 @@ describe('OutboundPlanner', () => {
       expect(result).toBeNull();
       // Should not even query the database
       expect(mockListGoals).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('membership acquisition filtering', () => {
+    it('skips membership acquisition goals for active members', async () => {
+      const membershipGoal = makeGoal({
+        id: 1,
+        name: 'Founding Member Deadline',
+        category: 'invitation',
+        success_insight_type: 'membership_interest',
+        base_priority: 95,
+      });
+
+      mockListGoals.mockResolvedValue([membershipGoal]);
+
+      const result = await planner.planNextAction(
+        makeContext({
+          user: {
+            slack_user_id: 'U123',
+            display_name: 'Test User',
+            is_mapped: true,
+            is_member: true,
+            engagement_score: 50,
+            insights: [],
+          },
+        })
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('allows membership acquisition goals for non-members', async () => {
+      const membershipGoal = makeGoal({
+        id: 1,
+        name: 'Founding Member Deadline',
+        category: 'invitation',
+        success_insight_type: 'membership_interest',
+        base_priority: 95,
+      });
+
+      mockListGoals.mockResolvedValue([membershipGoal]);
+
+      const result = await planner.planNextAction(
+        makeContext({
+          user: {
+            slack_user_id: 'U123',
+            display_name: 'Test User',
+            is_mapped: true,
+            is_member: false,
+            engagement_score: 50,
+            insights: [],
+          },
+        })
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.goal.id).toBe(1);
+    });
+
+    it('allows non-membership invitation goals for active members', async () => {
+      const councilGoal = makeGoal({
+        id: 1,
+        name: 'Invite to Open Web Council',
+        category: 'invitation',
+        success_insight_type: 'council_interest',
+        base_priority: 70,
+      });
+
+      mockListGoals.mockResolvedValue([councilGoal]);
+
+      const result = await planner.planNextAction(
+        makeContext({
+          user: {
+            slack_user_id: 'U123',
+            display_name: 'Test User',
+            is_mapped: true,
+            is_member: true,
+            engagement_score: 50,
+            insights: [],
+          },
+        })
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.goal.id).toBe(1);
     });
   });
 

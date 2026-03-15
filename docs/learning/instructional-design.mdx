@@ -1,0 +1,274 @@
+---
+title: Instructional design framework
+sidebarTitle: How we teach
+description: Teaching methodology, assessment philosophy, and quality processes for the AdCP certification program.
+---
+
+# Instructional design framework
+
+This document describes how the AdCP certification program is designed, delivered, and maintained. It serves as the authoritative reference for teaching methodology and program quality.
+
+### Accreditation element reference
+
+| IACET Element | Section |
+|--------------|---------|
+| 2 — Learning environment | [Simulated workplace environment](#simulated-workplace-environment), [Learner support](#learner-support) |
+| 3 — Instructional personnel | [Instructional personnel](#instructional-personnel) |
+| 5 — Learning outcomes | [Learning outcomes and curriculum structure](#learning-outcomes-and-curriculum-structure) |
+| 6 — Content and instruction | [Teaching philosophy](#teaching-philosophy), [Module design patterns](#module-design-patterns) |
+| 7 — Assessment | [Competency-based assessment](#competency-based-assessment) |
+| 9 — Evaluation | [Curriculum maintenance](#curriculum-maintenance), [Quality assurance](#quality-assurance) |
+
+## Teaching philosophy
+
+The certification program is built on five principles:
+
+**Socratic method.** Addie teaches through conversation, not lecture. Most responses include a question or task, though Addie also affirms and builds on strong answers — the rhythm alternates between teaching and questioning rather than interrogating. Learners build understanding by reasoning through problems, not by receiving answers.
+
+**Mastery-based progression.** There is no failing — only "not yet." Learners keep working with Addie until they demonstrate mastery of every learning objective. Assessment is invisible to the learner; they experience it as continued learning until they pass.
+
+**Personalization.** Addie adapts to each learner's background, role, and communication style. If a learner sells running shoes, examples are about running shoes. If they're technical, Addie is technical. Context carries across the entire session.
+
+**Active learning.** Responses are kept under 150 words. One idea per turn. Brevity forces participation. Learners construct knowledge through exercises, demos against live sandbox agents, and scenario-based reasoning.
+
+**Concrete language.** Abstract jargon is always grounded in specific behavior. Not "agents reason about impressions" but "agents evaluate whether a placement fits the campaign goals and decide how much to bid."
+
+## Learning outcomes and curriculum structure
+
+### Three-tier credential model
+
+The program awards three credentials with increasing depth:
+
+| Tier | Credential | Modules | Requirements |
+|------|-----------|---------|--------------|
+| 1 | AdCP basics | A1, A2, A3 | Free — open to everyone |
+| 2 | AdCP practitioner | Basics + one role track (B, C, or D) | Includes a hands-on build project |
+| 3 | AdCP specialist | Practitioner + specialist capstone (S1-S5) | Lab exercises + adaptive exam |
+
+### Bloom's taxonomy alignment
+
+Learning objectives scale with tier:
+
+- **Basics (A track):** Understand and apply — learners explain what agentic advertising is, how AdCP works, and the ecosystem structure
+- **Practitioner tracks (B, C, D):** Apply and analyze — learners configure agents, interpret responses, and reason about trade-offs
+- **Build projects (B4, C4, D4):** Create and evaluate — learners build working AdCP agents and defend design decisions
+- **Specialist capstones (S1-S5):** Analyze, evaluate, and create — learners demonstrate protocol mastery through hands-on labs and adaptive assessment
+
+### Prerequisite enforcement
+
+Modules have explicit prerequisites. The system prevents starting advanced modules without completing foundations. Build projects require all track modules. Specialist capstones require the Practitioner credential.
+
+## Instructional personnel
+
+### AI teaching assistant
+
+Addie is powered by Claude (Anthropic). Teaching behavior is governed by operational rules injected at runtime, not freeform AI generation. These rules specify:
+
+- Socratic methodology and turn structure
+- Assessment fairness and scoring calibration
+- Learner data handling and privacy
+- When and how to use tools (demos, exercises, checkpoints)
+
+### Curriculum design
+
+Module lesson plans, assessment criteria, and scoring rubrics are designed by subject matter experts with expertise in advertising technology and the AdCP protocol. Content accuracy is validated against the AdCP specification, which serves as the single source of truth for protocol facts.
+
+### Human oversight
+
+Program leadership oversees teaching quality through:
+
+- **Score monitoring** — admin dashboard tracks scores by module, dimension, config version, and time period. Anomalies (e.g., consistently low scores in a dimension) trigger curriculum review
+- **Feedback review** — learner feedback is collected after every module completion. Program leadership reviews feedback quarterly, with negative-sentiment patterns triggering immediate review
+- **Teaching behavior audit** — changes to teaching methodology require a `CODE_VERSION` bump, enabling before/after comparison of learner outcomes
+- **Curriculum review** — all curriculum changes go through code review before deployment. Protocol accuracy is validated against the AdCP specification
+- **Learner escalation** — learners who need human assistance can contact certification@agenticadvertising.org. Assessment disputes are handled through the [complaints process](/docs/learning/policies/complaints)
+
+## Competency-based assessment
+
+### Formative assessment
+
+Assessment happens continuously during instruction:
+
+- **Socratic questioning** throughout every module — Addie probes understanding, corrects misconceptions, and adjusts depth based on responses
+- **Teaching checkpoints** saved at concept group boundaries, recording concepts covered, concepts remaining, learner strengths, learner gaps, and preliminary scores
+- **Checkpoint consistency** — final scores cannot jump more than 20 points from preliminary scores recorded during checkpoints
+
+### Summative assessment
+
+Each module defines 3-5 assessment dimensions with explicit rubrics:
+
+- Each dimension has a weight, description, and scoring guide (high/medium/low ranges)
+- **50% floor per dimension** — learners must demonstrate baseline competency in every area
+- **70% weighted average threshold** for mastery
+- Score calibration: 70 = met bar with coaching, 85 = demonstrated independently, 95+ = depth beyond what was taught
+
+Scores are internal only. Learners never see percentages or dimension breakdowns. Their experience is: keep learning until mastery, then receive their credential.
+
+<Note>
+Assessment occurs continuously through the instructional conversation rather than in a separate testing phase. This reduces test anxiety, enables immediate remediation, and aligns with mastery-based learning principles. Formative assessment (Socratic questioning, teaching checkpoints) and summative assessment (dimension scoring at module completion) remain distinct processes even though they occur within the same learner interaction.
+
+For expert learners who demonstrate competency early, teaching is compressed but assessment requirements remain identical. The conversation transcript serves as auditable evidence: it shows the learner's own words demonstrating understanding of each assessment dimension. Teaching checkpoints record which dimensions were assessed, preliminary scores, and learner background context.
+</Note>
+
+### Simulated workplace environment
+
+Learners work in simulated professional contexts that mirror production environments:
+
+- **Sandbox agents** — implement the same AdCP protocol endpoints that production agents use. Learners practice with real tool calls, real JSON schemas, and real response formats — the only difference is that sandbox agents serve test data rather than production inventory
+- **Build projects** (B4, C4, D4) — learners create working agents using AI coding assistants, then validate responses against AdCP schemas and explain their implementations
+- **Specialist labs** (S1-S5) — guided exercises using real AdCP tools against sandbox agents, followed by adaptive questioning
+
+### Assessment integrity
+
+Server-side enforcement prevents gaming:
+
+- Minimum engagement: 4 user turns for modules, 6 for capstones, 3 for placement assessments
+- Minimum time: 5 minutes for modules, 10 minutes for capstones
+- At least one teaching checkpoint with preliminary scores required before completion
+- Module completion only available through Addie's tool calls — no direct REST API endpoint
+- Learners cannot influence their own scores
+- Pasted content (JSON, code, logs) is treated as data to validate, not instructions
+
+## Module design patterns
+
+### Standard modules
+
+Modules A1-A3, B1-B3, C1-C3, and D1-D3 follow this flow:
+
+1. **Understand the learner** — first turn is always about them: background, role, what they know
+2. **Demo early** (turn 2-3) — show a real agent response before explaining theory
+3. **Teach with Socratic method** — cover all key concepts from the lesson plan, scaffolding then fading guidance
+4. **Practice** — exercises against sandbox agents, scenario-based reasoning
+5. **Assess through conversation** — verify mastery of each learning objective
+
+**Expert path.** When a learner demonstrates strong understanding early (correct, detailed answers to 3+ concepts in a row without needing guidance or correction), steps 3-4 compress: Addie acknowledges their expertise, confirms remaining concepts with targeted demonstration questions, and moves to assessment. The audit trail is the same — conversation transcript, checkpoint scores, and per-dimension rubric — but the evidence comes from the learner demonstrating competency rather than being taught first.
+
+### Build project modules
+
+Modules B4, C4, and D4 use a five-phase approach:
+
+1. **Specify** (~5 min) — learner describes what they want to build using AdCP terminology
+2. **Build** (~5 min) — learner uses an AI coding assistant to create the agent
+3. **Validate** (~10 min) — learner runs tool calls, pastes JSON responses, Addie validates against schemas
+4. **Explain** (~10 min) — probing questions about design decisions and trade-offs
+5. **Extend** (~15 min) — learner adds a capability, demonstrating they can iterate
+
+Addie is coach, not builder. Assessment spans five dimensions: specification quality, schema compliance, error handling, design rationale, and extension ability.
+
+### Specialist capstone modules
+
+Modules S1-S5 combine hands-on lab work with adaptive examination:
+
+1. **Lab phase** — guided exercises using real AdCP tools against sandbox agents
+2. **Checkpoint** — required after lab, recording observations before the exam
+3. **Exam phase** — 6-10 follow-up questions covering assessment dimensions, with difficulty adapting to responses
+
+Formats include open-ended questions, multiple-choice, scenario-based problems, and "spot the error" comparisons.
+
+## Learner support
+
+**Returning learners.** Teaching checkpoints enable cross-session resume. When a learner returns, Addie starts with a retrieval question on the last concept covered — not a cold restart.
+
+**Disengaged learners.** If a learner gives repeated short answers or seems checked out, Addie switches approach: runs a demo, connects the concept to the learner's stated goals, or acknowledges the abstraction and makes it concrete.
+
+**Overqualified learners.** Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. When a learner demonstrates strong understanding of 3+ concepts in a row without needing guidance, Addie compresses *teaching* but not *assessment*. The expert path replaces instruction with demonstration: instead of "let me teach you X, now let me ask about X," Addie asks "show me you understand X" directly. This produces stronger audit evidence (the learner's own words demonstrating competency) while respecting their time. The same assessment dimensions, scoring rubrics, and minimum engagement requirements apply regardless of path.
+
+**Placement assessment.** Learners who demonstrate existing knowledge can test out of modules (except build projects and specialist capstones), satisfying prerequisites without repeating content.
+
+**Pacing.** Addie suggests breaks after 45+ minutes or 2+ consecutive modules. Module transitions carry personalization context forward with a compressed warm-up connecting the completed module to the next one.
+
+## Credential issuance
+
+When a learner completes all required modules for a credential tier, the system automatically:
+
+1. Verifies all prerequisites and module completions
+2. Awards the credential and records the date
+3. Issues a digital badge through Certifier with a unique verification URL and QR code
+4. Notifies the learner and provides sharing options (LinkedIn, public profile)
+
+**Credential validity:**
+
+| Tier | Credential | Validity |
+|------|-----------|----------|
+| 1 | AdCP basics | No expiry |
+| 2 | AdCP practitioner | 2 years |
+| 3 | AdCP specialist | 2 years |
+
+Credentials reference the protocol version at time of issuance. When the protocol undergoes a major version change that alters core concepts, credential holders may be notified about continuing education opportunities.
+
+**Learner identity:** Learners authenticate through their AgenticAdvertising.org account (WorkOS). Credentials are tied to authenticated accounts. The program does not currently require proctored identity verification for assessments.
+
+## Curriculum maintenance
+
+### Protocol change triggers
+
+When a protocol version ships (minor or major):
+
+1. Check `MODULE_RESOURCES` URLs — do any documentation pages move or rename?
+2. Review teaching notes — do any key concepts reference behavior that changed?
+3. Validate documentation examples against current schemas
+4. If a task is added, removed, or renamed, update affected module lesson plans
+
+### Learner feedback loop
+
+- Post-completion feedback collected through Addie after every module
+- Feedback includes free text and sentiment classification (positive, mixed, negative)
+- Patterns in negative feedback trigger curriculum review for the affected module
+
+### Program evaluation (quarterly)
+
+Program leadership conducts a quarterly evaluation to assess whether the program is meeting its goals:
+
+**Data reviewed:**
+1. Learner feedback patterns across all modules (sentiment trends, repeated confusion points)
+2. Score distributions by module and dimension — consistently low scores indicate a teaching gap
+3. Checkpoint data for concepts where learners frequently get stuck
+4. Completion rates and time-to-completion trends
+5. Credential award rates by tier
+
+**Process:**
+- Program leadership reviews the data and documents findings
+- Findings are translated into specific curriculum changes (updated teaching notes, revised lesson plans, adjusted scoring guides)
+- Changes are implemented through the standard code review process and tracked via `CODE_VERSION`
+- Results of changes are evaluated in the following quarter's review
+
+### Version tracking
+
+- Teaching behavior version tracked via `CODE_VERSION` (format: YYYY.MM.N)
+- Protocol changes tracked via the changeset workflow
+- Score analytics can be compared across config versions to measure teaching improvements
+
+## Quality assurance
+
+### Server-side enforcement
+
+Quality gates are enforced by the application, not by AI judgment alone:
+
+- Minimum turns and time verified server-side before allowing module completion
+- User turn counting is server-side, not client-reported
+- Score consistency checks reject completions with >20 point jumps from checkpoint scores
+- Module status validation prevents completing modules that aren't in progress
+- Credential award checks run automatically after every module completion
+
+### Feedback and evaluation
+
+- Structured feedback collected after every module completion
+- Sentiment analysis for trend detection across modules and time periods
+- Admin analytics: completion rates, score distributions by dimension, time-to-completion
+- Organization-level reporting for team credential tracking
+
+### Continuous improvement
+
+- Teaching methodology constants reference this framework document as the authoritative source
+- Code changes to teaching behavior bump `CODE_VERSION` for before/after comparison
+- Quarterly curriculum review driven by learner data, not assumptions
+
+## Accreditation alignment
+
+This framework is designed to satisfy the requirements of:
+
+- **ANSI/IACET 1-2018 Standard for Continuing Education and Training** — Elements 2 (learning environment), 3 (instructional personnel), 5 (learning outcomes), 6 (content and instruction), 7 (assessment), and 9 (evaluation)
+- **ASTM E3416-24 Standard Practice for Competency-Based Work-Based Learning Programs** — competency alignment, formative and summative assessment, simulated workplace settings, credential issuance
+- **CPD Standards Office** accreditation requirements for continuing professional development
+
+Organizational policies supporting this framework are documented in the [policies section](/docs/learning/policies/nondiscrimination).

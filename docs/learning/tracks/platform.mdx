@@ -85,6 +85,15 @@ Cryptographic signatures for supply chain verification. How platforms validate a
   <Card title="Property specification" icon="scroll" href="/docs/governance/property/specification">
     The formal specification for property governance.
   </Card>
+  <Card title="Campaign governance" icon="shield-check" href="/docs/governance/campaign">
+    Multi-party validation: how platforms implement the governance flow for autonomous transactions.
+  </Card>
+  <Card title="Campaign governance specification" icon="file-code" href="/docs/governance/campaign/specification">
+    The full technical specification: sync_plans, check_governance, report_plan_outcome, audit logs.
+  </Card>
+  <Card title="Policy registry" icon="book" href="/docs/governance/policy-registry">
+    Community-maintained compliance policies that governance agents resolve and enforce.
+  </Card>
 </CardGroup>
 
 ### Key concepts
@@ -92,6 +101,8 @@ Cryptographic signatures for supply chain verification. How platforms validate a
 - **Agent identity verification** — domain ownership, cryptographic signatures, organizational registration
 - **Supply path transparency** — full visibility into which agents handled each transaction
 - **ads.cert relationship** — extending cryptographic verification from RTB to agent-to-agent interactions
+- **Campaign governance architecture** — implement three-party validation: store `governance_agents` from `sync_accounts`, call `check_governance` before executing, handle all statuses
+- **Policy registry integration** — resolve policies by ID, integrate natural language policy text and exemplars into governance agent evaluation
 
 <Card title="Start D2 with Addie" icon="play" href="https://agenticadvertising.org/addie">
   "I'd like to start certification module D2."
@@ -179,5 +190,5 @@ After completing D1–D4, you've earned the **AdCP practitioner** credential. Fr
 - [S1: Media buy](/docs/learning/specialist/media-buy) — transaction flows, pricing, orchestration
 - [S2: Creative](/docs/learning/specialist/creative) — asset workflows, format compliance
 - [S3: Signals](/docs/learning/specialist/signals) — measurement, attribution, optimization
-- [S4: Governance](/docs/learning/specialist/governance) — brand safety, compliance, content standards
+- [S4: Governance](/docs/learning/specialist/governance) — brand safety, campaign governance, compliance, policy registry
 - [S5: Sponsored Intelligence](/docs/learning/specialist/sponsored-intelligence) — conversational brand experiences

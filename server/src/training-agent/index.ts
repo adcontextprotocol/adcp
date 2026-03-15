@@ -14,6 +14,7 @@ import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
+import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import type { TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-routes');
@@ -96,6 +97,26 @@ export function createTrainingAgentRouter(): Router {
           })),
         ),
       }],
+      signals: SIGNAL_PROVIDERS.flatMap(provider =>
+        provider.signals.map(signal => ({
+          id: signal.signalAgentSegmentId,
+          name: signal.name,
+          description: signal.description,
+          value_type: signal.valueType,
+          tags: signal.tags,
+          ...(signal.categories && { allowed_values: signal.categories }),
+          ...(signal.range && { range: signal.range }),
+        })),
+      ),
+      signal_tags: {
+        automotive: { name: 'Automotive signals', description: 'Vehicle ownership, purchase intent, and service signals' },
+        geo: { name: 'Geographic signals', description: 'Location, mobility, and foot traffic signals' },
+        retail: { name: 'Retail signals', description: 'Purchase behavior, loyalty, and shopping signals' },
+        demographic: { name: 'Demographic signals', description: 'Income, life stage, and household signals' },
+        identity: { name: 'Identity signals', description: 'Cross-device and household identity signals' },
+        contextual: { name: 'Contextual signals', description: 'Content category, sentiment, and page-level signals' },
+        first_party: { name: 'First-party signals', description: 'Publisher subscriber and CDP audience signals' },
+      },
       last_updated: STARTUP_TIME,
     });
   });
@@ -112,9 +133,7 @@ export function createTrainingAgentRouter(): Router {
     max: 60,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req: Request) => {
-      return req.ip || 'unknown';
-    },
+    validate: { xForwardedForHeader: false, ip: false },
     handler: (_req: Request, res: Response) => {
       res.status(429).json({
         jsonrpc: '2.0',

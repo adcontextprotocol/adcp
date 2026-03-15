@@ -96,6 +96,7 @@ asyncio.run(main())
 | `billing` | string | Yes | Who should be invoiced: `operator` or `agent`. Check `get_adcp_capabilities` for `supported_billing` to see what the seller accepts. The seller must either accept this billing model or reject the request. |
 | `payment_terms` | string | No | Payment terms for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. |
 | `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (`require_operator_auth: false`). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via `list_accounts`. |
+| `governance_agents` | array | No | Governance agent endpoints for this account. When present, the seller MUST call these agents for [governance approval](/docs/governance/campaign/tasks/check_governance) before confirming media buy requests. Each entry contains `url`, `authentication`, and optional `categories` to scope which validation categories the agent handles. To rotate credentials, call `sync_accounts` again with updated authentication. |
 
 **Natural key**: The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency). Adding `sandbox: true` provisions a sandbox account for the same brand/operator pair — no real platform calls or billing.
 
@@ -128,6 +129,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `credit_limit` | Maximum outstanding balance as `{amount, currency}`. |
 | `errors` | Per-account errors (only present when `action: "failed"`). |
 | `warnings` | Non-fatal notices. |
+| `governance_agents` | Governance agent endpoints, echoed from request when provided. |
 | `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for implicit accounts. |
 
 ### Account status

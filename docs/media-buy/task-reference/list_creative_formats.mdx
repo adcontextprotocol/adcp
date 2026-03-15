@@ -9,16 +9,13 @@ For complete API documentation with request parameters, response structure, and 
 
 ## Sales Agent Behavior
 
-Sales agents implement `list_creative_formats` differently from creative agents:
+Sales agents that implement only the Media Buy Protocol return a filtered view of formats:
 
-**Sales agents** (like `https://test-agent.adcontextprotocol.org`):
 - Return **only formats used by active products**
 - Reference creative agents for authoritative format specifications
 - Filter results based on what's actually purchasable
 
-**Creative agents** (like `https://creative.adcontextprotocol.org`):
-- Return **authoritative format definitions** they own
-- Provide full specifications for building and validating creatives
+Sales agents that also implement the Creative Protocol may additionally return self-hosted format definitions they own. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 ## Response Structure
 

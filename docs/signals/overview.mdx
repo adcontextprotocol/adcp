@@ -1,53 +1,193 @@
 ---
-title: Signals Protocol
+title: Signals protocol
 sidebarTitle: Overview
-description: Discover, activate, and manage data signals for AI-powered advertising
+description: "Follow a media planner from campaign brief to signal activation across automotive, geo, and retail data — a visual walkthrough of the AdCP signals workflow."
 ---
 
-# Signals Protocol
+<img src="/images/walkthrough/signals-01-planner-brief.png" alt="A media planner reviews a campaign brief surrounded by floating data icons representing audiences, locations, and purchase behavior" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-The Signals Protocol enables AI agents to discover, activate, and manage data signals for advertising campaigns. Signals represent targetable audiences, contextual categories, geographic regions, and other data attributes.
+Kai is a media planner at a mid-size agency. His client, Nova Motors, is launching the Volta EV — their first electric vehicle. The brief: reach in-market auto buyers with high purchase propensity, near dealerships, and focus on consumers who haven't bought a Nova vehicle before.
 
-## What Are Signals?
+Without AdCP, Kai would be emailing three data providers for segment availability, waiting for IO sign-offs, then uploading CSV segment files to two separate DSP platforms — a process that takes days and breaks every time a provider updates their taxonomy. With AdCP, his agency platform handles it in minutes.
 
-Signals are data segments that can be used for targeting or measurement in advertising campaigns. They include:
+This walkthrough follows Kai from brief to live targeting.
 
-- **Audience Signals**: User segments based on demographics, interests, or behaviors
-- **Contextual Signals**: Content categories or page contexts
-- **Geographic Signals**: Location-based targeting data
-- **Temporal Signals**: Time-based targeting patterns
-- **Multi-dimensional Signals**: Combined or custom signal types
+## Step 1: Describe what you need
 
-## Key Capabilities
+Kai starts with what he wants to accomplish, not a segment taxonomy.
 
-The Signals Protocol provides:
+<img src="/images/walkthrough/signals-02-natural-language-search.png" alt="A search bar glows as natural language transforms into structured signal queries flowing to multiple data providers" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-- Natural language signal discovery based on marketing objectives
-- Multi-platform signal discovery in a single request
-- Signal activation for specific platforms and accounts
-- Transparent pricing with CPM and revenue share models
-- Signal size reporting with unit types (individuals, devices, households)
+His agency platform translates the brief into a `get_signals` call. No need to know which providers have what — the signal agent searches across all of them:
 
-## Tasks
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    "signal_spec": "In-market EV buyers with high purchase propensity, near auto dealerships"
+  }
+}
+```
 
-| Task | Purpose |
-|------|---------|
-| [`get_signals`](/docs/signals/tasks/get_signals) | Discover signals matching campaign criteria |
-| [`activate_signal`](/docs/signals/tasks/activate_signal) | Activate a signal for use in campaigns |
+The signal agent searches catalogs from every authorized data provider — automotive, geo/mobility, retail, identity — and returns what matches.
 
-## Agent Integration
+<Accordion title="Agency language → protocol terms">
 
-The Signals Protocol operates within the broader [AdCP Ecosystem](/docs/intro#the-adcp-ecosystem-layers), enabling signal agents to integrate directly with decisioning platforms (DSPs, orchestration platforms).
+| What Kai says | What the protocol calls it |
+|---|---|
+| Target audience | Signal (from `get_signals`) |
+| Segment taxonomy | Signal catalog (`adagents.json`) |
+| Data provider | Signal source (`data_provider_domain`) |
+| Activate on my DSP | `activate_signal` with destination |
+| Audience size | `coverage_percentage` in signal response |
+| Data cost | `pricing_options` in signal response |
 
-### Direct Integration Model
+</Accordion>
 
-Signal agents contract directly with decisioning platforms, eliminating intermediary reporting and usage tracking. Once signals are activated on a decisioning platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
+## Step 2: Review what comes back
 
-## Getting Started
+<img src="/images/walkthrough/signals-03-results-materialize.png" alt="Signal cards from three different data providers float into view, each with a colored badge showing binary, categorical, or numeric type" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-1. **Discover signals** using `get_signals` with a natural language brief
-2. **Review pricing** and signal sizes in the response
-3. **Activate signals** using `activate_signal` for your target platform
-4. **Use in campaigns** via the platform's standard targeting interface
+The signal agent returns matches from multiple providers. Each signal has a value type, pricing, and coverage estimate:
 
-See the [Protocol Specification](/docs/signals/specification) for complete technical details.
+```mermaid
+sequenceDiagram
+    participant Platform as Kai's Agency Platform
+    participant Agent as Signal Agent
+    participant Auto as Trident Auto Data
+    participant Geo as Meridian Geo
+    participant Retail as ShopGrid Retail
+
+    Platform->>Agent: get_signals ("in-market EV buyers near dealerships")
+
+    par Search catalogs
+        Agent->>Auto: Search catalog
+        Auto-->>Agent: likely_ev_buyers (binary), purchase_propensity (numeric)
+        Agent->>Geo: Search catalog
+        Geo-->>Agent: competitor_visitors (binary), trade_area_residents (binary)
+        Agent->>Retail: Search catalog
+        Retail-->>Agent: category_buyer (categorical), new_to_brand (binary)
+    end
+
+    Agent-->>Platform: 8 matching signals with pricing
+```
+
+Kai sees signals from three providers he didn't have to find or negotiate with individually:
+
+- **Trident Auto Data** — `purchase_propensity` (numeric, 0-1 score). CPM: $1.50. `likely_ev_buyers` (binary). CPM: $2.50.
+- **Meridian Geo** — `competitor_visitors` (binary, people who visited competing dealerships). CPM: $2.00.
+- **ShopGrid Retail** — `new_to_brand` (binary). CPM: $3.50. `category_buyer` (categorical: electronics, automotive, home). CPM: $3.00.
+
+Kai notices that `purchase_propensity` is numeric — his agent can set a threshold (score > 0.7) to focus budget on high-intent prospects rather than a blunt include/exclude. He also sees that `category_buyer` is categorical, so he can target "automotive" specifically without paying for the full ShopGrid audience. He picks three signals: `purchase_propensity` for intent scoring, `competitor_visitors` for conquest targeting near rival dealerships, and `new_to_brand` to reach households that haven't bought a Nova before.
+
+## Step 3: Verify and select
+
+Before activating third-party data, Kai's agency requires verification. His platform fetches the data provider's catalog directly:
+
+```
+https://shopgrid.example/.well-known/adagents.json
+```
+
+And confirms:
+1. The `new_to_brand` signal exists in ShopGrid's catalog
+2. The signal agent is listed in `authorized_agents`
+3. The authorization covers retail signals (via `signal_tags: ["retail"]`)
+
+If the authorization check had failed — say ShopGrid had revoked the agent's access — Kai would see the signal flagged before spending a dollar on it. This independent verification means buyers don't have to take the signal agent's word for data provenance.
+
+## Step 4: Activate on your platforms
+
+<img src="/images/walkthrough/signals-04-activation-flow.png" alt="Signal streams flow from a central hub outward to two DSP platform icons, each lighting up as segments arrive" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Kai activates his three signals on two DSPs — Nova DSP for programmatic display (broad reach, lower CPMs) and StreamHaus for premium CTV inventory (household-level targeting for the brand spot):
+
+```mermaid
+sequenceDiagram
+    participant Platform as Agency Platform
+    participant Agent as Signal Agent
+    participant DSP1 as Nova DSP (display)
+    participant DSP2 as StreamHaus (CTV)
+
+    par Activate signals
+        Platform->>Agent: activate_signal (purchase_propensity → Nova DSP)
+        Agent->>DSP1: Push segment
+        DSP1-->>Agent: deployed
+
+        Platform->>Agent: activate_signal (competitor_visitors → Nova DSP)
+        Agent->>DSP1: Push segment
+        DSP1-->>Agent: deployed
+
+        Platform->>Agent: activate_signal (new_to_brand → StreamHaus)
+        Agent->>DSP2: Push segment
+        DSP2-->>Agent: deployed
+    end
+
+    Agent-->>Platform: 3 signals active, deployment IDs returned
+```
+
+Each activation call specifies the destination platform and account:
+
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "signal_agent_segment_id": "shopgrid_new_to_brand",
+    "pricing_option_id": "po_shopgrid_retail_cpm",
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "streamhaus",
+        "account": "agency-ctv-seat-456"
+      }
+    ]
+  }
+}
+```
+
+The signal agent pushes segment membership to each platform. Kai gets back deployment IDs he can reference when building media buys.
+
+## Step 5: Build the campaign
+
+<img src="/images/walkthrough/signals-05-campaign-targeting.png" alt="A campaign dashboard shows targeting layers stacking together — audience, location, and purchase data combining into a unified targeting strategy" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Now the signals are live on both platforms. Kai's agent builds media buys using [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). The activated signals are already available as targeting segments on each DSP — the media buy references the products discovered via [`get_products`](/docs/media-buy/task-reference/get_products), and the DSP applies the signal-based targeting automatically.
+
+- **Display (Nova DSP)**: Kai selects a display product that targets `purchase_propensity > 0.7` AND `competitor_visitors = true`. This reaches high-intent auto buyers who've been visiting competing dealerships.
+- **CTV (StreamHaus)**: Kai selects a CTV product targeting `new_to_brand = true`. This reaches households that haven't purchased a Nova vehicle with a brand awareness spot.
+
+The key point: signals and media buys are separate concerns. The Signals Protocol gets data onto platforms. The [Media Buy Protocol](/docs/media-buy/index) gets campaigns running on those platforms. They compose together — Kai didn't need a custom integration between his signal providers and his DSPs.
+
+## Step 6: Manage and measure
+
+The campaign runs. Two weeks in, display CPAs are running 40% above target while CTV is pacing well. Kai reallocates: he deactivates the geo signal on Nova DSP to reduce display data costs:
+
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "signal_agent_segment_id": "meridian_competitor_visitors",
+    "action": "deactivate",
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "nova-dsp",
+        "account": "agency-display-seat-123"
+      }
+    ]
+  }
+}
+```
+
+Deactivation removes the segment from the platform. Billing stops. The CTV signals stay active — each activation is independent.
+
+<img src="/images/walkthrough/signals-06-ecosystem-view.png" alt="A bird's-eye view showing data providers, signal agents, DSPs, and campaigns connected by flowing data streams in a hub-and-spoke pattern" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+Every step uses a standard AdCP task. Kai didn't need to know which data providers exist, negotiate individual contracts, or build custom integrations per DSP. The signal agent handles discovery across catalogs, and each platform handles targeting with its standard tools once segments arrive.
+
+## Go deeper
+
+- **Key concepts**: [Signal types, sources, and authorization](/docs/signals/key-concepts) — the building blocks behind this walkthrough
+- **Ecosystem**: [Who participates and how](/docs/guides/signals-ecosystem) — data providers, retailers, publishers, CDPs, agencies, identity companies
+- **Publish your data**: [Data provider guide](/docs/signals/data-providers) — how to create a signal catalog
+- **Protocol spec**: [Signals specification](/docs/signals/specification) — formal requirements and conformance
+- **Get certified**: The [Signals specialist module](/docs/learning/specialist/signals) teaches signal discovery and activation through interactive labs with a sandbox signal agent

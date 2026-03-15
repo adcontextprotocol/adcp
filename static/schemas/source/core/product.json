@@ -68,7 +68,7 @@
     },
     "delivery_measurement": {
       "type": "object",
-      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. REQUIRED for all products.",
+      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. When absent, buyers should apply their own measurement defaults.",
       "properties": {
         "provider": {
           "type": "string",
@@ -278,6 +278,13 @@
       ],
       "additionalProperties": true
     },
+    "enforced_policies": {
+      "type": "array",
+      "description": "Registry policy IDs the seller enforces for this product. Enforcement level comes from the policy registry. Buyers can filter products by required policies.",
+      "items": {
+        "type": "string"
+      }
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
@@ -289,7 +296,6 @@
     "publisher_properties",
     "format_ids",
     "delivery_type",
-    "delivery_measurement",
     "pricing_options"
   ],
   "additionalProperties": true

@@ -32,6 +32,7 @@ import { setupAccountRoutes } from "./admin/accounts.js";
 import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
 import { setupBanRoutes } from "./admin/bans.js";
 import { setupGeoRoutes } from "./admin/geo.js";
+import { setupRelationshipRoutes } from "./admin/relationships.js";
 
 const logger = createLogger("admin-routes");
 
@@ -79,6 +80,20 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/policies", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-policies.html").catch((err) => {
+      logger.error({ err }, "Error serving policies page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
+  pageRouter.get("/people", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-people.html").catch((err) => {
+      logger.error({ err }, "Error serving people page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
@@ -118,6 +133,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // GEO visibility routes (LLM Pulse integration)
   setupGeoRoutes(apiRouter);
+
+  // Relationship and person events routes
+  setupRelationshipRoutes(apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
@@ -324,6 +342,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                   can_contact: contactEligibility.canContact,
                   reason: contactEligibility.reason ?? 'Eligible',
                 },
+                available_channels: ['slack'],
               };
 
               const planned = await planner.planNextAction(plannerCtx);

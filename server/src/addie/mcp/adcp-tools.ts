@@ -141,6 +141,11 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             unit: { type: 'string', enum: ['seconds', 'minutes', 'hours', 'days'], description: 'Duration unit' },
           },
         },
+        required_policies: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies.',
+        },
         pagination: {
           type: 'object',
           description: 'Cursor-based pagination parameters.',
@@ -261,6 +266,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'object',
           description: 'Webhook configuration for automated reporting delivery.',
         },
+        plan_id: {
+          type: 'string',
+          description: 'Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan.',
+        },
         artifact_webhook: {
           type: 'object',
           description: 'Webhook configuration for content artifact delivery (governance validation).',
@@ -278,7 +287,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'Upload and manage creative assets for a campaign. Supports upsert semantics with optional assignment to packages.',
     usage_hints:
-      'use when the user wants to upload creatives, add creative assets, or assign creatives to campaign packages',
+      'use when the user wants to upload creatives, add creative assets, or assign creatives to campaign packages. Also use when guiding a seller or platform on how to accept and manage creative assets via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -479,7 +488,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'View supported creative specifications from a sales or creative agent. Returns format definitions with dimensions and asset requirements.',
     usage_hints:
-      'use when the user wants to see what creative formats are supported, understand creative specs, or check dimension requirements',
+      'use when the user wants to see what creative formats are supported, understand creative specs, check dimension requirements, discover CTV/video/display/audio/DOOH/social/native/feed-native formats, find generative formats on a sales agent, or build a format catalog across multiple agents for orchestration. Also use when guiding a seller or platform on how to define and expose their creative formats via AdCP — including social platforms with promoted posts and community-specific rendering.',
     input_schema: {
       type: 'object',
       properties: {
@@ -762,7 +771,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     description:
       'Query and search the creative library with filtering, sorting, and pagination. Supports filtering by format, status, tags, dates, and assignments.',
     usage_hints:
-      'use when the user wants to browse creatives, search the creative library, or find specific creative assets',
+      'use when the user wants to browse creatives, search the creative library, find specific creative assets, check creative approval status across sellers, or monitor rejection reasons for cross-seller distribution workflows',
     input_schema: {
       type: 'object',
       properties: {
@@ -881,9 +890,9 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
   {
     name: 'build_creative',
     description:
-      'Generate a creative from a brief or transform an existing creative to a different format. Returns a complete creative manifest.',
+      'Generate a creative from a brief or transform an existing creative to a different format. Supports single-format (target_format_id) or multi-format (target_format_ids) requests. Returns one or more creative manifests.',
     usage_hints:
-      'use when the user wants to generate ad creatives, transform creative sizes, or build creative assets from a brief',
+      'use when the user wants to generate ad creatives, transform creative sizes, build creative assets from a brief, generate VAST tags for CTV/video, produce serving tags from an ad server library, or create multi-format packages. Use target_format_ids when the user wants multiple formats generated in a single call. Also use when guiding a seller or creative agent implementer on how to handle build requests via AdCP, or when discussing brief-in-media-buy seller-side generation patterns. For a visual end-to-end walkthrough of the creative workflow, reference the "Running a multi-format campaign" guide.',
     input_schema: {
       type: 'object',
       properties: {
@@ -897,12 +906,36 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
         target_format_id: {
           type: 'object',
-          description: 'The format to generate',
+          description:
+            'Single format to generate. Exactly one of target_format_id or target_format_ids must be provided.',
           properties: {
             agent_url: { type: 'string' },
             id: { type: 'string' },
+            width: { type: 'integer', description: 'Width in pixels for visual formats' },
+            height: { type: 'integer', description: 'Height in pixels for visual formats' },
+            duration_ms: { type: 'number', description: 'Duration in ms for time-based formats' },
           },
           required: ['agent_url', 'id'],
+        },
+        target_format_ids: {
+          type: 'array',
+          description:
+            'Array of formats to generate in a single call. Exactly one of target_format_id or target_format_ids must be provided. Returns one manifest per format.',
+          items: {
+            type: 'object',
+            properties: {
+              agent_url: { type: 'string' },
+              id: { type: 'string' },
+              width: { type: 'integer', description: 'Width in pixels for visual formats' },
+              height: { type: 'integer', description: 'Height in pixels for visual formats' },
+              duration_ms: {
+                type: 'number',
+                description: 'Duration in ms for time-based formats',
+              },
+            },
+            required: ['agent_url', 'id'],
+          },
+          minItems: 1,
         },
         creative_manifest: {
           type: 'object',
@@ -946,12 +979,40 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           type: 'object',
           description: 'Macro values to pre-substitute into output assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are substitution strings.',
         },
+        include_preview: {
+          type: 'boolean',
+          description: 'When true, requests preview renders alongside the manifest. Response includes a preview object if supported, or preview_error (standard error with code/message/recovery) if generation failed. If neither is present, the agent does not support inline preview.',
+        },
+        preview_inputs: {
+          type: 'array',
+          minItems: 1,
+          description: 'Input sets for preview generation when include_preview is true. Each entry has name (required), optional macros, and optional context_description. Only supported with target_format_id (single-format) — ignored for multi-format requests.',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              macros: { type: 'object' },
+              context_description: { type: 'string' },
+            },
+            required: ['name'],
+          },
+        },
+        preview_quality: {
+          type: 'string',
+          enum: ['draft', 'production'],
+          description: "Render quality for inline previews. Independent of build quality — you can build at draft and preview at production. Only used when include_preview is true.",
+        },
+        preview_output_format: {
+          type: 'string',
+          enum: ['url', 'html'],
+          description: "Output format for preview renders: 'url' (default) or 'html'. Only used when include_preview is true.",
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'target_format_id'],
+      required: ['agent_url'],
     },
   },
   {
@@ -959,7 +1020,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
     description:
       'Generate visual previews of creative manifests. Returns preview URLs or HTML.',
     usage_hints:
-      'use when the user wants to see how a creative will look, preview ad renderings, or validate creative output',
+      'use when the user wants to see how a creative will look, preview ad renderings, validate creative output, test generative briefs with simulated contexts, replay served variants from get_creative_delivery, preview CTV/video/conversational/social/feed-native formats, test how promoted posts render in different community contexts, or test guardrails with adversarial inputs. Also use when guiding a seller or creative agent implementer on how to support preview rendering via AdCP.',
     input_schema: {
       type: 'object',
       properties: {
@@ -969,8 +1030,23 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
         request_type: {
           type: 'string',
-          enum: ['single', 'batch'],
-          description: 'Single preview or batch of multiple creatives',
+          enum: ['single', 'batch', 'variant'],
+          description: "Single preview, batch of multiple creatives, or variant replay (pass variant_id from get_creative_delivery to see what was actually served)",
+        },
+        variant_id: {
+          type: 'string',
+          description: 'For request_type "variant": the variant ID from get_creative_delivery to replay. Returns the exact creative that was served.',
+        },
+        inputs: {
+          type: 'array',
+          description: 'Context inputs for generative previews. Each entry has a name and context_description simulating serve-time conditions (e.g., page topic, device). Used with brief-based manifests to preview what the agent would generate.',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Label for this input scenario' },
+              context_description: { type: 'string', description: 'Description of the serve-time context to simulate' },
+            },
+          },
         },
         format_id: {
           type: 'object',
@@ -993,12 +1069,80 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           enum: ['url', 'html'],
           description: 'Output format (default: url)',
         },
+        quality: {
+          type: 'string',
+          enum: ['draft', 'production'],
+          description: "Render quality for the preview. 'draft' produces fast, lower-fidelity renderings for rapid iteration. 'production' produces full-quality renderings for final review.",
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
         },
       },
       required: ['agent_url', 'request_type'],
+    },
+  },
+  {
+    name: 'get_creative_delivery',
+    description:
+      'Retrieve variant-level creative delivery data from a creative agent. Returns what was generated, served, and how each variant performed. Requires at least one scoping filter: media_buy_ids, media_buy_buyer_refs, or creative_ids.',
+    usage_hints:
+      'use when the user wants to see what creative variants were generated or served, review delivery data for generative campaigns, review generation_context to understand what triggered each variant, see platform engagement metrics (likes, shares, comments) in the ext field, audit creative performance across media buys, aggregate delivery across multiple sellers, correlate variants using concept_id or creative_id, or build cross-agent dashboards. Also use when guiding a seller or creative agent implementer on how to expose delivery data via AdCP.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The creative agent URL (must be HTTPS)',
+        },
+        media_buy_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to specific media buys by publisher ID.',
+        },
+        media_buy_buyer_refs: {
+          type: 'array',
+          items: { type: 'string' },
+          description: "Filter to specific media buys by buyer reference ID. Alternative to media_buy_ids when the buyer doesn't have the publisher's identifiers.",
+        },
+        creative_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to specific creatives by ID.',
+        },
+        start_date: {
+          type: 'string',
+          description: 'Start date for delivery period (YYYY-MM-DD).',
+        },
+        end_date: {
+          type: 'string',
+          description: 'End date for delivery period (YYYY-MM-DD).',
+        },
+        max_variants: {
+          type: 'integer',
+          description: 'Maximum number of variants to return per creative. Useful for generative creatives that produce large numbers of variants.',
+        },
+        pagination: {
+          type: 'object',
+          description: 'Cursor-based pagination parameters.',
+          properties: {
+            max_results: { type: 'integer', description: 'Max items per page (1-100)' },
+            cursor: { type: 'string', description: 'Cursor from previous response' },
+          },
+        },
+        account: {
+          type: 'object',
+          description: 'Account for routing and scoping.',
+          properties: {
+            account_id: { type: 'string', description: 'Seller-assigned account identifier' },
+          },
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
+      },
+      required: ['agent_url'],
     },
   },
 ];
@@ -1766,6 +1910,15 @@ export function createAdcpToolHandlers(
     try {
       const url = new URL(agentUrl);
 
+      // Allow the embedded training agent only if same-origin (prevents SSRF via external URLs with matching path)
+      if (url.pathname.startsWith('/api/training-agent')) {
+        const selfHost = new URL(getBaseUrl()).hostname;
+        if (url.hostname === selfHost) {
+          return null;
+        }
+        // External URL with /api/training-agent path — fall through to normal validation
+      }
+
       if (url.protocol !== 'https:') {
         return 'Agent URL must use HTTPS protocol.';
       }
@@ -1801,6 +1954,25 @@ export function createAdcpToolHandlers(
     const validationError = validateAgentUrl(agentUrl);
     if (validationError) {
       return `**Error:** ${validationError}`;
+    }
+
+    // In-process shortcut for training agent (avoids HTTP round-trip and localhost restrictions)
+    try {
+      const parsedUrl = new URL(agentUrl);
+      if (parsedUrl.pathname.startsWith('/api/training-agent')) {
+        const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
+        const userId = memberContext?.workos_user?.workos_user_id;
+        const ctx = { mode: 'training' as const, userId };
+        const result = executeTrainingAgentTool(task, params, ctx);
+        if (!result.success) {
+          return `**Task failed:** \`${task}\`\n\n**Error:** ${result.error}`;
+        }
+        let output = `**Task:** \`${task}\`\n**Status:** Success (sandbox)\n\n`;
+        output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+        return output;
+      }
+    } catch (err) {
+      logger.warn({ error: err, agentUrl, task }, 'Training agent in-process shortcut failed, falling through to HTTP');
     }
 
     const authInfo = await getAuthInfo(agentUrl);

@@ -28,6 +28,13 @@ All documentation and examples MUST match JSON schemas in `static/schemas/source
 - Remove examples that don't match schema (don't mark as `test=false`)
 - Test with: `npm test -- --file docs/path/to/file.mdx`
 
+### Expert Review Scenarios
+When running expert agents against documentation changes, test both:
+- **Conceptual correctness** — Is the framing right? Are terms used consistently?
+- **End-to-end buyer workflows** — Walk through actual buyer journeys (discovery → preview → serve → audit). Include generative-specific flows (brief → pre-flight preview → live campaign → post-flight replay) and edge cases (conversational formats, quality mismatches, multi-format pipelines).
+
+Conceptual reviews miss workflow gaps. Workflow reviews miss framing errors. Run both.
+
 ### Discriminated Union Error Handling
 Always check for errors before accessing success fields:
 ```javascript
@@ -258,6 +265,9 @@ mintlify dev               # Docs dev server (requires mintlify CLI)
 AgenticAdvertising.org runs a three-tier certification program (Basics → Practitioner → Specialist) taught by Addie through interactive chat. Key files:
 
 - **Curriculum**: `server/src/addie/mcp/certification-tools.ts` (teaching tools, module resources, scoring)
+- **Teaching methodology**: `TEACHING_METHODOLOGY`, `BUILD_PROJECT_METHODOLOGY`, `CAPSTONE_METHODOLOGY` constants in certification-tools.ts
+- **Framework doc**: `docs/learning/instructional-design.mdx` (authoritative source for teaching methodology)
+- **Policies**: `docs/learning/policies/` (nondiscrimination, learner records, complaints, conflict of interest, IP, personnel)
 - **Database**: `server/src/db/certification-db.ts` (progress, credentials, tracks)
 - **API routes**: `server/src/routes/certification.ts` (public/authenticated endpoints)
 - **UI**: `server/public/certification.html` (dashboard, LinkedIn sharing, credential display)
@@ -270,11 +280,49 @@ When making protocol changes (new tasks, schema changes, renamed fields, removed
 2. **Consider continuing education** — Breaking changes (`major` version bumps) that alter core concepts may require notifying credential holders. Credentials reference the protocol version at time of issuance.
 3. **Update learning resources** — If you add or move documentation pages referenced in `MODULE_RESOURCES`, update the URLs.
 
+When updating teaching methodology:
+
+4. **Keep framework aligned** — When updating `TEACHING_METHODOLOGY`, `BUILD_PROJECT_METHODOLOGY`, or `CAPSTONE_METHODOLOGY` constants in `certification-tools.ts`, verify alignment with `docs/learning/instructional-design.mdx` and update both.
+5. **Update policies if needed** — Changes to assessment, data handling, or personnel processes may require updates to the corresponding policy page in `docs/learning/policies/`.
+
 When building new features (member profiles, dashboards, community pages):
 
-4. **Surface credentials** — If the feature displays user identity or professional context, consider showing earned credentials.
-5. **Link to certification** — New capability areas may warrant new modules or tracks. Note this in the changeset description so it can be planned.
+6. **Surface credentials** — If the feature displays user identity or professional context, consider showing earned credentials.
+7. **Link to certification** — New capability areas may warrant new modules or tracks. Note this in the changeset description so it can be planned.
 
 ### Security
 
 Module and exam completion is only available through Addie's tool calls — never through REST API. This prevents users from self-reporting scores without actual assessment.
+
+## Illustrated Documentation
+
+### Gemini image generation style guide
+
+Walkthrough and overview pages use AI-generated illustrations in a consistent graphic novel style. When generating images with Gemini, use this prompt structure:
+
+**Model**: `gemini-3.1-flash-image-preview` (via `responseModalities: ["TEXT", "IMAGE"]`)
+
+**Base style prompt** (include in every image request):
+```
+Flat illustration, teal/emerald color palette (#047857 primary), graphic novel style.
+Clean, minimal linework with subtle gradients. Tech-forward but warm.
+No real brand names or logos. Wide aspect ratio for documentation headers.
+```
+
+**Per-panel additions**: Describe the scene, characters, and key visual elements. Keep characters consistent within a walkthrough (same hair, glasses, outfit). Use the same robot design for AI agents across all illustrations.
+
+**Image location**: `images/walkthrough/` at repo root. Mintlify serves from `/images/...`.
+
+
+### Documentation nav structure
+
+Creative docs use progressive disclosure — grouped by reader intent:
+1. **Top level**: Overview + walkthrough (front door for everyone)
+2. **Concepts**: Strategic/conceptual content (AI creative, generative, libraries)
+3. **Building Creative Agents**: Integration guides (implementing, sales agent, orchestration)
+4. **Formats and Assets**: Technical reference for creative assembly
+5. **Channel Guides**: Channel-specific guides
+6. **Compliance**: Accessibility, provenance
+7. **Reference**: Specification + task reference pages
+
+Apply this pattern when restructuring other protocol sections.

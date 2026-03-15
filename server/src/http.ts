@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -87,6 +88,7 @@ import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
@@ -717,6 +719,10 @@ export class HTTPServer {
         // Check if file exists
         await fs.access(filePath);
 
+        // Cross-domain session bridge: if on AdCP without a session cookie,
+        // redirect through AAO to pick up the session (if one exists).
+        if (this.bridgeIfNeeded(req, res)) return;
+
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
@@ -748,11 +754,40 @@ export class HTTPServer {
   }
 
 
+  // Allowed AdCP hostnames (exact match for security)
+  private static readonly ADCP_HOSTNAMES = new Set([
+    'adcontextprotocol.org',
+    'www.adcontextprotocol.org',
+  ]);
+
+  private static readonly BRIDGE_CHECK_TTL = 10 * 60 * 1000; // 10 minutes
+
   // Helper to check if request is from adcontextprotocol.org (requires redirect to AAO for auth)
   // Session cookies are scoped to agenticadvertising.org, so auth pages on AdCP must redirect
   private isAdcpDomain(req: express.Request): boolean {
     const hostname = req.hostname || '';
-    return hostname.includes('adcontextprotocol') && !hostname.includes('localhost');
+    return HTTPServer.ADCP_HOSTNAMES.has(hostname);
+  }
+
+  // Validate that a URL points to an allowed AdCP domain (prevents open redirect)
+  private static isAllowedAdcpUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return HTTPServer.ADCP_HOSTNAMES.has(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  // Redirect through AAO session bridge if on AdCP without a session cookie.
+  // Returns true if a redirect was issued (caller should return early).
+  private bridgeIfNeeded(req: express.Request, res: express.Response): boolean {
+    if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
+      const currentUrl = `https://${req.hostname}${req.originalUrl}`;
+      res.redirect(`https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent(currentUrl)}`);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -767,6 +802,9 @@ export class HTTPServer {
     const filePath = path.join(publicPath, htmlFile);
 
     try {
+      // Cross-domain session bridge for AdCP pages
+      if (this.bridgeIfNeeded(req, res)) return;
+
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
       const user = await getUserFromRequest(req, res);
       await enrichUserWithMembership(user);
@@ -1017,6 +1055,19 @@ export class HTTPServer {
 
     // Mount training agent (embedded AdCP sales agent for testing and certification)
     this.app.use('/api/training-agent', createTrainingAgentRouter());
+
+    // Mount reference creative agent (canonical format definitions and preview rendering)
+    const creativeAgentRouter = createCreativeAgentRouter();
+    this.app.use('/api/creative-agent', creativeAgentRouter);
+
+    // Host-based routing: creative.adcontextprotocol.org serves the creative agent at root
+    // This preserves backward compatibility with the old standalone agent URL scheme
+    this.app.use((req, res, next) => {
+      if (req.hostname === 'creative.adcontextprotocol.org') {
+        return creativeAgentRouter(req, res, next);
+      }
+      next();
+    });
 
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
@@ -4995,13 +5046,14 @@ Disallow: /api/admin/
         }
 
         // If on AdCP domain, redirect to AAO for login (keeps cookies on single domain)
+        // Preserve the AdCP URL as return_to so the session bridge sends them back to AdCP after login
         if (this.isAdcpDomain(req)) {
           const returnTo = req.query.return_to as string;
           const slackUserId = req.query.slack_user_id as string;
-          // Rewrite return_to to AAO domain if it's a relative URL
+          // Keep the return_to as an AdCP URL so the callback bridges the session back
           let aaoReturnTo = returnTo;
           if (returnTo && returnTo.startsWith('/')) {
-            aaoReturnTo = `https://agenticadvertising.org${returnTo}`;
+            aaoReturnTo = `https://${req.get('host')}${returnTo}`;
           }
           let redirectUrl = 'https://agenticadvertising.org/auth/login';
           const params = new URLSearchParams();
@@ -5479,6 +5531,20 @@ Disallow: /api/admin/
           logger.debug('No organizations found, redirecting to onboarding');
           res.redirect('/onboarding.html');
         } else {
+          // If returnTo is an AdCP URL, bridge the session via auto-submitting form POST
+          // so the user lands on AdCP already authenticated (session stays out of URL)
+          if (HTTPServer.isAllowedAdcpUrl(returnTo) && sealedSession) {
+            const bridgeUrl = new URL('/auth/bridge-callback', returnTo);
+            bridgeUrl.searchParams.set('return_to', returnTo);
+            logger.debug({ returnTo }, 'Bridging session to AdCP domain');
+            const html = `<!DOCTYPE html><html><body>
+              <form id="f" method="POST" action="${escapeHtml(bridgeUrl.toString())}">
+                <input type="hidden" name="_session" value="${escapeHtml(sealedSession)}" />
+              </form>
+              <script>document.getElementById('f').submit();</script>
+            </body></html>`;
+            return res.type('html').send(html);
+          }
           logger.debug({ returnTo }, 'Redirecting authenticated user');
           res.redirect(returnTo);
         }
@@ -5534,8 +5600,14 @@ Disallow: /api/admin/
           }
         }
 
-        // Clear the cookie - must match the options used when setting it
+        // Clear the session and bridge-checked cookies
         res.clearCookie('wos-session', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+          sameSite: 'lax',
+          path: '/',
+        });
+        res.clearCookie('bridge-checked', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
@@ -5544,8 +5616,14 @@ Disallow: /api/admin/
         res.redirect('/');
       } catch (error) {
         logger.error({ err: error }, 'Error during logout');
-        // Still clear the cookie and redirect even if revocation failed
+        // Still clear cookies and redirect even if revocation failed
         res.clearCookie('wos-session', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+          sameSite: 'lax',
+          path: '/',
+        });
+        res.clearCookie('bridge-checked', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
@@ -5553,6 +5631,90 @@ Disallow: /api/admin/
         });
         res.redirect('/');
       }
+    });
+
+    // GET /auth/bridge - Cross-domain session bridge (called on AAO domain)
+    // When a user visits AdCP without a session cookie, they're redirected here.
+    // If they have a session on AAO, we redirect back to AdCP with the sealed session
+    // so AdCP can set its own cookie.
+    this.app.get('/auth/bridge', async (req, res) => {
+      const returnTo = req.query.return_to as string;
+      if (!returnTo || !HTTPServer.isAllowedAdcpUrl(returnTo)) {
+        return res.status(400).send('Invalid or missing return_to parameter');
+      }
+
+      const sessionCookie = req.cookies?.['wos-session'];
+      const bridgeCallbackUrl = new URL('/auth/bridge-callback', returnTo);
+      bridgeCallbackUrl.searchParams.set('return_to', returnTo);
+
+      if (sessionCookie) {
+        // Render a self-submitting form to POST the session (keeps it out of URL/logs/Referrer)
+        const html = `<!DOCTYPE html><html><body>
+          <form id="f" method="POST" action="${escapeHtml(bridgeCallbackUrl.toString())}">
+            <input type="hidden" name="_session" value="${escapeHtml(sessionCookie)}" />
+          </form>
+          <script>document.getElementById('f').submit();</script>
+        </body></html>`;
+        return res.type('html').send(html);
+      }
+
+      res.redirect(bridgeCallbackUrl.toString());
+    });
+
+    // POST /auth/bridge-callback - Receives session from AAO bridge via form POST
+    this.app.post('/auth/bridge-callback', express.urlencoded({ extended: false }), (req, res) => {
+      // CSRF protection: verify the form POST originated from AAO
+      const origin = req.get('origin') || '';
+      if (origin && !origin.endsWith('agenticadvertising.org')) {
+        return res.status(403).send('Invalid origin');
+      }
+
+      const returnTo = req.query.return_to as string || '/';
+      if (returnTo !== '/' && !HTTPServer.isAllowedAdcpUrl(returnTo)) {
+        return res.status(400).send('Invalid return_to parameter');
+      }
+
+      const sessionData = req.body?._session as string;
+      if (sessionData) {
+        // Set the session cookie on this domain (AdCP)
+        res.cookie('wos-session', sessionData, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+      }
+
+      // Set bridge-checked cookie to prevent redirect loops (10 min TTL)
+      res.cookie('bridge-checked', '1', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: HTTPServer.BRIDGE_CHECK_TTL,
+      });
+
+      res.redirect(returnTo);
+    });
+
+    // GET /auth/bridge-callback - Handles no-session case (redirect back from bridge without session)
+    this.app.get('/auth/bridge-callback', (req, res) => {
+      const returnTo = req.query.return_to as string || '/';
+      if (returnTo !== '/' && !HTTPServer.isAllowedAdcpUrl(returnTo)) {
+        return res.status(400).send('Invalid return_to parameter');
+      }
+
+      // Set bridge-checked cookie to prevent redirect loops (10 min TTL)
+      res.cookie('bridge-checked', '1', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: HTTPServer.BRIDGE_CHECK_TTL,
+      });
+
+      res.redirect(returnTo);
     });
 
     // GET /api/me - Get current user info
@@ -5954,54 +6116,32 @@ Disallow: /api/admin/
           });
         }
 
-        // If user has a company domain, find orgs with admins from the same domain
+        // If user has a company domain, find orgs with a matching verified domain
         if (userDomain) {
-          // Get all organizations
-          const allOrgs = await workos!.organizations.listOrganizations({ limit: 100 });
+          const pool = getPool();
+          const domainOrgs = await pool.query<{ workos_organization_id: string; name: string }>(
+            `SELECT o.workos_organization_id, o.name
+             FROM organization_domains od
+             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+             WHERE od.domain = $1 AND od.verified = true AND o.is_personal = false`,
+            [userDomain]
+          );
 
-          for (const org of allOrgs.data) {
-            // Skip if user is already a member or if org is already in list
-            if (userOrgIds.has(org.id) || joinableOrgs.some(o => o.organization_id === org.id)) {
+          for (const org of domainOrgs.rows) {
+            if (userOrgIds.has(org.workos_organization_id) || joinableOrgs.some(o => o.organization_id === org.workos_organization_id)) {
               continue;
             }
 
-            // Get org's members to check admin domains
-            try {
-              const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-                organizationId: org.id,
-              });
+            const profile = await memberDb.getProfileByOrgId(org.workos_organization_id);
 
-              // Check if any admin/owner has the same company domain
-              const hasMatchingAdmin = orgMemberships.data.some(membership => {
-                const role = membership.role?.slug || 'member';
-                if (role !== 'admin' && role !== 'owner') {
-                  return false;
-                }
-                const memberEmail = membership.user?.email;
-                if (!memberEmail) {
-                  return false;
-                }
-                const memberDomain = getCompanyDomain(memberEmail);
-                return memberDomain === userDomain;
-              });
-
-              if (hasMatchingAdmin) {
-                // Try to get the member profile for logo/tagline
-                const profile = await memberDb.getProfileByOrgId(org.id);
-
-                joinableOrgs.push({
-                  organization_id: org.id,
-                  name: org.name,
-                  logo_url: profile?.resolved_brand?.logo_url || null,
-                  tagline: profile?.tagline || null,
-                  match_reason: 'domain',
-                  request_pending: pendingOrgIds.has(org.id),
-                });
-              }
-            } catch (error) {
-              // Skip orgs we can't get memberships for
-              logger.debug({ orgId: org.id, err: error }, 'Could not check org memberships');
-            }
+            joinableOrgs.push({
+              organization_id: org.workos_organization_id,
+              name: org.name,
+              logo_url: profile?.resolved_brand?.logo_url || null,
+              tagline: profile?.tagline || null,
+              match_reason: 'domain',
+              request_pending: pendingOrgIds.has(org.workos_organization_id),
+            });
           }
         }
 
@@ -6058,10 +6198,21 @@ Disallow: /api/admin/
 
           if (verifiedDomainResult.rows.length > 0) {
             // Domain is verified - auto-add user to organization
+            // If org has no admin/owner yet, promote this user to owner
+            const existingMembers = await workos!.userManagement.listOrganizationMemberships({
+              organizationId: organization_id,
+              limit: 100,
+            });
+            const hasAdmin = existingMembers.data.some((m) => {
+              const role = m.role?.slug;
+              return role === 'admin' || role === 'owner';
+            });
+            const roleSlug = hasAdmin ? 'member' : 'owner';
+
             const membership = await workos!.userManagement.createOrganizationMembership({
               userId: user.id,
               organizationId: organization_id,
-              roleSlug: 'member',
+              roleSlug,
             });
 
             // Get org name for response
@@ -6077,7 +6228,16 @@ Disallow: /api/admin/
               userId: user.id,
               orgId: organization_id,
               domain: userDomain,
+              role: roleSlug,
             }, 'User auto-added to organization via verified domain');
+
+            // Mirror membership locally so it's visible immediately
+            const pool2 = getPool();
+            await pool2.query(`
+              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
+              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
+              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
+            `, [user.id, organization_id, user.email, roleSlug]);
 
             // Record audit log
             await orgDb.recordAuditLog({
@@ -6090,18 +6250,21 @@ Disallow: /api/admin/
                 user_email: user.email,
                 method: 'verified_domain_auto_join',
                 domain: userDomain,
+                role: roleSlug,
               },
             });
 
             return res.status(201).json({
               success: true,
-              message: `You have been added to ${orgName}`,
+              message: roleSlug === 'owner'
+                ? `You've been added as the owner of ${orgName}`
+                : `You have been added to ${orgName}`,
               auto_joined: true,
               membership: {
                 id: membership.id,
                 organization_id: organization_id,
                 organization_name: orgName,
-                role: 'member',
+                role: roleSlug,
               },
             });
           }
@@ -7291,23 +7454,18 @@ Disallow: /api/admin/
     // Register and start all scheduled jobs
     registerAllJobs();
 
-    // Start most jobs
-    jobScheduler.start(JOB_NAMES.DOCUMENT_INDEXER);
-    jobScheduler.start(JOB_NAMES.SUMMARY_GENERATOR);
-    jobScheduler.start(JOB_NAMES.PROACTIVE_OUTREACH);
-    jobScheduler.start(JOB_NAMES.ACCOUNT_ENRICHMENT);
-    jobScheduler.start(JOB_NAMES.CONTENT_CURATOR);
-    jobScheduler.start(JOB_NAMES.FEED_FETCHER);
-    jobScheduler.start(JOB_NAMES.ALERT_PROCESSOR);
-    jobScheduler.start(JOB_NAMES.TASK_REMINDER);
-    jobScheduler.start(JOB_NAMES.ENGAGEMENT_SCORING);
-    jobScheduler.start(JOB_NAMES.GOAL_FOLLOW_UP);
-    jobScheduler.start(JOB_NAMES.SLACK_AUTO_LINK);
+    // Start all registered jobs
+    jobScheduler.startAll();
 
-    // Start Moltbook jobs only if API key is configured
-    if (process.env.MOLTBOOK_API_KEY) {
-      jobScheduler.start(JOB_NAMES.MOLTBOOK_POSTER);
-      jobScheduler.start(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
+    // Stop jobs that require missing env vars
+    if (!process.env.MOLTBOOK_API_KEY) {
+      jobScheduler.stop(JOB_NAMES.MOLTBOOK_POSTER);
+      jobScheduler.stop(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
+    }
+    if (!process.env.LLMPULSE_API_KEY) {
+      jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
+      jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);
+      jobScheduler.stop(JOB_NAMES.GEO_CONTENT_PLANNER);
     }
 
     this.server = this.app.listen(port, () => {

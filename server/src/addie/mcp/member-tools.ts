@@ -2207,8 +2207,8 @@ export function createMemberToolHandlers(
                 agent_context_id: context.id,
                 scenario: result.scenario,
                 overall_passed: result.overall_passed,
-                steps_passed: result.steps.filter((s) => s.passed).length,
-                steps_failed: result.steps.filter((s) => !s.passed).length,
+                steps_passed: (result.steps || []).filter((s) => s.passed).length,
+                steps_failed: (result.steps || []).filter((s) => !s.passed).length,
                 total_duration_ms: result.total_duration_ms,
                 summary: result.summary,
                 dry_run: options.dry_run !== false,
@@ -2246,7 +2246,7 @@ export function createMemberToolHandlers(
       }
 
       // If tests failed, offer to help file a GitHub issue
-      const failedSteps = suite.results.flatMap((r) => r.steps.filter((s) => !s.passed));
+      const failedSteps = suite.results.flatMap((r) => (r.steps || []).filter((s) => !s.passed));
       if (failedSteps.length > 0) {
         // First, check if this looks like a bug in the @adcp/client testing library itself
         const clientLibraryBug = detectClientLibraryBug(failedSteps);

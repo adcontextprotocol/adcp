@@ -159,6 +159,11 @@
     "context": {
       "$ref": "/schemas/core/context.json"
     },
+    "required_policies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

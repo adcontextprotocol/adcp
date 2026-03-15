@@ -1,0 +1,473 @@
+---
+title: check_governance
+---
+
+
+# check_governance
+
+Universal governance check for campaign actions. Both the orchestrator (buyer-side) and the seller call this task -- the `binding` field discriminates the commitment level:
+
+| Binding | Who calls | Purpose | Key fields |
+|---------|-----------|---------|------------|
+| `proposed` | Orchestrator | Advisory check before sending to a seller. No budget committed. | `tool`, `payload`, `governance_context` |
+| `committed` | Seller | Binding check before executing. Validates planned delivery against the plan. Budget is committed later via `report_plan_outcome`. | `media_buy_id`, `buyer_ref`, `phase`, `planned_delivery` |
+
+The governance agent maintains all state. Callers do not chain check IDs or track conversation history -- they post the action, and the governance agent correlates by `plan_id` + `buyer_campaign_ref`.
+
+## Binding levels
+
+### Proposed (orchestrator)
+
+The orchestrator calls with `binding: "proposed"` before sending a tool call to a seller. This is an advisory check -- no budget is committed. The governance agent evaluates the intended `tool` and `payload` against the campaign plan.
+
+1. Orchestrator decides to call a seller tool (e.g., `create_media_buy`)
+2. Orchestrator calls `check_governance` with the tool name and full payload
+3. If `approved`, orchestrator sends the tool call to the seller
+4. If `denied`, orchestrator does not send the tool call
+5. If `conditions`, orchestrator adjusts the payload and re-calls `check_governance`
+6. If `escalated`, orchestrator halts pending human review
+
+### Committed (seller)
+
+The seller calls with `binding: "committed"` when processing a request on an account that has `governance_agents` (set during [`sync_accounts`](/docs/accounts/tasks/sync_accounts)). This is a binding check -- budget will be committed if approved. The seller presents the authentication credentials from the agent's configuration.
+
+Committed checks cover the full media buy lifecycle through three phases:
+
+| Phase | When | What's checked |
+|-------|------|----------------|
+| `purchase` | Before confirming `create_media_buy` | Budget, geo, channels, flight dates, policies |
+| `modification` | Before confirming `update_media_buy` | Change magnitude, reallocation, new parameters |
+| `delivery` | Periodically during delivery | Pacing, spend rate, geo drift, channel distribution |
+
+Sellers can adopt committed governance checks incrementally:
+
+- **Level 1: Purchase only** -- One call per `create_media_buy`. The minimum viable integration.
+- **Level 2: + Modification** -- One call per `update_media_buy`.
+- **Level 3: + Delivery reporting** -- Periodic calls during active delivery.
+
+## Status values
+
+| Status | Meaning | Caller action |
+|--------|---------|---------------|
+| `approved` | Proceed as planned. | Act before `expires_at` or re-call. |
+| `denied` | Do not proceed. | Return error to upstream caller. |
+| `conditions` | Approved if caller accepts adjustments. | Apply conditions, then re-call `check_governance` with adjusted parameters. |
+| `escalated` | Halted pending human review. | Wait for human resolution. |
+
+### Expiration
+
+`expires_at` is present when the status is `approved` or `conditions`. A lapsed approval is no approval -- the caller must re-call `check_governance` before proceeding.
+
+### Conditions
+
+When the status is `conditions`, the caller MUST re-call `check_governance` with adjusted parameters before proceeding. Conditions with a `required_value` are machine-actionable -- the caller can programmatically apply the value. Conditions without a `required_value` are advisory -- the caller should interpret the `reason` and adjust accordingly.
+
+Governance agents SHOULD return `denied` (not `conditions`) after 3 unsuccessful re-calls for the same action. This prevents infinite negotiation loops, particularly for seller-side checks where the seller has no visibility into the campaign plan.
+
+### Escalation
+
+When the status is `escalated`, the action is halted. The `escalation` object provides the reason, severity, and whether human approval is required. The caller must not proceed until the escalation is resolved.
+
+For `committed` checks (seller-side), `escalated` is operationally equivalent to `denied` -- the seller cannot hold a request indefinitely while waiting for human review on the buyer side. Sellers SHOULD treat `escalated` as `denied`, return an error to the orchestrator, and let the orchestrator handle the human-in-the-loop flow. After the escalation is resolved, the orchestrator re-initiates the media buy and the seller gets a new request.
+
+### Linking to outcomes
+
+The response includes a `check_id`. Use this in [`report_plan_outcome`](./report_plan_outcome) to link outcomes to the governance check that authorized them.
+
+## When the governance agent is unavailable
+
+If the governance agent is configured and the caller cannot reach it (timeout, network error), the caller MUST NOT proceed. Governance is a gate -- when the gate is unreachable, the default is halt. The caller SHOULD retry with backoff and report the failure upstream.
+
+## Delivery cadence
+
+The presence of `next_check` in a response is the signal that the governance agent expects ongoing delivery reporting. The seller SHOULD call no later than the `next_check` time. The governance agent MAY treat a missed deadline as a finding on the next delivery check.
+
+## Request
+
+### Proposed (orchestrator checking before sending to seller)
+
+```json
+{
+  "tool": "check_governance",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "binding": "proposed",
+    "caller": "https://orchestrator.example.com",
+    "tool": "create_media_buy",
+    "payload": {
+      "buyer_ref": "q1-launch-pinnacle-001",
+      "product_id": "premium_video_300k",
+      "budget": 150000,
+      "currency": "USD",
+      "geo": { "countries": ["US"] },
+      "channels": ["olv"],
+      "flight": {
+        "start": "2026-03-15T00:00:00Z",
+        "end": "2026-06-15T00:00:00Z"
+      }
+    },
+    "governance_context": {
+      "total_budget": { "amount": 150000, "currency": "USD" },
+      "countries": ["US"],
+      "channels": ["olv"],
+      "flight": {
+        "start": "2026-03-15T00:00:00Z",
+        "end": "2026-06-15T00:00:00Z"
+      }
+    }
+  }
+}
+```
+
+When `governance_context` is present, the governance agent uses it for plan validation instead of parsing tool-specific payload structures. The caller extracts governance-relevant fields into this canonical shape so the governance agent doesn't need to understand every tool's payload format.
+
+### Committed -- purchase
+
+```json
+{
+  "tool": "check_governance",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "binding": "committed",
+    "caller": "https://seller.example.com",
+    "media_buy_id": "mb_seller_456",
+    "buyer_ref": "q1-launch-pinnacle-001",
+    "phase": "purchase",
+    "planned_delivery": {
+      "geo": { "countries": ["US"] },
+      "channels": ["olv"],
+      "start_time": "2026-03-15T00:00:00Z",
+      "end_time": "2026-06-15T00:00:00Z",
+      "total_budget": 150000,
+      "currency": "USD",
+      "frequency_cap": { "max_impressions": 3, "per": "user", "window": { "interval": 1, "unit": "days" } },
+      "audience_summary": "Adults 25-54, US, premium video inventory",
+      "enforced_policies": ["us_coppa"]
+    }
+  }
+}
+```
+
+### Committed -- modification
+
+```json
+{
+  "tool": "check_governance",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "binding": "committed",
+    "caller": "https://seller.example.com",
+    "media_buy_id": "mb_seller_456",
+    "buyer_ref": "q1-launch-pinnacle-001",
+    "phase": "modification",
+    "modification_summary": "Budget increase from $150,000 to $200,000 and flight extension to 2026-07-15.",
+    "planned_delivery": {
+      "geo": { "countries": ["US"] },
+      "channels": ["olv"],
+      "start_time": "2026-03-15T00:00:00Z",
+      "end_time": "2026-07-15T00:00:00Z",
+      "total_budget": 200000,
+      "currency": "USD",
+      "frequency_cap": { "max_impressions": 3, "per": "user", "window": { "interval": 1, "unit": "days" } },
+      "audience_summary": "Adults 25-54, US, premium video inventory",
+      "enforced_policies": ["us_coppa"]
+    }
+  }
+}
+```
+
+### Committed -- delivery
+
+```json
+{
+  "tool": "check_governance",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "binding": "committed",
+    "caller": "https://seller.example.com",
+    "media_buy_id": "mb_seller_456",
+    "buyer_ref": "q1-launch-pinnacle-001",
+    "phase": "delivery",
+    "planned_delivery": {
+      "geo": { "countries": ["US"] },
+      "channels": ["olv"],
+      "start_time": "2026-03-15T00:00:00Z",
+      "end_time": "2026-06-15T00:00:00Z",
+      "total_budget": 150000,
+      "currency": "USD",
+      "frequency_cap": { "max_impressions": 3, "per": "user", "window": { "interval": 1, "unit": "days" } },
+      "audience_summary": "Adults 25-54, US, premium video inventory",
+      "enforced_policies": ["us_coppa"]
+    },
+    "delivery_metrics": {
+      "reporting_period": {
+        "start": "2026-03-15T00:00:00Z",
+        "end": "2026-03-22T00:00:00Z"
+      },
+      "spend": 12500,
+      "cumulative_spend": 12500,
+      "impressions": 850000,
+      "cumulative_impressions": 850000,
+      "geo_distribution": { "US": 100 },
+      "channel_distribution": { "olv": 100 },
+      "pacing": "on_track"
+    }
+  }
+}
+```
+
+## Response
+
+### approved (proposed)
+
+```json
+{
+  "check_id": "chk_001",
+  "status": "approved",
+  "binding": "proposed",
+  "mode": "enforce",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Proposed create_media_buy is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
+  "categories_evaluated": ["budget_authority", "geo_compliance", "channel_compliance", "flight_compliance", "delegation_authority"],
+  "policies_evaluated": ["us_coppa", "alcohol_advertising"],
+  "expires_at": "2026-03-15T01:00:00Z"
+}
+```
+
+The orchestrator proceeds to send the `create_media_buy` to the seller before `expires_at`.
+
+### approved (committed purchase with delivery opt-in)
+
+```json
+{
+  "check_id": "chk_002",
+  "status": "approved",
+  "binding": "committed",
+  "mode": "enforce",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
+  "expires_at": "2026-03-15T01:00:00Z",
+  "next_check": "2026-03-22T00:00:00Z"
+}
+```
+
+The seller proceeds with the media buy. The presence of `next_check` signals that the governance agent expects delivery reporting starting at that time.
+
+### approved (committed delivery)
+
+```json
+{
+  "check_id": "chk_003",
+  "status": "approved",
+  "binding": "committed",
+  "mode": "enforce",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight. Geo and channel distribution match plan parameters.",
+  "next_check": "2026-03-29T00:00:00Z"
+}
+```
+
+The seller continues delivery and schedules the next governance check for `next_check`.
+
+### denied (proposed)
+
+```json
+{
+  "check_id": "chk_004",
+  "status": "denied",
+  "binding": "proposed",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Proposed media buy targets CA (Canada) which is not within the plan's geography.",
+  "findings": [
+    {
+      "category_id": "strategic_alignment",
+      "severity": "critical",
+      "explanation": "Geo targeting includes CA but plan only covers US.",
+      "details": {
+        "plan_countries": ["US"],
+        "payload_countries": ["US", "CA"]
+      }
+    }
+  ]
+}
+```
+
+The orchestrator MUST NOT send the tool call to the seller.
+
+### denied (committed delivery -- geo drift)
+
+```json
+{
+  "check_id": "chk_005",
+  "status": "denied",
+  "binding": "committed",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Delivery has drifted outside plan parameters. 12% of impressions delivered in CA (Canada) which is not within the plan's geography.",
+  "findings": [
+    {
+      "category_id": "strategic_alignment",
+      "severity": "critical",
+      "confidence": 0.98,
+      "explanation": "Geo distribution shows 12% delivery in CA, but plan only covers US.",
+      "details": {
+        "plan_countries": ["US"],
+        "actual_distribution": { "US": 88, "CA": 12 }
+      }
+    }
+  ]
+}
+```
+
+The seller MUST pause delivery immediately and correct the geo targeting before resuming.
+
+### conditions (committed purchase)
+
+```json
+{
+  "check_id": "chk_006",
+  "status": "conditions",
+  "binding": "committed",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Budget approved but frequency cap must be applied per brand policy.",
+  "conditions": [
+    {
+      "field": "planned_delivery.frequency_cap",
+      "required_value": { "max_impressions": 5, "per": "user", "window": { "interval": 1, "unit": "days" } },
+      "reason": "Brand policy requires daily frequency cap of 5 or fewer impressions per user."
+    }
+  ],
+  "expires_at": "2026-03-15T01:00:00Z"
+}
+```
+
+The seller MUST adjust its planned delivery, then re-call `check_governance` with the updated parameters before proceeding.
+
+### conditions (committed delivery -- overpacing)
+
+```json
+{
+  "check_id": "chk_007",
+  "status": "conditions",
+  "binding": "committed",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Delivery is pacing 40% ahead of schedule. Cumulative spend of $42,000 after 2 weeks exceeds expected $23,000 for this point in the flight.",
+  "conditions": [
+    {
+      "field": "pacing",
+      "reason": "Reduce daily spend rate to align with the planned flight duration. At current pace, budget will be exhausted by week 7 of 13."
+    }
+  ],
+  "next_check": "2026-03-31T00:00:00Z"
+}
+```
+
+The seller MUST adjust pacing and re-call `check_governance` immediately. The `next_check` is set closer than normal so the governance agent can verify the correction.
+
+### escalated
+
+```json
+{
+  "check_id": "chk_008",
+  "status": "escalated",
+  "binding": "committed",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Budget reallocation of $75,000 exceeds the plan's reallocation threshold of $25,000. Human approval required.",
+  "findings": [
+    {
+      "category_id": "budget_authority",
+      "severity": "critical",
+      "explanation": "Reallocation amount exceeds plan threshold.",
+      "details": {
+        "reallocation_amount": 75000,
+        "threshold": 25000
+      }
+    }
+  ],
+  "escalation": {
+    "reason": "Budget reallocation exceeds plan threshold. A human stakeholder must approve before the seller can proceed.",
+    "severity": "critical",
+    "requires_human": true,
+    "approval_tier": "director"
+  }
+}
+```
+
+The caller MUST NOT proceed. The action is halted until a human resolves the escalation.
+
+## Fields
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plan_id` | string | Yes | Campaign governance plan identifier. |
+| `buyer_campaign_ref` | string | Yes | Buyer's campaign identifier. The governance agent tracks state per campaign within a plan. |
+| `binding` | enum | Yes | `proposed` (advisory, no budget committed) or `committed` (binding, budget committed if approved). |
+| `caller` | string (URI) | Yes | URL of the agent making the request (orchestrator for proposed, seller for committed). |
+| `tool` | string | Proposed | The AdCP tool being checked. Required for `proposed` checks. |
+| `payload` | object | Proposed | Full tool arguments as they would be sent to the seller. Required for `proposed` checks. |
+| `governance_context` | object | No | Normalized governance-relevant fields extracted from the payload. When present, the governance agent SHOULD use these fields for plan validation instead of parsing the payload directly. See the [governance context schema](https://adcontextprotocol.org/schemas/latest/governance/governance-context.json). |
+| `media_buy_id` | string | Committed | Seller's media buy identifier. Required for `committed` checks. |
+| `buyer_ref` | string | No | Buyer's reference identifier from the `create_media_buy` request. |
+| `phase` | enum | Committed | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Required for `committed` checks. |
+| `planned_delivery` | object | Committed | What will actually be delivered. Required for `committed` checks. See [planned delivery](/docs/governance/campaign/specification#integration-with-create_media_buy). |
+| `delivery_metrics` | object | Delivery | Actual delivery performance data. Required when `phase` is `delivery`. |
+| `modification_summary` | string | No | Human-readable summary of what changed. SHOULD be present for `modification` phase. |
+
+### Delivery metrics
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `reporting_period` | object | Reporting window with `start` and `end` timestamps (ISO 8601). Required. |
+| `spend` | number | Spend during the reporting period. |
+| `cumulative_spend` | number | Total spend since the media buy started. |
+| `impressions` | integer | Impressions during the reporting period. |
+| `cumulative_impressions` | integer | Total impressions since the media buy started. |
+| `geo_distribution` | object | Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages. |
+| `channel_distribution` | object | Actual channel distribution. Keys are values from the channels enum, values are percentages. |
+| `pacing` | enum | `ahead`, `on_track`, or `behind`. |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `check_id` | string | Unique identifier for this governance check. Use in `report_plan_outcome` to link outcomes. |
+| `status` | enum | `approved`, `denied`, `conditions`, or `escalated`. |
+| `binding` | enum | Echoed from request. Confirms the governance agent understood the commitment level. |
+| `plan_id` | string | Echoed from request. |
+| `buyer_campaign_ref` | string | Echoed from request. |
+| `explanation` | string | Human-readable explanation of the decision. |
+| `findings` | array | Per-category issues found. Present when status is `denied`, `conditions`, or `escalated`. MAY also be present on `approved` for advisory findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. |
+| `conditions` | array | Present when status is `conditions`. Adjustments the caller must make before re-calling. |
+| `mode` | enum | The governance mode under which this check was evaluated (`audit`, `advisory`, or `enforce`). Present so audit trails can distinguish advisory denials from enforced denials. |
+| `categories_evaluated` | string[] | Governance categories evaluated during this check (e.g., `budget_authority`, `geo_compliance`, `channel_compliance`). Useful for verifying which validations ran. |
+| `policies_evaluated` | string[] | Registry policy IDs evaluated during this check. |
+| `escalation` | object | Present when status is `escalated`. Contains `reason`, `severity`, `requires_human`, and optionally `approval_tier` (the organizational role required to resolve, e.g., `"manager"`, `"director"`, `"legal"`). |
+| `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
+| `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
+
+## Error codes
+
+| Code | Recovery | Description |
+|------|----------|-------------|
+| `PLAN_NOT_FOUND` | correctable | No plan with this ID. The buyer may not have synced the plan yet. |
+| `CAMPAIGN_SUSPENDED` | correctable | Campaign governance is suspended pending human review. |
+| `SELLER_NOT_RECOGNIZED` | correctable | The caller URL is not in the plan's `approved_sellers` list. |
+
+## Related tasks
+
+- [`sync_plans`](./sync_plans) -- The plan this governance check validates against
+- [`report_plan_outcome`](./report_plan_outcome) -- Report what happened after the action was confirmed
+- [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail

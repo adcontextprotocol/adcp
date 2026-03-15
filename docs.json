@@ -126,6 +126,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/policy-registry",
               {
                 "group": "Property Governance",
                 "pages": [
@@ -171,6 +172,24 @@
                   "docs/governance/creative/get_creative_features",
                   "docs/governance/creative/provenance-verification"
                 ]
+              },
+              {
+                "group": "Campaign Governance",
+                "pages": [
+                  "docs/governance/campaign/index",
+                  "docs/governance/campaign/safety-model",
+                  "docs/governance/campaign/specification",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/campaign/tasks/index",
+                      "docs/governance/campaign/tasks/sync_plans",
+                      "docs/governance/campaign/tasks/report_plan_outcome",
+                      "docs/governance/campaign/tasks/check_governance",
+                      "docs/governance/campaign/tasks/get_plan_audit_logs"
+                    ]
+                  }
+                ]
               }
             ]
           },
@@ -214,8 +233,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -326,32 +347,59 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/specification",
-              "docs/creative/formats",
-              "docs/creative/asset-types",
-              "docs/creative/creative-manifests",
-              "docs/creative/private-assets",
-              "docs/creative/universal-macros",
-              "docs/creative/implementing-creative-agents",
-              "docs/creative/generative-creative",
-              "docs/creative/template-format-ids",
-              "docs/creative/catalogs",
-              "docs/creative/catalog-schemas",
-              "docs/creative/accessibility",
-              "docs/creative/provenance",
+              {
+                "group": "Concepts",
+                "pages": [
+                  "docs/creative/key-concepts",
+                  "docs/creative/ai-creative-overview",
+                  "docs/creative/generative-creative",
+                  "docs/creative/creative-libraries",
+                  "docs/creative/catalogs",
+                  "docs/creative/catalog-schemas"
+                ]
+              },
+              {
+                "group": "Building Creative Agents",
+                "pages": [
+                  "docs/creative/implementing-creative-agents",
+                  "docs/creative/sales-agent-creative-capabilities",
+                  "docs/creative/multi-agent-orchestration",
+                  "docs/creative/creative-manifests",
+                  "docs/creative/private-assets"
+                ]
+              },
+              {
+                "group": "Formats and Assets",
+                "pages": [
+                  "docs/creative/formats",
+                  "docs/creative/asset-types",
+                  "docs/creative/template-format-ids",
+                  "docs/creative/universal-macros"
+                ]
+              },
               {
                 "group": "Channel Guides",
                 "pages": [
                   "docs/creative/channels/video",
+                  "docs/creative/channels/ctv",
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",
-                  "docs/creative/channels/carousels"
+                  "docs/creative/channels/carousels",
+                  "docs/creative/channels/social-native"
                 ]
               },
               {
-                "group": "Task Reference",
+                "group": "Compliance",
                 "pages": [
+                  "docs/creative/accessibility",
+                  "docs/creative/provenance"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "docs/creative/specification",
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
@@ -368,6 +416,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -406,6 +455,7 @@
             "group": "Certification",
             "pages": [
               "docs/learning/overview",
+              "docs/learning/instructional-design",
               {
                 "group": "Basics (free)",
                 "pages": [
@@ -430,6 +480,18 @@
                   "docs/learning/specialist/signals",
                   "docs/learning/specialist/governance",
                   "docs/learning/specialist/sponsored-intelligence"
+                ]
+              },
+              {
+                "group": "Policies",
+                "pages": [
+                  "docs/learning/policies/nondiscrimination",
+                  "docs/learning/policies/learner-records",
+                  "docs/learning/policies/complaints",
+                  "docs/learning/policies/conflict-of-interest",
+                  "docs/learning/policies/intellectual-property",
+                  "docs/learning/policies/personnel-qualifications",
+                  "docs/learning/policies/refund"
                 ]
               }
             ]
@@ -510,6 +572,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/policy-registry",
               {
                 "group": "Property Governance",
                 "pages": [
@@ -555,6 +618,24 @@
                   "docs/governance/creative/get_creative_features",
                   "docs/governance/creative/provenance-verification"
                 ]
+              },
+              {
+                "group": "Campaign Governance",
+                "pages": [
+                  "docs/governance/campaign/index",
+                  "docs/governance/campaign/safety-model",
+                  "docs/governance/campaign/specification",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/campaign/tasks/index",
+                      "docs/governance/campaign/tasks/sync_plans",
+                      "docs/governance/campaign/tasks/report_plan_outcome",
+                      "docs/governance/campaign/tasks/check_governance",
+                      "docs/governance/campaign/tasks/get_plan_audit_logs"
+                    ]
+                  }
+                ]
               }
             ]
           },
@@ -598,8 +679,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -710,32 +793,59 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/specification",
-              "docs/creative/formats",
-              "docs/creative/asset-types",
-              "docs/creative/creative-manifests",
-              "docs/creative/private-assets",
-              "docs/creative/universal-macros",
-              "docs/creative/implementing-creative-agents",
-              "docs/creative/generative-creative",
-              "docs/creative/template-format-ids",
-              "docs/creative/catalogs",
-              "docs/creative/catalog-schemas",
-              "docs/creative/accessibility",
-              "docs/creative/provenance",
+              {
+                "group": "Concepts",
+                "pages": [
+                  "docs/creative/key-concepts",
+                  "docs/creative/ai-creative-overview",
+                  "docs/creative/generative-creative",
+                  "docs/creative/creative-libraries",
+                  "docs/creative/catalogs",
+                  "docs/creative/catalog-schemas"
+                ]
+              },
+              {
+                "group": "Building Creative Agents",
+                "pages": [
+                  "docs/creative/implementing-creative-agents",
+                  "docs/creative/sales-agent-creative-capabilities",
+                  "docs/creative/multi-agent-orchestration",
+                  "docs/creative/creative-manifests",
+                  "docs/creative/private-assets"
+                ]
+              },
+              {
+                "group": "Formats and Assets",
+                "pages": [
+                  "docs/creative/formats",
+                  "docs/creative/asset-types",
+                  "docs/creative/template-format-ids",
+                  "docs/creative/universal-macros"
+                ]
+              },
               {
                 "group": "Channel Guides",
                 "pages": [
                   "docs/creative/channels/video",
+                  "docs/creative/channels/ctv",
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",
-                  "docs/creative/channels/carousels"
+                  "docs/creative/channels/carousels",
+                  "docs/creative/channels/social-native"
                 ]
               },
               {
-                "group": "Task Reference",
+                "group": "Compliance",
                 "pages": [
+                  "docs/creative/accessibility",
+                  "docs/creative/provenance"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "docs/creative/specification",
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
@@ -752,6 +862,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -790,6 +901,7 @@
             "group": "Certification",
             "pages": [
               "docs/learning/overview",
+              "docs/learning/instructional-design",
               {
                 "group": "Basics (free)",
                 "pages": [
@@ -814,6 +926,18 @@
                   "docs/learning/specialist/signals",
                   "docs/learning/specialist/governance",
                   "docs/learning/specialist/sponsored-intelligence"
+                ]
+              },
+              {
+                "group": "Policies",
+                "pages": [
+                  "docs/learning/policies/nondiscrimination",
+                  "docs/learning/policies/learner-records",
+                  "docs/learning/policies/complaints",
+                  "docs/learning/policies/conflict-of-interest",
+                  "docs/learning/policies/intellectual-property",
+                  "docs/learning/policies/personnel-qualifications",
+                  "docs/learning/policies/refund"
                 ]
               }
             ]

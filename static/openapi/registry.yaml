@@ -606,6 +606,344 @@ components:
           type: array
           items:
             type: string
+    PolicySummary:
+      type: object
+      properties:
+        policy_id:
+          type: string
+          example: gdpr_consent
+        version:
+          type: string
+          example: 1.0.0
+        name:
+          type: string
+          example: GDPR Consent Requirements
+        description:
+          type:
+            - string
+            - "null"
+          example: Requirements for valid consent under GDPR
+        category:
+          type: string
+          enum:
+            - regulation
+            - standard
+        enforcement:
+          type: string
+          enum:
+            - must
+            - should
+            - may
+        jurisdictions:
+          type: array
+          items:
+            type: string
+          example:
+            - EU
+            - EEA
+        region_aliases:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            EU:
+              - DE
+              - FR
+              - IT
+        verticals:
+          type: array
+          items:
+            type: string
+          example:
+            - finance
+            - healthcare
+        channels:
+          type:
+            - array
+            - "null"
+          items:
+            type: string
+          example:
+            - display
+            - video
+        governance_domains:
+          type: array
+          items:
+            type: string
+          example:
+            - campaign
+            - creative
+        effective_date:
+          type:
+            - string
+            - "null"
+          example: 2025-05-25
+        sunset_date:
+          type:
+            - string
+            - "null"
+        source_url:
+          type:
+            - string
+            - "null"
+          example: https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        source_name:
+          type:
+            - string
+            - "null"
+          example: EUR-Lex
+        source_type:
+          type: string
+          enum:
+            - registry
+            - community
+        review_status:
+          type: string
+          enum:
+            - pending
+            - approved
+        created_at:
+          type: string
+          example: 2026-03-01T12:00:00.000Z
+        updated_at:
+          type: string
+          example: 2026-03-01T12:00:00.000Z
+      required:
+        - policy_id
+        - version
+        - name
+        - description
+        - category
+        - enforcement
+        - jurisdictions
+        - region_aliases
+        - verticals
+        - channels
+        - governance_domains
+        - effective_date
+        - sunset_date
+        - source_url
+        - source_name
+        - source_type
+        - review_status
+        - created_at
+        - updated_at
+    Policy:
+      type: object
+      properties:
+        policy_id:
+          type: string
+          example: gdpr_consent
+        version:
+          type: string
+          example: 1.0.0
+        name:
+          type: string
+          example: GDPR Consent Requirements
+        description:
+          type:
+            - string
+            - "null"
+          example: Requirements for valid consent under GDPR
+        category:
+          type: string
+          enum:
+            - regulation
+            - standard
+        enforcement:
+          type: string
+          enum:
+            - must
+            - should
+            - may
+        jurisdictions:
+          type: array
+          items:
+            type: string
+          example:
+            - EU
+            - EEA
+        region_aliases:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            EU:
+              - DE
+              - FR
+              - IT
+        verticals:
+          type: array
+          items:
+            type: string
+          example:
+            - finance
+            - healthcare
+        channels:
+          type:
+            - array
+            - "null"
+          items:
+            type: string
+          example:
+            - display
+            - video
+        governance_domains:
+          type: array
+          items:
+            type: string
+          example:
+            - campaign
+            - creative
+        effective_date:
+          type:
+            - string
+            - "null"
+          example: 2025-05-25
+        sunset_date:
+          type:
+            - string
+            - "null"
+        source_url:
+          type:
+            - string
+            - "null"
+          example: https://eur-lex.europa.eu/eli/reg/2016/679/oj
+        source_name:
+          type:
+            - string
+            - "null"
+          example: EUR-Lex
+        policy:
+          type: string
+          example: Data subjects must provide freely given, specific, informed and unambiguous consent...
+        guidance:
+          type:
+            - string
+            - "null"
+        exemplars:
+          type:
+            - object
+            - "null"
+          properties:
+            pass:
+              type: array
+              items:
+                type: object
+                properties:
+                  scenario:
+                    type: string
+                    example: Ad for alcohol shown during children's programming
+                  explanation:
+                    type: string
+                    example: Violates watershed timing rules for alcohol advertising
+                required:
+                  - scenario
+                  - explanation
+            fail:
+              type: array
+              items:
+                type: object
+                properties:
+                  scenario:
+                    type: string
+                    example: Ad for alcohol shown during children's programming
+                  explanation:
+                    type: string
+                    example: Violates watershed timing rules for alcohol advertising
+                required:
+                  - scenario
+                  - explanation
+        ext:
+          type:
+            - object
+            - "null"
+          additionalProperties: {}
+        source_type:
+          type: string
+          enum:
+            - registry
+            - community
+        review_status:
+          type: string
+          enum:
+            - pending
+            - approved
+        created_at:
+          type: string
+          example: 2026-03-01T12:00:00.000Z
+        updated_at:
+          type: string
+          example: 2026-03-01T12:00:00.000Z
+      required:
+        - policy_id
+        - version
+        - name
+        - description
+        - category
+        - enforcement
+        - jurisdictions
+        - region_aliases
+        - verticals
+        - channels
+        - governance_domains
+        - effective_date
+        - sunset_date
+        - source_url
+        - source_name
+        - policy
+        - guidance
+        - exemplars
+        - ext
+        - source_type
+        - review_status
+        - created_at
+        - updated_at
+    PolicyHistory:
+      type: object
+      properties:
+        policy_id:
+          type: string
+          example: gdpr_consent
+        total:
+          type: integer
+          example: 3
+        revisions:
+          type: array
+          items:
+            type: object
+            properties:
+              revision_number:
+                type: integer
+                example: 2
+              editor_name:
+                type: string
+                example: Pinnacle Media
+              edit_summary:
+                type: string
+                example: Clarified consent requirements for minors
+              is_rollback:
+                type: boolean
+              rolled_back_to:
+                type: integer
+                description: Revision number that was restored; only present when is_rollback is true
+              created_at:
+                type: string
+                example: 2026-03-01T12:34:56Z
+            required:
+              - revision_number
+              - editor_name
+              - edit_summary
+              - is_rollback
+              - created_at
+      required:
+        - policy_id
+        - total
+        - revisions
 paths:
   /api:
     get:
@@ -2243,6 +2581,428 @@ paths:
                   - property_count
                   - property_type_counts
                   - tag_count
+  /api/policies/registry:
+    get:
+      operationId: listPolicies
+      summary: List policies
+      description: Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, vertical, and governance domain.
+      tags:
+        - Policy Registry
+      parameters:
+        - schema:
+            type: string
+            description: Full-text search on policy name and description
+          required: false
+          description: Full-text search on policy name and description
+          name: search
+          in: query
+        - schema:
+            type: string
+            enum:
+              - regulation
+              - standard
+          required: false
+          name: category
+          in: query
+        - schema:
+            type: string
+            enum:
+              - must
+              - should
+              - may
+          required: false
+          name: enforcement
+          in: query
+        - schema:
+            type: string
+            example: EU
+            description: Filter by jurisdiction (includes region alias matching)
+          required: false
+          description: Filter by jurisdiction (includes region alias matching)
+          name: jurisdiction
+          in: query
+        - schema:
+            type: string
+            example: finance
+          required: false
+          name: vertical
+          in: query
+        - schema:
+            type: string
+            example: campaign
+            description: Filter by governance domain
+          required: false
+          description: Filter by governance domain
+          name: domain
+          in: query
+        - schema:
+            type: string
+            description: Results per page (default 20, max 1000)
+          required: false
+          description: Results per page (default 20, max 1000)
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Pagination offset (default 0)
+          required: false
+          description: Pagination offset (default 0)
+          name: offset
+          in: query
+      responses:
+        "200":
+          description: Policy listing with facet stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policies:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PolicySummary"
+                  stats:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      regulation:
+                        type: integer
+                      standard:
+                        type: integer
+                    required:
+                      - total
+                      - regulation
+                      - standard
+                required:
+                  - policies
+                  - stats
+  /api/policies/resolve:
+    get:
+      operationId: resolvePolicy
+      summary: Resolve policy
+      description: Resolve a single policy by ID. Optionally pin to a specific version — returns null if the version does not match.
+      tags:
+        - Policy Registry
+      parameters:
+        - schema:
+            type: string
+            example: gdpr_consent
+          required: true
+          name: policy_id
+          in: query
+        - schema:
+            type: string
+            description: Return null if the current version does not match
+          required: false
+          description: Return null if the current version does not match
+          name: version
+          in: query
+      responses:
+        "200":
+          description: Policy resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          description: Missing policy_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  policy_id:
+                    type: string
+                required:
+                  - error
+                  - policy_id
+  /api/policies/resolve/bulk:
+    post:
+      operationId: resolvePoliciesBulk
+      summary: Bulk resolve policies
+      description: |-
+        Resolve up to 100 policies by ID in a single request. Returns a map of policy_id to Policy (or null if not found).
+
+        **Rate limit:** 20 requests per minute per IP address.
+      tags:
+        - Policy Registry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                policy_ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                  example:
+                    - gdpr_consent
+                    - coppa_children
+              required:
+                - policy_ids
+      responses:
+        "200":
+          description: Bulk resolution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: object
+                    additionalProperties:
+                      allOf:
+                        - $ref: "#/components/schemas/Policy"
+                        - type:
+                            - object
+                            - "null"
+                required:
+                  - results
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/policies/history:
+    get:
+      operationId: getPolicyHistory
+      summary: Policy revision history
+      description: Retrieve the edit history for a policy. Each revision records who made the change, a summary, and whether it was a rollback.
+      tags:
+        - Policy Registry
+      parameters:
+        - schema:
+            type: string
+            example: gdpr_consent
+          required: true
+          name: policy_id
+          in: query
+        - schema:
+            type: string
+            description: Results per page (max 100, default 20)
+          required: false
+          description: Results per page (max 100, default 20)
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Pagination offset (default 0)
+          required: false
+          description: Pagination offset (default 0)
+          name: offset
+          in: query
+      responses:
+        "200":
+          description: Revision history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyHistory"
+        "400":
+          description: Missing policy_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  policy_id:
+                    type: string
+                required:
+                  - error
+                  - policy_id
+  /api/policies/save:
+    post:
+      operationId: savePolicy
+      summary: Save policy
+      description: Create or update a community-contributed policy. Requires authentication. Registry-sourced and pending-review policies cannot be edited (returns 409). Updates automatically create a revision record.
+      tags:
+        - Policy Registry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                policy_id:
+                  type: string
+                  example: my_brand_safety
+                  description: Lowercase alphanumeric with underscores
+                version:
+                  type: string
+                  example: 1.0.0
+                name:
+                  type: string
+                  example: Acme Corp Brand Safety
+                category:
+                  type: string
+                  enum:
+                    - regulation
+                    - standard
+                enforcement:
+                  type: string
+                  enum:
+                    - must
+                    - should
+                    - may
+                policy:
+                  type: string
+                  example: Ads must not appear adjacent to content depicting violence...
+                description:
+                  type: string
+                jurisdictions:
+                  type: array
+                  items:
+                    type: string
+                region_aliases:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+                verticals:
+                  type: array
+                  items:
+                    type: string
+                channels:
+                  type: array
+                  items:
+                    type: string
+                effective_date:
+                  type: string
+                sunset_date:
+                  type: string
+                governance_domains:
+                  type: array
+                  items:
+                    type: string
+                source_url:
+                  type: string
+                  description: Must use http:// or https://
+                source_name:
+                  type: string
+                guidance:
+                  type: string
+                exemplars:
+                  type: object
+                  properties:
+                    pass:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          scenario:
+                            type: string
+                          explanation:
+                            type: string
+                        required:
+                          - scenario
+                          - explanation
+                    fail:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          scenario:
+                            type: string
+                          explanation:
+                            type: string
+                        required:
+                          - scenario
+                          - explanation
+                ext:
+                  type: object
+                  additionalProperties: {}
+              required:
+                - policy_id
+                - version
+                - name
+                - category
+                - enforcement
+                - policy
+      responses:
+        "200":
+          description: Policy saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - true
+                  message:
+                    type: string
+                  policy_id:
+                    type: string
+                  revision_number:
+                    type:
+                      - integer
+                      - "null"
+                required:
+                  - success
+                  - message
+                  - policy_id
+                  - revision_number
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Cannot edit registry-sourced or pending policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  policy_id:
+                    type: string
+                required:
+                  - error
+                  - policy_id
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 tags:
   - name: Brand Resolution
     description: Resolve advertiser domains to canonical brand identities.
@@ -2258,3 +3018,5 @@ tags:
     description: Cross-entity search across brands, publishers, agents, and properties.
   - name: Agent Probing
     description: Connect to live agents and inspect their capabilities, formats, and inventory.
+  - name: Policy Registry
+    description: Browse, resolve, and contribute governance policies for campaign compliance.

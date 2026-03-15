@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/policy-enforcement.json",
+  "title": "Policy Enforcement Level",
+  "description": "How governance agents treat violations of a policy. Uses RFC 2119 keywords.",
+  "type": "string",
+  "enum": [
+    "must",
+    "should",
+    "may"
+  ],
+  "enumDescriptions": {
+    "must": "Legal requirement. Governance agents reject actions that violate this policy.",
+    "should": "Best practice. Governance agents warn on violations but do not block.",
+    "may": "Recommendation. Governance agents log for informational purposes only."
+  }
+}
