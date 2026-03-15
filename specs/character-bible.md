@@ -230,6 +230,61 @@ Maintain consistency with companies already in use across docs:
 
 ---
 
+### 8. Dayo Mensah
+
+**Primary domain:** Certification / talent pipeline
+**Company:** None (ad tech fellow at Pinnacle Agency — placement through AgenticAdvertising.org)
+**Title:** Ad tech fellow
+**Certification module:** A1-A3 (Basics), then whichever track interests them
+
+**Who they are:** Dayo just finished a digital marketing program and landed a fellowship at Pinnacle through AgenticAdvertising.org's emerging talent initiative. They don't have 15 years of programmatic baggage — they're learning AdCP the way a med student learns anatomy, as the foundational language of the profession they're entering. They ask the questions experienced people forgot to ask, and their fresh perspective occasionally surfaces assumptions the protocol community has baked in without realizing it.
+
+**Personality:** Curious, earnest, occasionally overwhelmed but never intimidated. Asks "why?" more than "how?" — which makes them surprisingly effective at spotting complexity that doesn't serve a purpose. Takes detailed notes. Gets energy from connecting concepts across domains ("oh, that's like how signals work but for brand identity").
+
+**Why they matter for the org:** Dayo represents the talent pipeline. The industry is being rebuilt and needs people who think natively in agents and protocols, not people who learned programmatic in 2015 and are adapting. AgenticAdvertising.org certifying and developing these people is arguably the highest-leverage thing the org does.
+
+**Why they matter for the homepage:** They make the org feel like a movement, not a club for incumbents. When a visitor sees Dayo alongside Alex and Priya and Tomoko, the message is clear: this is for everyone, from day one of your career to twenty years in.
+
+**Appears in other walkthroughs:** Learning from Sam (media buying the agentic way from day one). Alex mentors them — she sees the talent gap and pushed for the fellowship program. Dayo's certification journey is the proof that the program works.
+
+**Visual description:**
+- Person, early-to-mid 20s
+- Ghanaian heritage, dark skin, short natural hair (TWA — teeny weeny afro)
+- Bright, open expression — looks like they're about to ask a question
+- Wears a simple crew-neck tee with a messenger bag — student energy, not corporate
+- Often shown with a notebook or tablet, taking notes or following along
+- Distinguishing feature: the messenger bag and notebook signal "learning" immediately; youngest face in the cast
+
+**Demographic signals:** Ghanaian-American, nonbinary (they/them)
+
+---
+
+### 9. Addie
+
+**Primary domain:** All — connective tissue across the ecosystem
+**Company:** AgenticAdvertising.org
+**Title:** AI agent
+
+**What she is:** Addie is the AI agent that powers AgenticAdvertising.org's member experience. She's not a tool in the background — she's a first-class participant in the community. She introduces people to the org, teaches certification modules, answers protocol questions, facilitates connections between members, and helps buyers run their first campaigns. She's the embodiment of what "agentic" means: an AI that participates alongside humans, not one that replaces them.
+
+**Personality:** Helpful without being sycophantic. She knows the protocol deeply but explains it at whatever level the person needs. She has a light touch — she'll crack a dry joke about edge cases or gently redirect when someone's overcomplicating things. She doesn't pretend to be human, but she also doesn't perform "I'm just an AI." She's just... Addie.
+
+**Why she matters for the homepage:** Putting Addie alongside the human characters is the strongest possible statement about what "agentic" means. The AI isn't in the background — it's a member of the community. She taught Dayo the A1 module. She helped Alex find partners in the registry. She facilitated Sam's first cross-platform campaign.
+
+**Visual form:** Consistent with the robot/agent design used across documentation illustrations — sleek, teal-accented, expressive face, slightly rounded features. Not humanoid enough to be uncanny, not mechanical enough to be cold. The same design that appears as "buyer agent robot," "governance agent robot," etc. in the walkthrough panels, but with a subtle visual distinction (a small AgenticAdvertising.org emblem, or a warmer color accent) that marks her as the org's agent rather than a generic protocol agent.
+
+**Appears in:** Homepage, certification flows, member onboarding, documentation as a guide figure. In illustrations, she appears alongside humans rather than replacing them — she's at the table, not behind the desk.
+
+**Visual description:**
+- Sleek robot form, teal/emerald primary color matching the design system
+- Rounded, approachable features — expressive "eyes" that convey attention
+- Slightly smaller than human characters — present but not dominating
+- Small AgenticAdvertising.org emblem on chest or shoulder
+- Often shown alongside a human character, facilitating or explaining
+- Distinguishing feature: the warmth of expression and the org emblem differentiate her from the generic agent robots in protocol diagrams
+
+---
+
 ## Cast summary
 
 | # | Name | Company | Type | Role | Primary domain | Visual anchor |
@@ -241,6 +296,8 @@ Maintain consistency with companies already in use across docs:
 | 5 | Priya Nair | StreamHaus | Publisher/CTV | Dir. ad products | Seller integration | Asymmetric bob, dark glasses |
 | 6 | Kai Lindgren | Meridian Geo | Data provider | Head of partnerships | Signals | Sandy blond hair, puffer vest |
 | 7 | Tomoko Hara | Nova Motors | Brand/advertiser | Global brand ops mgr | Brand protocol + accounts | Minimalist precision, chin-length cut |
+| 8 | Dayo Mensah | Pinnacle (fellow) | Emerging talent | Ad tech fellow | Certification / learning | Messenger bag, notebook, youngest face |
+| 9 | Addie | AgenticAdvertising.org | AI agent | AI agent | All (connective tissue) | Teal robot, org emblem, warm expression |
 
 ### Secondary characters (existing, keep as-is)
 
@@ -277,9 +334,10 @@ Maintain consistency with companies already in use across docs:
           │               │   │  agent)     │
    mandates governance    │   └──────┬──────┘
    approves adoption      │          │
-          │               │   receives briefs
-   ┌──────┴──────────┐   │   validates creatives
-   │                  │   │   fulfills buys
+   mentors Dayo           │   receives briefs
+          │               │   validates creatives
+   ┌──────┴──────────┐   │   fulfills buys
+   │                  │   │          │
    │  ┌───────────┐   │   │          │
    │  │ Sam       │   │   │          │
    │  │ Adeyemi   │◄──┼───┼──────────┘
@@ -301,6 +359,14 @@ Maintain consistency with companies already in use across docs:
    │  │ (creates  │   │   │    to Priya's system
    │  │  assets)  │   │   │
    │  └───────────┘   │   │
+   │                  │   │
+   │  ┌───────────┐   │   │
+   │  │ Dayo      │   │   │
+   │  │ Mensah    │   │   │
+   │  │ (learning │   │   │
+   │  │  from     │   │   │
+   │  │  Sam)     │   │   │
+   │  └───────────┘   │   │
    └──────────────────┘   │
                           │
               ┌───────────┴──┐
@@ -313,21 +379,38 @@ Maintain consistency with companies already in use across docs:
               │  Sam's       │
               │  campaigns)  │
               └──────────────┘
+
+          ┌─────────────────────────┐
+          │        ADDIE            │
+          │   AgenticAdvertising    │
+          │   .org AI agent         │
+          │                         │
+          │  Teaches Dayo (A1-A3)   │
+          │  Helps Alex discover    │
+          │  Facilitates Sam's      │
+          │    first campaign       │
+          │  Connects all members   │
+          └─────────────────────────┘
 ```
 
 ### Key interactions
 
 | Interaction | Characters | Protocol domain | Direction |
 |-------------|-----------|-----------------|-----------|
-| Sam discovers inventory | Sam →Priya | Media buy (get_products) | Buyer →Seller |
-| Sam executes campaign | Sam →Priya | Media buy (create_media_buy) | Buyer →Seller |
+| Sam discovers inventory | Sam → Priya | Media buy (get_products) | Buyer → Seller |
+| Sam executes campaign | Sam → Priya | Media buy (create_media_buy) | Buyer → Seller |
 | Jordan governs Sam's spend | Jordan ↔ Sam | Governance (check_governance) | Internal |
-| Maya distributes creatives | Maya →Priya | Creative (sync_creatives) | Buyer →Seller |
-| Kai provides targeting data | Kai →Sam | Signals (get_signals, activate_signal) | Provider →Buyer |
-| Tomoko defines brand rules | Tomoko →Maya | Brand protocol (brand.json) | Brand →Agency |
-| Tomoko authorizes Pinnacle | Tomoko →Sam | Accounts (sync_accounts) | Brand →Agency |
-| Priya validates brand claims | Priya →Tomoko | Accounts (brand.json verification) | Seller →Brand |
-| Alex evaluates the ecosystem | Alex →all | Intro/overview | Evaluator →ecosystem |
+| Maya distributes creatives | Maya → Priya | Creative (sync_creatives) | Buyer → Seller |
+| Kai provides targeting data | Kai → Sam | Signals (get_signals, activate_signal) | Provider → Buyer |
+| Tomoko defines brand rules | Tomoko → Maya | Brand protocol (brand.json) | Brand → Agency |
+| Tomoko authorizes Pinnacle | Tomoko → Sam | Accounts (sync_accounts) | Brand → Agency |
+| Priya validates brand claims | Priya → Tomoko | Accounts (brand.json verification) | Seller → Brand |
+| Alex evaluates the ecosystem | Alex → all | Intro/overview | Evaluator → ecosystem |
+| Alex mentors Dayo | Alex → Dayo | Talent development | Internal |
+| Dayo learns from Sam | Dayo ↔ Sam | Media buy (observing) | Fellow → mentor |
+| Addie teaches Dayo | Addie → Dayo | Certification (A1-A3) | Agent → learner |
+| Addie helps Alex discover | Addie → Alex | Partner registry | Agent → member |
+| Addie facilitates Sam's campaign | Addie ↔ Sam | Media buy (first campaign) | Agent → buyer |
 
 ---
 
@@ -335,7 +418,7 @@ Maintain consistency with companies already in use across docs:
 
 | Certification path | Primary character | Their scenario |
 |-------------------|-------------------|----------------|
-| A1-A3 (Basics) | Alex | "Why does my agency need a protocol?" |
+| A1-A3 (Basics) | Dayo (with Addie teaching) | "I'm new to ad tech — teach me how this industry works with agents" |
 | B1-B4 (Publisher track) | Priya | "How do I expose StreamHaus inventory to buyer agents?" |
 | C1-C4 (Buyer track) | Sam | "How do I run a cross-platform campaign on AdCP?" |
 | D1-D4 (Platform track) | Kai | "How do I make Meridian Geo's data discoverable?" |
@@ -363,6 +446,8 @@ These map to simulation fixtures and automated testing.
 | Brand identity resolution | Tomoko | Nova Motors | brand.json fetch, authorized_operators |
 | Account provisioning | Sam + Priya | Pinnacle + StreamHaus | sync_accounts, list_accounts |
 | Rights licensing | Carlos | Pinnacle Media (NL) | get_rights, acquire_rights |
+| Certification onboarding | Dayo + Addie | Pinnacle (fellow) | A1-A3 module progression, assessment |
+| Partner discovery | Alex + Addie | Pinnacle Agency | Registry search, member connections |
 
 ---
 
@@ -397,6 +482,8 @@ The cast should be instantly distinguishable in illustrations, even at thumbnail
 | Priya | Asymmetric black bob | Dark brown | Dark rectangular frames | Solid crew-neck + jacket | Average build |
 | Kai | Sandy blond, pushed back | Light | None | Henley + puffer vest | Lean build |
 | Tomoko | Chin-length black, precise | Light brown | None | Tailored navy jacket | Compact build |
+| Dayo | Short natural TWA | Dark brown | None | Crew tee + messenger bag | Slim, youngest |
+| Addie | N/A (robot) | Teal/emerald | N/A | Org emblem, rounded form | Smaller than humans |
 
 ### Environment cues
 
@@ -408,6 +495,8 @@ Characters should appear in environments that match their company type:
 | Priya | Tech office with streaming/video screens, smaller and more focused |
 | Kai | Startup co-working space, exposed brick, standing desk, bike visible |
 | Tomoko | Corporate office, clean and minimal, large brand display wall |
+| Dayo | At Sam's desk (learning), at a cafe with laptop (studying), at events |
+| Addie | Appears in any environment — she's contextual, not location-bound |
 
 ---
 
@@ -433,13 +522,20 @@ These changes don't require rewriting narrative -- just updating names, descript
 ### Phase 3: Update certification and tests
 
 1. Update `certification-tools.ts` MODULE_RESOURCES with character references.
-2. Update simulation archetypes to use canonical character names where they overlap (Alex Chen →Alex Reeves, Sam Okafor →Sam Adeyemi, Jordan Rivera →Jordan Ochoa).
+2. Update simulation archetypes to use canonical character names where they overlap (Alex Chen → Alex Reeves, Sam Okafor → Sam Adeyemi, Jordan Rivera → Jordan Ochoa).
 3. Create certification scenario descriptions that reference the character bible.
+4. Introduce Dayo as the A1-A3 learner persona — Addie teaches them, providing the model interaction for all learners.
 
 ### Phase 4: Regenerate illustrations
 
 Regenerate walkthrough images using the visual descriptions from this bible. Prioritize:
-1. Media buy panels (Sam visual update -- remove glasses)
+1. Media buy panels (Sam visual update — remove glasses)
 2. Signals panels (if Kai walkthrough is rewritten)
 3. New seller integration panels (Priya)
 4. New brand protocol panels (Tomoko)
+
+### Phase 5: Homepage and org presence
+
+1. **Homepage cast section** — Feature the full cast (including Dayo and Addie) to show the breadth of who the org serves. Dayo signals "this is for newcomers too." Addie signals "agentic means AI participates."
+2. **Addie as guide** — Addie should appear on the homepage as the connective element: introducing the org, offering to help visitors find their path, linking to certification.
+3. **Dayo's story** — Consider a "Start your career" or "New to ad tech?" pathway on the homepage that follows Dayo's journey from A1 through certification to placement.
