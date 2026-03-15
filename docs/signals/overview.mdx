@@ -4,7 +4,7 @@ sidebarTitle: Overview
 description: "Follow a media planner from campaign brief to signal activation across automotive, geo, and retail data — a visual walkthrough of the AdCP signals workflow."
 ---
 
-<img src="/images/walkthrough/signals-01-planner-brief.png" alt="A media planner reviews a campaign brief surrounded by floating data icons representing audiences, locations, and purchase behavior" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+<img src="/images/walkthrough/signals-01-planner-brief.png" alt="Sam stands at a whiteboard sketching a targeting plan, surrounded by floating holographic data icons — audiences, locations, purchase behavior" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
 Kai is a media planner at a mid-size agency. His client, Nova Motors, is launching the Volta EV — their first electric vehicle. The brief: reach in-market auto buyers with high purchase propensity, near dealerships, and focus on consumers who haven't bought a Nova vehicle before.
 
@@ -16,7 +16,7 @@ This walkthrough follows Kai from brief to live targeting.
 
 Kai starts with what he wants to accomplish, not a segment taxonomy.
 
-<img src="/images/walkthrough/signals-02-natural-language-search.png" alt="A search bar glows as natural language transforms into structured signal queries flowing to multiple data providers" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/signals-02-natural-language-search.png" alt="Sam types a search on his laptop as three data streams flow outward to location, retail, and audience data provider icons — one query, three sources" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 His agency platform translates the brief into a `get_signals` call. No need to know which providers have what — the signal agent searches across all of them:
 
@@ -46,7 +46,7 @@ The signal agent searches catalogs from every authorized data provider — autom
 
 ## Step 2: Review what comes back
 
-<img src="/images/walkthrough/signals-03-results-materialize.png" alt="Signal cards from three different data providers float into view, each with a colored badge showing binary, categorical, or numeric type" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/signals-03-results-materialize.png" alt="Sam reviews signal results on a wall screen, arms crossed — three groups of data cards with different colored accents showing location, retail, and audience data" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 The signal agent returns matches from multiple providers. Each signal has a value type, pricing, and coverage estimate:
 
@@ -97,7 +97,7 @@ If the authorization check had failed — say ShopGrid had revoked the agent's a
 
 ## Step 4: Activate on your platforms
 
-<img src="/images/walkthrough/signals-04-activation-flow.png" alt="Signal streams flow from a central hub outward to two DSP platform icons, each lighting up as segments arrive" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/signals-04-activation-flow.png" alt="Split scene — Sam activates signal segments from his tablet below, data streams flow up to platforms, while Kai monitors activation metrics on his laptop above" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Kai activates his three signals on two DSPs — Nova DSP for programmatic display (broad reach, lower CPMs) and StreamHaus for premium CTV inventory (household-level targeting for the brand spot):
 
@@ -148,7 +148,7 @@ The signal agent pushes segment membership to each platform. Kai gets back deplo
 
 ## Step 5: Build the campaign
 
-<img src="/images/walkthrough/signals-05-campaign-targeting.png" alt="A campaign dashboard shows targeting layers stacking together — audience, location, and purchase data combining into a unified targeting strategy" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/signals-05-campaign-targeting.png" alt="Sam views three targeting layers stacking on a large screen — location, audience, and purchase data overlap and glow where they intersect" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Now the signals are live on both platforms. Kai's agent builds media buys using [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). The activated signals are already available as targeting segments on each DSP — the media buy references the products discovered via [`get_products`](/docs/media-buy/task-reference/get_products), and the DSP applies the signal-based targeting automatically.
 
@@ -180,7 +180,7 @@ The campaign runs. Two weeks in, display CPAs are running 40% above target while
 
 Deactivation removes the segment from the platform. Billing stops. The CTV signals stay active — each activation is independent.
 
-<img src="/images/walkthrough/signals-06-ecosystem-view.png" alt="A bird's-eye view showing data providers, signal agents, DSPs, and campaigns connected by flowing data streams in a hub-and-spoke pattern" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+<img src="/images/walkthrough/signals-06-ecosystem-view.png" alt="Sam and Kai stand together in front of a large display showing the signals marketplace — data providers flowing through a hub to buyers, collaborating across the ecosystem" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
 Every step uses a standard AdCP task. Kai didn't need to know which data providers exist, negotiate individual contracts, or build custom integrations per DSP. The signal agent handles discovery across catalogs, and each platform handles targeting with its standard tools once segments arrive.
 

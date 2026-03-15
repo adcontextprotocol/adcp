@@ -77,7 +77,7 @@ Maintain consistency with companies already in use across docs:
 
 **Who he is:** Sam executes campaigns across multiple platforms. Before AdCP, he was the person logging into four dashboards, reconciling spreadsheets, and entering the same flight dates into different systems. He's the hands-on operator who benefits most directly from protocol standardization.
 
-**Personality:** Methodical, detail-oriented, quietly competitive about campaign performance. Gets genuinely excited when he can compare proposals side-by-side for the first time. Not flashy -- he lets the numbers speak.
+**Personality:** Sharp, confident, quietly competitive about campaign performance. Gets genuinely excited when he can compare proposals side-by-side for the first time. Has swagger without arrogance -- he knows he's good and lets the numbers prove it.
 
 **Why he anchors media buy:** The media buy walkthrough needs someone who feels the pain of multi-platform execution daily. Sam's story is visceral: he went from two weeks and four dashboards to one protocol and one view.
 
@@ -86,10 +86,12 @@ Maintain consistency with companies already in use across docs:
 **Visual description:**
 - Man, early 30s
 - Nigerian heritage, dark skin, close-cropped hair with a sharp fade
+- Clean-shaven (no beard, no stubble — must be explicit or Gemini adds facial hair)
 - No glasses (differentiated from old design)
+- Silver watch on left wrist (visual anchor, visible even when sleeves are rolled)
 - Wears button-down shirts with rolled sleeves -- looks like someone who starts formal and gets to work
 - Often shown with multiple screens or dashboards
-- Distinguishing feature: the rolled sleeves signal "hands-on executor" immediately
+- Distinguishing features: rolled sleeves + silver watch signal "hands-on executor with attention to detail"
 
 **Demographic signals:** Nigerian-British man
 
@@ -317,7 +319,7 @@ Maintain consistency with companies already in use across docs:
 | # | Name | Company | Type | Role | Primary domain | Visual anchor |
 |---|------|---------|------|------|----------------|---------------|
 | 1 | Alex Reeves | Pinnacle Agency | Agency | VP media ops | Intro / overview | Locs, glasses on head |
-| 2 | Sam Adeyemi | Pinnacle Agency | Agency | Senior media buyer | Media buy | Rolled sleeves, no glasses |
+| 2 | Sam Adeyemi | Pinnacle Agency | Agency | Senior media buyer | Media buy | Rolled sleeves, silver watch, clean-shaven |
 | 3 | Jordan Ochoa | Pinnacle Agency | Agency | Campaign ops mgr | Governance | Silver hoop earrings |
 | 4 | Maya Johal | Pinnacle Agency | Agency | Creative strategist | Creative | Colorful scarf/wrap |
 | 5 | Priya Nair | StreamHaus | Publisher/CTV | Dir. ad products | Seller integration | Asymmetric bob, dark glasses |
