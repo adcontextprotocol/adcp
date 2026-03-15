@@ -9,7 +9,6 @@ import type {
   HomeContent,
   AlertSection,
   SuggestedPrompt,
-  GreetingSection,
 } from './types.js';
 
 /**
@@ -17,9 +16,6 @@ import type {
  */
 export function renderHomeHTML(content: HomeContent): string {
   const sections: string[] = [];
-
-  // Greeting — minimal, just sets context
-  sections.push(renderGreeting(content.greeting));
 
   // Alerts — only actionable items (warnings/urgent), not onboarding nudges
   const actionableAlerts = content.alerts.filter(a => a.severity !== 'info');
@@ -33,29 +29,6 @@ export function renderHomeHTML(content: HomeContent): string {
   }
 
   return `<div class="addie-home">${sections.join('')}</div>`;
-}
-
-function renderGreeting(greeting: GreetingSection): string {
-  let statusText: string;
-  let statusClass: string;
-
-  if (greeting.isMember) {
-    statusText = greeting.orgName ? `Member at ${escapeHtml(greeting.orgName)}` : 'Member';
-    statusClass = 'status-member';
-  } else if (greeting.isLinked) {
-    statusText = greeting.orgName ? escapeHtml(greeting.orgName) : 'Visitor';
-    statusClass = 'status-linked';
-  } else {
-    statusText = 'Guest';
-    statusClass = 'status-guest';
-  }
-
-  return `
-    <div class="addie-home-greeting">
-      <h2>Hi, ${escapeHtml(greeting.userName)}</h2>
-      <span class="addie-home-status ${statusClass}">${statusText}</span>
-    </div>
-  `;
 }
 
 function isSafeUrl(url: string): boolean {
@@ -142,28 +115,6 @@ export const ADDIE_HOME_CSS = `
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-/* Greeting — minimal */
-.addie-home-greeting {
-  text-align: center;
-  padding: var(--space-8) 0 var(--space-4);
-}
-
-.addie-home-greeting h2 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  color: var(--color-text-heading);
-  margin: 0 0 var(--space-1) 0;
-}
-
-.addie-home-status {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-
-.addie-home-status.status-member {
-  color: var(--color-success-600);
 }
 
 /* Alerts — compact */

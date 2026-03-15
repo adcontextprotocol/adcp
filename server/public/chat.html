@@ -36,7 +36,7 @@
 
     .chat-header {
       text-align: center;
-      padding: var(--space-16) 16px var(--space-10);
+      padding: var(--space-6) 16px var(--space-4);
       border-bottom: 1px solid var(--color-border);
       background: #fff;
       margin: 0 -16px;
@@ -410,9 +410,9 @@
     }
 
     .chat-input-container {
-      padding: 16px 0 24px;
+      padding: 16px 0 20px;
       border-top: 1px solid var(--color-border);
-      background: var(--color-bg-page);
+      background: #fff;
     }
 
     .chat-input-wrapper {
@@ -519,8 +519,13 @@
 
     .welcome-message {
       text-align: center;
-      padding: 48px 24px;
+      padding: 24px;
       color: var(--color-text-secondary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
     }
 
     .welcome-message h2 {
@@ -538,10 +543,14 @@
     .addie-home-container {
       display: none;
       padding: 16px 0;
+      flex: 1;
     }
 
     .addie-home-container.visible {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
 
     .addie-home-loading {
@@ -2455,8 +2464,6 @@
         </div>
 
         <div class="welcome-message" id="welcomeMessage">
-          <h2>Hi, I'm Addie</h2>
-          <p>Your guide to agentic advertising. Ask me anything.</p>
           <div class="welcome-prompts" id="suggestedPrompts">
             <button class="welcome-prompt-card" data-prompt="What can you do? What kinds of things can I ask you about?">What can you help me with?</button>
             <button class="welcome-prompt-card" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
