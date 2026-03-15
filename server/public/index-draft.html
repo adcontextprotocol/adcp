@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgenticAdvertising.org — Making advertising work better for everyone</title>
+<meta name="description" content="AgenticAdvertising.org is the member organization shaping how AI and advertising work together. Open standards, human governance, and education for the future of advertising.">
+<link rel="stylesheet" href="design-system.css">
+<style>
+  /* Homepage — content-first, minimal, uses design system vars */
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background: var(--color-surface);
+    line-height: var(--leading-relaxed);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* -- Layout -- */
+  .panel {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: var(--space-16) var(--space-6);
+  }
+
+  .panel-wide {
+    max-width: 1100px;
+  }
+
+  @media (max-width: 640px) {
+    .panel {
+      padding: var(--space-10) var(--space-4);
+    }
+  }
+
+  /* -- Panel images -- */
+  .panel-image {
+    width: 100%;
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-8);
+    border: 1px solid var(--color-border);
+  }
+
+  /* -- Typography -- */
+  .panel-text {
+    font-size: var(--text-lg);
+    color: var(--color-gray-700);
+    line-height: var(--leading-loose);
+    max-width: 720px;
+  }
+
+  .panel-text p {
+    margin-bottom: var(--space-4);
+  }
+
+  .panel-text p:last-child {
+    margin-bottom: 0;
+  }
+
+  .panel-text .accent {
+    color: var(--color-text);
+    font-weight: var(--font-semibold);
+  }
+
+  .panel-text .drop {
+    font-size: var(--text-2xl);
+    line-height: var(--leading-snug);
+    color: var(--color-text-heading);
+    font-weight: var(--font-medium);
+    margin-bottom: var(--space-6);
+  }
+
+  .panel-text .closing {
+    font-size: var(--text-xl);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-heading);
+    line-height: var(--leading-snug);
+  }
+
+  .panel-text .kicker {
+    font-size: var(--text-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--color-brand);
+    font-weight: var(--font-semibold);
+    margin-bottom: var(--space-2);
+  }
+
+  /* -- Alternating backgrounds -- */
+  .bg-subtle {
+    background: var(--color-bg-subtle);
+  }
+
+  .bg-warm {
+    background: linear-gradient(180deg, var(--color-surface) 0%, #faf8f0 100%);
+  }
+
+  /* -- Hero -- */
+  .hero {
+    text-align: center;
+    padding: var(--space-20) var(--space-6) var(--space-12);
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .hero h1 {
+    font-size: var(--text-4xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-heading);
+    line-height: var(--leading-tight);
+    margin-bottom: var(--space-4);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .hero .subtitle {
+    font-size: var(--text-xl);
+    color: var(--color-gray-600);
+    line-height: var(--leading-relaxed);
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  @media (max-width: 640px) {
+    .hero {
+      padding: var(--space-12) var(--space-4) var(--space-8);
+    }
+    .hero h1 {
+      font-size: var(--text-3xl);
+    }
+  }
+
+  /* -- Principles list (Panel 5) -- */
+  .principles {
+    list-style: none;
+    padding: 0;
+    margin: var(--space-6) 0;
+  }
+
+  .principles li {
+    font-size: var(--text-lg);
+    line-height: var(--leading-relaxed);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-gray-700);
+  }
+
+  .principles li:last-child {
+    border-bottom: none;
+  }
+
+  .principles li strong {
+    color: var(--color-text-heading);
+    font-weight: var(--font-semibold);
+  }
+
+  /* -- CTA section (Panel 6) -- */
+  .cta-section {
+    text-align: center;
+    padding: var(--space-16) var(--space-6);
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .cta-section .closing-text {
+    font-size: var(--text-xl);
+    color: var(--color-gray-700);
+    line-height: var(--leading-relaxed);
+    margin-bottom: var(--space-10);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .cta-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-6);
+    text-align: left;
+  }
+
+  @media (max-width: 768px) {
+    .cta-grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-4);
+    }
+  }
+
+  .cta-card {
+    padding: var(--space-6);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    transition: border-color 0.15s ease;
+  }
+
+  .cta-card:hover {
+    border-color: var(--color-brand);
+  }
+
+  .cta-card h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-heading);
+    margin-bottom: var(--space-2);
+  }
+
+  .cta-card p {
+    font-size: var(--text-base);
+    color: var(--color-gray-600);
+    line-height: var(--leading-normal);
+    margin-bottom: var(--space-4);
+  }
+
+  .cta-card a {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--color-brand);
+    text-decoration: none;
+  }
+
+  .cta-card a:hover {
+    text-decoration: underline;
+  }
+
+  /* -- Footer -- */
+  .site-footer {
+    border-top: 1px solid var(--color-border);
+    padding: var(--space-10) var(--space-6);
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: var(--space-8);
+  }
+
+  @media (max-width: 768px) {
+    .footer-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-6);
+    }
+  }
+
+  .footer-brand {
+    font-size: var(--text-sm);
+    color: var(--color-gray-500);
+    line-height: var(--leading-relaxed);
+  }
+
+  .footer-brand strong {
+    font-size: var(--text-base);
+    color: var(--color-text-heading);
+    display: block;
+    margin-bottom: var(--space-2);
+  }
+
+  .footer-col h4 {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-heading);
+    margin-bottom: var(--space-3);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+  }
+
+  .footer-col a {
+    display: block;
+    font-size: var(--text-sm);
+    color: var(--color-gray-600);
+    text-decoration: none;
+    padding: var(--space-1) 0;
+  }
+
+  .footer-col a:hover {
+    color: var(--color-brand);
+  }
+</style>
+</head>
+<body>
+
+<!-- Shared Navigation -->
+<!-- Nav omitted for static preview -->
+
+<!-- Panel 1: The world we're in -->
+<section class="hero">
+  <h1>Making advertising work better for everyone</h1>
+  <p class="subtitle">AgenticAdvertising.org is the member organization shaping how AI and advertising work together — for consumers, for businesses, and for the people who create the content we all depend on.</p>
+</section>
+
+<section>
+  <div class="panel panel-wide">
+    <img src="../../images/homepage/panel-01-everyday.png" alt="Four everyday people affected by advertising: a consumer seeing irrelevant ads, a bakery owner struggling with complexity, a journalist worried about declining ad revenue, and an entrepreneur in Nairobi overwhelmed by the tools" class="panel-image">
+    <div class="panel-text">
+      <p class="drop">Advertising connects businesses with the people they serve. It funds the journalism you read, the shows you watch, the apps you use for free.</p>
+      <p>When it works, it's a quiet engine of growth &mdash; for a bakery opening its second location, for a publisher investing in their newsroom, for an entrepreneur in Nairobi reaching her first thousand customers.</p>
+      <p class="closing">It doesn't always work.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Panel 2: What's changing -->
+<section class="bg-subtle">
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">What's changing</p>
+    </div>
+    <img src="../../images/homepage/panel-02-change.png" alt="Sam the media buyer and Priya the publisher, each working with AI agents that connect them across platforms" class="panel-image">
+    <div class="panel-text">
+      <p class="drop">AI agents are learning to do the operational work of advertising &mdash; finding audiences, matching budgets to outcomes, generating creative, executing across dozens of systems at once.</p>
+      <p>This changes the economics of advertising in ways that matter. A local business gets the same media buying intelligence that used to require a six-figure agency retainer. A mid-size publisher competes for premium campaigns without a twenty-person sales team. A brand launches in a new market in days, not months.</p>
+      <p><span class="accent">Agents help people work better together.</span> They help businesses grow. They help fund the content people depend on. They can help grow the global economy responsibly.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Panel 3: The stakes -->
+<section>
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">The stakes</p>
+    </div>
+    <img src="../../images/homepage/panel-03-stakes.png" alt="Without governance, agents optimize blindly. With governance, humans like Jordan stay in the loop on decisions that matter." class="panel-image">
+    <div class="panel-text">
+      <p class="drop">But speed without judgment is just fast mistakes.</p>
+      <p>Without governance, agents optimize for whatever metric they're pointed at &mdash; even when that doesn't align with what a brand intended, what a publisher deserves, or what a consumer should experience. Without standards, every platform becomes a silo, and the promise of efficiency collapses into a different kind of fragmentation.</p>
+      <p class="closing">The question isn't whether AI transforms advertising. It's whether humans stay involved in the decisions that matter.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Panel 4: The community -->
+<section class="bg-subtle">
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">Who's building it</p>
+    </div>
+    <img src="../../images/homepage/panel-04-community.png" alt="The AgenticAdvertising.org community: Alex, Sam, Jordan, Maya, Priya, Kai, Tomoko, Dayo, and Addie working together" class="panel-image">
+    <div class="panel-text">
+      <p class="drop">That's what we're building.</p>
+      <p>AgenticAdvertising.org brings together the people and companies shaping how AI and advertising work together. Publishers who want fair value for their content. Brands who want their identity respected at machine speed. Agencies finding better outcomes for their clients. Data providers who believe transparency makes markets work. Builders creating the tools. And the people just entering the field &mdash; learning the language of a profession being reinvented underneath them.</p>
+      <p>We publish <a href="https://docs.adcontextprotocol.org" style="color: var(--color-brand); text-decoration: none; font-weight: var(--font-semibold);">AdCP</a>, the open protocol that gives agents a shared language across every advertising platform. We govern through <span class="accent">Embedded Human Judgment</span> &mdash; the principle that humans stay in the loop on decisions with real consequences. We educate through a certification program taught by Addie, our AI, because the best way to build trust in agentic systems is to make sure people understand them deeply.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Panel 5: What better looks like -->
+<section class="bg-warm">
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">What better looks like</p>
+    </div>
+    <img src="../../images/homepage/panel-05-outcomes.png" alt="The same four people from Panel 1, now thriving: the consumer sees a relevant ad, the bakery has expanded, the newsroom is growing, and the Nairobi entrepreneur is shipping across the continent" class="panel-image">
+    <div class="panel-text">
+      <ul class="principles">
+        <li><strong>Better for people who see ads</strong> &mdash; relevant, respectful, transparent about when AI was involved.</li>
+        <li><strong>Better for businesses</strong> &mdash; accessible and efficient, no longer requiring a massive team just to participate.</li>
+        <li><strong>Better for the content you depend on</strong> &mdash; advertising that funds creators fairly, so they can invest in what they make.</li>
+        <li><strong>Better for the global economy</strong> &mdash; open standards that work the same whether you're buying media in London or Lagos, so growth isn't gated by geography.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- Panel 6: Join -->
+<section>
+  <div class="panel panel-wide">
+    <img src="../../images/homepage/panel-06-join.png" alt="The AgenticAdvertising.org community welcoming you in" class="panel-image">
+    <div class="cta-section">
+      <p class="closing-text">This is early. The standards are being written. The governance frameworks are being tested. The first generation of agentic advertising professionals is being certified right now. That means you can shape it.</p>
+      <div class="cta-grid">
+        <div class="cta-card">
+          <h3>Start learning</h3>
+          <p>Understand agentic advertising. Get certified. Free to start.</p>
+          <a href="/certification">Go to the Academy &rarr;</a>
+        </div>
+        <div class="cta-card">
+          <h3>Start building</h3>
+          <p>Implement the open protocol. Ship an agent. Join the ecosystem.</p>
+          <a href="https://docs.adcontextprotocol.org">Read the AdCP Docs &rarr;</a>
+        </div>
+        <div class="cta-card">
+          <h3>Start participating</h3>
+          <p>Join the member organization. Find partners. Shape the standards.</p>
+          <a href="/membership">Become a member &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <strong>AgenticAdvertising.org</strong>
+      Open standards for AI-powered advertising. Making advertising work better for consumers, businesses, and the people who create the content we all depend on.
+    </div>
+    <div class="footer-col">
+      <h4>Organization</h4>
+      <a href="/about">About</a>
+      <a href="/membership">Membership</a>
+      <a href="/governance">Governance</a>
+      <a href="/members">Members</a>
+    </div>
+    <div class="footer-col">
+      <h4>Resources</h4>
+      <a href="/certification">Academy</a>
+      <a href="/chat">Ask Addie</a>
+      <a href="https://docs.adcontextprotocol.org">AdCP Docs</a>
+      <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="/events">Events</a>
+      <a href="/committees">Committees</a>
+      <a href="/latest/perspectives">Perspectives</a>
+      <a href="/latest/announcements">Announcements</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
