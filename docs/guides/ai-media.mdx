@@ -1,0 +1,658 @@
+---
+title: AI media
+description: How AdCP reverses the data flow for AI platform advertising — buyers push catalogs, events, and standards in so the platform can make great ad decisions with full context
+keywords: [ai media, ai advertising, ai search ads, sponsored responses, generative ads, ai ad network, ai platform advertising]
+---
+
+# AI media
+
+AI media inverts how advertising works. In traditional programmatic, the platform sends a bid request out — a thin signal containing a page URL, device type, and maybe a user ID — to a remote decision-maker that lacks the context to make a great ad. The decision-maker doesn't have the context. The context-holder doesn't make the decision.
+
+AI platforms reverse this. Instead of sending signals out, they receive everything in: product catalogs via `sync_catalogs`, conversion events via `sync_event_sources`, brand identity via `brand.json`, content standards via [governance policies](/docs/governance/overview), and optimization goals on every media buy. The platform's LLM then has full context — the user's conversation, the brand's catalog, suitability rules, and what success looks like — to generate the right ad in the right moment. **The decision-maker is the context-holder.** That is the fundamental shift.
+
+<Info>
+**New to AdCP?** Start with the [introduction](/docs/intro) for a protocol overview, or the [seller integration guide](/docs/guides/seller-integration) for the general steps to expose inventory to AI buyer agents. This guide covers AI media-specific product modeling, workflows, and measurement.
+</Info>
+
+## For buyers and brands
+
+For a non-technical guide to AI media buying — what it requires, what data you provide, and how to get started as a brand, agency, or small business — see the **[buyer's guide to AI media](/docs/guides/buying-ai-media)**. The rest of this page covers technical product modeling, workflows, and measurement for teams building or evaluating integrations.
+
+AdCP's `ai_media` channel is designed for this reversed data flow. Rather than defining bid request formats, it defines the data buyers push into platforms: catalogs, events, brand standards, and goals. The platform uses this to generate sponsored responses, AI search results, generative display, and brand experience handoffs via Sponsored Intelligence.
+
+### What buyers push in
+
+| Data | AdCP mechanism | What it enables |
+|---|---|---|
+| Product catalog | `sync_catalogs` with `type: "product"` | Platform generates ads from real product data — titles, prices, images, attributes — and matches user intent to inventory |
+| Offering catalog | `sync_catalogs` with `type: "offering"` | Services, promotions, and seasonal campaigns enable commerce handoffs via SI |
+| Conversion events | `sync_event_sources` | Platform optimizes toward real business outcomes, not proxy metrics |
+| Brand identity | `brand.json` | Voice, visual guidelines, and positioning inform generated creative |
+| Content standards | [Governance policies](/docs/governance/overview) | Suitability rules the platform enforces at decision time |
+| Success definition | `optimization_goals` on packages | Platform knows what "good" means for this campaign |
+
+The more data the platform has, the better the ad. Product catalogs feed creative generation. Offering catalogs enable commerce handoffs. Conversion events close the optimization loop. Brand identity ensures the output sounds right. Content standards ensure it stays safe. None of these are administrative setup — together, they are the ad.
+
+AI media sellers come in two shapes: **first-party AI platforms** (a single AI assistant or search engine selling its own inventory) and **AI ad networks** (aggregating inventory across multiple AI platforms and publishers). The account model and publisher properties differ accordingly — a first-party platform is a walled garden with explicit accounts, while an ad network may use implicit accounts and represent multiple publisher properties.
+
+## How AI media differs from programmatic
+
+| Traditional programmatic | AI media | Why it matters |
+|---|---|---|
+| Platform sends bid request **out** with limited context | Buyer pushes catalogs, events, standards **in** via AdCP | The decision-maker has full context |
+| Remote DSP selects ad without conversation context | Platform LLM generates ad with user conversation + brand data | Ads are contextually relevant by construction |
+| Pre-built creative uploaded by buyer | Creative generated at serve time from synced catalog | No creative production bottleneck |
+| Targeting = audience segments, geo, demographics | Targeting = conversational relevance + keyword intent | Natural alignment with user needs |
+| Optimization = bid adjustments on proxy metrics | Optimization = `optimization_goals` with conversion events | Platform optimizes on real outcomes |
+| Brand safety = blocklists and URL classification | Content standards = governance policies enforced at generation time | Suitability is built in, not bolted on |
+| Measurement = impressions, clicks, CTR, viewability | Measurement = engagements, clicks, cost per engagement | Metrics match the medium |
+
+### AdCP mapping
+
+| AI media concept | AdCP equivalent | Reference |
+|---|---|---|
+| AI platform / AI ad network | Sales agent (MCP server) | [`adagents.json`](/docs/governance/property/adagents) |
+| Advertiser account with platform | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
+| Pushing brand data into platform | `sync_catalogs`, `sync_event_sources`, `brand.json` | [Catalogs](/docs/creative/catalogs), [Brand identity](/docs/brand-protocol/brand-json) |
+| Content standards and suitability | [Governance policies](/docs/governance/overview) | [Campaign governance](/docs/governance/campaign/tasks) |
+| Sponsored response / recommendation | Product with generative native format | [Media Products](/docs/media-buy/product-discovery/media-products) |
+| AI search sponsored result | Product with native format | [Media Products](/docs/media-buy/product-discovery/media-products) |
+| Generative creative from brand context | `build_creative` with brand identity | [Generative Creative](/docs/creative/generative-creative) |
+| Brand experience handoff | Sponsored Intelligence protocol | [SI Specification](/docs/sponsored-intelligence/specification) |
+| Defining success | `optimization_goals` on packages | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
+
+Each seller is a separate sales agent — whether that's a first-party AI platform or an ad network aggregating across multiple platforms. Their ad offerings are modeled as products. The buyer pushes in the data the platform needs to make great ads: product catalogs, brand identity, conversion events, content standards, and optimization goals. Account relationships depend on the seller type: first-party platforms typically use explicit accounts (`require_operator_auth: true`), while ad networks may use implicit accounts where the agent is trusted to declare brands via `sync_accounts`.
+
+## Why an open standard?
+
+If you're building an AI platform's ad infrastructure, you have three options for plugging in demand:
+
+| Approach | How it works | Data flow | Scaling story |
+|---|---|---|---|
+| **Proprietary API** | Build a custom REST API. Each buyer integrates individually. | Data flows in (good), but every buyer needs a custom integration | Linear — each new buyer = new integration work on both sides |
+| **Traditional SSP** | Integrate with prebid/GAM. SSP sends bid requests to DSPs. | Data flows **out** — thin signals (URL, device, user ID) go to remote bidders that lack conversation context | Good reach, wrong model — the platform gives up the decision to a remote system |
+| **AdCP (open standard)** | Implement AdCP tasks over [MCP](/docs/building/integration/mcp-guide) or [A2A](/docs/building/integration/a2a-guide). Any compliant buyer agent can plug in. | Data flows **in** — catalogs, events, standards, goals push into the platform via standard tasks | Network effect — every new buyer agent works automatically |
+
+The proprietary API gets the data flow right but doesn't scale. The SSP scales but gets the data flow wrong. AdCP gets both right: data flows in through a standard interface that any buyer agent can use without a custom integration.
+
+### AdCP extends your platform, not replaces it
+
+AdCP is not an aggregation layer that sits on top of your ad stack. It's a standard interface to it. You implement AdCP tasks inside your platform — `get_products` queries your inventory system, `sync_catalogs` writes to your catalog store, `create_media_buy` creates campaigns in your ad server. The tasks are thin wrappers around capabilities you're already building.
+
+The [accounts protocol](/docs/accounts/overview) is where this becomes concrete. When a buyer calls `sync_accounts`, your platform creates a real advertiser account — the same kind of account a human would create through your dashboard. When they call `list_accounts`, they see the same accounts. `sync_catalogs` writes to the same catalog store your ad serving reads from. `sync_event_sources` registers the same conversion events your optimization engine uses.
+
+This means:
+- **Your existing dashboard and API keep working** — AdCP is an additional interface to the same backend, not a replacement
+- **Accounts created via AdCP are real accounts** — they show up in your admin tools, your billing system, your reporting
+- **Catalog data synced via AdCP feeds the same serving pipeline** — there's no separate "AdCP inventory" and "direct inventory"
+- **Buyer agents get the same capabilities humans get** — same products, same pricing, same measurement
+
+AdCP works over two transport protocols: [MCP](/docs/building/integration/mcp-guide) (direct integration with AI agents) and [A2A](/docs/building/integration/a2a-guide) (agent-to-agent workflows). The same task definitions work over both. See the [protocol comparison](/docs/building/understanding/protocol-comparison) for when to use which.
+
+## Ad networks: the aggregation pattern
+
+AI ad networks sit between buyer agents and AI platforms, aggregating inventory across multiple platforms into a single seller interface. The protocol supports this topology natively — an ad network is a seller agent that represents multiple publisher properties it doesn't own.
+
+### How a network appears
+
+To **buyer agents**, the network is a standard seller agent. Buyers connect to the network's MCP server, push catalogs and data in via standard tasks, and execute buys. To the **underlying AI platforms**, the network is an operator — it holds accounts on each platform and forwards the buyer's catalog data, brand identity, and content standards.
+
+### Product modeling for networks
+
+A network's products can span multiple AI platforms using `publisher_properties`:
+
+```json
+{
+  "product_id": "sponsored_response_ai_network",
+  "name": "Sponsored responses - AI assistant network",
+  "description": "Sponsored responses across multiple AI assistants. The network routes to the best-matching platform based on user context and brand relevance.",
+  "channels": ["ai_media"],
+  "publisher_properties": [
+    { "publisher_domain": "assistant-alpha.example.com", "selection_type": "all" },
+    { "publisher_domain": "assistant-beta.example.com", "selection_type": "all" },
+    { "publisher_domain": "search-gamma.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.ai-network.example.com", "id": "sponsored_response" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "network_cpc",
+      "pricing_model": "cpc",
+      "floor_price": 0.75,
+      "price_guidance": { "p50": 2.50, "p75": 4.00 },
+      "currency": "USD",
+      "min_spend_per_package": 1000
+    }
+  ],
+  "metric_optimization": {
+    "supported_metrics": ["clicks", "engagements"],
+    "supported_targets": ["cost_per"]
+  },
+  "creative_policy": {
+    "co_branding": "none",
+    "landing_page": "any",
+    "templates_available": true
+  },
+  "catalog_types": ["product", "offering"]
+}
+```
+
+The network decides which platform serves each impression based on context, relevance, and performance. The buyer doesn't need to know which platform was selected — they see unified delivery reporting from the network.
+
+### Account model for networks
+
+Networks typically use implicit accounts (`require_operator_auth: false`). The buyer agent is trusted and declares brands via `sync_accounts`. The network then manages its own accounts with each underlying AI platform:
+
+```
+Buyer agent → Network (implicit accounts, agent-trusted)
+Network → AI Platform A (explicit accounts, operator auth)
+Network → AI Platform B (explicit accounts, operator auth)
+```
+
+Declare capabilities accordingly:
+
+```json
+{
+  "adcp": { "major_versions": [3] },
+  "supported_protocols": ["media_buy", "creative"],
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["operator", "agent"],
+    "required_for_products": false,
+    "sandbox": true
+  }
+}
+```
+
+### Catalog forwarding
+
+Networks receive catalogs from buyers via `sync_catalogs` and forward them to the relevant AI platforms. The same task works on both legs — the network acts as a buyer when syncing catalogs to each platform. This is the core data pipe: brand catalog data flows from buyer → network → platform, giving each platform the raw material to generate ads.
+
+### Governance and content standards
+
+Networks can enforce [governance policies](/docs/governance/overview) at the routing layer before forwarding to platforms. When a buyer pushes content standards, the network applies them when selecting which platforms and contexts are eligible — then forwards the policies to each platform so they're also enforced at creative generation time. This gives brands two layers of suitability enforcement: the network's routing decisions and the platform's generation constraints.
+
+### Delivery reporting
+
+Networks aggregate delivery data from underlying platforms and present unified reporting to buyers via `get_media_buy_delivery`. The buyer sees a single delivery report per media buy — the network handles the per-platform breakdown internally. Networks that want to offer platform-level transparency can use `reporting_dimensions` to expose placement-level breakdowns.
+
+### adagents.json for networks
+
+A network's [`adagents.json`](/docs/governance/property/adagents) lists the publisher properties it represents, even though it doesn't own them:
+
+```json
+{
+  "version": "1.0",
+  "properties": [
+    {
+      "domain": "assistant-alpha.example.com",
+      "agents": [{
+        "agent_url": "https://ads.ai-network.example.com",
+        "relationship": "direct",
+        "supported_protocols": ["media_buy", "creative"]
+      }]
+    },
+    {
+      "domain": "assistant-beta.example.com",
+      "agents": [{
+        "agent_url": "https://ads.ai-network.example.com",
+        "relationship": "direct",
+        "supported_protocols": ["media_buy", "creative"]
+      }]
+    }
+  ]
+}
+```
+
+Each underlying AI platform authorizes the network in its own `adagents.json`. Buyer agents discover the network through the platforms' authorization chains.
+
+### SI through networks
+
+When an ad network sells [Sponsored Intelligence](/docs/sponsored-intelligence/overview) on behalf of brands, it acts as an intermediary in the SI session flow. The brand syncs offerings to the network via `sync_catalogs` with `type: "offering"`, and the network forwards them to underlying platforms. When a platform triggers a session, the network routes it to the correct brand agent.
+
+```
+AI Platform → Network → Brand Agent
+
+1. Platform calls si_initiate_session with the network's media_buy_id
+2. Network maps media_buy_id to the brand's offering_id
+3. Network forwards to the brand agent's SI endpoint
+4. Brand agent responds; network relays back to the platform
+```
+
+The key fields at each leg:
+
+| Field | Platform → Network | Network → Brand |
+|---|---|---|
+| `media_buy_id` | Network's media buy ID | May differ or be omitted |
+| `offering_id` | Not set (platform doesn't know) | Brand-specific offering |
+| `context` | User intent from the conversation | Forwarded as-is |
+| `identity` | User identity (if consented) | Forwarded as-is |
+
+The network handles attribution correlation across the two legs. It knows which platform triggered the session (`placement`), which media buy funded it (`media_buy_id`), and which brand responded (`offering_id`). This lets the network provide unified delivery reporting to buyers via `get_media_buy_delivery` while each brand agent only sees its own sessions.
+
+Networks should forward `identity` and `supported_capabilities` unchanged — the brand agent needs accurate host capabilities to negotiate modalities, and the user's consent was granted for the brand, not the network.
+
+<Note>
+For the SI session lifecycle and capability negotiation details, see the [SI overview](/docs/sponsored-intelligence/overview) and [implementing SI hosts](/docs/sponsored-intelligence/implementing-si-hosts).
+</Note>
+
+## The product spectrum
+
+AI ad networks offer several distinct product types, each with different creative generation patterns, pricing models, and measurement capabilities.
+
+### Sponsored responses in AI assistants
+
+The flagship AI media product. When a user's conversation is relevant to the brand, the platform generates a sponsored response using the brand's catalog and identity. Pricing is typically CPC or cost-per-engagement.
+
+```json
+{
+  "product_id": "sponsored_response_assistant",
+  "name": "Sponsored responses - AI assistant",
+  "description": "Contextually relevant sponsored responses generated from brand catalog data when users ask related questions. Creative is generated by the platform using brand identity and product catalog.",
+  "channels": ["ai_media"],
+  "publisher_properties": [
+    { "publisher_domain": "ai-platform.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.ai-platform.example.com", "id": "sponsored_response" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "sr_cpc",
+      "pricing_model": "cpc",
+      "floor_price": 0.50,
+      "price_guidance": { "p50": 2.00, "p75": 3.50 },
+      "currency": "USD",
+      "min_spend_per_package": 500
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Platform analytics",
+    "notes": "Engagement tracked per platform methodology. Clicks measured on outbound links and action buttons."
+  },
+  "metric_optimization": {
+    "supported_metrics": ["clicks", "engagements"],
+    "supported_targets": ["cost_per"]
+  },
+  "creative_policy": {
+    "co_branding": "none",
+    "landing_page": "any",
+    "templates_available": true
+  },
+  "catalog_types": ["product", "offering"]
+}
+```
+
+Key characteristics:
+- **CPC pricing** with auction-based bidding on contextual relevance
+- **`templates_available: true`** — the platform generates creative from catalog and brand data
+- **`catalog_types`** declares which catalog types feed the generative creative — product feeds for e-commerce brands, offering feeds for services
+- **`metric_optimization`** with engagements and clicks — buyers can set cost-per-engagement targets
+
+### AI search sponsored results
+
+Sponsored results within AI-powered search experiences. Similar to traditional search ads but rendered within an AI's synthesized response. Keyword targeting is the primary relevance signal.
+
+```json
+{
+  "product_id": "ai_search_sponsored",
+  "name": "Sponsored results - AI search",
+  "description": "Sponsored results appearing within AI search responses. Targeted by keyword relevance to user queries.",
+  "channels": ["ai_media"],
+  "publisher_properties": [
+    { "publisher_domain": "ai-platform.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.ai-platform.example.com", "id": "search_result_native" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "search_cpc",
+      "pricing_model": "cpc",
+      "floor_price": 0.75,
+      "price_guidance": { "p50": 2.50, "p75": 5.00 },
+      "currency": "USD",
+      "min_spend_per_package": 500
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Platform analytics",
+    "notes": "Click tracking on sponsored result links. Query-level reporting available."
+  },
+  "metric_optimization": {
+    "supported_metrics": ["clicks"],
+    "supported_targets": ["cost_per"]
+  },
+  "creative_policy": {
+    "co_branding": "none",
+    "landing_page": "any",
+    "templates_available": true
+  }
+}
+```
+
+AI search products typically support keyword targeting. Sellers declare this in `get_adcp_capabilities` under `media_buy.execution.targeting.keyword_targets`, and buyers provide keywords on packages via `targeting_overlay`.
+
+### Generative display and video
+
+Display and video ads generated from brand assets for placement within AI experiences — sidebars, interstitials between conversation turns, or visual responses. The platform uses `build_creative` to generate visual creative from the brand's assets and guidelines.
+
+```json
+{
+  "product_id": "ai_generative_display",
+  "name": "Generative display - AI experience",
+  "description": "Display ads generated from brand assets, placed within AI experience surfaces.",
+  "channels": ["ai_media"],
+  "publisher_properties": [
+    { "publisher_domain": "ai-platform.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_native" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "display_cpm",
+      "pricing_model": "cpm",
+      "floor_price": 6.00,
+      "currency": "USD",
+      "min_spend_per_package": 1000
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Platform ad server",
+    "notes": "Impressions per IAB guidelines."
+  },
+  "creative_policy": {
+    "co_branding": "none",
+    "landing_page": "any",
+    "templates_available": false
+  }
+}
+```
+
+Unlike sponsored responses, generative display uses standard format IDs from the creative agent. Buyers provide creative via `build_creative` or inline on the media buy — the platform doesn't generate creative from catalog data.
+
+### Brand experience handoffs (Sponsored Intelligence)
+
+When a user shows high purchase intent, the AI platform can hand off the conversation to the brand's own AI agent via the [Sponsored Intelligence protocol](/docs/sponsored-intelligence/overview). This enables rich, multi-turn brand experiences — product recommendations, comparisons, configuration, and even transaction completion — without leaving the AI assistant.
+
+Brand experience handoffs are unique to AI media. The brand syncs offerings via `sync_catalogs` with `type: "offering"`, and the platform triggers handoffs when user intent aligns with an offering. See the [SI specification](/docs/sponsored-intelligence/specification) for the session lifecycle and capability model.
+
+## End-to-end workflow
+
+<Steps>
+
+### Set up account
+
+Start by checking the seller's capabilities to understand the account model. First-party AI platforms typically require explicit accounts (each advertiser authenticates via OAuth), while AI ad networks may use implicit accounts (the agent declares brands via `sync_accounts`).
+
+**Example: first-party AI platform (explicit accounts)**
+
+```json
+{
+  "adcp": { "major_versions": [3] },
+  "supported_protocols": ["media_buy", "creative"],
+  "account": {
+    "require_operator_auth": true,
+    "supported_billing": ["operator"],
+    "authorization_endpoint": "https://ads.ai-platform.example.com/oauth/authorize",
+    "required_for_products": false,
+    "sandbox": true
+  }
+}
+```
+
+Key signals:
+- **`require_operator_auth: true`** — each advertiser authenticates via OAuth
+- **`sandbox: true`** — test accounts available for integration validation
+- **`required_for_products: false`** — buyers can browse products before setting up an account
+
+An AI ad network that aggregates across multiple platforms would more likely declare `require_operator_auth: false` with `supported_billing: ["operator", "agent"]` — the agent is trusted and declares accounts via `sync_accounts`.
+
+For explicit accounts, after OAuth authentication discover available accounts via `list_accounts`:
+
+```json
+{
+  "accounts": [
+    {
+      "account_id": "acct_novabrand_ai_001",
+      "name": "Nova Brand - AI Platform",
+      "status": "active",
+      "sandbox": false
+    },
+    {
+      "account_id": "acct_novabrand_ai_sandbox",
+      "name": "Nova Brand - Sandbox",
+      "status": "active",
+      "sandbox": true
+    }
+  ]
+}
+```
+
+Use the sandbox account first to validate the full integration before committing real spend.
+
+### Sync catalogs
+
+This is the defining step for AI media — pushing your product and offering data into the platform so it has the raw material to generate ads and transact. Product catalogs feed creative generation. Offering catalogs enable promotions and commerce handoffs. The richer the feed, the better the platform can match intent to inventory.
+
+```json
+{
+  "account": { "account_id": "acct_novabrand_ai_001" },
+  "catalogs": [
+    {
+      "catalog_id": "product-feed",
+      "name": "Nova Brand Product Catalog",
+      "type": "product",
+      "url": "https://novabrand.example.com/products.xml",
+      "feed_format": "google_merchant_center",
+      "update_frequency": "daily"
+    },
+    {
+      "catalog_id": "offerings-feed",
+      "name": "Nova Brand Promotions",
+      "type": "offering",
+      "url": "https://novabrand.example.com/offerings.json",
+      "feed_format": "custom",
+      "update_frequency": "weekly"
+    }
+  ]
+}
+```
+
+The platform ingests each feed:
+- **Product catalog** — titles, descriptions, prices, and images feed sponsored response generation
+- **Offering catalog** — promotions, services, and seasonal campaigns for SI brand experience handoffs
+
+<Tip>
+In AI media, improving your ads means improving what you push in — catalogs, conversion events, brand identity, and content standards. Include detailed descriptions, multiple images, and structured attributes in catalogs. Push conversion events so the platform knows what works. The platform generates ads from all of this data — richer input produces better output.
+</Tip>
+
+### Discover products
+
+Query `get_products` with `channels: ["ai_media"]` to find AI media products:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Promote our new wireless headphones to tech-savvy consumers on AI platforms.",
+  "brand": {
+    "domain": "novabrand.example.com"
+  },
+  "filters": {
+    "channels": ["ai_media"]
+  }
+}
+```
+
+The seller returns products matching the brief. For catalog-driven products, sellers may include `catalog_match` showing which catalog items are eligible.
+
+### Create media buy
+
+A media buy can span multiple AI media product types:
+
+```json
+{
+  "buyer_ref": "nova_headphones_q2",
+  "account": { "account_id": "acct_novabrand_ai_001" },
+  "brand": {
+    "domain": "novabrand.example.com"
+  },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-04-30T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "sponsored_responses",
+      "product_id": "sponsored_response_assistant",
+      "pricing_option_id": "sr_cpc",
+      "budget": 10000,
+      "bid_price": 2.50,
+      "pacing": "even",
+      "optimization_goals": [{
+        "kind": "metric",
+        "metric": "engagements",
+        "target": { "kind": "cost_per", "value": 3.00 },
+        "priority": 1
+      }]
+    },
+    {
+      "buyer_ref": "ai_search",
+      "product_id": "ai_search_sponsored",
+      "pricing_option_id": "search_cpc",
+      "budget": 5000,
+      "bid_price": 3.00,
+      "pacing": "even",
+      "targeting_overlay": {
+        "keyword_targets": [
+          { "keyword": "wireless headphones", "match_type": "broad" },
+          { "keyword": "noise cancelling", "match_type": "phrase" },
+          { "keyword": "bluetooth earbuds", "match_type": "broad" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The sponsored responses package uses `optimization_goals` with a metric goal to optimize for cost-per-engagement. The AI search package uses `keyword_targets` to reach relevant queries.
+
+### Delivery reporting
+
+AI media delivery reports include engagement metrics alongside standard delivery data:
+
+```json
+{
+  "reporting_period": {
+    "start": "2026-04-01T00:00:00Z",
+    "end": "2026-04-14T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_ai_001",
+      "buyer_ref": "nova_headphones_q2",
+      "status": "active",
+      "totals": {
+        "impressions": 125000,
+        "spend": 7200
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_sr_001",
+          "buyer_ref": "sponsored_responses",
+          "pricing_model": "cpc",
+          "rate": 2.40,
+          "currency": "USD",
+          "impressions": 85000,
+          "spend": 4800,
+          "clicks": 2000,
+          "delivery_status": "delivering"
+        },
+        {
+          "package_id": "pkg_search_001",
+          "buyer_ref": "ai_search",
+          "pricing_model": "cpc",
+          "rate": 3.00,
+          "currency": "USD",
+          "impressions": 40000,
+          "spend": 2400,
+          "clicks": 800,
+          "delivery_status": "delivering"
+        }
+      ]
+    }
+  ]
+}
+```
+
+</Steps>
+
+## Measurement
+
+AI media measurement centers on engagement and intent signals rather than traditional impression-based metrics.
+
+### Key metrics
+
+| Metric | Field | Description |
+|---|---|---|
+| Engagements | `engagements` | User interactions with sponsored content (clicks, expansions, follow-up questions) |
+| Clicks | `clicks` | Outbound clicks to advertiser destination |
+| Cost per click | `rate` (CPC) | Average cost per click |
+| Cost per engagement | Derived from `spend / engagements` | Average cost per engagement interaction |
+
+### Conversion tracking
+
+AI platforms that support conversion tracking declare it in `get_adcp_capabilities` under `conversion_tracking`. Buyers set up event sources via `sync_event_sources` and use `kind: "event"` optimization goals on packages — the same pattern as any other channel. See [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) for details.
+
+### Beyond ads: commerce in the conversation
+
+AI surfaces are uniquely positioned for commerce. A user asking an AI assistant about running shoes is expressing intent in a context where the platform can recommend, compare, and — eventually — help the user buy. Today, AdCP handles the advertising layer: catalogs, media buys, and delivery. Offering catalogs via `sync_catalogs` already enable commerce handoffs through [Sponsored Intelligence](/docs/sponsored-intelligence/overview) sessions, where the user can browse products and transition to checkout. As commerce protocols mature, the path from "interested" to "purchased" will happen entirely within the conversation.
+
+## Best practices
+
+### For buyers
+
+With AI media, the quality of what you push in determines the quality of what comes out. Your catalogs, conversion events, brand identity, and content standards are not administrative setup — they are the inputs the platform uses to generate the right ad, match it to the right moment, and help the user transact.
+
+1. **Push rich catalogs — products and offerings** — sync via `sync_catalogs` with detailed descriptions, multiple images, structured attributes (size, color, category), and accurate pricing. Product catalogs feed creative generation. Offering catalogs enable promotions and commerce handoffs. The platform generates ads and matches intent from this data — thin feeds mean thin ads.
+2. **Push conversion events** — sync event sources via `sync_event_sources` so the platform can optimize toward your actual business outcomes. AI platforms can close the loop between conversational context and conversion — give them the data to do it.
+3. **Push brand identity** — `brand.json` provides voice, visual guidelines, and positioning. The platform uses this to generate creative that sounds and looks like your brand, not generic sponsored content.
+4. **Push content standards** — use [governance policies](/docs/governance/overview) to define suitability rules. Because the platform generates creative at serve time, these rules are enforced during generation, not applied as post-hoc filters.
+5. **Set clear optimization goals** — use `optimization_goals` on every package to tell the platform what success means. Combine with conversion events for outcome-based optimization.
+6. **Set up accounts early** — check `get_adcp_capabilities` for the account model. First-party platforms require OAuth; ad networks may accept `sync_accounts` directly.
+7. **Use sandbox first** — validate the full data sync pipeline (catalogs, events, brand identity, standards) before committing real spend.
+8. **Use keyword targeting for AI search** — specify relevant keywords on AI search packages to reach high-intent queries.
+
+### For sellers
+
+The core value of AI media is that buyers push everything the platform needs to make great ad decisions. Your job as a seller is to accept that data and use it well.
+
+1. **Accept catalogs — products and offerings** — implement `sync_catalogs` for both `product` and `offering` types. Product catalogs feed creative generation. Offering catalogs enable promotions, services, and commerce handoffs. Declare `catalog_types` on products so buyers know what to sync. The more catalog data you ingest, the better you can match user intent to advertiser inventory.
+2. **Accept conversion events** — implement `sync_event_sources` so buyers can share what success looks like. This lets your platform optimize toward real business outcomes, not proxy metrics. The combination of conversational context + conversion data is what makes AI media optimization superior to remote bid optimization.
+3. **Accept and enforce content standards** — support [governance policies](/docs/governance/overview) so buyers can push suitability rules into your platform. Because you generate creative at serve time, you can enforce these rules at generation time rather than filtering after the fact.
+4. **Honor optimization goals** — buyers set `optimization_goals` on packages to tell you what "good" means. Use these alongside conversion events and catalog data to close the optimization loop.
+5. **Implement accounts** — first-party platforms should use `require_operator_auth: true` (each advertiser authenticates independently). Ad networks aggregating across publishers may use implicit accounts instead.
+6. **Support sandbox** — declare `account.sandbox: true` in capabilities. Buyers need to validate the full data sync pipeline (catalogs, events, standards) before committing real spend.
+7. **Report engagement metrics** — include clicks and engagement data in delivery reporting so buyers can evaluate AI media alongside other channels.
+8. **Set `channels: ["ai_media"]`** on all products so buyers can filter by channel.
+9. **Support keyword targeting** for AI search products — declare `keyword_targets` in capabilities and honor `targeting_overlay.keyword_targets` on packages.
+
+## Related documentation
+
+- [Account state](/docs/building/integration/account-state) — How catalogs, event sources, and campaigns build on the account
+- [Accounts & Agents](/docs/building/integration/accounts-and-agents) — Account setup and billing relationships
+- [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) — `ai_media` channel definition
+- [Media Products](/docs/media-buy/product-discovery/media-products) — Product model reference
+- [Catalogs](/docs/creative/catalogs) — Product, offering, and other catalog feeds
+- [Brand identity](/docs/brand-protocol/brand-json) — Product catalog and brand identity
+- [Generative Creative](/docs/creative/generative-creative) — AI-powered creative generation
+- [Sponsored Intelligence](/docs/sponsored-intelligence/overview) — Brand experience handoffs in AI assistants
+- [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) — Testing with sandbox accounts
+- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — `optimization_goals` and metric optimization
+- [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) — Delivery metrics

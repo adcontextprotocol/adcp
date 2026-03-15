@@ -121,7 +121,10 @@ export const TOOL_DESCRIPTIONS = buildToolDescriptions();
 
 export const ROUTING_RULES = {
   /**
-   * Topics Addie can help with (and the tools to use)
+   * Topics Addie can help with (and the tools to use).
+   * Note: patterns are used for config version hashing and analytics,
+   * not for direct routing. The LLM router uses tool set descriptions
+   * from getToolSetDescriptionsForRouter() to make routing decisions.
    */
   expertise: {
     capabilities: {
@@ -130,9 +133,9 @@ export const ROUTING_RULES = {
       description: 'Questions about what Addie can help with - respond with capability overview',
     },
     adcp_protocol: {
-      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief'],
+      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief', 'ai media', 'ai platform', 'ai ad network', 'ai assistant', 'sponsored response', 'ad network', 'aggregator', 'migration', 'upgrade', 'breaking change', 'v2 to v3', 'deprecated', 'what changed', 'reversed data flow', 'catalog sync', 'buy ads', 'buying ads', 'advertise on', 'advertising on', 'brand safety', 'content standards', 'product feed', 'shopify', 'agency buying', 'agency integration', 'brand identity'],
       tools: ['search_docs'],
-      description: 'AdCP protocol questions - understanding how things work',
+      description: 'AdCP protocol questions - understanding how things work, migration, AI media',
     },
     salesagent: {
       patterns: ['salesagent', 'sales agent', 'open source agent', 'reference implementation'],

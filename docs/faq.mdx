@@ -5,6 +5,10 @@ description: Common questions about AdCP, AgenticAdvertising.org, licensing, and
 keywords: [AdCP FAQ, AdCP pricing, AdCP open source, AdCP vs OpenRTB, who owns AdCP, AgenticAdvertising.org, agentic advertising FAQ]
 ---
 
+## About agentic advertising
+
+For a full overview of what agentic advertising is, how it differs from programmatic, and how AdCP fits in, see [What is agentic advertising?](/docs/agentic-advertising). For a practical guide to buying ads on AI platforms, see the [buyer's guide to AI media](/docs/guides/buying-ai-media).
+
 ## About AdCP
 
 <AccordionGroup>
@@ -66,6 +70,10 @@ A platform can implement both. For example, a publisher's AdCP agent might accep
 
 <Accordion title="What is AdCP's relationship to IAB Tech Lab?">
 AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising.org is an independent organization. However, AdCP is designed to be compatible with IAB standards — for example, AdCP's content taxonomy fields align with IAB content categories, and AdCP's audience segments can reference IAB audience taxonomy IDs.
+</Accordion>
+
+<Accordion title="Does AdCP support AI platforms and AI ad networks?">
+Yes. AdCP's `ai_media` channel covers advertising within AI assistants, AI search engines, and generative AI experiences — including sponsored responses, AI search sponsored results, generative display, and brand experience handoffs via Sponsored Intelligence. AI platforms and AI ad networks implement AdCP the same way any seller does: publish `adagents.json`, implement `get_products` with `channels: ["ai_media"]`, and accept media buys. See the [AI media guide](/docs/guides/ai-media) for product modeling, workflows, and measurement.
 </Accordion>
 
 <Accordion title="How does AdCP relate to MCP and A2A?">

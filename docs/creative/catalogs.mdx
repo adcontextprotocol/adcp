@@ -7,9 +7,13 @@ keywords: [catalogs, product feed, inventory, stores, promotions, offerings, hot
 
 # Catalogs
 
-Catalogs are typed data feeds that provide the items publishers render in ads. A product catalog supplies the SKUs for a sponsored product carousel. A hotel catalog carries property listings for travel ads. A job catalog provides the postings for recruitment campaigns. An inventory feed tells the publisher what's in stock at which store.
+Catalogs are all the ingredients you give sellers so they can assemble great outcomes for your brand. An e-commerce brand pushes its product catalog — SKUs, prices, images — so platforms can build sponsored product carousels. A travel advertiser pushes flights, hotels, and destination guides. An employer pushes job openings. A retailer pushes store locations and real-time inventory. A brand pushes its offerings, services, and seasonal campaigns.
 
-Catalogs are a foundational building block in AdCP:
+The richer the ingredients, the better the result. On AI platforms especially, your catalog data IS the creative input — the platform's LLM assembles ads from your products, offerings, and brand context rather than serving a pre-built banner. But catalogs matter beyond AI media too: any seller that dynamically assembles ads from your data — retail media networks, commerce platforms, native ad networks — benefits from richer catalog feeds.
+
+Catalogs also connect directly to measurement. Push your store catalog and a seller can correlate ad delivery to store-level foot traffic. Push your product catalog and a retail media network can close the loop on purchase attribution. The same data that enables better creative also enables better measurement.
+
+### How it works
 
 - **Formats declare** what catalog types they need as `catalog` asset types in their `assets` array
 - **Buyers sync** catalogs to seller accounts via `sync_catalogs`, with platform review and approval
@@ -31,7 +35,7 @@ Pick the catalog type that matches what you're advertising.
 | Travel destinations | `destination` | [DestinationItem](/docs/creative/catalog-schemas#destination-catalog) | `destination_id`, `name` |
 | Mobile apps | `app` | [AppItem](/docs/creative/catalog-schemas#app-catalog) | `app_id`, `name`, `platform` |
 | Store locations | `store` | [StoreItem](#stores) | `store_id`, `name`, `location` |
-| Campaigns, services, events | `offering` | [Offering](#offerings) | `offering_id`, `name` |
+| Campaigns, services, events, asset groups | `offering` | [Offering](#offerings) | `offering_id`, `name` |
 | Stock levels per location | `inventory` | *(your existing feed format)* | Depends on feed format |
 | Sales, deals, pricing | `promotion` | *(your existing feed format)* | Depends on feed format |
 
