@@ -499,9 +499,12 @@ export async function manualOutreach(
     return { success: false, error: 'Person not found in relationship model' };
   }
 
-  // Respect opt-out even for admin-triggered outreach
+  // Respect opt-out and negative sentiment even for admin-triggered outreach
   if (relationship.opted_out) {
     return { success: false, error: 'Person has opted out of outreach' };
+  }
+  if (relationship.sentiment_trend === 'negative') {
+    return { success: false, error: 'Person has negative sentiment — outreach suppressed' };
   }
 
   // Load full context and compose via engagement planner

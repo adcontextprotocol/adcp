@@ -9,6 +9,7 @@ import { describe, it, expect } from '@jest/globals';
 import {
   computeEngagementOpportunities,
   shouldContact,
+  textToEmailHtml,
   OPPORTUNITY_CATALOG,
   STAGE_COOLDOWNS,
   MAX_UNREPLIED_BEFORE_PULSE,
@@ -680,5 +681,62 @@ describe('shouldContact', () => {
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(true);
     });
+
+    it('blocks monthly pulse when next_contact_after is in the future', () => {
+      const r = makeRelationship({
+        stage: 'welcomed',
+        unreplied_outreach_count: 4,
+        last_addie_message_at: daysAgo(45), // past 30-day pulse threshold
+        next_contact_after: new Date(Date.now() + 86400000), // admin override: tomorrow
+      });
+      const result = shouldContact(r);
+      expect(result.shouldContact).toBe(false);
+      expect(result.reason).toContain('cooldown');
+    });
+  });
+});
+
+describe('pulse scoring', () => {
+  it('excludes hygiene and discovery items during monthly pulse', () => {
+    const opps = computeEngagementOpportunities(makeContext({
+      relationship: makeRelationship({
+        stage: 'exploring',
+        slack_user_id: 'U1',
+        workos_user_id: null, // link_accounts should be eligible normally
+      }),
+      insights: [],
+    }), 'monthly pulse — low-key update');
+
+    for (const o of opps) {
+      expect(o.dimension).not.toBe('hygiene');
+      expect(o.dimension).not.toBe('discovery');
+    }
+  });
+});
+
+describe('textToEmailHtml', () => {
+  it('escapes HTML entities', () => {
+    const html = textToEmailHtml('Hello <script>alert("xss")</script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<script>');
+  });
+
+  it('linkifies URLs without double-encoding ampersands', () => {
+    const html = textToEmailHtml('Visit https://example.com/page?a=1&b=2 for details');
+    expect(html).toContain('href="https://example.com/page?a=1&amp;b=2"');
+    // The href should have a single &amp; not &amp;amp;
+    expect(html).not.toContain('&amp;amp;');
+  });
+
+  it('wraps paragraphs in <p> tags', () => {
+    const html = textToEmailHtml('First paragraph.\n\nSecond paragraph.');
+    expect(html).toContain('<p>First paragraph.</p>');
+    expect(html).toContain('<p>Second paragraph.</p>');
+  });
+
+  it('handles empty input', () => {
+    const html = textToEmailHtml('');
+    expect(html).toContain('<body');
+    expect(html).toContain('</body>');
   });
 });
