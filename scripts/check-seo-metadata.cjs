@@ -8,10 +8,10 @@
  * - ERROR: Has deprecated `keywords` field (remove it)
  * - ERROR: Duplicate `"og:title"` across pages
  * - ERROR: Duplicate `description` across pages
+ * - ERROR: og:title missing "AdCP" prefix
  * - WARN:  Description exceeds 160 characters
  * - WARN:  Description under 50 characters
  * - WARN:  og:title exceeds 60 characters
- * - WARN:  og:title missing "AdCP" prefix
  * - WARN:  Page has walkthrough/concept images but no `og:image`
  *
  * Exit codes:
@@ -118,7 +118,7 @@ for (const file of files) {
       warnings.push(`${relPath}: og:title is ${fm['og:title'].length} chars (max ${MAX_OG_TITLE_LENGTH})`);
     }
     if (!fm['og:title'].startsWith('AdCP')) {
-      warnings.push(`${relPath}: og:title should start with "AdCP" (got "${fm['og:title']}")`);
+      errors.push(`${relPath}: og:title must start with "AdCP" (got "${fm['og:title']}")`);
     }
     // Track for duplicate detection
     const titleKey = fm['og:title'].toLowerCase();
