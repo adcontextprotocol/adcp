@@ -13,11 +13,11 @@ import { requireAuth, requireAdmin, requireManage } from "../middleware/auth.js"
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
 import { getMemberCapabilities } from "../db/outbound-db.js";
-import { getOutboundPlanner } from "../addie/services/outbound-planner.js";
-import * as outboundDb from "../db/outbound-db.js";
 import { canContactUser } from "../addie/services/proactive-outreach.js";
-import { InsightsDatabase } from "../db/insights-db.js";
-import type { PlannerContext, MemberCapabilities } from "../addie/types.js";
+import { computeEngagementOpportunities } from "../addie/services/engagement-planner.js";
+import type { MemberCapabilities } from "../addie/types.js";
+import * as relationshipDb from "../db/relationship-db.js";
+import { loadRelationshipContext } from "../addie/services/relationship-context.js";
 
 // Import route modules
 import { setupProspectRoutes } from "./admin/prospects.js";
@@ -217,26 +217,6 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
             extendedContext.addie_goal = goalResult.rows[0];
           }
 
-          // Get member insights
-          const insightsQuery = workosUserId
-            ? `SELECT mit.name as type_key, mit.name as type_name, mi.value
-               FROM member_insights mi
-               LEFT JOIN member_insight_types mit ON mit.id = mi.insight_type_id
-               WHERE mi.workos_user_id = $1 AND mi.is_current = TRUE
-               ORDER BY mi.confidence DESC, mi.created_at DESC
-               LIMIT 10`
-            : `SELECT mit.name as type_key, mit.name as type_name, mi.value
-               FROM member_insights mi
-               LEFT JOIN member_insight_types mit ON mit.id = mi.insight_type_id
-               WHERE mi.slack_user_id = $1 AND mi.is_current = TRUE
-               ORDER BY mi.confidence DESC, mi.created_at DESC
-               LIMIT 10`;
-
-          const insightsResult = await pool.query(insightsQuery, [workosUserId || slackUserId]);
-          if (insightsResult.rows.length > 0) {
-            extendedContext.insights = insightsResult.rows;
-          }
-
           // Get outreach info (if Slack user)
           if (slackUserId) {
             const outreachQuery = `
@@ -312,81 +292,34 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               const capabilities = await getMemberCapabilities(slackUserId, workosUserId);
               (extendedContext as typeof extendedContext & { capabilities?: MemberCapabilities }).capabilities = capabilities;
 
-              // Get planner recommendation
-              const planner = getOutboundPlanner();
-              const insightsDb = new InsightsDatabase();
-              const [plannerInsights, history, contactEligibility] = await Promise.all([
-                insightsDb.getInsightsForUser(slackUserId),
-                outboundDb.getUserGoalHistory(slackUserId),
-                canContactUser(slackUserId),
-              ]);
+              // Get engagement opportunities from the relationship model
+              const contactEligibility = await canContactUser(slackUserId);
+              const relationship = await relationshipDb.getRelationshipBySlackId(slackUserId);
 
-              // Check if this is a personal workspace (auto-generated "User's Workspace" name)
-              const orgName = context.organization?.name ?? '';
-              const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace") ||
-                                          orgName.toLowerCase().endsWith("'s workspace");
+              if (relationship) {
+                const relCtx = await loadRelationshipContext(relationship.id, { includeCommunity: true });
+                const opportunities = computeEngagementOpportunities({
+                  relationship,
+                  capabilities: relCtx.profile.capabilities,
+                  company: relCtx.profile.company,
+                  recentMessages: relCtx.recentMessages,
+                  certification: relCtx.certification,
+                });
 
-              const plannerCtx: PlannerContext = {
-                user: {
-                  slack_user_id: slackUserId,
-                  workos_user_id: workosUserId,
-                  display_name: context.slack_user?.display_name ?? undefined,
-                  is_mapped: !!workosUserId,
-                  is_member: context.is_member ?? false,
-                  engagement_score: capabilities.slack_message_count_30d > 10 ? 75 :
-                                    capabilities.slack_message_count_30d > 5 ? 50 :
-                                    capabilities.slack_message_count_30d > 0 ? 25 : 0,
-                  insights: plannerInsights.map(i => ({
-                    type: i.insight_type_name ?? 'unknown',
-                    value: i.value,
-                    confidence: i.confidence,
-                  })),
-                },
-                company: context.organization ? {
-                  name: isPersonalWorkspace ? 'your account' : context.organization.name,
-                  type: 'unknown',
-                  is_personal_workspace: isPersonalWorkspace,
-                } : undefined,
-                capabilities,
-                history,
-                contact_eligibility: {
-                  can_contact: contactEligibility.canContact,
-                  reason: contactEligibility.reason ?? 'Eligible',
-                },
-                available_channels: ['slack'],
-              };
-
-              const planned = await planner.planNextAction(plannerCtx);
-              if (planned) {
-                const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
-                const messagePreview = planner.buildMessage(planned.goal, plannerCtx, linkUrl);
-                (extendedContext as typeof extendedContext & { planner?: unknown }).planner = {
-                  recommended_action: {
-                    goal_id: planned.goal.id,
-                    goal_name: planned.goal.name,
-                    category: planned.goal.category,
-                    reason: planned.reason,
-                    priority_score: planned.priority_score,
-                    decision_method: planned.decision_method,
-                  },
-                  message_preview: messagePreview,
-                  alternative_goals: planned.alternative_goals.map(g => ({
-                    id: g.id,
-                    name: g.name,
-                    category: g.category,
+                (extendedContext as unknown as Record<string, unknown>).engagement = {
+                  opportunities: opportunities.map(o => ({
+                    id: o.id,
+                    description: o.description,
+                    dimension: o.dimension,
+                    relevance: o.relevance,
                   })),
                   contact_eligibility: {
                     can_contact: contactEligibility.canContact,
                     reason: contactEligibility.reason,
+                    channel: contactEligibility.channel,
                   },
-                };
-              } else {
-                (extendedContext as typeof extendedContext & { planner?: unknown }).planner = {
-                  recommended_action: null,
-                  contact_eligibility: {
-                    can_contact: contactEligibility.canContact,
-                    reason: contactEligibility.reason,
-                  },
+                  relationship_stage: relationship.stage,
+                  unreplied_count: relationship.unreplied_outreach_count,
                 };
               }
             } catch (plannerError) {

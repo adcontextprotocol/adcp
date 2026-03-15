@@ -100,7 +100,6 @@ function buildContext(persona: SimulatedPersona, scenario: Scenario): { ctx: Rel
   const engagementOpportunities = computeEngagementOpportunities({
     relationship: base,
     capabilities: null,
-    insights: [],
     company: persona.company ? {
       name: persona.company.name,
       type: persona.company.type,
@@ -114,7 +113,6 @@ function buildContext(persona: SimulatedPersona, scenario: Scenario): { ctx: Rel
     relationship: base,
     recentMessages,
     profile: {
-      insights: [],
       capabilities: null,
       company: persona.company ? {
         name: persona.company.name,

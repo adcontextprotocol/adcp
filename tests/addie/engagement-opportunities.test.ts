@@ -13,7 +13,9 @@ import {
   OPPORTUNITY_CATALOG,
   STAGE_COOLDOWNS,
   MAX_UNREPLIED_BEFORE_PULSE,
+  MAX_TOTAL_UNREPLIED,
   MONTHLY_PULSE_DAYS,
+  DISENGAGING_PULSE_DAYS,
 } from '../../server/src/addie/services/engagement-planner.js';
 import type {
   EngagementContext,
@@ -36,7 +38,7 @@ function makeRelationship(overrides: Partial<PersonRelationship> = {}): PersonRe
     workos_user_id: null,
     prospect_org_id: 'org-1',
     stage: 'prospect' as RelationshipStage,
-    stage_changed_at: new Date(),
+    stage_changed_at: new Date(Date.now() - 2 * 86400000), // 2 days ago (past welcome grace period)
     sentiment_trend: 'neutral' as const,
     interaction_count: 0,
     unreplied_outreach_count: 0,
@@ -78,7 +80,6 @@ function makeContext(overrides: Partial<EngagementContext> = {}): EngagementCont
   return {
     relationship: makeRelationship(),
     capabilities: null,
-    insights: [],
     company: null,
     recentMessages: [],
     certification: null,
@@ -151,7 +152,6 @@ describe('computeEngagementOpportunities', () => {
           is_committee_leader: false,
           slack_message_count_30d: 20,
         }),
-        insights: [{ type: 'role', value: 'Engineer', confidence: 'high' }],
       });
       const result = computeEngagementOpportunities(ctx);
       const dims = new Set(result.map(o => o.dimension));
@@ -163,19 +163,41 @@ describe('computeEngagementOpportunities', () => {
     it('empty insights push discovery to the top for prospects', () => {
       const ctx = makeContext({
         relationship: makeRelationship({ stage: 'prospect' }),
-        insights: [],
       });
       const result = computeEngagementOpportunities(ctx);
-      // Discovery should dominate for a prospect with no insights
+      // Discovery should appear for a prospect with no insights (capped at 1 per top-5)
       const discoveryCount = result.filter(o => o.dimension === 'discovery').length;
-      expect(discoveryCount).toBeGreaterThanOrEqual(2);
+      expect(discoveryCount).toBe(1);
     });
 
-    it('full insights exclude discovery items', () => {
-      const allInsightTypes = ['role', 'building', 'interest', 'aao_goals', 'challenges', 'use_case', 'timeline'];
+  });
+
+  describe('discovery dampening', () => {
+    it('excludes early discovery items when person has 3+ messages', () => {
       const ctx = makeContext({
         relationship: makeRelationship({ stage: 'exploring' }),
-        insights: allInsightTypes.map(t => ({ type: t, value: 'known', confidence: 'high' })),
+        recentMessages: [
+          { role: 'user' as const, content: 'I work on programmatic', channel: 'slack', created_at: new Date() },
+          { role: 'user' as const, content: 'We use DV360', channel: 'slack', created_at: new Date() },
+          { role: 'user' as const, content: 'Interested in measurement', channel: 'slack', created_at: new Date() },
+        ],
+      });
+      const result = computeEngagementOpportunities(ctx);
+      // Early discovery items (discover_role, discover_building, discover_interest) should be excluded
+      const earlyDiscovery = result.filter(o => ['discover_role', 'discover_building', 'discover_interest'].includes(o.id));
+      expect(earlyDiscovery.length).toBe(0);
+    });
+
+    it('excludes deeper discovery items when person has 5+ messages', () => {
+      const ctx = makeContext({
+        relationship: makeRelationship({ stage: 'exploring' }),
+        recentMessages: [
+          { role: 'user' as const, content: 'msg 1', channel: 'slack', created_at: new Date() },
+          { role: 'user' as const, content: 'msg 2', channel: 'slack', created_at: new Date() },
+          { role: 'user' as const, content: 'msg 3', channel: 'slack', created_at: new Date() },
+          { role: 'user' as const, content: 'msg 4', channel: 'slack', created_at: new Date() },
+          { role: 'user' as const, content: 'msg 5', channel: 'slack', created_at: new Date() },
+        ],
       });
       const result = computeEngagementOpportunities(ctx);
       const discoveryItems = result.filter(o => o.dimension === 'discovery');
@@ -188,7 +210,6 @@ describe('computeEngagementOpportunities', () => {
       const baseCtx = {
         relationship: makeRelationship({ stage: 'exploring', slack_user_id: 'U1' }),
         capabilities: makeCapabilities({ working_group_count: 0, events_registered: 0 }),
-        insights: [{ type: 'role', value: 'Media Planner', confidence: 'high' }],
         recentMessages: [],
         certification: null,
       } as const;
@@ -215,7 +236,6 @@ describe('computeEngagementOpportunities', () => {
       const baseCtx = {
         relationship: makeRelationship({ stage: 'prospect' }),
         capabilities: null,
-        insights: [],
         recentMessages: [],
         certification: null,
       } as const;
@@ -297,11 +317,6 @@ describe('computeEngagementOpportunities', () => {
           account_linked: true,
           email_prefs_configured: true,
         }),
-        insights: [
-          { type: 'role', value: 'PM', confidence: 'high' },
-          { type: 'building', value: 'SDK', confidence: 'high' },
-          { type: 'interest', value: 'OpenRTB', confidence: 'high' },
-        ],
       });
       const narrowResult = computeEngagementOpportunities(ctxNarrow);
       expect(ids(narrowResult)).toContain('complete_profile');
@@ -318,13 +333,6 @@ describe('computeEngagementOpportunities', () => {
         }),
         capabilities: makeCapabilities({ events_registered: 1 }), // remove register_event competition
         certification: null,
-        insights: [
-          { type: 'role', value: 'PM', confidence: 'high' },
-          { type: 'building', value: 'SDK', confidence: 'high' },
-          { type: 'interest', value: 'OpenRTB', confidence: 'high' },
-          { type: 'aao_goals', value: 'Learn', confidence: 'high' },
-          { type: 'challenges', value: 'Integration', confidence: 'high' },
-        ],
       });
       const result = computeEngagementOpportunities(ctx);
       expect(ids(result)).toContain('start_certification');
@@ -340,11 +348,6 @@ describe('computeEngagementOpportunities', () => {
       const ctx = makeContext({
         relationship: makeRelationship({ stage: 'welcomed' }),
         certification: cert,
-        insights: [
-          { type: 'role', value: 'PM', confidence: 'high' },
-          { type: 'building', value: 'SDK', confidence: 'high' },
-          { type: 'interest', value: 'OpenRTB', confidence: 'high' },
-        ],
       });
       const result = computeEngagementOpportunities(ctx);
       expect(ids(result)).toContain('continue_certification');
@@ -387,22 +390,12 @@ describe('computeEngagementOpportunities', () => {
           has_team_members: true,
           slack_message_count_30d: 15,
         }),
-        insights: [
-          { type: 'role', value: 'Engineer', confidence: 'high' },
-          { type: 'building', value: 'SDK', confidence: 'high' },
-          { type: 'interest', value: 'OpenRTB', confidence: 'high' },
-          { type: 'aao_goals', value: 'Contribute', confidence: 'high' },
-          { type: 'challenges', value: 'Integration', confidence: 'high' },
-          { type: 'use_case', value: 'Bidding', confidence: 'high' },
-          { type: 'timeline', value: 'Q2', confidence: 'high' },
-        ],
       });
       const result = computeEngagementOpportunities(ctx);
       expect(result.length).toBeGreaterThan(0);
       const dims = new Set(result.map(o => o.dimension));
-      // Should not have hygiene or discovery since everything is done
+      // Should not have hygiene since everything is set up
       expect(dims.has('hygiene')).toBe(false);
-      expect(dims.has('discovery')).toBe(false);
       // Should have community or recognition
       expect(dims.has('community') || dims.has('recognition')).toBe(true);
     });
@@ -417,11 +410,6 @@ describe('computeEngagementOpportunities', () => {
           email: null,
           prospect_org_id: null,
         }),
-        insights: [
-          { type: 'role', value: 'PM', confidence: 'high' },
-          { type: 'building', value: 'Platform', confidence: 'high' },
-          { type: 'interest', value: 'Standards', confidence: 'high' },
-        ],
       });
       const result = computeEngagementOpportunities(ctx);
       // May return some discovery items but no hygiene items
@@ -449,7 +437,6 @@ describe('computeEngagementOpportunities', () => {
       // Prospect with no insights — lots of discovery items eligible
       const ctx = makeContext({
         relationship: makeRelationship({ stage: 'prospect' }),
-        insights: [],
       });
       const result = computeEngagementOpportunities(ctx);
       const dimensionCounts: Record<string, number> = {};
@@ -504,11 +491,22 @@ describe('shouldContact', () => {
     expect(result.reason).toContain('negative sentiment');
   });
 
-  it('contacts new prospects with no prior messages', () => {
+  it('contacts new prospects with no prior messages (past grace period)', () => {
     const r = makeRelationship({ stage: 'prospect', last_addie_message_at: null });
     const result = shouldContact(r);
     expect(result.shouldContact).toBe(true);
     expect(result.reason).toContain('welcome');
+  });
+
+  it('delays welcome for brand-new prospects within 24h grace period', () => {
+    const r = makeRelationship({
+      stage: 'prospect',
+      last_addie_message_at: null,
+      stage_changed_at: new Date(), // just joined
+    });
+    const result = shouldContact(r);
+    expect(result.shouldContact).toBe(false);
+    expect(result.reason).toContain('grace period');
   });
 
   it('blocks when no reachable channel', () => {
@@ -540,53 +538,52 @@ describe('shouldContact', () => {
     expect(result.channel).toBe('email');
   });
 
-  describe('channel rotation', () => {
-    it('switches to email after 2+ unreplied on Slack', () => {
+  describe('channel stickiness', () => {
+    it('stays on Slack with 1 unreplied', () => {
       const r = makeRelationship({
         slack_user_id: 'U1',
         email: 'test@test.com',
-        unreplied_outreach_count: 2,
+        unreplied_outreach_count: 1,
         last_interaction_channel: 'slack',
-        last_addie_message_at: daysAgo(8),
+        last_addie_message_at: daysAgo(15),
+      });
+      const result = shouldContact(r);
+      expect(result.shouldContact).toBe(true);
+      expect(result.channel).toBe('slack');
+    });
+
+    it('stays on email with 1 unreplied', () => {
+      const r = makeRelationship({
+        slack_user_id: null,
+        email: 'test@test.com',
+        unreplied_outreach_count: 1,
+        last_interaction_channel: 'email',
+        last_addie_message_at: daysAgo(15),
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(true);
       expect(result.channel).toBe('email');
     });
 
-    it('switches to Slack after 2+ unreplied on email', () => {
+    it('respects contact_preference over default channel', () => {
+      const r = makeRelationship({
+        slack_user_id: 'U1',
+        email: 'test@test.com',
+        contact_preference: 'email',
+        unreplied_outreach_count: 0,
+        last_addie_message_at: daysAgo(15),
+      });
+      const result = shouldContact(r);
+      expect(result.channel).toBe('email');
+    });
+
+    it('uses Slack when both channels available and no preference', () => {
       const r = makeRelationship({
         slack_user_id: 'U1',
         email: 'test@test.com',
         unreplied_outreach_count: 2,
-        last_interaction_channel: 'email',
-        last_addie_message_at: daysAgo(8),
-      });
-      const result = shouldContact(r);
-      expect(result.shouldContact).toBe(true);
-      expect(result.channel).toBe('slack');
-    });
-
-    it('does not rotate if contact_preference is set', () => {
-      const r = makeRelationship({
-        slack_user_id: 'U1',
-        email: 'test@test.com',
-        contact_preference: 'slack',
-        unreplied_outreach_count: 2,
         last_interaction_channel: 'slack',
-        last_addie_message_at: daysAgo(8),
-      });
-      const result = shouldContact(r);
-      expect(result.channel).toBe('slack');
-    });
-
-    it('does not rotate if only one channel available', () => {
-      const r = makeRelationship({
-        slack_user_id: 'U1',
-        email: null,
-        unreplied_outreach_count: 2,
-        last_interaction_channel: 'slack',
-        last_addie_message_at: daysAgo(8),
+        last_addie_message_at: daysAgo(15),
       });
       const result = shouldContact(r);
       expect(result.channel).toBe('slack');
@@ -597,7 +594,7 @@ describe('shouldContact', () => {
     it('blocks when within stage cooldown', () => {
       const r = makeRelationship({
         stage: 'exploring',
-        last_addie_message_at: daysAgo(3), // exploring cooldown is 7 days
+        last_addie_message_at: daysAgo(3), // exploring cooldown is 14 days
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(false);
@@ -607,18 +604,18 @@ describe('shouldContact', () => {
     it('allows contact after cooldown expires', () => {
       const r = makeRelationship({
         stage: 'exploring',
-        last_addie_message_at: daysAgo(8), // > 7 day cooldown
+        last_addie_message_at: daysAgo(15), // > 14 day cooldown
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(true);
     });
 
-    it('escalates cooldown with 2+ unreplied', () => {
-      // welcomed cooldown is 5 days, but with 2 unreplied escalates to exploring (7 days)
+    it('escalates cooldown with 1+ unreplied', () => {
+      // exploring cooldown is 14 days, but with 1 unreplied escalates to participating (30 days)
       const r = makeRelationship({
-        stage: 'welcomed',
-        unreplied_outreach_count: 2,
-        last_addie_message_at: daysAgo(6), // past 5d but within 7d
+        stage: 'exploring',
+        unreplied_outreach_count: 1,
+        last_addie_message_at: daysAgo(20), // past 14d but within 30d
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(false);
@@ -627,11 +624,11 @@ describe('shouldContact', () => {
   });
 
   describe('monthly pulse', () => {
-    it('blocks 3+ unreplied within 30 days', () => {
+    it('blocks 2+ unreplied within 30 days', () => {
       const r = makeRelationship({
         stage: 'welcomed',
-        unreplied_outreach_count: 3,
-        last_addie_message_at: daysAgo(15),
+        unreplied_outreach_count: 2,
+        last_addie_message_at: daysAgo(10),
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(false);
@@ -641,7 +638,7 @@ describe('shouldContact', () => {
     it('allows monthly pulse after 30+ days', () => {
       const r = makeRelationship({
         stage: 'welcomed',
-        unreplied_outreach_count: 3,
+        unreplied_outreach_count: 2,
         last_addie_message_at: daysAgo(31),
       });
       const result = shouldContact(r);
@@ -654,6 +651,52 @@ describe('shouldContact', () => {
         stage: 'welcomed',
         unreplied_outreach_count: 5,
         last_addie_message_at: daysAgo(35),
+      });
+      const result = shouldContact(r);
+      expect(result.shouldContact).toBe(true);
+      expect(result.reason).toContain('monthly pulse');
+    });
+  });
+
+  describe('circuit breaker', () => {
+    it('blocks after 6 total unreplied messages', () => {
+      const r = makeRelationship({
+        unreplied_outreach_count: 6,
+        last_addie_message_at: daysAgo(60),
+      });
+      const result = shouldContact(r);
+      expect(result.shouldContact).toBe(false);
+      expect(result.reason).toContain('circuit breaker');
+    });
+
+    it('allows monthly pulse at 5 unreplied', () => {
+      const r = makeRelationship({
+        unreplied_outreach_count: 5,
+        last_addie_message_at: daysAgo(35),
+      });
+      const result = shouldContact(r);
+      expect(result.shouldContact).toBe(true);
+      expect(result.reason).toContain('monthly pulse');
+    });
+  });
+
+  describe('disengaging pulse doubling', () => {
+    it('blocks disengaging person within 60 days', () => {
+      const r = makeRelationship({
+        unreplied_outreach_count: 4,
+        sentiment_trend: 'disengaging' as any,
+        last_addie_message_at: daysAgo(40), // past 30d but within 60d
+      });
+      const result = shouldContact(r);
+      expect(result.shouldContact).toBe(false);
+      expect(result.reason).toContain('monthly pulse');
+    });
+
+    it('allows disengaging person after 60 days', () => {
+      const r = makeRelationship({
+        unreplied_outreach_count: 4,
+        sentiment_trend: 'disengaging' as any,
+        last_addie_message_at: daysAgo(65),
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(true);
@@ -676,7 +719,7 @@ describe('shouldContact', () => {
       const r = makeRelationship({
         stage: 'welcomed',
         next_contact_after: daysAgo(1),
-        last_addie_message_at: daysAgo(6), // past welcomed cooldown of 5 days
+        last_addie_message_at: daysAgo(15), // past welcomed cooldown of 14 days
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(true);
@@ -704,7 +747,6 @@ describe('pulse scoring', () => {
         slack_user_id: 'U1',
         workos_user_id: null, // link_accounts should be eligible normally
       }),
-      insights: [],
     }), 'monthly pulse — low-key update');
 
     for (const o of opps) {

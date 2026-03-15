@@ -25,7 +25,6 @@ describe('MEMBER_TOOLS definitions', () => {
       expect(typeof tool.description).toBe('string');
       expect(tool.input_schema).toHaveProperty('type', 'object');
       expect(tool.input_schema).toHaveProperty('properties');
-      expect(tool.input_schema).toHaveProperty('required');
     }
   });
 

@@ -28,6 +28,9 @@ export type PersonEventType =
   | 'sentiment_updated'
   | 'cooldown_set'
   | 'email_delivered'
+  | 'email_opened'
+  | 'email_clicked'
+  | 'email_bounced'
   | 'slack_dm_delivered'
   | 'preference_changed';
 

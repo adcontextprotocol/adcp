@@ -88,7 +88,6 @@ function main() {
           stage,
         }),
         capabilities: null,
-        insights: [],
         company: persona.company ? { name: persona.company.name, type: persona.company.type, is_member: persona.company.is_member } : null,
         recentMessages: [],
         certification: null,
@@ -123,11 +122,6 @@ function main() {
         community_profile_completeness: 75, has_team_members: false, is_org_admin: true,
         is_committee_leader: false, slack_message_count_30d: 8,
       },
-      insights: [
-        { type: 'role', value: 'Head of Programmatic', confidence: 'high' },
-        { type: 'building', value: 'Custom bidder integration', confidence: 'high' },
-        { type: 'interest', value: 'OpenRTB, supply path optimization', confidence: 'high' },
-      ],
       company: persona.company ? { name: persona.company.name, type: persona.company.type, is_member: persona.company.is_member } : null,
       recentMessages: [],
       certification: { modulesCompleted: 3, totalModules: 10, credentialsEarned: ['adcp-basics'], hasInProgressTrack: true },
@@ -149,7 +143,6 @@ function main() {
   const baseCtx = {
     relationship: makeRel({ stage: 'exploring' as RelationshipStage, interaction_count: 3 }),
     capabilities: null,
-    insights: [] as Array<{ type: string; value: string; confidence: string }>,
     company: { name: 'Test Corp', type: 'agency', is_member: false },
     certification: null,
   };
@@ -291,7 +284,6 @@ function main() {
       last_addie_message_at: new Date(Date.now() - 35 * 86400000),
     }),
     capabilities: null,
-    insights: [{ type: 'role', value: 'Media Director', confidence: 'high' }],
     company: { name: 'Silent Agency', type: 'agency', is_member: false },
     recentMessages: [] as Array<{ role: 'user' | 'assistant'; content: string; channel: string; created_at: Date }>,
     certification: null,

@@ -38,7 +38,6 @@ interface CertificationSummary {
 interface EngagementContext {
   relationship: PersonRelationship;
   capabilities: MemberCapabilities | null;
-  insights: Array<{ type: string; value: string; confidence: string }>;
   company: {
     name: string;
     type: string;
@@ -63,7 +62,6 @@ interface RelationshipContext {
     created_at: Date;
   }>;
   profile: {
-    insights: Array<{ type: string; value: string; confidence: string }>;
     capabilities: MemberCapabilities | null;
     company: {
       name: string;
@@ -73,6 +71,8 @@ interface RelationshipContext {
     } | null;
   };
   engagementOpportunities: EngagementOpportunity[];
+  certification?: CertificationSummary | null;
+  community?: { upcomingEvents: number; recentGroupActivity: string[] } | null;
 }
 
 interface EngagementDecision {
@@ -104,21 +104,27 @@ export type {
 
 /** Minimum days between proactive contacts, by stage. */
 export const STAGE_COOLDOWNS: Record<RelationshipStage, number> = {
-  prospect: 5,
-  welcomed: 5,
-  exploring: 7,
-  participating: 14,
+  prospect: 7,
+  welcomed: 14,
+  exploring: 14,
+  participating: 30,
   contributing: 30,
   leading: 30,
 };
 
 /** After this many unreplied messages, switch to monthly pulse cadence. */
-export const MAX_UNREPLIED_BEFORE_PULSE = 3;
+export const MAX_UNREPLIED_BEFORE_PULSE = 2;
 
 /** Minimum days between monthly pulse messages. */
 export const MONTHLY_PULSE_DAYS = 30;
 
-const COMPOSE_SYSTEM_PROMPT = `You are Addie, community manager at AgenticAdvertising.org. You're knowledgeable about ad tech but never talk down. You're genuinely curious about what people are building. You keep things brief because you respect people's time.
+/** After this many total unreplied messages, stop proactive outreach entirely. */
+export const MAX_TOTAL_UNREPLIED = 6;
+
+/** Disengaging sentiment extends pulse interval to this many days. */
+export const DISENGAGING_PULSE_DAYS = 60;
+
+export const COMPOSE_SYSTEM_PROMPT = `You are Addie, community manager at AgenticAdvertising.org. You're knowledgeable about ad tech but never talk down. You're genuinely curious about what people are building. You keep things brief because you respect people's time.
 
 You are composing a proactive message to continue your conversation with this person. This is NOT a cold outreach — you know this person and have context about your relationship.
 
@@ -131,12 +137,18 @@ You are composing a proactive message to continue your conversation with this pe
 
 ## Guidelines
 - Write as if you're picking up a conversation, not starting one.
-- Reference specifics: their company, what they've said before, what they've done.
+- Reference specifics: what they've said before, what they've done, their interests.
+- Never open with the person's company name — it feels like a mail merge. Open with something personal, topical, or mid-thought.
 - One soft call-to-action per message, max. A question, a suggestion, or a pointer — pick one thread to pull, don't stack asks. Soft CTA examples: a question ("What are you building these days?"), a suggestion ("The measurement working group might be up your alley"), a pointer ("We wrote up how agencies are using this — happy to share"). Never a direct ask with a link or a form.
 - Keep it short. 1-3 sentences for Slack — a real DM, not a paragraph. 2-3 short paragraphs for email.
 - No marketing language. No exclamation marks in subject lines.
 - Sign as "Addie" with no last name.
 - Vary your suggestions. Pick the most relevant engagement opportunity for THIS person right now.
+
+## Tone by unreplied count
+- 0 unreplied: Normal, conversational.
+- 1-2 unreplied: Lighter touch. Lead with pure value, no asks. They may be busy.
+- 3+ unreplied (monthly pulse): Brief, no pressure. Share something genuinely useful and leave it. Do not reference their silence or prior messages.
 
 ## Channel voice
 - Slack: Casual, conversational. Like a DM from a colleague. Open mid-thought, like you're already in a conversation. Short sentences. Emoji sparingly if it fits.
@@ -208,18 +220,25 @@ export function shouldContact(relationship: PersonRelationship): EngagementDecis
     return no('cooldown — next contact after ' + relationship.next_contact_after.toISOString());
   }
 
+  // Circuit breaker: after too many unreplied messages, stop entirely.
+  if (relationship.unreplied_outreach_count >= MAX_TOTAL_UNREPLIED) {
+    return no(`${relationship.unreplied_outreach_count} total unreplied — circuit breaker, re-engage only if they reach out`);
+  }
+
   // Annoyance prevention: after 3+ unreplied, switch to monthly pulse.
-  // After 2 unreplied: back off to next stage's cooldown.
-  // After 3+ unreplied: monthly pulse only (30-day minimum spacing).
+  // Disengaging sentiment doubles the pulse interval to 60 days.
   if (relationship.unreplied_outreach_count >= MAX_UNREPLIED_BEFORE_PULSE) {
+    const pulseInterval = relationship.sentiment_trend === 'disengaging'
+      ? DISENGAGING_PULSE_DAYS
+      : MONTHLY_PULSE_DAYS;
     if (relationship.last_addie_message_at) {
       const daysSinceLast =
         (Date.now() - relationship.last_addie_message_at.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSinceLast < MONTHLY_PULSE_DAYS) {
-        return no(`${relationship.unreplied_outreach_count} unreplied — monthly pulse in ${Math.ceil(MONTHLY_PULSE_DAYS - daysSinceLast)}d`);
+      if (daysSinceLast < pulseInterval) {
+        return no(`${relationship.unreplied_outreach_count} unreplied — monthly pulse in ${Math.ceil(pulseInterval - daysSinceLast)}d`);
       }
     }
-    // 30+ days since last message — allow monthly pulse
+    // Past pulse interval — allow monthly pulse
     return { shouldContact: true, reason: 'monthly pulse — low-key update', channel: relationship.contact_preference ?? (relationship.slack_user_id ? 'slack' : 'email') };
   }
 
@@ -229,8 +248,8 @@ export function shouldContact(relationship: PersonRelationship): EngagementDecis
     const daysSinceLast =
       (Date.now() - relationship.last_addie_message_at.getTime()) / (1000 * 60 * 60 * 24);
     let cooldown = STAGE_COOLDOWNS[relationship.stage];
-    // Escalate cooldown if we have unreplied messages
-    if (relationship.unreplied_outreach_count >= 2) {
+    // Escalate cooldown after 1+ unreplied — use the next stage's (longer) cooldown
+    if (relationship.unreplied_outreach_count >= 1) {
       const currentIdx = STAGE_ORDER.indexOf(relationship.stage);
       const nextStage = STAGE_ORDER[Math.min(currentIdx + 1, STAGE_ORDER.length - 1)];
       cooldown = Math.max(cooldown, STAGE_COOLDOWNS[nextStage]);
@@ -242,7 +261,7 @@ export function shouldContact(relationship: PersonRelationship): EngagementDecis
     }
   }
 
-  // Channel selection — with rotation after 2+ unreplied on the same channel
+  // Channel selection — stick to the channel they signed up on
   let channel: 'slack' | 'email';
 
   if (relationship.contact_preference) {
@@ -255,18 +274,15 @@ export function shouldContact(relationship: PersonRelationship): EngagementDecis
     return no('no reachable channel — no Slack ID or email');
   }
 
-  // Channel rotation: if 2+ unreplied on the current channel and the other is available, switch
-  if (relationship.unreplied_outreach_count >= 2 && !relationship.contact_preference) {
-    const lastChannel = relationship.last_interaction_channel;
-    if (lastChannel === 'slack' && relationship.email) {
-      channel = 'email';
-    } else if (lastChannel === 'email' && relationship.slack_user_id) {
-      channel = 'slack';
-    }
-  }
-
-  // Prospects with no welcome yet — always contact
+  // Prospects with no welcome yet — contact after a grace period so it feels natural
   if (relationship.stage === 'prospect' && relationship.last_addie_message_at === null) {
+    const WELCOME_GRACE_HOURS = 24;
+    if (relationship.stage_changed_at) {
+      const hoursSinceJoined = (Date.now() - relationship.stage_changed_at.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceJoined < WELCOME_GRACE_HOURS) {
+        return no(`new prospect — waiting ${Math.ceil(WELCOME_GRACE_HOURS - hoursSinceJoined)}h grace period before welcome`);
+      }
+    }
     return { shouldContact: true, reason: 'new prospect — welcome message', channel };
   }
 
@@ -462,7 +478,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'discovery',
     baseScore: 55,
     minStage: 'prospect',
-    condition: (ctx) => !ctx.insights.some(i => i.type === 'role'),
+    condition: (ctx) => ctx.recentMessages.filter(m => m.role === 'user').length < 3,
   },
   {
     id: 'discover_building',
@@ -471,7 +487,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'discovery',
     baseScore: 55,
     minStage: 'prospect',
-    condition: (ctx) => !ctx.insights.some(i => i.type === 'building'),
+    condition: (ctx) => ctx.recentMessages.filter(m => m.role === 'user').length < 3,
   },
   {
     id: 'discover_interest',
@@ -480,7 +496,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'discovery',
     baseScore: 50,
     minStage: 'prospect',
-    condition: (ctx) => !ctx.insights.some(i => i.type === 'interest'),
+    condition: (ctx) => ctx.recentMessages.filter(m => m.role === 'user').length < 3,
   },
   {
     id: 'discover_goals',
@@ -489,7 +505,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'discovery',
     baseScore: 45,
     minStage: 'welcomed',
-    condition: (ctx) => !ctx.insights.some(i => i.type === 'aao_goals'),
+    condition: (ctx) => ctx.recentMessages.filter(m => m.role === 'user').length < 5,
   },
   {
     id: 'discover_challenges',
@@ -498,7 +514,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'discovery',
     baseScore: 40,
     minStage: 'welcomed',
-    condition: (ctx) => !ctx.insights.some(i => i.type === 'challenges'),
+    condition: (ctx) => ctx.recentMessages.filter(m => m.role === 'user').length < 5,
   },
   {
     id: 'discover_use_case',
@@ -507,7 +523,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'discovery',
     baseScore: 38,
     minStage: 'exploring',
-    condition: (ctx) => !ctx.insights.some(i => i.type === 'use_case'),
+    condition: (ctx) => ctx.recentMessages.filter(m => m.role === 'user').length < 5,
   },
   {
     id: 'discover_timeline',
@@ -516,7 +532,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'discovery',
     baseScore: 35,
     minStage: 'exploring',
-    condition: (ctx) => !ctx.insights.some(i => i.type === 'timeline'),
+    condition: (ctx) => ctx.recentMessages.filter(m => m.role === 'user').length < 5,
   },
 
   // -- Engagement --
@@ -586,7 +602,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'community',
     baseScore: 55,
     minStage: 'exploring',
-    condition: (ctx) => ctx.insights.some(i => i.type === 'interest' || i.type === 'role'),
+    condition: (ctx) => (ctx.capabilities?.working_group_count ?? 0) > 0 || (ctx.capabilities?.events_attended ?? 0) > 0,
   },
   {
     id: 'share_expertise',
@@ -595,14 +611,14 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'community',
     baseScore: 50,
     minStage: 'participating',
-    condition: (ctx) => ctx.insights.some(i => i.type === 'building' || i.type === 'interest'),
+    condition: (ctx) => (ctx.capabilities?.slack_message_count_30d ?? 0) > 5,
   },
   {
     id: 'community_update',
     description: 'Share something about the community visible in the conversation context or their activity — don\'t reference specific events or discussions unless they appear in the data provided',
     keywords: ['highlights', 'community update', 'protocol update'],
     dimension: 'community',
-    baseScore: 40,
+    baseScore: 60,
     minStage: 'welcomed',
     condition: () => true, // always applicable as a pulse option
   },
@@ -724,6 +740,11 @@ export function computeEngagementOpportunities(ctx: EngagementContext, contactRe
       score *= 1.5;
     }
 
+    // 6b. Community update boost for participating+ members
+    if (entry.id === 'community_update' && stageIdx >= STAGE_INDEX['participating']) {
+      score *= 1.3;
+    }
+
     // 7. Recency penalty — if last 3 assistant messages contain curated keywords, dampen
     const recentAssistantMsgs = ctx.recentMessages
       .filter(m => m.role === 'assistant')
@@ -750,13 +771,14 @@ export function computeEngagementOpportunities(ctx: EngagementContext, contactRe
   // Sort by relevance descending
   scored.sort((a, b) => b.relevance - a.relevance);
 
-  // Enforce dimension diversity: max 2 per dimension in the top 5
+  // Enforce dimension diversity: max 2 per dimension, max 1 discovery (prevents interrogation feel)
   const result: EngagementOpportunity[] = [];
   const dimensionCounts: Partial<Record<EngagementDimension, number>> = {};
   for (const item of scored) {
     if (result.length >= 5) break;
     const count = dimensionCounts[item.dimension] ?? 0;
-    if (count >= 2) continue;
+    const maxForDimension = item.dimension === 'discovery' ? 1 : 2;
+    if (count >= maxForDimension) continue;
     dimensionCounts[item.dimension] = count + 1;
     result.push(item);
   }
@@ -789,7 +811,7 @@ export function computeNextContactDate(stage: RelationshipStage): Date {
 /** Max characters per message in conversation history to keep prompt concise. */
 const MAX_MESSAGE_CHARS = 500;
 
-function buildComposePrompt(ctx: RelationshipContext, channel: 'slack' | 'email', contactReason?: string): string {
+export function buildComposePrompt(ctx: RelationshipContext, channel: 'slack' | 'email', contactReason?: string): string {
   const r = ctx.relationship;
 
   const firstName = r.display_name?.trim().split(' ')[0] ?? 'there';
@@ -833,19 +855,13 @@ function buildComposePrompt(ctx: RelationshipContext, channel: 'slack' | 'email'
     capsSummary = lines.join('\n  ');
   }
 
-  // Insights
-  const insightsSummary =
-    ctx.profile.insights.length > 0
-      ? ctx.profile.insights.map(i => `${i.type}: ${i.value} (${i.confidence})`).join('\n  ')
-      : 'No insights yet.';
-
   // Engagement opportunities — numbered and ranked, with focus instruction
   let opportunitiesBlock: string;
   if (ctx.engagementOpportunities.length > 0) {
     opportunitiesBlock = ctx.engagementOpportunities
       .map((o, i) => `${i + 1}. [${o.dimension}] ${o.description}`)
       .join('\n');
-    opportunitiesBlock += '\n\nFocus on #1 unless your conversation context suggests another is more natural.';
+    opportunitiesBlock += '\n\nChoose the opportunity that best fits what you know about this person and their recent conversation. These are listed by general relevance but your judgment about the conversation should take priority.';
   } else {
     opportunitiesBlock = 'None — they seem to have everything set up.';
   }
@@ -869,20 +885,57 @@ ${channel === 'email'
 - Name: ${firstName}
 - Company: ${companyLine}
 - Relationship stage: ${r.stage}
-- Sentiment trend: ${r.sentiment_trend}
 - Total interactions: ${r.interaction_count}
+- Unreplied messages: ${r.unreplied_outreach_count}
 - Last Addie message: ${r.last_addie_message_at?.toISOString().split('T')[0] ?? 'never'}
-- Last person message: ${r.last_person_message_at?.toISOString().split('T')[0] ?? 'never'}
+- Last person message: ${r.last_person_message_at?.toISOString().split('T')[0] ?? 'never'}${formatConversationGap(r)}${formatChannelTransition(ctx.recentMessages, channel)}
 
 ## What they've done
   ${capsSummary}
-
-## What we know
-  ${insightsSummary}
-
+${formatCertificationBlock(ctx.certification)}${formatCommunityBlock(ctx.community)}
 ## Recent conversation
 ${conversationBlock}
 </person-data>`;
+}
+
+function formatCertificationBlock(cert?: CertificationSummary | null): string {
+  if (!cert) return '';
+  const lines: string[] = ['\n## Certification'];
+  if (cert.modulesCompleted > 0 || cert.hasInProgressTrack) {
+    lines.push(`  ${cert.modulesCompleted}/${cert.totalModules} modules completed`);
+  }
+  if (cert.credentialsEarned.length > 0) {
+    lines.push(`  Credentials earned: ${cert.credentialsEarned.join(', ')}`);
+  }
+  if (cert.hasInProgressTrack && cert.modulesCompleted < cert.totalModules) {
+    lines.push(`  Currently working through a certification track`);
+  }
+  if (cert.modulesCompleted === 0 && !cert.hasInProgressTrack) {
+    return ''; // No certification activity — don't clutter the prompt
+  }
+  return lines.join('\n') + '\n';
+}
+
+function formatCommunityBlock(community?: { upcomingEvents: number; recentGroupActivity: string[] } | null): string {
+  if (!community || community.upcomingEvents === 0) return '';
+  return `\n## Community\n  ${community.upcomingEvents} upcoming events relevant to them\n`;
+}
+
+function formatConversationGap(r: PersonRelationship): string {
+  if (!r.last_person_message_at) return '';
+  const daysSince = Math.floor((Date.now() - r.last_person_message_at.getTime()) / 86400000);
+  if (daysSince <= 14) return '';
+  return `\n- Conversation gap: ${daysSince} days since they last replied`;
+}
+
+function formatChannelTransition(
+  recentMessages: Array<{ channel: string }>,
+  currentChannel: 'slack' | 'email',
+): string {
+  if (recentMessages.length === 0) return '';
+  const lastChannel = recentMessages[recentMessages.length - 1].channel;
+  if (lastChannel === currentChannel) return '';
+  return `\n- Note: Previous messages were via ${lastChannel}. This is the first ${currentChannel} message.`;
 }
 
 /**
