@@ -35,6 +35,7 @@ Maintain consistency with companies already in use across docs:
 | CommHub | Social platform | Maya's creative walkthrough |
 | Bistro Oranje | Advertiser (restaurant chain, NL) | Carlos's rights licensing walkthrough |
 | Loti Entertainment | Talent agency | Rights licensing walkthrough |
+| Osei Natural | Small business (natural skincare, Nairobi) | Amara's company, homepage panels |
 
 ---
 
@@ -285,6 +286,32 @@ Maintain consistency with companies already in use across docs:
 
 ---
 
+### 10. Amara Osei (secondary)
+
+**Primary domain:** Homepage / outcomes narrative
+**Company:** Osei Natural (natural skincare brand, Nairobi, 8 employees)
+**Title:** Founder
+
+**Who she is:** Amara started Osei Natural three years ago, making natural skincare products in Nairobi. She has a great product and a growing local customer base, but reaching customers beyond her city has been impossible — digital advertising tools are built for companies with marketing teams, not solo founders juggling production, shipping, and sales. She represents the global small business owner that advertising should serve but currently doesn't.
+
+**Personality:** Resourceful, determined, practical. She doesn't care about advertising technology — she cares about reaching people who would love her products. She learned to use social media ads on her own but hit a ceiling. She's exactly the kind of business owner who benefits most when AI agents make quality advertising accessible without requiring expertise.
+
+**Why she matters for the homepage:** Amara is the "why" of the entire organization. The cast is full of people who work in advertising — Amara is the person advertising is supposed to work for. She appears in Panel 1 (the problem: the tools are too complex) and Panel 5 (the outcome: her business is growing, shipping across the continent). She bookends the story.
+
+**Appears in:** Homepage panels 1 and 5. Referenced in the mission framing — "an entrepreneur in Nairobi reaching her first thousand customers."
+
+**Visual description:**
+- Woman, late 20s
+- Kenyan, dark skin, natural hair in a puff
+- Bright, warm expression — determined but not corporate
+- Wears a colorful blouse (not business attire — she's a maker, not an executive)
+- Often shown in a sunlit workspace with product boxes and shipping materials
+- Distinguishing feature: the bright blouse and shipping boxes signal "small business founder" immediately; the sunlit Nairobi workspace grounds her geographically
+
+**Demographic signals:** Kenyan woman
+
+---
+
 ## Cast summary
 
 | # | Name | Company | Type | Role | Primary domain | Visual anchor |
@@ -304,6 +331,7 @@ Maintain consistency with companies already in use across docs:
 | Name | Company | Role | Appears in |
 |------|---------|------|------------|
 | Carlos | Pinnacle Media (Amsterdam) | Programmatic buyer | Rights licensing walkthrough |
+| Amara Osei | Osei Natural (Nairobi) | Small business owner | Homepage panels, outcomes walkthrough |
 
 ---
 
@@ -484,6 +512,7 @@ The cast should be instantly distinguishable in illustrations, even at thumbnail
 | Tomoko | Chin-length black, precise | Light brown | None | Tailored navy jacket | Compact build |
 | Dayo | Short natural TWA | Dark brown | None | Crew tee + messenger bag | Slim, youngest |
 | Addie | N/A (robot) | Teal/emerald | N/A | Org emblem, rounded form | Smaller than humans |
+| Amara | Natural hair puff | Dark brown | None | Bright colorful blouse | Average build |
 
 ### Environment cues
 
@@ -497,6 +526,7 @@ Characters should appear in environments that match their company type:
 | Tomoko | Corporate office, clean and minimal, large brand display wall |
 | Dayo | At Sam's desk (learning), at a cafe with laptop (studying), at events |
 | Addie | Appears in any environment — she's contextual, not location-bound |
+| Amara | Sunlit Nairobi workspace, product boxes, shipping materials — small business energy |
 
 ---
 
