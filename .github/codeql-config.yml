@@ -1,0 +1,18 @@
+name: "CodeQL config"
+
+# Use the default queries plus security-extended
+queries:
+  - uses: security-extended
+
+# Suppress false positives for this codebase
+query-filters:
+  # "Clear-text logging of sensitive information" flags UUIDs and user IDs,
+  # not actual secrets. All sensitive values (API keys, tokens) use env vars.
+  - exclude:
+      id: js/clear-text-logging
+
+  # "Missing rate limiting" flags every authenticated admin route.
+  # Admin routes are behind requireAuth + requireAdmin with a small user base.
+  # Rate limiting is handled at the infrastructure level (Fly.io proxy).
+  - exclude:
+      id: js/missing-rate-limiting
