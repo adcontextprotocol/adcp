@@ -1,0 +1,37 @@
+[
+  {
+    "filename": "images/walkthrough/panel-01-strategist-desk.png",
+    "prompt": "Maya (South Asian woman, late 20s, Punjabi heritage, brown skin, long dark hair in a loose braid draped over one shoulder, wearing a bold patterned teal-and-gold scarf/wrap over a dark top, chunky silver rings on multiple fingers) sits at a large monitor reviewing ad mockups across multiple formats — a CTV spot, a display banner, and a social post are all visible on screen. She's leaning forward with a stylus in hand, engaged and creative. Her desk has a tablet and color swatches nearby. Modern agency office, natural light, plants in the background. Do not include any text, words, or labels in the image.",
+    "alt_text": "Maya reviews ad mockups across multiple formats on her monitor — CTV, display, and social all visible, stylus in hand"
+  },
+  {
+    "filename": "images/walkthrough/panel-02-brief-radiates.png",
+    "prompt": "A creative brief document glows with teal energy at the center of the image. From it, standardized rays radiate outward to six device icons arranged in a circle: a TV screen (CTV), a smartphone (mobile), a laptop (web), a billboard (DOOH), a tablet (social), and headphones (audio). Each ray carries the same brief — one input, many outputs. Clean white background, the brief pulses with creative energy. Do not include any text, words, or labels in the image.",
+    "alt_text": "A creative brief radiates outward to TV, phone, laptop, billboard, tablet, and headphone icons — one brief, many output formats"
+  },
+  {
+    "filename": "images/walkthrough/panel-03-agents-collaborate.png",
+    "prompt": "Three specialized creative agent robots collaborate at a workbench. One robot works on a video timeline (CTV specialist), one arranges banner layouts on a grid (display specialist), and one crafts social content cards (social specialist). They pass creative assets between them — a brand color palette, a logo, font samples — all originating from a single glowing brand identity document at the center of the workbench. The scene shows parallel creative production from one brief. Clean teal palette, organized and productive. Do not include any text, words, or labels in the image.",
+    "alt_text": "Three creative agent robots collaborate at a workbench — one edits video, one arranges banners, one crafts social content, all sharing brand assets from a central document"
+  },
+  {
+    "filename": "images/walkthrough/panel-04-draft-to-production.png",
+    "prompt": "A split-screen transformation scene. On the left half, a rough draft mockup of an ad — sketchy lines, placeholder imagery, watermark-style 'DRAFT' feel. On the right half, the same ad as a polished production creative — sharp lines, vibrant imagery, professional quality. An arrow or gradient connects the two halves showing the transformation. Maya (South Asian woman, late 20s, loose braid, bold patterned scarf, chunky rings) stands between them, gesturing toward the production version with satisfaction. Do not include any text, words, or labels in the image.",
+    "alt_text": "Split screen showing a rough draft mockup transforming into a polished production creative, with Maya gesturing toward the finished version"
+  },
+  {
+    "filename": "images/walkthrough/panel-05-distribute.png",
+    "prompt": "Maya (South Asian woman, late 20s, brown skin, long dark hair in a loose braid, bold patterned teal-and-gold scarf, chunky rings) presses a glowing teal launch button. From the button, three connection lines light up in sequence, each reaching a different publisher robot: a CTV robot (with TV icon), a display robot (with monitor icon), and a social platform robot (with speech bubble icon). Each publisher robot receives a creative package. The scene conveys distribution — one press, three destinations. Do not include any text, words, or labels in the image.",
+    "alt_text": "Maya presses a launch button as three connection lines light up in sequence to CTV, display, and social publisher robots, each receiving a creative package"
+  },
+  {
+    "filename": "images/walkthrough/panel-06-delivery-dashboard.png",
+    "prompt": "A clean, unified dashboard displayed on a large monitor. The dashboard shows merged performance data from three sellers: rising bar charts in teal shades, engagement metrics, impression counts, and convergence line graphs. Three data streams (in slightly different teal shades) flow from the top corners and center top into the dashboard, representing the three sellers feeding data into one view. The dashboard feels comprehensive but clean — not overwhelming. Warm office lighting. Do not include any text, words, or labels in the image.",
+    "alt_text": "A unified dashboard merging delivery data from three sellers into combined performance charts — bar graphs, engagement metrics, and convergence lines"
+  },
+  {
+    "filename": "images/walkthrough/panel-07-variant-replay.png",
+    "prompt": "Maya (South Asian woman, late 20s, brown skin, loose braid, bold patterned scarf, chunky rings) views a grid of ad variant cards on a large display. Each card shows a different creative variant — different imagery, different layouts, different community-adapted versions. One card is highlighted with a golden glow as the top performer. Maya points at it with interest, leaning in to examine the winning variant. The grid shows the richness of AI-generated variations and the ability to replay exactly what was served. Do not include any text, words, or labels in the image.",
+    "alt_text": "Maya views a grid of ad variants with one highlighted as the top performer — she leans in to examine the winning creative variant"
+  }
+]

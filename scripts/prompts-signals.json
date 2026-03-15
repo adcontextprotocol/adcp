@@ -1,0 +1,32 @@
+[
+  {
+    "filename": "images/walkthrough/signals-01-planner-brief.png",
+    "prompt": "Sam (Black man, early 30s, dark skin, close-cropped hair with sharp fade, no glasses, light blue button-down with rolled sleeves) reviews a campaign brief at his desk. Floating around him are data icons representing the targeting he needs: audience silhouettes (in-market auto buyers), location pins (near dealerships), shopping cart icons (purchase behavior), and a profile exclusion icon (competitive conquesting). The icons are semi-transparent and hover like holographic data. Sam's expression is focused and planning. Modern agency office. Do not include any text, words, or labels in the image.",
+    "alt_text": "Sam reviews a campaign brief surrounded by floating data icons representing audiences, locations, and purchase behavior"
+  },
+  {
+    "filename": "images/walkthrough/signals-02-natural-language-search.png",
+    "prompt": "A glowing search interface at center shows a natural language query being typed. From the search bar, the query transforms into structured signal queries — visualized as standardized data packets — that flow outward to three different data provider databases. Each database has a distinct icon: one with a location pin (geolocation provider like Meridian Geo), one with a shopping cart (retail data), and one with audience silhouettes (auto intender data). A signal agent robot stands beside the search bar, translating and routing. Do not include any text, words, or labels in the image.",
+    "alt_text": "A search bar glows as natural language transforms into structured signal queries flowing to three data provider databases — location, retail, and audience data"
+  },
+  {
+    "filename": "images/walkthrough/signals-03-results-materialize.png",
+    "prompt": "Signal result cards float into view from three directions, converging toward Sam (Black man, early 30s, dark skin, close-cropped fade, no glasses, rolled sleeves) who reviews them on his screen. Each card has a colored badge — blue for binary signals, green for categorical, orange for numeric. The cards show abstract data visualizations: one with a map radius, one with shopping basket icons, one with audience segments. Sam compares them side by side on his monitor. Clean, organized data presentation. Do not include any text, words, or labels in the image.",
+    "alt_text": "Signal cards from three data providers float into view, each with a colored badge — Sam reviews them side by side on his monitor"
+  },
+  {
+    "filename": "images/walkthrough/signals-04-activation-flow.png",
+    "prompt": "Signal data streams flow from a central signal agent hub outward to two DSP platform icons — one labeled-style icon for programmatic display (abstract graph icon) and one for CTV (TV icon). Each platform icon lights up with a teal glow as the signal segments arrive and activate. The streams carry small data particle effects. On the data provider side (top of image), Kai (white man, early 30s, sandy blond hair pushed back, no glasses, wearing a henley shirt under a light puffer vest — startup casual) monitors the activation from a smaller office with exposed brick. Do not include any text, words, or labels in the image.",
+    "alt_text": "Signal streams flow from a central hub to two DSP platforms that light up as segments activate — Kai monitors from his startup office above"
+  },
+  {
+    "filename": "images/walkthrough/signals-05-campaign-targeting.png",
+    "prompt": "A campaign targeting visualization shows three data layers stacking together like transparent overlays. Bottom layer: a geographic map with highlighted zones (location data from Kai's Meridian Geo). Middle layer: audience segment clusters (auto intender data). Top layer: purchase behavior indicators (retail data). The three layers combine into a unified targeting strategy that glows where all three overlap. Sam (Black man, early 30s, dark skin, fade, no glasses, rolled sleeves) views this layered visualization on his screen, looking satisfied. Do not include any text, words, or labels in the image.",
+    "alt_text": "Three targeting layers — location, audience, and purchase data — stack as transparent overlays, glowing where they overlap into a unified strategy"
+  },
+  {
+    "filename": "images/walkthrough/signals-06-ecosystem-view.png",
+    "prompt": "A bird's-eye view of the signals ecosystem. At the top, three data provider buildings (small, diverse offices — including Kai's startup with exposed brick). In the middle, signal agent robots act as intermediaries, organizing data into catalogs. At the bottom, buyer agent robots and DSP platforms consume the signals. Flowing data streams connect all three tiers in a hub-and-spoke pattern. The overall feeling is an organized marketplace — many providers, standardized connections, multiple consumers. Wide, architectural diagram feel. Do not include any text, words, or labels in the image.",
+    "alt_text": "Bird's-eye ecosystem view — data providers at top, signal agents organizing catalogs in the middle, buyer agents and DSPs consuming signals at bottom, all connected by flowing data streams"
+  }
+]
