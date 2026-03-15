@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/brand/update-rights-request.json",
+  "title": "Update Rights Request",
+  "description": "Modify an existing rights grant — extend dates, adjust impression caps, change pricing, or pause/resume. Parallels update_media_buy. Only the fields provided are updated; omitted fields remain unchanged.",
+  "type": "object",
+  "properties": {
+    "rights_id": {
+      "type": "string",
+      "description": "Rights grant identifier from acquire_rights response"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "New end date for the rights grant (must be >= current end_date). Extending the grant may re-issue generation credentials with updated expiration."
+    },
+    "impression_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "New impression cap for the grant. Must be >= impressions already delivered."
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Switch to a different pricing option from the original get_rights offering. The new option must be compatible with the existing grant's uses and countries."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause or resume the rights grant. When paused, generation credentials are suspended and creative delivery should stop. When resumed, credentials are re-activated."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.0.0-rc.2/core/push-notification-config.json",
+      "description": "Webhook for async update notifications if the update requires approval"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated idempotency key for safe retries",
+      "minLength": 8,
+      "maxLength": 255
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["rights_id"],
+  "additionalProperties": true
+}

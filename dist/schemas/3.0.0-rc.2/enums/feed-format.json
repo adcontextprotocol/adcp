@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/feed-format.json",
+  "title": "Feed Format",
+  "description": "Catalog feed formats. Determines how the platform parses items from an external feed URL.",
+  "type": "string",
+  "enum": [
+    "google_merchant_center",
+    "facebook_catalog",
+    "shopify",
+    "linkedin_jobs",
+    "custom"
+  ]
+}

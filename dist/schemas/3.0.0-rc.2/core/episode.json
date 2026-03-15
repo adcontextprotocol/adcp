@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/episode.json",
+  "title": "Episode",
+  "description": "A specific installment of a show. Episodes inherit show-level fields they don't override: content_rating defaults to the show's baseline, guest_talent is additive to the show's recurring talent, and topics add context beyond the show's genre.",
+  "type": "object",
+  "properties": {
+    "episode_id": {
+      "type": "string",
+      "description": "Unique identifier for this episode within the show"
+    },
+    "show_id": {
+      "type": "string",
+      "description": "Parent show reference. Required when the product spans multiple shows (has multiple entries in show_ids on the product)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Episode title"
+    },
+    "season": {
+      "type": "string",
+      "description": "Season identifier (e.g., '1', '2024', 'spring_2026')"
+    },
+    "episode_number": {
+      "type": "string",
+      "description": "Episode number within the season (e.g., '3', '47')"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the episode airs or publishes (ISO 8601)"
+    },
+    "status": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/episode-status.json",
+      "description": "Lifecycle status of the episode"
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Expected duration of the episode in seconds"
+    },
+    "flexible_end": {
+      "type": "boolean",
+      "description": "Whether the end time is approximate (live events, sports)"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this episode data expires and should be re-queried. Agents should re-query before committing budget to products with tentative episodes."
+    },
+    "content_rating": {
+      "$ref": "/schemas/3.0.0-rc.2/core/content-rating.json",
+      "description": "Episode-specific content rating. Overrides the show's baseline content_rating when present."
+    },
+    "topics": {
+      "type": "array",
+      "description": "Content topics for this episode. Uses the same taxonomy as the show's genre_taxonomy when present. Enables episode-level brand safety evaluation beyond content_rating.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "guest_talent": {
+      "type": "array",
+      "description": "Episode-specific guests and talent. Additive to the show's recurring talent.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/talent.json"
+      }
+    },
+    "ad_inventory": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ad-inventory-config.json",
+      "description": "Break-based ad inventory for this episode. For non-break formats (host reads, integrations), use product placements."
+    },
+    "derivative_of": {
+      "type": "object",
+      "description": "When this episode is a clip, highlight, or recap derived from a full episode. The source episode_id must reference an episode within the same response.",
+      "properties": {
+        "episode_id": {
+          "type": "string",
+          "description": "The source episode this content is derived from"
+        },
+        "type": {
+          "$ref": "/schemas/3.0.0-rc.2/enums/derivative-type.json",
+          "description": "What kind of derivative content this is"
+        }
+      },
+      "required": ["episode_id", "type"],
+      "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["episode_id"],
+  "additionalProperties": true
+}

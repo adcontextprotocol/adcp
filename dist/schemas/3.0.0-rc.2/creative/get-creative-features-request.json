@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/creative/get-creative-features-request.json",
+  "title": "Get Creative Features Request",
+  "description": "Request payload for the get_creative_features task. Submits a creative manifest for evaluation by a governance agent, which analyzes the creative and returns scored feature values (brand safety, content categorization, quality metrics, etc.).",
+  "type": "object",
+  "properties": {
+    "creative_manifest": {
+      "$ref": "/schemas/3.0.0-rc.2/core/creative-manifest.json",
+      "description": "The creative manifest to evaluate. Contains format_id and assets."
+    },
+    "feature_ids": {
+      "type": "array",
+      "description": "Optional filter to specific features. If omitted, returns all available features.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.2/core/account-ref.json",
+      "description": "Account for billing this evaluation. Required when the governance agent charges per evaluation."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["creative_manifest"],
+  "additionalProperties": true
+}

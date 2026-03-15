@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/assets/text-asset.json",
+  "title": "Text Asset",
+  "description": "Text content asset",
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "Text content"
+    },
+    "language": {
+      "type": "string",
+      "description": "Language code (e.g., 'en', 'es', 'fr')"
+    },
+    "provenance": {
+      "$ref": "/schemas/3.0.0-rc.2/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "content"
+  ],
+  "additionalProperties": true
+}
