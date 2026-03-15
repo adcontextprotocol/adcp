@@ -16,7 +16,6 @@ import { getPool } from '../db/client.js';
 import {
   runOutreachScheduler,
   manualOutreach,
-  manualOutreachWithGoal,
   getOutreachMode,
   canContactUser,
 } from '../addie/services/proactive-outreach.js';
@@ -561,10 +560,11 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         email: req.user.email,
       } : undefined;
 
-      const result = await manualOutreachWithGoal(
+      if (admin_context) {
+        logger.info({ slackUserId: slack_user_id, adminContext: admin_context.substring(0, 200) }, 'Admin context provided');
+      }
+      const result = await manualOutreach(
         slack_user_id,
-        goalIdNum,
-        admin_context,
         triggeredBy
       );
 

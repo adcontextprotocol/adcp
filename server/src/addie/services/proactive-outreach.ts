@@ -25,7 +25,6 @@ import {
   getEmailBudget,
   EMAIL_PER_RUN_LIMIT,
 } from './email-outreach.js';
-import type { SlackUserMapping } from '../../slack/types.js';
 import { captureEvent } from '../../utils/posthog.js';
 import * as personEvents from '../../db/person-events-db.js';
 
@@ -36,7 +35,6 @@ const OUTREACH_MODE = 'live' as const;
 const OUTREACH_ENABLED = process.env.OUTREACH_ENABLED !== 'false';
 
 // Configuration
-const RATE_LIMIT_DAYS = 7; // Don't contact same user more than once per week
 const BUSINESS_HOURS_START = 9; // 9 AM
 const BUSINESS_HOURS_END = 17; // 5 PM
 const SLACK_DM_PER_RUN_LIMIT = 10; // Max Slack DMs per scheduler run to avoid burst spam
@@ -416,7 +414,7 @@ export async function runOutreachScheduler(options: {
         const unsubToken = await getOrCreateUnsubscribeToken(candidate.email);
         const sendResult = await sendProspectEmail({
           to: candidate.email,
-          subject: composed.subject ?? 'From Addie at AgenticAdvertising.org',
+          subject: composed.subject ?? 'AgenticAdvertising.org update',
           bodyHtml: composed.html ?? composed.text,
           bodyText: composed.text,
           prospectOrgId: candidate.prospect_org_id ?? '',
@@ -435,8 +433,6 @@ export async function runOutreachScheduler(options: {
           channel: 'email',
           data: {
             subject: composed.subject,
-            text: composed.text,
-            to: candidate.email,
             text_length: composed.text.length,
             stage: candidate.stage,
             goal_hint: composed.goalHint,
@@ -562,7 +558,7 @@ export async function manualOutreach(
     const unsubToken = await getOrCreateUnsubscribeToken(relationship.email);
     const sendResult = await sendProspectEmail({
       to: relationship.email,
-      subject: composed.subject ?? 'From Addie at AgenticAdvertising.org',
+      subject: composed.subject ?? 'AgenticAdvertising.org update',
       bodyHtml: composed.html ?? composed.text,
       bodyText: composed.text,
       prospectOrgId: relationship.prospect_org_id ?? '',
@@ -625,22 +621,6 @@ export async function manualOutreach(
   };
 }
 
-/**
- * Manual outreach with a specific goal (admin override).
- * Goal-based outreach is deprecated — delegates to manualOutreach using the engagement planner.
- * The goalId parameter is ignored; adminContext is logged but not used for message composition.
- */
-export async function manualOutreachWithGoal(
-  slackUserId: string,
-  _goalId: number,
-  adminContext?: string,
-  triggeredBy?: { id: string; name: string; email: string }
-): Promise<OutreachResult> {
-  if (adminContext) {
-    logger.info({ slackUserId, adminContext: adminContext.substring(0, 200) }, 'Admin context provided (goal-based outreach deprecated)');
-  }
-  return manualOutreach(slackUserId, triggeredBy);
-}
 
 /**
  * Get current outreach mode (always 'live')
@@ -656,50 +636,28 @@ export function getOutreachMode(): 'live' {
 const SLACKBOT_USER_ID = 'USLACKBOT';
 
 /**
- * Check if a specific user can be contacted
+ * Check if a specific user can be contacted.
+ * Uses the relationship model and engagement planner's shouldContact().
  */
 export async function canContactUser(slackUserId: string): Promise<{
   canContact: boolean;
   reason?: string;
+  channel?: 'slack' | 'email';
 }> {
-  // Always reject Slackbot - it's a system bot, not a real user
   if (slackUserId === SLACKBOT_USER_ID) {
     return { canContact: false, reason: 'Slackbot is a system bot' };
   }
 
-  const result = await query<SlackUserMapping>(
-    `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`,
-    [slackUserId]
-  );
-
-  if (result.rows.length === 0) {
-    return { canContact: false, reason: 'User not found' };
+  const relationship = await relationshipDb.getRelationshipBySlackId(slackUserId);
+  if (!relationship) {
+    return { canContact: false, reason: 'Person not found in relationship model' };
   }
 
-  const user = result.rows[0];
-
-  if (user.slack_is_bot) {
-    return { canContact: false, reason: 'User is a bot' };
-  }
-
-  if (user.slack_is_deleted) {
-    return { canContact: false, reason: 'User is deleted' };
-  }
-
-  if (user.outreach_opt_out) {
-    return { canContact: false, reason: 'User has opted out' };
-  }
-
-  if (user.last_outreach_at) {
-    const daysSince = (Date.now() - new Date(user.last_outreach_at).getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSince < RATE_LIMIT_DAYS) {
-      return {
-        canContact: false,
-        reason: `Contacted ${Math.floor(daysSince)} days ago (limit: ${RATE_LIMIT_DAYS} days)`,
-      };
-    }
-  }
-
-  return { canContact: true };
+  const decision = shouldContact(relationship);
+  return {
+    canContact: decision.shouldContact,
+    reason: decision.shouldContact ? undefined : decision.reason,
+    channel: decision.channel,
+  };
 }
 

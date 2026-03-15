@@ -435,10 +435,10 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
   },
   {
     id: 'invite_team',
-    description: 'Invite team members to their organization',
+    description: 'Invite team members to their organization — team adoption drives stickiness',
     keywords: ['invite', 'team members'],
     dimension: 'hygiene',
-    baseScore: 30,
+    baseScore: 55,
     minStage: 'exploring',
     condition: (ctx) => !!ctx.capabilities && !ctx.capabilities.has_team_members && !!ctx.capabilities.is_org_admin,
   },

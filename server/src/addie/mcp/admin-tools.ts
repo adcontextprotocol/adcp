@@ -95,7 +95,6 @@ import {
 } from '../../services/account-lifecycle.js';
 import {
   manualOutreach,
-  manualOutreachWithGoal,
   canContactUser,
 } from '../services/proactive-outreach.js';
 import * as outboundDb from '../../db/outbound-db.js';
@@ -7906,12 +7905,7 @@ Use add_committee_leader to assign a leader.`;
         return dryRunResponse;
       }
 
-      let result;
-      if (goalId) {
-        result = await manualOutreachWithGoal(slackUserId, goalId, context, triggeredBy);
-      } else {
-        result = await manualOutreach(slackUserId, triggeredBy);
-      }
+      const result = await manualOutreach(slackUserId, triggeredBy);
 
       if (result.success) {
         captureEvent(slackUserId, 'admin_tool_used', {
