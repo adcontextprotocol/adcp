@@ -74,6 +74,11 @@ body {
   border: 1px solid var(--color-border);
 }
 
+.story-panel-image {
+  margin-top: var(--space-8);
+  margin-bottom: 0;
+}
+
 /* =============================================================================
    Typography utilities
    ============================================================================= */

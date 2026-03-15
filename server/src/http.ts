@@ -696,6 +696,11 @@ export class HTTPServer {
     this.app.use(async (req, res, next) => {
       const urlPath = req.path;
 
+      // Keep the AdCP domain docs-first even when index.html is requested directly.
+      if (urlPath === '/index.html' && this.isAdcpDomain(req)) {
+        return res.redirect(302, 'https://docs.adcontextprotocol.org/');
+      }
+
       // Skip paths that have their own route handlers which manage auth and config injection
       // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
       // /agents does content negotiation to serve HTML or JSON)
@@ -1825,7 +1830,8 @@ export class HTTPServer {
 
     // Homepage route - serve different homepage based on host
     // agenticadvertising.org (beta): Org-focused homepage
-    // adcontextprotocol.org (production): Protocol-focused homepage
+    // agenticadvertising.org (production): Org-focused homepage
+    // adcontextprotocol.org (production): Redirect to docs
     this.app.get("/", async (req, res) => {
       const hostname = req.hostname || '';
       const betaOverride = req.query.beta;
@@ -1842,9 +1848,11 @@ export class HTTPServer {
                      hostname === '127.0.0.1';
       }
 
-      // Beta site gets org-focused homepage, production gets protocol homepage
-      const homepageFile = isBetaSite ? 'org-index.html' : 'index.html';
-      await this.serveHtmlWithConfig(req, res, homepageFile);
+      if (!isBetaSite) {
+        return res.redirect(302, 'https://docs.adcontextprotocol.org/');
+      }
+
+      await this.serveHtmlWithConfig(req, res, 'index.html');
     });
 
     // Registry UI route - serve registry.html at /registry
@@ -7556,4 +7564,3 @@ Disallow: /api/admin/
     );
   }
 }
-
