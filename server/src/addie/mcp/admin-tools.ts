@@ -95,10 +95,18 @@ import {
 } from '../../services/account-lifecycle.js';
 import {
   manualOutreach,
-  manualOutreachWithGoal,
   canContactUser,
 } from '../services/proactive-outreach.js';
-import * as outboundDb from '../../db/outbound-db.js';
+import {
+  shouldContact as shouldContactCheck,
+  computeEngagementOpportunities,
+  buildComposePrompt,
+  MAX_TOTAL_UNREPLIED,
+} from '../services/engagement-planner.js';
+import { loadRelationshipContext } from '../services/relationship-context.js';
+import * as relationshipDb from '../../db/relationship-db.js';
+import { assessHistoricalBehavior } from '../services/outreach-simulator.js';
+import { getMemberCapabilities } from '../../db/outbound-db.js';
 import { getActionItems as getActionItemsDb, type ActionStatus, type ActionType, type ActionPriority } from '../../db/account-management-db.js';
 import { captureEvent } from '../../utils/posthog.js';
 
@@ -997,20 +1005,6 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   // ============================================
   // MEMBER INSIGHT SUMMARY TOOLS
   // ============================================
-  {
-    name: 'get_insight_summary',
-    description: 'Get summary of collected member insights and statistics.',
-    usage_hints: 'See value of insight collection.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        insight_type: { type: 'string', description: 'Filter by type' },
-        limit: { type: 'number', description: 'Max examples per type (default: 5)' },
-      },
-    },
-  },
-
-  // ============================================
   // MEMBER SEARCH & INTRODUCTION ANALYTICS TOOLS
   // ============================================
   {
@@ -1092,48 +1086,6 @@ Roles: member (default), admin (can manage team), owner (full control)`,
     },
   },
 
-  // ============================================
-  // INSIGHT SYNTHESIS TOOLS
-  // ============================================
-  {
-    name: 'tag_insight',
-    description: 'Tag content for Addie\'s knowledge synthesis.',
-    usage_hints: 'Use when admin shares expert insights.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        content: { type: 'string', description: 'Content to tag' },
-        topic: { type: 'string', description: 'Topic category' },
-        author_name: { type: 'string', description: 'Author name' },
-        author_context: { type: 'string', description: 'Author role/expertise' },
-        notes: { type: 'string', description: 'Additional context' },
-      },
-      required: ['content'],
-    },
-  },
-  {
-    name: 'list_pending_insights',
-    description: 'List insights pending synthesis.',
-    usage_hints: 'See synthesis queue.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        topic: { type: 'string', description: 'Filter by topic' },
-        limit: { type: 'number', description: 'Max results (default: 20)' },
-      },
-    },
-  },
-  {
-    name: 'run_synthesis',
-    description: 'Trigger insight synthesis to create knowledge rules. Requires admin approval.',
-    usage_hints: 'Process tagged insights into rules.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        topic: { type: 'string', description: 'Synthesize specific topic (default: all)' },
-      },
-    },
-  },
 
   // ============================================
   // ESCALATION MANAGEMENT TOOLS
@@ -1376,15 +1328,10 @@ For logo changes, use update_member_logo instead.`,
   // ============================================
   {
     name: 'get_outreach_stats',
-    description: 'Get outreach performance metrics: messages sent, response rates, and per-goal breakdown. Use this when asked "how is outreach going?" or about SDR performance.',
+    description: 'Get outreach performance metrics: messages sent, response rates. Use this when asked "how is outreach going?" or about engagement performance.',
     input_schema: {
       type: 'object' as const,
-      properties: {
-        goal_id: {
-          type: 'number',
-          description: 'Filter to a specific goal ID (optional — omit for all goals)',
-        },
-      },
+      properties: {},
     },
   },
   {
@@ -1406,21 +1353,13 @@ For logo changes, use update_member_logo instead.`,
   },
   {
     name: 'send_outreach',
-    description: 'Trigger outreach to a Slack user. Uses the outbound planner to select the best goal, or specify a goal_id. Checks eligibility first. Set dry_run=true to check eligibility without sending. Use lookup_person for full person context.',
+    description: 'Trigger outreach to a Slack user. Checks eligibility first. Set dry_run=true to check eligibility without sending. Use lookup_person for full person context.',
     input_schema: {
       type: 'object' as const,
       properties: {
         slack_user_id: {
           type: 'string',
           description: 'Slack user ID to contact',
-        },
-        goal_id: {
-          type: 'number',
-          description: 'Specific outreach goal ID to use (optional — planner selects if omitted)',
-        },
-        context: {
-          type: 'string',
-          description: 'Admin context to record before sending (e.g., "Met at conference, interested in working groups")',
         },
         dry_run: {
           type: 'boolean',
@@ -1432,16 +1371,38 @@ For logo changes, use update_member_logo instead.`,
   },
   {
     name: 'lookup_person',
-    description: 'Look up a person by Slack user ID or email. Returns their org, insights, outreach history, goal progress, and capabilities. Use for person-level context (vs get_account for org-level).',
+    description: 'Look up a person by Slack user ID, email, or name. Returns their relationship stage, sentiment, contact eligibility, recent activity, and org. Use for person-level context (vs get_account for org-level).',
     input_schema: {
       type: 'object' as const,
       properties: {
         query: {
           type: 'string',
-          description: 'Slack user ID (U...) or email address',
+          description: 'Slack user ID (U...), email address, or name to search',
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'get_engagement_plan',
+    description: 'Preview the engagement plan for a person — shows contact eligibility, scored opportunities, and what Addie would say. Use this to understand or debug engagement decisions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Slack user ID (U...), email address, or name',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'get_outreach_health',
+    description: 'Get a health report on the outreach system: stage breakdown, over-contacted people approaching circuit breaker, outreach volume, and email stats. Use to assess system health or when asked "how is outreach doing?"',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
     },
   },
   {
@@ -6363,61 +6324,6 @@ Use add_committee_leader to assign a leader.`;
   });
 
   // ============================================
-  // MEMBER INSIGHT SUMMARY HANDLERS
-  // ============================================
-
-  // Get insight summary
-  handlers.set('get_insight_summary', async (input) => {
-
-    const insightType = input.insight_type as string | undefined;
-    const limit = (input.limit as number) || 5;
-
-    try {
-      // Get stats
-      const stats = await insightsDb.getInsightStats();
-
-      // Get insight types with counts
-      const types = await insightsDb.listInsightTypes(true);
-
-      // Build summary
-      const summary: Record<string, unknown> = {
-        overview: {
-          members_with_insights: stats.members_with_insights,
-          total_insights: stats.total_insights,
-          from_conversation: stats.from_conversation,
-          from_manual: stats.from_manual,
-        },
-        types: [] as unknown[],
-      };
-
-      // For each type, get example insights
-      // Note: N+1 queries here but acceptable - admin-only function with ~10 types max
-      for (const type of types) {
-        if (insightType && type.name !== insightType) continue;
-
-        const insights = await insightsDb.getInsightsByType(type.id, limit);
-
-        (summary.types as unknown[]).push({
-          name: type.name,
-          description: type.description,
-          count: insights.length,
-          examples: insights.map(i => ({
-            value: i.value,
-            confidence: i.confidence,
-            source: i.source_type,
-            created_at: i.created_at,
-          })),
-        });
-      }
-
-      return JSON.stringify(summary, null, 2);
-    } catch (error) {
-      logger.error({ error }, 'Error getting insight summary');
-      return '❌ Failed to get insight summary. Please try again.';
-    }
-  });
-
-  // ============================================
   // MEMBER SEARCH ANALYTICS HANDLERS
   // ============================================
   handlers.set('get_member_search_analytics', async (input) => {
@@ -6987,190 +6893,6 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error listing Slack users by org');
       return '❌ Failed to list Slack users. Please try again.';
-    }
-  });
-
-  // ============================================
-  // INSIGHT SYNTHESIS HANDLERS
-  // ============================================
-
-  handlers.set('tag_insight', async (input) => {
-
-    try {
-      const content = input.content as string;
-      if (!content || content.trim().length === 0) {
-        return '❌ Content is required. Please provide the text to tag as an insight.';
-      }
-
-      const topic = (input.topic as string) || undefined;
-      const authorName = (input.author_name as string) || undefined;
-      const authorContext = (input.author_context as string) || undefined;
-      const notes = (input.notes as string) || undefined;
-
-      const taggedBy = memberContext?.workos_user?.email || memberContext?.slack_user?.email || 'admin';
-
-      // Import AddieDatabase here to avoid circular deps
-      const { AddieDatabase } = await import('../../db/addie-db.js');
-      const addieDb = new AddieDatabase();
-
-      const source = await addieDb.createInsightSource({
-        source_type: 'external',
-        content: content.trim(),
-        topic,
-        author_name: authorName,
-        author_context: authorContext,
-        tagged_by: taggedBy,
-        notes,
-      });
-
-      logger.info({
-        sourceId: source.id,
-        topic,
-        taggedBy,
-        contentLength: content.length,
-      }, 'Insight source tagged via Addie tool');
-
-      let response = `✅ **Insight tagged successfully!**\n\n`;
-      response += `- **ID**: ${source.id}\n`;
-      if (topic) response += `- **Topic**: ${topic}\n`;
-      if (authorName) response += `- **Author**: ${authorName}`;
-      if (authorContext) response += ` (${authorContext})`;
-      if (authorName) response += `\n`;
-      response += `- **Content**: ${source.excerpt}\n`;
-      response += `- **Status**: Pending synthesis\n\n`;
-      response += `This content will be synthesized into Addie's core knowledge during the next synthesis run. `;
-      response += `Use \`run_synthesis\` to process pending insights, or wait for the scheduled run.`;
-
-      return response;
-    } catch (error) {
-      logger.error({ error }, 'Error tagging insight');
-      return '❌ Failed to tag insight. Please try again.';
-    }
-  });
-
-  handlers.set('list_pending_insights', async (input) => {
-
-    try {
-      const topic = (input.topic as string) || undefined;
-      const limit = Math.min((input.limit as number) || 20, 50);
-
-      const { AddieDatabase } = await import('../../db/addie-db.js');
-      const addieDb = new AddieDatabase();
-
-      const sources = await addieDb.getPendingInsightSources(topic, limit);
-      const byTopic = await addieDb.getInsightSourcesByTopic();
-      const pendingCount = await addieDb.countPendingInsights();
-
-      if (sources.length === 0) {
-        return '📭 No pending insights found. Use `tag_insight` to add content for synthesis.';
-      }
-
-      let response = `## Pending Insights (${pendingCount} total)\n\n`;
-
-      // Summary by topic
-      if (byTopic.length > 0) {
-        response += `### By Topic\n`;
-        for (const t of byTopic) {
-          response += `- **${t.topic}**: ${t.source_count} source(s)\n`;
-        }
-        response += `\n`;
-      }
-
-      // List sources
-      response += `### Recent Sources\n`;
-      for (const source of sources) {
-        const date = new Date(source.tagged_at).toLocaleDateString();
-        response += `\n**${source.id}.** `;
-        if (source.topic) response += `[${source.topic}] `;
-        if (source.author_name) response += `*${source.author_name}* - `;
-        response += `${source.excerpt}\n`;
-        response += `   Tagged by ${source.tagged_by} on ${date}\n`;
-      }
-
-      response += `\n---\nUse \`run_synthesis\` to process these into knowledge rules.`;
-
-      return response;
-    } catch (error) {
-      logger.error({ error }, 'Error listing pending insights');
-      return '❌ Failed to list pending insights. Please try again.';
-    }
-  });
-
-  handlers.set('run_synthesis', async (input) => {
-
-    try {
-      const topic = (input.topic as string) || undefined;
-
-      const { AddieDatabase } = await import('../../db/addie-db.js');
-      const { synthesizeInsights } = await import('../jobs/insight-synthesizer.js');
-      const addieDb = new AddieDatabase();
-
-      // Check if there are pending sources
-      const pendingCount = await addieDb.countPendingInsights(topic);
-      if (pendingCount === 0) {
-        return `📭 No pending insights${topic ? ` for topic "${topic}"` : ''}. Use \`tag_insight\` to add content first.`;
-      }
-
-      const createdBy = memberContext?.workos_user?.email || memberContext?.slack_user?.email || 'admin';
-
-      logger.info({
-        topic,
-        pendingCount,
-        createdBy,
-      }, 'Starting insight synthesis via Addie tool');
-
-      const result = await synthesizeInsights(addieDb, {
-        topic,
-        maxSources: 50,
-        previewSampleSize: 20,
-        createdBy,
-      });
-
-      let response = `## Synthesis Complete\n\n`;
-      response += `**Run ID**: ${result.run.id}\n`;
-      response += `**Status**: ${result.run.status}\n`;
-      response += `**Sources processed**: ${result.run.sources_count}\n`;
-      response += `**Topics**: ${result.run.topics_included.join(', ') || 'general'}\n\n`;
-
-      // Proposed rules
-      if (result.proposedRules.length > 0) {
-        response += `### Proposed Rules (${result.proposedRules.length})\n\n`;
-        for (const rule of result.proposedRules) {
-          response += `**${rule.name}** (confidence: ${(rule.confidence * 100).toFixed(0)}%)\n`;
-          response += `> ${rule.content.substring(0, 200)}${rule.content.length > 200 ? '...' : ''}\n\n`;
-        }
-      }
-
-      // Preview results
-      if (result.preview) {
-        const { summary } = result.preview;
-        response += `### Impact Preview\n`;
-        response += `Tested against ${result.preview.predictions.length} historical interactions:\n`;
-        response += `- ✅ Likely improved: ${summary.likely_improved}\n`;
-        response += `- ➡️ Unchanged: ${summary.likely_unchanged}\n`;
-        response += `- ⚠️ Potentially worse: ${summary.likely_worse}\n`;
-        response += `- 📊 Average impact: ${(summary.avg_improvement * 100).toFixed(0)}%\n\n`;
-      }
-
-      // Gaps
-      if (result.gaps.length > 0) {
-        response += `### Gaps Identified\n`;
-        response += `Topics that need more source material:\n`;
-        for (const gap of result.gaps) {
-          response += `- ${gap}\n`;
-        }
-        response += `\n`;
-      }
-
-      response += `---\n`;
-      response += `**Next steps**: Review the proposed rules in the admin UI at \`/admin/addie\` and approve or reject the synthesis.\n`;
-      response += `Once approved, use the "Apply" button to add these rules to Addie's knowledge.`;
-
-      return response;
-    } catch (error) {
-      logger.error({ error }, 'Error running synthesis');
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return `❌ Synthesis failed: ${message}`;
     }
   });
 
@@ -7747,44 +7469,36 @@ Use add_committee_leader to assign a leader.`;
   // OUTREACH HANDLERS
   // ============================================
 
-  handlers.set('get_outreach_stats', async (input) => {
-    const goalIdFilter = input.goal_id as number | undefined;
-    const insightsDb = new InsightsDatabase();
+  handlers.set('get_outreach_stats', async () => {
+    const pool = getPool();
 
     try {
-      const [timeStats, goalStats] = await Promise.all([
-        insightsDb.getOutreachTimeStats(),
-        insightsDb.getOutreachGoalStats(),
-      ]);
+      const result = await pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > NOW() - INTERVAL '1 day') as sent_today,
+          COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > NOW() - INTERVAL '1 day') as responded_today,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > NOW() - INTERVAL '7 days') as sent_week,
+          COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > NOW() - INTERVAL '7 days') as responded_week,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > NOW() - INTERVAL '30 days') as sent_month,
+          COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > NOW() - INTERVAL '30 days') as responded_month,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply') as total_sent,
+          COUNT(*) FILTER (WHERE event_type = 'message_received') as total_responded
+        FROM person_events
+      `);
+      const s = result.rows[0];
+      const totalSent = parseInt(s.total_sent);
+      const totalResponded = parseInt(s.total_responded);
+      const responseRate = totalSent > 0 ? Math.round(totalResponded / totalSent * 100) : null;
 
       let response = '## Outreach performance\n\n';
-      response += `**Today:** ${timeStats.sent_today} sent, ${timeStats.responded_today} responded\n`;
-      response += `**This week:** ${timeStats.sent_this_week} sent, ${timeStats.responded_this_week} responded\n`;
-      response += `**This month:** ${timeStats.sent_this_month} sent, ${timeStats.responded_this_month} responded\n`;
-      response += `**All time:** ${timeStats.total_sent} sent, ${timeStats.total_responded} responded`;
-      if (timeStats.overall_response_rate_pct !== null) {
-        response += ` (${timeStats.overall_response_rate_pct}% response rate)`;
+      response += `**Today:** ${s.sent_today} sent, ${s.responded_today} responded\n`;
+      response += `**This week:** ${s.sent_week} sent, ${s.responded_week} responded\n`;
+      response += `**This month:** ${s.sent_month} sent, ${s.responded_month} responded\n`;
+      response += `**All time:** ${totalSent} sent, ${totalResponded} responded`;
+      if (responseRate !== null) {
+        response += ` (${responseRate}% response rate)`;
       }
-      response += `\n**Insights gathered:** ${timeStats.total_insights}\n`;
-
-      const activeGoals = goalIdFilter
-        ? goalStats.filter(g => g.goal_id === goalIdFilter)
-        : goalStats.filter(g => g.total_sent > 0);
-
-      if (activeGoals.length > 0) {
-        response += '\n## Per-goal breakdown\n\n';
-        for (const g of activeGoals) {
-          response += `### ${g.goal_name} (${g.goal_type})\n`;
-          response += `- Sent: ${g.total_sent} | Responded: ${g.total_responded} | Rate: ${g.response_rate_pct ?? 0}%\n`;
-          response += `- Insights: ${g.total_insights} | Conversions: ${g.converted_count} | Interested: ${g.interested_count}\n`;
-          if (g.positive_responses || g.negative_responses || g.refusal_responses) {
-            response += `- Sentiment: ${g.positive_responses} positive, ${g.neutral_responses} neutral, ${g.negative_responses} negative, ${g.refusal_responses} refusal\n`;
-          }
-          if (g.last_outreach_at) {
-            response += `- Last sent: ${formatDate(new Date(g.last_outreach_at))}\n`;
-          }
-        }
-      }
+      response += '\n';
 
       return response;
     } catch (error) {
@@ -7796,68 +7510,64 @@ Use add_committee_leader to assign a leader.`;
   handlers.set('get_outreach_history', async (input) => {
     const slackUserId = input.slack_user_id as string | undefined;
     const limit = (input.limit as number) || 20;
-    const insightsDb = new InsightsDatabase();
+    const pool = getPool();
 
     try {
       if (slackUserId) {
-        // Per-user timeline: outreach + goal history
-        const [userOutreach, goalHistory] = await Promise.all([
-          insightsDb.getOutreachForUser(slackUserId, limit),
-          outboundDb.getUserGoalHistory(slackUserId),
-        ]);
+        // Find person by Slack ID
+        const personResult = await pool.query(
+          `SELECT id, display_name FROM person_relationships WHERE slack_user_id = $1`,
+          [slackUserId]
+        );
+        if (personResult.rows.length === 0) {
+          return `No person found for Slack ID ${slackUserId}.`;
+        }
+        const person = personResult.rows[0];
 
-        let response = `## Outreach timeline for ${userOutreach[0]?.slack_display_name || userOutreach[0]?.slack_real_name || slackUserId}\n\n`;
+        // Get timeline for this person
+        const events = await pool.query(
+          `SELECT * FROM person_events
+           WHERE person_id = $1 AND event_type IN ('message_sent', 'message_received', 'outreach_decided', 'outreach_skipped')
+           ORDER BY occurred_at DESC LIMIT $2`,
+          [person.id, limit]
+        );
 
-        if (userOutreach.length === 0 && goalHistory.length === 0) {
-          return response + 'No outreach history found for this user.';
+        let response = `## Outreach timeline for ${person.display_name || slackUserId}\n\n`;
+        if (events.rows.length === 0) {
+          return response + 'No outreach history found.';
         }
 
-        if (userOutreach.length > 0) {
-          response += '### Messages sent\n';
-          for (const o of userOutreach) {
-            const date = formatDate(new Date(o.sent_at));
-            const responded = o.user_responded ? '✅ responded' : '⏳ no response';
-            response += `- **${date}** (${o.outreach_type}): ${responded}`;
-            if (o.response_sentiment) response += ` | sentiment: ${o.response_sentiment}`;
-            if (o.response_intent) response += ` | intent: ${o.response_intent}`;
-            response += '\n';
-            if (o.initial_message) {
-              const preview = o.initial_message.substring(0, 120);
-              response += `  > ${preview}${o.initial_message.length > 120 ? '...' : ''}\n`;
-            }
-            if (o.user_responded) {
-              response += `  Response: ${o.response_text || '(no text recorded)'}\n`;
-              response += `  Sentiment: ${o.response_sentiment || 'unknown'}\n`;
-            }
-          }
-        }
-
-        if (goalHistory.length > 0) {
-          response += '\n### Goal history\n';
-          for (const g of goalHistory) {
-            response += `- Goal #${g.goal_id}: ${g.status} (${g.attempt_count} attempts)`;
-            if (g.planner_reason) response += ` — ${g.planner_reason}`;
-            if (g.response_sentiment) response += ` | ${g.response_sentiment}`;
-            response += '\n';
-          }
+        for (const e of events.rows) {
+          const date = formatDate(new Date(e.occurred_at));
+          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          const icon = e.event_type === 'message_received' ? '←' : e.event_type === 'message_sent' ? '→' : '·';
+          response += `- ${icon} **${date}** ${e.event_type}`;
+          if (e.channel) response += ` via ${e.channel}`;
+          if (data.reason) response += ` — ${data.reason}`;
+          if (data.goalHint) response += ` (goal: ${data.goalHint})`;
+          response += '\n';
         }
 
         return response;
       } else {
-        // System-wide recent outreach
-        const recent = await insightsDb.getRecentOutreach(limit);
+        // System-wide recent outreach events
+        const events = await pool.query(
+          `SELECT pe.*, pr.display_name, pr.stage
+           FROM person_events pe
+           JOIN person_relationships pr ON pr.id = pe.person_id
+           WHERE pe.event_type IN ('message_sent', 'message_received')
+           ORDER BY pe.occurred_at DESC LIMIT $1`,
+          [limit]
+        );
 
-        let response = `## Recent outreach (last ${recent.length})\n\n`;
-        for (const o of recent) {
-          const name = o.slack_display_name || o.slack_real_name || o.slack_user_id;
-          const date = formatDate(new Date(o.sent_at));
-          const responded = o.user_responded ? '✅' : '⏳';
-          response += `- ${responded} **${name}** — ${date} (${o.outreach_type})`;
-          if (o.response_sentiment) response += ` | ${o.response_sentiment}`;
+        let response = `## Recent outreach (last ${events.rows.length})\n\n`;
+        for (const e of events.rows) {
+          const name = e.display_name || e.person_id;
+          const date = formatDate(new Date(e.occurred_at));
+          const icon = e.event_type === 'message_received' ? '←' : '→';
+          response += `- ${icon} **${name}** [${e.stage}] — ${date}`;
+          if (e.channel) response += ` via ${e.channel}`;
           response += '\n';
-          if (o.user_responded && o.response_text) {
-            response += `  Response: ${o.response_text}\n`;
-          }
         }
 
         return response;
@@ -7870,8 +7580,6 @@ Use add_committee_leader to assign a leader.`;
 
   handlers.set('send_outreach', async (input) => {
     const slackUserId = input.slack_user_id as string;
-    const goalId = input.goal_id as number | undefined;
-    const context = input.context as string | undefined;
 
     if (!slackUserId) {
       return '❌ slack_user_id is required.';
@@ -7888,14 +7596,14 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       // Check eligibility first
-      const eligibility = await canContactUser(slackUserId);
+      const eligibility = await canContactUser(slackUserId, { adminOverride: true });
       if (!eligibility.canContact) {
         return `❌ Cannot contact this user: ${eligibility.reason}`;
       }
 
       // Dry run: return eligibility info without sending
       if (input.dry_run) {
-        const capabilities = await outboundDb.getMemberCapabilities(slackUserId).catch(() => null);
+        const capabilities = await getMemberCapabilities(slackUserId).catch(() => null);
         let dryRunResponse = `Eligible to contact ${slackUserId}.`;
         if (capabilities) {
           dryRunResponse += `\nAccount linked: ${capabilities.account_linked ? 'yes' : 'no'}`;
@@ -7906,23 +7614,15 @@ Use add_committee_leader to assign a leader.`;
         return dryRunResponse;
       }
 
-      let result;
-      if (goalId) {
-        result = await manualOutreachWithGoal(slackUserId, goalId, context, triggeredBy);
-      } else {
-        result = await manualOutreach(slackUserId, triggeredBy);
-      }
+      const result = await manualOutreach(slackUserId, triggeredBy);
 
       if (result.success) {
         captureEvent(slackUserId, 'admin_tool_used', {
           tool_name: 'send_outreach',
           triggered_by: triggeredBy?.id,
-          goal_id: goalId,
           is_manual: true,
         });
         let response = `✅ Outreach sent to ${slackUserId}`;
-        if (result.outreach_id) response += ` (outreach #${result.outreach_id})`;
-        if (goalId) response += ` using goal #${goalId}`;
         if (triggeredBy) response += `\nAuto-assigned ${triggeredBy.name} as account owner.`;
         return response;
       } else {
@@ -7938,58 +7638,79 @@ Use add_committee_leader to assign a leader.`;
     const queryStr = input.query as string;
 
     if (!queryStr) {
-      return '❌ query is required (Slack user ID or email).';
+      return '❌ query is required (Slack user ID, email, or name).';
     }
 
     const pool = getPool();
-    const insightsDb = new InsightsDatabase();
 
     try {
-      // Look up by slack_user_id or email
-      const isSlackId = queryStr.startsWith('U');
-      const userResult = await pool.query(
-        isSlackId
-          ? `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`
-          : `SELECT * FROM slack_user_mappings WHERE slack_email = $1`,
-        [queryStr]
-      );
+      // Look up in person_relationships by slack_user_id, email, or name search
+      const isSlackId = /^U[A-Z0-9]{8,11}$/.test(queryStr);
+      const isEmail = queryStr.includes('@');
 
-      if (userResult.rows.length === 0) {
+      let personResult;
+      if (isSlackId) {
+        personResult = await pool.query(`SELECT * FROM person_relationships WHERE slack_user_id = $1`, [queryStr]);
+      } else if (isEmail) {
+        personResult = await pool.query(`SELECT * FROM person_relationships WHERE email = $1`, [queryStr]);
+      } else {
+        personResult = await pool.query(`SELECT * FROM person_relationships WHERE display_name ILIKE $1 LIMIT 5`, [`%${queryStr}%`]);
+      }
+
+      if (personResult.rows.length === 0) {
         return `No person found for "${queryStr}".`;
       }
 
-      const user = userResult.rows[0];
-      const slackUserId = user.slack_user_id;
+      // If multiple matches (name search), list them
+      if (personResult.rows.length > 1) {
+        let response = `Found ${personResult.rows.length} people matching "${queryStr}":\n\n`;
+        for (const p of personResult.rows) {
+          response += `- **${p.display_name}** (${p.stage}) — Slack: ${p.slack_user_id || 'none'}, Email: ${p.email || 'none'}\n`;
+        }
+        return response;
+      }
+
+      const person = personResult.rows[0];
 
       // Parallel lookups
-      const [orgResult, insights, goalHistory, outreachHistory, eligibility] = await Promise.all([
-        user.workos_user_id
+      const [orgResult, recentEvents, eligibility] = await Promise.all([
+        person.workos_user_id
           ? pool.query(
               `SELECT o.name, o.workos_organization_id, o.subscription_status
                FROM organizations o
                JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
                WHERE om.workos_user_id = $1
                LIMIT 1`,
-              [user.workos_user_id]
+              [person.workos_user_id]
             )
           : Promise.resolve({ rows: [] }),
-        insightsDb.getInsightsForUser(slackUserId),
-        outboundDb.getUserGoalHistory(slackUserId),
-        insightsDb.getOutreachForUser(slackUserId, 10),
-        canContactUser(slackUserId),
+        pool.query(
+          `SELECT * FROM person_events
+           WHERE person_id = $1 AND event_type IN ('message_sent', 'message_received')
+           ORDER BY occurred_at DESC LIMIT 10`,
+          [person.id]
+        ),
+        person.slack_user_id ? canContactUser(person.slack_user_id) : Promise.resolve({ canContact: false, reason: 'no Slack ID' }),
       ]);
 
-      const displayName = user.slack_display_name || user.slack_real_name || slackUserId;
-      let response = `## ${displayName}\n\n`;
-      response += `**Slack ID:** ${slackUserId}\n`;
-      if (user.slack_email) response += `**Email:** ${user.slack_email}\n`;
-      response += `**Account linked:** ${user.workos_user_id ? 'yes' : 'no'}\n`;
-      response += `**Outreach eligible:** ${eligibility.canContact ? 'yes' : `no (${eligibility.reason})`}\n`;
-      if (user.last_outreach_at) {
-        const days = Math.floor((Date.now() - new Date(user.last_outreach_at).getTime()) / (1000 * 60 * 60 * 24));
-        response += `**Last contacted:** ${formatDate(new Date(user.last_outreach_at))} (${days} days ago)\n`;
+      let response = `## ${person.display_name || queryStr}\n\n`;
+      response += `**Stage:** ${person.stage}\n`;
+      response += `**Sentiment:** ${person.sentiment_trend}\n`;
+      if (person.slack_user_id) response += `**Slack ID:** ${person.slack_user_id}\n`;
+      if (person.email) response += `**Email:** ${person.email}\n`;
+      response += `**Account linked:** ${person.workos_user_id ? 'yes' : 'no'}\n`;
+      response += `**Interactions:** ${person.interaction_count}\n`;
+      response += `**Unreplied:** ${person.unreplied_outreach_count}\n`;
+      response += `**Contact eligible:** ${eligibility.canContact ? 'yes' : `no (${eligibility.reason})`}\n`;
+      if (person.last_addie_message_at) {
+        const days = Math.floor((Date.now() - new Date(person.last_addie_message_at).getTime()) / 86400000);
+        response += `**Last contacted:** ${formatDate(new Date(person.last_addie_message_at))} (${days} days ago)\n`;
       }
-      if (user.outreach_opt_out) response += `**Opted out:** yes\n`;
+      if (person.last_person_message_at) {
+        const days = Math.floor((Date.now() - new Date(person.last_person_message_at).getTime()) / 86400000);
+        response += `**Last person message:** ${formatDate(new Date(person.last_person_message_at))} (${days} days ago)\n`;
+      }
+      if (person.opted_out) response += `**Opted out:** yes\n`;
 
       // Organization
       if (orgResult.rows.length > 0) {
@@ -7999,33 +7720,15 @@ Use add_committee_leader to assign a leader.`;
         response += `Status: ${org.subscription_status || 'no subscription'}\n`;
       }
 
-      // Insights
-      if (insights.length > 0) {
-        response += `\n### Insights (${insights.length})\n`;
-        for (const i of insights.slice(0, 8)) {
-          response += `- **${i.insight_type_name || 'unknown'}**: ${i.value}`;
-          if (i.confidence) response += ` (confidence: ${i.confidence})`;
+      // Recent events
+      if (recentEvents.rows.length > 0) {
+        response += `\n### Recent activity (${recentEvents.rows.length})\n`;
+        for (const e of recentEvents.rows) {
+          const date = formatDate(new Date(e.occurred_at));
+          const icon = e.event_type === 'message_received' ? '←' : '→';
+          response += `- ${icon} ${date} ${e.event_type}`;
+          if (e.channel) response += ` via ${e.channel}`;
           response += '\n';
-        }
-      }
-
-      // Outreach history
-      if (outreachHistory.length > 0) {
-        response += `\n### Outreach history (${outreachHistory.length})\n`;
-        for (const o of outreachHistory) {
-          const date = formatDate(new Date(o.sent_at));
-          const status = o.user_responded ? '✅ responded' : '⏳ no response';
-          response += `- ${date}: ${o.outreach_type} — ${status}`;
-          if (o.response_sentiment) response += ` (${o.response_sentiment})`;
-          response += '\n';
-        }
-      }
-
-      // Goal history
-      if (goalHistory.length > 0) {
-        response += `\n### Goal progress (${goalHistory.length})\n`;
-        for (const g of goalHistory) {
-          response += `- Goal #${g.goal_id}: ${g.status} (${g.attempt_count} attempts)\n`;
         }
       }
 
@@ -8033,6 +7736,129 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, query: queryStr }, 'Error looking up person');
       return `❌ Failed to look up person: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_engagement_plan', async (input) => {
+    const queryStr = input.query as string;
+    if (!queryStr) return '❌ query is required.';
+
+    const pool = getPool();
+
+    try {
+      // Resolve person
+      const isSlackId = /^U[A-Z0-9]{8,11}$/.test(queryStr);
+      const isEmail = queryStr.includes('@');
+      let personResult;
+      if (isSlackId) {
+        personResult = await pool.query(`SELECT * FROM person_relationships WHERE slack_user_id = $1`, [queryStr]);
+      } else if (isEmail) {
+        personResult = await pool.query(`SELECT * FROM person_relationships WHERE email = $1`, [queryStr]);
+      } else {
+        personResult = await pool.query(`SELECT * FROM person_relationships WHERE display_name ILIKE $1 LIMIT 1`, [`%${queryStr}%`]);
+      }
+
+      if (personResult.rows.length === 0) {
+        return `No person found for "${queryStr}".`;
+      }
+
+      const person = relationshipDb.rowToRelationship(personResult.rows[0]);
+
+      // 1. shouldContact decision
+      const decision = shouldContactCheck(person);
+
+      // 2. Load context and compute opportunities
+      const context = await loadRelationshipContext(person.id, { includeCommunity: true });
+      const engagementCtx = {
+        relationship: person,
+        capabilities: context.profile.capabilities,
+        company: context.profile.company,
+        recentMessages: context.recentMessages,
+        certification: context.certification ?? null,
+      };
+      const opportunities = computeEngagementOpportunities(engagementCtx, decision.reason);
+
+      // 3. Build compose prompt preview
+      const composeCtx = {
+        ...context,
+        engagementOpportunities: opportunities,
+      };
+      const composePrompt = buildComposePrompt(composeCtx, decision.channel, decision.reason);
+
+      // Format response
+      let response = `## Engagement plan for ${person.display_name}\n\n`;
+      response += `### Contact eligibility\n`;
+      response += `**Decision:** ${decision.shouldContact ? '✅ Yes' : '❌ No'}\n`;
+      response += `**Reason:** ${decision.reason}\n`;
+      response += `**Channel:** ${decision.channel}\n\n`;
+
+      response += `### Person context\n`;
+      response += `- Stage: ${person.stage}\n`;
+      response += `- Sentiment: ${person.sentiment_trend}\n`;
+      response += `- Unreplied: ${person.unreplied_outreach_count}\n`;
+      response += `- Interactions: ${person.interaction_count}\n`;
+      if (person.last_addie_message_at) {
+        const days = Math.floor((Date.now() - person.last_addie_message_at.getTime()) / 86400000);
+        response += `- Last contacted: ${days} days ago\n`;
+      }
+      if (person.last_person_message_at) {
+        const days = Math.floor((Date.now() - person.last_person_message_at.getTime()) / 86400000);
+        response += `- Last person message: ${days} days ago\n`;
+      }
+      response += '\n';
+
+      response += `### Engagement opportunities (top ${opportunities.length})\n`;
+      for (const o of opportunities) {
+        response += `${o.relevance.toFixed(0).padStart(3)} [${o.dimension}] ${o.description}\n`;
+      }
+      response += '\n';
+
+      response += `### Compose prompt summary\n`;
+      response += `Channel: ${decision.channel}\n`;
+      response += `Contact reason: ${decision.reason}\n`;
+      response += `Prompt length: ${composePrompt.length} chars\n`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query: queryStr }, 'Error building engagement plan');
+      return `❌ Failed to build engagement plan: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_outreach_health', async () => {
+    try {
+      const health = await assessHistoricalBehavior();
+
+      let response = '## Outreach health report\n\n';
+      response += `**Total active people:** ${health.totalPeople}\n\n`;
+
+      response += '### By stage\n';
+      response += '| Stage | Count | Avg unreplied | Max unreplied | Avg days since contact | Pulse+ |\n';
+      response += '|-------|-------|---------------|---------------|----------------------|--------|\n';
+      for (const s of health.byStage) {
+        response += `| ${s.stage} | ${s.count} | ${s.avgUnreplied} | ${s.maxUnreplied} | ${s.avgDaysSinceContact ?? 'n/a'} | ${s.pulseCount} |\n`;
+      }
+
+      if (health.overContactedPeople.length > 0) {
+        response += `\n### Approaching circuit breaker (${MAX_TOTAL_UNREPLIED} unreplied)\n`;
+        for (const p of health.overContactedPeople.slice(0, 20)) {
+          const warning = p.unrepliedCount >= MAX_TOTAL_UNREPLIED - 2 ? '⚠️' : '';
+          response += `- ${warning} **${p.displayName || p.personId}** [${p.stage}] — ${p.unrepliedCount} unreplied, ${p.messagesSent} sent, ${p.messagesReceived} received\n`;
+        }
+      }
+
+      response += '\n### Volume\n';
+      response += `- Last 7 days: ${health.recentOutreachRate.last7d} messages (${health.recentOutreachRate.avgPerDay7d}/day)\n`;
+      response += `- Last 30 days: ${health.recentOutreachRate.last30d} messages (${health.recentOutreachRate.avgPerDay30d}/day)\n`;
+
+      response += '\n### Email\n';
+      response += `- 7-day: ${health.emailStats.totalSent7d} sent\n`;
+      response += `- 30-day: ${health.emailStats.totalSent30d} sent to ${health.emailStats.uniqueRecipients30d} unique recipients\n`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error building outreach health report');
+      return '❌ Failed to build outreach health report. Is the database accessible?';
     }
   });
 

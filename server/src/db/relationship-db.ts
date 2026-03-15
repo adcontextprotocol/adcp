@@ -39,7 +39,7 @@ function stageIndex(stage: RelationshipStage): number {
   return STAGE_ORDER.indexOf(stage);
 }
 
-function rowToRelationship(row: Record<string, unknown>): PersonRelationship {
+export function rowToRelationship(row: Record<string, unknown>): PersonRelationship {
   return {
     id: row.id as string,
     slack_user_id: row.slack_user_id as string | null,
@@ -411,6 +411,14 @@ export async function setSlackDmThread(personId: string, channelId: string, thre
   );
 }
 
+/** Mark a person as opted out of all proactive outreach. */
+export async function setOptedOut(personId: string, optedOut: boolean): Promise<void> {
+  await query(
+    `UPDATE person_relationships SET opted_out = $2, updated_at = NOW() WHERE id = $1`,
+    [personId, optedOut]
+  );
+}
+
 /** Update the sentiment trend for a person. */
 export async function updateSentiment(personId: string, sentiment: SentimentTrend): Promise<void> {
   await query(
@@ -522,5 +530,145 @@ export async function evaluateStageTransitions(personId: string): Promise<void> 
     if (leader && (leader.is_leader || Number(leader.council_count) > 0)) {
       await updateStage(personId, 'leading');
     }
+  }
+}
+
+/**
+ * Decay stages for people who have been inactive for extended periods.
+ * A contributing member silent for 6+ months regresses to participating.
+ * A participating member silent for 6+ months regresses to exploring.
+ * An exploring member silent for 6+ months regresses to welcomed.
+ * Returns the number of people whose stages were decayed.
+ */
+/**
+ * Stage-specific decay thresholds. Leading never decays — formal roles
+ * are verified via evaluateStageTransitions, not inferred from silence.
+ */
+export const DECAY_THRESHOLDS: Partial<Record<RelationshipStage, number>> = {
+  exploring: 120,     // 4 months
+  participating: 150, // 5 months
+  contributing: 180,  // 6 months
+};
+
+/**
+ * Decay stages for people who have been inactive for extended periods.
+ * Only checks person activity (last_person_message_at), not Addie's messages —
+ * monthly pulses should not prevent decay.
+ * Returns the number of people whose stages were decayed.
+ */
+export async function decayStaleStages(): Promise<number> {
+  let totalDecayed = 0;
+
+  for (const [stage, thresholdDays] of Object.entries(DECAY_THRESHOLDS)) {
+    const result = await query<{ id: string; old_stage: string; new_stage: string }>(
+      `WITH candidates AS (
+        SELECT id, stage as old_stage
+        FROM person_relationships
+        WHERE opted_out = FALSE
+          AND stage = $1
+          AND stage_changed_at < NOW() - ($2 || ' days')::interval
+          AND (last_person_message_at IS NULL OR last_person_message_at < NOW() - ($2 || ' days')::interval)
+      )
+      UPDATE person_relationships pr
+      SET stage = CASE pr.stage
+        WHEN 'contributing' THEN 'participating'
+        WHEN 'participating' THEN 'exploring'
+        WHEN 'exploring' THEN 'welcomed'
+        ELSE pr.stage
+      END,
+      stage_changed_at = NOW(),
+      updated_at = NOW()
+      FROM candidates c
+      WHERE pr.id = c.id
+      RETURNING pr.id, c.old_stage, pr.stage as new_stage`,
+      [stage, String(thresholdDays)]
+    );
+
+    for (const row of result.rows) {
+      personEvents.recordEvent(row.id, 'stage_changed', {
+        channel: 'system',
+        data: { from: row.old_stage, to: row.new_stage, reason: 'stage_decay' },
+      }).catch(err => logger.warn({ err, personId: row.id }, 'Failed to record stage decay event'));
+    }
+
+    totalDecayed += result.rows.length;
+  }
+
+  return totalDecayed;
+}
+
+/**
+ * Derive and update sentiment based on interaction patterns.
+ * Simple rules — no LLM needed:
+ * - Person replied after 3+ unreplied outreach: 'neutral' (recovering)
+ * - Person replied with < 2 unreplied: 'positive' (engaged)
+ * - 3+ addie messages in 30 days with 0 person messages: 'disengaging'
+ * - Otherwise: leave unchanged
+ */
+export async function deriveSentiment(personId: string): Promise<void> {
+  const person = await getRelationship(personId);
+  if (!person) return;
+
+  // Just replied — determine sentiment from how stale the relationship was
+  if (person.last_person_message_at && person.unreplied_outreach_count === 0) {
+    // unreplied_outreach_count was just reset to 0 by recordPersonMessage
+    // Check the event log for how many messages were sent before the reply
+    const recentSentResult = await query<{ sent_count: number }>(
+      `SELECT COUNT(*) as sent_count FROM person_events
+       WHERE person_id = $1
+         AND event_type = 'message_sent'
+         AND occurred_at > NOW() - INTERVAL '60 days'`,
+      [personId]
+    );
+    const recentReceivedResult = await query<{ received_count: number }>(
+      `SELECT COUNT(*) as received_count FROM person_events
+       WHERE person_id = $1
+         AND event_type = 'message_received'
+         AND occurred_at > NOW() - INTERVAL '60 days'`,
+      [personId]
+    );
+
+    const sent = Number(recentSentResult.rows[0]?.sent_count ?? 0);
+    const received = Number(recentReceivedResult.rows[0]?.received_count ?? 0);
+
+    if (sent >= 3 && received <= 1) {
+      // Was disengaging, just replied — recovering
+      await updateSentiment(personId, 'neutral');
+    } else {
+      await updateSentiment(personId, 'positive');
+    }
+
+    personEvents.recordEvent(personId, 'sentiment_updated', {
+      channel: 'system',
+      data: { sentiment: person.sentiment_trend === 'disengaging' ? 'neutral' : 'positive', trigger: 'person_replied' },
+    }).catch(err => logger.warn({ err, personId }, 'Failed to record sentiment event'));
+    return;
+  }
+
+  // Check for disengaging pattern: 3+ sent in 30 days, 0 received
+  const sentResult = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM person_events
+     WHERE person_id = $1
+       AND event_type = 'message_sent'
+       AND occurred_at > NOW() - INTERVAL '30 days'`,
+    [personId]
+  );
+  const receivedResult = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM person_events
+     WHERE person_id = $1
+       AND event_type = 'message_received'
+       AND occurred_at > NOW() - INTERVAL '30 days'`,
+    [personId]
+  );
+
+  const sent30d = Number(sentResult.rows[0]?.count ?? 0);
+  const received30d = Number(receivedResult.rows[0]?.count ?? 0);
+
+  if (sent30d >= 3 && received30d === 0 && person.sentiment_trend !== 'disengaging') {
+    await updateSentiment(personId, 'disengaging');
+    personEvents.recordEvent(personId, 'sentiment_updated', {
+      channel: 'system',
+      data: { sentiment: 'disengaging', trigger: 'no_response_30d', sent: sent30d },
+    }).catch(err => logger.warn({ err, personId }, 'Failed to record sentiment event'));
   }
 }

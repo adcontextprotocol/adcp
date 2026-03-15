@@ -87,12 +87,6 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
-import {
-  extractInsights,
-  checkAndMarkOutreachResponse,
-  getGoalsForSystemPrompt,
-  type ExtractionContext,
-} from './services/insight-extractor.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import { loadRelationshipContext, formatContextForPrompt } from './services/relationship-context.js';
@@ -253,21 +247,6 @@ async function buildRequestContext(
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
 
-    // Get insight goals to naturally work into conversation
-    // Skip goals in channel contexts to prevent membership pitching
-    const isMapped = !!memberContext?.is_mapped;
-    let insightGoalsText = '';
-    if (!options?.skipGoals) {
-      try {
-        const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
-        if (goalsPrompt) {
-          insightGoalsText = goalsPrompt;
-        }
-      } catch (error) {
-        logger.warn({ error }, 'Addie: Failed to get insight goals for prompt');
-      }
-    }
-
     // Load cross-surface relationship context
     let relationshipPrompt = '';
     let personId: string | null = null;
@@ -282,7 +261,7 @@ async function buildRequestContext(
       logger.warn({ error, userId }, 'Addie: Failed to load relationship context, continuing without it');
     }
 
-    const sections = [memberContextText, insightGoalsText, relationshipPrompt].filter(Boolean);
+    const sections = [memberContextText, relationshipPrompt].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
@@ -506,9 +485,11 @@ export async function handleAssistantMessage(
 
   // Record the user's message in the relationship and event log
   if (personId) {
-    relationshipDb.recordPersonMessage(personId, 'slack').catch(error => {
-      logger.warn({ error, personId }, 'Addie: Failed to record person message');
-    });
+    relationshipDb.recordPersonMessage(personId, 'slack')
+      .then(() => relationshipDb.deriveSentiment(personId))
+      .catch(error => {
+        logger.warn({ error, personId }, 'Addie: Failed to record person message');
+      });
     personEvents.recordEvent(personId, 'message_received', {
       channel: 'slack',
       data: { source: 'dm', text_length: textWithResolvedMentions.length },
@@ -631,23 +612,6 @@ export async function handleAssistantMessage(
     }
   }
 
-  // Extract insights from the user's message (async, don't block response)
-  const extractionContext: ExtractionContext = {
-    slackUserId: event.user,
-    workosUserId: memberContext?.workos_user?.workos_user_id,
-    threadId: event.thread_ts,
-    isMapped: memberContext?.is_mapped ?? false,
-  };
-  extractInsights(inputValidation.sanitized, extractionContext)
-    .then(result => {
-      if (!result.skipped && (result.insights.length > 0 || result.goal_responses.length > 0)) {
-        // Check if this was a response to proactive outreach
-        checkAndMarkOutreachResponse(event.user, result.insights.length > 0);
-      }
-    })
-    .catch(error => {
-      logger.error({ error }, 'Addie: Error during insight extraction');
-    });
 }
 
 /**
@@ -681,9 +645,11 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
 
   // Record the user's message in the relationship
   if (personId) {
-    relationshipDb.recordPersonMessage(personId, 'slack').catch(error => {
-      logger.warn({ error, personId }, 'Addie: Failed to record person message (mention)');
-    });
+    relationshipDb.recordPersonMessage(personId, 'slack')
+      .then(() => relationshipDb.deriveSentiment(personId))
+      .catch(error => {
+        logger.warn({ error, personId }, 'Addie: Failed to record person message (mention)');
+      });
   }
 
   // Add channel guardrails — mentions always happen in channels
@@ -802,23 +768,6 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     }
   }
 
-  // Extract insights from the user's message (async, don't block response)
-  const mentionExtractionContext: ExtractionContext = {
-    slackUserId: event.user,
-    workosUserId: memberContext?.workos_user?.workos_user_id,
-    threadId: event.thread_ts || event.ts,
-    isMapped: memberContext?.is_mapped ?? false,
-  };
-  extractInsights(inputValidation.sanitized, mentionExtractionContext)
-    .then(result => {
-      if (!result.skipped && (result.insights.length > 0 || result.goal_responses.length > 0)) {
-        // Check if this was a response to proactive outreach
-        checkAndMarkOutreachResponse(event.user, result.insights.length > 0);
-      }
-    })
-    .catch(error => {
-      logger.error({ error }, 'Addie: Error during insight extraction (mention)');
-    });
 }
 
 /**

@@ -1,9 +1,10 @@
 import { query } from '../../db/client.js';
 import * as relationshipDb from '../../db/relationship-db.js';
 import { getMemberCapabilities, hasRelevantUpcomingEvents } from '../../db/outbound-db.js';
-import { InsightsDatabase } from '../../db/insights-db.js';
+import * as certDb from '../../db/certification-db.js';
 import type { PersonRelationship } from '../../db/relationship-db.js';
 import type { MemberCapabilities } from '../types.js';
+import type { CertificationSummary } from './engagement-planner.js';
 
 // =====================================================
 // TYPES
@@ -13,10 +14,10 @@ export interface RelationshipContext {
   relationship: PersonRelationship;
   recentMessages: CrossSurfaceMessage[];
   profile: {
-    insights: Array<{ type: string; value: string; confidence: string }>;
     capabilities: MemberCapabilities | null;
     company: CompanyInfo | null;
   };
+  certification: CertificationSummary | null;
   community?: CommunityContext;
 }
 
@@ -60,23 +61,11 @@ export async function loadRelationshipContext(
   }
 
   const { slack_user_id, workos_user_id, prospect_org_id } = relationship;
-  const insightsDb = new InsightsDatabase();
 
   // Fan out all independent queries in parallel
-  const [messages, insights, capabilities, company, community] = await Promise.all([
+  const [messages, capabilities, company, certification, community] = await Promise.all([
     // Recent messages across all surfaces
     loadRecentMessages(personId),
-
-    // Insights from conversations
-    slack_user_id
-      ? insightsDb.getInsightsForUser(slack_user_id).then(rows =>
-          rows.map(r => ({
-            type: r.insight_type_name ?? String(r.insight_type_id),
-            value: r.value,
-            confidence: r.confidence,
-          }))
-        )
-      : Promise.resolve([]),
 
     // Member capabilities
     slack_user_id
@@ -85,6 +74,11 @@ export async function loadRelationshipContext(
 
     // Company info
     loadCompanyInfo(workos_user_id, prospect_org_id),
+
+    // Certification progress
+    workos_user_id
+      ? loadCertificationSummary(workos_user_id)
+      : Promise.resolve(null),
 
     // Community context (only when requested)
     options?.includeCommunity
@@ -96,10 +90,10 @@ export async function loadRelationshipContext(
     relationship,
     recentMessages: messages,
     profile: {
-      insights,
       capabilities,
       company,
     },
+    certification,
     community,
   };
 }
@@ -191,6 +185,25 @@ async function loadCompanyInfo(
   return null;
 }
 
+async function loadCertificationSummary(workosUserId: string): Promise<CertificationSummary | null> {
+  try {
+    const [progress, credentials, modules] = await Promise.all([
+      certDb.getProgress(workosUserId),
+      certDb.getUserCredentials(workosUserId),
+      certDb.getModules(),
+    ]);
+
+    return {
+      modulesCompleted: progress.filter(p => p.status === 'completed' || p.status === 'tested_out').length,
+      totalModules: modules.length,
+      credentialsEarned: credentials.map(c => c.credential_id),
+      hasInProgressTrack: progress.some(p => p.status === 'in_progress'),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function loadCommunityContext(
   workosUserId: string | null,
   slackUserId: string | null
@@ -247,15 +260,6 @@ export function formatContextForPrompt(ctx: RelationshipContext): string {
   lines.push(`**Interactions**: ${r.interaction_count} messages across ${channelList}`);
   lines.push(`**Sentiment**: ${r.sentiment_trend}`);
   lines.push(`**Last contact**: Addie ${lastAddieContact}, them ${lastPersonContact}`);
-
-  // Insights
-  if (profile.insights.length > 0) {
-    lines.push('');
-    lines.push('### What we know');
-    for (const insight of profile.insights) {
-      lines.push(`- ${insight.type}: ${insight.value}`);
-    }
-  }
 
   // Capabilities
   const capLines = formatCapabilitiesForPrompt(profile.capabilities);

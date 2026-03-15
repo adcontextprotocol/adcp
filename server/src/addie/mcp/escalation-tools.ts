@@ -20,7 +20,6 @@ import {
 import { getThreadService } from '../thread-service.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getEscalationChannel } from '../../db/system-settings-db.js';
-import { AddieDatabase } from '../../db/addie-db.js';
 
 const logger = createLogger('addie-escalation-tools');
 
@@ -455,25 +454,12 @@ export function createEscalationToolHandlers(
         }
       }
 
-      // Create insight source record
-      const addieDb = new AddieDatabase();
-      const source = await addieDb.createInsightSource({
-        source_type: 'conversation',
-        source_ref: threadId,
-        content,
-        topic,
-        author_name: authorDisplayName,
-        author_context: authorOrgName,
-        tagged_by: 'addie',
-        notes: whyValuable,
-      });
-
       logger.info(
-        { insightId: source.id, topic, threadId, authorName: authorDisplayName },
+        { topic, threadId, authorName: authorDisplayName, content: content.slice(0, 500) },
         'Captured learning from conversation'
       );
 
-      return `Learning captured (ID: ${source.id}). Thank you for sharing this insight - it helps us improve!`;
+      return 'Learning captured. Thank you for sharing this insight!';
     } catch (error) {
       logger.error({ error, topic, threadId }, 'Failed to capture learning');
       return 'I noted this insight but encountered an error saving it. The team may follow up.';
