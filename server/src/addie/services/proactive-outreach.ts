@@ -38,7 +38,7 @@ const OUTREACH_ENABLED = process.env.OUTREACH_ENABLED !== 'false';
 // Configuration
 const BUSINESS_HOURS_START = 9; // 9 AM
 const BUSINESS_HOURS_END = 17; // 5 PM
-const SLACK_DM_PER_RUN_LIMIT = 10; // Max Slack DMs per scheduler run to avoid burst spam
+const SLACK_DM_PER_RUN_LIMIT = 20; // Max Slack DMs per scheduler run to avoid burst spam
 
 /**
  * Result of sending outreach
@@ -251,7 +251,7 @@ export async function runOutreachScheduler(options: {
   skipped: number;
   errors: number;
 }> {
-  const limit = options.limit ?? 5;
+  const limit = options.limit ?? 25;
 
   // Check kill switch
   if (!OUTREACH_ENABLED) {
@@ -349,6 +349,11 @@ export async function runOutreachScheduler(options: {
           channel,
           data: { action: 'skip', reason: 'nothing meaningful to say', stage: candidate.stage },
         }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+
+        // Back off so we don't retry this person every run
+        const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+        await relationshipDb.setNextContactAfter(candidate.id, retryDate);
+
         skipped++;
         continue;
       }
@@ -431,6 +436,7 @@ export async function runOutreachScheduler(options: {
         personEvents.recordEvent(candidate.id, 'message_sent', {
           channel: 'email',
           data: {
+            text: composed.text,
             subject: composed.subject,
             text_length: composed.text.length,
             stage: candidate.stage,
@@ -580,6 +586,7 @@ export async function manualOutreach(
     personEvents.recordEvent(relationship.id, 'message_sent', {
       channel: 'email',
       data: {
+        text: composed.text,
         subject: composed.subject,
         text_length: composed.text.length,
         stage: relationship.stage,

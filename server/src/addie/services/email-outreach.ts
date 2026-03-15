@@ -17,8 +17,8 @@ const logger = createLogger('email-outreach');
 // Cold email is a completely different animal from Slack DMs. These limits
 // protect sender reputation, deliverability, and brand perception.
 
-/** Max emails per scheduler run. One at a time — each one matters. */
-export const EMAIL_PER_RUN_LIMIT = 2;
+/** Max emails per scheduler run. Keep below daily limit to spread across runs. */
+export const EMAIL_PER_RUN_LIMIT = 3;
 
 /** Max emails per calendar day across all runs. */
 export const EMAIL_DAILY_LIMIT = 5;

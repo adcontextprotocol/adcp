@@ -118,7 +118,7 @@ export function registerAllJobs(): void {
     interval: { value: 20, unit: 'minutes' },
     initialDelay: { value: 2, unit: 'minutes' },
     runner: runOutreachScheduler,
-    options: { limit: 8 },
+    options: { limit: 25 },
   });
 
   // Account enrichment - enriches accounts via Lusha API

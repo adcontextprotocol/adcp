@@ -106,7 +106,7 @@ export type {
 export const STAGE_COOLDOWNS: Record<RelationshipStage, number> = {
   prospect: 7,
   welcomed: 14,
-  exploring: 14,
+  exploring: 21,
   participating: 30,
   contributing: 30,
   leading: 30,
