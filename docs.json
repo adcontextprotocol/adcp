@@ -78,6 +78,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -90,6 +91,13 @@
                   "docs/reference/migration/attribution"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Understanding Agentic Advertising",
+            "pages": [
+              "docs/guides/buying-ai-media",
+              "docs/learning/overview"
             ]
           },
           {
@@ -151,6 +159,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/ai-media",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -490,6 +499,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -502,6 +512,13 @@
                   "docs/reference/migration/attribution"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Understanding Agentic Advertising",
+            "pages": [
+              "docs/guides/buying-ai-media",
+              "docs/learning/overview"
             ]
           },
           {
@@ -563,6 +580,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/ai-media",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",

@@ -1,84 +1,97 @@
 ---
-title: "S5: Sponsored Intelligence"
-sidebarTitle: "S5: Sponsored Intelligence"
-description: "AdCP specialist module S5: Sponsored Intelligence. Conversational brand experiences, session lifecycle, A2UI components, and cost-per-conversation economics."
-"og:title": "AdCP — S5: Sponsored Intelligence"
+title: "S5: Generative advertising"
+sidebarTitle: "S5: Generative advertising"
+description: "AdCP specialist module S5: Generative advertising. AI-generated creative from catalogs, AI media surfaces, and Sponsored Intelligence conversational handoffs."
+"og:title": "AdCP — S5: Generative advertising"
 ---
 
-# S5: Sponsored Intelligence
+# S5: Generative advertising
 
 <Info>
 **Members only** — Requires Practitioner credential. ~45 minutes with Addie. Combines hands-on lab and adaptive exam.
 </Info>
 
-This specialist module tests your mastery of the Sponsored Intelligence protocol. You'll work with sandbox agents to manage the full session lifecycle: discovering offerings, initiating sessions, exchanging messages, and terminating sessions. Addie evaluates both your hands-on work and your conceptual understanding.
+This specialist module covers the three pillars of generative advertising: AI-generated creative from brand assets and catalogs, AI media buying where data flows into the platform instead of bid requests flowing out, and Sponsored Intelligence where brands engage users in multi-turn conversations. Addie evaluates both your hands-on work and your understanding of when and why generative advertising fits.
 
-Passing earns the **AdCP specialist — Sponsored Intelligence** credential.
+Passing earns the **AdCP specialist — Generative advertising** credential.
 
 ## What you'll demonstrate
 
-- Discover available SI offerings and evaluate their suitability
-- Manage the full session lifecycle: initiate, message, terminate
-- Design conversational brand experiences with transparency and user control
-- Reason about cost-per-conversation economics and performance measurement
-- Understand A2UI components for rich conversational interfaces
+- Generate creative from brand assets, catalog data, and natural language briefs
+- Execute AI media campaigns using the reversed data flow paradigm
+- Manage Sponsored Intelligence sessions for conversational brand experiences
+- Explain account models for walled gardens vs agent-trusted networks
+- Reason about when generative advertising fits vs traditional approaches
 
 ## Prerequisite reading
 
-### Core SI tasks
+### Generative creative
 
 <CardGroup cols={2}>
-  <Card title="si_get_offering" icon="tag" href="/docs/sponsored-intelligence/tasks/si_get_offering">
-    Discover available sponsored intelligence offerings from publishers.
+  <Card title="Generative creative" icon="wand-magic-sparkles" href="/docs/creative/generative-creative">
+    AI-powered creative generation via `build_creative` — manifests, code output, and brand identity integration.
   </Card>
-  <Card title="si_initiate_session" icon="play" href="/docs/sponsored-intelligence/tasks/si_initiate_session">
-    Start a conversational brand experience session.
-  </Card>
-  <Card title="si_send_message" icon="message" href="/docs/sponsored-intelligence/tasks/si_send_message">
-    Exchange messages within an active session.
-  </Card>
-  <Card title="si_terminate_session" icon="stop" href="/docs/sponsored-intelligence/tasks/si_terminate_session">
-    End a session and finalize billing.
+  <Card title="Creative formats" icon="palette" href="/docs/creative/task-reference/list_creative_formats">
+    Format discovery — what ad formats a creative agent supports.
   </Card>
 </CardGroup>
 
-### Supporting concepts
+### AI media
+
+<CardGroup cols={2}>
+  <Card title="AI media guide" icon="microchip" href="/docs/guides/ai-media">
+    The reversed data flow, product spectrum, end-to-end workflow, and network aggregation pattern.
+  </Card>
+  <Card title="Catalogs" icon="database" href="/docs/creative/catalogs">
+    Product and offering catalogs — the raw material for generative creative on AI platforms.
+  </Card>
+  <Card title="Seller integration" icon="store" href="/docs/guides/seller-integration">
+    How to expose inventory to AI buyer agents, including governance enforcement.
+  </Card>
+  <Card title="Media channel taxonomy" icon="list" href="/docs/reference/media-channel-taxonomy">
+    The `ai_media` channel definition.
+  </Card>
+</CardGroup>
+
+### Sponsored Intelligence
 
 <CardGroup cols={2}>
   <Card title="SI overview" icon="message-bot" href="/docs/sponsored-intelligence/overview">
-    Conversational brand experiences in AI assistants — a genuinely new advertising model.
+    Conversational brand experiences — session lifecycle, identity, and commerce handoff.
   </Card>
   <Card title="SI specification" icon="scroll" href="/docs/sponsored-intelligence/specification">
     The formal specification for the Sponsored Intelligence protocol.
   </Card>
-  <Card title="Implementing SI agents" icon="robot" href="/docs/sponsored-intelligence/implementing-si-agents">
-    Architecture guide for building SI agents.
-  </Card>
   <Card title="Implementing SI hosts" icon="server" href="/docs/sponsored-intelligence/implementing-si-hosts">
-    How AI assistants integrate SI offerings.
+    How AI platforms integrate SI for brand experience handoffs.
+  </Card>
+  <Card title="Implementing SI agents" icon="robot" href="/docs/sponsored-intelligence/implementing-si-agents">
+    Architecture guide for building SI brand agents.
   </Card>
 </CardGroup>
 
 ## Lab exercises
 
-1. **Offering discovery** — Query sandbox agents for SI offerings, evaluate pricing and targeting
-2. **Session lifecycle** — Initiate a session, exchange messages, observe the conversation flow
-3. **Experience design** — Design a conversational brand experience with appropriate transparency
-4. **Economics analysis** — Analyze cost-per-conversation vs traditional CPM for different scenarios
+During the module, Addie will guide you through hands-on exercises:
+
+1. **Generative creative** — Discover formats, generate creative from brand assets and a brief, evaluate output quality
+2. **AI media campaign** — Push catalogs to a platform, discover `ai_media` products, create a media buy with optimization goals
+3. **SI session** — Initiate a session, exchange messages with offering integration, observe commerce handoff
+4. **Strategic evaluation** — Compare generative advertising vs traditional approaches for different scenarios
 
 ## Assessment
 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
-| Protocol mastery | 30% | Complete SI session lifecycle |
-| Conversational design | 25% | Creates engaging branded conversations |
-| Component usage | 25% | Effectively uses A2UI components |
-| Strategic thinking | 20% | Understands when and why to use SI |
+| Generative creative | 25% | Builds creative from brand assets, catalogs, and briefs |
+| AI media mastery | 30% | Understands the reversed data flow and executes AI media campaigns |
+| SI competence | 25% | Manages SI sessions and understands conversational brand experiences |
+| Strategic thinking | 20% | Reasons about when and how to use generative advertising |
 
 Passing threshold: 70%.
 
 ## Start this module
 
 <Card title="Start S5 with Addie" icon="play" href="https://agenticadvertising.org/addie">
-  "I'd like to start the sponsored intelligence specialist module."
+  "I'd like to start the generative advertising specialist module."
 </Card>

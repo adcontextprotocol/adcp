@@ -21,6 +21,8 @@ Six questions underlie every AdCP transaction:
 
 The seller declares the account model in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) via `require_operator_auth`. When `true` (**explicit accounts**), operators authenticate independently and the buyer discovers accounts via [`list_accounts`](/docs/accounts/tasks/list_accounts). When `false` (**implicit accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) to provision accounts.
 
+An **ad network** may use both models simultaneously — implicit accounts on the buyer-facing side (the network is agent-trusted) and explicit accounts with each underlying platform (the network authenticates as an operator). See the [AI media guide — account model for networks](/docs/guides/ai-media#account-model-for-networks) for the full account chain: `buyer agent → network (implicit) → AI platform (explicit)`.
+
 After delivery, the orchestrator calls [`report_usage`](/docs/accounts/tasks/report_usage) to inform vendor agents (signals, governance, creative) how their services were consumed. This is not settlement — it's consumption reporting so the vendor can track earned revenue and verify billing.
 
 ## Scope
