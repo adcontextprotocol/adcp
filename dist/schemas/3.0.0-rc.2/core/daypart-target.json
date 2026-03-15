@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/daypart-target.json",
+  "title": "Daypart Target",
+  "description": "A time window for daypart targeting. Specifies days of week and an hour range. start_hour is inclusive, end_hour is exclusive (e.g., 6-10 = 6:00am to 10:00am). Follows the Google Ads AdScheduleInfo / DV360 DayPartTargeting pattern.",
+  "type": "object",
+  "properties": {
+    "days": {
+      "type": "array",
+      "description": "Days of week this window applies to. Use multiple days for compact targeting (e.g., monday-friday in one object).",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/day-of-week.json"
+      },
+      "minItems": 1
+    },
+    "start_hour": {
+      "type": "integer",
+      "description": "Start hour (inclusive), 0-23 in 24-hour format. 0 = midnight, 6 = 6:00am, 18 = 6:00pm.",
+      "minimum": 0,
+      "maximum": 23
+    },
+    "end_hour": {
+      "type": "integer",
+      "description": "End hour (exclusive), 1-24 in 24-hour format. 10 = 10:00am, 24 = midnight. Must be greater than start_hour.",
+      "minimum": 1,
+      "maximum": 24
+    },
+    "label": {
+      "type": "string",
+      "description": "Optional human-readable name for this time window (e.g., 'Morning Drive', 'Prime Time')"
+    }
+  },
+  "required": ["days", "start_hour", "end_hour"],
+  "additionalProperties": false
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/governance/governance-context.json",
+  "title": "Governance Context",
+  "description": "Normalized governance-relevant fields extracted from a tool payload. Provides a consistent shape for the governance agent to validate against the plan, regardless of which tool originated the action.",
+  "type": "object",
+  "properties": {
+    "total_budget": {
+      "type": "object",
+      "description": "Total budget for the action.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "Budget amount."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code."
+        }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": false
+    },
+    "countries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "ISO 3166-1 alpha-2 country codes targeted by this action."
+    },
+    "channels": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Channels targeted by this action."
+    },
+    "flight": {
+      "type": "object",
+      "description": "Flight dates for this action.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Flight start (ISO 8601)."
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Flight end (ISO 8601)."
+        }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "seller_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent this action targets."
+    }
+  },
+  "additionalProperties": true
+}

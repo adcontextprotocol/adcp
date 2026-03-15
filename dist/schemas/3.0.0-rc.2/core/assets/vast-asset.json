@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/assets/vast-asset.json",
+  "title": "VAST Asset",
+  "description": "VAST (Video Ad Serving Template) tag for third-party video ad serving",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "delivery_type": {
+          "type": "string",
+          "const": "url",
+          "description": "Discriminator indicating VAST is delivered via URL endpoint"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL endpoint that returns VAST XML"
+        },
+        "vast_version": {
+          "$ref": "/schemas/3.0.0-rc.2/enums/vast-version.json",
+          "description": "VAST specification version"
+        },
+        "vpaid_enabled": {
+          "type": "boolean",
+          "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "description": "Expected video duration in milliseconds (if known)",
+          "minimum": 0
+        },
+        "tracking_events": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/vast-tracking-event.json"
+          },
+          "description": "Tracking events supported by this VAST tag"
+        },
+        "captions_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to captions file (WebVTT, SRT, etc.)",
+          "x-accessibility": true
+        },
+        "audio_description_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to audio description track for visually impaired users",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "/schemas/3.0.0-rc.2/core/provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "delivery_type",
+        "url"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "delivery_type": {
+          "type": "string",
+          "const": "inline",
+          "description": "Discriminator indicating VAST is delivered as inline XML content"
+        },
+        "content": {
+          "type": "string",
+          "description": "Inline VAST XML content"
+        },
+        "vast_version": {
+          "$ref": "/schemas/3.0.0-rc.2/enums/vast-version.json",
+          "description": "VAST specification version"
+        },
+        "vpaid_enabled": {
+          "type": "boolean",
+          "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "description": "Expected video duration in milliseconds (if known)",
+          "minimum": 0
+        },
+        "tracking_events": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/vast-tracking-event.json"
+          },
+          "description": "Tracking events supported by this VAST tag"
+        },
+        "captions_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to captions file (WebVTT, SRT, etc.)",
+          "x-accessibility": true
+        },
+        "audio_description_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to audio description track for visually impaired users",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "/schemas/3.0.0-rc.2/core/provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "delivery_type",
+        "content"
+      ],
+      "additionalProperties": true
+    }
+  ]
+}

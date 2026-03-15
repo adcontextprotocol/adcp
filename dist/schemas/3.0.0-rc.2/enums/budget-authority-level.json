@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/budget-authority-level.json",
+  "title": "Budget Authority Level",
+  "description": "The level of autonomy an agent has over budget decisions within a campaign plan.",
+  "type": "string",
+  "enum": [
+    "agent_full",
+    "agent_limited",
+    "human_required"
+  ],
+  "enumDescriptions": {
+    "agent_full": "Agent can execute any spend within the total budget without human approval.",
+    "agent_limited": "Agent can execute within thresholds but must escalate large changes (defined by reallocation_threshold).",
+    "human_required": "Every spend commitment requires human approval."
+  }
+}

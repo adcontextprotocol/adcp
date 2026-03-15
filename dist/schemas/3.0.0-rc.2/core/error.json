@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/error.json",
+  "title": "Error",
+  "description": "Standard error structure for task-specific errors and warnings",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "Error code for programmatic handling. Standard codes are defined in error-code.json and enable autonomous agent recovery. Sellers MAY use codes not in the standard vocabulary for platform-specific errors; agents MUST handle unknown codes gracefully by falling back to the recovery classification."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable error message"
+    },
+    "field": {
+      "type": "string",
+      "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+    },
+    "suggestion": {
+      "type": "string",
+      "description": "Suggested fix for the error"
+    },
+    "retry_after": {
+      "type": "number",
+      "description": "Seconds to wait before retrying the operation",
+      "minimum": 0
+    },
+    "details": {
+      "type": "object",
+      "description": "Additional task-specific error details",
+      "additionalProperties": true
+    },
+    "recovery": {
+      "type": "string",
+      "enum": ["transient", "correctable", "terminal"],
+      "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found)."
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "additionalProperties": true
+}

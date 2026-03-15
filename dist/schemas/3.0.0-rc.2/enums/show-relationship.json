@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/show-relationship.json",
+  "title": "Show Relationship",
+  "description": "How two shows are related. References are scoped to the same get_products response. Symmetric types (companion, crossover) do not require both shows to declare the relationship.",
+  "type": "string",
+  "enum": [
+    "spinoff",
+    "companion",
+    "sequel",
+    "prequel",
+    "crossover"
+  ],
+  "enumDescriptions": {
+    "spinoff": "A show derived from the referenced show (e.g., an after-show or character spinoff)",
+    "companion": "A companion show (behind-the-scenes, reaction, or supplementary content)",
+    "sequel": "A continuation of the referenced show",
+    "prequel": "A predecessor to the referenced show",
+    "crossover": "Shows that share episodes, guests, or story arcs"
+  }
+}

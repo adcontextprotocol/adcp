@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/content-rating-system.json",
+  "title": "Content Rating System",
+  "description": "Rating systems for content advisory classifications",
+  "type": "string",
+  "enum": [
+    "tv_parental",
+    "mpaa",
+    "podcast",
+    "esrb",
+    "bbfc",
+    "fsk",
+    "acb",
+    "custom"
+  ],
+  "enumDescriptions": {
+    "tv_parental": "US TV Parental Guidelines (TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA)",
+    "mpaa": "Motion Picture Association film ratings (G, PG, PG-13, R, NC-17)",
+    "podcast": "Podcast content advisories (clean, explicit)",
+    "esrb": "Entertainment Software Rating Board (E, E10+, T, M, AO)",
+    "bbfc": "British Board of Film Classification (U, PG, 12A, 12, 15, 18, R18)",
+    "fsk": "Freiwillige Selbstkontrolle der Filmwirtschaft (0, 6, 12, 16, 18)",
+    "acb": "Australian Classification Board (G, PG, M, MA15+, R18+)",
+    "custom": "Publisher-defined rating system with free-form values"
+  }
+}

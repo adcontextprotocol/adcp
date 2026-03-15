@@ -1,5 +1,91 @@
 # Changelog
 
+## 3.0.0-rc.2
+
+### Major Changes
+
+- 06363b9: Remove `account_resolution` capability field. `require_operator_auth` now determines both the auth model and account reference style: `true` means explicit accounts (discover via `list_accounts`, pass `account_id`), `false` means implicit accounts (declare via `sync_accounts`, pass natural key).
+
+### Minor Changes
+
+- fe079dc: Add `ai_media` channel to media channel taxonomy for AI platform advertising (AI assistants, AI search, generative AI experiences). New industry guide for AI media sales agents. Strengthen accounts and sandbox guidance for production sales agents.
+- fc14940: Add brand protocol rights lifecycle: get_rights, acquire_rights, update_rights with generation credentials, creative approval, revocation notifications, and usage reporting. Includes rights-terms shared schema, authenticated webhooks (HMAC-SHA256), actionable vs final rejection convention, DDEX PIE mapping for music licensing, and sandbox tooling for scenario testing.
+- a326b30: Add visual_guidelines to brand.json schema: photography, graphic style, shapes, iconography, composition, motion, logo placement, colorways, type scale, asset libraries, and restrictions. These structured visual rules enable generative creative systems to produce on-brand assets consistently.
+- 44a8be9: Add optional inline preview to build_creative. Request can set `include_preview: true` to get preview renders in the response alongside the manifest. The preview structure matches preview_creative's single response, so clients parse previews identically regardless of source. For single-format requests, `preview_inputs` controls variant generation. For multi-format requests, one default preview per format is returned with explicit `format_id` on each entry. `preview_error` uses the standard error structure (`code`, `message`, `recovery`) for agent-friendly failure handling. Agents that don't support inline preview simply omit the field.
+- d6518dc: Add quality parameter to preview_creative for controlling render fidelity (draft vs production). Clarify that creative agents and sales agents are not mutually exclusive. A sales agent can implement the Creative Protocol alongside Media Buy Protocol. Updated documentation, certification curriculum, and training agent.
+- 689adb4: Add generation controls to build_creative and preview_creative: quality tier (draft/production), item_limit for catalog cost control, expires_at on build_creative response for generated asset URL expiration, and storyboard reference asset role.
+- f460ece: Move list_creatives and sync_creatives from media-buy to creative protocol. All creative library operations now live in one protocol — any agent hosting a creative library implements the creative protocol for both reads and writes. Extend build_creative with library retrieval mode (creative_id, macro_values, media_buy_id, package_id). Add creative agent interaction models (supports_generation, supports_transformation, has_creative_library) to get_adcp_capabilities. New creative-variable.json schema for DCO variable definitions. Redesign list_creatives as a library catalog: replace include_performance/performance_score with include_snapshot (lightweight delivery snapshot following get_media_buys pattern), rename has_performance_data filter to has_served, add errors to response. Rename sub-asset.json to item.json and sub_assets to items throughout — neutral naming that works for both native (flat components) and carousel (repeated groups) patterns.
+- fee669b: Add disclosure persistence model for jurisdiction-specific render requirements.
+
+  New `disclosure-persistence` enum with values: `continuous` (must persist throughout content duration), `initial` (must appear at start for minimum duration), `flexible` (presence sufficient, publisher discretion). When multiple sources specify persistence for the same jurisdiction, most restrictive wins: `continuous > initial > flexible`.
+
+  Schema changes:
+
+  - `provenance.json`: new `declared_at` (date-time) recording when the provenance claim was made, distinct from `created_time`. Jurisdiction items in `disclosure.jurisdictions[]` gain `render_guidance` with `persistence`, `min_duration_ms`, and `positions` (ordered preference list).
+  - `format.json`: new `disclosure_capabilities` array — each entry pairs a disclosure position with its supported persistence modes. Supersedes `supported_disclosure_positions` for persistence-aware matching; the flat field is retained for backward compatibility. Formats should only claim persistence modes they can enforce.
+  - `creative-brief.json`: new optional `persistence` on `compliance.required_disclosures[]` items.
+  - `list-creative-formats-request.json` (media-buy and creative domains): new `disclosure_persistence` filter. Creative-domain request also gains `disclosure_positions` filter for parity with media-buy.
+  - `error-code.json`: `COMPLIANCE_UNSATISFIED` description updated to cover persistence mode mismatches.
+
+- fe61385: Add exclusivity enum and preferred_delivery_types to product discovery
+
+  - New `exclusivity` enum (none, category, exclusive) on products and as a filter
+  - New `preferred_delivery_types` soft preference array on get_products requests
+  - Documentation for publisher product design patterns, content sponsorship, and delivery preferences
+
+- 0c98c26: Discriminate flat_rate pricing parameters by inventory type and clarify package type names.
+
+  **Breaking for existing v3 DOOH flat_rate parameters:** `flat-rate-option.json` `parameters` now requires a `"type": "dooh"` discriminator field. Existing implementations passing `parameters` without `type` must add `"type": "dooh"`. Sponsorship/takeover flat_rate options that have no `parameters` are unaffected.
+
+  DOOH `parameters` fields: `sov_percentage`, `loop_duration_seconds`, `min_plays_per_hour`, `venue_package`, `duration_hours`, `daypart`, `estimated_impressions`. `min_plays_per_hour` minimum is now 1 (was 0).
+
+  `get-media-buys-response.json` inline package items are now titled `PackageStatus` to distinguish them from `PackageRequest` (create input) and `Package` (create output). The name reflects what this type adds: creative approval state and an optional delivery snapshot.
+
+- c3a0883: Add optional `start_time` and `end_time` to package schemas and product allocations for per-package flight scheduling.
+
+  - `core/package.json`, `media-buy/package-request.json`, `media-buy/package-update.json`: buyers can set independent flight windows per package within a media buy.
+  - `core/product-allocation.json`: publishers can propose per-flight scheduling in proposals.
+
+- ff30c6a: Add governance_context to check-governance-request for canonical budget/geo/channel/flight extraction. Add mode to sync-plans plan items. Add committed_budget and typed package budget to report-plan-outcome. Add categories_evaluated and policies_evaluated to check-governance-response.
+- 6a9faa4: build_creative: support multi-format output via target_format_ids
+
+  Add `target_format_ids` array as an alternative to `target_format_id` on build_creative requests. When provided, the creative agent produces one manifest per requested format and returns them in a `creative_manifests` array. This lets buyers request multiple format variants (e.g., 300x250 + 728x90 + 320x50) in a single call instead of making N sequential requests.
+
+  Closes #1395
+
+- c4f8f58: Make `delivery_measurement` optional in the product schema. Publishers without integrated measurement tools can now omit this field rather than providing vague values.
+- 9c2a978: Campaign Governance and Policy Registry. Adds governance modes (audit/advisory/enforce), delegations for multi-agency authorization, portfolio governance for holding companies, finding confidence scores, drift detection metrics with thresholds, escalation approval tiers, seller-side governance checks, and a safety model page. Includes unified check_governance with binding discriminator, 14 seeded policies, multi-agent governance composition, and enforced_policies on planned delivery.
+- 5a54824: Move sandbox capability from `media_buy.features.sandbox` to `account.sandbox` in `get_adcp_capabilities`. Sandbox is account-level, not a media-buy protocol feature — sellers declare it alongside other account capabilities like `supported_billing` and `account_financials`.
+- 421cb69: Add sandbox to account-ref natural key. Implicit-account operators can reference sandbox accounts via `{ brand, operator, sandbox: true }` without provisioning or discovering an account_id. Explicit-account operators discover pre-existing sandbox test accounts via `list_accounts`. The sandbox field participates in the natural key but its usage follows the same implicit/explicit account model rules as non-sandbox accounts.
+- fe61385: Add shows and episodes as a content dimension for products. Shows represent persistent content programs (podcasts, TV series, YouTube channels) that produce episodes over time. Products reference shows via `show_ids` array, and `get_products` responses include a top-level `shows` array. Includes distribution identifiers for cross-seller matching, episode lifecycle states (scheduled, tentative, live, postponed, cancelled, aired, published), break-based ad inventory configuration, talent linking to brand.json, show declarations in adagents.json, show relationships (spinoff, companion, sequel, prequel, crossover), derivative content (clips, highlights, recaps), production quality tiers, season tracking, and international content rating systems (BBFC, FSK).
+- d6866dc: Add payment_terms to sync_accounts request and formalize enum across schemas
+- 30c3ad8: Add `time_budget` to `get_products` request and `incomplete` to response.
+
+  - `time_budget` (Duration): buyers declare how long they will commit to a request. Sellers return best-effort results within the budget and do not start processes (human approvals, expensive external queries) that cannot complete in time.
+  - `incomplete` (array): sellers declare what they could not finish — each entry has a `scope` (`products`, `pricing`, `forecast`, `proposals`), a human-readable `description`, and an optional `estimated_wait` duration so the buyer can decide whether to retry.
+  - Adds `seconds` to the Duration `unit` enum.
+
+### Patch Changes
+
+- 9a7a58f: Complete member profile management pathways:
+
+  - Add `update_member_logo` admin tool to Addie for setting/updating logo URLs in hosted brand entries
+  - Add `update_member_profile` admin tool to Addie for updating profile fields (description, tagline, contact info, social links, visibility)
+  - Add self-serve brand identity editing: PUT /api/me/member-profile/brand-identity endpoint + inline edit forms in member profile page
+  - Members with existing brands can edit logo URL and brand color inline; members without brands get a quick setup form
+
+- 7426bd7: Fix Addie spamming users with duplicate outreach messages and missing email auto-link on login.
+
+  Two bugs fixed:
+
+  - **Spam**: With 2 Fly.io instances running, both could pass the rate limit check simultaneously before either updated `last_outreach_at`. Now the claim is atomic (UPDATE ... WHERE within rate limit window) so only one instance wins.
+  - **Not linked**: Email-based auto-link only ran on `user.created` webhook. Users who joined Slack after signing up, or whose webhook failed, were never retried. Now also runs on every login.
+
+- 12a30f5: Add HMAC-SHA256 test vectors for cross-language webhook signature verification
+- dfc8203: Update sync_audiences spec with clarifications
+- 018ab61: Clarify sandbox account protocol by account model. Explicit accounts (`require_operator_auth: true`) discover pre-existing sandbox test accounts via `list_accounts`. Implicit accounts declare sandbox via `sync_accounts` with `sandbox: true` and reference by natural key.
+- 9c1fc25: Update HMAC-SHA256 webhook spec to match the @adcp/client reference implementation: add X-ADCP-Timestamp header, sha256= signature prefix, timestamp-based replay protection, raw body verification guidance, and publisher signing example.
+
 ## 3.0.0-rc.1
 
 ### Major Changes
