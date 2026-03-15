@@ -322,10 +322,10 @@ Characters should have simple but expressive faces. Use white/light backgrounds 
 Mintlify serves from `/images/...`.
 
 **Pages with illustrated walkthrough treatment**:
-- `docs/walkthrough-adcp.mdx` — AdCP overview (5 panels)
-- `docs/media-buy/walkthrough-media-buy.mdx` — media buy lifecycle (7 panels)
-- `docs/governance/walkthrough-governance.mdx` — governance trust model (7 panels)
-- `docs/creative/index.mdx` — creative campaign workflow (7 panels, from PR #1447)
+- `docs/intro.mdx` — AdCP overview with Alex's fragmentation story (5 panels)
+- `docs/media-buy/index.mdx` — Sam's media buy journey (7 panels)
+- `docs/governance/overview.mdx` — Jordan's governance setup (7 panels)
+- `docs/creative/index.mdx` — Maya's creative campaign workflow (7 panels)
 
 ### Documentation nav structure
 

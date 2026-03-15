@@ -27,7 +27,7 @@ async function generateImage(
   const fullPrompt = `${BASE_STYLE}\n\n${entry.prompt}`;
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash-image",
+    model: "gemini-3.1-flash-image-preview",
     generationConfig: {
       // @ts-expect-error - responseModalities not in SDK types yet
       responseModalities: ["TEXT", "IMAGE"],
