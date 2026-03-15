@@ -33,11 +33,14 @@
       margin: 0 auto;
       width: 100%;
       padding: 0 16px;
+      position: relative;
     }
 
+    /* Chat header — hidden in welcome state, shown during conversation */
     .chat-header {
+      display: none;
       text-align: center;
-      padding: var(--space-6) 16px var(--space-4);
+      padding: var(--space-3) 16px;
       border-bottom: 1px solid var(--color-border);
       background: #fff;
       margin: 0 -16px;
@@ -45,32 +48,72 @@
       padding-right: 32px;
     }
 
+    .chat-container.has-messages .chat-header {
+      display: block;
+    }
+
     .chat-header h1 {
-      font-size: 24px;
+      font-size: 16px;
       font-weight: 600;
       color: var(--color-text-heading);
-      margin-bottom: 8px;
+      margin: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 12px;
+      gap: 8px;
     }
 
     .chat-header h1 .addie-avatar {
-      width: 40px;
-      height: 40px;
+      width: 28px;
+      height: 28px;
       background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
+      font-size: 14px;
       color: #fff;
     }
 
     .chat-header p {
-      color: var(--color-text-secondary);
+      display: none;
+    }
+
+    /* Welcome identity — avatar + name inline with prompt cards */
+    .welcome-identity {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 24px;
+    }
+
+    .welcome-identity .addie-avatar {
+      width: 52px;
+      height: 52px;
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .welcome-identity h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin: 0;
+      letter-spacing: -0.01em;
+    }
+
+    .welcome-identity p {
       font-size: 14px;
+      color: var(--color-text-secondary);
+      margin: 2px 0 0 0;
     }
 
     .messages-container {
@@ -416,9 +459,27 @@
       background: #fff;
     }
 
+    /* Welcome state — everything centers as one cluster, offset slightly above true center */
+    .chat-container:not(.has-messages) {
+      justify-content: center;
+      padding-bottom: 8vh;
+      max-width: 680px;
+    }
+
+    .chat-container:not(.has-messages) .messages-container {
+      flex: none;
+      padding: 0;
+    }
+
+    .chat-container:not(.has-messages) .chat-input-container {
+      border-top: none;
+      padding-top: 20px;
+      padding-bottom: 0;
+    }
+
     .chat-input-wrapper {
       display: flex;
-      gap: 12px;
+      gap: 8px;
       align-items: flex-end;
     }
 
@@ -449,8 +510,8 @@
     }
 
     .send-button {
-      width: 48px;
-      height: 48px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       border: none;
       background: var(--color-brand);
@@ -461,6 +522,8 @@
       justify-content: center;
       transition: background 0.2s, transform 0.1s;
       flex-shrink: 0;
+      align-self: flex-end;
+      margin-bottom: 4px;
     }
 
     .send-button:hover:not(:disabled) {
@@ -477,29 +540,30 @@
     }
 
     .send-button svg {
-      width: 20px;
-      height: 20px;
+      width: 18px;
+      height: 18px;
     }
 
     .welcome-prompts {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      max-width: 520px;
+      gap: 10px;
+      width: 100%;
+      max-width: 600px;
       margin: 0 auto;
     }
 
     .welcome-prompt-card {
       display: flex;
       align-items: center;
-      padding: 16px 20px;
+      padding: 14px 16px;
       background: var(--color-bg-card);
       border: 1px solid var(--color-border);
-      border-radius: 16px;
+      border-radius: 12px;
       cursor: pointer;
       transition: all 0.15s ease;
       text-align: left;
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 500;
       color: var(--color-text);
       line-height: 1.4;
@@ -520,40 +584,34 @@
 
     .welcome-message {
       text-align: center;
-      padding: 24px;
+      padding: 0 24px;
       color: var(--color-text-secondary);
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-end;
-      flex: 1;
-      padding-bottom: 24px;
     }
 
     .welcome-message h2 {
       font-size: 20px;
       font-weight: 600;
       color: var(--color-text-heading);
-      margin-bottom: 8px;
+      margin-bottom: 0;
     }
 
     .welcome-message p {
-      margin-bottom: 24px;
+      margin-bottom: 0;
     }
 
     /* Addie Home Section */
     .addie-home-container {
       display: none;
-      padding: 16px 0;
-      flex: 1;
+      padding: 0;
     }
 
     .addie-home-container.visible {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-end;
-      padding-bottom: 24px;
     }
 
     .addie-home-loading {
@@ -1436,7 +1494,7 @@
       height: 10px;
     }
 
-    /* Video call button */
+    /* Video call button — absolute top-right of chat container */
     .video-call-btn {
       display: none;
       align-items: center;
@@ -1450,7 +1508,10 @@
       color: var(--color-text-secondary);
       cursor: pointer;
       transition: all 0.15s;
-      margin: 12px auto 0;
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      z-index: 10;
     }
     .video-call-btn:hover {
       border-color: var(--color-brand);
@@ -2429,21 +2490,22 @@
       </div>
     </div>
 
-    <div class="chat-container">
+    <div class="chat-container" id="chatContainer">
       <div class="chat-header">
         <h1>
           <span class="addie-avatar">A</span>
           Ask Addie
         </h1>
         <p>Your AI guide to agentic advertising</p>
-        <button class="video-call-btn" id="videoCallBtn" title="Video chat with Addie">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="23 7 16 12 23 17 23 7"></polygon>
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-          </svg>
-          <span>Video chat</span>
-        </button>
       </div>
+
+      <button class="video-call-btn" id="videoCallBtn" title="Video chat with Addie">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="23 7 16 12 23 17 23 7"></polygon>
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+        </svg>
+        <span>Video chat</span>
+      </button>
 
       <div class="video-panel" id="videoPanel">
         <div class="video-panel-loading" id="videoPanelLoading">
@@ -2461,12 +2523,22 @@
       <div class="messages-container" id="messagesContainer">
         <!-- Addie Home (shown for authenticated users) -->
         <div class="addie-home-container" id="addieHomeContainer">
+          <div class="welcome-identity">
+            <span class="addie-avatar">A</span>
+            <h2>Ask Addie</h2>
+            <p>Your AI guide to agentic advertising</p>
+          </div>
           <div class="addie-home-loading" id="addieHomeLoading">Loading...</div>
           <div id="addieHomeContent"></div>
           <style id="addieHomeStyles"></style>
         </div>
 
         <div class="welcome-message" id="welcomeMessage">
+          <div class="welcome-identity">
+            <span class="addie-avatar">A</span>
+            <h2>Ask Addie</h2>
+            <p>Your AI guide to agentic advertising</p>
+          </div>
           <div class="welcome-prompts" id="suggestedPrompts">
             <button class="welcome-prompt-card" data-prompt="What can you do? What kinds of things can I ask you about?">What can you help me with?</button>
             <button class="welcome-prompt-card" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
@@ -2949,8 +3021,10 @@
         homeTab.classList.add('active');
         renderActiveTabs();
 
-        // Show home content
+        // Show home content — remove conversation mode
         clearChatMessages();
+        const chatContainer = document.getElementById('chatContainer');
+        if (chatContainer) chatContainer.classList.remove('has-messages');
         if (isAuthenticated) {
           addieHomeContainer.classList.add('visible');
           welcomeMessage.style.display = 'none';
@@ -3063,8 +3137,10 @@
         // Update active tabs UI
         renderActiveTabs();
 
-        // Clear current messages and hide static content
+        // Clear current messages and switch to conversation mode
         clearChatMessages();
+        const chatContainer = document.getElementById('chatContainer');
+        if (chatContainer) chatContainer.classList.add('has-messages');
         welcomeMessage.style.display = 'none';
         addieHomeContainer.classList.remove('visible');
 
@@ -3501,7 +3577,9 @@
 
       // Add message to chat
       function addMessage(content, role, messageId = null) {
-        // Hide welcome/home content when showing messages
+        // Switch to conversation mode
+        const chatContainer = document.getElementById('chatContainer');
+        if (chatContainer) chatContainer.classList.add('has-messages');
         if (welcomeMessage) {
           welcomeMessage.style.display = 'none';
         }
