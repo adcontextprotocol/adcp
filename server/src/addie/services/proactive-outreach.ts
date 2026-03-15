@@ -18,6 +18,7 @@ import {
   composeMessage,
   computeNextContactDate,
   computeEngagementOpportunities,
+  MAX_TOTAL_UNREPLIED,
 } from './engagement-planner.js';
 import {
   sendProspectEmail,
@@ -502,6 +503,14 @@ export async function manualOutreach(
     return { success: false, error: 'Person has negative sentiment — outreach suppressed' };
   }
 
+  if (relationship.unreplied_outreach_count >= MAX_TOTAL_UNREPLIED) {
+    logger.warn({
+      slackUserId,
+      unreplied: relationship.unreplied_outreach_count,
+      triggeredBy: triggeredBy?.id,
+    }, 'Manual outreach to person past circuit breaker threshold');
+  }
+
   // Load full context and compose via engagement planner
   const context = await loadRelationshipContext(relationship.id, { includeCommunity: true });
   const engagementOpportunities = computeEngagementOpportunities({
@@ -582,10 +591,11 @@ export async function manualOutreach(
 
   // Update relationship
   await relationshipDb.recordAddieMessage(relationship.id, channel);
-  await relationshipDb.setNextContactAfter(
-    relationship.id,
-    computeNextContactDate(relationship.stage)
-  );
+
+  const nextContact = await getCadenceAwareNextContact(relationship.id, relationship.stage);
+  await relationshipDb.setNextContactAfter(relationship.id, nextContact);
+
+  await relationshipDb.evaluateStageTransitions(relationship.id);
 
   captureEvent(slackUserId, 'outreach_sent', {
     person_id: relationship.id,
@@ -665,8 +675,12 @@ async function getCadenceAwareNextContact(personId: string, stage: relationshipD
 /**
  * Check if a specific user can be contacted.
  * Uses the relationship model and engagement planner's shouldContact().
+ *
+ * When adminOverride is true, only hard blocks (bot, not found, opted out,
+ * negative sentiment) are enforced. Timing rules (cooldowns, circuit breaker,
+ * pulse) are skipped so admins can override cadence.
  */
-export async function canContactUser(slackUserId: string): Promise<{
+export async function canContactUser(slackUserId: string, options?: { adminOverride?: boolean }): Promise<{
   canContact: boolean;
   reason?: string;
   channel?: 'slack' | 'email';
@@ -680,11 +694,26 @@ export async function canContactUser(slackUserId: string): Promise<{
     return { canContact: false, reason: 'Person not found in relationship model' };
   }
 
-  const decision = shouldContact(relationship);
-  return {
-    canContact: decision.shouldContact,
-    reason: decision.shouldContact ? undefined : decision.reason,
-    channel: decision.channel,
-  };
+  // Hard blocks always apply
+  if (relationship.opted_out) {
+    return { canContact: false, reason: 'opted out' };
+  }
+  if (relationship.sentiment_trend === 'negative') {
+    return { canContact: false, reason: 'negative sentiment' };
+  }
+
+  // Timing rules only apply for automated outreach
+  if (!options?.adminOverride) {
+    const decision = shouldContact(relationship);
+    return {
+      canContact: decision.shouldContact,
+      reason: decision.shouldContact ? undefined : decision.reason,
+      channel: decision.channel,
+    };
+  }
+
+  const channel: 'slack' | 'email' = relationship.contact_preference
+    ?? (relationship.slack_user_id ? 'slack' : 'email');
+  return { canContact: true, channel };
 }
 

@@ -43,7 +43,7 @@ export function setupSimulationRoutes(apiRouter: Router): void {
   // POST /api/admin/simulations/run — Run simulations
   apiRouter.post('/simulations/run', requireAuth, requireAdmin, (req, res) => {
     try {
-      const durationDays = Math.min(parseInt(req.body.durationDays) || 60, 365);
+      const durationDays = Math.max(1, Math.min(parseInt(req.body.durationDays) || 60, 365));
       const personaIndexes: number[] | undefined = req.body.personas;
 
       let results;

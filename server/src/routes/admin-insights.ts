@@ -103,9 +103,9 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         total_responded: string;
       }>(`
         SELECT
-          COUNT(*) FILTER (WHERE event_type = 'outreach_decided' AND occurred_at > CURRENT_DATE)::text as sent_today,
-          COUNT(*) FILTER (WHERE event_type = 'outreach_decided' AND occurred_at > CURRENT_DATE - INTERVAL '7 days')::text as sent_this_week,
-          COUNT(*) FILTER (WHERE event_type = 'outreach_decided')::text as total_sent,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > CURRENT_DATE)::text as sent_today,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > CURRENT_DATE - INTERVAL '7 days')::text as sent_this_week,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply')::text as total_sent,
           COUNT(DISTINCT person_id) FILTER (WHERE event_type = 'message_received')::text as total_responded
         FROM person_events
       `);
@@ -312,7 +312,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       const { slackUserId } = req.params;
 
       // Check if user can be contacted
-      const eligibility = await canContactUser(slackUserId);
+      const eligibility = await canContactUser(slackUserId, { adminOverride: true });
       if (!eligibility.canContact) {
         return res.status(400).json({ error: eligibility.reason });
       }
@@ -348,7 +348,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       }
 
       // Check if user can be contacted
-      const eligibility = await canContactUser(slack_user_id);
+      const eligibility = await canContactUser(slack_user_id, { adminOverride: true });
       if (!eligibility.canContact) {
         return res.status(400).json({ error: eligibility.reason });
       }
@@ -427,7 +427,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
           slack_user_id: person.slack_user_id,
           slack_display_name: person.display_name,
           slack_real_name: person.display_name,
-          slack_email: person.email,
           stage: person.stage,
           outreach_opt_out: person.opted_out,
         },

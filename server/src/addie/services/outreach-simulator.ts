@@ -111,7 +111,7 @@ export interface HistoricalAssessment {
     avgUnreplied: number;
     maxUnreplied: number;
     avgDaysSinceContact: number | null;
-    blockedCount: number;
+    pulseCount: number;
   }>;
   overContactedPeople: Array<{
     personId: string;
@@ -607,7 +607,7 @@ export async function assessHistoricalBehavior(): Promise<HistoricalAssessment> 
       MAX(unreplied_outreach_count) as max_unreplied,
       AVG(EXTRACT(EPOCH FROM (NOW() - last_addie_message_at)) / 86400)
         FILTER (WHERE last_addie_message_at IS NOT NULL) as avg_days_since_contact,
-      COUNT(*) FILTER (WHERE unreplied_outreach_count >= 3) as blocked_count
+      COUNT(*) FILTER (WHERE unreplied_outreach_count >= $1) as pulse_count
     FROM person_relationships
     WHERE opted_out = FALSE
     GROUP BY stage
@@ -616,7 +616,7 @@ export async function assessHistoricalBehavior(): Promise<HistoricalAssessment> 
       WHEN 'exploring' THEN 3 WHEN 'participating' THEN 4
       WHEN 'contributing' THEN 5 WHEN 'leading' THEN 6
     END
-  `);
+  `, [MAX_UNREPLIED_BEFORE_PULSE]);
 
   // People who are being over-contacted (2+ unreplied)
   const overContactedResult = await pool.query(`
@@ -672,7 +672,7 @@ export async function assessHistoricalBehavior(): Promise<HistoricalAssessment> 
       avgDaysSinceContact: r.avg_days_since_contact != null
         ? parseFloat(Number(r.avg_days_since_contact).toFixed(1))
         : null,
-      blockedCount: parseInt(r.blocked_count),
+      pulseCount: parseInt(r.pulse_count),
     })),
     overContactedPeople: overContactedResult.rows.map(r => ({
       personId: r.person_id,

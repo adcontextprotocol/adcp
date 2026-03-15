@@ -1361,10 +1361,6 @@ For logo changes, use update_member_logo instead.`,
           type: 'string',
           description: 'Slack user ID to contact',
         },
-        context: {
-          type: 'string',
-          description: 'Admin context to record before sending (e.g., "Met at conference, interested in working groups")',
-        },
         dry_run: {
           type: 'boolean',
           description: 'If true, check eligibility without sending. Returns whether the user can be contacted and their capabilities.',
@@ -7479,13 +7475,13 @@ Use add_committee_leader to assign a leader.`;
     try {
       const result = await pool.query(`
         SELECT
-          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND occurred_at > NOW() - INTERVAL '1 day') as sent_today,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > NOW() - INTERVAL '1 day') as sent_today,
           COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > NOW() - INTERVAL '1 day') as responded_today,
-          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND occurred_at > NOW() - INTERVAL '7 days') as sent_week,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > NOW() - INTERVAL '7 days') as sent_week,
           COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > NOW() - INTERVAL '7 days') as responded_week,
-          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND occurred_at > NOW() - INTERVAL '30 days') as sent_month,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > NOW() - INTERVAL '30 days') as sent_month,
           COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > NOW() - INTERVAL '30 days') as responded_month,
-          COUNT(*) FILTER (WHERE event_type = 'message_sent') as total_sent,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply') as total_sent,
           COUNT(*) FILTER (WHERE event_type = 'message_received') as total_responded
         FROM person_events
       `);
@@ -7600,7 +7596,7 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       // Check eligibility first
-      const eligibility = await canContactUser(slackUserId);
+      const eligibility = await canContactUser(slackUserId, { adminOverride: true });
       if (!eligibility.canContact) {
         return `❌ Cannot contact this user: ${eligibility.reason}`;
       }
@@ -7840,7 +7836,7 @@ Use add_committee_leader to assign a leader.`;
       response += '| Stage | Count | Avg unreplied | Max unreplied | Avg days since contact | Pulse+ |\n';
       response += '|-------|-------|---------------|---------------|----------------------|--------|\n';
       for (const s of health.byStage) {
-        response += `| ${s.stage} | ${s.count} | ${s.avgUnreplied} | ${s.maxUnreplied} | ${s.avgDaysSinceContact ?? 'n/a'} | ${s.blockedCount} |\n`;
+        response += `| ${s.stage} | ${s.count} | ${s.avgUnreplied} | ${s.maxUnreplied} | ${s.avgDaysSinceContact ?? 'n/a'} | ${s.pulseCount} |\n`;
       }
 
       if (health.overContactedPeople.length > 0) {
