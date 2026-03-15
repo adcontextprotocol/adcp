@@ -236,6 +236,50 @@ export function wrapUrlsForSlack(text: string): string {
 }
 
 /**
+ * Extract markdown images from text and return them separately.
+ * Used to convert markdown image syntax into Slack Block Kit image blocks,
+ * since Slack's mrkdwn format does not render ![alt](url).
+ *
+ * Only extracts images from allowed hosts (docs.adcontextprotocol.org)
+ * to prevent arbitrary image injection.
+ */
+export interface ExtractedImage {
+  alt: string;
+  url: string;
+}
+
+export interface ImageExtractionResult {
+  text: string;
+  images: ExtractedImage[];
+}
+
+export function extractMarkdownImages(text: string): ImageExtractionResult {
+  const images: ExtractedImage[] = [];
+
+  // Match ![alt](url) syntax — only extract from allowed hosts
+  const cleaned = text.replace(
+    /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g,
+    (_match, alt, url) => {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'https:' && parsed.hostname === 'docs.adcontextprotocol.org') {
+          images.push({ alt: (alt || 'Image').substring(0, 2000), url });
+          return '';
+        }
+      } catch {
+        // Malformed URL, skip extraction
+      }
+      return _match; // Leave non-allowed host images as-is
+    }
+  );
+
+  // Collapse triple+ blank lines left by image removal
+  const tidied = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  return { text: tidied, images };
+}
+
+/**
  * Log an interaction for audit purposes
  */
 export function logInteraction(log: AddieInteractionLog): void {

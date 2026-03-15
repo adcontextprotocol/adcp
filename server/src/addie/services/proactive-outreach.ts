@@ -1,8 +1,8 @@
 /**
  * Proactive Outreach Service
  *
- * Manages proactive outreach to Slack users via DMs.
- * Uses the OutboundPlanner for intelligent goal selection.
+ * Manages proactive outreach to people via Slack DMs and email.
+ * Uses the engagement planner for relationship-aware message composition.
  * Handles eligibility checking, rate limiting, and business hours.
  */
 
@@ -11,14 +11,28 @@ import { query } from '../../db/client.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
 import {
   assignUserStakeholder,
-  createActionItem,
 } from '../../db/account-management-db.js';
 import * as outboundDb from '../../db/outbound-db.js';
+import * as relationshipDb from '../../db/relationship-db.js';
+import { loadRelationshipContext } from './relationship-context.js';
+import {
+  shouldContact,
+  composeMessage,
+  computeNextContactDate,
+  getAvailableActions,
+} from './engagement-planner.js';
+import {
+  sendProspectEmail,
+  getOrCreateUnsubscribeToken,
+  getEmailBudget,
+  EMAIL_PER_RUN_LIMIT,
+} from './email-outreach.js';
 import { getOutboundPlanner } from './outbound-planner.js';
 import { getThreadService } from '../thread-service.js';
-import type { PlannerContext, PlannedAction } from '../types.js';
+import type { PlannerContext } from '../types.js';
 import type { SlackUserMapping } from '../../slack/types.js';
 import { captureEvent } from '../../utils/posthog.js';
+import * as personEvents from '../../db/person-events-db.js';
 
 const insightsDb = new InsightsDatabase();
 
@@ -32,26 +46,6 @@ const OUTREACH_ENABLED = process.env.OUTREACH_ENABLED !== 'false';
 const RATE_LIMIT_DAYS = 7; // Don't contact same user more than once per week
 const BUSINESS_HOURS_START = 9; // 9 AM
 const BUSINESS_HOURS_END = 17; // 5 PM
-const THREAD_CONTINUATION_WINDOW_MINUTES = 7 * 24 * 60; // Continue existing threads within 7 days
-
-/**
- * Outreach candidate with eligibility info
- */
-interface OutreachCandidate {
-  slack_user_id: string;
-  slack_email: string | null;
-  slack_display_name: string | null;
-  slack_real_name: string | null;
-  workos_user_id: string | null;
-  last_outreach_at: Date | null;
-  slack_tz_offset: number | null;
-  priority: number;
-}
-
-/**
- * Outreach type determines what message to send
- */
-type OutreachType = 'account_link' | 'introduction' | 'insight_goal' | 'custom';
 
 /**
  * Result of sending outreach
@@ -124,161 +118,6 @@ function getNthSunday(year: number, month: number, n: number): Date {
   const daysUntilSunday = (7 - firstDay.getUTCDay()) % 7;
   const nthSunday = new Date(Date.UTC(year, month, 1 + daysUntilSunday + (n - 1) * 7, 2, 0, 0));
   return nthSunday;
-}
-
-/**
- * Calculate outreach priority for a user
- * Higher priority = more likely to be contacted first
- */
-function calculatePriority(user: SlackUserMapping): number {
-  let priority = 0;
-
-  // Unmapped users get highest priority
-  if (!user.workos_user_id) {
-    priority += 100;
-  }
-
-  // Never contacted = high priority
-  if (!user.last_outreach_at) {
-    priority += 50;
-  } else {
-    // Longer since last contact = higher priority
-    const daysSince = (Date.now() - new Date(user.last_outreach_at).getTime()) / (1000 * 60 * 60 * 24);
-    priority += Math.min(daysSince, 30); // Cap at 30 days
-  }
-
-  return priority;
-}
-
-/**
- * Build PlannerContext from a candidate for the OutboundPlanner
- */
-async function buildPlannerContext(candidate: OutreachCandidate): Promise<PlannerContext> {
-  // Get insights, history, and capabilities in parallel
-  const [insights, history, capabilities, contactEligibility] = await Promise.all([
-    insightsDb.getInsightsForUser(candidate.slack_user_id),
-    outboundDb.getUserGoalHistory(candidate.slack_user_id),
-    outboundDb.getMemberCapabilities(candidate.slack_user_id, candidate.workos_user_id ?? undefined),
-    canContactUser(candidate.slack_user_id),
-  ]);
-
-  // Get company info and membership status if user is mapped
-  let company: PlannerContext['company'] | undefined;
-  let isMember = false;
-  let isAddieProspect = false;
-  if (candidate.workos_user_id) {
-    const orgResult = await query<{
-      name: string;
-      company_types: string[] | null;
-      subscription_status: string | null;
-      persona: string | null;
-      prospect_owner: string | null;
-    }>(
-      `SELECT o.name, o.company_types, o.subscription_status, o.persona, o.prospect_owner
-       FROM organization_memberships om
-       JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
-       WHERE om.workos_user_id = $1
-       LIMIT 1`,
-      [candidate.workos_user_id]
-    );
-    if (orgResult.rows[0]) {
-      const org = orgResult.rows[0];
-      const isPersonalWorkspace = org.name.toLowerCase().endsWith("'s workspace") ||
-                                  org.name.toLowerCase().endsWith("'s workspace");
-      company = {
-        name: isPersonalWorkspace ? 'your account' : org.name,
-        type: org.company_types?.[0] ?? 'unknown',
-        is_personal_workspace: isPersonalWorkspace,
-        persona: org.persona ?? undefined,
-      };
-      isMember = org.subscription_status === 'active';
-      isAddieProspect = org.prospect_owner === 'addie';
-    }
-  }
-
-  // For unmapped users, check if their email domain matches an Addie-owned prospect
-  if (!company && candidate.slack_email) {
-    const domain = candidate.slack_email.split('@')[1];
-    if (domain) {
-      const prospectResult = await query<{
-        name: string;
-        company_types: string[] | null;
-        prospect_owner: string | null;
-        persona: string | null;
-      }>(
-        `SELECT o.name, o.company_types, o.prospect_owner, o.persona
-         FROM organizations o
-         WHERE (o.email_domain = $1 OR o.workos_organization_id IN (
-           SELECT workos_organization_id FROM organization_domains WHERE domain = $1
-         ))
-         AND o.subscription_status IS NULL
-         LIMIT 1`,
-        [domain]
-      );
-      if (prospectResult.rows[0]) {
-        const org = prospectResult.rows[0];
-        company = {
-          name: org.name,
-          type: org.company_types?.[0] ?? 'unknown',
-          is_personal_workspace: false,
-          persona: org.persona ?? undefined,
-        };
-        isAddieProspect = org.prospect_owner === 'addie';
-      }
-    }
-  }
-
-  // Calculate engagement score based on capabilities
-  const engagementScore = capabilities.slack_message_count_30d > 0
-    ? Math.min(100, capabilities.slack_message_count_30d * 5)
-    : 0;
-
-  return {
-    user: {
-      slack_user_id: candidate.slack_user_id,
-      workos_user_id: candidate.workos_user_id ?? undefined,
-      display_name: candidate.slack_display_name ?? candidate.slack_real_name ?? undefined,
-      is_mapped: !!candidate.workos_user_id,
-      is_member: isMember,
-      engagement_score: engagementScore,
-      insights: insights.map(i => ({
-        type: i.insight_type_name ?? 'unknown',
-        value: i.value,
-        confidence: i.confidence,
-      })),
-    },
-    company: company ? { ...company, is_addie_prospect: isAddieProspect } : undefined,
-    capabilities,
-    history,
-    contact_eligibility: {
-      can_contact: contactEligibility.canContact,
-      reason: contactEligibility.reason ?? 'Eligible',
-    },
-  };
-}
-
-/**
- * Get eligible candidates for outreach
- */
-async function getEligibleCandidates(limit = 10): Promise<OutreachCandidate[]> {
-  const result = await query<SlackUserMapping & { priority?: number }>(
-    `SELECT *
-     FROM slack_user_mappings
-     WHERE slack_is_bot = FALSE
-       AND slack_is_deleted = FALSE
-       AND outreach_opt_out = FALSE
-       AND (last_outreach_at IS NULL OR last_outreach_at < NOW() - make_interval(days => $2))
-     ORDER BY
-       CASE WHEN workos_user_id IS NULL THEN 0 ELSE 1 END,
-       last_outreach_at NULLS FIRST
-     LIMIT $1`,
-    [limit, RATE_LIMIT_DAYS]
-  );
-
-  return result.rows.map(user => ({
-    ...user,
-    priority: calculatePriority(user),
-  }));
 }
 
 /**
@@ -357,173 +196,54 @@ async function sendDmMessage(channelId: string, text: string, threadTs?: string)
 }
 
 /**
- * Atomically claim a user for outreach by setting last_outreach_at.
- * Returns true if successfully claimed; returns false if another instance
- * already contacted them within the rate limit window.
+ * Look up the Slack timezone offset for a person who has a slack_user_id.
+ * Returns null if no mapping found.
  */
-async function claimUserForOutreach(slackUserId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW()
-     WHERE slack_user_id = $1
-       AND (last_outreach_at IS NULL OR last_outreach_at < NOW() - make_interval(days => $2))`,
-    [slackUserId, RATE_LIMIT_DAYS]
+async function getSlackTzOffset(slackUserId: string): Promise<number | null> {
+  const result = await query<{ slack_tz_offset: number | null }>(
+    `SELECT slack_tz_offset FROM slack_user_mappings WHERE slack_user_id = $1`,
+    [slackUserId]
   );
-  return (result.rowCount ?? 0) > 0;
+  return result.rows[0]?.slack_tz_offset ?? null;
 }
 
 /**
- * Result of resolving thread and sending message
+ * Send a Slack message using the permanent thread on the relationship.
+ * If no permanent thread exists, opens a DM and saves the new thread coordinates.
+ * Returns the message timestamp or null on failure.
  */
-type ThreadSendResult = {
-  success: true;
-  channelId: string;
-  threadTs?: string;
-  messageTs: string;
-} | {
-  success: false;
-  error: string;
-}
-
-/**
- * Resolve existing thread (if any) and send a message
- * Continues existing threads within THREAD_CONTINUATION_WINDOW_MINUTES
- */
-async function resolveThreadAndSendMessage(
-  slackUserId: string,
-  message: string
-): Promise<ThreadSendResult> {
-  const threadService = getThreadService();
-  const recentThread = await threadService.getUserRecentThread(slackUserId, 'slack', THREAD_CONTINUATION_WINDOW_MINUTES);
-
-  let channelId: string;
-  let threadTs: string | undefined;
-
-  if (recentThread?.external_id) {
-    // Try to continue existing thread
-    const [existingChannelId, existingThreadTs] = recentThread.external_id.split(':');
-    if (existingChannelId && existingThreadTs) {
-      channelId = existingChannelId;
-      threadTs = existingThreadTs;
-      const messageTs = await sendDmMessage(channelId, message, threadTs);
-      if (messageTs) {
-        logger.debug({ slackUserId, threadTs }, 'Continuing existing thread for outreach');
-        return { success: true, channelId, threadTs, messageTs };
-      }
-      // If message failed in existing thread, fall through to open new channel
-      logger.warn({ slackUserId, external_id: recentThread.external_id }, 'Failed to send to existing thread, opening new channel');
-    } else {
-      logger.warn({ slackUserId, external_id: recentThread.external_id }, 'Invalid external_id format in recent thread');
+async function sendSlackViaPermThread(
+  candidate: relationshipDb.PersonRelationship,
+  text: string
+): Promise<{ channelId: string; messageTs: string } | null> {
+  // If we have a permanent thread, reply to it
+  if (candidate.slack_dm_channel_id && candidate.slack_dm_thread_ts) {
+    const messageTs = await sendDmMessage(
+      candidate.slack_dm_channel_id,
+      text,
+      candidate.slack_dm_thread_ts
+    );
+    if (messageTs) {
+      return { channelId: candidate.slack_dm_channel_id, messageTs };
     }
+    // Thread send failed — fall through to open a new channel
+    logger.warn(
+      { person_id: candidate.id, channel: candidate.slack_dm_channel_id },
+      'Failed to send to permanent thread, opening new channel'
+    );
   }
 
-  // No recent thread or failed to send, start new conversation
-  const newChannelId = await openDmChannel(slackUserId);
-  if (!newChannelId) {
-    return { success: false, error: 'Failed to open DM channel' };
-  }
-  channelId = newChannelId;
+  // No permanent thread yet (or it failed) — open DM and start one
+  const channelId = await openDmChannel(candidate.slack_user_id!);
+  if (!channelId) return null;
 
-  const messageTs = await sendDmMessage(channelId, message);
-  if (!messageTs) {
-    return { success: false, error: 'Failed to send DM message' };
-  }
+  const messageTs = await sendDmMessage(channelId, text);
+  if (!messageTs) return null;
 
-  return { success: true, channelId, messageTs };
-}
+  // Save as the permanent thread for this relationship
+  await relationshipDb.setSlackDmThread(candidate.id, channelId, messageTs);
 
-/**
- * Initiate outreach using the OutboundPlanner for intelligent goal selection
- */
-async function initiateOutreachWithPlanner(
-  candidate: OutreachCandidate,
-  options?: { skipClaim?: boolean }
-): Promise<OutreachResult> {
-  const planner = getOutboundPlanner();
-
-  // Build context for the planner
-  const ctx = await buildPlannerContext(candidate);
-
-  // Let the planner decide what goal to pursue
-  const plannedAction = await planner.planNextAction(ctx);
-
-  if (!plannedAction) {
-    logger.debug({
-      slack_user_id: candidate.slack_user_id,
-    }, 'No suitable goal found for candidate');
-    return { success: false, error: 'No suitable goal found' };
-  }
-
-  // Atomically claim this user before sending to prevent concurrent sends
-  // from multiple app instances both seeing them as eligible.
-  // Skip if caller already claimed (e.g. admin-triggered outreach).
-  if (!options?.skipClaim) {
-    const claimed = await claimUserForOutreach(candidate.slack_user_id);
-    if (!claimed) {
-      logger.debug({ slack_user_id: candidate.slack_user_id }, 'User already claimed by another instance, skipping');
-      return { success: false, error: 'Already claimed' };
-    }
-  }
-
-  // Build the message from the goal template
-  const basePath = plannedAction.goal.category === 'invitation' ? '/join' : '/auth/login';
-  const linkUrl = `https://agenticadvertising.org${basePath}?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
-  const message = planner.buildMessage(plannedAction.goal, ctx, linkUrl);
-
-  // Send message, continuing existing thread if one exists
-  const sendResult = await resolveThreadAndSendMessage(candidate.slack_user_id, message);
-  if (!sendResult.success) {
-    return { success: false, error: sendResult.error };
-  }
-
-  const { channelId, messageTs } = sendResult;
-
-  // Map goal category to outreach type
-  const outreachType: OutreachType = plannedAction.goal.category === 'admin' ? 'account_link'
-    : plannedAction.goal.category === 'information' ? 'insight_goal'
-    : 'custom';
-
-  // Record outreach in member_outreach (legacy tracking)
-  const outreach = await insightsDb.recordOutreach({
-    slack_user_id: candidate.slack_user_id,
-    outreach_type: outreachType,
-    dm_channel_id: channelId,
-    initial_message: message,
-  });
-
-  // Record goal attempt in user_goal_history (new planner tracking)
-  await outboundDb.recordGoalAttempt({
-    slack_user_id: candidate.slack_user_id,
-    goal_id: plannedAction.goal.id,
-    planner_reason: plannedAction.reason,
-    planner_score: plannedAction.priority_score,
-    decision_method: plannedAction.decision_method,
-    outreach_id: outreach.id,
-  });
-
-  captureEvent(candidate.slack_user_id, 'outreach_sent', {
-    goal_id: plannedAction.goal.id,
-    goal_name: plannedAction.goal.name,
-    goal_category: plannedAction.goal.category,
-    decision_method: plannedAction.decision_method,
-    priority_score: plannedAction.priority_score,
-    outreach_type: outreachType,
-    outreach_id: outreach.id,
-  });
-
-  logger.debug({
-    outreachId: outreach.id,
-    slackUserId: candidate.slack_user_id,
-    goalId: plannedAction.goal.id,
-    goalName: plannedAction.goal.name,
-    reason: plannedAction.reason,
-    decision_method: plannedAction.decision_method,
-  }, 'Sent planner-based outreach');
-
-  return {
-    success: true,
-    outreach_id: outreach.id,
-    dm_channel_id: channelId,
-  };
+  return { channelId, messageTs };
 }
 
 /**
@@ -549,62 +269,226 @@ export async function runOutreachScheduler(options: {
 
   logger.debug({ limit }, 'Running outreach scheduler');
 
-  // Get candidates (we'll check business hours per-user based on their timezone)
-  const candidates = await getEligibleCandidates(limit * 3); // Fetch more since some may be outside business hours
+  // Get candidates from the relationship model
+  const candidates = await relationshipDb.getEngagementCandidates({ limit: limit * 3 });
 
-  if (candidates.length === 0) {
-    logger.debug('Outreach scheduler: No eligible candidates');
-    return { processed: 0, sent: 0, skipped: 0, errors: 0 };
-  }
+  logger.debug({ count: candidates.length }, 'Found engagement candidates');
 
-  logger.debug({ count: candidates.length }, 'Found outreach candidates');
+  // Pre-fetch email budget so we can gate email sends
+  let emailBudget = await getEmailBudget();
+  let emailsSentThisRun = 0;
 
   let sent = 0;
   let skipped = 0;
   let errors = 0;
 
   for (const candidate of candidates) {
-    // Stop once we've sent enough messages
-    if (sent >= limit) {
-      break;
-    }
-
-    // Check business hours in user's timezone (unless forced)
-    if (!options.forceRun && !isBusinessHours(candidate.slack_tz_offset)) {
-      logger.debug({
-        candidate: candidate.slack_user_id,
-        tzOffset: candidate.slack_tz_offset,
-      }, 'Skipped - outside business hours in user timezone');
-      skipped++;
-      continue;
-    }
+    if (sent >= limit) break;
 
     try {
-      const result = await initiateOutreachWithPlanner(candidate);
-
-      if (result.success) {
-        sent++;
-      } else if (result.error === 'No suitable goal found') {
+      // 1. Rule-based eligibility check
+      const decision = shouldContact(candidate);
+      if (!decision.shouldContact) {
+        logger.debug(
+          { person_id: candidate.id, reason: decision.reason },
+          'Skipped — not eligible'
+        );
+        personEvents.recordEvent(candidate.id, 'outreach_skipped', {
+          channel: 'system',
+          data: { reason: decision.reason, stage: candidate.stage },
+        }).catch(err => logger.warn({ err }, 'Failed to record person event'));
         skipped++;
-        logger.debug({ candidate: candidate.slack_user_id }, 'Skipped - no suitable goal');
-      } else {
-        errors++;
-        logger.warn({ candidate: candidate.slack_user_id, error: result.error }, 'Outreach failed');
+        continue;
       }
 
-      // Small delay between outreach to be respectful
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const channel = decision.channel;
+
+      // 2. Business hours check (Slack only — email doesn't need it)
+      if (channel === 'slack' && candidate.slack_user_id && !options.forceRun) {
+        const tzOffset = await getSlackTzOffset(candidate.slack_user_id);
+        if (!isBusinessHours(tzOffset)) {
+          logger.debug(
+            { person_id: candidate.id, tzOffset },
+            'Skipped — outside business hours'
+          );
+          skipped++;
+          continue;
+        }
+      }
+
+      // 3. Email budget gate
+      if (channel === 'email') {
+        if (!emailBudget.canSend || emailsSentThisRun >= EMAIL_PER_RUN_LIMIT) {
+          logger.debug({ person_id: candidate.id }, 'Skipped — email budget exhausted');
+          skipped++;
+          continue;
+        }
+      }
+
+      // 4. Load full relationship context
+      const context = await loadRelationshipContext(candidate.id, { includeCommunity: true });
+
+      // 5. Determine available actions
+      const availableActions = getAvailableActions(candidate, context.profile.capabilities);
+
+      // 6. Compose message via Sonnet
+      const composed = await composeMessage(
+        { ...context, availableActions },
+        channel
+      );
+
+      if (!composed) {
+        logger.debug({ person_id: candidate.id }, 'Skipped — Sonnet had nothing to say');
+        personEvents.recordEvent(candidate.id, 'message_composed', {
+          channel,
+          data: { action: 'skip', reason: 'nothing meaningful to say', stage: candidate.stage },
+        }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+        skipped++;
+        continue;
+      }
+
+      // Record the outreach decision and composition
+      personEvents.recordEvent(candidate.id, 'outreach_decided', {
+        channel,
+        data: { reason: decision.reason, stage: candidate.stage, goal_hint: composed.goalHint },
+      }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+      personEvents.recordEvent(candidate.id, 'message_composed', {
+        channel,
+        data: {
+          action: 'send',
+          stage: candidate.stage,
+          has_subject: !!composed.subject,
+          goal_hint: composed.goalHint,
+          text_length: composed.text.length,
+        },
+      }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+
+      // 7. Route by channel
+      let channelId: string | undefined;
+
+      if (channel === 'slack') {
+        if (!candidate.slack_user_id) {
+          logger.warn({ person_id: candidate.id }, 'Slack channel selected but no slack_user_id');
+          errors++;
+          continue;
+        }
+
+        const slackResult = await sendSlackViaPermThread(candidate, composed.text);
+        if (!slackResult) {
+          errors++;
+          logger.warn({ person_id: candidate.id }, 'Failed to send Slack message');
+          continue;
+        }
+        channelId = slackResult.channelId;
+
+        personEvents.recordEvent(candidate.id, 'message_sent', {
+          channel: 'slack',
+          data: {
+            text: composed.text,
+            channel_id: slackResult.channelId,
+            thread_ts: slackResult.messageTs,
+            stage: candidate.stage,
+            goal_hint: composed.goalHint,
+          },
+        }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+
+        // Delay between Slack messages
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        // Email
+        if (!candidate.email) {
+          logger.warn({ person_id: candidate.id }, 'Email channel selected but no email');
+          errors++;
+          continue;
+        }
+
+        const unsubToken = await getOrCreateUnsubscribeToken(candidate.email);
+        const sendResult = await sendProspectEmail({
+          to: candidate.email,
+          subject: composed.subject ?? 'From Addie at AgenticAdvertising.org',
+          bodyHtml: composed.html ?? composed.text,
+          bodyText: composed.text,
+          prospectOrgId: candidate.prospect_org_id ?? '',
+          unsubscribeToken: unsubToken,
+        });
+
+        if (!sendResult.success) {
+          errors++;
+          logger.warn({ person_id: candidate.id, error: sendResult.error }, 'Failed to send email');
+          continue;
+        }
+
+        emailsSentThisRun++;
+
+        personEvents.recordEvent(candidate.id, 'message_sent', {
+          channel: 'email',
+          data: {
+            subject: composed.subject,
+            to: candidate.email,
+            text_length: composed.text.length,
+            stage: candidate.stage,
+            goal_hint: composed.goalHint,
+          },
+        }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+
+        // Delay between emails
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+
+      // 8. Record on the relationship
+      await relationshipDb.recordAddieMessage(candidate.id, channel);
+      await relationshipDb.setNextContactAfter(
+        candidate.id,
+        computeNextContactDate(candidate.stage)
+      );
+      await relationshipDb.evaluateStageTransitions(candidate.id);
+
+      // 9. Dual-write to legacy goal tracking
+      if (composed.goalHint) {
+        // Find a matching goal ID for the hint, or use a generic one
+        const goals = await outboundDb.listGoals();
+        const matchingGoal = goals.find(g =>
+          g.name.toLowerCase().includes(composed.goalHint!.toLowerCase().slice(0, 20))
+        );
+        if (matchingGoal) {
+          await outboundDb.recordGoalAttempt({
+            slack_user_id: candidate.slack_user_id ?? undefined,
+            goal_id: matchingGoal.id,
+            planner_reason: `engagement-planner: ${composed.goalHint}`,
+            planner_score: 50,
+            decision_method: 'engagement_planner',
+            channel,
+            prospect_org_id: candidate.prospect_org_id ?? undefined,
+          });
+        }
+      }
+
+      // 10. Analytics
+      captureEvent(candidate.slack_user_id ?? candidate.id, 'outreach_sent', {
+        person_id: candidate.id,
+        channel,
+        stage: candidate.stage,
+        goal_hint: composed.goalHint,
+      });
+
+      sent++;
+      logger.debug({
+        person_id: candidate.id,
+        channel,
+        stage: candidate.stage,
+      }, 'Sent engagement message');
     } catch (error) {
       errors++;
-      logger.error({ error, candidate: candidate.slack_user_id }, 'Error during outreach');
+      logger.error({ error, person_id: candidate.id }, 'Error during outreach');
     }
   }
 
   if (errors > 0) {
-    logger.info({ sent, skipped, errors }, 'Outreach scheduler completed with errors');
+    logger.info({ sent, skipped, errors, total: candidates.length }, 'Outreach scheduler completed with errors');
   } else if (sent > 0) {
-    logger.debug({ sent, skipped, errors }, 'Outreach scheduler completed');
+    logger.debug({ sent, skipped, errors, total: candidates.length }, 'Outreach scheduler completed');
   }
+
   return { processed: candidates.length, sent, skipped, errors };
 }
 
@@ -616,6 +500,8 @@ export async function manualOutreach(
   slackUserId: string,
   triggeredBy?: { id: string; name: string; email: string }
 ): Promise<OutreachResult> {
+  const planner = getOutboundPlanner();
+
   // Look up user
   const result = await query<SlackUserMapping>(
     `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`,
@@ -627,23 +513,97 @@ export async function manualOutreach(
   }
 
   const user = result.rows[0];
-  const candidate: OutreachCandidate = {
-    ...user,
-    priority: calculatePriority(user),
+  const candidate = {
+    slack_user_id: user.slack_user_id,
+    slack_email: user.slack_email,
+    slack_display_name: user.slack_display_name,
+    slack_real_name: user.slack_real_name,
+    workos_user_id: user.workos_user_id,
+    last_outreach_at: user.last_outreach_at,
+    slack_tz_offset: user.slack_tz_offset,
+    priority: 0,
   };
 
-  // Admin-triggered outreach bypasses the rate limit: claim first, then send
-  // We claim unconditionally (not through claimUserForOutreach which checks rate limits)
-  // and then call the planner with skipClaim=true to avoid double-claiming
+  // Build context for the planner
+  const ctx = await buildLegacyPlannerContext(candidate);
+
+  // Let the planner decide what goal to pursue
+  const plannedAction = await planner.planNextAction(ctx);
+
+  if (!plannedAction) {
+    return { success: false, error: 'No suitable goal found' };
+  }
+
+  // Admin-triggered: update last_outreach_at unconditionally
   await query(
     `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW() WHERE slack_user_id = $1`,
     [slackUserId]
   );
 
-  const outreachResult = await initiateOutreachWithPlanner(candidate, { skipClaim: true });
+  // Build and send message
+  const basePath = plannedAction.goal.category === 'invitation' ? '/join' : '/auth/login';
+  const linkUrl = `https://agenticadvertising.org${basePath}?slack_user_id=${encodeURIComponent(slackUserId)}`;
+  const message = planner.buildMessage(plannedAction.goal, ctx, linkUrl);
 
-  // If outreach was successful and we know who triggered it, auto-assign them as owner
-  if (outreachResult.success && triggeredBy) {
+  const threadService = getThreadService();
+  const recentThread = await threadService.getUserRecentThread(slackUserId, 'slack', 7 * 24 * 60);
+
+  let channelId: string;
+  let messageTs: string | null = null;
+
+  if (recentThread?.external_id) {
+    const [existingChannelId, existingThreadTs] = recentThread.external_id.split(':');
+    if (existingChannelId && existingThreadTs) {
+      messageTs = await sendDmMessage(existingChannelId, message, existingThreadTs);
+      if (messageTs) {
+        channelId = existingChannelId;
+      }
+    }
+  }
+
+  if (!messageTs) {
+    const newChannelId = await openDmChannel(slackUserId);
+    if (!newChannelId) {
+      return { success: false, error: 'Failed to open DM channel' };
+    }
+    channelId = newChannelId;
+    messageTs = await sendDmMessage(channelId, message);
+    if (!messageTs) {
+      return { success: false, error: 'Failed to send DM message' };
+    }
+  }
+
+  // Map goal category to outreach type
+  const outreachType = plannedAction.goal.category === 'admin' ? 'account_link'
+    : plannedAction.goal.category === 'information' ? 'insight_goal'
+    : 'custom';
+
+  // Record outreach in member_outreach (legacy tracking)
+  const outreach = await insightsDb.recordOutreach({
+    slack_user_id: slackUserId,
+    outreach_type: outreachType,
+    dm_channel_id: channelId!,
+    initial_message: message,
+  });
+
+  // Record goal attempt
+  await outboundDb.recordGoalAttempt({
+    slack_user_id: slackUserId,
+    goal_id: plannedAction.goal.id,
+    planner_reason: plannedAction.reason,
+    planner_score: plannedAction.priority_score,
+    decision_method: plannedAction.decision_method,
+    outreach_id: outreach.id,
+  });
+
+  captureEvent(slackUserId, 'outreach_sent', {
+    goal_id: plannedAction.goal.id,
+    goal_name: plannedAction.goal.name,
+    decision_method: plannedAction.decision_method,
+  });
+
+  // Auto-assign admin as owner
+  if (triggeredBy) {
     try {
       await assignUserStakeholder({
         slackUserId,
@@ -654,18 +614,16 @@ export async function manualOutreach(
         role: 'owner',
         reason: 'outreach',
       });
-
-      logger.info({
-        slackUserId,
-        stakeholderId: triggeredBy.id,
-      }, 'Auto-assigned user to admin after outreach');
     } catch (error) {
-      // Don't fail the outreach if assignment fails
       logger.warn({ error, slackUserId }, 'Failed to auto-assign user after outreach');
     }
   }
 
-  return outreachResult;
+  return {
+    success: true,
+    outreach_id: outreach.id,
+    dm_channel_id: channelId!,
+  };
 }
 
 /**
@@ -708,7 +666,6 @@ export async function manualOutreachWithGoal(
   // Record admin context as insight if provided
   if (adminContext && adminContext.trim()) {
     try {
-      // Find or create admin_context insight type
       const adminContextType = await insightsDb.getInsightTypeByName('admin_context');
       if (adminContextType) {
         await insightsDb.addInsight({
@@ -725,13 +682,12 @@ export async function manualOutreachWithGoal(
         }, 'Recorded admin context as insight');
       }
     } catch (error) {
-      // Don't fail outreach if insight recording fails
       logger.warn({ error, slackUserId }, 'Failed to record admin context insight');
     }
   }
 
   // Build context for message generation
-  const candidate: OutreachCandidate = {
+  const candidate = {
     slack_user_id: user.slack_user_id,
     slack_email: user.slack_email,
     slack_display_name: user.slack_display_name,
@@ -739,9 +695,9 @@ export async function manualOutreachWithGoal(
     workos_user_id: user.workos_user_id,
     last_outreach_at: user.last_outreach_at,
     slack_tz_offset: user.slack_tz_offset,
-    priority: calculatePriority(user),
+    priority: 0,
   };
-  const ctx = await buildPlannerContext(candidate);
+  const ctx = await buildLegacyPlannerContext(candidate);
 
   // Build the message from the goal template
   const basePath = goal.category === 'invitation' ? '/join' : '/auth/login';
@@ -749,15 +705,36 @@ export async function manualOutreachWithGoal(
   const message = planner.buildMessage(goal, ctx, linkUrl);
 
   // Send message, continuing existing thread if one exists
-  const sendResult = await resolveThreadAndSendMessage(slackUserId, message);
-  if (!sendResult.success) {
-    return { success: false, error: sendResult.error };
+  const threadService = getThreadService();
+  const recentThread = await threadService.getUserRecentThread(slackUserId, 'slack', 7 * 24 * 60);
+
+  let channelId: string;
+  let messageTs: string | null = null;
+
+  if (recentThread?.external_id) {
+    const [existingChannelId, existingThreadTs] = recentThread.external_id.split(':');
+    if (existingChannelId && existingThreadTs) {
+      messageTs = await sendDmMessage(existingChannelId, message, existingThreadTs);
+      if (messageTs) {
+        channelId = existingChannelId;
+      }
+    }
   }
 
-  const { channelId, messageTs } = sendResult;
+  if (!messageTs) {
+    const newChannelId = await openDmChannel(slackUserId);
+    if (!newChannelId) {
+      return { success: false, error: 'Failed to open DM channel' };
+    }
+    channelId = newChannelId;
+    messageTs = await sendDmMessage(channelId, message);
+    if (!messageTs) {
+      return { success: false, error: 'Failed to send DM message' };
+    }
+  }
 
   // Map goal category to outreach type
-  const outreachType: OutreachType = goal.category === 'admin' ? 'account_link'
+  const outreachType = goal.category === 'admin' ? 'account_link'
     : goal.category === 'information' ? 'insight_goal'
     : 'custom';
 
@@ -765,7 +742,7 @@ export async function manualOutreachWithGoal(
   const outreach = await insightsDb.recordOutreach({
     slack_user_id: slackUserId,
     outreach_type: outreachType,
-    dm_channel_id: channelId,
+    dm_channel_id: channelId!,
     initial_message: message,
   });
 
@@ -815,7 +792,7 @@ export async function manualOutreachWithGoal(
   return {
     success: true,
     outreach_id: outreach.id,
-    dm_channel_id: channelId,
+    dm_channel_id: channelId!,
   };
 }
 
@@ -878,4 +855,119 @@ export async function canContactUser(slackUserId: string): Promise<{
   }
 
   return { canContact: true };
+}
+
+// ─── Legacy planner context builder (used by admin functions) ────────────────
+
+/**
+ * Build PlannerContext from a slack_user_mappings row.
+ * Used by manualOutreach and manualOutreachWithGoal which still use the old planner.
+ */
+async function buildLegacyPlannerContext(candidate: {
+  slack_user_id: string;
+  slack_email: string | null;
+  slack_display_name: string | null;
+  slack_real_name: string | null;
+  workos_user_id: string | null;
+  last_outreach_at: Date | null;
+  slack_tz_offset: number | null;
+}): Promise<PlannerContext> {
+  const [insights, history, capabilities, contactEligibility] = await Promise.all([
+    insightsDb.getInsightsForUser(candidate.slack_user_id),
+    outboundDb.getUserGoalHistory(candidate.slack_user_id),
+    outboundDb.getMemberCapabilities(candidate.slack_user_id, candidate.workos_user_id ?? undefined),
+    canContactUser(candidate.slack_user_id),
+  ]);
+
+  let company: PlannerContext['company'] | undefined;
+  let isMember = false;
+  let isAddieProspect = false;
+  if (candidate.workos_user_id) {
+    const orgResult = await query<{
+      name: string;
+      company_types: string[] | null;
+      subscription_status: string | null;
+      persona: string | null;
+      prospect_owner: string | null;
+    }>(
+      `SELECT o.name, o.company_types, o.subscription_status, o.persona, o.prospect_owner
+       FROM organization_memberships om
+       JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+       WHERE om.workos_user_id = $1
+       LIMIT 1`,
+      [candidate.workos_user_id]
+    );
+    if (orgResult.rows[0]) {
+      const org = orgResult.rows[0];
+      const isPersonalWorkspace = org.name.toLowerCase().endsWith("'s workspace") ||
+                                  org.name.toLowerCase().endsWith("\u2019s workspace");
+      company = {
+        name: isPersonalWorkspace ? 'your account' : org.name,
+        type: org.company_types?.[0] ?? 'unknown',
+        is_personal_workspace: isPersonalWorkspace,
+        persona: org.persona ?? undefined,
+      };
+      isMember = org.subscription_status === 'active';
+      isAddieProspect = org.prospect_owner === 'addie';
+    }
+  }
+
+  if (!company && candidate.slack_email) {
+    const domain = candidate.slack_email.split('@')[1];
+    if (domain) {
+      const prospectResult = await query<{
+        name: string;
+        company_types: string[] | null;
+        prospect_owner: string | null;
+        persona: string | null;
+      }>(
+        `SELECT o.name, o.company_types, o.prospect_owner, o.persona
+         FROM organizations o
+         WHERE (o.email_domain = $1 OR o.workos_organization_id IN (
+           SELECT workos_organization_id FROM organization_domains WHERE domain = $1
+         ))
+         AND o.subscription_status IS NULL
+         LIMIT 1`,
+        [domain]
+      );
+      if (prospectResult.rows[0]) {
+        const org = prospectResult.rows[0];
+        company = {
+          name: org.name,
+          type: org.company_types?.[0] ?? 'unknown',
+          is_personal_workspace: false,
+          persona: org.persona ?? undefined,
+        };
+        isAddieProspect = org.prospect_owner === 'addie';
+      }
+    }
+  }
+
+  const engagementScore = capabilities.slack_message_count_30d > 0
+    ? Math.min(100, capabilities.slack_message_count_30d * 5)
+    : 0;
+
+  return {
+    user: {
+      slack_user_id: candidate.slack_user_id,
+      workos_user_id: candidate.workos_user_id ?? undefined,
+      display_name: candidate.slack_display_name ?? candidate.slack_real_name ?? undefined,
+      is_mapped: !!candidate.workos_user_id,
+      is_member: isMember,
+      engagement_score: engagementScore,
+      insights: insights.map(i => ({
+        type: i.insight_type_name ?? 'unknown',
+        value: i.value,
+        confidence: i.confidence,
+      })),
+    },
+    company: company ? { ...company, is_addie_prospect: isAddieProspect } : undefined,
+    capabilities,
+    history,
+    contact_eligibility: {
+      can_contact: contactEligibility.canContact,
+      reason: contactEligibility.reason ?? 'Eligible',
+    },
+    available_channels: ['slack'],
+  };
 }

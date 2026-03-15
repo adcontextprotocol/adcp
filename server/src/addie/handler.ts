@@ -90,6 +90,9 @@ import {
   type ExtractionContext,
 } from './services/insight-extractor.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
+import * as relationshipDb from '../db/relationship-db.js';
+import { loadRelationshipContext, formatContextForPrompt } from './services/relationship-context.js';
+import * as personEvents from '../db/person-events-db.js';
 import type { RequestTools } from './claude-client.js';
 import type {
   AssistantThreadStartedEvent,
@@ -241,7 +244,7 @@ export function isAddieReady(): boolean {
 async function buildRequestContext(
   userId: string,
   options?: { skipGoals?: boolean }
-): Promise<{ requestContext: string; memberContext: MemberContext | null }> {
+): Promise<{ requestContext: string; memberContext: MemberContext | null; personId: string | null }> {
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
@@ -261,14 +264,29 @@ async function buildRequestContext(
       }
     }
 
-    const sections = [memberContextText, insightGoalsText].filter(Boolean);
+    // Load cross-surface relationship context
+    let relationshipPrompt = '';
+    let personId: string | null = null;
+    try {
+      personId = await relationshipDb.resolvePersonId({
+        slack_user_id: userId,
+        email: memberContext?.slack_user?.email ?? undefined,
+      });
+      const relationshipCtx = await loadRelationshipContext(personId);
+      relationshipPrompt = formatContextForPrompt(relationshipCtx);
+    } catch (error) {
+      logger.warn({ error, userId }, 'Addie: Failed to load relationship context, continuing without it');
+    }
+
+    const sections = [memberContextText, insightGoalsText, relationshipPrompt].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
+      personId,
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null };
+    return { requestContext: '', memberContext: null, personId: null };
   }
 }
 
@@ -473,7 +491,18 @@ export async function handleAssistantMessage(
   }
 
   // Build per-request context for system prompt
-  const { requestContext, memberContext } = await buildRequestContext(event.user);
+  const { requestContext, memberContext, personId } = await buildRequestContext(event.user);
+
+  // Record the user's message in the relationship and event log
+  if (personId) {
+    relationshipDb.recordPersonMessage(personId, 'slack').catch(error => {
+      logger.warn({ error, personId }, 'Addie: Failed to record person message');
+    });
+    personEvents.recordEvent(personId, 'message_received', {
+      channel: 'slack',
+      data: { source: 'dm', text_length: textWithResolvedMentions.length },
+    }).catch(err => logger.warn({ err, personId }, 'Addie: Failed to record message_received event'));
+  }
 
   // Add admin prefix to user message if applicable
   const userMessage = isAAOAdmin ? `[ADMIN USER] ${inputValidation.sanitized}` : inputValidation.sanitized;
@@ -535,6 +564,20 @@ export async function handleAssistantMessage(
     });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send response');
+  }
+
+  // Record Addie's response and evaluate stage transitions
+  if (personId) {
+    relationshipDb.recordAddieMessage(personId, 'slack').catch(error => {
+      logger.warn({ error, personId }, 'Addie: Failed to record Addie message');
+    });
+    personEvents.recordEvent(personId, 'message_sent', {
+      channel: 'slack',
+      data: { source: 'dm_reply', text_length: response.text.length },
+    }).catch(err => logger.warn({ err, personId }, 'Addie: Failed to record message_sent event'));
+    relationshipDb.evaluateStageTransitions(personId).catch(error => {
+      logger.warn({ error, personId }, 'Addie: Failed to evaluate stage transitions');
+    });
   }
 
   // Clear status
@@ -623,7 +666,14 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
 
   // Build per-request context for system prompt
   // Skip goals in channel mentions to prevent membership pitching
-  const { requestContext: baseContext, memberContext } = await buildRequestContext(event.user, { skipGoals: true });
+  const { requestContext: baseContext, memberContext, personId } = await buildRequestContext(event.user, { skipGoals: true });
+
+  // Record the user's message in the relationship
+  if (personId) {
+    relationshipDb.recordPersonMessage(personId, 'slack').catch(error => {
+      logger.warn({ error, personId }, 'Addie: Failed to record person message (mention)');
+    });
+  }
 
   // Add channel guardrails — mentions always happen in channels
   const channelGuardrails = [
@@ -696,6 +746,16 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send mention response');
+  }
+
+  // Record Addie's response and evaluate stage transitions
+  if (personId) {
+    relationshipDb.recordAddieMessage(personId, 'slack').catch(error => {
+      logger.warn({ error, personId }, 'Addie: Failed to record Addie message (mention)');
+    });
+    relationshipDb.evaluateStageTransitions(personId).catch(error => {
+      logger.warn({ error, personId }, 'Addie: Failed to evaluate stage transitions (mention)');
+    });
   }
 
   // Log interaction

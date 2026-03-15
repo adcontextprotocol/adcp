@@ -14,24 +14,26 @@ A creative agent is a service that:
 - **Builds creatives** (optional) - Generates manifests from natural language briefs or retrieves them from a library
 - **Hosts a creative library** (optional) - Lets buyers browse and filter existing creatives
 
-Creative agents are independent of sales agents. An ad server (CM360, Flashtalking), creative management platform, creative agency, or publisher can implement a creative agent.
+An ad server (CM360, Flashtalking), creative management platform, creative agency, publisher, or sales agent can implement a creative agent. Sales agents that implement the Creative Protocol alongside the Media Buy Protocol serve both roles from a single endpoint — see [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 ## Core requirements
 
 ### 1. Format ID namespacing
 
-Every format you define must use namespaced format IDs to prevent conflicts.
+Every format you define must use structured format IDs with your agent URL to prevent conflicts:
 
-**Pattern:** `{domain}:{format_id}`
-
-**Examples:**
-- `creative.adcontextprotocol.org:display_300x250`
-- `youragency.com:video_story_15s`
-- `brandstudio.com:interactive_carousel`
+```json
+{
+  "format_id": {
+    "agent_url": "https://youragency.com",
+    "id": "video_story_15s"
+  }
+}
+```
 
 **Rules:**
-- Domain must match your agent's domain
-- Format ID portion should be descriptive and unique within your namespace
+- `agent_url` must match your agent's URL
+- `id` should be descriptive and unique within your namespace
 - Use lowercase with underscores for consistency
 
 ### 2. Format validation
@@ -304,6 +306,80 @@ You provide enhanced versions of standard formats:
 }
 ```
 
+### Pattern 4: feed-native/social format agent
+
+You host ad formats that render as native content within your platform's feed:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.socialplatform.com",
+    "id": "promoted_post"
+  },
+  "name": "Promoted post",
+  "type": "native",
+  "description": "Sponsored content that appears in the feed alongside organic posts. Renders with platform chrome (user avatar, engagement buttons, community badge).",
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": { "max_length": 300 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "body",
+      "asset_type": "text",
+      "required": false,
+      "requirements": { "max_length": 1000 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "image",
+      "asset_type": "image",
+      "required": false,
+      "requirements": { "max_width": 1200, "max_height": 628, "accepted_types": ["image/jpeg", "image/png"] }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "click_url",
+      "asset_type": "url",
+      "required": true,
+      "requirements": {}
+    }
+  ]
+}
+```
+
+Platform-specific rendering (dark mode, community context, engagement UI) is handled by the agent at preview and serve time — the format definition specifies only the buyer-provided assets. The agent wraps these assets in the platform's native chrome.
+
+When a buyer calls `preview_creative` for a feed-native format, the preview renders the buyer's assets inside the platform's UI — avatar, engagement buttons, community badge, and all:
+
+```json
+{
+  "request_type": "single",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.socialplatform.com",
+      "id": "promoted_post"
+    },
+    "assets": {
+      "headline": { "content": "Introducing our new trail running collection" },
+      "body": { "content": "Built for the mountains. Tested on every terrain." },
+      "image": { "url": "https://cdn.acme-example.com/trail-hero.jpg", "width": 1200, "height": 628 },
+      "click_url": { "url": "https://acme-example.com/trail-running" }
+    }
+  },
+  "inputs": [
+    { "name": "Running community", "context_description": "Appears in r/trailrunning feed between user posts" },
+    { "name": "General feed", "context_description": "Appears in home feed between mixed content" }
+  ]
+}
+```
+
+The preview response shows how the ad looks in each context — including community-specific chrome that the buyer cannot preview elsewhere. This is why platforms should implement `preview_creative` even for simple formats: the platform chrome is the differentiator.
+
 ## Platform mapping
 
 If you're wrapping an existing ad server or creative management platform, this section shows how common platform concepts map to the creative protocol.
@@ -323,6 +399,7 @@ If you're wrapping an existing ad server or creative management platform, this s
 | Placement / ad unit | Package within a media buy | The buy context where a creative is assigned |
 | DCO variables / dynamic fields | `variables` array (via `include_variables=true`) | Named slots with types and defaults |
 | Data feed / targeting rules | Not modeled | AdCP models the variable *slots*, not the optimization rules |
+| CTV/OTT ad server (Innovid, Brightcove) | Same as ad server, plus VAST/SSAI delivery model | VAST tags in `vast`-type assets; companion ads via multi-render formats |
 
 ### Tag generation models
 
@@ -369,6 +446,17 @@ Platforms use their own macro syntax internally. The `macro_values` parameter in
 
 The creative agent handles translation — callers always use universal macros.
 
+### Re-submission after rejection
+
+When `sync_creatives` or creative review results in a rejection, the fix-and-resubmit flow uses upsert semantics:
+
+1. Check rejection reason via `list_creatives` (library `status: "rejected"`) or `get_media_buys` (package `approval_status: "rejected"` with `rejection_reason`)
+2. Fix the creative (update assets, adjust copy, replace media)
+3. Re-submit via `sync_creatives` with the same `creative_id` — the agent updates the existing creative and re-triggers review
+4. Poll `list_creatives` until `status` transitions from `pending_review` to `approved` or `rejected`
+
+Re-submission resets the review clock. The agent treats the updated creative as a new submission for review purposes.
+
 ### Which tasks to implement
 
 The creative protocol requires `list_creative_formats` and `preview_creative` from all creative agents. The table below shows which additional tasks and capabilities each platform type should implement.
@@ -379,6 +467,7 @@ The creative protocol requires `list_creative_formats` and `preview_creative` fr
 | Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
 | Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_generation: true` |
 | Format conversion service | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_transformation: true` |
+| Sales agent with creative capabilities | `list_creative_formats`, `preview_creative` | `sync_creatives` (with `assignments`), `get_creative_delivery`, `build_creative` | `supports_generation: true` or `has_creative_library: true` |
 
 Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/docs/creative/specification#interaction-models) in the spec.
 

@@ -19,6 +19,14 @@ import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
+import {
+  GOVERNANCE_TOOLS,
+  handleSyncPlans,
+  handleCheckGovernance,
+  handleReportPlanOutcome,
+  handleGetPlanAuditLogs,
+} from './governance-handlers.js';
+
 
 const logger = createLogger('training-agent');
 
@@ -234,6 +242,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_creative_delivery',
+    description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids, media_buy_buyer_refs, or creative_ids.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: { type: 'object' },
+        media_buy_ids: { type: 'array', items: { type: 'string' } },
+        media_buy_buyer_refs: { type: 'array', items: { type: 'string' } },
+        creative_ids: { type: 'array', items: { type: 'string' } },
+        max_variants: { type: 'number' },
+      },
+    },
+  },
+  {
     name: 'update_media_buy',
     description: 'Update an existing media buy. Supports changing package budget, paused state, and end_time. Cannot add new packages or change product_id/pricing_option_id — only update existing package fields. Not for creating new buys (use create_media_buy).',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
@@ -282,6 +305,7 @@ const TOOLS = [
       required: ['signal_agent_segment_id', 'destinations', 'account'] as const,
     },
   },
+  ...GOVERNANCE_TOOLS,
 ];
 
 // ── Task handler implementations ──────────────────────────────────
@@ -605,6 +629,10 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
         paused: pkg.paused,
         start_time: pkg.startTime,
         end_time: pkg.endTime,
+        creative_approvals: pkg.creativeAssignments.map(cid => ({
+          creative_id: cid,
+          approval_status: 'approved',
+        })),
       })),
     };
     }),
@@ -766,7 +794,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
       creativeId,
       formatId,
       name: creative.name as string | undefined,
-      status: 'active',
+      status: 'approved',
       syncedAt: new Date().toISOString(),
       manifest: creative.manifest as Record<string, unknown> | undefined,
     });
@@ -774,7 +802,6 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     results.push({
       creative_id: creativeId,
       action: existing ? 'updated' : 'created',
-      status: 'active',
     });
   }
 
@@ -1180,6 +1207,129 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   return { deployments, sandbox: true };
 }
 
+function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const agentUrl = getAgentUrl();
+
+  // Resolve media buy IDs from multiple input formats
+  const mediaBuyIds = args.media_buy_ids as string[] | undefined;
+  const buyerRefs = args.media_buy_buyer_refs as string[] | undefined;
+  const creativeIds = args.creative_ids as string[] | undefined;
+  const maxVariants = (args.max_variants as number) || 10;
+
+  if (!mediaBuyIds?.length && !buyerRefs?.length && !creativeIds?.length) {
+    return {
+      errors: [{ code: 'validation_error', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
+    };
+  }
+
+  // Find matching media buys
+  const matchingBuys: MediaBuyState[] = [];
+  for (const mb of session.mediaBuys.values()) {
+    if (mediaBuyIds?.includes(mb.mediaBuyId)) matchingBuys.push(mb);
+    else if (buyerRefs?.includes(mb.buyerRef)) matchingBuys.push(mb);
+  }
+
+  // Collect assigned creatives from matching buys, tracking which buy each belongs to
+  const relevantCreativeIds = new Set<string>();
+  const creativeToBuy = new Map<string, string>();
+  if (creativeIds?.length) {
+    creativeIds.forEach(id => relevantCreativeIds.add(id));
+  }
+  for (const mb of matchingBuys) {
+    for (const pkg of mb.packages) {
+      pkg.creativeAssignments.forEach(id => {
+        relevantCreativeIds.add(id);
+        creativeToBuy.set(id, mb.mediaBuyId);
+      });
+    }
+  }
+
+  if (relevantCreativeIds.size === 0) {
+    return {
+      reporting_period: {
+        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date().toISOString(),
+        timezone: 'America/New_York',
+      },
+      currency: 'USD',
+      creatives: [],
+      sandbox: true,
+    };
+  }
+
+  const now = new Date();
+  const creatives: Record<string, unknown>[] = [];
+
+  for (const cid of relevantCreativeIds) {
+    const creative = session.creatives.get(cid);
+    if (!creative) continue;
+
+    // Generate deterministic variant-level delivery based on creative ID
+    const variantCount = Math.min(maxVariants, 3);
+    const idHash = Array.from(cid).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+    const totalImpressions = 50000 + Math.abs(idHash % 100000);
+    const totalSpend = Math.round(totalImpressions * 0.05 * 100) / 100;
+    const totalClicks = Math.round(totalImpressions * 0.03);
+    const variants: Record<string, unknown>[] = [];
+
+    const topics = ['technology', 'lifestyle', 'finance', 'health', 'sports'];
+    const devices = ['mobile', 'desktop', 'tablet'];
+
+    for (let i = 0; i < variantCount; i++) {
+      const share = i === 0 ? 0.5 : (0.5 / (variantCount - 1));
+      const vImpressions = Math.round(totalImpressions * share);
+      const vSpend = Math.round(totalSpend * share * 100) / 100;
+      const vClicks = Math.round(totalClicks * share);
+
+      variants.push({
+        variant_id: `gen_${cid}_${i}`,
+        generation_context: {
+          context_type: 'web_page',
+          topic: topics[i % topics.length],
+          device_class: devices[i % devices.length],
+        },
+        manifest: {
+          format_id: creative.formatId || { agent_url: agentUrl, id: 'display_300x250' },
+          assets: {
+            headline: { asset_type: 'text', content: `Generated variant ${i + 1} for ${creative.name || cid}` },
+            hero_image: { asset_type: 'image', url: `https://cdn.example.com/generated/${cid}_v${i}.jpg`, width: 300, height: 250 },
+          },
+        },
+        impressions: vImpressions,
+        spend: vSpend,
+        clicks: vClicks,
+        ctr: vImpressions > 0 ? Math.round((vClicks / vImpressions) * 10000) / 10000 : 0,
+      });
+    }
+
+    creatives.push({
+      creative_id: cid,
+      media_buy_id: creativeToBuy.get(cid) || matchingBuys[0]?.mediaBuyId,
+      format_id: creative.formatId,
+      totals: {
+        impressions: totalImpressions,
+        spend: totalSpend,
+        clicks: totalClicks,
+        ctr: totalImpressions > 0 ? Math.round((totalClicks / totalImpressions) * 10000) / 10000 : 0,
+      },
+      variant_count: variantCount,
+      variants,
+    });
+  }
+
+  return {
+    reporting_period: {
+      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      end: now.toISOString(),
+      timezone: 'America/New_York',
+    },
+    currency: 'USD',
+    creatives,
+    sandbox: true,
+  };
+}
+
 // ── Handler dispatch ──────────────────────────────────────────────
 
 type ToolHandler = (args: Record<string, unknown>, ctx: TrainingContext) => Record<string, unknown>;
@@ -1190,11 +1340,16 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   create_media_buy: handleCreateMediaBuy,
   get_media_buys: handleGetMediaBuys,
   get_media_buy_delivery: handleGetMediaBuyDelivery,
+  get_creative_delivery: handleGetCreativeDelivery,
   sync_creatives: handleSyncCreatives,
   list_creatives: handleListCreatives,
   update_media_buy: handleUpdateMediaBuy,
   get_signals: handleGetSignals,
   activate_signal: handleActivateSignal,
+  sync_plans: handleSyncPlans,
+  check_governance: handleCheckGovernance,
+  report_plan_outcome: handleReportPlanOutcome,
+  get_plan_audit_logs: handleGetPlanAuditLogs,
 };
 
 /**

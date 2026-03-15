@@ -44,10 +44,10 @@ description: Step by step through the full AdCP lifecycle — discovery, purchas
 
 | Term | Definition |
 |------|-----------|
-| **Sales agent** | Represents a publisher and exposes inventory via `get_products` |
+| **Sales agent** | Represents a publisher and exposes inventory via `get_products`. May also implement the Creative Protocol to handle creatives from the same endpoint. |
 | **Buyer agent** | Represents a brand or agency and purchases media via `create_media_buy` |
 | **Brand agent** | Manages brand identity and guidelines via `brand.json` |
-| **Creative agent** | Produces and adapts advertising assets via `build_creative` |
+| **Creative agent** | Any agent implementing the Creative Protocol — produces and adapts advertising assets via `build_creative`. This can be a standalone service or a sales agent that declares `"creative"` in `supported_protocols`. |
 | **Signals agent** | Provides measurement and audience data via `get_signals` |
 | **adagents.json** | Publisher-hosted file declaring agent capabilities (like robots.txt for agents) |
 | **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |

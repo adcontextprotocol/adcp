@@ -445,7 +445,7 @@ The seller stores these endpoints and presents the credentials when calling `che
 
 ### Governance modes
 
-The governance agent's operating mode is configured by the buyer's policy team, not exposed to sellers via `sync_accounts`. The seller calls `check_governance` and acts on the response status -- it does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
+The governance agent's operating mode can be set per-plan via the `mode` field in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), defaulting to `enforce`. Mode is not exposed to sellers via `sync_accounts` -- the seller calls `check_governance` and acts on the response status. It does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
 
 | Mode | Behavior | Use case |
 |------|----------|----------|
@@ -460,6 +460,16 @@ In `audit` mode, the governance agent still performs full evaluation and returns
 In `advisory` mode, the governance agent returns the real status it would have returned under enforcement. The check response includes a `mode` field so auditors can distinguish "denied in advisory mode (action proceeded)" from "denied in enforce mode (action blocked)."
 
 In all modes, delegation violations, credential mismatches, and other authorization checks are logged as findings. In `audit` and `advisory` modes, these findings do not block the action -- they are recorded for review. Only in `enforce` mode are authorization violations blocking.
+
+### Governance context
+
+The `payload` field in `check_governance` is opaque -- it carries the full tool arguments for whatever tool is being checked. Different tools use different field names and structures for the same concepts (budget, countries, channels, flight dates). Without a standard extraction point, every governance agent must implement multi-format heuristics to find these values.
+
+The optional `governance_context` field solves this by providing a canonical shape for governance-relevant fields. The caller (orchestrator or seller) extracts budget, countries, channels, and flight dates from the tool payload into `governance_context` before calling `check_governance`. The governance agent validates against this known structure instead of parsing the payload directly.
+
+When `governance_context` is present, the governance agent SHOULD use it for plan validation. When absent, the agent falls back to inspecting `payload`. Callers SHOULD include `governance_context` for `proposed` checks where the payload structure varies by tool. For `committed` checks, `planned_delivery` already provides a canonical structure and `governance_context` is not needed.
+
+The `governance_context` condition field paths use the prefix `governance_context.` (e.g., `governance_context.total_budget.amount`) so they remain stable regardless of the original payload structure.
 
 ### Governance phases
 

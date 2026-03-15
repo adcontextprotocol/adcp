@@ -60,7 +60,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery (date, impressions, spend, conversions, conversion_value, roas, new_to_brand_rate) |
 
-See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json) for complete field list.
+See [schema](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) for complete field list.
 
 ## Common Scenarios
 
@@ -366,7 +366,7 @@ import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
 // Query by buyer reference instead of media buy ID
 const result = await testAgent.getMediaBuyDelivery({
-  buyer_refs: ['nike_q1_campaign_2024', 'nike_q1_retargeting_2024']
+  buyer_refs: ['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
 });
 
 if (!result.success) {
@@ -401,7 +401,7 @@ async def main():
     # Query by buyer reference instead of media buy ID
     result = await test_agent.get_media_buy_delivery(
         GetMediaBuyDeliveryRequest(
-            buyer_refs=['nike_q1_campaign_2024', 'nike_q1_retargeting_2024']
+            buyer_refs=['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
         )
     )
 
@@ -612,7 +612,7 @@ Each creative entry includes:
 }
 ```
 
-For deeper creative analytics including variant-level delivery data (asset combination optimization, generative creative), use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) on the creative agent.
+For deeper creative analytics including variant-level delivery data (asset combination optimization, generative creative), use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). This is a Creative Protocol task — call it on any agent that implements the Creative Protocol, which may be the same sales agent if it declares `"creative"` in `supported_protocols`. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 ## Catalog-item reporting
 

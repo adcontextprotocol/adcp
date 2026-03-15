@@ -32,6 +32,10 @@
       "description": "The full tool arguments as they would be sent to the seller. Expected for proposed checks. The governance agent can inspect any field to validate against the plan.",
       "additionalProperties": true
     },
+    "governance_context": {
+      "$ref": "/schemas/governance/governance-context.json",
+      "description": "Normalized governance-relevant fields extracted from the tool payload. When present, the governance agent SHOULD use these fields for plan validation instead of parsing the payload directly. The caller is responsible for extracting these from the tool arguments."
+    },
     "media_buy_id": {
       "type": "string",
       "description": "The seller's identifier for the media buy. Expected for committed checks."
