@@ -156,6 +156,7 @@
           },
           {
             "group": "Industry Guides",
+            "expanded": false,
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
@@ -170,6 +171,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "docs/media-buy/index",
               {
@@ -222,6 +224,7 @@
           },
           {
             "group": "Creative Protocol",
+            "expanded": false,
             "pages": [
               "docs/creative/index",
               {
@@ -306,6 +309,7 @@
           },
           {
             "group": "Governance Protocol",
+            "expanded": false,
             "pages": [
               "docs/governance/overview",
               "docs/governance/embedded-human-judgment",
@@ -378,6 +382,7 @@
           },
           {
             "group": "Brand Protocol",
+            "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/key-concepts",
@@ -399,6 +404,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "docs/signals/overview",
               "docs/signals/key-concepts",
@@ -416,6 +422,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               {
                 "group": "Registry API",
@@ -439,6 +446,7 @@
           },
           {
             "group": "Certification",
+            "expanded": false,
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
@@ -578,6 +586,7 @@
           },
           {
             "group": "Industry Guides",
+            "expanded": false,
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
@@ -592,6 +601,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "docs/media-buy/index",
               {
@@ -644,6 +654,7 @@
           },
           {
             "group": "Creative Protocol",
+            "expanded": false,
             "pages": [
               "docs/creative/index",
               {
@@ -728,6 +739,7 @@
           },
           {
             "group": "Governance Protocol",
+            "expanded": false,
             "pages": [
               "docs/governance/overview",
               "docs/governance/embedded-human-judgment",
@@ -800,6 +812,7 @@
           },
           {
             "group": "Brand Protocol",
+            "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/key-concepts",
@@ -821,6 +834,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "docs/signals/overview",
               "docs/signals/key-concepts",
@@ -838,6 +852,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               {
                 "group": "Registry API",
@@ -861,6 +876,7 @@
           },
           {
             "group": "Certification",
+            "expanded": false,
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
@@ -939,6 +955,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/signals/overview",
               "dist/docs/2.5.3/signals/specification",
@@ -959,6 +976,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/media-buy/index",
               {
@@ -1057,6 +1075,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/reference/media-buy-quick-reference",
               "dist/docs/2.5.3/reference/creative-quick-reference",
