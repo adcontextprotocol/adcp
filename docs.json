@@ -219,8 +219,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -332,32 +334,59 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/specification",
-              "docs/creative/formats",
-              "docs/creative/asset-types",
-              "docs/creative/creative-manifests",
-              "docs/creative/private-assets",
-              "docs/creative/universal-macros",
-              "docs/creative/implementing-creative-agents",
-              "docs/creative/generative-creative",
-              "docs/creative/template-format-ids",
-              "docs/creative/catalogs",
-              "docs/creative/catalog-schemas",
-              "docs/creative/accessibility",
-              "docs/creative/provenance",
+              {
+                "group": "Concepts",
+                "pages": [
+                  "docs/creative/key-concepts",
+                  "docs/creative/ai-creative-overview",
+                  "docs/creative/generative-creative",
+                  "docs/creative/creative-libraries",
+                  "docs/creative/catalogs",
+                  "docs/creative/catalog-schemas"
+                ]
+              },
+              {
+                "group": "Building Creative Agents",
+                "pages": [
+                  "docs/creative/implementing-creative-agents",
+                  "docs/creative/sales-agent-creative-capabilities",
+                  "docs/creative/multi-agent-orchestration",
+                  "docs/creative/creative-manifests",
+                  "docs/creative/private-assets"
+                ]
+              },
+              {
+                "group": "Formats and Assets",
+                "pages": [
+                  "docs/creative/formats",
+                  "docs/creative/asset-types",
+                  "docs/creative/template-format-ids",
+                  "docs/creative/universal-macros"
+                ]
+              },
               {
                 "group": "Channel Guides",
                 "pages": [
                   "docs/creative/channels/video",
+                  "docs/creative/channels/ctv",
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",
-                  "docs/creative/channels/carousels"
+                  "docs/creative/channels/carousels",
+                  "docs/creative/channels/social-native"
                 ]
               },
               {
-                "group": "Task Reference",
+                "group": "Compliance",
                 "pages": [
+                  "docs/creative/accessibility",
+                  "docs/creative/provenance"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "docs/creative/specification",
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
@@ -374,6 +403,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -622,8 +652,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -735,32 +767,59 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
-              "docs/creative/specification",
-              "docs/creative/formats",
-              "docs/creative/asset-types",
-              "docs/creative/creative-manifests",
-              "docs/creative/private-assets",
-              "docs/creative/universal-macros",
-              "docs/creative/implementing-creative-agents",
-              "docs/creative/generative-creative",
-              "docs/creative/template-format-ids",
-              "docs/creative/catalogs",
-              "docs/creative/catalog-schemas",
-              "docs/creative/accessibility",
-              "docs/creative/provenance",
+              {
+                "group": "Concepts",
+                "pages": [
+                  "docs/creative/key-concepts",
+                  "docs/creative/ai-creative-overview",
+                  "docs/creative/generative-creative",
+                  "docs/creative/creative-libraries",
+                  "docs/creative/catalogs",
+                  "docs/creative/catalog-schemas"
+                ]
+              },
+              {
+                "group": "Building Creative Agents",
+                "pages": [
+                  "docs/creative/implementing-creative-agents",
+                  "docs/creative/sales-agent-creative-capabilities",
+                  "docs/creative/multi-agent-orchestration",
+                  "docs/creative/creative-manifests",
+                  "docs/creative/private-assets"
+                ]
+              },
+              {
+                "group": "Formats and Assets",
+                "pages": [
+                  "docs/creative/formats",
+                  "docs/creative/asset-types",
+                  "docs/creative/template-format-ids",
+                  "docs/creative/universal-macros"
+                ]
+              },
               {
                 "group": "Channel Guides",
                 "pages": [
                   "docs/creative/channels/video",
+                  "docs/creative/channels/ctv",
                   "docs/creative/channels/display",
                   "docs/creative/channels/audio",
                   "docs/creative/channels/dooh",
-                  "docs/creative/channels/carousels"
+                  "docs/creative/channels/carousels",
+                  "docs/creative/channels/social-native"
                 ]
               },
               {
-                "group": "Task Reference",
+                "group": "Compliance",
                 "pages": [
+                  "docs/creative/accessibility",
+                  "docs/creative/provenance"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "docs/creative/specification",
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
@@ -777,6 +836,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",

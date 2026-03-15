@@ -1,0 +1,3929 @@
+[
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_generative"
+    },
+    "name": "Display Banner - AI Generated",
+    "description": "AI-generated display banner from brand context and prompt (supports any dimensions)",
+    "type": "display",
+    "accepts_parameters": [
+      "dimensions"
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x250_generative"
+    },
+    "name": "Medium Rectangle - AI Generated",
+    "description": "AI-generated 300x250 banner from brand context and prompt",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 250,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "output_format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_300x250_image"
+      }
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_728x90_generative"
+    },
+    "name": "Leaderboard - AI Generated",
+    "description": "AI-generated 728x90 banner from brand context and prompt",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 90,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 728
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "output_format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_728x90_image"
+      }
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_320x50_generative"
+    },
+    "name": "Mobile Banner - AI Generated",
+    "description": "AI-generated 320x50 mobile banner from brand context and prompt",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 50,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 320
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "output_format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_320x50_image"
+      }
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_160x600_generative"
+    },
+    "name": "Wide Skyscraper - AI Generated",
+    "description": "AI-generated 160x600 wide skyscraper from brand context and prompt",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 600,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 160
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "output_format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_160x600_image"
+      }
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_336x280_generative"
+    },
+    "name": "Large Rectangle - AI Generated",
+    "description": "AI-generated 336x280 large rectangle from brand context and prompt",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 280,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 336
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "output_format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_336x280_image"
+      }
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x600_generative"
+    },
+    "name": "Half Page - AI Generated",
+    "description": "AI-generated 300x600 half page from brand context and prompt",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 600,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "output_format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_300x600_image"
+      }
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_970x250_generative"
+    },
+    "name": "Billboard - AI Generated",
+    "description": "AI-generated 970x250 billboard from brand context and prompt",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 250,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 970
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "generation_prompt",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "output_format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_970x250_image"
+      }
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "offering",
+        "required": true,
+        "required_fields": [
+          "name"
+        ]
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "generation_prompt",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Text prompt describing the desired creative"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_standard"
+    },
+    "name": "Standard Video",
+    "description": "Video ad in standard aspect ratios (supports any duration)",
+    "type": "video",
+    "accepts_parameters": [
+      "duration"
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_dimensions"
+    },
+    "name": "Video with Dimensions",
+    "description": "Video ad with specific dimensions (supports any size)",
+    "type": "video",
+    "accepts_parameters": [
+      "dimensions"
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_vast"
+    },
+    "name": "VAST Video",
+    "description": "Video ad via VAST tag (supports any duration)",
+    "type": "video",
+    "accepts_parameters": [
+      "duration"
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "vast_tag",
+        "required": true,
+        "asset_type": "vast"
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "vast_tag",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "vast"
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_standard_30s"
+    },
+    "name": "Standard Video - 30 seconds",
+    "description": "30-second video ad in standard aspect ratios",
+    "type": "video",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "30-second video file"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "30-second video file"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_standard_15s"
+    },
+    "name": "Standard Video - 15 seconds",
+    "description": "15-second video ad in standard aspect ratios",
+    "type": "video",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 15,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "15-second video file"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 15,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "15-second video file"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_vast_30s"
+    },
+    "name": "VAST Video - 30 seconds",
+    "description": "30-second video ad via VAST tag",
+    "type": "video",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "vast_tag",
+        "required": true,
+        "asset_type": "vast",
+        "requirements": {
+          "description": "VAST 4.x compatible tag"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "vast_tag",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "vast",
+        "requirements": {
+          "description": "VAST 4.x compatible tag"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_1920x1080"
+    },
+    "name": "Full HD Video - 1920x1080",
+    "description": "1920x1080 Full HD video (16:9)",
+    "type": "video",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 1080,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 1920
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1920,
+          "height": 1080,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1920x1080 video file"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1920,
+          "height": 1080,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1920x1080 video file"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_1280x720"
+    },
+    "name": "HD Video - 1280x720",
+    "description": "1280x720 HD video (16:9)",
+    "type": "video",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 720,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 1280
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1280,
+          "height": 720,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1280x720 video file"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1280,
+          "height": 720,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1280x720 video file"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_1080x1920"
+    },
+    "name": "Vertical Video - 1080x1920",
+    "description": "1080x1920 vertical video (9:16) for mobile stories",
+    "type": "video",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 1920,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 1080
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1080,
+          "height": 1920,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1080x1920 vertical video file"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1080,
+          "height": 1920,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1080x1920 vertical video file"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_1080x1080"
+    },
+    "name": "Square Video - 1080x1080",
+    "description": "1080x1080 square video (1:1) for social feeds",
+    "type": "video",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 1080,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 1080
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1080,
+          "height": 1080,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1080x1080 square video file"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "width": 1080,
+          "height": 1080,
+          "acceptable_formats": [
+            "mp4",
+            "mov",
+            "webm"
+          ],
+          "description": "1080x1080 square video file"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_ctv_preroll_30s"
+    },
+    "name": "CTV Pre-Roll - 30 seconds",
+    "description": "30-second pre-roll ad for Connected TV and streaming platforms",
+    "type": "video",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp4",
+            "mov"
+          ],
+          "description": "30-second CTV-optimized video file (1920x1080 recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE",
+      "PLAYER_SIZE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp4",
+            "mov"
+          ],
+          "description": "30-second CTV-optimized video file (1920x1080 recommended)"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "video_ctv_midroll_30s"
+    },
+    "name": "CTV Mid-Roll - 30 seconds",
+    "description": "30-second mid-roll ad for Connected TV and streaming platforms",
+    "type": "video",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp4",
+            "mov"
+          ],
+          "description": "30-second CTV-optimized video file (1920x1080 recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "VIDEO_ID",
+      "POD_POSITION",
+      "CONTENT_GENRE",
+      "PLAYER_SIZE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "video_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "video",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp4",
+            "mov"
+          ],
+          "description": "30-second CTV-optimized video file (1920x1080 recommended)"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_image"
+    },
+    "name": "Display Banner - Image",
+    "description": "Static image banner (supports any dimensions)",
+    "type": "display",
+    "accepts_parameters": [
+      "dimensions"
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x250_image"
+    },
+    "name": "Medium Rectangle - Image",
+    "description": "300x250 static image banner",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 250,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 300,
+          "height": 250,
+          "max_file_size_mb": 0.2,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 300,
+          "height": 250,
+          "max_file_size_mb": 0.2,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_728x90_image"
+    },
+    "name": "Leaderboard - Image",
+    "description": "728x90 static image banner",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 90,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 728
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 728,
+          "height": 90,
+          "max_file_size_mb": 0.15,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 728,
+          "height": 90,
+          "max_file_size_mb": 0.15,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_320x50_image"
+    },
+    "name": "Mobile Banner - Image",
+    "description": "320x50 mobile banner",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 50,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 320
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 320,
+          "height": 50,
+          "max_file_size_mb": 0.05,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 320,
+          "height": 50,
+          "max_file_size_mb": 0.05,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_160x600_image"
+    },
+    "name": "Wide Skyscraper - Image",
+    "description": "160x600 wide skyscraper banner",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 600,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 160
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 160,
+          "height": 600,
+          "max_file_size_mb": 0.15,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 160,
+          "height": 600,
+          "max_file_size_mb": 0.15,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_336x280_image"
+    },
+    "name": "Large Rectangle - Image",
+    "description": "336x280 large rectangle banner",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 280,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 336
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 336,
+          "height": 280,
+          "max_file_size_mb": 0.25,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 336,
+          "height": 280,
+          "max_file_size_mb": 0.25,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x600_image"
+    },
+    "name": "Half Page - Image",
+    "description": "300x600 half page banner",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 600,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 300,
+          "height": 600,
+          "max_file_size_mb": 0.3,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 300,
+          "height": 600,
+          "max_file_size_mb": 0.3,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_970x250_image"
+    },
+    "name": "Billboard - Image",
+    "description": "970x250 billboard banner",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 250,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 970
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 970,
+          "height": 250,
+          "max_file_size_mb": 0.4,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 970,
+          "height": 250,
+          "max_file_size_mb": 0.4,
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif",
+            "webp"
+          ]
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_html"
+    },
+    "name": "Display Banner - HTML5",
+    "description": "HTML5 creative (supports any dimensions)",
+    "type": "display",
+    "accepts_parameters": [
+      "dimensions"
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "html_creative",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "max_file_size_mb": 0.5
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "html_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "max_file_size_mb": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x250_html"
+    },
+    "name": "Medium Rectangle - HTML5",
+    "description": "300x250 HTML5 creative",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 250,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "html_creative",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 300,
+          "height": 250,
+          "max_file_size_mb": 0.5,
+          "description": "HTML5 creative code"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "html_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 300,
+          "height": 250,
+          "max_file_size_mb": 0.5,
+          "description": "HTML5 creative code"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_728x90_html"
+    },
+    "name": "Leaderboard - HTML5",
+    "description": "728x90 HTML5 creative",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 90,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 728
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "html_creative",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 728,
+          "height": 90,
+          "max_file_size_mb": 0.5
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "html_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 728,
+          "height": 90,
+          "max_file_size_mb": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_160x600_html"
+    },
+    "name": "Wide Skyscraper - HTML5",
+    "description": "160x600 HTML5 creative",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 600,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 160
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "html_creative",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 160,
+          "height": 600,
+          "max_file_size_mb": 0.5
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "html_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 160,
+          "height": 600,
+          "max_file_size_mb": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_336x280_html"
+    },
+    "name": "Large Rectangle - HTML5",
+    "description": "336x280 HTML5 creative",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 280,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 336
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "html_creative",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 336,
+          "height": 280,
+          "max_file_size_mb": 0.5
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "html_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 336,
+          "height": 280,
+          "max_file_size_mb": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x600_html"
+    },
+    "name": "Half Page - HTML5",
+    "description": "300x600 HTML5 creative",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 600,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "html_creative",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 300,
+          "height": 600,
+          "max_file_size_mb": 0.5
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "html_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 300,
+          "height": 600,
+          "max_file_size_mb": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_970x250_html"
+    },
+    "name": "Billboard - HTML5",
+    "description": "970x250 HTML5 creative",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 250,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 970
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "html_creative",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 970,
+          "height": 250,
+          "max_file_size_mb": 0.5
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "html_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "html",
+        "requirements": {
+          "sandbox": "none",
+          "width": 970,
+          "height": 250,
+          "max_file_size_mb": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_js"
+    },
+    "name": "Display Banner - JavaScript",
+    "description": "JavaScript-based display ad (supports any dimensions)",
+    "type": "display",
+    "accepts_parameters": [
+      "dimensions"
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "js_creative",
+        "required": true,
+        "asset_type": "javascript"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "js_creative",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "javascript"
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "native_standard"
+    },
+    "name": "IAB Native Standard",
+    "description": "Standard native ad with title, description, image, and CTA",
+    "type": "native",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "title",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Headline text (25 chars recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "description",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Body copy (90 chars recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "main_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Primary image (1200x627 recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "icon",
+        "required": false,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Brand icon (square, 200x200 recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "cta_text",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Call-to-action text"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "sponsored_by",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Advertiser name for disclosure"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "title",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Headline text (25 chars recommended)"
+        }
+      },
+      {
+        "asset_id": "description",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Body copy (90 chars recommended)"
+        }
+      },
+      {
+        "asset_id": "main_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Primary image (1200x627 recommended)"
+        }
+      },
+      {
+        "asset_id": "cta_text",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Call-to-action text"
+        }
+      },
+      {
+        "asset_id": "sponsored_by",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Advertiser name for disclosure"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "native_content"
+    },
+    "name": "Native Content Placement",
+    "description": "In-article native ad with editorial styling",
+    "type": "native",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "headline",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Editorial-style headline (60 chars recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "body",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Article-style body copy (200 chars recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "thumbnail",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Thumbnail image (square, 300x300 recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "author",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Author name for editorial context"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "disclosure",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Sponsored content disclosure text"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "headline",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Editorial-style headline (60 chars recommended)"
+        }
+      },
+      {
+        "asset_id": "body",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Article-style body copy (200 chars recommended)"
+        }
+      },
+      {
+        "asset_id": "thumbnail",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Thumbnail image (square, 300x300 recommended)"
+        }
+      },
+      {
+        "asset_id": "click_url",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Clickthrough destination URL"
+        }
+      },
+      {
+        "asset_id": "disclosure",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Sponsored content disclosure text"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "audio_standard_15s"
+    },
+    "name": "Standard Audio - 15 seconds",
+    "description": "15-second audio ad",
+    "type": "audio",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "audio_file",
+        "required": true,
+        "asset_type": "audio",
+        "requirements": {
+          "duration_seconds": 15,
+          "acceptable_formats": [
+            "mp3",
+            "aac",
+            "m4a"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "audio_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "audio",
+        "requirements": {
+          "duration_seconds": 15,
+          "acceptable_formats": [
+            "mp3",
+            "aac",
+            "m4a"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "audio_standard_30s"
+    },
+    "name": "Standard Audio - 30 seconds",
+    "description": "30-second audio ad",
+    "type": "audio",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "audio_file",
+        "required": true,
+        "asset_type": "audio",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp3",
+            "aac",
+            "m4a"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "audio_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "audio",
+        "requirements": {
+          "duration_seconds": 30,
+          "acceptable_formats": [
+            "mp3",
+            "aac",
+            "m4a"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "audio_standard_60s"
+    },
+    "name": "Standard Audio - 60 seconds",
+    "description": "60-second audio ad",
+    "type": "audio",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "audio_file",
+        "required": true,
+        "asset_type": "audio",
+        "requirements": {
+          "duration_seconds": 60,
+          "acceptable_formats": [
+            "mp3",
+            "aac",
+            "m4a"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "CONTENT_GENRE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "audio_file",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "audio",
+        "requirements": {
+          "duration_seconds": 60,
+          "acceptable_formats": [
+            "mp3",
+            "aac",
+            "m4a"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "dooh_billboard_1920x1080"
+    },
+    "name": "Digital Billboard - 1920x1080",
+    "description": "Full HD digital billboard",
+    "type": "dooh",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 1080,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 1920
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "billboard_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 1920,
+          "height": 1080,
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ]
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "SCREEN_ID",
+      "VENUE_TYPE",
+      "VENUE_LAT",
+      "VENUE_LONG"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "billboard_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 1920,
+          "height": 1080,
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "dooh_billboard_landscape"
+    },
+    "name": "Digital Billboard - Landscape",
+    "description": "Landscape-oriented digital billboard (various sizes)",
+    "type": "dooh",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "billboard_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "description": "Landscape image (1920x1080 or larger)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "SCREEN_ID",
+      "VENUE_TYPE",
+      "VENUE_LAT",
+      "VENUE_LONG"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "billboard_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "description": "Landscape image (1920x1080 or larger)"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "dooh_billboard_portrait"
+    },
+    "name": "Digital Billboard - Portrait",
+    "description": "Portrait-oriented digital billboard (various sizes)",
+    "type": "dooh",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "billboard_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "description": "Portrait image (1080x1920 or similar)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "SCREEN_ID",
+      "VENUE_TYPE",
+      "VENUE_LAT",
+      "VENUE_LONG"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "billboard_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "description": "Portrait image (1080x1920 or similar)"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "dooh_transit_screen"
+    },
+    "name": "Transit Screen",
+    "description": "Transit and subway screen displays",
+    "type": "dooh",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 1080,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 1920
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "screen_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 1920,
+          "height": 1080,
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "description": "Transit screen content"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING",
+      "SCREEN_ID",
+      "VENUE_TYPE",
+      "VENUE_LAT",
+      "VENUE_LONG",
+      "TRANSIT_LINE"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "screen_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "width": 1920,
+          "height": 1080,
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "description": "Transit screen content"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "product_card_standard"
+    },
+    "name": "Product Card - Standard",
+    "description": "Standard visual card (300x400px) for displaying ad inventory products",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 400,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "product_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Primary product image or placement preview"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "product_name",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the product (e.g., 'Homepage Leaderboard')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "product_description",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Short description of the product (supports markdown)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "pricing_model",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Pricing model (e.g., 'CPM', 'flat_rate', 'CPC')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "pricing_amount",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Price amount (e.g., '15.00')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "pricing_currency",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Currency code (e.g., 'USD')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "delivery_type",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Delivery type: 'guaranteed' or 'bidded'"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "primary_asset_type",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Primary asset type: 'display', 'video', 'audio', 'native'"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "product_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Primary product image or placement preview"
+        }
+      },
+      {
+        "asset_id": "product_name",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the product (e.g., 'Homepage Leaderboard')"
+        }
+      },
+      {
+        "asset_id": "product_description",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Short description of the product (supports markdown)"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "product_card_detailed"
+    },
+    "name": "Product Card - Detailed",
+    "description": "Detailed card with carousel and full specifications for rich product presentation",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "responsive": {
+            "height": true,
+            "width": true
+          }
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "product_image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Primary product image or placement preview"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "product_name",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the product (e.g., 'Homepage Leaderboard')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "product_description",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Detailed description of the product (supports markdown)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "pricing_model",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Pricing model (e.g., 'CPM', 'flat_rate', 'CPC')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "pricing_amount",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Price amount (e.g., '15.00')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "pricing_currency",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Currency code (e.g., 'USD')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "delivery_type",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Delivery type: 'guaranteed' or 'bidded'"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "primary_asset_type",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Primary asset type: 'display', 'video', 'audio', 'native'"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "product_image",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Primary product image or placement preview"
+        }
+      },
+      {
+        "asset_id": "product_name",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the product (e.g., 'Homepage Leaderboard')"
+        }
+      },
+      {
+        "asset_id": "product_description",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Detailed description of the product (supports markdown)"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "format_card_standard"
+    },
+    "name": "Format Card - Standard",
+    "description": "Standard visual card (300x400px) for displaying creative formats in user interfaces",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 400,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "format",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Creative format specification to visualize on the card"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "format",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Creative format specification to visualize on the card"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "format_card_detailed"
+    },
+    "name": "Format Card - Detailed",
+    "description": "Detailed card with carousel and full specifications for rich format documentation",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "responsive": {
+            "height": true,
+            "width": true
+          }
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "format",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Creative format specification with full details for detailed card"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "3rd party impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL",
+      "DEVICE_TYPE",
+      "GDPR",
+      "GDPR_CONSENT",
+      "US_PRIVACY",
+      "GPP_STRING"
+    ],
+    "assets_required": [
+      {
+        "asset_id": "format",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Creative format specification with full details for detailed card"
+        }
+      }
+    ]
+  }
+]

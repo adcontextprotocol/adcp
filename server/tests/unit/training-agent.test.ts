@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
 import { PUBLISHERS } from '../../src/training-agent/publishers.js';
+import { SIGNAL_PROVIDERS, getAllSignals } from '../../src/training-agent/signal-providers.js';
 import {
   getSession,
   sessionKeyFromArgs,
@@ -15,6 +16,7 @@ import {
   createTrainingAgentServer,
   invalidateCache,
 } from '../../src/training-agent/task-handlers.js';
+import { getAgentUrl } from '../../src/training-agent/config.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
@@ -668,7 +670,14 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_creatives');
     expect(toolNames).toContain('list_creatives');
     expect(toolNames).toContain('update_media_buy');
-    expect(toolNames).toHaveLength(8);
+    expect(toolNames).toContain('get_signals');
+    expect(toolNames).toContain('activate_signal');
+    expect(toolNames).toContain('get_creative_delivery');
+    expect(toolNames).toContain('sync_plans');
+    expect(toolNames).toContain('check_governance');
+    expect(toolNames).toContain('report_plan_outcome');
+    expect(toolNames).toContain('get_plan_audit_logs');
+    expect(toolNames).toHaveLength(15);
   });
 
   it('returns error for unknown tool', async () => {
@@ -2374,5 +2383,752 @@ describe('update_media_buy budget validation', () => {
 
     expect(result.errors).toBeDefined();
     expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('non-negative');
+  });
+});
+
+// ── Signal provider catalog tests ─────────────────────────────────
+
+describe('SIGNAL_PROVIDERS', () => {
+  it('has at least 5 providers covering different types', () => {
+    expect(SIGNAL_PROVIDERS.length).toBeGreaterThanOrEqual(5);
+    const types = new Set(SIGNAL_PROVIDERS.map(p => p.providerType));
+    expect(types).toContain('data_provider');
+    expect(types).toContain('retailer');
+    expect(types).toContain('publisher');
+    expect(types).toContain('identity');
+    expect(types).toContain('geo');
+    expect(types).toContain('cdp');
+  });
+
+  it('every provider has at least 3 signals', () => {
+    for (const provider of SIGNAL_PROVIDERS) {
+      expect(provider.signals.length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('every signal has required fields', () => {
+    for (const signal of getAllSignals()) {
+      expect(signal.signalAgentSegmentId).toBeTruthy();
+      expect(signal.name).toBeTruthy();
+      expect(signal.description).toBeTruthy();
+      expect(['binary', 'categorical', 'numeric']).toContain(signal.valueType);
+      expect(['marketplace', 'custom', 'owned']).toContain(signal.signalType);
+      expect(signal.coveragePercentage).toBeGreaterThanOrEqual(0);
+      expect(signal.coveragePercentage).toBeLessThanOrEqual(100);
+      expect(signal.pricingOptions.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('categorical signals have categories array', () => {
+    for (const signal of getAllSignals()) {
+      if (signal.valueType === 'categorical') {
+        expect(signal.categories).toBeDefined();
+        expect(signal.categories!.length).toBeGreaterThanOrEqual(2);
+      }
+    }
+  });
+
+  it('numeric signals have range with min and max', () => {
+    for (const signal of getAllSignals()) {
+      if (signal.valueType === 'numeric') {
+        expect(signal.range).toBeDefined();
+        expect(signal.range!.min).toBeDefined();
+        expect(signal.range!.max).toBeDefined();
+        expect(signal.range!.max).toBeGreaterThan(signal.range!.min);
+      }
+    }
+  });
+
+  it('signal IDs are unique across all providers', () => {
+    const ids = getAllSignals().map(s => s.signalAgentSegmentId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('pricing option IDs are unique within each signal', () => {
+    for (const signal of getAllSignals()) {
+      const ids = signal.pricingOptions.map(po => po.pricingOptionId);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it('every pricing option has valid model and currency', () => {
+    for (const signal of getAllSignals()) {
+      for (const po of signal.pricingOptions) {
+        expect(['cpm', 'percent_of_media', 'flat_fee']).toContain(po.model);
+        expect(po.currency).toBeTruthy();
+        if (po.model === 'cpm') expect(po.cpm).toBeGreaterThan(0);
+        if (po.model === 'flat_fee') {
+          expect(po.amount).toBeGreaterThan(0);
+          expect(po.period).toBeTruthy();
+        }
+        if (po.model === 'percent_of_media') {
+          expect(po.percent).toBeGreaterThan(0);
+          expect(po.percent).toBeLessThanOrEqual(100);
+        }
+      }
+    }
+  });
+});
+
+// ── get_signals handler tests ─────────────────────────────────────
+
+describe('get_signals handler', () => {
+  const account = { brand: { domain: 'signal-test.example' } };
+
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+  });
+
+  afterEach(() => {
+    clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('returns error when neither signal_spec nor signal_ids provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', { account });
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('signal_spec or signal_ids');
+  });
+
+  it('discovers signals by natural language spec', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'automotive purchase intent',
+    });
+
+    expect(result.sandbox).toBe(true);
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeGreaterThan(0);
+    // Should find automotive-related signals
+    const hasAuto = signals.some(s =>
+      (s.name as string).toLowerCase().includes('auto') ||
+      (s.name as string).toLowerCase().includes('ev') ||
+      (s.name as string).toLowerCase().includes('vehicle'),
+    );
+    expect(hasAuto).toBe(true);
+  });
+
+  it('looks up signals by exact ID', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'trident_likely_ev_buyers' }],
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBe(1);
+    expect(signals[0].signal_agent_segment_id).toBe('trident_likely_ev_buyers');
+    expect(signals[0].name).toBe('Likely EV Buyers');
+  });
+
+  it('returns schema-compliant signal objects', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'loyalty',
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeGreaterThan(0);
+
+    for (const signal of signals) {
+      expect(signal.signal_agent_segment_id).toBeTruthy();
+      expect(signal.name).toBeTruthy();
+      expect(signal.description).toBeTruthy();
+      expect(signal.signal_type).toBeTruthy();
+      expect(signal.data_provider).toBeTruthy();
+      expect(signal.coverage_percentage).toBeDefined();
+      expect(signal.deployments).toBeDefined();
+      expect((signal.deployments as unknown[]).length).toBeGreaterThan(0);
+      expect(signal.pricing_options).toBeDefined();
+      expect((signal.pricing_options as unknown[]).length).toBeGreaterThan(0);
+
+      // signal_id with catalog source
+      const signalId = signal.signal_id as Record<string, unknown>;
+      expect(signalId.source).toBe('catalog');
+      expect(signalId.data_provider_domain).toBeTruthy();
+    }
+  });
+
+  it('includes value type metadata for categorical signals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'keystone_household_income' }],
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBe(1);
+    expect(signals[0].value_type).toBe('categorical');
+    expect(signals[0].categories).toBeDefined();
+    expect((signals[0].categories as string[]).length).toBeGreaterThan(0);
+  });
+
+  it('includes range for numeric signals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'trident_purchase_propensity' }],
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBe(1);
+    expect(signals[0].value_type).toBe('numeric');
+    const range = signals[0].range as Record<string, number>;
+    expect(range.min).toBe(0);
+    expect(range.max).toBe(1);
+  });
+
+  it('filters by max_cpm', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'audience',
+      filters: { max_cpm: 2.0 },
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    for (const signal of signals) {
+      const options = signal.pricing_options as Array<Record<string, unknown>>;
+      const hasCheapCpm = options.some(po => po.model === 'cpm' && (po.cpm as number) <= 2.0);
+      expect(hasCheapCpm).toBe(true);
+    }
+  });
+
+  it('filters by data_providers', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'purchase',
+      filters: { data_providers: ['ShopGrid Shopper Insights'] },
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    for (const signal of signals) {
+      expect(signal.data_provider).toBe('ShopGrid Shopper Insights');
+    }
+  });
+
+  it('filters by catalog_types', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'customer',
+      filters: { catalog_types: ['custom'] },
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    for (const signal of signals) {
+      expect(signal.signal_type).toBe('custom');
+    }
+  });
+
+  it('caps results at max_results', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'the',
+      max_results: 3,
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeLessThanOrEqual(3);
+  });
+
+  it('expands synonyms so "geographic audience" finds geo signals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'geographic audience',
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeGreaterThan(0);
+    const hasGeo = signals.some(s =>
+      (s.data_provider as string).toLowerCase().includes('meridian') ||
+      (s.data_provider as string).toLowerCase().includes('geo'),
+    );
+    expect(hasGeo).toBe(true);
+  });
+
+  it('expands synonyms so "location targeting" finds geo signals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'location targeting',
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeGreaterThan(0);
+  });
+
+  it('returns identity scope note when searching for identity resolution', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'identity resolution',
+    });
+
+    expect(result.note).toBeDefined();
+    expect(result.note as string).toContain('identity resolution');
+  });
+
+  it('returns credit scope note when searching for credit score', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'credit score segments',
+    });
+
+    expect(result.note).toBeDefined();
+    expect(result.note as string).toContain('credit-derived');
+    expect(result.note as string).toContain('FCRA');
+    // Should still return credit-related signals
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeGreaterThan(0);
+  });
+
+  it('expands synonyms so "shopper brand loyalty" finds retail signals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'shopper brand loyalty',
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeGreaterThan(0);
+    const hasRetail = signals.some(s =>
+      (s.data_provider as string).toLowerCase().includes('shopgrid'),
+    );
+    expect(hasRetail).toBe(true);
+  });
+
+  it('expands synonyms so "household income demographic" finds identity signals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: 'household income demographic',
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBeGreaterThan(0);
+    const hasKeystone = signals.some(s =>
+      (s.data_provider as string).toLowerCase().includes('keystone'),
+    );
+    expect(hasKeystone).toBe(true);
+  });
+
+  it('finds new geo signals like dwell time', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'meridian_dwell_time' }],
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBe(1);
+    expect(signals[0].value_type).toBe('numeric');
+    const range = signals[0].range as Record<string, number>;
+    expect(range.min).toBe(0);
+    expect(range.max).toBe(120);
+  });
+
+  it('finds new retail signals like brand affinity', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'shopgrid_brand_affinity' }],
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    expect(signals.length).toBe(1);
+    expect(signals[0].value_type).toBe('categorical');
+    expect(signals[0].categories).toBeDefined();
+    expect((signals[0].categories as string[])).toContain('loyal');
+  });
+
+  it('shows is_live false for unactivated signals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'trident_likely_ev_buyers' }],
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    const deployments = signals[0].deployments as Array<Record<string, unknown>>;
+    expect(deployments[0].is_live).toBe(false);
+    expect(deployments[0].estimated_activation_duration_minutes).toBe(0);
+    expect(deployments[0].activation_key).toBeUndefined();
+  });
+});
+
+// ── activate_signal handler tests ─────────────────────────────────
+
+describe('activate_signal handler', () => {
+  const account = { brand: { domain: 'signal-test.example' } };
+
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+  });
+
+  afterEach(() => {
+    clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('activates a signal and returns deployment with activation key', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'po_trident_ev_cpm',
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    expect(result.sandbox).toBe(true);
+    expect(result.errors).toBeUndefined();
+    const deployments = result.deployments as Array<Record<string, unknown>>;
+    expect(deployments.length).toBe(1);
+    expect(deployments[0].is_live).toBe(true);
+    expect(deployments[0].deployed_at).toBeTruthy();
+
+    const key = deployments[0].activation_key as Record<string, unknown>;
+    expect(key.type).toBe('key_value');
+    expect(key.key).toBe('audience_segment');
+    expect(key.value).toBe('trident_likely_ev_buyers');
+  });
+
+  it('returns error for nonexistent signal', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'nonexistent_signal',
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('SIGNAL_AGENT_SEGMENT_NOT_FOUND');
+  });
+
+  it('returns error for invalid pricing option', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'invalid_pricing',
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('INVALID_PRICING_MODEL');
+  });
+
+  it('returns error when destinations is empty', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      destinations: [],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('destinations');
+  });
+
+  it('activated signal shows is_live true in subsequent get_signals', async () => {
+    // Activate — use getAgentUrl() so the destination matches what get_signals looks up
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server1, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'shopgrid_category_buyer',
+      pricing_option_id: 'po_shopgrid_cat_cpm',
+      destinations: [{ type: 'agent', agent_url: getAgentUrl() }],
+    });
+
+    // Query — same account so same session
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'shopgrid_category_buyer' }],
+    });
+
+    const signals = result.signals as Array<Record<string, unknown>>;
+    const deployments = signals[0].deployments as Array<Record<string, unknown>>;
+    expect(deployments[0].is_live).toBe(true);
+    expect(deployments[0].activation_key).toBeDefined();
+  });
+
+  it('deactivates a signal', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    // Activate first
+    await simulateCallTool(server1, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'meridian_competitor_visitors',
+      destinations: [{ type: 'agent', agent_url: TEST_AGENT_URL }],
+    });
+
+    // Deactivate
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'meridian_competitor_visitors',
+      action: 'deactivate',
+      destinations: [{ type: 'agent', agent_url: TEST_AGENT_URL }],
+    });
+
+    const deployments = result.deployments as Array<Record<string, unknown>>;
+    expect(deployments[0].is_live).toBe(false);
+
+    // Verify it shows inactive in get_signals
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: getResult } = await simulateCallTool(server3, 'get_signals', {
+      account,
+      signal_ids: [{ id: 'meridian_competitor_visitors' }],
+    });
+
+    const signals = getResult.signals as Array<Record<string, unknown>>;
+    const deps = signals[0].deployments as Array<Record<string, unknown>>;
+    expect(deps[0].is_live).toBe(false);
+  });
+
+  it('handles platform destinations', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'keystone_household_income',
+      pricing_option_id: 'po_keystone_inc_cpm',
+      destinations: [{ type: 'platform', platform: 'the-trade-desk', account: 'agency-123' }],
+    });
+
+    const deployments = result.deployments as Array<Record<string, unknown>>;
+    expect(deployments[0].type).toBe('platform');
+    expect(deployments[0].platform).toBe('the-trade-desk');
+    expect(deployments[0].account).toBe('agency-123');
+    expect(deployments[0].is_live).toBe(true);
+  });
+});
+
+// ── get_creative_delivery handler tests ───────────────────────────
+
+describe('get_creative_delivery handler', () => {
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+  });
+
+  afterEach(() => {
+    clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('returns validation error when no scoping filter provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {});
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('validation_error');
+  });
+
+  it('returns empty creatives for unknown media buy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {
+      media_buy_ids: ['mb_nonexistent'],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.creatives).toEqual([]);
+    expect(result.currency).toBe('USD');
+    expect(result.reporting_period).toBeDefined();
+  });
+
+  it('returns variant-level delivery for creatives assigned to a media buy', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'creativedel.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    // Create a media buy
+    const { result: buyResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'cd-test',
+      account,
+      brand: { domain: 'creativedel.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        buyer_ref: 'pkg-cd',
+      }],
+    });
+
+    const mediaBuyId = buyResult.media_buy_id as string;
+    const pkgs = buyResult.packages as Array<Record<string, unknown>>;
+    const packageId = pkgs[0].package_id as string;
+
+    // Sync a creative with assignment to the package
+    const { result: syncResult } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'test_creative_1',
+        name: 'Test Creative',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { headline: { asset_type: 'text', content: 'Hello' } },
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'test_creative_1' }],
+    });
+
+    expect(syncResult.errors).toBeUndefined();
+
+    // Get creative delivery
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+      max_variants: 2,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.currency).toBe('USD');
+    expect(result.reporting_period).toBeDefined();
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.length).toBe(1);
+
+    const creative = creatives[0];
+    expect(creative.creative_id).toBe('test_creative_1');
+    expect(creative.media_buy_id).toBe(mediaBuyId);
+    expect(creative.variant_count).toBeGreaterThan(0);
+
+    const variants = creative.variants as Array<Record<string, unknown>>;
+    expect(variants.length).toBeGreaterThan(0);
+
+    // Each variant should have required fields
+    const variant = variants[0];
+    expect(variant.variant_id).toBeDefined();
+    expect(variant.generation_context).toBeDefined();
+    expect(variant.manifest).toBeDefined();
+    expect(typeof variant.impressions).toBe('number');
+    expect(typeof variant.spend).toBe('number');
+    expect(typeof variant.ctr).toBe('number');
+
+    // Totals should be present
+    const totals = creative.totals as Record<string, unknown>;
+    expect(typeof totals.impressions).toBe('number');
+    expect(typeof totals.spend).toBe('number');
+  });
+
+  it('returns deterministic results for the same creative', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'deterministic.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'det-test',
+      account,
+      brand: { domain: 'deterministic.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        buyer_ref: 'pkg-det',
+      }],
+    });
+
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account });
+    const buys = buyResult.media_buys as Array<Record<string, unknown>>;
+    const mediaBuyId = buys[0].media_buy_id as string;
+    const mbPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
+    const mbPackageId = mbPkgs[0].package_id as string;
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'stable_creative',
+        name: 'Stable',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { headline: { asset_type: 'text', content: 'Stable' } },
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: mbPackageId, creative_id: 'stable_creative' }],
+    });
+
+    // Call twice and verify same results
+    const { result: r1 } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const { result: r2 } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+
+    const c1 = (r1.creatives as Array<Record<string, unknown>>)[0];
+    const c2 = (r2.creatives as Array<Record<string, unknown>>)[0];
+    const t1 = c1.totals as Record<string, unknown>;
+    const t2 = c2.totals as Record<string, unknown>;
+
+    expect(t1.impressions).toBe(t2.impressions);
+    expect(t1.spend).toBe(t2.spend);
+    expect(t1.clicks).toBe(t2.clicks);
+  });
+
+  it('looks up by buyer_refs', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'buyerref.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'cd-ref-lookup',
+      account,
+      brand: { domain: 'buyerref.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        buyer_ref: 'pkg-ref',
+      }],
+    });
+
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account });
+    const buys = buyResult.media_buys as Array<Record<string, unknown>>;
+    const mediaBuyId = buys[0].media_buy_id as string;
+    const refPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
+    const refPackageId = refPkgs[0].package_id as string;
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'ref_creative',
+        name: 'Ref Creative',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { headline: { asset_type: 'text', content: 'Ref' } },
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: refPackageId, creative_id: 'ref_creative' }],
+    });
+
+    // Look up by buyer_refs
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_buyer_refs: ['cd-ref-lookup'],
+    });
+
+    expect(result.errors).toBeUndefined();
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.length).toBe(1);
+    expect(creatives[0].creative_id).toBe('ref_creative');
   });
 });

@@ -446,6 +446,9 @@ export async function triageAndCreateProspect(
     prospect_source: context?.source ?? 'inbound',
     prospect_notes: result.verdict,
     prospect_owner: result.owner === 'addie' ? 'addie' : undefined,
+    prospect_contact_email: context?.email,
+    prospect_contact_name: context?.name,
+    prospect_contact_title: context?.title,
   });
 
   if (!prospectResult.success) {

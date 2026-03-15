@@ -195,6 +195,7 @@ If the seller rejected the request, report it so the governance agent can update
 | `seller_response` | object | No | The seller's full response. Required when outcome is `completed`. |
 | `seller_response.media_buy_id` | string | No | Seller's media buy identifier. |
 | `seller_response.buyer_ref` | string | No | The buyer reference echoed back by the seller. |
+| `seller_response.committed_budget` | number | No | Total budget committed across all confirmed packages. When present, the governance agent uses this directly instead of summing individual package budgets. |
 | `seller_response.packages` | array | No | Confirmed packages with actual budget and targeting. |
 | `seller_response.planned_delivery` | object | No | What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters. |
 | `seller_response.creative_deadline` | string | No | ISO 8601 deadline for creative submission. |
