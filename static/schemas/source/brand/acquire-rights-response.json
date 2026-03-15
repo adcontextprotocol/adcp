@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/acquire-rights-response.json",
+  "title": "Acquire Rights Response",
+  "description": "Result of a rights acquisition request. Returns one of three statuses: acquired (with terms and generation credentials), pending_approval (requires rights holder review), or rejected (with reason). Uses discriminated union on status field.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "AcquireRightsAcquired",
+      "properties": {
+        "rights_id": {
+          "type": "string",
+          "description": "Rights grant identifier"
+        },
+        "status": {
+          "type": "string",
+          "const": "acquired",
+          "description": "Rights have been cleared and credentials issued"
+        },
+        "brand_id": {
+          "type": "string",
+          "description": "Brand identifier of the rights subject"
+        },
+        "terms": {
+          "$ref": "/schemas/brand/rights-terms.json",
+          "description": "Agreed contractual terms"
+        },
+        "generation_credentials": {
+          "type": "array",
+          "description": "Scoped credentials for generating rights-cleared content",
+          "items": {
+            "$ref": "/schemas/core/generation-credential.json"
+          }
+        },
+        "restrictions": {
+          "type": "array",
+          "description": "Usage restrictions and requirements",
+          "items": { "type": "string" }
+        },
+        "disclosure": {
+          "type": "object",
+          "description": "Required disclosure for creatives using these rights",
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "Whether disclosure is required"
+            },
+            "text": {
+              "type": "string",
+              "description": "Disclosure text to include with the creative"
+            }
+          },
+          "required": ["required"],
+          "additionalProperties": true
+        },
+        "approval_webhook": {
+          "$ref": "/schemas/core/push-notification-config.json",
+          "description": "Authenticated webhook for submitting creatives for approval. POST a creative-approval-request to the URL using the provided authentication. The response is a creative-approval-response."
+        },
+        "usage_reporting_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Endpoint for reporting usage against these rights"
+        },
+        "rights_constraint": {
+          "$ref": "/schemas/core/rights-constraint.json",
+          "description": "Pre-built rights constraint for embedding in creative manifests. Populated from the agreed terms — the buyer does not need to construct it manually."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["rights_id", "status", "brand_id", "terms", "generation_credentials", "rights_constraint"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "AcquireRightsPendingApproval",
+      "properties": {
+        "rights_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "const": "pending_approval",
+          "description": "Rights require approval from the rights holder"
+        },
+        "brand_id": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string",
+          "description": "Explanation of what requires approval"
+        },
+        "estimated_response_time": {
+          "type": "string",
+          "description": "Expected time for approval decision (e.g., '48h', '3 business days')"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["rights_id", "status", "brand_id"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "AcquireRightsRejected",
+      "properties": {
+        "rights_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "const": "rejected",
+          "description": "Rights request was rejected"
+        },
+        "brand_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the rights request was rejected. May be sanitized to protect confidential brand rules — e.g., 'This violates our public figures brand guidelines' rather than naming the specific rule."
+        },
+        "suggestions": {
+          "type": "array",
+          "description": "Actionable alternatives the buyer can try. If present, the rejection is fixable — the buyer can adjust their request. If absent, the rejection is final for this talent/rights combination.",
+          "items": { "type": "string" }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["rights_id", "status", "brand_id", "reason"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "AcquireRightsError",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["status"] }
+        ]
+      }
+    }
+  ]
+}

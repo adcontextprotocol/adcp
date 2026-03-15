@@ -33,7 +33,8 @@
           "signals",
           "governance",
           "sponsored_intelligence",
-          "creative"
+          "creative",
+          "brand"
         ]
       },
       "minItems": 1
@@ -738,6 +739,49 @@
         "endpoint",
         "capabilities"
       ]
+    },
+    "brand": {
+      "type": "object",
+      "description": "Brand protocol capabilities. Only present if brand is in supported_protocols. Brand agents provide identity data (logos, colors, tone, assets) and optionally rights clearance for licensable content (talent, music, stock media).",
+      "properties": {
+        "identity": {
+          "type": "boolean",
+          "description": "Supports get_brand_identity for retrieving brand identity data",
+          "default": true
+        },
+        "rights": {
+          "type": "boolean",
+          "description": "Supports get_rights and acquire_rights for rights discovery and clearance",
+          "default": false
+        },
+        "right_types": {
+          "type": "array",
+          "description": "Types of rights available through this agent",
+          "items": {
+            "$ref": "/schemas/enums/right-type.json"
+          }
+        },
+        "available_uses": {
+          "type": "array",
+          "description": "Rights uses available across this agent's roster",
+          "items": {
+            "$ref": "/schemas/enums/right-use.json"
+          }
+        },
+        "generation_providers": {
+          "type": "array",
+          "description": "LLM/generation providers this agent can issue credentials for",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the agent's brand protocol capabilities",
+          "maxLength": 5000
+        }
+      },
+      "additionalProperties": true
     },
     "creative": {
       "type": "object",

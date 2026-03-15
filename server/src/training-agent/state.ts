@@ -26,6 +26,7 @@ function createSession(): SessionState {
     governanceChecks: new Map(),
     governanceOutcomes: new Map(),
     creatives: new Map(),
+    signalActivations: new Map(),
     createdAt: now,
     lastAccessedAt: now,
   };

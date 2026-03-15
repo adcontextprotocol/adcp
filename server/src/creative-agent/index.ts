@@ -48,11 +48,24 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
-function getBaseUrl(req: Request): string {
-  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-  return `${proto}://${host}`;
+const CREATIVE_AGENT_HOST = 'creative.adcontextprotocol.org';
+
+/**
+ * Resolve the agent base URL from the request.
+ * When accessed via the dedicated creative.adcontextprotocol.org hostname,
+ * routes are at root, so the agent base is just the origin.
+ * Otherwise, the agent is mounted at /api/creative-agent under the main app.
+ */
+function getAgentBaseUrl(req: Request): string {
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  if (typeof host === 'string' && host.startsWith(CREATIVE_AGENT_HOST)) {
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    return `${proto}://${CREATIVE_AGENT_HOST}`;
+  }
+  const baseUrl = process.env.BASE_URL
+    ? process.env.BASE_URL.replace(/\/$/, '')
+    : `${req.headers['x-forwarded-proto'] || req.protocol || 'http'}://${host}`;
+  return `${baseUrl}/api/creative-agent`;
 }
 
 export function createCreativeAgentRouter(): Router {
@@ -69,8 +82,7 @@ export function createCreativeAgentRouter(): Router {
 
   // adagents.json discovery
   router.get('/.well-known/adagents.json', (req: Request, res: Response) => {
-    const baseUrl = getBaseUrl(req);
-    const agentUrl = `${baseUrl}/api/creative-agent`;
+    const agentBaseUrl = getAgentBaseUrl(req);
 
     res.json({
       $schema: '/schemas/adagents.json',
@@ -79,7 +91,7 @@ export function createCreativeAgentRouter(): Router {
         url: 'https://adcontextprotocol.org',
       },
       agents: [{
-        url: `${agentUrl}/mcp`,
+        url: `${agentBaseUrl}/mcp`,
         type: 'creative',
         capabilities: ['list_creative_formats', 'preview_creative'],
       }],
@@ -115,8 +127,8 @@ export function createCreativeAgentRouter(): Router {
 
     let server: ReturnType<typeof createCreativeAgentServer> | null = null;
     try {
-      const baseUrl = getBaseUrl(req);
-      server = createCreativeAgentServer(baseUrl);
+      const agentBaseUrl = getAgentBaseUrl(req);
+      server = createCreativeAgentServer(agentBaseUrl);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });

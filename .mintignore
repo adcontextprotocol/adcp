@@ -1,11 +1,5 @@
+dist/
+.addie-repos/
+.context/
 .changeset/
 node_modules/
-server/
-tests/
-scripts/
-skills/
-v2.6-rc/
-dist/schemas/
-*.test.*
-*.spec.*
-CHANGELOG.md

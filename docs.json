@@ -198,7 +198,21 @@
             "group": "Brand Protocol",
             "pages": [
               "docs/brand-protocol/index",
-              "docs/brand-protocol/brand-json"
+              "docs/brand-protocol/walkthrough-rights-licensing",
+              "docs/brand-protocol/why-brand-json",
+              "docs/brand-protocol/for-advertisers",
+              "docs/brand-protocol/for-rights-holders",
+              "docs/brand-protocol/brand-json",
+              "docs/brand-protocol/building-a-brand-agent",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/brand-protocol/tasks/get_brand_identity",
+                  "docs/brand-protocol/tasks/get_rights",
+                  "docs/brand-protocol/tasks/acquire_rights",
+                  "docs/brand-protocol/tasks/update_rights"
+                ]
+              }
             ]
           },
           {
@@ -220,8 +234,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -401,6 +417,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -628,7 +645,21 @@
             "group": "Brand Protocol",
             "pages": [
               "docs/brand-protocol/index",
-              "docs/brand-protocol/brand-json"
+              "docs/brand-protocol/walkthrough-rights-licensing",
+              "docs/brand-protocol/why-brand-json",
+              "docs/brand-protocol/for-advertisers",
+              "docs/brand-protocol/for-rights-holders",
+              "docs/brand-protocol/brand-json",
+              "docs/brand-protocol/building-a-brand-agent",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/brand-protocol/tasks/get_brand_identity",
+                  "docs/brand-protocol/tasks/get_rights",
+                  "docs/brand-protocol/tasks/acquire_rights",
+                  "docs/brand-protocol/tasks/update_rights"
+                ]
+              }
             ]
           },
           {
@@ -650,8 +681,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -831,6 +864,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",

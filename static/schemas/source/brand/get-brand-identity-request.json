@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/get-brand-identity-request.json",
+  "title": "Get Brand Identity Request",
+  "description": "Request brand identity data from a brand agent. Core identity (house, names, description, logos) is always public. Linked accounts get deeper data: high-res assets, voice configs, tone guidelines, and rights availability.",
+  "type": "object",
+  "properties": {
+    "brand_id": {
+      "type": "string",
+      "description": "Brand identifier from brand.json brands array"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Optional identity sections to include in the response. When omitted, all sections the caller is authorized to see are returned. Core fields (brand_id, house, names) are always returned and do not need to be requested.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "description",
+          "industry",
+          "keller_type",
+          "logos",
+          "colors",
+          "fonts",
+          "visual_guidelines",
+          "tone",
+          "tagline",
+          "voice_synthesis",
+          "assets",
+          "rights"
+        ]
+      }
+    },
+    "use_case": {
+      "type": "string",
+      "description": "Intended use case, so the agent can tailor the response. A 'voice_synthesis' use case returns voice configs; a 'likeness' use case returns high-res photos and appearance guidelines."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["brand_id"],
+  "additionalProperties": true
+}

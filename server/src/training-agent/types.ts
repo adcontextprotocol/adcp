@@ -68,6 +68,7 @@ export interface CatalogProduct {
 export interface SessionState {
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
+  signalActivations: Map<string, SignalActivationState>;
   governancePlans: Map<string, GovernancePlanState>;
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
@@ -77,6 +78,16 @@ export interface SessionState {
   };
   createdAt: Date;
   lastAccessedAt: Date;
+}
+
+export interface SignalActivationState {
+  signalAgentSegmentId: string;
+  destinationType: 'platform' | 'agent';
+  destinationId: string;
+  account?: string;
+  pricingOptionId?: string;
+  isLive: boolean;
+  activatedAt: string;
 }
 
 export interface MediaBuyState {
