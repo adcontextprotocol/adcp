@@ -139,6 +139,17 @@ function buildAlertBlocks(article: ArticleToAlert): SlackBlock[] {
     });
   }
 
+  // Social drafting CTA
+  blocks.push({
+    type: 'context',
+    elements: [
+      {
+        type: 'mrkdwn',
+        text: 'DM me if you want help writing a post about this.',
+      },
+    ],
+  });
+
   return blocks;
 }
 

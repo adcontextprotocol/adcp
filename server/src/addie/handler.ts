@@ -79,6 +79,10 @@ import {
   createCommitteeLeaderToolHandlers,
   isCommitteeLeader,
 } from './mcp/committee-leader-tools.js';
+import {
+  SOCIAL_DRAFT_TOOLS,
+  createSocialDraftToolHandlers,
+} from './mcp/social-draft-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -328,6 +332,13 @@ async function createUserScopedTools(
     const collaborationHandlers = createCollaborationToolHandlers(memberContext, slackUserId, threadId);
     allTools.push(...COLLABORATION_TOOLS);
     for (const [name, handler] of collaborationHandlers) {
+      allHandlers.set(name, handler);
+    }
+
+    // Add social drafting tools (help members write social posts about industry articles)
+    const socialDraftHandlers = createSocialDraftToolHandlers(memberContext);
+    allTools.push(...SOCIAL_DRAFT_TOOLS);
+    for (const [name, handler] of socialDraftHandlers) {
       allHandlers.set(name, handler);
     }
   }

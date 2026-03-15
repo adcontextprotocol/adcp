@@ -120,6 +120,9 @@ export function renderDigestEmail(
       </p>
     </div>
     `).join('')}
+    <p style="font-size: 13px; color: #666; margin-top: 8px;">
+      Want a version tailored to your company? Ask Addie in Slack or <a href="${BASE_URL}/chat" style="color: #2563eb;">web chat</a>.
+    </p>
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
@@ -231,6 +234,7 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
       lines.push(`  ${idea.url}`);
       lines.push('');
     }
+    lines.push('Want a version tailored to your company? Ask Addie in Slack or web chat.', '');
   }
 
   const deadlineBannerText = renderFoundingDeadlineBannerText();
@@ -302,7 +306,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Ready to share*\nGrab social copy in #social-post-ideas:\n\n${ideasText}` },
+      text: { type: 'mrkdwn', text: `*Ready to share*\nGrab social copy in #social-post-ideas:\n\n${ideasText}\n\n_Want a version tailored to your company? DM me._` },
     });
   }
 
