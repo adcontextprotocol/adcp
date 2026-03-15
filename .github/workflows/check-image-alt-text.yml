@@ -60,6 +60,12 @@ jobs:
           while IFS=$'\t' read -r img_src alt_text mdx_file; do
             [ -z "$img_src" ] && continue
 
+            # Flag empty alt text
+            if [ -z "$alt_text" ]; then
+              ERRORS="$ERRORS\n- \`$img_src\` in \`$mdx_file\`\n  - **Empty alt text**: image has no alt text for accessibility"
+              continue
+            fi
+
             # Convert /images/... to local path
             local_path="${img_src#/}"
 
@@ -156,7 +162,6 @@ jobs:
               COMMENT="$COMMENT---\n\n**To fix**: Regenerate images using \`npx tsx scripts/generate-images.ts\` with the \`--max-retries 2\` flag, or update the image prompts to include \"Do not include any text, words, or labels in the image.\""
             fi
 
-            COMMENT=$(echo -e "$COMMENT" | sed 's/"/\\"/g')
             echo "comment<<EOF" >> $GITHUB_OUTPUT
             echo -e "$COMMENT" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT

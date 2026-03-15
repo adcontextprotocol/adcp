@@ -149,20 +149,26 @@ async function generateImage(
   logValidation(entry.filename, result);
 
   // Retry if gibberish found
-  if (result.gibberish_found && options.maxRetries > 0) {
-    console.log(`  Retrying with "no text" directive (${options.maxRetries} retries left)...`);
+  let lastResult = result;
+  let retriesLeft = options.maxRetries;
+
+  while (lastResult.gibberish_found && retriesLeft > 0) {
+    retriesLeft--;
+    console.log(`  Retrying with "no text" directive (${retriesLeft} retries left)...`);
     const retryPrompt = `${fullPrompt}\n\nDo not include any text, words, or labels in the image.`;
     const retryBuffer = await generateAndSaveImage(genAI, retryPrompt, outputPath);
     if (!retryBuffer) return;
 
     console.log(`  Validating retry...`);
     const retryResult = await validateImage(genAI, retryBuffer, entry.alt_text);
-    if (retryResult) {
-      logValidation(entry.filename, retryResult);
-      if (retryResult.gibberish_found) {
-        console.warn(`  ⚠ Gibberish persists after retry — keeping image but flagging for manual review`);
-      }
-    }
+    if (!retryResult) return;
+
+    logValidation(entry.filename, retryResult);
+    lastResult = retryResult;
+  }
+
+  if (lastResult.gibberish_found) {
+    console.warn(`  ⚠ Gibberish persists after retries — keeping image but flagging for manual review`);
   }
 }
 
