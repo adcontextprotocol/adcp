@@ -1,0 +1,215 @@
+---
+title: "Buyer / brand track"
+sidebarTitle: Buyer track
+description: "AdCP buyer track (C1-C4): multi-agent buying orchestration, brand identity protocols, creative workflows, sponsored intelligence, and a buyer agent build project."
+"og:title": "AdCP — Buyer / brand track"
+---
+
+# Buyer / brand track (C1–C4)
+
+<Info>
+**Members only** — Requires Basics credential (A1–A3). Four modules, ~105 minutes total.
+</Info>
+
+This track teaches you the demand side of AdCP. You'll learn how buyer agents orchestrate across multiple sellers, how brand identity and compliance protocols work, and how creative workflows and Sponsored Intelligence fit together. The track culminates in a build project where you create a working buyer agent.
+
+Completing this track (plus A1–A3) earns the **AdCP practitioner** credential.
+
+---
+
+## C1: Multi-agent buying and media planning
+
+**~20 min** | Prerequisite: A3
+
+How buyer agents orchestrate across multiple sales agents simultaneously: discovery, portfolio allocation, proposals, and measuring reach across publishers.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Media buy overview" icon="shopping-cart" href="/dist/docs/3.0.0-rc.2/media-buy/index">
+    The media buy protocol: how agents discover, negotiate, and execute advertising campaigns.
+  </Card>
+  <Card title="get_products task" icon="magnifying-glass" href="/dist/docs/3.0.0-rc.2/media-buy/task-reference/get_products">
+    Product discovery from multiple sellers — the first step in any buying workflow.
+  </Card>
+  <Card title="create_media_buy task" icon="receipt" href="/dist/docs/3.0.0-rc.2/media-buy/task-reference/create_media_buy">
+    Campaign creation: manual mode, proposal mode, validation, and approval lifecycle.
+  </Card>
+  <Card title="Orchestrator design" icon="diagram-project" href="/dist/docs/3.0.0-rc.2/building/implementation/orchestrator-design">
+    Architecture patterns for agents that coordinate across multiple sellers.
+  </Card>
+  <Card title="Pricing models" icon="tag" href="/dist/docs/3.0.0-rc.2/media-buy/advanced-topics/pricing-models">
+    CPM, flat rate, performance-based — how pricing works across sellers.
+  </Card>
+  <Card title="Targeting" icon="crosshairs" href="/dist/docs/3.0.0-rc.2/media-buy/advanced-topics/targeting">
+    Targeting options, audience overlays, and geo-targeting.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Multi-agent buying** — query multiple sellers in parallel, compare, allocate, execute
+- **Orchestration pattern** — discover, evaluate, allocate, execute, monitor
+- **Audience targeting** — `sync_audiences` for custom segments
+- **Account setup** — `sync_accounts` to establish billing before buying
+
+<Card title="Start C1 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module C1."
+</Card>
+
+---
+
+## C2: Brand identity, compliance, and safety
+
+**~20 min** | Prerequisite: C1
+
+The Brand Protocol (`brand.json`), content standards, and how brand agents enforce guidelines across automated buying.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Brand protocol" icon="fingerprint" href="/dist/docs/3.0.0-rc.2/brand-protocol/index">
+    Brand identity claims, brand.json discovery, brand hierarchy, and brand agents.
+  </Card>
+  <Card title="brand.json specification" icon="file-code" href="/dist/docs/3.0.0-rc.2/brand-protocol/brand-json">
+    The brand.json format: identity, logos, colors, guidelines, and agent declarations.
+  </Card>
+  <Card title="For advertisers" icon="bullhorn" href="/dist/docs/3.0.0-rc.2/brand-protocol/for-advertisers">
+    How advertisers license talent rights through the brand protocol — pricing, scopes, and what you get.
+  </Card>
+  <Card title="get_rights task" icon="key" href="/dist/docs/3.0.0-rc.2/brand-protocol/tasks/get_rights">
+    Search for licensable talent rights — pricing, availability, and exclusion filtering.
+  </Card>
+  <Card title="acquire_rights task" icon="handshake" href="/dist/docs/3.0.0-rc.2/brand-protocol/tasks/acquire_rights">
+    License talent rights: generation credentials, rights constraints, revocation, and approval workflows.
+  </Card>
+  <Card title="update_rights task" icon="rotate" href="/dist/docs/3.0.0-rc.2/brand-protocol/tasks/update_rights">
+    Extend, adjust, or pause an existing rights grant.
+  </Card>
+  <Card title="For rights holders" icon="shield" href="/dist/docs/3.0.0-rc.2/brand-protocol/for-rights-holders">
+    How rights holders monetize talent through the brand protocol.
+  </Card>
+  <Card title="Content standards" icon="scale-balanced" href="/dist/docs/3.0.0-rc.2/governance/content-standards/index">
+    How content standards define what's appropriate, how calibration works, and local execution.
+  </Card>
+  <Card title="calibrate_content task" icon="sliders" href="/dist/docs/3.0.0-rc.2/governance/content-standards/tasks/calibrate_content">
+    Testing whether content meets brand standards before placement.
+  </Card>
+  <Card title="Policy compliance" icon="shield-halved" href="/dist/docs/3.0.0-rc.2/media-buy/media-buys/policy-compliance">
+    How compliance is enforced during media buy execution.
+  </Card>
+  <Card title="Creative governance" icon="eye" href="/dist/docs/3.0.0-rc.2/governance/creative/index">
+    Creative quality and compliance governance.
+  </Card>
+  <Card title="Campaign governance" icon="shield-check" href="/dist/docs/3.0.0-rc.2/governance/campaign">
+    Tie campaigns to media plans: budget authority, multi-party validation, and always-on compliance.
+  </Card>
+  <Card title="Policy registry" icon="book" href="/dist/docs/3.0.0-rc.2/governance/policy-registry">
+    Community-maintained compliance policies (COPPA, GDPR, HFSS) that brands reference by ID.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Brand identity protocol** — `brand.json` at `/.well-known/brand.json` declares brand identity
+- **Content standards** — automated compliance checking via MCP-based brand agents
+- **The Oracle model** — using AI to evaluate brand safety at scale
+- **Supply chain preferences** — suitability, safety, and sustainability requirements
+- **Campaign governance** — campaign plans define authorized parameters; `check_governance` validates every transaction before execution
+- **Policy registry** — shared compliance policies (regulations and standards) referenced by ID, not written per-brand
+- **Governance modes** — audit, advisory, enforce — a deployment path from learning to production
+
+<Card title="Start C2 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module C2."
+</Card>
+
+---
+
+## C3: Creative workflows
+
+**~20 min** | Prerequisite: C2
+
+How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sync_creatives`. Cross-platform adaptation and the Sponsored Intelligence Protocol.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Creative overview" icon="palette" href="/dist/docs/3.0.0-rc.2/creative/index">
+    The creative protocol: assets, formats, manifests, creative agents.
+  </Card>
+  <Card title="build_creative task" icon="hammer" href="/dist/docs/3.0.0-rc.2/creative/task-reference/build_creative">
+    Creative generation and transformation.
+  </Card>
+  <Card title="preview_creative task" icon="eye" href="/dist/docs/3.0.0-rc.2/creative/task-reference/preview_creative">
+    Previewing creatives before deployment.
+  </Card>
+  <Card title="sync_creatives task" icon="rotate" href="/dist/docs/3.0.0-rc.2/media-buy/task-reference/sync_creatives">
+    Synchronizing creative assets with publisher platforms.
+  </Card>
+  <Card title="Generative creative" icon="wand-magic-sparkles" href="/dist/docs/3.0.0-rc.2/creative/generative-creative">
+    AI-generated creative workflows and best practices.
+  </Card>
+  <Card title="Sponsored Intelligence" icon="message-bot" href="/dist/docs/3.0.0-rc.2/sponsored-intelligence/overview">
+    Conversational brand experiences in AI assistants.
+  </Card>
+  <Card title="SI specification" icon="scroll" href="/dist/docs/3.0.0-rc.2/sponsored-intelligence/specification">
+    The Sponsored Intelligence protocol: sessions, messages, and offerings.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives` — callable on any agent implementing the Creative Protocol, including sales agents
+- **Cross-platform adaptation** — agents adapt assets across display, video, audio, native formats
+- **Seller-side generation** — sales agents can generate creatives at serve time from a brief provided in the media buy
+- **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control
+
+<Card title="Start C3 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module C3."
+</Card>
+
+---
+
+## C4: Build project — your first buyer agent
+
+**~45 min** | Prerequisite: C3
+
+Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. The skill tested is orchestrating a buying workflow correctly.
+
+### What you'll build
+
+- Account setup with `sync_accounts`
+- Product discovery from at least 2 sellers
+- Media buy creation with targeting and budget
+- Creative sync with at least 1 format
+- Campaign monitoring via delivery reporting
+
+### Assessment rubric
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Specification quality | 20% | Can you specify a buying workflow in AdCP terms? |
+| Schema compliance | 25% | Agent requests and responses validate against schemas |
+| Error handling | 15% | Handles seller errors and async responses |
+| Design rationale | 20% | Can you explain orchestration and buying strategy? |
+| Extension ability | 20% | Can you extend the agent with new buying capabilities? |
+
+Passing threshold: 70%.
+
+Any AI coding assistant is welcome. The build must demonstrate cross-role interaction.
+
+<Card title="Start C4 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module C4."
+</Card>
+
+---
+
+## What's next
+
+After completing C1–C4, you've earned the **AdCP practitioner** credential. From here you can pursue specialist modules:
+
+- [S1: Media buy](/dist/docs/3.0.0-rc.2/learning/specialist/media-buy) — transaction flows, pricing, orchestration
+- [S2: Creative](/dist/docs/3.0.0-rc.2/learning/specialist/creative) — asset workflows, format compliance
+- [S3: Signals](/dist/docs/3.0.0-rc.2/learning/specialist/signals) — measurement, attribution, optimization
+- [S4: Governance](/dist/docs/3.0.0-rc.2/learning/specialist/governance) — brand safety, campaign governance, compliance, policy registry
+- [S5: Sponsored Intelligence](/dist/docs/3.0.0-rc.2/learning/specialist/sponsored-intelligence) — conversational brand experiences

@@ -1,0 +1,523 @@
+---
+title: Signals ecosystem
+description: "AdCP signals ecosystem: how data providers, retailers, publishers, CDPs, and identity companies expose and activate audience signals through the signals protocol."
+"og:title": "AdCP — Signals ecosystem"
+---
+
+# Signals ecosystem
+
+The [Signals Protocol](/dist/docs/3.0.0-rc.2/signals/overview) connects many types of companies. This guide shows how each fits in, what they build, and where to go next.
+
+## How signals flow
+
+```
+Data providers ──┐
+Retailers ───────┤
+Publishers ──────┤──→ Signal catalog ──→ Signal agent ──→ Buyer agent ──→ Campaign targeting
+CDPs ────────────┤    (adagents.json)    (get_signals)     (activate)
+Identity cos ────┘
+```
+
+Every company that owns targetable data can publish a **signal catalog** via `/.well-known/adagents.json`. Signal agents discover these catalogs and make them available to buyers through `get_signals` and `activate_signal`.
+
+## Find your role
+
+<CardGroup cols={2}>
+  <Card title="Data provider" icon="database" href="#data-providers">
+    You own audience or behavioral data and want to make it available for ad targeting.
+  </Card>
+  <Card title="Retail media network" icon="cart-shopping" href="#retail-media-networks">
+    You have shopper purchase data and sell both inventory and data.
+  </Card>
+  <Card title="Publisher" icon="newspaper" href="#publishers">
+    You have contextual and first-party subscriber data alongside your ad inventory.
+  </Card>
+  <Card title="Identity company" icon="fingerprint" href="#identity-companies">
+    You provide identity resolution, demographic, or financial data.
+  </Card>
+  <Card title="Location / mobility provider" icon="location-dot" href="#location-and-mobility-providers">
+    You have foot traffic, geofencing, or mobility data. [See how geo signals work →](#location-and-mobility-providers)
+  </Card>
+  <Card title="CDP" icon="layer-group" href="#customer-data-platforms">
+    You manage brands' first-party data and activate audiences on their behalf.
+  </Card>
+  <Card title="Agency" icon="users" href="#agencies-with-data-assets">
+    You buy media for clients and have proprietary data assets.
+  </Card>
+  <Card title="Data warehouse" icon="warehouse" href="#data-warehouses-and-clean-rooms">
+    You store data and enable privacy-preserving collaboration.
+  </Card>
+</CardGroup>
+
+---
+
+## Data providers
+
+**Examples**: Automotive data companies, financial data providers, behavioral data companies
+
+**Your role**: You own audience segments, propensity models, or behavioral data. You publish a signal catalog so that signal agents can discover and resell your data.
+
+**What you build**:
+1. A signal catalog in your `/.well-known/adagents.json` describing your signals, their value types, and which agents are authorized to resell them
+2. Nothing else — signal agents handle discovery and activation on your behalf
+
+**Signal types you'd publish**:
+
+```json
+{
+  "signals": [
+    {
+      "id": "likely_ev_buyers",
+      "name": "Likely EV Buyers",
+      "value_type": "binary",
+      "description": "Consumers modeled as likely to purchase an EV in the next 12 months",
+      "tags": ["automotive", "purchase_intent"]
+    },
+    {
+      "id": "vehicle_ownership",
+      "name": "Vehicle Ownership Category",
+      "value_type": "categorical",
+      "allowed_values": ["luxury_ev", "luxury_ice", "midrange", "economy", "truck_suv"],
+      "tags": ["automotive", "ownership"]
+    },
+    {
+      "id": "purchase_propensity",
+      "name": "Auto Purchase Propensity",
+      "value_type": "numeric",
+      "range": { "min": 0, "max": 1, "unit": "score" },
+      "tags": ["automotive", "purchase_intent"]
+    }
+  ]
+}
+```
+
+**Next steps**:
+- [Data provider guide](/dist/docs/3.0.0-rc.2/signals/data-providers) — complete walkthrough of signal catalogs
+- [Signals specification](/dist/docs/3.0.0-rc.2/signals/specification) — protocol details
+- [S3: Signals specialist module](/dist/docs/3.0.0-rc.2/learning/specialist/signals) — hands-on lab with sandbox signal agent
+
+---
+
+## Location and mobility providers
+
+**Examples**: Foot traffic analytics companies, mobility data platforms, geofenced audience providers
+
+**Your role**: You publish geographic and behavioral signals derived from opted-in mobile device data — foot traffic patterns, trade areas, dwell time, and commute behavior. These signals let buyers target audiences based on where people go in the physical world.
+
+**What you build**:
+1. A signal catalog in your `/.well-known/adagents.json` describing your geo signals and their value types
+2. Nothing else — signal agents handle discovery and activation on your behalf
+
+**Example signal catalog**:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "Meridian Geo",
+    "email": "partnerships@meridiangeo.example",
+    "domain": "meridiangeo.example"
+  },
+  "signals": [
+    {
+      "id": "competitor_visitors",
+      "name": "Competitor Store Visitors",
+      "value_type": "binary",
+      "description": "Consumers who visited a competitor retail location in the past 30 days based on verified foot traffic data",
+      "tags": ["geo", "retail", "conquest"]
+    },
+    {
+      "id": "trade_area_residents",
+      "name": "Trade Area Residents",
+      "value_type": "binary",
+      "description": "Consumers whose primary residence is within a specified trade area defined by drive time or radius",
+      "tags": ["geo", "proximity"]
+    },
+    {
+      "id": "visit_frequency",
+      "name": "Location Visit Frequency",
+      "value_type": "numeric",
+      "range": { "min": 0, "max": 30 },
+      "description": "Monthly visit count to a specified location category (QSR, grocery, gym, auto dealer)",
+      "tags": ["geo", "frequency"]
+    },
+    {
+      "id": "dwell_time",
+      "name": "Average Dwell Time",
+      "value_type": "numeric",
+      "range": { "min": 0, "max": 120, "unit": "minutes" },
+      "description": "Average minutes spent on-site, distinguishing drive-bys from intentional visits",
+      "tags": ["geo", "behavioral", "dwell"]
+    },
+    {
+      "id": "daypart_visitation",
+      "name": "Day-Part Visitation",
+      "value_type": "categorical",
+      "allowed_values": ["morning_commute", "midday", "evening_commute", "weekend_daytime", "weekend_evening"],
+      "description": "When consumers typically visit a specified venue type",
+      "tags": ["geo", "temporal"]
+    }
+  ],
+  "signal_tags": {
+    "geo": {
+      "name": "Geographic Signals",
+      "description": "Location-derived audience segments from opted-in mobile data"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://signals-agent.example.com",
+      "authorized_for": "All geo signals",
+      "authorization_type": "signal_tags",
+      "signal_tags": ["geo"]
+    }
+  ]
+}
+```
+
+**Activating a geofenced audience**:
+
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "signal_agent_segment_id": "meridian_trade_area_residents",
+    "pricing_option_id": "po_meridian_trade_cpm",
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "nova-dsp",
+        "account": "agency-seat-789"
+      }
+    ]
+  }
+}
+```
+
+<Note>
+AdCP supports location-derived **audience segments** — groups of people who visited a place, live in a trade area, or exhibit a commute pattern. Real-time geofencing triggers (push a message when someone enters a zone) are not yet part of the protocol. See the [roadmap](/dist/docs/3.0.0-rc.2/reference/roadmap) for planned extensions.
+</Note>
+
+**Next steps**:
+- [Data provider guide](/dist/docs/3.0.0-rc.2/signals/data-providers) — complete walkthrough of signal catalogs
+- [Signals specification](/dist/docs/3.0.0-rc.2/signals/specification) — protocol details
+- [S3: Signals specialist module](/dist/docs/3.0.0-rc.2/learning/specialist/signals) — hands-on lab with sandbox signal agent
+
+---
+
+## Retail media networks
+
+**Examples**: Marketplace advertising platforms, grocery delivery ad networks
+
+**Your dual role**: You're both a **publisher** (selling ad inventory on your marketplace) and a **data provider** (your shopper purchase data is valuable for targeting on other platforms).
+
+### As a publisher
+
+You sell sponsored products and display inventory. This uses the [Media Buy Protocol](/dist/docs/3.0.0-rc.2/media-buy/index) — declare your properties in `adagents.json`, build a sales agent, handle `get_products` and `create_media_buy`.
+
+### As a data provider
+
+Your first-party purchase data (category buyers, loyalty tiers, basket value, new-to-brand) is valuable beyond your own inventory. You can publish these as signals in the same `adagents.json` file alongside your properties.
+
+**Combined adagents.json** (properties for inventory + signals for data):
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "Acme Marketplace",
+    "email": "partnerships@acme-marketplace.example",
+    "domain": "acme-marketplace.example"
+  },
+  "properties": [
+    {
+      "property_id": "marketplace_web",
+      "property_type": "website",
+      "name": "Acme Marketplace",
+      "identifiers": [
+        {"type": "domain", "value": "acme-marketplace.example"}
+      ],
+      "supported_channels": ["retail_media", "display"]
+    }
+  ],
+  "signals": [
+    {
+      "id": "category_buyer",
+      "name": "Category Buyer",
+      "value_type": "categorical",
+      "allowed_values": ["electronics", "home", "beauty", "grocery", "fashion"],
+      "description": "Purchased in category in past 90 days",
+      "tags": ["retail", "purchase"]
+    },
+    {
+      "id": "loyalty_tier",
+      "name": "Loyalty Program Tier",
+      "value_type": "categorical",
+      "allowed_values": ["platinum", "gold", "silver", "bronze"],
+      "tags": ["retail", "loyalty"]
+    },
+    {
+      "id": "new_to_brand",
+      "name": "New to Brand",
+      "value_type": "binary",
+      "description": "Never purchased from specified brand on marketplace",
+      "tags": ["retail", "conquest"]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://signals-agent.example.com",
+      "authorized_for": "All retail signals",
+      "authorization_type": "signal_tags",
+      "signal_tags": ["retail"]
+    }
+  ]
+}
+```
+
+**Key insight**: Your closed-loop purchase data is often the most valuable signal in the ecosystem because it's deterministic. While behavioral models predict intent, you have actual transaction proof.
+
+**Closed-loop measurement**: Your purchase data also enables attribution. When a campaign targets your shopper signals and the consumer buys the advertised product on your marketplace, you can measure that conversion directly. Use [`sync_event_sources`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/sync_event_sources) to register your purchase event feed with buyer agents, then [`log_event`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/log_event) to report conversions. This closes the loop from targeting to measurement without relying on third-party attribution — a significant advantage for retail media.
+
+**Next steps**:
+- [Commerce media guide](/dist/docs/3.0.0-rc.2/guides/commerce-media) — maps retail concepts to AdCP
+- [Data provider guide](/dist/docs/3.0.0-rc.2/signals/data-providers) — how to publish your signal catalog
+- [Conversion tracking](/dist/docs/3.0.0-rc.2/media-buy/conversion-tracking/index) — closed-loop measurement with `sync_event_sources` and `log_event`
+- [Seller integration guide](/dist/docs/3.0.0-rc.2/guides/seller-integration) — building your sales agent
+
+---
+
+## Publishers
+
+**Examples**: News publishers, streaming platforms, content networks
+
+**Your role**: You have contextual signals (content category, article sentiment) and first-party subscriber data (engagement level, subscription tenure). These complement your ad inventory.
+
+**What you already have**: Properties in `adagents.json` and a sales agent for the Media Buy Protocol.
+
+**What you can add**: Signal definitions in the same `adagents.json`, turning your contextual intelligence and subscriber data into targetable signals available across the ecosystem.
+
+**Publisher signal types**:
+
+| Signal | Value type | Description |
+|--------|-----------|-------------|
+| Content category | Categorical | IAB taxonomy classification of page content |
+| Article sentiment | Categorical | Positive, neutral, negative, mixed |
+| Engaged reader | Binary | High-attention subscribers (5+ articles/week) |
+| Subscriber tenure | Numeric | Months of active subscription |
+
+**Why this matters**: Your contextual signals are increasingly valuable as third-party cookies decline. An advertiser buying CTV inventory from one publisher can target using your contextual intelligence from another — if you publish it as a signal.
+
+**Next steps**:
+- [Data provider guide](/dist/docs/3.0.0-rc.2/signals/data-providers) — add signals to your existing adagents.json
+- [Publisher/seller track](/dist/docs/3.0.0-rc.2/learning/tracks/publisher) — build your sales agent (if you haven't already)
+- [S3: Signals specialist module](/dist/docs/3.0.0-rc.2/learning/specialist/signals) — understand the buyer's perspective
+
+---
+
+## Identity companies
+
+**Examples**: Cross-device identity providers, demographic data companies, credit-derived data companies
+
+**Your role**: You provide identity resolution (linking devices to people to households) and consumer data derived from financial records, public data, or surveys.
+
+**What fits in AdCP today**: Your **consumer segments** — household income tiers, life stages, credit activity, cross-device reach — map directly to signal value types:
+
+```json
+{
+  "signals": [
+    {
+      "id": "household_income",
+      "name": "Household Income Tier",
+      "value_type": "categorical",
+      "allowed_values": ["under_50k", "50k_75k", "75k_100k", "100k_150k", "150k_250k", "over_250k"],
+      "tags": ["demographic", "income"]
+    },
+    {
+      "id": "life_stage",
+      "name": "Life Stage",
+      "value_type": "categorical",
+      "allowed_values": ["young_adult", "early_career", "established_family", "empty_nester", "retired"],
+      "tags": ["demographic", "life_stage"]
+    },
+    {
+      "id": "household_composition",
+      "name": "Household Composition",
+      "value_type": "categorical",
+      "allowed_values": ["single", "couple_no_children", "family_young_children", "family_teens", "multigenerational"],
+      "tags": ["demographic", "household"]
+    },
+    {
+      "id": "cross_device_reach",
+      "name": "Cross-Device Household Reach",
+      "value_type": "numeric",
+      "range": { "min": 1, "max": 12 },
+      "description": "Identified devices linked to household via deterministic identity graph",
+      "tags": ["identity", "cross_device"]
+    }
+  ]
+}
+```
+
+**What doesn't fit (yet)**: Your core identity resolution service — matching Device A to Person B — is infrastructure that enhances other signals, not a signal itself. AdCP doesn't yet have a protocol for identity resolution as a service. This is on the [roadmap](/dist/docs/3.0.0-rc.2/reference/roadmap).
+
+**Where you add value today**:
+1. **Publish demographic and financial segments** as signals in your catalog
+2. **Enhance other providers' signals** with cross-device reach (your identity graph makes their binary signals addressable across more devices)
+3. **Partner with signal agents** who can combine your identity data with other providers' behavioral data
+
+<Note>
+**Data governance for credit-derived signals**: Signals derived from credit bureau data may carry regulatory obligations under FCRA and similar frameworks. AdCP publishes these as targeting segments (income tiers, credit activity), not raw financial data — but your compliance team should review which segments are permissible for advertising use cases. The `activate_signal` deactivation mechanism supports compliance workflows when consent is withdrawn or regulatory requirements change.
+</Note>
+
+**Next steps**:
+- [Data provider guide](/dist/docs/3.0.0-rc.2/signals/data-providers) — publish your signal catalog
+- [Platform/intermediary track](/dist/docs/3.0.0-rc.2/learning/tracks/platform) — if you're building infrastructure that connects data to platforms
+
+---
+
+## Customer data platforms
+
+**Examples**: Customer data platforms, audience management platforms, marketing data platforms
+
+**Your role**: Brands store their first-party data in your platform. You help them build audience segments and activate those segments for ad targeting. The brand owns the data — you're the infrastructure.
+
+**The ownership question**: In the standard data provider model, the provider publishes signals under their own domain. For CDPs, the **brand** owns the data but the **CDP** operates the infrastructure. Two approaches:
+
+### Approach 1: CDP as signal agent
+
+The CDP operates a signal agent that serves brand-specific custom segments. Each brand's segments are scoped to their account:
+
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    "signal_spec": "High lifetime value customers for retargeting",
+    "account": {
+      "brand": { "domain": "acme-brand.example" }
+    }
+  }
+}
+```
+
+The signal agent returns only segments authorized for that brand's account. This maps naturally to how CDPs already work — brand-scoped audience management.
+
+### Approach 2: Brand publishes catalog, CDP hosts agent
+
+The brand lists their custom signals in their own `adagents.json` (at `acme-brand.example/.well-known/adagents.json`) with the CDP's signal agent as an authorized agent. This gives the brand transparency and control over what's published.
+
+**CDP signal types**:
+
+| Signal | Value type | Use case |
+|--------|-----------|----------|
+| High LTV customer | Binary | Retention and upsell campaigns |
+| Cart abandoner | Binary | Real-time retargeting |
+| Engagement score | Numeric (0-100) | Prioritize high-intent prospects |
+| Churn risk | Categorical | Win-back campaigns |
+
+**Key concern — privacy**: First-party data activation must respect consent. The CDP is responsible for ensuring that only consented segments are published. The `activate_signal` task supports `deactivate` action for compliance (removing segments from platforms when consent is withdrawn or campaigns end).
+
+**Next steps**:
+- [Data provider guide](/dist/docs/3.0.0-rc.2/signals/data-providers) — catalog structure
+- [Platform/intermediary track](/dist/docs/3.0.0-rc.2/learning/tracks/platform) — building MCP-based infrastructure
+- [Signals specification](/dist/docs/3.0.0-rc.2/signals/specification) — protocol conformance requirements
+
+---
+
+## Agencies with data assets
+
+**Examples**: Agency holding companies with data divisions, independent agencies with proprietary audience platforms
+
+**Your dual role**: You **consume** signals for client campaigns (buyer side) and **provide** proprietary signals from your data assets (provider side).
+
+### As a signal consumer
+
+Your buying agents use `get_signals` to find targeting data for client campaigns. You work across multiple brands, each with their own account:
+
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    "signal_spec": "In-market luxury auto intenders",
+    "account": {
+      "brand": { "domain": "client-brand.example" }
+    },
+    "destinations": [
+      { "type": "platform", "platform": "the-trade-desk", "account": "agency-ttd-seat" }
+    ]
+  }
+}
+```
+
+### As a signal provider
+
+Your data division's proprietary signals (identity graph, purchase panels, custom models) can be published via `adagents.json` and made available through signal agents — either your own or third-party.
+
+**Multi-brand management**: Each client brand has its own account context. Signals activated for one brand are not visible to others. Your agency seat on DSP platforms may be shared, but signal activations are brand-scoped.
+
+**Next steps**:
+- [Buyer/brand track](/dist/docs/3.0.0-rc.2/learning/tracks/buyer) — media buying with AdCP
+- [Data provider guide](/dist/docs/3.0.0-rc.2/signals/data-providers) — publish your proprietary signals
+- [S3: Signals specialist module](/dist/docs/3.0.0-rc.2/learning/specialist/signals) — hands-on signal discovery and activation
+
+---
+
+## Data warehouses and clean rooms
+
+**Examples**: Cloud data platforms with advertising data products, data collaboration platforms
+
+**Your role**: You sit between data (brands, providers, retailers) and activation (DSPs, sales agents). The question is how signals flow to and from your platform.
+
+### Activating signals into your platform
+
+A buyer or agency wants to match a signal provider's audience against data that lives in your warehouse — without moving either party's raw data. In AdCP terms, your platform is a **destination** in `activate_signal`:
+
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "signal_agent_segment_id": "trident_likely_ev_buyers",
+    "pricing_option_id": "po_trident_ev_cpm",
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "apex-data-cloud",
+        "account": "brand-clean-room-456"
+      }
+    ]
+  }
+}
+```
+
+The signal agent pushes segment membership into your clean room. The brand's first-party data stays in place. Overlap analysis, lookalike modeling, or measurement happens inside your environment.
+
+### Activating signals from your platform
+
+Data that lives in your warehouse — a retailer's purchase data, a brand's CRM segments, a provider's behavioral models — can be published as signals. The signal agent queries your platform's APIs to serve `get_signals` requests. The underlying data never leaves the warehouse; only targeting keys (segment IDs, activation keys) flow to DSPs.
+
+A retailer whose shopper data lives in your platform would:
+1. Publish a signal catalog via `adagents.json` describing their signals
+2. Partner with a signal agent that has API access to your platform
+3. The signal agent handles `get_signals` (checking availability) and `activate_signal` (pushing targeting keys to DSPs)
+
+### What you'd build
+
+To participate as a destination platform, you'd implement the receiving side: accept segment activations from signal agents, match against data in your environment, and return activation keys. This is analogous to how DSPs accept audience segments today.
+
+**Next steps**:
+- [Platform/intermediary track](/dist/docs/3.0.0-rc.2/learning/tracks/platform) — MCP server architecture
+- [Signals specification](/dist/docs/3.0.0-rc.2/signals/specification) — destination and deployment model
+- [Industry landscape](/dist/docs/3.0.0-rc.2/guides/industry-landscape) — how AdCP fits alongside other standards
+- [Working group](/dist/docs/3.0.0-rc.2/community/working-group) — help shape clean room integration patterns
+
+---
+
+## Try it hands-on
+
+The training agent at `https://agenticadvertising.org/api/training-agent/mcp` includes sandbox signal providers covering automotive data, geo/mobility, retail purchase data, identity/demographics, publisher contextual signals, and CDP audiences.
+
+Use `get_signals` to discover signals and `activate_signal` to activate them — all in sandbox mode with no real data or cost.
+
+<Card title="Start the signals specialist module" icon="play" href="https://agenticadvertising.org/addie">
+  Tell Addie: "I'd like to start the signals specialist module" — or just describe your role and ask how you fit into the signals ecosystem.
+</Card>

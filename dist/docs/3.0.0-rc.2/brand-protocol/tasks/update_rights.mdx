@@ -1,0 +1,144 @@
+---
+title: update_rights
+description: "update_rights is the AdCP task for modifying active rights grants. Extend end dates, adjust impression caps, switch pricing options, or pause and resume — with re-issued generation credentials."
+"og:title": "AdCP — update_rights"
+testable: true
+---
+
+Modify an existing rights grant — extend dates, adjust impression caps, change pricing, or pause/resume. Parallels `update_media_buy`. Only the fields you provide are updated; omitted fields remain unchanged.
+
+## Schema
+
+- **Request**: [`update-rights-request.json`](https://adcontextprotocol.org/schemas/latest/brand/update-rights-request.json)
+- **Response**: [`update-rights-response.json`](https://adcontextprotocol.org/schemas/latest/brand/update-rights-response.json)
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+
+## Response time
+
+Seconds for most updates. Pricing changes may require rights holder approval and take longer.
+
+## Quick start
+
+<CodeGroup>
+```json Request (extend end date)
+{
+  "rights_id": "janssen_likeness_voice",
+  "end_date": "2026-09-30"
+}
+```
+
+```json Request (increase impression cap)
+{
+  "rights_id": "janssen_likeness_voice",
+  "impression_cap": 200000
+}
+```
+
+```json Request (pause grant)
+{
+  "rights_id": "janssen_likeness_voice",
+  "paused": true
+}
+```
+
+```json Response (error)
+{
+  "errors": [
+    {
+      "code": "invalid_update",
+      "message": "New impression_cap (50000) must be >= impressions already delivered (78432)"
+    }
+  ]
+}
+```
+
+```json Response (success)
+{
+  "rights_id": "janssen_likeness_voice",
+  "terms": {
+    "pricing_option_id": "monthly_exclusive",
+    "amount": 350,
+    "currency": "EUR",
+    "period": "monthly",
+    "uses": ["likeness", "voice"],
+    "impression_cap": 200000,
+    "overage_cpm": 4.00,
+    "start_date": "2026-04-01",
+    "end_date": "2026-09-30",
+    "exclusivity": {
+      "scope": "Exclusive licensee for Daan Janssen in NL for food/restaurant brands",
+      "countries": ["NL"]
+    }
+  },
+  "generation_credentials": [
+    {
+      "provider": "midjourney",
+      "rights_key": "rk_mj_abc123_renewed...",
+      "uses": ["likeness"],
+      "expires_at": "2026-09-30T23:59:59Z"
+    },
+    {
+      "provider": "elevenlabs",
+      "rights_key": "rk_el_def456_renewed...",
+      "uses": ["voice"],
+      "expires_at": "2026-09-30T23:59:59Z"
+    }
+  ],
+  "rights_constraint": {
+    "rights_id": "janssen_likeness_voice",
+    "rights_agent": { "url": "https://agent.lotientertainment.com/mcp", "id": "loti_entertainment" },
+    "valid_from": "2026-04-01T00:00:00Z",
+    "valid_until": "2026-09-30T23:59:59Z",
+    "uses": ["likeness", "voice"],
+    "countries": ["NL"],
+    "impression_cap": 200000,
+    "approval_status": "approved",
+    "verification_url": "https://agent.lotientertainment.com/rights/rts_abc123/verify"
+  },
+  "implementation_date": "2026-06-28T14:30:00Z"
+}
+```
+</CodeGroup>
+
+## Parameters
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `rights_id` | string | Yes | Rights grant identifier from `acquire_rights` |
+| `end_date` | date | No | New end date (must be >= current end date) |
+| `impression_cap` | integer | No | New impression cap (must be >= impressions already delivered) |
+| `pricing_option_id` | string | No | Switch to a different pricing option from the original `get_rights` offering |
+| `paused` | boolean | No | Pause (`true`) or resume (`false`) the grant |
+| `idempotency_key` | string | No | Client-generated key for safe retries |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rights_id` | string | The updated rights grant identifier |
+| `terms` | object | Updated contractual terms (same shape as `acquire_rights` acquired response) |
+| `generation_credentials` | array | Re-issued credentials with updated expiration and caps |
+| `rights_constraint` | object | Updated constraint for re-embedding in creative manifests |
+| `paused` | boolean | Whether the grant is currently paused (included when pause state changes) |
+| `implementation_date` | datetime\|null | When changes take effect (`null` if pending approval) |
+
+## Re-issued credentials
+
+When you extend dates or change pricing, the rights agent re-issues generation credentials with updated expiration. Both old and new credentials may work during an overlap period — old credentials remain valid until their original expiry. Replace credentials in your creative pipeline promptly, but there is no hard cutover moment that would break in-flight generation requests.
+
+The updated `rights_constraint` should replace the constraint in any active creative manifests so downstream systems see the current terms.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="acquire_rights" icon="handshake" href="/dist/docs/3.0.0-rc.2/brand-protocol/tasks/acquire_rights">
+    The initial rights acquisition flow.
+  </Card>
+  <Card title="report_usage" icon="chart-line" href="/dist/docs/3.0.0-rc.2/accounts/tasks/report_usage">
+    Report impressions against rights grants.
+  </Card>
+</CardGroup>

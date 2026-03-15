@@ -1,0 +1,155 @@
+---
+title: AI ad networks
+sidebarTitle: AI ad networks
+description: "How AI ad networks aggregate inventory across multiple AI platforms using AdCP — product modeling, account chains, catalog forwarding, governance, delivery reporting, and Sponsored Intelligence routing."
+"og:title": "AdCP — AI ad networks"
+---
+
+# AI ad networks
+
+AI ad networks sit between buyer agents and AI platforms, aggregating inventory across multiple platforms into a single seller interface. The protocol supports this topology natively — an ad network is a seller agent that represents multiple publisher properties it doesn't own.
+
+## How a network appears
+
+To **buyer agents**, the network is a standard seller agent. Buyers connect to the network's MCP server, push catalogs and data in via standard tasks, and execute buys. To the **underlying AI platforms**, the network is an operator — it holds accounts on each platform and forwards the buyer's catalog data, brand identity, and content standards.
+
+## Product modeling for networks
+
+A network's products can span multiple AI platforms using `publisher_properties`:
+
+```json
+{
+  "product_id": "sponsored_response_ai_network",
+  "name": "Sponsored responses - AI assistant network",
+  "description": "Sponsored responses across multiple AI assistants. The network routes to the best-matching platform based on user context and brand relevance.",
+  "channels": ["ai_media"],
+  "publisher_properties": [
+    { "publisher_domain": "assistant-alpha.example.com", "selection_type": "all" },
+    { "publisher_domain": "assistant-beta.example.com", "selection_type": "all" },
+    { "publisher_domain": "search-gamma.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.ai-network.example.com", "id": "sponsored_response" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "network_cpc",
+      "pricing_model": "cpc",
+      "floor_price": 0.75,
+      "price_guidance": { "p50": 2.50, "p75": 4.00 },
+      "currency": "USD",
+      "min_spend_per_package": 1000
+    }
+  ],
+  "metric_optimization": {
+    "supported_metrics": ["clicks", "engagements"],
+    "supported_targets": ["cost_per"]
+  },
+  "creative_policy": {
+    "co_branding": "none",
+    "landing_page": "any",
+    "templates_available": true
+  },
+  "catalog_types": ["product", "offering"]
+}
+```
+
+The network decides which platform serves each impression based on context, relevance, and performance. The buyer doesn't need to know which platform was selected — they see unified delivery reporting from the network.
+
+## Account model for networks
+
+Networks typically use implicit accounts (`require_operator_auth: false`). The buyer agent is trusted and declares brands via `sync_accounts`. The network then manages its own accounts with each underlying AI platform:
+
+```
+Buyer agent → Network (implicit accounts, agent-trusted)
+Network → AI Platform A (explicit accounts, operator auth)
+Network → AI Platform B (explicit accounts, operator auth)
+```
+
+Declare capabilities accordingly:
+
+```json
+{
+  "adcp": { "major_versions": [3] },
+  "supported_protocols": ["media_buy", "creative"],
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["operator", "agent"],
+    "required_for_products": false,
+    "sandbox": true
+  }
+}
+```
+
+## Catalog forwarding
+
+Networks receive catalogs from buyers via `sync_catalogs` and forward them to the relevant AI platforms. The same task works on both legs — the network acts as a buyer when syncing catalogs to each platform. This is the core data pipe: brand catalog data flows from buyer → network → platform, giving each platform the raw material to generate ads.
+
+## Governance and content standards
+
+Networks can enforce [governance policies](/dist/docs/3.0.0-rc.2/governance/overview) at the routing layer before forwarding to platforms. When a buyer pushes content standards, the network applies them when selecting which platforms and contexts are eligible — then forwards the policies to each platform so they're also enforced at creative generation time. This gives brands two layers of suitability enforcement: the network's routing decisions and the platform's generation constraints.
+
+## Delivery reporting
+
+Networks aggregate delivery data from underlying platforms and present unified reporting to buyers via `get_media_buy_delivery`. The buyer sees a single delivery report per media buy — the network handles the per-platform breakdown internally. Networks that want to offer platform-level transparency can use `reporting_dimensions` to expose placement-level breakdowns.
+
+## adagents.json for networks
+
+A network's [`adagents.json`](/dist/docs/3.0.0-rc.2/governance/property/adagents) lists the publisher properties it represents, even though it doesn't own them:
+
+```json
+{
+  "version": "1.0",
+  "properties": [
+    {
+      "domain": "assistant-alpha.example.com",
+      "agents": [{
+        "agent_url": "https://ads.ai-network.example.com",
+        "relationship": "direct",
+        "supported_protocols": ["media_buy", "creative"]
+      }]
+    },
+    {
+      "domain": "assistant-beta.example.com",
+      "agents": [{
+        "agent_url": "https://ads.ai-network.example.com",
+        "relationship": "direct",
+        "supported_protocols": ["media_buy", "creative"]
+      }]
+    }
+  ]
+}
+```
+
+Each underlying AI platform authorizes the network in its own `adagents.json`. Buyer agents discover the network through the platforms' authorization chains.
+
+## Sponsored Intelligence through networks
+
+When an ad network sells [Sponsored Intelligence](/dist/docs/3.0.0-rc.2/sponsored-intelligence/overview) on behalf of brands, it acts as an intermediary in the SI session flow. The brand syncs offerings to the network via `sync_catalogs` with `type: "offering"`, and the network forwards them to underlying platforms. When a platform triggers a session, the network routes it to the correct brand agent.
+
+```
+AI Platform → Network → Brand Agent
+
+1. Platform calls si_initiate_session with the network's media_buy_id
+2. Network maps media_buy_id to the brand's offering_id
+3. Network forwards to the brand agent's SI endpoint
+4. Brand agent responds; network relays back to the platform
+```
+
+The key fields at each leg:
+
+| Field | Platform → Network | Network → Brand |
+|---|---|---|
+| `media_buy_id` | Network's media buy ID | May differ or be omitted |
+| `offering_id` | Not set (platform doesn't know) | Brand-specific offering |
+| `context` | User intent from the conversation | Forwarded as-is |
+| `identity` | User identity (if consented) | Forwarded as-is |
+
+The network handles attribution correlation across the two legs. It knows which platform triggered the session (`placement`), which media buy funded it (`media_buy_id`), and which brand responded (`offering_id`). This lets the network provide unified delivery reporting to buyers via `get_media_buy_delivery` while each brand agent only sees its own sessions.
+
+Networks should forward `identity` and `supported_capabilities` unchanged — the brand agent needs accurate host capabilities to negotiate modalities, and the user's consent was granted for the brand, not the network.
+
+<Note>
+For the SI session lifecycle and capability negotiation details, see the [SI overview](/dist/docs/3.0.0-rc.2/sponsored-intelligence/overview) and [implementing SI hosts](/dist/docs/3.0.0-rc.2/sponsored-intelligence/implementing-si-hosts).
+</Note>

@@ -1,0 +1,195 @@
+---
+title: "Platform / intermediary track"
+sidebarTitle: Platform track
+description: "AdCP platform track (D1-D4): MCP server architecture, supply path verification, agent trust, RTB-to-AdCP migration patterns, and an infrastructure build project."
+"og:title": "AdCP — Platform / intermediary track"
+---
+
+# Platform / intermediary track (D1–D4)
+
+<Info>
+**Members only** — Requires Basics credential (A1–A3). Four modules, ~105 minutes total.
+</Info>
+
+This track is for people building AdCP infrastructure: ad tech platforms, exchanges, data companies, and anyone connecting the ecosystem. You'll learn MCP server architecture, supply chain verification, RTB migration, and build working infrastructure in the build project.
+
+Completing this track (plus A1–A3) earns the **AdCP practitioner** credential.
+
+---
+
+## D1: MCP server architecture
+
+**~20 min** | Prerequisite: A3
+
+Technical deep dive on building an AdCP-compliant MCP server. Transport options (SSE, Streamable HTTP), tool definition patterns, OAuth/authorization flows, and account management.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Building with AdCP" icon="wrench" href="/dist/docs/3.0.0-rc.2/building/index">
+    Overview of what it takes to build an AdCP integration.
+  </Card>
+  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.0.0-rc.2/building/integration/mcp-guide">
+    The definitive guide: tool calls, response format, available tools, context management.
+  </Card>
+  <Card title="Authentication" icon="lock" href="/dist/docs/3.0.0-rc.2/building/integration/authentication">
+    OAuth 2.0 for agent authentication, token management, and operator credentials.
+  </Card>
+  <Card title="Accounts and agents" icon="people-arrows" href="/dist/docs/3.0.0-rc.2/building/integration/accounts-and-agents">
+    How accounts, agents, and principals relate to each other.
+  </Card>
+  <Card title="Context sessions" icon="timeline" href="/dist/docs/3.0.0-rc.2/building/integration/context-sessions">
+    Managing context across multi-turn agent interactions.
+  </Card>
+  <Card title="Schemas and SDKs" icon="box" href="/dist/docs/3.0.0-rc.2/building/schemas-and-sdks">
+    JSON Schemas, TypeScript types, and client SDKs for building faster.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **MCP server architecture** — exposing AdCP tasks as tools, handling auth, request routing
+- **Transport options** — Streamable HTTP for most cases, SSE for real-time updates
+- **Capability advertising** — `get_adcp_capabilities` so other agents know what you support
+- **Account handling** — managing incoming `sync_accounts` from buyers
+
+<Card title="Start D1 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module D1."
+</Card>
+
+---
+
+## D2: Supply path, trust, and property governance
+
+**~20 min** | Prerequisite: D1
+
+Cryptographic signatures for supply chain verification. How platforms validate agent identity, detect fraud, and ensure trust. The relationship between AdCP and ads.cert.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Property governance" icon="shield-check" href="/dist/docs/3.0.0-rc.2/governance/property/index">
+    Identity, authorization, and data enrichment for participants in AdCP.
+  </Card>
+  <Card title="AdAgents.json" icon="file-code" href="/dist/docs/3.0.0-rc.2/governance/property/adagents">
+    Agent discovery and declaration — verifiable identity for every agent.
+  </Card>
+  <Card title="Authorized properties" icon="key" href="/dist/docs/3.0.0-rc.2/governance/property/authorized-properties">
+    How publishers declare authorized sellers, and how buyers verify them.
+  </Card>
+  <Card title="Security" icon="shield" href="/dist/docs/3.0.0-rc.2/building/implementation/security">
+    Security implementation patterns for AdCP servers.
+  </Card>
+  <Card title="Accounts and security" icon="user-shield" href="/dist/docs/3.0.0-rc.2/media-buy/advanced-topics/accounts-and-security">
+    Account-level security, principal hierarchies, and access control.
+  </Card>
+  <Card title="Property specification" icon="scroll" href="/dist/docs/3.0.0-rc.2/governance/property/specification">
+    The formal specification for property governance.
+  </Card>
+  <Card title="Campaign governance" icon="shield-check" href="/dist/docs/3.0.0-rc.2/governance/campaign">
+    Multi-party validation: how platforms implement the governance flow for autonomous transactions.
+  </Card>
+  <Card title="Campaign governance specification" icon="file-code" href="/dist/docs/3.0.0-rc.2/governance/campaign/specification">
+    The full technical specification: sync_plans, check_governance, report_plan_outcome, audit logs.
+  </Card>
+  <Card title="Policy registry" icon="book" href="/dist/docs/3.0.0-rc.2/governance/policy-registry">
+    Community-maintained compliance policies that governance agents resolve and enforce.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Agent identity verification** — domain ownership, cryptographic signatures, organizational registration
+- **Supply path transparency** — full visibility into which agents handled each transaction
+- **ads.cert relationship** — extending cryptographic verification from RTB to agent-to-agent interactions
+- **Campaign governance architecture** — implement three-party validation: store `governance_agents` from `sync_accounts`, call `check_governance` before executing, handle all statuses
+- **Policy registry integration** — resolve policies by ID, integrate natural language policy text and exemplars into governance agent evaluation
+
+<Card title="Start D2 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module D2."
+</Card>
+
+---
+
+## D3: RTB coexistence and migration
+
+**~20 min** | Prerequisite: D2
+
+How AdCP coexists with existing programmatic infrastructure. Migration strategies for DSPs, SSPs, and exchanges. Running parallel systems during transition.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Agentic execution engine" icon="microchip" href="/dist/docs/3.0.0-rc.2/media-buy/advanced-topics/agentic-execution-engine">
+    The AXE engine for real-time execution and how it bridges agentic and programmatic.
+  </Card>
+  <Card title="Async operations" icon="hourglass-half" href="/dist/docs/3.0.0-rc.2/building/implementation/async-operations">
+    Handling long-running operations — essential for bridging real-time and agentic systems.
+  </Card>
+  <Card title="Webhooks" icon="bell" href="/dist/docs/3.0.0-rc.2/building/implementation/webhooks">
+    Event-driven updates for delivery, status changes, and campaign modifications.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/dist/docs/3.0.0-rc.2/building/implementation/error-handling">
+    Error patterns, retry strategies, and graceful degradation.
+  </Card>
+  <Card title="Sandbox" icon="flask" href="/dist/docs/3.0.0-rc.2/media-buy/advanced-topics/sandbox">
+    Testing your implementation against sandbox agents before going live.
+  </Card>
+  <Card title="Implementor FAQ" icon="circle-question" href="/dist/docs/3.0.0-rc.2/reference/implementor-faq">
+    Common questions and answers from teams building AdCP integrations.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Coexistence strategy** — run AdCP alongside OpenRTB, gradually migrating workflows
+- **Platform-specific migration** — DSPs wrap bidding logic, SSPs expose inventory, exchanges translate
+- **Performance benchmarking** — compare agentic vs traditional on campaign performance, efficiency, cost
+
+<Card title="Start D3 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module D3."
+</Card>
+
+---
+
+## D4: Build project — AdCP infrastructure
+
+**~45 min** | Prerequisite: D3
+
+Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. This is the most ambitious build project.
+
+### What you'll build
+
+- MCP server with AdCP tool definitions
+- `get_adcp_capabilities` implementation
+- At least 3 AdCP tasks exposed as tools
+- OAuth/authentication flow
+- Proper error handling with AdCP error codes
+
+### Assessment rubric
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Specification quality | 20% | Can you specify infrastructure in AdCP terms? |
+| Schema compliance | 20% | Protocol compliance across all endpoints |
+| Error handling | 15% | Proper error handling with recovery types and async |
+| Design rationale | 25% | Can you reason about production architecture? |
+| Extension ability | 20% | Can you extend the endpoint with new tasks? |
+
+Passing threshold: 70%.
+
+<Card title="Start D4 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module D4."
+</Card>
+
+---
+
+## What's next
+
+After completing D1–D4, you've earned the **AdCP practitioner** credential. From here you can pursue specialist modules:
+
+- [S1: Media buy](/dist/docs/3.0.0-rc.2/learning/specialist/media-buy) — transaction flows, pricing, orchestration
+- [S2: Creative](/dist/docs/3.0.0-rc.2/learning/specialist/creative) — asset workflows, format compliance
+- [S3: Signals](/dist/docs/3.0.0-rc.2/learning/specialist/signals) — measurement, attribution, optimization
+- [S4: Governance](/dist/docs/3.0.0-rc.2/learning/specialist/governance) — brand safety, campaign governance, compliance, policy registry
+- [S5: Sponsored Intelligence](/dist/docs/3.0.0-rc.2/learning/specialist/sponsored-intelligence) — conversational brand experiences

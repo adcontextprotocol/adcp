@@ -1,0 +1,241 @@
+---
+title: Sandbox mode
+description: "AdCP sandbox mode — test product discovery, campaign creation, creatives, and delivery with simulated data. No real spend or production side effects."
+"og:title": "AdCP — Sandbox mode"
+---
+
+## Overview
+
+Sandbox mode lets buyers test the full media buying lifecycle — discovery, campaign creation, creatives, and delivery — without real platform calls or spending real money. Responses contain simulated but realistic data.
+
+Sandbox is **account-level**, not per-request. Once a request references a sandbox account, the entire request is treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
+
+## Capabilities discovery
+
+Sellers declare sandbox support in `get_adcp_capabilities`:
+
+```json
+{
+  "account": {
+    "sandbox": true
+  }
+}
+```
+
+Check this before using sandbox mode. If `account.sandbox` is not declared or is `false`, the seller does not support sandbox.
+
+## Two paths to sandbox
+
+How you enter sandbox mode depends on the seller's account model (`require_operator_auth`). The two paths are completely different — make sure you follow the right one.
+
+### Implicit accounts (`require_operator_auth: false`)
+
+The seller trusts the agent and does not require per-operator authentication. Sandbox is part of the **natural key** — the same brand/operator pair can have both a production and a sandbox account, distinguished by `sandbox: true`.
+
+**Setup:** Declare a sandbox account via `sync_accounts` with `sandbox: true` on the account entry:
+
+```json
+// sync_accounts — declare a sandbox account
+{
+  "accounts": [{
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "billing": "operator",
+    "sandbox": true
+  }]
+}
+```
+
+**Usage:** Reference the sandbox account by natural key with `sandbox: true` on every request:
+
+```json
+// get_products — implicit sandbox
+{
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
+  "brief": "Premium CTV inventory for Q2 campaign"
+}
+```
+
+### Explicit accounts (`require_operator_auth: true`)
+
+The seller requires each operator to authenticate directly. Sandbox accounts are **pre-existing test accounts on the seller's platform** — think Stripe test mode, Google Ads sandbox accounts, or Snap test advertiser accounts. You do not create them; you discover them.
+
+**Setup:** Discover sandbox accounts via `list_accounts` with the `sandbox: true` filter:
+
+```json
+// list_accounts — find sandbox accounts
+{
+  "sandbox": true
+}
+```
+
+The seller returns pre-existing test accounts:
+
+```json
+{
+  "accounts": [{
+    "account_id": "acct_sandbox_acme_001",
+    "name": "Acme Test Account",
+    "status": "active",
+    "sandbox": true
+  }]
+}
+```
+
+**Usage:** Reference the sandbox account by `account_id` on every request:
+
+```json
+// get_products — explicit sandbox
+{
+  "account": { "account_id": "acct_sandbox_acme_001" },
+  "brief": "Premium CTV inventory for Q2 campaign"
+}
+```
+
+### Quick reference
+
+| | Implicit (`require_operator_auth: false`) | Explicit (`require_operator_auth: true`) |
+|---|---|---|
+| **Sandbox accounts** | Declared by buyer via `sync_accounts` | Pre-existing on seller's platform |
+| **Discovery** | N/A — buyer creates them | `list_accounts` with `sandbox: true` |
+| **Account reference** | Natural key with `sandbox: true` | `account_id` |
+| **Real-world analogy** | Self-service test mode | Stripe test mode, Google Ads sandbox |
+
+## Response confirmation
+
+Success responses include `sandbox: true` to confirm the request was processed in sandbox mode:
+
+```json
+{
+  "products": [...],
+  "sandbox": true
+}
+```
+
+## Full lifecycle example (implicit account)
+
+This example shows the implicit account path. For explicit accounts, replace the natural key account reference with `{ "account_id": "acct_sandbox_acme_001" }` in each step.
+
+### 1. Discover products
+
+```json
+// get_products
+{
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
+  "brief": "CTV inventory for brand awareness"
+}
+```
+
+### 2. Create a media buy
+
+```json
+// create_media_buy
+{
+  "buyer_ref": "sandbox_test_001",
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
+  "proposal_id": "prop_abc",
+  "total_budget": { "amount": 50000, "currency": "USD" },
+  "brand": { "domain": "acme-corp.com" },
+  "start_time": { "start_type": "asap" },
+  "end_time": "2026-04-01T00:00:00Z"
+}
+```
+
+The seller returns a simulated media buy with realistic IDs, packages, and creative deadlines — nothing is booked on any real platform.
+
+### 3. Upload creatives
+
+```json
+// sync_creatives
+{
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
+  "creatives": [{
+    "creative_id": "hero_video_30s",
+    "name": "Brand Hero Video 30s",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_standard_30s"
+    },
+    "assets": {
+      "video": {
+        "url": "https://cdn.example.com/hero.mp4",
+        "width": 1920,
+        "height": 1080,
+        "duration_ms": 30000
+      }
+    }
+  }],
+  "assignments": {
+    "hero_video_30s": ["pkg_001"]
+  }
+}
+```
+
+### 4. Check delivery
+
+```json
+// get_media_buy_delivery
+{
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
+  "media_buy_ids": ["mb_sandbox_123"]
+}
+```
+
+The seller returns simulated delivery metrics — impressions, spend, pacing — as if the campaign were running.
+
+## Sandbox vs dry run
+
+Some tasks (e.g., `sync_creatives`) also support a `dry_run` parameter. These serve different purposes:
+
+| | Sandbox account | `dry_run` |
+|---|---|---|
+| **Meaning** | Nothing is real | Preview changes without applying |
+| **Scope** | All tasks | sync_creatives only |
+| **Side effects** | None (simulated) | None (preview only) |
+| **Use case** | Test the full lifecycle | Check what a sync would change |
+
+## Seller implementation
+
+When a request references a sandbox account (either via `sandbox: true` in the natural key or via a sandbox `account_id`):
+
+- **Do not** make real ad platform API calls (no real orders, line items, etc.)
+- **Do not** charge real money or create real billing records
+- **Do** validate inputs the same way as production (reject invalid budgets, bad dates, etc.)
+- **Do** return realistic response shapes with simulated data
+- **Should** include `sandbox: true` in success responses
+
+Sandbox errors are real validation errors. If a buyer sends an invalid budget using a sandbox account, return a real error — don't simulate fake errors.
+
+For **explicit account sellers**: ensure your platform has pre-existing sandbox/test accounts that `list_accounts` can return when filtered with `sandbox: true`.
+
+For **implicit account sellers**: accept `sandbox: true` as part of the natural key in `sync_accounts` and account references. Treat `(brand, operator, sandbox: true)` as a distinct account from `(brand, operator)`.
+
+## Protocol compliance
+
+Sellers that declare `account.sandbox: true` in capabilities MUST:
+
+- Accept sandbox accounts appropriate to their account model
+- Apply sandbox semantics to all requests referencing a sandbox account
+- Apply normal input validation (sandbox does not bypass validation)
+
+Sellers SHOULD include `sandbox: true` in success responses when processing a sandbox account request.

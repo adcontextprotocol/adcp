@@ -1,0 +1,131 @@
+---
+title: Automating media buying with AI agents
+sidebarTitle: Agent-based media buying
+description: "How AI agents automate media buying across DSPs, SSPs, and publishers using AdCP. Covers product discovery, campaign creation, creative sync, and delivery reporting."
+"og:title": "AdCP — Automating media buying with AI agents"
+---
+
+Media buyers work across multiple platforms — each with its own API, data formats, terminology, and reporting dashboards. An agency managing campaigns across five DSPs, three SSPs, and several direct publishers is juggling dozens of interfaces. AI agents can automate this, but only if there's a shared language for advertising operations.
+
+AdCP (Ad Context Protocol) provides that shared language: a set of standardized tasks that AI agents use to discover inventory, execute campaigns, manage creatives, and pull delivery reports — across any platform that implements the protocol.
+
+## The problem: platform fragmentation
+
+Every advertising platform has its own way of doing things:
+
+| Operation | Platform A | Platform B | Platform C |
+|-----------|-----------|-----------|-----------|
+| List available inventory | `GET /api/v2/products` | `POST /inventory/search` | `GET /catalogue` |
+| Create a campaign | `POST /api/v2/campaigns` | `PUT /orders/new` | `POST /media-buys` |
+| Check delivery | `GET /api/v2/reports/delivery` | `POST /analytics/query` | `GET /campaign/{id}/stats` |
+
+A media buyer who wants to automate across all three needs three separate integrations, three data models, and three reporting parsers. This doesn't scale — especially as the number of platforms grows.
+
+## How AI agents solve it
+
+An AI agent can act on behalf of a media buyer to:
+
+1. **Discover** what's available across multiple platforms
+2. **Compare** products, pricing, and audience reach
+3. **Execute** campaigns according to the buyer's strategy
+4. **Monitor** delivery and optimize in real-time
+5. **Report** unified results across all platforms
+
+The agent handles the platform-specific details. The buyer sets strategy and reviews results.
+
+## Why agents need a standard protocol
+
+Without a standard, every agent-to-platform connection is custom. An agent built for one DSP can't talk to another without a new integration.
+
+AdCP defines the common operations so that:
+- A **buyer agent** can talk to any AdCP-enabled platform using the same tasks
+- A **seller platform** implements the protocol once and is accessible to any compliant buyer agent
+- Both sides benefit from a growing ecosystem of interoperable tools
+
+## How AdCP works for media buying
+
+AdCP defines tasks for each stage of the media buying workflow:
+
+<Steps>
+
+### Discover inventory
+
+The buyer agent calls `get_products` to see what a platform offers — display placements, video slots, sponsored content, audio spots.
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Display banner inventory for consumer electronics, Q2 2026"
+}
+```
+
+The response includes product details: pricing, available formats, targeting capabilities, and audience reach.
+
+### Execute the buy
+
+Once the agent selects products, it calls `create_media_buy` with targeting, budget, and scheduling parameters.
+
+```json
+{
+  "buyer_ref": "pinnacle-q2-display",
+  "account": { "account_id": "acct-12345" },
+  "brand": { "brand_id": "nova-electronics" },
+  "proposal_id": "prop-display-homepage",
+  "total_budget": { "amount": 5000, "currency": "USD" },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-04-30T23:59:59Z"
+}
+```
+
+### Manage creatives
+
+The agent calls `list_creative_formats` to learn what ad formats the platform accepts, then `build_creative` to submit assets that match the platform's requirements.
+
+### Track delivery
+
+The agent calls `get_media_buy_delivery` to pull delivery data — impressions, clicks, spend, and any conversion events — in a standardized format.
+
+</Steps>
+
+## Example: buying across three platforms
+
+Consider Pinnacle Media, an agency buying on behalf of a consumer electronics brand. Their AI agent needs to run a campaign across three platforms:
+
+| Platform | Type | Products |
+|----------|------|----------|
+| Acme Ad Exchange | DSP | Programmatic display and video |
+| Nova Publisher Network | SSP | Direct-sold premium placements |
+| Bright Retail Media | Commerce media | Sponsored product listings |
+
+Without AdCP, Pinnacle's team would need to learn three APIs, build three integrations, and reconcile three reporting formats.
+
+With AdCP, their buyer agent makes the same `get_products` → `create_media_buy` → `get_media_buy_delivery` calls to each platform. The agent discovers each platform via its `adagents.json` file, negotiates formats, and executes campaigns — all through the same protocol.
+
+The agency's planning team sets strategy. The agent handles execution. Reports come back in a unified format.
+
+## AI platforms as a buyable channel
+
+AI assistants and AI search engines are a buyable channel in AdCP. Unlike traditional programmatic where a platform sends bid requests out, AI media reverses the data flow — buyers push catalogs, conversion events, brand identity, and content standards into the platform, and the platform's LLM generates contextually relevant ads with full information. The `ai_media` channel covers sponsored responses, AI search ads, generative display, and brand experience handoffs.
+
+The same `get_products` → `create_media_buy` → `get_media_buy_delivery` workflow applies. Filter with `channels: ["ai_media"]` to discover AI media products.
+
+<Card title="AI media guide" icon="microchip" href="/dist/docs/3.0.0-rc.2/guides/ai-media">
+  The reversed data flow, product modeling, end-to-end workflows, and measurement for AI platform advertising.
+</Card>
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card title="Protocol introduction" icon="book" href="/dist/docs/3.0.0-rc.2/intro">
+    Understand the core concepts and architecture of AdCP.
+  </Card>
+  <Card title="Seller integration" icon="store" href="/dist/docs/3.0.0-rc.2/guides/seller-integration">
+    If you're a platform: how to make your inventory available to AI buyer agents.
+  </Card>
+  <Card title="Media buy specification" icon="file-lines" href="/dist/docs/3.0.0-rc.2/media-buy/specification">
+    Full reference for media buy tasks, schemas, and capabilities.
+  </Card>
+  <Card title="Join AgenticAdvertising.org" icon="users" href="https://agenticadvertising.org/membership">
+    Participate in shaping the protocol through working groups and committees.
+  </Card>
+</CardGroup>
