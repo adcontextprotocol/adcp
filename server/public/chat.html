@@ -525,8 +525,9 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-end;
       flex: 1;
+      padding-bottom: 24px;
     }
 
     .welcome-message h2 {
@@ -551,7 +552,8 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-end;
+      padding-bottom: 24px;
     }
 
     .addie-home-loading {
@@ -5408,6 +5410,8 @@
       checkImpersonation();
       // Check for prompt in URL after status check
       setTimeout(checkQueryPrompt, 500);
+      // Auto-focus the input so users can start typing immediately
+      chatInput.focus();
       // Check status periodically
       setInterval(checkStatus, 30000);
 
