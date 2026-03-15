@@ -373,8 +373,8 @@ export async function buildDynamicSuggestedPrompts(
   });
 
   prompts.push({
-    title: 'Explain it to me',
-    message: "I'm still wrapping my head around agentic advertising - can you give me the quick version?",
+    title: 'Help me post something',
+    message: 'Anything I should be posting about this week?',
   });
 
   return prompts.slice(0, 4); // Slack limits to 4 prompts

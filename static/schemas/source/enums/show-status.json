@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/show-status.json",
+  "title": "Show Status",
+  "description": "Lifecycle status of a show",
+  "type": "string",
+  "enum": [
+    "active",
+    "hiatus",
+    "ended",
+    "upcoming"
+  ],
+  "enumDescriptions": {
+    "active": "Currently producing and releasing episodes",
+    "hiatus": "Temporarily paused, expected to resume",
+    "ended": "No longer producing new episodes",
+    "upcoming": "Announced but not yet released"
+  }
+}

@@ -5,7 +5,7 @@
  * combinations. Products reference formats from formats.ts via format_id.
  */
 
-import type { PublisherProfile, PricingTemplate, CatalogProduct } from './types.js';
+import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
@@ -326,12 +326,97 @@ function buildProduct(
     };
   }
 
+  // Attach shows whose channels overlap with this product's channels
+  if (pub.shows?.length) {
+    const matchingShows = pub.shows.filter(s =>
+      s.channels.some(c => template.channels.includes(c)),
+    );
+    if (matchingShows.length > 0) {
+      product.show_ids = matchingShows.map(s => s.showId);
+      // Guaranteed products with shows get exclusivity
+      if (template.deliveryType === 'guaranteed') {
+        product.exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
+      }
+      // Flatten episodes from matching shows
+      const episodes: Record<string, unknown>[] = [];
+      for (const show of matchingShows) {
+        for (const ep of show.episodes || []) {
+          const episode: Record<string, unknown> = {
+            episode_id: ep.episodeId,
+            show_id: show.showId,
+            name: ep.title,
+            status: ep.status,
+          };
+          if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
+          if (ep.duration) episode.duration_seconds = ep.duration;
+          episodes.push(episode);
+        }
+      }
+      if (episodes.length > 0) {
+        product.episodes = episodes;
+      }
+    }
+  }
+
   return {
     product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
   };
+}
+
+function buildShowObject(show: ShowDefinition): Record<string, unknown> {
+  const obj: Record<string, unknown> = {
+    show_id: show.showId,
+    name: show.name,
+    genre: show.genre,
+    cadence: show.cadence,
+    status: show.status,
+  };
+  if (show.description) obj.description = show.description;
+  if (show.contentRatings?.length) {
+    obj.content_rating = show.contentRatings.map(r => ({
+      system: r.system,
+      rating: r.rating,
+    }));
+  }
+  if (show.talent?.length) {
+    obj.talent = show.talent.map(t => ({
+      name: t.name,
+      role: t.role,
+    }));
+  }
+  if (show.distribution?.length) {
+    obj.distribution = show.distribution.map(d => ({
+      publisher_domain: d.publisherDomain,
+      identifiers: d.identifiers.map(id => ({ type: id.type, value: id.value })),
+    }));
+  }
+  return obj;
+}
+
+/**
+ * Build the top-level shows array for a get_products response,
+ * scoped to only shows referenced by the given products.
+ */
+export function buildShowsForProducts(products: Record<string, unknown>[]): Record<string, unknown>[] {
+  const referencedIds = new Set<string>();
+  for (const p of products) {
+    const ids = p.show_ids as string[] | undefined;
+    if (ids) ids.forEach(id => referencedIds.add(id));
+  }
+  if (referencedIds.size === 0) return [];
+
+  const shows: Record<string, unknown>[] = [];
+  for (const pub of PUBLISHERS) {
+    for (const show of pub.shows || []) {
+      if (referencedIds.has(show.showId)) {
+        shows.push(buildShowObject(show));
+      }
+    }
+  }
+  return shows;
 }
 
 /**

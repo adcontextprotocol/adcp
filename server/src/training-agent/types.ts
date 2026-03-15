@@ -12,6 +12,28 @@ export interface TrainingContext {
   learnerLevel?: 'basics' | 'practitioner' | 'specialist';
 }
 
+export interface ShowDefinition {
+  showId: string;
+  name: string;
+  genre: string[];
+  cadence: string;
+  status: string;
+  contentRatings?: Array<{ system: string; rating: string }>;
+  talent?: Array<{ name: string; role: string }>;
+  distribution?: Array<{ publisherDomain: string; identifiers: Array<{ type: string; value: string }> }>;
+  description?: string;
+  /** Channels this show's products should appear on */
+  channels: string[];
+  /** Episode templates to generate for this show */
+  episodes?: Array<{
+    episodeId: string;
+    title: string;
+    status: string;
+    scheduledAt?: string;
+    duration?: string;
+  }>;
+}
+
 export interface PublisherProfile {
   id: string;
   name: string;
@@ -28,6 +50,8 @@ export interface PublisherProfile {
   /** Optional: reporting capabilities */
   reportingFrequencies?: string[];
   reportingMetrics?: string[];
+  /** Optional: shows this publisher carries */
+  shows?: ShowDefinition[];
 }
 
 export interface PropertyDefinition {

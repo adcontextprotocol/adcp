@@ -51,7 +51,6 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to get system settings');
       res.status(500).json({
         error: 'Failed to get system settings',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -88,7 +87,6 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to list Slack channels');
       res.status(500).json({
         error: 'Failed to list Slack channels',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -147,7 +145,6 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update billing channel');
       res.status(500).json({
         error: 'Failed to update billing channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -206,7 +203,6 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update escalation channel');
       res.status(500).json({
         error: 'Failed to update escalation channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -258,7 +254,6 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update admin channel');
       res.status(500).json({
         error: 'Failed to update admin channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -310,7 +305,6 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update prospect channel');
       res.status(500).json({
         error: 'Failed to update prospect channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -338,7 +332,6 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update prospect triage enabled');
       res.status(500).json({
         error: 'Failed to update setting',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

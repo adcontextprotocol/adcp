@@ -408,7 +408,6 @@ export function createContentRouter(): Router {
       logger.error({ err: error }, 'GET /api/content/collections error');
       res.status(500).json({
         error: 'Failed to get collections',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -445,7 +444,6 @@ export function createContentRouter(): Router {
       logger.error({ err: error }, 'POST /api/content/propose error');
       res.status(500).json({
         error: 'Failed to propose content',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -554,7 +552,6 @@ export function createContentRouter(): Router {
       logger.error({ err: error }, 'GET /api/content/pending error');
       res.status(500).json({
         error: 'Failed to get pending content',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -670,7 +667,6 @@ export function createContentRouter(): Router {
       logger.error({ err: error }, 'POST /api/content/:id/approve error');
       res.status(500).json({
         error: 'Failed to approve content',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -757,7 +753,6 @@ export function createContentRouter(): Router {
       logger.error({ err: error }, 'POST /api/content/fetch-url error');
       res.status(500).json({
         error: 'Failed to fetch URL',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -840,7 +835,6 @@ export function createContentRouter(): Router {
       logger.error({ err: error }, 'POST /api/content/:id/reject error');
       res.status(500).json({
         error: 'Failed to reject content',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -967,7 +961,6 @@ export function createMyContentRouter(): Router {
       logger.error({ err: error }, 'GET /api/me/content error');
       res.status(500).json({
         error: 'Failed to get content',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1085,7 +1078,6 @@ export function createMyContentRouter(): Router {
       logger.error({ err: error }, 'PUT /api/me/content/:id error');
       res.status(500).json({
         error: 'Failed to update content',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1163,7 +1155,6 @@ export function createMyContentRouter(): Router {
       logger.error({ err: error }, 'POST /api/me/content/:id/authors error');
       res.status(500).json({
         error: 'Failed to add author',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1227,7 +1218,6 @@ export function createMyContentRouter(): Router {
       logger.error({ err: error }, 'DELETE /api/me/content/:id/authors/:authorId error');
       res.status(500).json({
         error: 'Failed to remove author',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

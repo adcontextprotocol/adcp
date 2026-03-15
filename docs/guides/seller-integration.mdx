@@ -83,6 +83,42 @@ Your response includes structured product objects with pricing, formats, and del
 
 The richer the product metadata, the better buyer agents can match your inventory to campaign requirements.
 
+For content-centric inventory like podcasts, CTV, or live events, products reference shows and can offer exclusivity:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "signal_noise_sponsorship",
+      "name": "Signal & Noise — Category Sponsorship",
+      "description": "Category-exclusive sponsorship of the Signal & Noise podcast, including pre-roll and mid-roll host read placements.",
+      "show_ids": ["signal_noise"],
+      "publisher_properties": ["crestnetwork_podcast"],
+      "channels": ["podcast"],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (30s)" },
+        { "placement_id": "host_read", "name": "Mid-roll host read (60s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "exclusivity": "category",
+      "format_ids": [
+        { "agent_url": "https://ads.publisher.example.com", "id": "audio_30s" }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "flat_monthly",
+          "pricing_model": "flat_rate",
+          "fixed_price": 15000,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) for the full content model and [Media products](/docs/media-buy/product-discovery/media-products#exclusivity) for exclusivity patterns.
+
 ### Accept and fulfill buys
 
 Implement `create_media_buy` to accept campaign instructions from buyer agents. A media buy includes the product, budget, schedule, and any targeting parameters.
@@ -128,6 +164,20 @@ See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for fu
 ## Optional: delivery reporting
 
 Implement `get_media_buy_delivery` to let buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually.
+
+## Product design patterns
+
+Different inventory types use different AdCP features:
+
+| Inventory type | Key features |
+|---|---|
+| Standard display/video | `format_ids`, `delivery_type: "non_guaranteed"`, auction pricing |
+| Podcast sponsorship | `show_ids`, `placements` (host read), `delivery_type: "guaranteed"`, flat_rate |
+| CTV series sponsorship | `show_ids`, `exclusivity`, `delivery_type: "guaranteed"` |
+| Live event | `show_ids` (cadence: event), `episodes` (flexible_end, tentative), `exclusivity` |
+| Retail media | `catalog_types`, `catalog_match`, metric optimization |
+
+For content-centric inventory, see [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes). For exclusivity and sponsorship patterns, see [Media products](/docs/media-buy/product-discovery/media-products#exclusivity).
 
 ## Governance enforcement
 
