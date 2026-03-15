@@ -247,7 +247,7 @@ describe('handlePreviewCreative', () => {
     expect(renders).toHaveLength(1);
     expect(renders[0].role).toBe('primary');
     expect(renders[0].preview_url).toBeTruthy();
-    expect((renders[0].preview_url as string)).toContain('/api/creative-agent/preview/');
+    expect((renders[0].preview_url as string)).toContain('/preview/');
   });
 
   it('returns html output when requested', () => {
@@ -279,7 +279,7 @@ describe('handlePreviewCreative', () => {
     const renders = ((result.previews as any[])[0].renders as any[]);
     expect(renders[0].output_format).toBe('both');
     expect(renders[0].preview_html).toContain('<!DOCTYPE html>');
-    expect(renders[0].preview_url).toContain('/api/creative-agent/preview/');
+    expect(renders[0].preview_url).toContain('/preview/');
   });
 
   it('generates multiple previews from inputs array', () => {
