@@ -164,7 +164,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_content_standards',
       'update_content_standards',
       'list_content_standards',
-      'delete_content_standards',
       'calibrate_content',
       'get_media_buy_artifacts',
       'validate_content_delivery',

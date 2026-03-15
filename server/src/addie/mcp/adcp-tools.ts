@@ -1569,22 +1569,6 @@ export const ADCP_GOVERNANCE_CONTENT_TOOLS: AddieTool[] = [
     },
   },
   {
-    name: 'delete_content_standards',
-    description:
-      'Delete content standards.',
-    usage_hints:
-      'use when the user wants to remove content standards they no longer need',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_url: { type: 'string', description: 'The governance agent URL (must be HTTPS)' },
-        standards_id: { type: 'string', description: 'Content standards identifier to delete' },
-        debug: { type: 'boolean' },
-      },
-      required: ['agent_url', 'standards_id'],
-    },
-  },
-  {
     name: 'calibrate_content',
     description:
       'Calibrate content against content standards. Tests specific content samples to validate standards configuration.',

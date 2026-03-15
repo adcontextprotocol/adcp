@@ -355,7 +355,7 @@
         },
         "property_features": {
           "type": "array",
-          "description": "[AdCP 3.0] Optional list of agents that provide property feature data (certifications, scores, compliance status). Used for discovery - actual data comes from querying the agent's get_property_features task.",
+          "description": "[AdCP 3.0] Optional list of agents that provide property feature data (certifications, scores, compliance status). Used for discovery - actual data is accessed through property list filters.",
           "items": {
             "type": "object",
             "properties": {

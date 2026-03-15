@@ -77,7 +77,6 @@ Tasks:
 - **get_content_standards**: Retrieve content standards by ID
 - **list_content_standards**: List all content standards for an account
 - **update_content_standards**: Modify existing content standards
-- **delete_content_standards**: Remove content standards
 - **calibrate_content**: Test content against standards to verify classification accuracy
 - **validate_content_delivery**: Verify that delivered impressions comply with content standards
 - **get_media_buy_artifacts**: Retrieve governance artifacts (logs, reports) for a media buy

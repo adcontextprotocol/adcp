@@ -782,7 +782,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track A: Basics (all free)
   A1: [
     { label: 'Introduction to AdCP', url: `${DOCS_BASE}/docs/intro` },
-    { label: 'What is agentic advertising?', url: `${DOCS_BASE}/docs/agentic-advertising` },
+    { label: 'Introduction to agentic advertising', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
