@@ -572,7 +572,6 @@ export async function manualOutreach(
       channel: 'email',
       data: {
         subject: composed.subject,
-        text: composed.text,
         text_length: composed.text.length,
         stage: relationship.stage,
         goal_hint: composed.goalHint,

@@ -16,11 +16,16 @@ import {
   shouldContact,
   composeMessage,
   computeNextContactDate,
+  computeEngagementOpportunities,
+  buildComposePrompt,
+  COMPOSE_SYSTEM_PROMPT,
   STAGE_COOLDOWNS,
   MAX_UNREPLIED_BEFORE_PULSE,
+  MAX_TOTAL_UNREPLIED,
   MONTHLY_PULSE_DAYS,
+  DISENGAGING_PULSE_DAYS,
 } from './engagement-planner.js';
-import type { RelationshipContext, ComposedMessage } from './engagement-planner.js';
+import type { RelationshipContext, ComposedMessage, EngagementContext } from './engagement-planner.js';
 import type { PersonRelationship, RelationshipStage } from '../../db/relationship-db.js';
 import { STAGE_ORDER } from '../../db/relationship-db.js';
 import { getPool } from '../../db/client.js';
@@ -53,6 +58,8 @@ export interface SimulatedPersona {
     type: string;
     is_member: boolean;
   };
+  /** Starting sentiment — 'negative' will block contact until recovery */
+  initialSentiment?: 'neutral' | 'negative' | 'disengaging';
 }
 
 /** One simulated outreach attempt */
@@ -65,11 +72,24 @@ export interface SimulatedEvent {
   stage: RelationshipStage;
 }
 
+/** A snapshot of the compose prompt at a key simulation moment */
+export interface PromptSnapshot {
+  day: number;
+  moment: 'first_contact' | 'first_follow_up' | 'escalation_boundary' | 'monthly_pulse' | 'post_response';
+  channel: 'slack' | 'email';
+  stage: RelationshipStage;
+  unrepliedCount: number;
+  contactReason: string;
+  systemPrompt: string;
+  userPrompt: string;
+}
+
 /** Result of running a simulation */
 export interface SimulationResult {
   persona: SimulatedPersona;
   durationDays: number;
   events: SimulatedEvent[];
+  snapshots: PromptSnapshot[];
   summary: {
     totalContacts: number;
     totalSkips: number;
@@ -179,6 +199,36 @@ export const PERSONAS: SimulatedPersona[] = [
     responseProbability: 0.1,
     company: { name: 'Big Brand Co', type: 'brand', is_member: true },
   },
+  {
+    name: 'The DM Ignorer',
+    description: 'Active in public Slack channels but ignores DMs from Addie',
+    stage: 'participating',
+    hasSlack: true,
+    hasEmail: true,
+    responseBehavior: 'never',
+    company: { name: 'Channel Pref Corp', type: 'tech_vendor', is_member: true },
+  },
+  {
+    name: 'The Multi-Channel Responder',
+    description: 'Has both Slack and email, responds on whichever channel they feel like',
+    stage: 'prospect',
+    hasSlack: true,
+    hasEmail: true,
+    responseBehavior: 'sometimes',
+    responseProbability: 0.6,
+    company: { name: 'Omni Media', type: 'agency', is_member: false },
+  },
+  {
+    name: 'The Negative Recovery',
+    description: 'Was marked negative sentiment, slowly re-engages after a break',
+    stage: 'exploring',
+    hasSlack: true,
+    hasEmail: false,
+    responseBehavior: 'after_n',
+    respondAfterN: 5,
+    initialSentiment: 'negative',
+    company: { name: 'Second Chance LLC', type: 'brand', is_member: true },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -192,17 +242,28 @@ export const PERSONAS: SimulatedPersona[] = [
  * Reimplements shouldContact() rules with simulated time so we don't fight
  * Date.now() mismatches. This is the pure, deterministic version.
  */
-export function simulate(persona: SimulatedPersona, durationDays: number = 60): SimulationResult {
+export function simulate(persona: SimulatedPersona, durationDays: number = 60, options?: { seed?: number; capturePrompts?: boolean }): SimulationResult {
+  // Seeded PRNG for reproducibility. When seed is provided, results are deterministic.
+  const rng = options?.seed != null ? seededRandom(options.seed) : Math.random.bind(Math);
   const events: SimulatedEvent[] = [];
+  const snapshots: PromptSnapshot[] = [];
+  const capturePrompts = options?.capturePrompts ?? false;
 
   // State tracking (not a real PersonRelationship — just the fields we need)
   let stage: RelationshipStage = persona.stage;
+  let sentimentTrend: string = persona.initialSentiment ?? 'neutral';
   let unrepliedCount = 0;
   let lastAddieMessageDay: number | null = null;
   let lastPersonMessageDay: number | null = null;
   let nextContactAfterDay: number | null = null;
   let interactionCount = 0;
   let messagesSentToPersona = 0;
+  let lastChannel: 'slack' | 'email' | null = null;
+  /** Days with no contact before negative sentiment recovers to neutral */
+  const NEGATIVE_RECOVERY_DAYS = 30;
+
+  // Track assistant messages for conversation history in prompt snapshots
+  const assistantMessages: Array<{ day: number; content: string; channel: string }> = [];
 
   // Pending response (queued for a future day)
   let pendingResponseDay: number | null = null;
@@ -238,16 +299,37 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
       continue; // no channel
     }
 
+    // Negative sentiment recovery: after NEGATIVE_RECOVERY_DAYS with no contact, transition to neutral
+    if (sentimentTrend === 'negative') {
+      const daysSinceContact = lastAddieMessageDay != null ? day - lastAddieMessageDay : day;
+      if (daysSinceContact >= NEGATIVE_RECOVERY_DAYS) {
+        sentimentTrend = 'neutral';
+      }
+    }
+
     // Apply shouldContact rules with simulated time
     let shouldContact = true;
     let reason = 'eligible for proactive contact';
 
-    // Rule 1: 3+ unreplied — switch to monthly pulse
+    // Rule -1: Negative sentiment blocks all contact
+    if (sentimentTrend === 'negative') {
+      events.push({ day, action: 'blocked', reason: 'negative sentiment — suppressing proactive outreach', stage, unrepliedCount });
+      continue;
+    }
+
+    // Rule 0: Circuit breaker — stop entirely after too many unreplied
+    if (unrepliedCount >= MAX_TOTAL_UNREPLIED) {
+      events.push({ day, action: 'blocked', reason: `${unrepliedCount} total unreplied — circuit breaker`, stage, unrepliedCount });
+      continue;
+    }
+
+    // Rule 1: 3+ unreplied — switch to monthly pulse (doubled for disengaging)
     if (unrepliedCount >= MAX_UNREPLIED_BEFORE_PULSE) {
+      const pulseInterval = sentimentTrend === 'disengaging' ? DISENGAGING_PULSE_DAYS : MONTHLY_PULSE_DAYS;
       if (lastAddieMessageDay !== null) {
         const daysSinceLast = day - lastAddieMessageDay;
-        if (daysSinceLast < MONTHLY_PULSE_DAYS) {
-          events.push({ day, action: 'blocked', reason: `${unrepliedCount} unreplied — monthly pulse in ${MONTHLY_PULSE_DAYS - daysSinceLast}d`, stage, unrepliedCount });
+        if (daysSinceLast < pulseInterval) {
+          events.push({ day, action: 'blocked', reason: `${unrepliedCount} unreplied — monthly pulse in ${pulseInterval - daysSinceLast}d`, stage, unrepliedCount });
           continue;
         }
       }
@@ -267,8 +349,8 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
       if (lastAddieMessageDay !== null) {
         const daysSinceLast = day - lastAddieMessageDay;
         let cooldown = STAGE_COOLDOWNS[stage];
-        // Escalate if 2+ unreplied
-        if (unrepliedCount >= 2) {
+        // Escalate if 1+ unreplied (matches engagement planner)
+        if (unrepliedCount >= 1) {
           const currentIdx = STAGE_ORDER.indexOf(stage);
           const nextStage = STAGE_ORDER[Math.min(currentIdx + 1, STAGE_ORDER.length - 1)];
           cooldown = Math.max(cooldown, STAGE_COOLDOWNS[nextStage]);
@@ -296,6 +378,28 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
     unrepliedCount++;
     interactionCount++;
 
+    // Capture prompt snapshot at key moments
+    if (capturePrompts) {
+      const moment = classifyMoment(messagesSentToPersona, unrepliedCount, reason, lastPersonMessageDay, lastAddieMessageDay);
+      if (moment) {
+        const snapshot = buildPromptSnapshot(persona, {
+          day, moment, channel, stage, unrepliedCount, reason,
+          messagesSentToPersona, interactionCount,
+          lastAddieMessageDay, lastPersonMessageDay,
+          assistantMessages,
+        });
+        snapshots.push(snapshot);
+      }
+    }
+
+    // Track message for conversation history
+    assistantMessages.push({
+      day,
+      content: `[Simulated ${reason}]`,
+      channel,
+    });
+    lastChannel = channel;
+
     // Stage transition: prospect → welcomed on first message
     if (stage === 'prospect' && messagesSentToPersona === 1) {
       stage = 'welcomed';
@@ -305,10 +409,10 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
     nextContactAfterDay = day + STAGE_COOLDOWNS[stage];
 
     // Check if person responds
-    const responds = personResponds(persona, messagesSentToPersona);
+    const responds = personResponds(persona, messagesSentToPersona, rng);
     if (responds) {
       // Response comes 1-2 days later
-      pendingResponseDay = day + 1 + Math.floor(Math.random() * 2);
+      pendingResponseDay = day + 1 + Math.floor(rng() * 2);
       if (pendingResponseDay >= durationDays) pendingResponseDay = null;
     }
   }
@@ -328,6 +432,7 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
     persona,
     durationDays,
     events,
+    snapshots,
     summary: {
       totalContacts: contacts.length,
       totalSkips: events.filter(e => e.action === 'skipped').length,
@@ -343,14 +448,144 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60): 
   };
 }
 
-function personResponds(persona: SimulatedPersona, messagesSent: number): boolean {
+function personResponds(persona: SimulatedPersona, messagesSent: number, rng: () => number): boolean {
   switch (persona.responseBehavior) {
     case 'never': return false;
     case 'always': return true;
-    case 'sometimes': return Math.random() < (persona.responseProbability ?? 0.5);
+    case 'sometimes': return rng() < (persona.responseProbability ?? 0.5);
     case 'after_n': return messagesSent >= (persona.respondAfterN ?? 3);
     default: return false;
   }
+}
+
+/**
+ * Simple seeded PRNG (mulberry32). Produces deterministic sequences from an integer seed.
+ */
+function seededRandom(seed: number): () => number {
+  let state = seed | 0;
+  return () => {
+    state = (state + 0x6D2B79F5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Prompt Snapshot Helpers
+// ---------------------------------------------------------------------------
+
+type SnapshotMoment = PromptSnapshot['moment'];
+
+function classifyMoment(
+  messagesSent: number,
+  unrepliedCount: number,
+  reason: string,
+  lastPersonMessageDay: number | null,
+  lastAddieMessageDay: number | null,
+): SnapshotMoment | null {
+  if (messagesSent === 1) return 'first_contact';
+  if (reason.includes('monthly pulse')) return 'monthly_pulse';
+  if (lastPersonMessageDay !== null && lastAddieMessageDay !== null
+      && lastPersonMessageDay > lastAddieMessageDay) return 'post_response';
+  if (unrepliedCount === 3) return 'escalation_boundary';
+  if (unrepliedCount === 2 && messagesSent === 2) return 'first_follow_up';
+  return null;
+}
+
+interface SnapshotState {
+  day: number;
+  moment: SnapshotMoment;
+  channel: 'slack' | 'email';
+  stage: RelationshipStage;
+  unrepliedCount: number;
+  reason: string;
+  messagesSentToPersona: number;
+  interactionCount: number;
+  lastAddieMessageDay: number | null;
+  lastPersonMessageDay: number | null;
+  assistantMessages: Array<{ day: number; content: string; channel: string }>;
+}
+
+function buildPromptSnapshot(persona: SimulatedPersona, state: SnapshotState): PromptSnapshot {
+  const now = new Date();
+  const simStartDate = new Date(now.getTime() - state.day * 86400000);
+
+  // Build synthetic PersonRelationship
+  const relationship: PersonRelationship = {
+    id: 'sim-' + persona.name.toLowerCase().replace(/\s+/g, '-'),
+    display_name: persona.name.replace('The ', ''),
+    slack_user_id: persona.hasSlack ? 'U_SIM' : null,
+    email: persona.hasEmail ? `${persona.name.toLowerCase().replace(/\s+/g, '.')}@example.com` : null,
+    workos_user_id: null,
+    prospect_org_id: null,
+    stage: state.stage,
+    stage_changed_at: simStartDate,
+    sentiment_trend: 'neutral',
+    interaction_count: state.interactionCount,
+    unreplied_outreach_count: state.unrepliedCount,
+    last_addie_message_at: state.lastAddieMessageDay != null
+      ? new Date(now.getTime() - (state.day - state.lastAddieMessageDay) * 86400000)
+      : null,
+    last_person_message_at: state.lastPersonMessageDay != null
+      ? new Date(now.getTime() - (state.day - state.lastPersonMessageDay) * 86400000)
+      : null,
+    last_interaction_channel: state.channel,
+    next_contact_after: null,
+    contact_preference: null,
+    slack_dm_channel_id: null,
+    slack_dm_thread_ts: null,
+    opted_out: false,
+    created_at: simStartDate,
+    updated_at: now,
+  };
+
+  // Build recent messages from tracked assistant messages
+  const recentMessages = state.assistantMessages.slice(-5).map(m => ({
+    role: 'assistant' as const,
+    content: m.content,
+    channel: m.channel,
+    created_at: new Date(now.getTime() - (state.day - m.day) * 86400000),
+  }));
+
+  // Compute engagement opportunities
+  const engagementOpportunities = computeEngagementOpportunities({
+    relationship,
+    capabilities: null,
+    company: persona.company ? {
+      name: persona.company.name,
+      type: persona.company.type,
+      is_member: persona.company.is_member,
+    } : null,
+    recentMessages,
+    certification: null,
+  }, state.reason);
+
+  // Build the compose prompt
+  const ctx: RelationshipContext = {
+    relationship,
+    recentMessages,
+    profile: {
+      capabilities: null,
+      company: persona.company ? {
+        name: persona.company.name,
+        type: persona.company.type,
+        is_member: persona.company.is_member,
+      } : null,
+    },
+    engagementOpportunities,
+  };
+
+  return {
+    day: state.day,
+    moment: state.moment,
+    channel: state.channel,
+    stage: state.stage,
+    unrepliedCount: state.unrepliedCount,
+    contactReason: state.reason,
+    systemPrompt: COMPOSE_SYSTEM_PROMPT,
+    userPrompt: buildComposePrompt(ctx, state.channel, state.reason),
+  };
 }
 
 // ---------------------------------------------------------------------------
