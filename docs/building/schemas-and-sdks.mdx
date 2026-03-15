@@ -24,7 +24,7 @@ Both sources contain identical schemas. The GitHub repository includes all relea
 | Product | `https://adcontextprotocol.org/schemas/v2/core/product.json` |
 | Media Buy | `https://adcontextprotocol.org/schemas/v2/core/media-buy.json` |
 | Creative Format | `https://adcontextprotocol.org/schemas/v3/core/format.json` |
-| Schema Registry | `https://adcontextprotocol.org/schemas/v2/index.json` |
+| Schema Registry | `https://adcontextprotocol.org/schemas/v3/index.json` |
 
 ### For AI Coding Agents
 
@@ -114,7 +114,7 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 
 | Path | Example | Best For |
 |------|---------|----------|
-| Exact version | `/schemas/2.6.0/` | Production, SDK generation |
+| Exact version | `/schemas/2.5.3/` | Production, SDK generation |
 | Major version | `/schemas/v2/` | Development, documentation |
 | Minor version | `/schemas/v2.5/` | Stable development (patch updates only) |
 
@@ -123,7 +123,7 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 Pin to an exact version for stability:
 
 ```javascript
-const SCHEMA_VERSION = '2.6.0';
+const SCHEMA_VERSION = '2.5.3';
 const schema = await fetch(
   `https://adcontextprotocol.org/schemas/${SCHEMA_VERSION}/core/product.json`
 );
@@ -144,12 +144,12 @@ const schema = await fetch(
 ```bash
 # TypeScript
 npx json-schema-to-typescript \
-  https://adcontextprotocol.org/schemas/2.6.0/core/product.json \
+  https://adcontextprotocol.org/schemas/2.5.3/core/product.json \
   --output types/product.d.ts
 
 # Python
 datamodel-codegen \
-  --url https://adcontextprotocol.org/schemas/2.6.0/core/product.json \
+  --url https://adcontextprotocol.org/schemas/2.5.3/core/product.json \
   --output models/product.py
 ```
 
@@ -160,7 +160,7 @@ For tools that don't support `$ref` resolution, use bundled schemas with all ref
 ### Website Access
 
 ```
-https://adcontextprotocol.org/schemas/2.6.0/bundled/media-buy/create-media-buy-request.json
+https://adcontextprotocol.org/schemas/2.5.3/bundled/media-buy/create-media-buy-request.json
 ```
 
 ### GitHub Access
