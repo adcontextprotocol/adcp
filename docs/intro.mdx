@@ -27,6 +27,8 @@ This page follows Alex's team through the entire workflow — from finding new p
 
 ## Find new partners
 
+<img src="/images/walkthrough/intro-01-find-partners.png" alt="Alex reaches toward a glowing network map on a wall display, about to select a new publisher node from a constellation of connected partners" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
 Alex wants to work with publishers she's never talked to before. In the old world, that means sales calls, contracts, and weeks of integration work before she can even see what's available.
 
 With AdCP, discovery is built into the protocol. Every AdCP-enabled publisher hosts an `adagents.json` file — a machine-readable declaration of their properties, capabilities, and authorized agents. Alex's buyer agent reads it the same way a browser reads `robots.txt`.
@@ -85,6 +87,8 @@ GET /api/registry/agents?capability=get_products&channel=ctv
 
 ## Set up accounts
 
+<img src="/images/walkthrough/intro-02-set-up-accounts.png" alt="Sam shakes hands across a desk with a laptop showing a teal checkmark between them — setting up a new commercial relationship" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
 Before Alex's team can buy media, they need a commercial relationship. In the old world, each platform has different onboarding — portals, forms, sales reps, weeks of back-and-forth.
 
 AdCP standardizes this with the accounts protocol. Sam, Alex's media buyer, sets up Pinnacle's relationship with StreamHaus in one call:
@@ -113,6 +117,8 @@ The seller responds with the account status — active, pending review, or what 
 ---
 
 ## Discover what's available
+
+<img src="/images/walkthrough/intro-03-discover-products.png" alt="Sam stands at an ultrawide monitor comparing three seller proposals side by side, one hand on his chin, weighing the options" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 This is where it gets powerful. Sam wants to find premium sports inventory for Acme Outdoor's Q2 campaign. In the old world, he'd log into four dashboards and compare apples to oranges.
 
@@ -191,6 +197,8 @@ The seller adjusts and responds with refined options. No new RFP. No starting fr
 
 ## Build the creative
 
+<img src="/images/walkthrough/intro-04-build-creative.png" alt="Maya sits in a creative studio with her iPad, surrounded by wall screens showing ad formats of different sizes all generated from one brief" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
 Maya, Pinnacle's creative strategist, needs to produce ads for Sam's campaign. One campaign, three sellers, six formats — CTV video, OLV pre-roll, display banners, companion ads. In the old world, that's six separate production workflows.
 
 First, Maya discovers what each seller accepts:
@@ -249,6 +257,8 @@ Once approved, `sync_creatives` distributes the finished assets to every seller 
 
 ## Execute the buy
 
+<img src="/images/walkthrough/intro-05-execute-buy.png" alt="Sam presses a launch button on his laptop with a teal pulse radiating from the screen, Alex standing behind him arms crossed with a satisfied smile" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
 Sam has products, creatives, and accounts. Time to buy. One call to `create_media_buy` executes the campaign across every seller:
 
 ```json
@@ -277,6 +287,8 @@ For sellers that generate creative — AI assistants, conversational ad platform
 ---
 
 ## Add your data
+
+<img src="/images/walkthrough/intro-06-add-data.png" alt="Sam and Kai sit side by side with laptops as translucent teal data streams arc between their screens — combining campaign and signal data" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Sam's campaign needs targeting beyond what the sellers provide. His client has CRM data (existing customers to exclude), Pinnacle has audience segments from their DMP, and he wants to layer on third-party signals from Kai's data company, Meridian Geo.
 
@@ -326,6 +338,8 @@ The signal activates on StreamHaus's platform. Kai's data reaches Sam's campaign
 ---
 
 ## Govern it
+
+<img src="/images/walkthrough/intro-07-govern-it.png" alt="Jordan studies a governance approval chain on her tablet, silver hoop earrings catching the lamplight, her expression focused and deliberate" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Before any of Sam's campaigns go live, they pass through governance. Jordan, Pinnacle's campaign ops manager, set up the governance framework before Alex let any agent spend money.
 
@@ -389,6 +403,8 @@ After the campaign runs, `get_plan_audit_logs` provides the complete decision tr
 
 ## Track performance
 
+<img src="/images/walkthrough/intro-08-track-performance.png" alt="Sam stands before a large performance dashboard with trending charts, coffee in hand, turning back with a confident expression — everything is on track" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
 Sam's campaign is live. In the old world, he'd check four dashboards. Now, `get_media_buy_delivery` aggregates performance from every seller into one response:
 
 ```json
@@ -444,6 +460,8 @@ For deeper performance tracking, AdCP provides two more tools:
 
 ## Connect your store
 
+<img src="/images/walkthrough/intro-09-connect-store.png" alt="Overhead view of a phone showing a product catalog connected by a glowing teal line to a laptop campaign interface — catalog data flowing between them" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
 Acme Outdoor has a Shopify store with 200 products. They want their catalog available to AI platforms — AI assistants that recommend products, AI search engines that surface them, retail media networks that need feed data.
 
 `sync_catalogs` pushes the product feed to every connected platform:
@@ -470,6 +488,8 @@ The seller ingests the catalog and makes it available for product-level targetin
 ---
 
 ## Protect the brand
+
+<img src="/images/walkthrough/intro-10-protect-brand.png" alt="Tomoko stands in a corporate lobby before a frosted glass display of brand identity elements — composed and assured, she controls what goes out" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Tomoko manages brand operations at Acme Outdoor's parent company, Nova Motors. She published Nova's `brand.json` — a machine-readable brand identity that AI agents consume directly:
 
