@@ -1,4 +1,7 @@
 ---
+title: Testable examples demo
+description: Demonstration of the testable documentation system showing validated JSON and executable code blocks.
+"og:title": "AdCP — Testable examples demo"
 testable: true
 ---
 

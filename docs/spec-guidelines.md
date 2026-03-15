@@ -1,5 +1,7 @@
 ---
 title: Specification Guidelines
+description: Style and formatting guidelines for writing AdCP specification pages.
+"og:title": "AdCP — Specification Guidelines"
 ---
 
 # AdCP Specification Guidelines
