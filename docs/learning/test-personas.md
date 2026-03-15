@@ -2,6 +2,8 @@
 
 Six personas for testing how well the AdCP documentation, website, and Addie serve different user types. Personas 1-3 are build-side (engineering implementation). Personas 4-6 are buy-side (strategy and adoption at different scales). Each represents a realistic browsing session and set of questions.
 
+> **Relationship to character bible**: The character bible (see `specs/character-bible.md`) defines the illustrated characters used in walkthrough panels (Alex, Sam, Jordan, Maya, etc.). Test personas here are a separate concept — they simulate real user journeys to evaluate content quality. Where a test persona maps to a walkthrough character's role, we note the connection.
+
 ---
 
 ## Persona 1: Marcus Chen — Legacy AdCP builder

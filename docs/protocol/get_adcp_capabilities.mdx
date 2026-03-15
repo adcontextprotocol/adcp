@@ -65,7 +65,7 @@ Array of domain protocols this seller supports:
 
 ### account
 
-Account and authentication capabilities. Sellers that manage advertiser relationships — including walled gardens, retail media networks, and AI platforms — should declare this section. When present, buyers read it before calling `sync_accounts` or any authenticated task. Omitting it signals a simple publisher model with no account management.
+Account and authentication capabilities. All sellers should declare this section — buyers read it before calling `sync_accounts`, `list_accounts`, or any authenticated task. Even simple publishers need account management to handle billing relationships and sandbox testing.
 
 | Field | Type | Description |
 |-------|------|-------------|

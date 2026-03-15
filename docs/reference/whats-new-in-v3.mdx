@@ -142,18 +142,11 @@ Formats declare what catalogs they need via `catalog_requirements`. Creatives re
 
 ### Capability discovery
 
-`get_adcp_capabilities` replaces static agent card extensions with runtime capability discovery. It returns supported protocols, account billing models, portfolio information, targeting systems, and governance features — all schema-validated.
+`get_adcp_capabilities` replaces both `adcp-extension.json` and the MCP agent card with runtime capability discovery. It returns supported protocols, account billing models, portfolio information, targeting systems, and governance features — all schema-validated.
 
 <Warning>
-**`adcp-extension.json` is removed.** If your v2 integration reads capability data from the agent card extension file, switch to calling `get_adcp_capabilities` at runtime. The agent card extension is no longer published.
+**Agent cards and `adcp-extension.json` are no longer needed.** Buyers discover sellers through `adagents.json` and call `get_adcp_capabilities` at runtime. If your v2 integration reads capability data from agent card extensions, switch to `get_adcp_capabilities`.
 </Warning>
-
-| Agent card extension | get_adcp_capabilities |
-|---------------------|----------------------|
-| Static JSON file | Runtime discovery |
-| Single file location | Works with any transport |
-| Limited schema | Rich capability declaration |
-| No validation | Schema-validated responses |
 
 <Card title="get_adcp_capabilities" icon="arrow-right" href="/docs/protocol/get_adcp_capabilities">
   Full task reference with request/response schemas.
