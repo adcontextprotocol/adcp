@@ -82,6 +82,15 @@
             ]
           },
           {
+            "group": "Understanding Agentic Advertising",
+            "pages": [
+              "docs/agentic-advertising",
+              "docs/guides/buying-ai-media",
+              "docs/learning/overview",
+              "docs/faq"
+            ]
+          },
+          {
             "group": "Building with AdCP",
             "pages": [
               "docs/building/index",
@@ -493,6 +502,15 @@
                   "docs/reference/migration/attribution"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Understanding Agentic Advertising",
+            "pages": [
+              "docs/agentic-advertising",
+              "docs/guides/buying-ai-media",
+              "docs/learning/overview",
+              "docs/faq"
             ]
           },
           {
