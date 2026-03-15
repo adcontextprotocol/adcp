@@ -1,0 +1,106 @@
+name: Check SEO Metadata
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**/*.mdx'
+      - 'docs/**/*.md'
+      - 'scripts/check-seo-metadata.cjs'
+      - '.github/workflows/check-seo-metadata.yml'
+
+jobs:
+  check-seo:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check SEO metadata
+        id: check
+        run: |
+          DELIMITER="$(openssl rand -hex 16)"
+          OUTPUT=$(node scripts/check-seo-metadata.cjs 2>&1) || EXIT_CODE=$?
+          echo "$OUTPUT"
+          echo "output<<$DELIMITER" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "$DELIMITER" >> $GITHUB_OUTPUT
+          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            echo "has_errors=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_errors=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR (only when issues found)
+        if: steps.check.outputs.has_errors == 'true'
+        uses: actions/github-script@v7
+        env:
+          CHECK_OUTPUT: ${{ steps.check.outputs.output }}
+        with:
+          script: |
+            const output = process.env.CHECK_OUTPUT;
+            const comment = `## SEO Metadata Check\n\n\`\`\`\n${output}\n\`\`\`\n\nAll doc pages must have a \`description\` and \`"og:title"\` in frontmatter. Illustrated pages should also set \`"og:image"\`. No duplicate og:titles or descriptions.`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('SEO Metadata Check')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Clean up stale comment on success
+        if: steps.check.outputs.has_errors == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('SEO Metadata Check')
+            );
+
+            if (botComment) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id
+              });
+            }
+
+      - name: Fail on errors
+        if: steps.check.outputs.has_errors == 'true'
+        run: |
+          echo "❌ SEO metadata check failed: some pages are missing required fields"
+          exit 1

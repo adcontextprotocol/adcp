@@ -1793,7 +1793,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error running analysis");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unable to run analysis",
       });
     }
   });
@@ -1850,7 +1849,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error previewing rule changes");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unable to preview rule changes",
       });
     }
   });
@@ -1964,7 +1962,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error creating eval run");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unable to create eval run",
       });
     }
   });
@@ -2169,7 +2166,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error previewing Addie Home");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unable to preview Addie Home",
       });
     }
   });
@@ -2269,7 +2265,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error testing router");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unable to test router",
       });
     }
   });
@@ -2359,7 +2354,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error running Slack history backfill");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unable to run backfill",
       });
     }
   });
@@ -2404,7 +2398,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error getting Slack index status");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unable to get status",
       });
     }
   });
@@ -2441,7 +2434,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error listing insight sources");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2458,7 +2450,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error getting insights by topic");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2506,7 +2497,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error creating insight source");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2529,7 +2519,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error getting insight source");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2552,7 +2541,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error archiving insight source");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2626,7 +2614,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error tagging perspective as insight");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2671,7 +2658,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error listing perspectives for tagging");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2696,7 +2682,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error listing synthesis runs");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2731,7 +2716,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error running synthesis");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2765,7 +2749,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error getting synthesis run");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2800,7 +2783,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error reviewing synthesis run");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -2835,7 +2817,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       logger.error({ err: error }, "Error applying synthesis");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });

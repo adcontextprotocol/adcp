@@ -460,7 +460,6 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         logger.error({ err: error }, "Error generating widget token");
         res.status(500).json({
           error: "Internal server error",
-          message: error instanceof Error ? error.message : "Unable to generate widget token",
         });
       }
     }

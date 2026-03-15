@@ -146,6 +146,8 @@ jobs:
           COMMIT_SHA="$PR_HEAD_SHA"
           COMMIT_SHA_SHORT="${COMMIT_SHA:0:7}"
           COMMIT_MSG=$(git log -1 --format='%s' 2>/dev/null || echo "Unknown")
+          # Sanitize commit message to prevent markdown injection in PR comments
+          COMMIT_MSG=$(echo "$COMMIT_MSG" | sed 's/[][()\\`*_{}#+=|!>~-]/ /g')
           COMMIT_INFO="**Commit**: [\`$COMMIT_SHA_SHORT\`](https://github.com/${{ github.repository }}/commit/$COMMIT_SHA) - $COMMIT_MSG"
 
           if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
@@ -164,9 +166,10 @@ jobs:
               COMMENT="$COMMENT---\n\n**To fix**: Regenerate images using \`npx tsx scripts/generate-images.ts\` with the \`--max-retries 2\` flag, or update the image prompts to include \"Do not include any text, words, or labels in the image.\""
             fi
 
-            echo "comment<<EOF" >> $GITHUB_OUTPUT
+            DELIMITER="$(openssl rand -hex 16)"
+            echo "comment<<$DELIMITER" >> $GITHUB_OUTPUT
             echo -e "$COMMENT" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "$DELIMITER" >> $GITHUB_OUTPUT
           else
             echo "has_issues=false" >> $GITHUB_OUTPUT
             echo "✅ All $TOTAL_REFS image references valid ($CHECKED_COUNT checked via API)"

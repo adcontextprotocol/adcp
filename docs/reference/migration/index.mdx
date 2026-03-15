@@ -1,0 +1,95 @@
+---
+title: Migrating from v2 to v3
+sidebarTitle: Migration guide
+description: "A complete guide to migrating AdCP integrations from v2.x to v3.0, with breaking changes, effort estimates, and deep-dive pages for each area."
+"og:title": "AdCP — Migrating from v2 to v3"
+---
+
+# Migrating from v2 to v3
+
+This page is your single entry point for migrating an AdCP 2.x integration to 3.0. Every breaking change is listed below with effort estimates and links to detailed migration pages.
+
+For the full list of new features (not just breaking changes), see [What's new in v3](/docs/reference/whats-new-in-v3).
+
+## Migration checklist
+
+Each row is a breaking change. **Effort** indicates the typical work involved:
+
+- **Rename** — Field name changed, same semantics. Find-and-replace.
+- **Restructure** — Shape changed (e.g., string → object, single → array). Requires code changes.
+- **New requirement** — Didn't exist in v2. Requires new implementation.
+
+| Area | Change | Effort | Details |
+|---|---|---|---|
+| Channels | `native` removed | Restructure | [Channels migration](/docs/reference/migration/channels) |
+| Channels | `video` split into `olv`, `linear_tv`, `cinema` | Restructure | [Channels migration](/docs/reference/migration/channels) |
+| Channels | 10 new channels added (including `ai_media`) | Rename | [Channels migration](/docs/reference/migration/channels) |
+| Pricing | `fixed_rate` → `fixed_price` | Rename | [Pricing migration](/docs/reference/migration/pricing) |
+| Pricing | `price_guidance.floor` → `floor_price` | Rename | [Pricing migration](/docs/reference/migration/pricing) |
+| Pricing | Price guidance restructured | Restructure | [Pricing migration](/docs/reference/migration/pricing) |
+| Creatives | `creative_ids` → `creative_assignments` with weights | Restructure | [Creatives migration](/docs/reference/migration/creatives) |
+| Creatives | Asset discovery via `assets` array | New requirement | [Creatives migration](/docs/reference/migration/creatives) |
+| Catalogs | `promoted_offerings` → `sync_catalogs` | Restructure | [Catalogs migration](/docs/reference/migration/catalogs) |
+| Geo targeting | Flat arrays → system specification required | Restructure | [Geo targeting migration](/docs/reference/migration/geo-targeting) |
+| Optimization | `optimization_goal` (single) → `optimization_goals` (array, discriminated union) | Restructure | [Optimization goals migration](/docs/reference/migration/optimization-goals) |
+| Brand identity | `brand_manifest` → `brand` ref (`{ domain, brand_id }`) | Restructure | [Brand identity migration](/docs/reference/migration/brand-identity) |
+| Capability discovery | `adcp-extension.json` → `get_adcp_capabilities` | Restructure | [Capability discovery](/docs/protocol/get_adcp_capabilities) |
+| Signals | Delivery flattening, pricing restructure | Restructure | [Signals migration](/docs/reference/migration/signals) |
+| Audiences | `external_id` promoted to required top-level field | Restructure | [Audiences migration](/docs/reference/migration/audiences) |
+| Attribution | Integer day counts → `Duration` objects | Restructure | [Attribution migration](/docs/reference/migration/attribution) |
+
+## New in v3 — required vs optional
+
+These capabilities are new in v3. None existed in v2, so there's nothing to migrate — but you should know which ones affect your integration.
+
+| Capability | Required? | Who needs it |
+|---|---|---|
+| Accounts protocol (`sync_accounts`, `list_accounts`) | Required if `require_operator_auth: true` on any seller you connect to | All buyers working with walled gardens (AI platforms, social, retail media) |
+| Brand Protocol (`brand.json`) | Recommended | All buyers — provides brand identity for creative generation |
+| Governance (content standards, property lists) | Optional | Buyers who need brand suitability enforcement |
+| Sponsored Intelligence | Optional | Buyers working with AI platforms that support conversational handoffs |
+| Registry API | Optional | Buyers who want programmatic agent/brand discovery |
+| Campaign Governance | Optional | Organizations with compliance or approval workflows |
+
+## Running v2 and v3 side by side
+
+AdCP does not define a version negotiation mechanism at the transport level. To run v2 and v3 integrations in parallel during migration:
+
+1. **Check seller capabilities** — Call `get_adcp_capabilities` on each seller. If it succeeds, the seller supports v3. If the seller only exposes v2 tools (no `get_adcp_capabilities`), use your v2 code path.
+2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
+3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
+
+## Deep-dive pages
+
+<CardGroup cols={2}>
+  <Card title="Channels" icon="tv" href="/docs/reference/migration/channels">
+    `native` removed, `video` split, 10 new channels
+  </Card>
+  <Card title="Pricing" icon="tag" href="/docs/reference/migration/pricing">
+    Field renames and price guidance restructure
+  </Card>
+  <Card title="Creatives" icon="palette" href="/docs/reference/migration/creatives">
+    Creative assignments with weights and asset discovery
+  </Card>
+  <Card title="Catalogs" icon="database" href="/docs/reference/migration/catalogs">
+    `promoted_offerings` to first-class `sync_catalogs`
+  </Card>
+  <Card title="Geo targeting" icon="map" href="/docs/reference/migration/geo-targeting">
+    System specification for global geo support
+  </Card>
+  <Card title="Optimization goals" icon="bullseye" href="/docs/reference/migration/optimization-goals">
+    Single goal to array with discriminated union
+  </Card>
+  <Card title="Brand identity" icon="fingerprint" href="/docs/reference/migration/brand-identity">
+    `brand_manifest` to `brand` ref via `brand.json`
+  </Card>
+  <Card title="Signals" icon="signal" href="/docs/reference/migration/signals">
+    Delivery flattening and pricing restructure
+  </Card>
+  <Card title="Audiences" icon="users" href="/docs/reference/migration/audiences">
+    `external_id` promotion to required field
+  </Card>
+  <Card title="Attribution" icon="link" href="/docs/reference/migration/attribution">
+    Integer days to structured `Duration` objects
+  </Card>
+</CardGroup>

@@ -1,3 +1,9 @@
+---
+title: Testable snippets
+description: "How to write testable AdCP documentation: frontmatter flags, JSON schema validation, executable code blocks, and CI checks for keeping examples accurate."
+"og:title": "AdCP — Testable snippets"
+---
+
 # Writing Testable Documentation Snippets
 
 This guide explains how to write code examples in AdCP documentation that are automatically tested for correctness.

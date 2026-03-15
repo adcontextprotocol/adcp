@@ -1,7 +1,8 @@
 ---
 title: Accounts Protocol
 sidebarTitle: Overview
-description: The commercial infrastructure connecting buyers, brands, and vendor agents across all AdCP protocols
+description: "AdCP Accounts Protocol defines the commercial layer for advertising transactions — billing, operator authorization, and usage reporting between buyers, brands, and vendor agents."
+"og:title": "AdCP — Accounts Protocol"
 ---
 
 The Accounts Protocol defines the commercial layer beneath all AdCP vendor protocols. Every transaction — a media buy, a data signal, a content standards check — happens between parties that have a commercial relationship. The Accounts Protocol establishes that relationship and provides consumption reporting so vendors can track how their services were used.
@@ -19,6 +20,8 @@ Six questions underlie every AdCP transaction:
 | What was consumed? | Usage reporting | `report_usage` informs vendor agents how their services were used after delivery |
 
 The seller declares the account model in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) via `require_operator_auth`. When `true` (**explicit accounts**), operators authenticate independently and the buyer discovers accounts via [`list_accounts`](/docs/accounts/tasks/list_accounts). When `false` (**implicit accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) to provision accounts.
+
+An **ad network** may use both models simultaneously — implicit accounts on the buyer-facing side (the network is agent-trusted) and explicit accounts with each underlying platform (the network authenticates as an operator). See the [AI media guide — account model for networks](/docs/guides/ai-media#account-model-for-networks) for the full account chain: `buyer agent → network (implicit) → AI platform (explicit)`.
 
 After delivery, the orchestrator calls [`report_usage`](/docs/accounts/tasks/report_usage) to inform vendor agents (signals, governance, creative) how their services were consumed. This is not settlement — it's consumption reporting so the vendor can track earned revenue and verify billing.
 

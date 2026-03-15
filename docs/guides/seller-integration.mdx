@@ -1,8 +1,8 @@
 ---
 title: Making your inventory available to AI agents
 sidebarTitle: Seller integration
-description: How publishers, SSPs, and ad platforms expose inventory to AI buyer agents using AdCP. A practical guide for sell-side platforms.
-keywords: [ad inventory AI agents, publisher AdCP integration, SSP AI, sell-side agentic advertising, adagents.json, ad platform AI, MCP advertising]
+description: "Seller integration guide for AdCP. How publishers, SSPs, and ad platforms expose inventory to AI buyer agents through standardized product discovery and media buy tasks."
+"og:title": "AdCP — Making your inventory available to AI agents"
 ---
 
 AI agents are starting to buy media. When an agency's AI assistant is evaluating ad inventory across platforms, it needs a way to discover what you sell, understand your pricing and targeting options, and execute a buy — all through a standard interface.
@@ -83,6 +83,42 @@ Your response includes structured product objects with pricing, formats, and del
 
 The richer the product metadata, the better buyer agents can match your inventory to campaign requirements.
 
+For content-centric inventory like podcasts, CTV, or live events, products reference shows and can offer exclusivity:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "signal_noise_sponsorship",
+      "name": "Signal & Noise — Category Sponsorship",
+      "description": "Category-exclusive sponsorship of the Signal & Noise podcast, including pre-roll and mid-roll host read placements.",
+      "show_ids": ["signal_noise"],
+      "publisher_properties": ["crestnetwork_podcast"],
+      "channels": ["podcast"],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (30s)" },
+        { "placement_id": "host_read", "name": "Mid-roll host read (60s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "exclusivity": "category",
+      "format_ids": [
+        { "agent_url": "https://ads.publisher.example.com", "id": "audio_30s" }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "flat_monthly",
+          "pricing_model": "flat_rate",
+          "fixed_price": 15000,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) for the full content model and [Media products](/docs/media-buy/product-discovery/media-products#exclusivity) for exclusivity patterns.
+
 ### Accept and fulfill buys
 
 Implement `create_media_buy` to accept campaign instructions from buyer agents. A media buy includes the product, budget, schedule, and any targeting parameters.
@@ -103,9 +139,71 @@ Your platform processes the buy according to your normal workflow — whether th
 
 </Steps>
 
+## Industry-specific guidance
+
+The core integration steps above apply to all sellers. If you're an **ad network aggregating across multiple platforms**, see the [network aggregation pattern](/docs/guides/ai-media#ad-networks-the-aggregation-pattern) in the AI media guide for product modeling, account chains, catalog forwarding, and `adagents.json` for networks.
+
+For vertical-specific product modeling, pricing patterns, and measurement:
+
+- **AI platforms and AI ad networks**: See the [AI media guide](/docs/guides/ai-media) for sponsored responses, AI search products, generative creative from catalogs, and Sponsored Intelligence handoffs.
+- **Retail media networks**: See the [commerce media guide](/docs/guides/commerce-media) for sponsored product listings, closed-loop attribution, and in-store measurement.
+
+## Accounts and sandbox
+
+Production sales agents should implement the accounts protocol. [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) let buyers establish billing relationships, track spend per advertiser, and manage multiple operators buying on behalf of different brands through a single agent.
+
+The account model depends on your platform:
+
+- **Walled gardens** (social platforms, AI platforms, retail media networks) typically use explicit accounts — set `require_operator_auth: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) so each operator authenticates independently.
+- **Open platforms** (publishers, SSPs) can use implicit accounts — the agent is trusted and declares accounts via `sync_accounts`.
+
+See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for full workflows.
+
+**Sandbox support is strongly recommended.** Declare `account.sandbox: true` in your capabilities so buyers can provision test accounts and validate the full integration — product discovery, media buy creation, delivery reporting — before committing real spend. Without sandbox, buyers must test against live inventory, which slows adoption and increases onboarding friction. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for implementation details.
+
 ## Optional: delivery reporting
 
 Implement `get_media_buy_delivery` to let buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually.
+
+## Product design patterns
+
+Different inventory types use different AdCP features:
+
+| Inventory type | Key features |
+|---|---|
+| Standard display/video | `format_ids`, `delivery_type: "non_guaranteed"`, auction pricing |
+| Podcast sponsorship | `show_ids`, `placements` (host read), `delivery_type: "guaranteed"`, flat_rate |
+| CTV series sponsorship | `show_ids`, `exclusivity`, `delivery_type: "guaranteed"` |
+| Live event | `show_ids` (cadence: event), `episodes` (flexible_end, tentative), `exclusivity` |
+| Retail media | `catalog_types`, `catalog_match`, metric optimization |
+
+For content-centric inventory, see [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes). For exclusivity and sponsorship patterns, see [Media products](/docs/media-buy/product-discovery/media-products#exclusivity).
+
+## Governance enforcement
+
+Buyer agents increasingly require governance compliance before committing spend. Implementing governance makes your inventory eligible for brand-safe campaigns, reduces post-campaign disputes, and signals to buyer agents that your platform takes brand suitability seriously. Three governance domains are relevant to sellers.
+
+### Property governance via adagents.json
+
+Your `adagents.json` file is the foundation of property governance. It declares which properties you sell, which agents are authorized to sell them, and which governance agents have data about your inventory. Buyer agents use this to verify supply path authorization and discover property intelligence — if your `adagents.json` is missing or incomplete, buyer agents cannot verify that you are authorized to sell what you claim.
+
+Declare `property_features` entries to point buyers toward governance agents that score your properties for quality, sustainability, or brand safety. See the [property governance specification](/docs/governance/property/specification) for the full schema and the [adagents.json tech spec](/docs/governance/property/adagents) for publisher-side setup.
+
+### Content standards enforcement
+
+When a buyer includes a `content_standards_ref` in a `get_products` or `create_media_buy` request, they are asking you to enforce brand suitability rules during delivery. Your responsibilities: fetch the standards from the referenced governance agent, evaluate whether you can enforce them, reject the buy if you cannot, and calibrate your local evaluation model against the governance agent via `calibrate_content`. After delivery, push content artifacts back to the buyer so they can validate compliance independently.
+
+If you cannot meaningfully enforce a buyer's content standards, reject the buy rather than accepting it and failing silently. See the [content standards implementation guide](/docs/governance/content-standards/implementation-guide) for the full sales agent workflow.
+
+### Creative governance
+
+Buyer agents may require creative evaluation before delivery — security scanning, content categorization, or quality scoring. As a seller, you participate by submitting creative manifests to governance agents via `get_creative_features` and honoring the feature requirements the buyer sets (for example, blocking creatives flagged for `auto_redirect` or `credential_harvest`). You do not need to implement the evaluation yourself; specialist governance agents handle that.
+
+See the [creative governance overview](/docs/governance/creative/index) for the feature-based evaluation model and multi-agent collaboration pattern.
+
+### For AI media sellers: generation-time enforcement
+
+Traditional sellers apply governance as a post-delivery filter — classify content, then block what fails. AI media platforms generate creative at serve time, which means governance rules can be enforced during generation rather than after the fact. When a buyer pushes content standards, apply them as constraints on your generation pipeline so unsuitable content is never produced. This gives brands a fundamentally stronger guarantee: suitability is built into the output, not bolted on as a check afterward. See the [AI media guide](/docs/guides/ai-media) for how content standards integrate with catalog-driven creative generation.
 
 ## How it connects to your existing stack
 
@@ -132,5 +230,11 @@ AdCP sits alongside your existing APIs and dashboards. It doesn't replace your s
   </Card>
   <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">
     Ask questions about implementing AdCP for your platform — no code required.
+  </Card>
+  <Card title="AI media guide" icon="microchip" href="/docs/guides/ai-media">
+    Product modeling and workflows for AI platforms and AI ad networks.
+  </Card>
+  <Card title="Commerce media guide" icon="cart-shopping" href="/docs/guides/commerce-media">
+    Product modeling and workflows for retail media networks.
   </Card>
 </CardGroup>

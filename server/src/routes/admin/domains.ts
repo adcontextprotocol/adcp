@@ -300,8 +300,7 @@ export function setupDomainRoutes(
 
         if (error instanceof Error && error.message.includes("domain")) {
           return res.status(400).json({
-            error: "Domain error",
-            message: error.message,
+            error: "Invalid domain",
           });
         }
 
@@ -757,8 +756,7 @@ export function setupDomainRoutes(
 
         if (error instanceof Error && error.message.includes("domain")) {
           return res.status(400).json({
-            error: "Domain error",
-            message: error.message,
+            error: "Invalid domain",
           });
         }
 
@@ -1260,8 +1258,7 @@ export function setupDomainRoutes(
         } catch (workosErr) {
           logger.error({ err: workosErr, domain: normalizedDomain, orgId }, "Failed to add domain to WorkOS");
           return res.status(500).json({
-            error: "WorkOS error",
-            message: `Failed to add domain to WorkOS: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`,
+            error: "Failed to add domain to WorkOS",
           });
         }
 
@@ -1375,8 +1372,7 @@ export function setupDomainRoutes(
         } catch (workosErr) {
           logger.error({ err: workosErr, domain: normalizedDomain, orgId }, "Failed to remove domain from WorkOS");
           return res.status(500).json({
-            error: "WorkOS error",
-            message: `Failed to remove domain from WorkOS: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`,
+            error: "Failed to remove domain from WorkOS",
           });
         }
 
@@ -2416,13 +2412,11 @@ export function setupDomainRoutes(
               after = memberships.listMetadata?.after ?? undefined;
             } while (after);
           } catch (err: any) {
-            const rawMessage = err?.message || err?.code || 'Unknown error';
-            const errorMessage = rawMessage.length > 200 ? rawMessage.slice(0, 200) + '...' : rawMessage;
             logger.warn({ err, orgId }, 'Failed to get memberships for org, skipping');
             const userCount = (row.users as Array<unknown>).length;
             orgErrors += userCount;
             for (const user of row.users as Array<{ email: string }>) {
-              orgErrorDetails.push({ email: user.email, message: `Could not list org memberships: ${errorMessage}` });
+              orgErrorDetails.push({ email: user.email, message: 'Could not list org memberships' });
             }
             details.push({
               org_id: orgId,
@@ -2470,11 +2464,9 @@ export function setupDomainRoutes(
                 // User is already a member or has a pending invitation
                 orgSkipped++;
               } else {
-                const rawMessage = err?.message || err?.code || 'Unknown error';
-                const errorMessage = rawMessage.length > 200 ? rawMessage.slice(0, 200) + '...' : rawMessage;
                 logger.warn({ err, orgId, email: user.email }, 'Failed to add domain user');
                 orgErrors++;
-                orgErrorDetails.push({ email: user.email, message: errorMessage });
+                orgErrorDetails.push({ email: user.email, message: 'Failed to add domain user' });
               }
             }
           }

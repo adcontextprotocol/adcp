@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/talent.json",
+  "title": "Talent",
+  "description": "A person associated with a show or episode, with an optional link to their brand.json identity",
+  "type": "object",
+  "properties": {
+    "role": {
+      "$ref": "/schemas/enums/talent-role.json",
+      "description": "Role of this person on the show or episode"
+    },
+    "name": {
+      "type": "string",
+      "description": "Person's name as credited on the show"
+    },
+    "brand_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to this person's brand.json entry. Enables buyer agents to evaluate the talent's brand identity and associations."
+    }
+  },
+  "required": ["role", "name"],
+  "additionalProperties": true
+}

@@ -62,7 +62,6 @@ export function createAdminNotificationChannelsRouter(): Router {
       logger.error({ err: error }, 'List notification channels error');
       res.status(500).json({
         error: 'Failed to list notification channels',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -85,7 +84,6 @@ export function createAdminNotificationChannelsRouter(): Router {
       logger.error({ err: error }, 'Get notification channel error');
       res.status(500).json({
         error: 'Failed to get notification channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -130,7 +128,6 @@ export function createAdminNotificationChannelsRouter(): Router {
 
       res.status(500).json({
         error: 'Failed to create notification channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -176,7 +173,6 @@ export function createAdminNotificationChannelsRouter(): Router {
 
       res.status(500).json({
         error: 'Failed to update notification channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -202,7 +198,6 @@ export function createAdminNotificationChannelsRouter(): Router {
       logger.error({ err: error }, 'Toggle notification channel error');
       res.status(500).json({
         error: 'Failed to toggle notification channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -226,7 +221,6 @@ export function createAdminNotificationChannelsRouter(): Router {
       logger.error({ err: error }, 'Delete notification channel error');
       res.status(500).json({
         error: 'Failed to delete notification channel',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -272,7 +266,6 @@ export function createAdminNotificationChannelsRouter(): Router {
       logger.error({ err: error }, 'Test notification channel error');
       res.status(500).json({
         error: 'Failed to send test message',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

@@ -101,6 +101,7 @@ import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers } from './mcp/brand-sandbox-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
+import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
@@ -812,6 +813,15 @@ async function createUserScopedTools(
   allTools.push(...COLLABORATION_TOOLS);
   for (const [name, handler] of collaborationHandlers) {
     allHandlers.set(name, handler);
+  }
+
+  // Add social drafting tools (help members write social posts about industry articles)
+  if (memberContext?.is_member) {
+    const socialDraftHandlers = createSocialDraftToolHandlers(memberContext);
+    allTools.push(...SOCIAL_DRAFT_TOOLS);
+    for (const [name, handler] of socialDraftHandlers) {
+      allHandlers.set(name, handler);
+    }
   }
 
   // Add committee leader tools (co-leader management, self-enforcing permissions)

@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/show.json",
+  "title": "Show",
+  "description": "A persistent content program that produces episodes over time. Shows are reusable objects that products reference by show_id. The show_id is seller-scoped — use distribution identifiers for cross-seller matching.",
+  "type": "object",
+  "properties": {
+    "show_id": {
+      "type": "string",
+      "description": "Seller-assigned identifier for this show. Unique within a single get_products response but not globally unique across sellers. Use distribution identifiers for cross-seller matching."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable show name"
+    },
+    "description": {
+      "type": "string",
+      "description": "What the show is about"
+    },
+    "genre": {
+      "type": "array",
+      "description": "Genre tags. When genre_taxonomy is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0 codes). Otherwise free-form.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "genre_taxonomy": {
+      "type": "string",
+      "description": "Taxonomy system for genre values (e.g., 'iab_content_3.0'). When present, genre values should be valid taxonomy IDs. Recommended for machine-readable brand safety evaluation."
+    },
+    "language": {
+      "type": "string",
+      "description": "Primary language (BCP 47 tag, e.g., 'en', 'es-MX')"
+    },
+    "content_rating": {
+      "$ref": "/schemas/core/content-rating.json",
+      "description": "Baseline content rating for the show. Individual episodes may override this."
+    },
+    "cadence": {
+      "$ref": "/schemas/enums/show-cadence.json",
+      "description": "How frequently the show releases new episodes"
+    },
+    "season": {
+      "type": "string",
+      "description": "Current or most recent season identifier (e.g., '3', '2026', 'spring_2026'). A lightweight label — not a full season object."
+    },
+    "status": {
+      "$ref": "/schemas/enums/show-status.json",
+      "description": "Lifecycle status of the show"
+    },
+    "production_quality": {
+      "$ref": "/schemas/enums/production-quality.json",
+      "description": "Production quality tier. Seller-declared. Maps to OpenRTB content.prodq (professional=1, prosumer=2, ugc=3)."
+    },
+    "talent": {
+      "type": "array",
+      "description": "Hosts, recurring cast, creators associated with the show. Each talent entry may include a brand_url linking to their brand.json identity.",
+      "items": {
+        "$ref": "/schemas/core/talent.json"
+      }
+    },
+    "distribution": {
+      "type": "array",
+      "description": "Where this show is distributed. Each entry maps the show to a publisher platform with platform-specific identifiers. Shows SHOULD include at least one platform-independent identifier (imdb_id, gracenote_id, eidr_id) when available.",
+      "items": {
+        "$ref": "/schemas/core/show-distribution.json"
+      }
+    },
+    "related_shows": {
+      "type": "array",
+      "description": "Relationships to other shows (spin-offs, companion shows, etc.). Each entry references another show by show_id within the same response.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "show_id": {
+            "type": "string",
+            "description": "The related show's show_id within this seller's response"
+          },
+          "relationship": {
+            "$ref": "/schemas/enums/show-relationship.json",
+            "description": "How the shows are related"
+          }
+        },
+        "required": ["show_id", "relationship"],
+        "additionalProperties": false
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["show_id", "name"],
+  "additionalProperties": true
+}
