@@ -214,11 +214,9 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
 
         res.json(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
         logger.error({ err: error }, 'Error expanding house');
         res.status(500).json({
           error: 'House expansion failed',
-          message,
         });
       }
     }
@@ -385,9 +383,8 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
         const result = await researchDomain(domain, options);
         res.json(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
         logger.error({ err: error }, 'Error researching domain');
-        res.status(500).json({ error: 'Domain research failed', message });
+        res.status(500).json({ error: 'Domain research failed' });
       }
     }
   );

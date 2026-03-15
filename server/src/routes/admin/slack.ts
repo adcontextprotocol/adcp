@@ -51,7 +51,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Get Slack status error');
       res.status(500).json({
         error: 'Failed to get Slack status',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -65,7 +64,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Get Slack stats error');
       res.status(500).json({
         error: 'Failed to get Slack stats',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -83,7 +81,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Slack sync error');
       res.status(500).json({
         error: 'Failed to sync Slack users',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -110,7 +107,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'List Slack users error');
       res.status(500).json({
         error: 'Failed to list Slack users',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -185,7 +181,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Link Slack user error');
       res.status(500).json({
         error: 'Failed to link Slack user',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -226,7 +221,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Unlink Slack user error');
       res.status(500).json({
         error: 'Failed to unlink Slack user',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -247,7 +241,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Get unmapped Slack users error');
       res.status(500).json({
         error: 'Failed to get unmapped users',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -291,7 +284,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Get suggested matches error');
       res.status(500).json({
         error: 'Failed to get suggested matches',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -307,7 +299,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Auto-link suggested error');
       res.status(500).json({
         error: 'Failed to auto-link suggested matches',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

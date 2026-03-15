@@ -1025,7 +1025,8 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     } catch (error) {
       logger.error({ err: error, slackUserId: req.params.slackUserId }, 'Error previewing momentum for user');
       if (error instanceof Error && error.message.includes('not found')) {
-        return res.status(404).json({ error: error.message });
+        logger.warn({ err: error, slackUserId: req.params.slackUserId }, 'Resource not found');
+        return res.status(404).json({ error: 'Resource not found' });
       }
       res.status(500).json({ error: 'Internal server error' });
     }

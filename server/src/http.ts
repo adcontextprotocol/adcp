@@ -1662,7 +1662,7 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ err: error, domain, agent_url }, 'Validation failed');
         res.status(500).json({
-          error: error instanceof Error ? error.message : "Validation failed",
+          error: "Validation failed",
         });
       }
     });
@@ -1733,7 +1733,7 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ err: error, agentId }, 'Capability discovery failed');
         res.status(500).json({
-          error: error instanceof Error ? error.message : "Capability discovery failed",
+          error: "Capability discovery failed",
         });
       }
     });
@@ -1749,7 +1749,7 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ err: error, agentCount: agents.length }, 'Bulk capability discovery failed');
         res.status(500).json({
-          error: error instanceof Error ? error.message : "Bulk discovery failed",
+          error: "Bulk discovery failed",
         });
       }
     });
@@ -2076,10 +2076,10 @@ export class HTTPServer {
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
-        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to validate agent cards:');
+        logger.error({ err: error, path: req.path }, 'Failed to validate agent cards');
         return res.status(500).json({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: 'Failed to validate agent cards',
           timestamp: new Date().toISOString(),
         });
       }
@@ -2372,10 +2372,12 @@ export class HTTPServer {
         return res.json({ brand, revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
-          return res.status(404).json({ error: error.message });
+          logger.warn({ err: error, path: req.path }, 'Brand not found during edit');
+          return res.status(404).json({ error: 'Resource not found' });
         }
         if (error.message?.includes('Cannot edit')) {
-          return res.status(403).json({ error: error.message });
+          logger.warn({ err: error, path: req.path }, 'Access denied editing brand');
+          return res.status(403).json({ error: 'Access denied' });
         }
         logger.error({ error }, 'Failed to edit discovered brand');
         return res.status(500).json({ error: 'Failed to edit brand' });
@@ -2447,7 +2449,8 @@ export class HTTPServer {
         return res.json({ brand, revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
-          return res.status(404).json({ error: error.message });
+          logger.warn({ err: error, path: req.path }, 'Brand not found during rollback');
+          return res.status(404).json({ error: 'Resource not found' });
         }
         logger.error({ error }, 'Failed to rollback brand');
         return res.status(500).json({ error: 'Failed to rollback brand' });
@@ -2732,10 +2735,12 @@ export class HTTPServer {
         return res.json({ property, revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
-          return res.status(404).json({ error: error.message });
+          logger.warn({ err: error, path: req.path }, 'Property not found during edit');
+          return res.status(404).json({ error: 'Resource not found' });
         }
         if (error.message?.includes('Cannot edit')) {
-          return res.status(403).json({ error: error.message });
+          logger.warn({ err: error, path: req.path }, 'Access denied editing property');
+          return res.status(403).json({ error: 'Access denied' });
         }
         logger.error({ error }, 'Failed to edit hosted property');
         return res.status(500).json({ error: 'Failed to edit property' });
@@ -2807,7 +2812,8 @@ export class HTTPServer {
         return res.json({ property, revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
-          return res.status(404).json({ error: error.message });
+          logger.warn({ err: error, path: req.path }, 'Property not found during rollback');
+          return res.status(404).json({ error: 'Resource not found' });
         }
         logger.error({ error }, 'Failed to rollback property');
         return res.status(500).json({ error: 'Failed to rollback property' });
@@ -4149,7 +4155,6 @@ export class HTTPServer {
         logger.error({ err: error }, 'Get audit logs error:');
         res.status(500).json({
           error: 'Failed to get audit logs',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4168,7 +4173,6 @@ export class HTTPServer {
         logger.error({ err: error }, 'Get all agreements error:');
         res.status(500).json({
           error: 'Failed to get agreements',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4206,7 +4210,6 @@ export class HTTPServer {
         logger.error({ err: error }, 'Create agreement error:');
         res.status(500).json({
           error: 'Failed to create agreement',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4253,7 +4256,6 @@ export class HTTPServer {
         logger.error({ err: error }, 'Update agreement error:');
         res.status(500).json({
           error: 'Failed to update agreement',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4326,7 +4328,6 @@ export class HTTPServer {
         logger.error({ err: error }, 'Admin record agreement error');
         res.status(500).json({
           error: 'Failed to record agreement',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4687,7 +4688,6 @@ export class HTTPServer {
         logger.error({ err: error }, 'Error during revenue backfill');
         res.status(500).json({
           error: 'Internal server error',
-          message: error instanceof Error ? error.message : 'Revenue backfill failed',
         });
       }
     });
@@ -4827,7 +4827,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get published perspectives error:');
         res.status(500).json({
           error: 'Failed to get perspectives',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4860,7 +4859,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get perspective by slug error:');
         res.status(500).json({
           error: 'Failed to get perspective',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4920,7 +4918,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Add perspective like error:');
         res.status(500).json({
           error: 'Failed to add like',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -4961,7 +4958,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Remove perspective like error:');
         res.status(500).json({
           error: 'Failed to remove like',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -5100,7 +5096,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Login redirect error:');
         res.status(500).json({
           error: 'Failed to initiate login',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -5194,7 +5189,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Signup redirect error:');
         res.status(500).json({
           error: 'Failed to initiate signup',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -5552,7 +5546,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Auth callback error:');
         res.status(500).json({
           error: 'Authentication failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -5833,7 +5826,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get current user error:');
         res.status(500).json({
           error: 'Failed to get user info',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -5900,7 +5892,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get user agreements error:');
         res.status(500).json({
           error: 'Failed to get agreement history',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -5946,7 +5937,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Accept agreement error');
         res.status(500).json({
           error: 'Failed to accept agreement',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -5972,7 +5962,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'GET /api/me/addie-home error');
         res.status(500).json({
           error: 'Failed to get Addie home content',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6019,7 +6008,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get user invitations error:');
         res.status(500).json({
           error: 'Failed to get invitations',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6061,7 +6049,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Accept invitation error:');
         res.status(500).json({
           error: 'Failed to accept invitation',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6153,7 +6140,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get joinable organizations error:');
         res.status(500).json({
           error: 'Failed to get joinable organizations',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6450,7 +6436,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Create join request error:');
         res.status(500).json({
           error: 'Failed to create join request',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6483,7 +6468,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Cancel join request error:');
         res.status(500).json({
           error: 'Failed to cancel join request',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6519,7 +6503,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get agreement error:');
         res.status(500).json({
           error: 'Failed to get agreement',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6652,7 +6635,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get agreement error:');
         res.status(500).json({
           error: 'Failed to get agreement',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6711,7 +6693,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Create API key error:');
         res.status(500).json({
           error: 'Failed to create API key',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6741,7 +6722,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'List API keys error:');
         res.status(500).json({
           error: 'Failed to list API keys',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6782,7 +6762,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Revoke API key error:');
         res.status(500).json({
           error: 'Failed to revoke API key',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6839,7 +6818,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'List members error');
         res.status(500).json({
           error: 'Failed to list members',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -6879,7 +6857,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get carousel members error');
         res.status(500).json({
           error: 'Failed to get carousel members',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -7005,7 +6982,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get member error');
         res.status(500).json({
           error: 'Failed to get member',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -7186,7 +7162,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Check slug error');
         res.status(500).json({
           error: 'Failed to check slug availability',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -7297,7 +7272,6 @@ Disallow: /api/admin/
 
         return res.status(500).json({
           error: 'Agent discovery failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -7331,7 +7305,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Failed to list public publishers');
         return res.status(500).json({
           error: 'Failed to list publishers',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -7365,7 +7338,6 @@ Disallow: /api/admin/
 
         return res.status(500).json({
           error: 'Publisher validation failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });

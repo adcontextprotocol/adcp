@@ -1,0 +1,112 @@
+rules:
+  - id: error-message-leak
+    patterns:
+      - pattern-either:
+          # error: field with .message
+          - pattern: "res.json({..., error: $ERR.message, ...})"
+          - pattern: "res.status($CODE).json({..., error: $ERR.message, ...})"
+          # error: field with ternary
+          - pattern: "res.json({..., error: $ERR instanceof Error ? $ERR.message : $FALLBACK, ...})"
+          - pattern: "res.status($CODE).json({..., error: $ERR instanceof Error ? $ERR.message : $FALLBACK, ...})"
+          # message: field with ternary (always an error leak)
+          - pattern: "res.json({..., message: $ERR instanceof Error ? $ERR.message : $FALLBACK, ...})"
+          - pattern: "res.status($CODE).json({..., message: $ERR instanceof Error ? $ERR.message : $FALLBACK, ...})"
+      # Exclude application data like result.message — only catch catch-block error variables
+      - pattern-inside: |
+          catch ($ERR) {
+            ...
+          }
+    message: >-
+      Error message exposed to client. Use a generic message and log the
+      original error server-side.
+    severity: WARNING
+    languages: [typescript]
+    metadata:
+      category: security
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+    paths:
+      include:
+        - /server/src/**
+
+  - id: error-message-leak-direct
+    patterns:
+      - pattern-either:
+          - pattern: "res.json({..., message: $ERR.message, ...})"
+          - pattern: "res.status($CODE).json({..., message: $ERR.message, ...})"
+      - pattern-inside: |
+          catch ($ERR) {
+            ...
+          }
+    message: >-
+      Error message exposed to client. Use a generic message and log the
+      original error server-side.
+    severity: WARNING
+    languages: [typescript]
+    metadata:
+      category: security
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+    paths:
+      include:
+        - /server/src/**
+
+  - id: error-message-leak-template
+    patterns:
+      - pattern-either:
+          - pattern: "res.json({..., message: `... ${$ERR.message} ...`, ...})"
+          - pattern: "res.status($CODE).json({..., message: `... ${$ERR.message} ...`, ...})"
+          - pattern: "res.json({..., error: `... ${$ERR.message} ...`, ...})"
+          - pattern: "res.status($CODE).json({..., error: `... ${$ERR.message} ...`, ...})"
+      - pattern-inside: |
+          catch ($ERR) {
+            ...
+          }
+    message: >-
+      Error message interpolated into client response via template literal.
+      Use a generic message and log the original error server-side.
+    severity: WARNING
+    languages: [typescript]
+    metadata:
+      category: security
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+    paths:
+      include:
+        - /server/src/**
+
+  - id: error-stack-leak
+    patterns:
+      - pattern-either:
+          - pattern: "res.json({..., stack: $ERR.stack, ...})"
+          - pattern: "res.status($CODE).json({..., stack: $ERR.stack, ...})"
+          - pattern: "res.json({..., error: $ERR.stack, ...})"
+          - pattern: "res.status($CODE).json({..., error: $ERR.stack, ...})"
+          - pattern: res.send($ERR.stack)
+          - pattern: res.status($CODE).send($ERR.stack)
+    message: >-
+      Stack trace exposed to client response.
+    severity: ERROR
+    languages: [typescript]
+    metadata:
+      category: security
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+    paths:
+      include:
+        - /server/src/**
+
+  - id: unsanitized-header-reflection
+    patterns:
+      - pattern-either:
+          - pattern: res.set($HEADER, req.headers[$KEY])
+          - pattern: res.setHeader($HEADER, req.headers[$KEY])
+          - pattern: res.set($HEADER, req.get($KEY))
+          - pattern: res.header($HEADER, req.headers[$KEY])
+    message: >-
+      Request header reflected directly in response. Validate and sanitize
+      header values before reflecting them.
+    severity: WARNING
+    languages: [typescript]
+    metadata:
+      category: security
+      cwe: "CWE-116: Improper Encoding or Escaping of Output"
+    paths:
+      include:
+        - /server/src/**

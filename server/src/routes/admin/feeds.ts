@@ -152,7 +152,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'List feeds error');
       res.status(500).json({
         error: 'Failed to list feeds',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -182,7 +181,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Get feed error');
       res.status(500).json({
         error: 'Failed to get feed',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -230,7 +228,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Create feed error');
       res.status(500).json({
         error: 'Failed to create feed',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -257,7 +254,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Discover feeds error');
       res.status(500).json({
         error: 'Failed to discover feeds',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -289,7 +285,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Update feed error');
       res.status(500).json({
         error: 'Failed to update feed',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -311,7 +306,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Toggle feed error');
       res.status(500).json({
         error: 'Failed to toggle feed',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -343,7 +337,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Manual fetch error');
       res.status(500).json({
         error: 'Failed to fetch feed',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -367,7 +360,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Delete feed error');
       res.status(500).json({
         error: 'Failed to delete feed',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -408,7 +400,6 @@ export function createAdminFeedsRouter(): Router {
       logger.error({ err: error }, 'Toggle feed email error');
       res.status(500).json({
         error: 'Failed to toggle feed email',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
