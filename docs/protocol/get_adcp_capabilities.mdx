@@ -323,7 +323,24 @@ if (result.supported_protocols.includes('media_buy')) {
 }
 ```
 
-### Filter Sellers by Capability
+### Check multi-protocol support
+
+```javascript
+const caps = await client.getAdcpCapabilities({});
+
+const sellsMedia = caps.supported_protocols.includes('media_buy');
+const managesCreatives = caps.supported_protocols.includes('creative');
+
+if (sellsMedia && managesCreatives) {
+  // Single agent handles both protocols — no need to discover a separate service
+  const formats = await client.listCreativeFormats({});
+  const delivery = await client.getCreativeDelivery({
+    media_buy_ids: ['mb_12345']
+  });
+}
+```
+
+### Filter sellers by capability
 
 ```javascript
 // Find sellers that support specific requirements
@@ -557,7 +574,7 @@ const buy = await client.createMediaBuy({
 
 This tells buyers:
 - **AdCP versions**: Version 1
-- **Protocols**: Media-buy only (signals not supported)
+- **Protocols**: Media buy only
 - **Auth model**: Agent-trusted (`require_operator_auth: false`) — authenticate once, declare brands via `sync_accounts`
 - **Billing**: Operator or agent billing; default is operator
 - **Country targeting**: Available (ISO 3166-1 alpha-2: `US`, `GB`, etc.)
@@ -566,6 +583,46 @@ This tells buyers:
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
 - **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
 - **Extensions**: Scope3 sustainability data in `ext.scope3`
+
+### Multi-protocol agent
+
+An agent can implement multiple protocols from a single endpoint. This is common for sellers that manage both media buying and creative generation — the buyer calls all tasks on the same URL.
+
+```json
+{
+  "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "adcp": {
+    "major_versions": [3]
+  },
+  "supported_protocols": ["media_buy", "creative"],
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["operator"]
+  },
+  "media_buy": {
+    "features": {
+      "inline_creative_management": true
+    },
+    "portfolio": {
+      "publisher_domains": ["news.example.com"],
+      "primary_channels": ["display", "olv"]
+    }
+  },
+  "creative": {
+    "has_creative_library": true,
+    "supports_generation": true,
+    "supports_transformation": false,
+    "supports_compliance": false
+  }
+}
+```
+
+This agent supports:
+- **Media Buy Protocol**: Product discovery, media buying, delivery reporting
+- **Creative Protocol**: Creative library management, AI-powered creative generation, variant-level delivery analytics via `get_creative_delivery`
+- **Shared account**: A single account established via `sync_accounts` applies to both protocols
+
+When `supported_protocols` includes `"creative"`, the buyer can call Creative Protocol tasks (`list_creative_formats`, `sync_creatives`, `get_creative_delivery`, etc.) on this agent. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 ### Geo Standards Reference
 

@@ -668,7 +668,8 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_creatives');
     expect(toolNames).toContain('list_creatives');
     expect(toolNames).toContain('update_media_buy');
-    expect(toolNames).toHaveLength(8);
+    expect(toolNames).toContain('get_creative_delivery');
+    expect(toolNames).toHaveLength(9);
   });
 
   it('returns error for unknown tool', async () => {
@@ -2374,5 +2375,223 @@ describe('update_media_buy budget validation', () => {
 
     expect(result.errors).toBeDefined();
     expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('non-negative');
+  });
+});
+
+describe('get_creative_delivery handler', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns validation error when no scoping filter provided', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {});
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('validation_error');
+  });
+
+  it('returns empty creatives for unknown media buy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {
+      media_buy_ids: ['mb_nonexistent'],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.creatives).toEqual([]);
+    expect(result.currency).toBe('USD');
+    expect(result.reporting_period).toBeDefined();
+  });
+
+  it('returns variant-level delivery for creatives assigned to a media buy', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'creativedel.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    // Create a media buy
+    const { result: buyResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'cd-test',
+      account,
+      brand: { domain: 'creativedel.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        buyer_ref: 'pkg-cd',
+      }],
+    });
+
+    const mediaBuyId = buyResult.media_buy_id as string;
+    const pkgs = buyResult.packages as Array<Record<string, unknown>>;
+    const packageId = pkgs[0].package_id as string;
+
+    // Sync a creative with assignment to the package
+    const { result: syncResult } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'test_creative_1',
+        name: 'Test Creative',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { headline: { asset_type: 'text', content: 'Hello' } },
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'test_creative_1' }],
+    });
+
+    expect(syncResult.errors).toBeUndefined();
+
+    // Get creative delivery
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+      max_variants: 2,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.currency).toBe('USD');
+    expect(result.reporting_period).toBeDefined();
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.length).toBe(1);
+
+    const creative = creatives[0];
+    expect(creative.creative_id).toBe('test_creative_1');
+    expect(creative.media_buy_id).toBe(mediaBuyId);
+    expect(creative.variant_count).toBeGreaterThan(0);
+
+    const variants = creative.variants as Array<Record<string, unknown>>;
+    expect(variants.length).toBeGreaterThan(0);
+
+    // Each variant should have required fields
+    const variant = variants[0];
+    expect(variant.variant_id).toBeDefined();
+    expect(variant.generation_context).toBeDefined();
+    expect(variant.manifest).toBeDefined();
+    expect(typeof variant.impressions).toBe('number');
+    expect(typeof variant.spend).toBe('number');
+    expect(typeof variant.ctr).toBe('number');
+
+    // Totals should be present
+    const totals = creative.totals as Record<string, unknown>;
+    expect(typeof totals.impressions).toBe('number');
+    expect(typeof totals.spend).toBe('number');
+  });
+
+  it('returns deterministic results for the same creative', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'deterministic.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'det-test',
+      account,
+      brand: { domain: 'deterministic.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        buyer_ref: 'pkg-det',
+      }],
+    });
+
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account });
+    const buys = buyResult.media_buys as Array<Record<string, unknown>>;
+    const mediaBuyId = buys[0].media_buy_id as string;
+    const mbPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
+    const mbPackageId = mbPkgs[0].package_id as string;
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'stable_creative',
+        name: 'Stable',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { headline: { asset_type: 'text', content: 'Stable' } },
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: mbPackageId, creative_id: 'stable_creative' }],
+    });
+
+    // Call twice and verify same results
+    const { result: r1 } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const { result: r2 } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+
+    const c1 = (r1.creatives as Array<Record<string, unknown>>)[0];
+    const c2 = (r2.creatives as Array<Record<string, unknown>>)[0];
+    const t1 = c1.totals as Record<string, unknown>;
+    const t2 = c2.totals as Record<string, unknown>;
+
+    expect(t1.impressions).toBe(t2.impressions);
+    expect(t1.spend).toBe(t2.spend);
+    expect(t1.clicks).toBe(t2.clicks);
+  });
+
+  it('looks up by buyer_refs', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'buyerref.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'cd-ref-lookup',
+      account,
+      brand: { domain: 'buyerref.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        buyer_ref: 'pkg-ref',
+      }],
+    });
+
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account });
+    const buys = buyResult.media_buys as Array<Record<string, unknown>>;
+    const mediaBuyId = buys[0].media_buy_id as string;
+    const refPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
+    const refPackageId = refPkgs[0].package_id as string;
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'ref_creative',
+        name: 'Ref Creative',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { headline: { asset_type: 'text', content: 'Ref' } },
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: refPackageId, creative_id: 'ref_creative' }],
+    });
+
+    // Look up by buyer_refs
+    const { result } = await simulateCallTool(server, 'get_creative_delivery', {
+      account,
+      media_buy_buyer_refs: ['cd-ref-lookup'],
+    });
+
+    expect(result.errors).toBeUndefined();
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives.length).toBe(1);
+    expect(creatives[0].creative_id).toBe('ref_creative');
   });
 });

@@ -23,15 +23,23 @@ Response:
   "response_type": "single",
   "previews": [
     {
-      "preview_url": "https://creative-agent.example.com/preview/abc123",
+      "preview_id": "prev_001",
+      "renders": [
+        {
+          "render_id": "render_1",
+          "output_format": "url",
+          "preview_url": "https://creative-agent.example.com/preview/abc123",
+          "role": "primary"
+        }
+      ],
       "input": { "name": "Default", "macros": {} }
     }
   ],
-  "expires_at": "2025-02-15T18:00:00Z"
+  "expires_at": "2027-02-15T18:00:00Z"
 }
 ```
 
-Embed in an iframe:
+Embed the primary render in an iframe:
 
 ```html
 <iframe src="https://creative-agent.example.com/preview/abc123"
@@ -57,10 +65,19 @@ Response contains raw HTML:
   "response_type": "single",
   "previews": [
     {
-      "preview_html": "<div class=\"creative\">...</div>",
+      "preview_id": "prev_002",
+      "renders": [
+        {
+          "render_id": "render_1",
+          "output_format": "html",
+          "preview_html": "<div class=\"creative\">...</div>",
+          "role": "primary"
+        }
+      ],
       "input": { "name": "Default", "macros": {} }
     }
-  ]
+  ],
+  "expires_at": "2027-02-15T18:00:00Z"
 }
 ```
 
@@ -88,8 +105,8 @@ Response contains results in order:
 {
   "response_type": "batch",
   "results": [
-    { "success": true, "response": { "previews": [...], "expires_at": "..." } },
-    { "success": true, "response": { "previews": [...], "expires_at": "..." } }
+    { "success": true, "creative_id": "creative_1", "response": { "previews": [...], "expires_at": "..." } },
+    { "success": true, "creative_id": "creative_2", "response": { "previews": [...], "expires_at": "..." } }
   ]
 }
 ```
@@ -143,7 +160,7 @@ Response:
       }
     }
   },
-  "expires_at": "2026-02-15T18:00:00Z"
+  "expires_at": "2027-02-15T18:00:00Z"
 }
 ```
 
@@ -168,8 +185,10 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 | `format_id` | FormatID | No | Format identifier (agent_url + id). Defaults to `creative_manifest.format_id` if omitted. |
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets for the format. |
 | `inputs` | array | No | Array of input sets for multiple preview variants |
+| `quality` | string | No | `"draft"` (fast, lower-fidelity) or `"production"` (full quality). If omitted, the agent uses its own default. |
 | `output_format` | string | No | `"url"` (default) or `"html"` |
 | `item_limit` | integer | No | Maximum catalog items to render per preview variant. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large. |
+| `template_id` | string | No | Specific template ID for custom format rendering. Used when a format supports multiple visual templates. |
 
 ### Batch Mode
 
@@ -177,9 +196,10 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 |-----------|------|----------|-------------|
 | `request_type` | string | Yes | `"batch"` |
 | `requests` | array | Yes | Array of 1-50 preview requests |
+| `quality` | string | No | Default quality for all requests: `"draft"` or `"production"` |
 | `output_format` | string | No | Default output format for all requests |
 
-Each item in `requests` also accepts `item_limit` to cap catalog rendering for that individual preview.
+Each item in `requests` also accepts `quality`, `output_format`, `item_limit`, and `template_id` to override batch-level defaults for that individual preview.
 
 ### Input Sets
 
@@ -207,7 +227,7 @@ Generate multiple preview variants by providing different contexts:
 {
   response_type: "single";
   previews: Preview[];       // One per input (or one default)
-  interactive_url?: string;  // Optional testing page
+  interactive_url?: string;  // Optional sandbox for interactive formats
   expires_at: string;        // ISO 8601 expiration
 }
 ```
@@ -219,8 +239,9 @@ Generate multiple preview variants by providing different contexts:
   response_type: "batch";
   results: Array<{
     success: boolean;
+    creative_id: string;
     response?: { previews: Preview[]; expires_at: string; };
-    error?: { code: string; message: string; };
+    errors?: Array<{ code: string; message: string; }>;
   }>;
 }
 ```
@@ -230,23 +251,100 @@ Generate multiple preview variants by providing different contexts:
 ```typescript
 {
   preview_id: string;
-  renders: [{
+  renders: Array<{
     render_id: string;
     output_format: "url" | "html" | "both";
     preview_url?: string;     // When output_format is "url" or "both"
     preview_html?: string;    // When output_format is "html" or "both"
     role: string;             // "primary", "companion", etc.
     dimensions?: { width: number; height: number; };
-  }];
+  }>;
   input: {
     name: string;
-    macros?: object;
+    macros?: Record<string, string>;
     context_description?: string;
   };
 }
 ```
 
 **Multi-render formats**: Some formats produce multiple pieces (video + companion banner). Each has its own `render_id` and `role`.
+
+## Previewing generative creative
+
+For generative formats — contextual display, AI-generated native, conversational ads — the creative doesn't exist until serve time. Preview serves two distinct purposes:
+
+### Pre-flight: representative samples
+
+Before the campaign runs, use single or batch mode to preview what the agent *could* generate given different contexts. Pass `inputs` with `context_description` to simulate serve-time conditions:
+
+```json
+{
+  "$schema": "/schemas/creative/preview-creative-request.json",
+  "request_type": "single",
+  "quality": "draft",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.seller-example.com",
+      "id": "contextual_display_generative"
+    },
+    "assets": {
+      "brief": {
+        "content": "Highlight our sustainability story. Match tone to editorial context."
+      }
+    }
+  },
+  "inputs": [
+    { "name": "Tech article", "context_description": "Article about semiconductor manufacturing" },
+    { "name": "Lifestyle blog", "context_description": "Blog post about sustainable living" }
+  ]
+}
+```
+
+These previews are *representative*, not definitive. Real serve-time output depends on live signals (actual page content, user device, time of day) that can't be fully simulated. Use draft quality for fast iteration on the brief and creative direction, then production quality for stakeholder review.
+
+### Post-flight: exact replay
+
+After the campaign runs, use variant mode to see exactly what was served. Pass a `variant_id` from `get_creative_delivery`:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_tech_mobile_001"
+}
+```
+
+The response includes the variant's actual manifest — the specific headline, image, and layout the agent generated for that context. This is a faithful replay, not a re-generation.
+
+### Setting expectations
+
+| Aspect | Standard creative | Generative creative |
+|---|---|---|
+| Pre-flight preview | Exact — what you see is what runs | Representative — shows the agent's interpretation of the brief under simulated conditions |
+| Post-flight preview | Same as pre-flight | Exact — faithful replay of served output via variant mode |
+| `quality: "draft"` | Fast wireframe-quality render | Fast, lower-fidelity generation for reviewing creative direction |
+| `quality: "production"` | Full-fidelity render | Full-quality generation for stakeholder sign-off |
+| Number of variants | Typically 1 (or a few device variants) | Potentially thousands — one per context |
+
+For generative formats where every impression produces a different creative (like AI chat or real-time contextual), pre-flight previews are best understood as *samples from a distribution* rather than *the ad*. The brief and brand identity constrain the distribution; previews let you verify the agent interprets those constraints correctly.
+
+### Conversational and interactive formats
+
+For formats where the ad is stateful — AI chat, interactive experiences, conversational native — preview takes on additional meaning:
+
+- **Pre-flight** renders a representative first interaction or simulated conversation. The `interactive_url` field in the preview response (when present) provides a sandbox where reviewers can interact with the experience directly. Use `context_description` to simulate different conversation entry points.
+- **Post-flight** variant replay shows the actual exchange that occurred. For multi-turn formats, the variant manifest captures the full content the agent produced (message sequence, responses, media assets shown). The level of detail depends on the agent — some provide full transcripts, others provide summarized content with anonymized user signals.
+
+These formats have the widest gap between pre-flight and post-flight: a pre-flight preview can only approximate one possible conversation path, while the live experience adapts to each user. Preview enough scenarios to verify tone, guardrails, and brand consistency.
+
+### Quality mismatch
+
+If the requested quality level is not supported, the agent renders at the best quality it can provide. The protocol does not require agents to support both levels — an agent that only generates at one fidelity ignores the parameter. There is no response field echoing back the actual quality used, so if quality accuracy matters for your workflow, verify by visual inspection or ask the agent about its capabilities through `list_creative_formats`.
+
+### Preview expiration and variant retention
+
+All previews have an `expires_at` timestamp. After expiration, preview URLs return errors and must be re-generated. For generative creative, re-generating a pre-flight preview may produce different output — the same brief and context can yield different creative each time.
+
+Variant previews (post-flight) depend on the agent retaining variant data. Agents are not required to retain variant data indefinitely. If you request a variant preview for a variant the agent has purged, expect a standard error response. For long-running campaigns, retrieve and archive variant previews periodically rather than assuming they will remain available.
 
 ## Examples
 
@@ -318,7 +416,7 @@ Preview multiple creatives for a grid layout:
 
 ## Key Points
 
-- Every `preview_url` returns an HTML page for iframe embedding
+- Every render's `preview_url` returns an HTML page for iframe embedding
 - Use `output_format: "html"` for grids of 10+ previews (no iframe overhead)
 - Batch mode is 5-10x faster than individual requests
 - Preview URLs expire (check `expires_at`)

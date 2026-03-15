@@ -94,6 +94,7 @@ RUN npm ci --omit=dev --ignore-scripts
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server/public ./server/public
 COPY --from=builder /app/server/src/db/migrations ./dist/db/migrations
+COPY --from=builder /app/server/src/creative-agent/reference-formats.json ./dist/creative-agent/
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
 

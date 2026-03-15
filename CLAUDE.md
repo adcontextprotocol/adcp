@@ -28,6 +28,13 @@ All documentation and examples MUST match JSON schemas in `static/schemas/source
 - Remove examples that don't match schema (don't mark as `test=false`)
 - Test with: `npm test -- --file docs/path/to/file.mdx`
 
+### Expert Review Scenarios
+When running expert agents against documentation changes, test both:
+- **Conceptual correctness** — Is the framing right? Are terms used consistently?
+- **End-to-end buyer workflows** — Walk through actual buyer journeys (discovery → preview → serve → audit). Include generative-specific flows (brief → pre-flight preview → live campaign → post-flight replay) and edge cases (conversational formats, quality mismatches, multi-format pipelines).
+
+Conceptual reviews miss workflow gaps. Workflow reviews miss framing errors. Run both.
+
 ### Discriminated Union Error Handling
 Always check for errors before accessing success fields:
 ```javascript
@@ -293,7 +300,7 @@ Module and exam completion is only available through Addie's tool calls — neve
 
 Walkthrough and overview pages use AI-generated illustrations in a consistent graphic novel style. When generating images with Gemini, use this prompt structure:
 
-**Model**: `gemini-2.5-flash-image` (via `responseModalities: ["TEXT", "IMAGE"]`)
+**Model**: `gemini-3.1-flash-image-preview` (via `responseModalities: ["TEXT", "IMAGE"]`)
 
 **Base style prompt** (include in every image request):
 ```

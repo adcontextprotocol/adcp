@@ -59,12 +59,14 @@ The `creative` capabilities tell the buyer which interaction models this agent s
 
 ### Creative agents
 
-Creative agents are authoritative sources for format definitions. A creative agent:
+A creative agent is any agent that implements the Creative Protocol. This includes standalone services (ad servers, creative management platforms, generative tools) and sales agents that declare `"creative"` in `supported_protocols`. A creative agent:
 
 - Defines and documents formats it owns
 - Validates manifests against format requirements
 - Generates previews showing how creatives will render
 - Optionally generates or transforms creatives from natural language briefs
+
+Sales agents that implement both the Media Buy Protocol and the Creative Protocol serve both roles from a single endpoint. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 ### Interaction models
 
@@ -204,7 +206,7 @@ Generate preview renderings of creative manifests.
 
 **Reference**: [`list_creatives` task](/docs/creative/task-reference/list_creatives)
 
-Browse and filter creative assets in a creative library. Implemented by any agent that hosts a creative library — standalone creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+Browse and filter creative assets in a creative library. Implemented by any agent that hosts a creative library — ad servers, creative management platforms, and sales agents that manage creatives.
 
 **Requirements:**
 - Agents MUST return creatives accessible to the authenticated account
@@ -227,7 +229,7 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 
 **Reference**: [`sync_creatives` task](/docs/creative/task-reference/sync_creatives)
 
-Upload and synchronize creative assets in a library. Implemented by any agent that hosts a creative library — standalone creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+Upload and synchronize creative assets in a library. Implemented by any agent that hosts a creative library — ad servers, creative management platforms, and sales agents that manage creatives.
 
 **Requirements:**
 - Agents MUST validate creatives against format specifications
@@ -245,8 +247,9 @@ Upload and synchronize creative assets in a library. Implemented by any agent th
 Retrieve creative delivery data with variant-level metrics.
 
 **Requirements:**
-- Creative agents MUST return delivery data for the requested creatives
-- Creative agents SHOULD include variant-level breakdowns when available
+- Agents MUST return delivery data for the requested creatives
+- Agents SHOULD include variant-level breakdowns when available
+- Sales agents implementing the Creative Protocol SHOULD support this task when their products generate or optimize creative variants
 
 ## Error handling
 
