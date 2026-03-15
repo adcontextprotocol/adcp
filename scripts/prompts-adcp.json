@@ -1,0 +1,35 @@
+[
+  {
+    "filename": "images/walkthrough/adcp-01-fragmentation.png",
+    "prompt": "Alex, a media operations director (woman, early 40s, dark hair pulled back, professional blazer), sits at a desk surrounded by twelve different screens and devices. Each screen shows a completely different platform interface — different color schemes, different chart types, different layouts. Tangled cables and adapters connect everything. Post-it notes with API endpoints and credentials are stuck everywhere. Her expression is overwhelmed but determined. The scene captures the fundamental problem: every advertising platform speaks a different language, and scaling partnerships means scaling chaos."
+  },
+  {
+    "filename": "images/walkthrough/adcp-02-one-protocol.png",
+    "prompt": "A clean hexagonal hub sits at the center of the image, glowing with teal energy. Six identical, standardized connection lines radiate outward to platform icons arranged in a circle: a TV screen (CTV), a smartphone (mobile), a laptop (web), a billboard (DOOH), a shopping cart (retail media), and a microphone (podcast/audio). Each connection is exactly the same width and style — emphasizing standardization. The hub pulses with organized data flowing bidirectionally. Clean white background, minimal and precise. The visual opposite of the previous scene's chaos."
+  },
+  {
+    "filename": "images/walkthrough/adcp-03-agents.png",
+    "prompt": "Five specialized robots collaborate around a shared circular workspace table. Each robot has a distinct tool reflecting its specialty: Discovery robot holds a magnifying glass and examines product cards. Creative robot has a paintbrush and works on ad mockups. Governance robot carries a shield and checks documents. Signals robot has an antenna receiving audience data streams. In the center, the Orchestrator robot coordinates, gesturing to connect the others' work. Documents and data flow smoothly between them on the table surface. Harmonious teamwork, clean teal palette, well-organized workspace."
+  },
+  {
+    "filename": "images/walkthrough/adcp-04-workflow.png",
+    "prompt": "A horizontal journey from left to right. On the far left, Alex (a woman in her early 40s with dark hair pulled back, professional blazer — same character from scene 1, but now confident and relaxed) writes a brief at a clean desk — one screen, no clutter. In the middle section, a team of agent robots processes the brief: one discovers products (magnifying glass), one builds creatives (palette), one checks governance (shield). They work in a smooth assembly line. On the far right, finished ads appear running on screens across a city skyline — billboard, phone, TV, bus shelter. The flow is clean and linear: brief to agents to live ads. Progress and transformation. Do not include any text, words, or labels in the image.",
+    "alt_text": "A horizontal flow showing a person writing a brief at a desk on the left, then agents in the middle producing different ad formats — video, display, audio — and on the right, finished ads running on screens across a city skyline"
+  },
+  {
+    "filename": "images/walkthrough/adcp-05-governance.png",
+    "prompt": "A checkpoint scene. A governance guardian robot stands at a security station, inspecting campaign blueprints as they pass through. One blueprint has a green approval stamp and continues forward toward a city of screens. Another blueprint has an amber flag and is being routed along a separate glowing path to a human reviewer sitting at a nearby desk — the human examines it carefully. The checkpoint doesn't feel like a roadblock — it feels like an efficient, trustworthy filter. Campaign quality control. Clean lighting, professional atmosphere, green and amber accents on teal palette."
+  },
+  {
+    "filename": "images/concepts/three-party-governance.png",
+    "prompt": "A triangle diagram with three distinct characters at each vertex. Top vertex: an Orchestrator robot with a clipboard, labeled 'Proposes' — it creates campaign plans. Bottom-left vertex: a Governance robot with a shield, labeled 'Validates' — it checks policies and budgets. Bottom-right vertex: a Seller robot with a storefront, labeled 'Confirms' — it fulfills and reports. In the center of the triangle, a campaign plan document floats. Arrows flow clockwise: Orchestrator proposes to Governance, Governance validates to Seller, Seller confirms back. Clean educational diagram style, teal palette, white background."
+  },
+  {
+    "filename": "images/concepts/media-buy-lifecycle.png",
+    "prompt": "A horizontal pipeline showing five stages connected by flowing arrows. Stage 1: Discovery (magnifying glass icon over product cards) — finding inventory. Stage 2: Planning (blueprint/document icon) — comparing proposals and matching creatives. Stage 3: Execution (rocket launch icon) — creating media buys. Stage 4: Optimization (control dials/sliders icon) — adjusting campaigns mid-flight. Stage 5: Reporting (clean dashboard icon) — unified delivery metrics. Each stage is a distinct rounded rectangle with an icon and label. Teal gradient flows left to right, getting more vibrant. Clean infographic style, white background."
+  },
+  {
+    "filename": "images/concepts/budget-commitment-phases.png",
+    "prompt": "Three steps shown left to right with clear visual progression. Step 1 'Proposed': A dotted-outline rectangle containing a budget amount ($25,000) — hypothetical, not yet committed. A 'full budget available' bar shows below. Step 2 'Execute': A solid-outline rectangle with a price tag, the amount now reserved. The budget bar shows a reserved portion. Step 3 'Committed': A closed ledger book with the actual amount ($24,850) recorded. The budget bar shows actual spend and freed remainder ($150). Each step has a subtle icon: question mark, lock, checkmark. Clean infographic, teal palette, white background."
+  }
+]

@@ -139,7 +139,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Organization search error:');
       res.status(500).json({
         error: 'Failed to search organizations',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -182,7 +181,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error, orgId: req.params.orgId }, 'Get org admins error:');
       res.status(500).json({
         error: 'Failed to get organization admins',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -235,7 +233,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Get org join requests error:');
       res.status(500).json({
         error: 'Failed to get join requests',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -272,7 +269,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Get pending count error:');
       res.status(500).json({
         error: 'Failed to get pending count',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -450,10 +446,9 @@ export function createOrganizationsRouter(): Router {
     } catch (error: any) {
       logger.error({ err: error }, 'Approve join request error:');
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to approve join request',
-        message: errorMessage,
+        message: 'An internal error occurred while approving the join request.',
       });
     }
   });
@@ -537,7 +532,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Reject join request error:');
       res.status(500).json({
         error: 'Failed to reject join request',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -586,7 +580,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Get org domains error:');
       res.status(500).json({
         error: 'Failed to get domains',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -720,7 +713,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Get domain users error:');
       res.status(500).json({
         error: 'Failed to get domain users',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -963,10 +955,9 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to add domain user',
-        message: errorMessage,
+        message: 'An internal error occurred while adding the domain user.',
       });
     }
   });
@@ -1012,7 +1003,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Failed to generate domain verification link');
       res.status(500).json({
         error: 'Failed to generate domain verification link',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1283,16 +1273,19 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Create organization error');
 
       // Provide more helpful error messages for common WorkOS errors
-      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : '';
 
       if (errorMessage.includes('state should not be empty')) {
-        errorMessage = 'WorkOS configuration error: Organizations require additional setup in WorkOS Dashboard. Please contact support or check your WorkOS settings.';
+        res.status(500).json({
+          error: 'Failed to create organization',
+          message: 'WorkOS configuration error: Organizations require additional setup in WorkOS Dashboard. Please contact support or check your WorkOS settings.',
+        });
+      } else {
+        res.status(500).json({
+          error: 'Failed to create organization',
+          message: 'An internal error occurred while creating the organization.',
+        });
       }
-
-      res.status(500).json({
-        error: 'Failed to create organization',
-        message: errorMessage,
-      });
     }
   });
 
@@ -1377,7 +1370,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Update organization error');
       res.status(500).json({
         error: 'Failed to update organization',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1487,7 +1479,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Update organization settings error');
       res.status(500).json({
         error: 'Failed to update organization settings',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1608,7 +1599,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Delete organization error');
       res.status(500).json({
         error: 'Failed to delete organization',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1680,7 +1670,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Create portal session error');
       res.status(500).json({
         error: 'Failed to create portal session',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1761,7 +1750,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Accept membership agreement error:');
       res.status(500).json({
         error: 'Failed to record agreement acceptance',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1828,7 +1816,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Convert to team error');
       res.status(500).json({
         error: 'Failed to convert workspace',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1918,7 +1905,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Convert to individual error');
       res.status(500).json({
         error: 'Failed to convert workspace',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2043,7 +2029,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'List organization members error');
       res.status(500).json({
         error: 'Failed to list organization members',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2157,10 +2142,9 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to send invitation',
-        message: errorMessage,
+        message: 'An internal error occurred while sending the invitation.',
       });
     }
   });
@@ -2225,7 +2209,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Revoke invitation error');
       res.status(500).json({
         error: 'Failed to revoke invitation',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2302,7 +2285,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Resend invitation error');
       res.status(500).json({
         error: 'Failed to resend invitation',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2400,8 +2382,7 @@ export function createOrganizationsRouter(): Router {
         },
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ err: error, errorMessage }, 'Update member role error');
+      logger.error({ err: error }, 'Update member role error');
       return res.status(500).json({
         error: 'Failed to update member role',
         message: 'Unable to update member role. Please try again or contact support.',
@@ -2522,7 +2503,6 @@ export function createOrganizationsRouter(): Router {
       logger.error({ err: error }, 'Remove member error');
       res.status(500).json({
         error: 'Failed to remove member',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2574,7 +2554,6 @@ export function createOrganizationsRouter(): Router {
 
       res.status(500).json({
         error: 'Failed to list roles',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

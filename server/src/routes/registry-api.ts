@@ -1720,10 +1720,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      logger.error({ error: error instanceof Error ? error.message : String(error) }, "Failed to validate domain:");
+      logger.error({ err: error, path: req.path }, "Failed to validate domain");
       return res.status(500).json({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "Failed to validate domain",
         timestamp: new Date().toISOString(),
       });
     }
@@ -1782,10 +1782,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      logger.error({ error: error instanceof Error ? error.message : String(error) }, "Failed to create adagents.json:");
+      logger.error({ err: error, path: req.path }, "Failed to create adagents.json");
       return res.status(500).json({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "Failed to create adagents.json",
         timestamp: new Date().toISOString(),
       });
     }
@@ -1985,7 +1985,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       res.json({ agents: enriched, count: enriched.length, sources: bySource });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list agents" });
+      logger.error({ err: error, path: req.path }, "Failed to list agents");
+      res.status(500).json({ error: "Failed to list agents" });
     }
   });
 
@@ -1999,7 +2000,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       };
       res.json({ publishers, count: publishers.length, sources: bySource });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list publishers" });
+      logger.error({ err: error, path: _req.path }, "Failed to list publishers");
+      res.status(500).json({ error: "Failed to list publishers" });
     }
   });
 
@@ -2009,7 +2011,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const stats = await federatedIndex.getStats();
       res.json(stats);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to get registry stats" });
+      logger.error({ err: error, path: _req.path }, "Failed to get registry stats");
+      res.status(500).json({ error: "Failed to get registry stats" });
     }
   });
 
@@ -2022,7 +2025,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const result = await federatedIndex.lookupDomain(domain);
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Domain lookup failed" });
+      logger.error({ err: error, path: req.path }, "Domain lookup failed");
+      res.status(500).json({ error: "Domain lookup failed" });
     }
   });
 
@@ -2038,7 +2042,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const results = await federatedIndex.findAgentsForPropertyIdentifier(type as string, value as string);
       res.json({ type, value, agents: results, count: results.length });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Property lookup failed" });
+      logger.error({ err: error, path: req.path }, "Property lookup failed");
+      res.status(500).json({ error: "Property lookup failed" });
     }
   });
 
@@ -2049,7 +2054,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const domains = await federatedIndex.getDomainsForAgent(agentUrl);
       res.json({ agent_url: agentUrl, domains, count: domains.length });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Agent domain lookup failed" });
+      logger.error({ err: error, path: req.path }, "Agent domain lookup failed");
+      res.status(500).json({ error: "Agent domain lookup failed" });
     }
   });
 
@@ -2069,7 +2075,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const result = await federatedIndex.validateAgentForProduct(agent_url, publisher_properties);
       res.json({ agent_url, ...result, checked_at: new Date().toISOString() });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Product authorization validation failed" });
+      logger.error({ err: error, path: req.path }, "Product authorization validation failed");
+      res.status(500).json({ error: "Product authorization validation failed" });
     }
   });
 
@@ -2109,7 +2116,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         generated_at: new Date().toISOString(),
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Property expansion failed" });
+      logger.error({ err: error, path: req.path }, "Property expansion failed");
+      res.status(500).json({ error: "Property expansion failed" });
     }
   });
 
@@ -2136,7 +2144,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         checked_at: new Date().toISOString(),
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : "Property authorization check failed" });
+      logger.error({ err: error, path: req.path }, "Property authorization check failed");
+      res.status(500).json({ error: "Property authorization check failed" });
     }
   });
 
@@ -2221,7 +2230,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within 10 seconds" });
       }
 
-      return res.status(500).json({ error: "Agent discovery failed", message: error instanceof Error ? error.message : "Unknown error" });
+      return res.status(500).json({ error: "Agent discovery failed" });
     }
   });
 
@@ -2259,7 +2268,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
       }
 
-      return res.status(500).json({ error: "Failed to fetch formats", message: error instanceof Error ? error.message : "Unknown error" });
+      return res.status(500).json({ error: "Failed to fetch formats" });
     }
   });
 
@@ -2304,7 +2313,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
       }
 
-      return res.status(500).json({ error: "Failed to fetch products", message: error instanceof Error ? error.message : "Unknown error" });
+      return res.status(500).json({ error: "Failed to fetch products" });
     }
   });
 
@@ -2333,7 +2342,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, domain }, "Public publisher validation error");
 
-      return res.status(500).json({ error: "Publisher validation failed", message: error instanceof Error ? error.message : "Unknown error" });
+      return res.status(500).json({ error: "Publisher validation failed" });
     }
   });
 
@@ -2715,10 +2724,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       });
     } catch (error: any) {
       if (error.message?.includes("Cannot edit authoritative")) {
-        return res.status(409).json({ error: error.message, policy_id: req.body.policy_id });
+        logger.error({ err: error, policy_id: req.body.policy_id }, "Policy conflict");
+        return res.status(409).json({ error: "Policy conflict", policy_id: req.body.policy_id });
       }
       if (error.message?.includes("pending review")) {
-        return res.status(409).json({ error: error.message, policy_id: req.body.policy_id });
+        logger.error({ err: error, policy_id: req.body.policy_id }, "Policy conflict");
+        return res.status(409).json({ error: "Policy conflict", policy_id: req.body.policy_id });
       }
       logger.error({ error }, "Failed to save policy");
       return res.status(500).json({ error: "Failed to save policy" });

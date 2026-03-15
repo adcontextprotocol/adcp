@@ -353,7 +353,6 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error, durationMs: duration }, 'Get admin users error');
       res.status(500).json({
         error: 'Failed to get users',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -384,7 +383,6 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Get memberships export error');
       res.status(500).json({
         error: 'Failed to get memberships',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -405,7 +403,6 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Backfill memberships error');
       res.status(500).json({
         error: 'Failed to backfill memberships',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -426,7 +423,6 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Backfill users error');
       res.status(500).json({
         error: 'Failed to backfill users',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -491,7 +487,6 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Get website-only users error');
       res.status(500).json({
         error: 'Failed to get website-only users',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -590,7 +585,7 @@ export function createAdminUsersRouter(): Router {
           }
         } catch (error) {
           failed++;
-          errors.push(`Error sending to ${user.email}: ${error instanceof Error ? error.message : 'Unknown'}`);
+          errors.push(`Failed to send to ${user.email}`);
         }
 
         // Small delay between sends to avoid rate limiting
@@ -612,7 +607,6 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Send Slack invites error');
       res.status(500).json({
         error: 'Failed to send Slack invites',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
