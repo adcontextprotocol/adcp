@@ -787,7 +787,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
-    { label: 'Creative protocol overview (illustrated walkthrough)', url: `${DOCS_BASE}/docs/creative` },
   ],
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -828,6 +827,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'For rights holders', url: `${DOCS_BASE}/docs/brand-protocol/for-rights-holders` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
+    { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
@@ -845,7 +845,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Multi-agent creative orchestration', url: `${DOCS_BASE}/docs/creative/multi-agent-orchestration` },
     { label: 'AI creative overview', url: `${DOCS_BASE}/docs/creative/ai-creative-overview` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
-    { label: 'Creative protocol overview (illustrated walkthrough)', url: `${DOCS_BASE}/docs/creative` },
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },

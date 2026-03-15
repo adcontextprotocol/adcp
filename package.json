@@ -45,6 +45,7 @@
     "@adcp/client": "^4.8.0",
     "@anthropic-ai/sdk": "^0.78.0",
     "@asteasolutions/zod-to-openapi": "^8.4.0",
+    "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.24.3",
     "@mozilla/readability": "^0.6.0",
     "@opentelemetry/api-logs": "^0.208.0",

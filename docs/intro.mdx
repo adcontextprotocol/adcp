@@ -11,22 +11,76 @@ keywords: [advertising automation protocol, programmatic advertising API, MCP ad
 You're viewing the 3.0 release candidate documentation. This release adds AI provenance and disclosure, creative compliance, search and retail media, and 27 other features. See [what's new in 3.0](/docs/reference/release-notes#version-300-rc1) and the [AdCP 3.0 overview](/docs/reference/whats-new-in-v3). For production use, switch to version 2.5 using the version selector above.
 </Warning>
 
-# Introduction to AdCP
+<img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex sits at a desk surrounded by twelve different platform interfaces — each screen shows a different dashboard design, different data formats, and different API documentation, with tangled cables connecting them all" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-Every advertising platform has its own tools, APIs, and workflows. Scaling to more partners means scaling your team — more integrations, more dashboards, more manual coordination. The operational cost of working with 15 platforms is fundamentally different from working with 3.
+Alex runs media operations at a mid-size agency. Her team manages campaigns across twelve publishers — CTV, display, audio, retail media, social. Each platform has its own API, its own dashboard, its own way of handling creatives, targeting, and reporting. Adding a thirteenth publisher means building a thirteenth integration from scratch.
 
-AdCP (Ad Context Protocol) is an open standard that gives AI agents a shared language for advertising. An agent using AdCP can discover inventory, buy media, build creatives, activate audiences, verify AI provenance, enforce brand suitability, resolve brand identity, and manage accounts — across any platform that implements the protocol.
+Her team is good. But scaling to twenty platforms without doubling headcount isn't an execution problem — it's a protocol problem. Every platform speaks a different language.
 
-You set the strategy. Agents handle the execution. You approve what matters.
+## One protocol, every platform
 
-<img src="/images/walkthrough/diagram-five-protocols.png" alt="The five AdCP protocols: Media Buy at center, with Creative (manifests flow into buys), Governance (validates buys and delivery), Signals (audience data informs targeting), and Sponsored Intelligence (conversational commerce) connected around it" style={{ width: '100%', borderRadius: '12px', marginBottom: '1.5rem' }} />
+<img src="/images/walkthrough/adcp-02-one-protocol.png" alt="A hexagonal protocol hub at center with clean teal radial lines connecting to six platform icons — a TV, a phone, a laptop, a billboard, a shopping cart, and a podcast microphone — each connection is identical and standardized" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+AdCP (Ad Context Protocol) replaces platform-specific integrations with a single open standard. Instead of learning each platform's API, agents use the same tasks everywhere:
+
+| What you need to do | AdCP task | Works across |
+|---|---|---|
+| Find inventory | `get_products` | Every publisher and SSP |
+| Buy media | `create_media_buy` | Every ad server and platform |
+| Build creatives | `build_creative` | Every creative tool |
+| Activate audiences | `activate_signal` | Every data provider |
+| Check compliance | `check_governance` | Every governance vendor |
+
+One integration. Every platform. The same JSON schema whether you're buying CTV inventory or activating retail media audiences.
+
+## Specialized agents collaborate
+
+<img src="/images/walkthrough/adcp-03-agents.png" alt="Five specialized robots collaborate around a shared workspace — a discovery robot with a magnifying glass, a creative robot with a paintbrush, a governance robot with a shield, a signals robot with an antenna, and an orchestrator robot coordinating them all from the center" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+AdCP doesn't assume a single AI handles everything. Specialized agents handle what they're best at:
+
+- **Media buying agents** discover inventory and execute campaigns
+- **Creative agents** generate and adapt ads across formats
+- **Signals agents** find and activate audiences
+- **Governance agents** enforce brand safety and compliance
+- **Orchestrators** coordinate the workflow and make sure humans approve what matters
+
+These agents communicate over two transport protocols: **MCP** (for AI assistants calling tools) and **A2A** (for agent-to-agent collaboration). Same tasks, same schemas, different transport.
+
+## Brief to live ads
+
+<img src="/images/walkthrough/adcp-04-workflow.png" alt="A horizontal flow showing a person writing a brief at a desk on the left, then agents in the middle producing different ad formats — video, display, audio — and on the right, finished ads running on screens across a city skyline" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Here's what Alex's team does now:
+
+1. **Write a brief**: "Find premium video inventory on sports publishers for Q2 with a $50K budget"
+2. **Agents discover options**: `get_products` goes to every connected seller simultaneously
+3. **Compare proposals**: Products come back in a standard format — pricing, forecasts, targeting — all comparable
+4. **Agents build creatives**: `build_creative` adapts assets to each seller's formats
+5. **Approve and launch**: `create_media_buy` executes across platforms in one call
+6. **Monitor delivery**: `get_media_buy_delivery` aggregates performance from every seller into one view
+
+Each step uses a standard AdCP task with a JSON Schema-defined request and response. No platform-specific code. No manual translation between systems.
+
+## Governance watches everything
+
+<img src="/images/walkthrough/adcp-05-governance.png" alt="A guardian robot at a checkpoint inspects campaign blueprints — approving compliant ones with green stamps and routing a flagged one along a glowing path to a human reviewer sitting nearby" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+When AI agents spend money autonomously, trust requires structure. AdCP's governance layer provides it:
+
+- **Before a campaign launches**: `check_governance` validates budget limits, brand safety, and regulatory compliance
+- **If something exceeds authority**: The governance agent escalates to a human — your team approves, not the AI
+- **While campaigns run**: Governance agents monitor delivery against approved parameters
+- **After delivery**: `get_plan_audit_logs` provides a complete decision trail — who proposed what, who approved it, what actually ran
+
+Governance isn't a gate that slows things down. It's the safety net that lets you give agents more autonomy over time.
 
 ## How it works
 
 AdCP defines **tasks** — discrete advertising operations like `get_products`, `create_media_buy`, or `activate_signal`. Each task has a JSON Schema-defined request and response. Agents call tasks through two transport protocols:
 
 - **MCP (Model Context Protocol)** — Direct integration with AI assistants. An MCP server exposes AdCP tasks as tools that any MCP-compatible client can call.
-- **A2A (Agent-to-Agent Protocol)** — Multi-agent workflows where specialized agents (media buying, creative, signals) collaborate on complex campaigns.
+- **A2A (Agent-to-Agent Protocol)** — Multi-agent workflows where specialized agents collaborate on complex campaigns.
 
 The same task definitions work over both transports. Build once, serve both.
 
@@ -42,7 +96,7 @@ AdCP 3.0 covers eight domains:
 | **Signals** | Audience and targeting data | `get_signals`, `activate_signal` | MCP / A2A |
 | **Governance** | Brand suitability, compliance, and provenance verification | `create_property_list`, `calibrate_content` | MCP / A2A |
 | **Sponsored Intelligence** | Conversational brand experiences | `si_initiate_session`, `si_send_message` | MCP / A2A |
-| **Brand Protocol** | Brand identity and discovery | `brand.json` resolution | HTTP / MCP |
+| **Brand Protocol** | Brand identity, rights licensing, and creative approval | `get_brand_identity`, `acquire_rights` | HTTP / MCP / A2A |
 | **Registry** | Entity resolution and agent discovery | `/api/brands/resolve`, `/api/registry/agents` | REST API |
 
 These domains work together. A typical workflow: resolve a brand via **Brand Protocol**, establish billing via **Accounts**, discover inventory via **Media Buy**, find audiences via **Signals**, check brand suitability via **Governance**, build ads via **Creative**, and execute across platforms.
@@ -74,37 +128,19 @@ These domains work together. A typical workflow: resolve a brand via **Brand Pro
   </Card>
 </CardGroup>
 
-## Examples
+## See it in action
 
-### Discover and buy media
-
-> "Find premium video inventory on sports publishers for a Q2 campaign with a $50,000 budget."
-
-The agent discovers products from connected sales agents, evaluates proposals with delivery forecasts, applies governance property lists to filter for brand-suitable inventory, and creates a media buy — all through standard AdCP tasks.
-
-### Activate audience signals
-
-> "Find high-intent athletic footwear audiences and activate them for our campaign."
-
-The agent queries connected signals agents with a natural language brief, evaluates pricing options, and activates chosen signals on the decisioning platform.
-
-### Generate creatives from brand identity
-
-> "Build display and video creatives for our new trail running shoe using our brand guidelines and product catalog."
-
-The agent resolves brand identity via `brand.json`, retrieves brand assets (logos, colors, tone), discovers available formats from creative agents, syncs the product catalog, and generates on-brand creatives.
-
-### Engage users conversationally
-
-> "A user in our AI assistant is asking about running shoes. Connect them with the brand's agent for a personalized experience."
-
-The host initiates a Sponsored Intelligence session. The brand agent engages conversationally with product recommendations and UI components, and the session can hand off to commerce checkout.
-
-### Verify AI creative compliance
-
-> "Check that all creatives for our campaign carry valid provenance metadata and meet EU AI Act disclosure requirements before they go live."
-
-The agent evaluates provenance claims on each creative via `get_creative_features`, checks for required disclosure positions and jurisdictions against the brief's compliance requirements, and flags gaps before the campaign launches. Governance agents can independently verify AI content claims using third-party detection services.
+<CardGroup cols={3}>
+  <Card title="Media buy" icon="cart-shopping" href="/docs/media-buy">
+    Follow Sam through a complete campaign — brief to delivery
+  </Card>
+  <Card title="Creative" icon="paintbrush" href="/docs/creative/index">
+    Follow Maya through creative generation and distribution
+  </Card>
+  <Card title="Governance" icon="shield-halved" href="/docs/governance/overview">
+    Follow Jordan through the trust model that protects your spend
+  </Card>
+</CardGroup>
 
 ## For platform providers
 
