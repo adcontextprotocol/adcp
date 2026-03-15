@@ -494,6 +494,88 @@ A podcast network selling across multiple distribution platforms. The show objec
 
 Tentative episodes (ep48, ep49) have no names or guest info — they have not been produced yet. The buyer evaluates based on the show's baseline profile and the known details of ep47.
 
+### Live event with tentative episodes
+
+A sports league selling sponsorships against a live event series. Live broadcasts use `flexible_end` because game duration is unpredictable, and `unplanned_breaks` because ad breaks follow game flow (timeouts, period breaks) rather than a fixed schedule. The tentative Game 5 depends on the series outcome — it only happens if neither team wins in four games.
+
+```json
+{
+  "shows": [
+    {
+      "show_id": "apex_championship_2026",
+      "name": "Apex Championship Series 2026",
+      "description": "Best-of-five championship finals for the Apex Professional League",
+      "genre": ["IAB17", "IAB17-12", "live_event"],
+      "genre_taxonomy": "iab_content_3.0",
+      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
+      "cadence": "event",
+      "season": "2026",
+      "status": "active",
+      "production_quality": "professional",
+      "talent": [
+        { "role": "commentator", "name": "Deshawn Moreaux" },
+        { "role": "commentator", "name": "Liora Voss" }
+      ],
+      "distribution": [
+        {
+          "publisher_domain": "apexleague.example.com",
+          "identifiers": [{ "type": "gracenote_id", "value": "EP999000001" }]
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "product_id": "apex_finals_sponsorship",
+      "name": "Apex Championship Finals — Category Sponsorship",
+      "show_ids": ["apex_championship_2026"],
+      "episodes": [
+        {
+          "episode_id": "finals_game4",
+          "name": "Game 4: Titan City vs Coastal FC",
+          "scheduled_at": "2026-05-18T19:00:00Z",
+          "status": "scheduled",
+          "flexible_end": true,
+          "ad_inventory": {
+            "expected_breaks": 8,
+            "total_ad_seconds": 960,
+            "max_ad_duration_seconds": 30,
+            "unplanned_breaks": true,
+            "supported_formats": ["video"]
+          }
+        },
+        {
+          "episode_id": "finals_game5",
+          "name": "Game 5 — If necessary",
+          "scheduled_at": "2026-05-21T19:00:00Z",
+          "status": "tentative",
+          "flexible_end": true,
+          "valid_until": "2026-05-19T06:00:00Z",
+          "ad_inventory": {
+            "expected_breaks": 8,
+            "total_ad_seconds": 960,
+            "max_ad_duration_seconds": 30,
+            "unplanned_breaks": true,
+            "supported_formats": ["video"]
+          }
+        }
+      ],
+      "placements": [
+        { "placement_id": "in_game_overlay", "name": "In-game overlay (10s)" },
+        { "placement_id": "halftime", "name": "Halftime feature (60s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "exclusivity": "category",
+      "pricing_options": [
+        { "pricing_option_id": "per_game", "pricing_model": "flat_rate", "fixed_price": 750000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+This pattern combines several features designed for live inventory: `cadence: "event"` signals a non-recurring series, `flexible_end` tells buyers the broadcast length is approximate, and `unplanned_breaks: true` indicates ad breaks follow game flow rather than a predetermined schedule. The tentative Game 5 includes `valid_until` so buyer agents know when to re-query — if the series ends in four games, that episode will resolve to `cancelled`. Buyers should always check `valid_until` on tentative episodes before committing budget.
+
 ### Discovering shows
 
 Buyers discover shows through the standard `get_products` workflow. Natural language briefs drive show selection:

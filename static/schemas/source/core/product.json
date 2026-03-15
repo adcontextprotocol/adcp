@@ -51,6 +51,10 @@
     "delivery_type": {
       "$ref": "/schemas/enums/delivery-type.json"
     },
+    "exclusivity": {
+      "$ref": "/schemas/enums/exclusivity.json",
+      "description": "Whether this product offers exclusive access to its inventory. Defaults to 'none' when absent. Most relevant for guaranteed products tied to specific shows or placements."
+    },
     "pricing_options": {
       "type": "array",
       "description": "Available pricing models for this product",

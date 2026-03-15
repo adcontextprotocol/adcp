@@ -8,6 +8,10 @@
     "delivery_type": {
       "$ref": "/schemas/enums/delivery-type.json"
     },
+    "exclusivity": {
+      "$ref": "/schemas/enums/exclusivity.json",
+      "description": "Filter by exclusivity level. Returns products matching the specified exclusivity (e.g., 'exclusive' returns only sole-sponsorship products)."
+    },
     "is_fixed_price": {
       "type": "boolean",
       "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."

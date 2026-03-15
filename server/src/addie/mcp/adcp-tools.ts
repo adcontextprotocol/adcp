@@ -92,6 +92,11 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: "Buyer's campaign reference label for CRM correlation.",
         },
+        preferred_delivery_types: {
+          type: 'array',
+          items: { type: 'string', enum: ['guaranteed', 'non_guaranteed'] },
+          description: 'Delivery types the buyer prefers, in priority order. Signals preference without excluding other types.',
+        },
         filters: {
           type: 'object',
           description: 'Optional filters to narrow results',
@@ -110,7 +115,12 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             },
             delivery_type: {
               type: 'string',
-              enum: ['guaranteed', 'non-guaranteed'],
+              enum: ['guaranteed', 'non_guaranteed'],
+            },
+            exclusivity: {
+              type: 'string',
+              enum: ['none', 'category', 'exclusive'],
+              description: 'Filter by exclusivity level.',
             },
             format_types: {
               type: 'array',

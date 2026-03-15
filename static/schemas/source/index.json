@@ -755,6 +755,10 @@
         "delegation-authority": {
           "$ref": "/schemas/enums/delegation-authority.json",
           "description": "Authority level for a delegated agent on a campaign plan (full, execute_only, propose_only)"
+        },
+        "exclusivity": {
+          "$ref": "/schemas/enums/exclusivity.json",
+          "description": "Whether a product offers exclusive access to its inventory (none, category, exclusive)"
         }
       }
     },

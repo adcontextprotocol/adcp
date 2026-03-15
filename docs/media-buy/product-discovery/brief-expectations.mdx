@@ -243,6 +243,31 @@ Publishers should handle briefs at different completeness levels:
 ```
 **Publisher Response**: Provide optimized product mix with detailed performance projections.
 
+## Delivery Preferences
+
+Buyers can signal delivery type preference without excluding inventory. `preferred_delivery_types` is an ordered array that tells the publisher what the buyer wants most, while still allowing the publisher to include alternatives when they match the brief well.
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Exclusive podcast sponsorship for a fintech brand — we want guaranteed placement on business shows",
+  "preferred_delivery_types": ["guaranteed"]
+}
+```
+
+This differs from `filters.delivery_type`, which is a hard filter:
+
+| Field | Effect |
+|---|---|
+| `filters.delivery_type` | Excludes products that don't match |
+| `preferred_delivery_types` | Signals preference — publisher may still include other types |
+
+When both are present, `filters.delivery_type` takes precedence (it removes non-matching products before preference is applied).
+
+### For publishers
+
+When a buyer includes `preferred_delivery_types`, rank preferred types first in results but include strong matches of other types lower in the response. If a buyer prefers guaranteed but you have a non-guaranteed product that matches the brief well, include it with a clear `brief_relevance` explanation of why it's worth considering.
+
 ## Implementation Guidelines
 
 ### For Publishers

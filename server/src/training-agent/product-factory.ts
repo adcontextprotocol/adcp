@@ -333,6 +333,10 @@ function buildProduct(
     );
     if (matchingShows.length > 0) {
       product.show_ids = matchingShows.map(s => s.showId);
+      // Guaranteed products with shows get exclusivity
+      if (template.deliveryType === 'guaranteed') {
+        product.exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
+      }
       // Flatten episodes from matching shows
       const episodes: Record<string, unknown>[] = [];
       for (const show of matchingShows) {
@@ -340,11 +344,11 @@ function buildProduct(
           const episode: Record<string, unknown> = {
             episode_id: ep.episodeId,
             show_id: show.showId,
-            title: ep.title,
+            name: ep.title,
             status: ep.status,
           };
           if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
-          if (ep.duration) episode.duration = ep.duration;
+          if (ep.duration) episode.duration_seconds = ep.duration;
           episodes.push(episode);
         }
       }
