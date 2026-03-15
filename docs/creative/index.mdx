@@ -23,12 +23,18 @@ In AdCP, the brief is the `message` field on `build_creative`. Maya doesn't need
 ```json
 {
   "message": "Holiday campaign for Acme Outdoor. Warm, adventurous tone. Hero product: Trail Pro 3000 hiking boot. Key message: 'Gift the adventure.' Use brand colors and winter imagery.",
-  "brand": { "domain": "acme-outdoor-example.com" },
-  "quality": "draft"
+  "brand": { "domain": "acmeoutdoor.com" },
+  "target_format_ids": [
+    { "agent_url": "https://streamhaus.example", "id": "ssai_30s" },
+    { "agent_url": "https://outdoornet.example", "id": "display_300x250" },
+    { "agent_url": "https://outdoornet.example", "id": "display_728x90" }
+  ],
+  "quality": "draft",
+  "include_preview": true
 }
 ```
 
-The brand identity — colors, logos, typography, tone — lives at `acme-outdoor-example.com/.well-known/brand.json`. Every agent in the chain reads it from there. Maya's team maintains it once.
+The brand identity — colors, logos, typography, tone — lives at `acmeoutdoor.com/.well-known/brand.json`. Every agent in the chain reads it from there. Maya's team maintains it once.
 
 <Accordion title="Agency language → protocol terms">
 

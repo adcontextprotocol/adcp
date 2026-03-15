@@ -2,8 +2,8 @@
 title: Introduction to AdCP
 sidebarTitle: Introduction
 "og:image": /images/walkthrough/adcp-01-fragmentation.png
-description: "AdCP (Ad Context Protocol) is an open agentic advertising standard that replaces platform-specific APIs with unified tasks for media buying, creative generation, audience activation, and governance."
 "og:title": "AdCP — Introduction to the Protocol"
+description: "AdCP is an open agentic advertising standard. Follow Alex's team from fragmentation to a unified workflow across all protocol domains."
 ---
 
 <Warning>
@@ -12,101 +12,557 @@ description: "AdCP (Ad Context Protocol) is an open agentic advertising standard
 You're viewing the 3.0 release candidate documentation. This release adds AI provenance and disclosure, creative compliance, search and retail media, and 27 other features. See [what's new in 3.0](/docs/reference/release-notes#version-300-rc1) and the [AdCP 3.0 overview](/docs/reference/whats-new-in-v3). For production use, switch to version 2.5 using the version selector above.
 </Warning>
 
-<img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex sits at a desk surrounded by twelve different platform interfaces — each screen shows a different dashboard design, different data formats, and different API documentation, with tangled cables connecting them all" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+<img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex stands arms crossed in a war room of mismatched screens and tangled cables, surveying the chaos — her team hunched over laptops in the background" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-Alex runs media operations at a mid-size agency. Her team manages campaigns across twelve publishers — CTV, display, audio, retail media, social. Each platform has its own API, its own dashboard, its own way of handling creatives, targeting, and reporting. Adding a thirteenth publisher means building a thirteenth integration from scratch.
+Alex runs media operations at Pinnacle Agency. Her team buys across six channels — CTV, display, audio, social, retail media, and digital out-of-home. Each channel has its own buying methods, its own terminology, its own way of handling creatives, targeting, and reporting. IOs for some. APIs for others. DSPs for programmatic. Dashboards for everything.
 
-Her team is good. But scaling to twenty platforms without doubling headcount isn't an execution problem — it's a protocol problem. Every platform speaks a different language.
+Now her clients want to try AI-generated creative, influencer campaigns, and local radio. Each new channel means new tools, new integrations, new workflows to learn. She can't keep scaling her team every time a client wants to try something new.
 
-## One protocol, every platform
+The problem isn't her people. It's that every channel speaks a different language, and the industry has no common standard for how agents discover inventory, execute buys, distribute creative, activate data, or report results.
 
-<img src="/images/walkthrough/adcp-02-one-protocol.png" alt="A hexagonal protocol hub at center with clean teal radial lines connecting to six platform icons — a TV, a phone, a laptop, a billboard, a shopping cart, and a podcast microphone — each connection is identical and standardized" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+AdCP is that standard. One protocol. Every platform. Every step of the campaign.
 
-AdCP (Ad Context Protocol) replaces platform-specific integrations with a single open standard. Instead of learning each platform's API, agents use the same tasks everywhere:
+This page follows Alex's team through the entire workflow — from finding new partners to measuring results. Each section shows the human problem, the protocol solution, and the tasks that make it work. By the end, you'll understand every domain AdCP covers and how they connect.
 
-| What you need to do | AdCP task | Works across |
+---
+
+## Find new partners
+
+<img src="/images/walkthrough/intro-01-find-partners.png" alt="Alex reaches toward a glowing network map on a wall display, about to select a new publisher node from a constellation of connected partners" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Alex wants to work with publishers she's never talked to before. In the old world, that means sales calls, contracts, and weeks of integration work before she can even see what's available.
+
+With AdCP, discovery is built into the protocol. Every AdCP-enabled publisher hosts an `adagents.json` file — a machine-readable declaration of their properties, capabilities, and authorized agents. Alex's buyer agent reads it the same way a browser reads `robots.txt`.
+
+```
+https://streamhaus.tv/.well-known/adagents.json
+```
+
+```json
+{
+  "version": "1.0",
+  "publisher": {
+    "name": "StreamHaus",
+    "domain": "streamhaus.tv"
+  },
+  "agents": [
+    {
+      "url": "https://ads.streamhaus.tv/mcp",
+      "protocol": "mcp",
+      "capabilities": ["get_products", "create_media_buy", "sync_creatives"]
+    }
+  ]
+}
+```
+
+For broader discovery — "find me CTV publishers with sports inventory" — the [AgenticAdvertising.org registry](/docs/registry) provides entity resolution and agent search. Alex's agent can query the registry by category, geography, or capability, and get back a list of publishers to connect with.
+
+<Accordion title="What the registry returns">
+
+The registry API resolves brands to their AdCP agents:
+
+```
+GET /api/registry/agents?capability=get_products&channel=ctv
+```
+
+```json
+{
+  "agents": [
+    {
+      "domain": "streamhaus.tv",
+      "agent_url": "https://ads.streamhaus.tv/mcp",
+      "capabilities": ["get_products", "create_media_buy"],
+      "channels": ["ctv", "olv"]
+    }
+  ]
+}
+```
+
+</Accordion>
+
+<Card title="Learn more: adagents.json" icon="file-code" href="/docs/governance/property">
+  How publishers declare their properties and authorized agents.
+</Card>
+
+---
+
+## Set up accounts
+
+<img src="/images/walkthrough/intro-02-set-up-accounts.png" alt="Sam shakes hands across a desk with a laptop showing a teal checkmark between them — setting up a new commercial relationship" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Before Alex's team can buy media, they need a commercial relationship. In the old world, each platform has different onboarding — portals, forms, sales reps, weeks of back-and-forth.
+
+AdCP standardizes this with the accounts protocol. Sam, Alex's media buyer, sets up Pinnacle's relationship with StreamHaus in one call:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
+  "accounts": [
+    {
+      "brand": { "domain": "acmeoutdoor.com" },
+      "operator": "pinnacle-agency.com",
+      "billing": "operator"
+    }
+  ]
+}
+```
+
+The seller responds with the account status — active, pending review, or what additional information is needed. Once active, Sam can buy media.
+
+`list_accounts` shows all active relationships across every platform, so Alex can see at a glance which publishers her team is set up with.
+
+<Card title="Deep dive: Accounts" icon="id-card" href="/docs/accounts/overview">
+  Commercial identity, billing models, and multi-advertiser management.
+</Card>
+
+---
+
+## Discover what's available
+
+<img src="/images/walkthrough/intro-03-discover-products.png" alt="Sam gestures at three product cards on a wall screen — CTV, display, and audio inventory options all generated from one campaign brief" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+This is where it gets powerful. Sam wants to find premium sports inventory for Acme Outdoor's Q2 campaign. In the old world, he'd log into four dashboards and compare apples to oranges.
+
+With AdCP, `get_products` sends the same brief to every connected seller. Sam describes what he wants in natural language:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
+  "buying_mode": "brief",
+  "brief": "Premium sports video inventory, Q2 2026, targeting 25-45 males interested in outdoor recreation. Budget $50K across CTV and display.",
+  "brand": { "domain": "acmeoutdoor.com" }
+}
+```
+
+Every seller responds in the same format — products with pricing, forecasts, targeting options, and creative requirements. Sam compares proposals side by side on one screen instead of four.
+
+<Accordion title="What a product response looks like">
+
+```json
+{
+  "products": [
+    {
+      "product_id": "streamhaus_sports_ctv_q2",
+      "name": "StreamHaus Sports Premium",
+      "channels": ["ctv"],
+      "pricing_options": [
+        {
+          "model": "cpm",
+          "price": 28.50,
+          "currency": "USD"
+        }
+      ],
+      "forecast": {
+        "impressions": { "min": 500000, "max": 750000 }
+      },
+      "format_ids": [
+        { "agent_url": "https://ads.streamhaus.tv", "id": "video_16x9_30s" }
+      ]
+    }
+  ]
+}
+```
+
+</Accordion>
+
+But Sam isn't done. He likes StreamHaus's sports package but wants to shift budget toward CTV and drop the display allocation. Instead of starting over, he uses **refine mode** — an iterative conversation with the seller:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
+  "buying_mode": "refine",
+  "refine": [
+    {
+      "scope": "product",
+      "id": "streamhaus_sports_ctv_q2",
+      "action": "more_like_this",
+      "ask": "More CTV inventory like this, willing to go up to $35 CPM"
+    },
+    {
+      "scope": "request",
+      "ask": "Drop display entirely, reallocate budget to CTV and OLV"
+    }
+  ]
+}
+```
+
+The seller adjusts and responds with refined options. No new RFP. No starting from scratch. Sam iterates until he has exactly what he wants.
+
+<Card title="Follow Sam's full journey" icon="cart-shopping" href="/docs/media-buy">
+  The complete media buy walkthrough — brief to delivery across three sellers.
+</Card>
+
+---
+
+## Build the creative
+
+<img src="/images/walkthrough/intro-04-build-creative.png" alt="Maya sits in a creative studio with her iPad, surrounded by wall screens showing ad formats of different sizes all generated from one brief" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Maya, Pinnacle's creative strategist, needs to produce ads for Sam's campaign. One campaign, three sellers, six formats — CTV video, OLV pre-roll, display banners, companion ads. In the old world, that's six separate production workflows.
+
+First, Maya discovers what each seller accepts:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-request.json",
+  "type": "video"
+}
+```
+
+Each seller returns their supported formats with exact specifications — dimensions, codecs, file sizes, duration limits. No guessing.
+
+Then Maya briefs the creative agent. One brief produces all formats:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
+  "message": "Adventurous, aspirational summer campaign — gear for people who live outside",
+  "brand": { "domain": "acmeoutdoor.com" },
+  "target_format_ids": [
+    { "agent_url": "https://ads.streamhaus.tv", "id": "video_16x9_30s" },
+    { "agent_url": "https://ads.streamhaus.tv", "id": "display_300x250" }
+  ]
+}
+```
+
+The creative agent pulls Acme Outdoor's brand identity — colors, logos, tone guidelines — directly from the brand's `brand.json` (more on that below). No brand guide PDFs. No manual asset handoff.
+
+If Maya doesn't like the first draft, she refines with natural language: *"Make the opening shot more dynamic and swap the product shot for the hiking boots."* The `build_creative` task supports iterative refinement — same task, conversational guidance.
+
+Once approved, `sync_creatives` distributes the finished assets to every seller simultaneously:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "creatives": [
+    {
+      "creative_id": "acme_summer_ctv_30s",
+      "name": "Acme Summer CTV 30s",
+      "format_id": { "agent_url": "https://ads.streamhaus.tv", "id": "video_16x9_30s" },
+      "assets": {
+        "video": { "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4", "width": 1920, "height": 1080, "duration_ms": 30000 }
+      }
+    }
+  ]
+}
+```
+
+<Card title="Follow Maya's full journey" icon="paintbrush" href="/docs/creative/index">
+  Creative generation, format discovery, and multi-seller distribution.
+</Card>
+
+---
+
+## Execute the buy
+
+<img src="/images/walkthrough/intro-05-execute-buy.png" alt="Sam presses a launch button on his laptop with a teal pulse radiating from the screen, Alex standing behind him arms crossed with a satisfied smile" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam has products, creatives, and accounts. Time to buy. One call to `create_media_buy` executes the campaign across every seller:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
+  "buyer_ref": "acme_outdoor_summer_q2",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "brand": { "domain": "acmeoutdoor.com" },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-06-30T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "pkg_streamhaus_ctv",
+      "product_id": "streamhaus_sports_ctv_q2",
+      "budget": 35000,
+      "pricing_option_id": "cpm_standard"
+    }
+  ]
+}
+```
+
+For sellers that generate creative — AI assistants, conversational ad platforms — the media buy can include a brief instead of pre-built assets. The seller's creative agent generates on the fly, pulling from the brand identity and campaign context. Both models — provided creative and generative creative — use the same `create_media_buy` task.
+
+`update_media_buy` handles mid-flight changes: shift budget between packages, adjust flight dates, swap creative assignments. No need to cancel and recreate.
+
+---
+
+## Add your data
+
+<img src="/images/walkthrough/intro-06-add-data.png" alt="Sam and Kai sit side by side with laptops as translucent teal data streams arc between their screens — combining campaign and signal data" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam's campaign needs targeting beyond what the sellers provide. His client has CRM data (existing customers to exclude), Pinnacle has audience segments from their DMP, and he wants to layer on third-party signals from Kai's data company, Meridian Geo.
+
+**Audiences** travel with the campaign via `sync_audiences`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "audiences": [
+    {
+      "audience_id": "acme_existing_customers",
+      "name": "Acme Outdoor — existing customers",
+      "audience_type": "suppression"
+    }
+  ]
+}
+```
+
+**Signals** — third-party targeting data — are discovered and activated through the signals protocol. Sam searches for what he needs:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json",
+  "signal_spec": "Outdoor recreation enthusiasts near sporting goods retailers, 25-45"
+}
+```
+
+Kai's Meridian Geo returns matching signal segments with pricing, coverage, and activation options. Sam activates the ones he wants:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "signal_agent_segment_id": "meridian_outdoor_rec_25_45",
+  "destinations": [
+    { "type": "platform", "platform": "streamhaus" }
+  ]
+}
+```
+
+The signal activates on StreamHaus's platform. Kai's data reaches Sam's campaign without either side building a custom integration.
+
+<Card title="Signals deep dive" icon="signal" href="/docs/signals/overview">
+  How Sam discovers and activates Kai's targeting data across platforms.
+</Card>
+
+---
+
+## Govern it
+
+<img src="/images/walkthrough/intro-07-govern-it.png" alt="Jordan studies a governance approval chain on her tablet, silver hoop earrings catching the lamplight, her expression focused and deliberate" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Before any of Sam's campaigns go live, they pass through governance. Jordan, Pinnacle's campaign ops manager, set up the governance framework before Alex let any agent spend money.
+
+`check_governance` runs automatically before execution — budget limits, brand safety, targeting compliance:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
+  "plan_id": "acme_outdoor_q2_plan",
+  "buyer_campaign_ref": "AcmeOutdoor_Summer_Q2",
+  "binding": "proposed",
+  "caller": "https://buyer.pinnacle-agency.com/a2a",
+  "tool": "create_media_buy",
+  "payload": {
+    "buyer_ref": "acme_outdoor_summer_q2",
+    "brand": { "domain": "acmeoutdoor.com" },
+    "start_time": "2026-04-01T00:00:00Z",
+    "end_time": "2026-06-30T23:59:59Z"
+  }
+}
+```
+
+If everything passes, the campaign proceeds. If something exceeds the agent's authority — say, the budget is above Jordan's $20K auto-approval threshold — the governance agent escalates to a human. Jordan reviews, adds conditions if needed, and approves. The agent can't skip this step; it's architectural, not procedural.
+
+After the campaign runs, `get_plan_audit_logs` provides the complete decision trail — who proposed what, who approved it, what conditions were attached, what actually ran. Every decision is recorded and attributable.
+
+<Accordion title="What an audit log looks like">
+
+```json
+{
+  "entries": [
+    {
+      "timestamp": "2026-03-15T14:30:00Z",
+      "actor": "buyer_agent",
+      "action": "submit_plan",
+      "details": { "budget": 50000, "channels": ["ctv", "olv"] }
+    },
+    {
+      "timestamp": "2026-03-15T14:30:01Z",
+      "actor": "governance_agent",
+      "action": "escalate",
+      "reason": "Budget exceeds auto-approval threshold ($20,000)"
+    },
+    {
+      "timestamp": "2026-03-15T15:12:00Z",
+      "actor": "jordan@pinnacleagency.com",
+      "action": "approve_with_conditions",
+      "conditions": ["Weekly spend cap of $15,000", "CTV only — no OLV until brand safety review"]
+    }
+  ]
+}
+```
+
+</Accordion>
+
+<Card title="Follow Jordan's full journey" icon="shield-halved" href="/docs/governance/overview">
+  The governance walkthrough — from nightmare to audit trail.
+</Card>
+
+---
+
+## Track performance
+
+<img src="/images/walkthrough/intro-08-track-performance.png" alt="Sam stands before a large performance dashboard with trending charts, coffee in hand, turning back with a confident expression — everything is on track" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam's campaign is live. In the old world, he'd check four dashboards. Now, `get_media_buy_delivery` aggregates performance from every seller into one response:
+
+```json
+{
+  "impressions": 1250000,
+  "clicks": 18750,
+  "spend": { "amount": 34200, "currency": "USD" },
+  "by_package": [
+    {
+      "product_id": "streamhaus_sports_ctv_q2",
+      "impressions": 750000,
+      "completion_rate": 0.87
+    }
+  ]
+}
+```
+
+For deeper performance tracking, AdCP provides two more tools:
+
+**`log_event`** records marketing events — purchases, leads, sign-ups — back to the sellers for attribution and optimization:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json",
+  "event_source_id": "acme_website_pixel",
+  "events": [
+    {
+      "event_id": "evt_abc123",
+      "event_type": "purchase",
+      "event_time": "2026-05-15T10:30:00Z",
+      "action_source": "website",
+      "custom_data": { "value": 149.99, "currency": "USD" }
+    }
+  ]
+}
+```
+
+**`provide_performance_feedback`** closes the optimization loop — telling sellers what's working and what isn't, so their algorithms can adjust:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
+  "buyer_ref": "acme_outdoor_summer_q2",
+  "measurement_period": {
+    "start": "2026-04-01T00:00:00Z",
+    "end": "2026-04-30T23:59:59Z"
+  },
+  "performance_index": 1.35
+}
+```
+
+---
+
+## Connect your store
+
+<img src="/images/walkthrough/intro-09-connect-store.png" alt="Overhead view of a phone showing a product catalog connected by a glowing teal line to a laptop campaign interface — catalog data flowing between them" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Acme Outdoor has a Shopify store with 200 products. They want their catalog available to AI platforms — AI assistants that recommend products, AI search engines that surface them, retail media networks that need feed data.
+
+`sync_catalogs` pushes the product feed to every connected platform:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
+  "catalogs": [
+    {
+      "catalog_id": "acme_outdoor_products",
+      "name": "Acme Outdoor Product Feed",
+      "type": "product",
+      "url": "https://acmeoutdoor.com/feeds/products.json",
+      "feed_format": "shopify",
+      "update_frequency": "daily"
+    }
+  ]
+}
+```
+
+The seller ingests the catalog and makes it available for product-level targeting, dynamic creative, and conversational recommendations. When a product goes out of stock or a price changes, the feed updates and the seller syncs automatically.
+
+---
+
+## Protect the brand
+
+<img src="/images/walkthrough/intro-10-protect-brand.png" alt="Tomoko stands in a corporate lobby before a frosted glass display of brand identity elements — composed and assured, she controls what goes out" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Tomoko manages brand operations at Acme Outdoor's parent company, Nova Motors. She published Nova's `brand.json` — a machine-readable brand identity that AI agents consume directly:
+
+```
+https://novamotors.com/.well-known/brand.json
+```
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": {
+    "domain": "novamotors.com",
+    "name": "Nova Motors"
+  },
+  "brands": [
+    {
+      "id": "acme_outdoor",
+      "names": [{ "en": "Acme Outdoor" }],
+      "identity_agent": {
+        "url": "https://brand.novamotors.com/mcp",
+        "id": "nova_brand_agent"
+      }
+    }
+  ]
+}
+```
+
+When Maya's creative agents generate ads, they pull brand guidelines directly from `brand.json` and the `get_brand_identity` task — colors, logos, tone, visual guidelines. No brand guide PDF. No manual asset handoff. The brand controls what AI agents see, and the protocol enforces it.
+
+For campaigns using licensed talent or third-party IP, the brand protocol handles [rights licensing](/docs/brand-protocol/walkthrough-rights-licensing) — discovery, acquisition, creative approval, and lifecycle management, all through the same protocol.
+
+<Card title="Brand protocol" icon="palette" href="/docs/brand-protocol">
+  Brand identity, rights licensing, and how brands control what AI does with their assets.
+</Card>
+
+---
+
+## The full picture
+
+Alex started with twelve platforms, twelve integrations, and a team drowning in platform mechanics. Now her team works through one protocol:
+
+| What they need | How AdCP handles it | Key tasks |
 |---|---|---|
-| Find inventory | `get_products` | Every publisher and SSP |
-| Buy media | `create_media_buy` | Every ad server and platform |
-| Build creatives | `build_creative` | Every creative tool |
-| Activate audiences | `activate_signal` | Every data provider |
-| Check compliance | `check_governance` | Every governance vendor |
+| Find new partners | Publisher discovery + registry | `adagents.json`, Registry API |
+| Set up relationships | Standardized onboarding | `sync_accounts`, `list_accounts` |
+| Discover inventory | One brief, every seller | `get_products` (brief + refine modes) |
+| Build creative | One brief, every format | `build_creative`, `list_creative_formats`, `sync_creatives` |
+| Execute campaigns | One buy, multiple sellers | `create_media_buy`, `update_media_buy` |
+| Add targeting data | Audiences + third-party signals | `sync_audiences`, `get_signals`, `activate_signal` |
+| Govern everything | Human oversight, built in | `check_governance`, `get_plan_audit_logs` |
+| Track performance | Unified reporting + events | `get_media_buy_delivery`, `log_event` |
+| Connect commerce | Product catalog sync | `sync_catalogs` |
+| Protect the brand | Machine-readable identity | `brand.json`, `get_brand_identity` |
 
-One integration. Every platform. The same JSON schema whether you're buying CTV inventory or activating retail media audiences.
+Sam buys media. Maya builds creative. Jordan governs. Kai provides data. Tomoko protects the brand. They all speak the same protocol.
 
-## Specialized agents collaborate
+---
 
-<img src="/images/walkthrough/adcp-03-agents.png" alt="Five specialized robots collaborate around a shared workspace — a discovery robot with a magnifying glass, a creative robot with a paintbrush, a governance robot with a shield, a signals robot with an antenna, and an orchestrator robot coordinating them all from the center" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+## How it works underneath
 
-AdCP doesn't assume a single AI handles everything. Specialized agents handle what they're best at:
-
-- **Media buying agents** discover inventory and execute campaigns
-- **Creative agents** generate and adapt ads across formats
-- **Signals agents** find and activate audiences
-- **Governance agents** enforce brand safety and compliance
-- **Orchestrators** coordinate the workflow and make sure humans approve what matters
-
-These agents communicate over two transport protocols: **MCP** (for AI assistants calling tools) and **A2A** (for agent-to-agent collaboration). Same tasks, same schemas, different transport.
-
-## Brief to live ads
-
-<img src="/images/walkthrough/adcp-04-workflow.png" alt="A horizontal flow showing a person writing a brief at a desk on the left, then agents in the middle producing different ad formats — video, display, audio — and on the right, finished ads running on screens across a city skyline" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
-
-Here's what Alex's team does now:
-
-1. **Write a brief**: "Find premium video inventory on sports publishers for Q2 with a $50K budget"
-2. **Agents discover options**: `get_products` goes to every connected seller simultaneously
-3. **Compare proposals**: Products come back in a standard format — pricing, forecasts, targeting — all comparable
-4. **Agents build creatives**: `build_creative` adapts assets to each seller's formats
-5. **Approve and launch**: `create_media_buy` executes across platforms in one call
-6. **Monitor delivery**: `get_media_buy_delivery` aggregates performance from every seller into one view
-
-Each step uses a standard AdCP task with a JSON Schema-defined request and response. No platform-specific code. No manual translation between systems.
-
-## Governance watches everything
-
-<img src="/images/walkthrough/adcp-05-governance.png" alt="A guardian robot at a checkpoint inspects campaign blueprints — approving compliant ones with green stamps and routing a flagged one along a glowing path to a human reviewer sitting nearby" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
-
-When AI agents spend money autonomously, trust requires structure. AdCP's governance layer provides it:
-
-- **Before a campaign launches**: `check_governance` validates budget limits, brand safety, and regulatory compliance
-- **If something exceeds authority**: The governance agent escalates to a human — your team approves, not the AI
-- **While campaigns run**: Governance agents monitor delivery against approved parameters
-- **After delivery**: `get_plan_audit_logs` provides a complete decision trail — who proposed what, who approved it, what actually ran
-
-Governance isn't a gate that slows things down. It's the safety net that lets you give agents more autonomy over time.
-
-## How it works
-
-AdCP defines **tasks** — discrete advertising operations like `get_products`, `create_media_buy`, or `activate_signal`. Each task has a JSON Schema-defined request and response. Agents call tasks through two transport protocols:
+AdCP defines **tasks** — discrete advertising operations with JSON Schema-defined requests and responses. Agents call tasks through two transport protocols:
 
 - **MCP (Model Context Protocol)** — Direct integration with AI assistants. An MCP server exposes AdCP tasks as tools that any MCP-compatible client can call.
 - **A2A (Agent-to-Agent Protocol)** — Multi-agent workflows where specialized agents collaborate on complex campaigns.
 
-The same task definitions work over both transports. Build once, serve both.
-
-## Protocol domains
-
-AdCP 3.0 covers eight domains:
-
-| Domain | What it does | Key tasks | Access |
-|--------|-------------|-----------|--------|
-| **Accounts** | Commercial identity and billing | `sync_accounts`, `list_accounts` | MCP / A2A |
-| **Media Buy** | Inventory discovery and campaign execution | `get_products`, `create_media_buy` | MCP / A2A |
-| **Creative** | Creative generation, catalogs, and AI provenance | `build_creative`, `sync_creatives`, `sync_catalogs` | MCP / A2A |
-| **Signals** | Audience and targeting data | `get_signals`, `activate_signal` | MCP / A2A |
-| **Governance** | Brand suitability, compliance, and provenance verification | `create_property_list`, `calibrate_content` | MCP / A2A |
-| **Sponsored Intelligence** | Conversational brand experiences | `si_initiate_session`, `si_send_message` | MCP / A2A |
-| **Brand Protocol** | Brand identity, rights licensing, and creative approval | `get_brand_identity`, `acquire_rights` | HTTP / MCP / A2A |
-| **Registry** | Entity resolution and agent discovery | `/api/brands/resolve`, `/api/registry/agents` | REST API |
-
-These domains work together. A typical workflow: resolve a brand via **Brand Protocol**, establish billing via **Accounts**, discover inventory via **Media Buy**, find audiences via **Signals**, check brand suitability via **Governance**, build ads via **Creative**, and execute across platforms.
+Same task definitions, same schemas, both transports. Build once, serve both.
 
 <Card title="Protocol architecture" icon="sitemap" href="/docs/protocol/architecture">
   How the layers fit together: identity, transaction domains, governance, and technical execution.
 </Card>
 
-## Quick start
+---
+
+## Get started
 
 <CardGroup cols={2}>
   <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">

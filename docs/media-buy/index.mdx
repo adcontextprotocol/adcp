@@ -25,9 +25,10 @@ In AdCP, the brief is natural language inside `get_products`. Sam doesn't need t
 ```javascript
 const products = await Promise.all(
   sellers.map(seller => seller.getProducts({
+    buying_mode: "brief",
     brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada.",
-    budget: { amount: 50000, currency: "USD" },
-    flight: { start_date: "2026-04-01", end_date: "2026-06-30" }
+    brand: { domain: "acmeoutdoor.com" },
+    account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" }
   }))
 );
 ```
@@ -43,7 +44,7 @@ One brief. Three sellers. Same JSON structure back.
 | IO / insertion order | `create_media_buy` |
 | Trafficking creatives | `sync_creatives` to each seller |
 | Campaign report | `get_media_buy_delivery` across agents |
-| Flight dates | `start_date` / `end_date` on tactics |
+| Flight dates | `start_time` / `end_time` on the media buy or packages |
 
 </Accordion>
 
@@ -61,16 +62,23 @@ Products come back in a standard format. For the first time, Sam sees pricing, d
 
 No CSVs. No spreadsheets. No manual data entry. The products are comparable because every seller returns the same schema.
 
-Sam wants to narrow down. He sends a follow-up brief — and the agents refine their proposals without starting over:
+Sam wants to narrow down. He switches to `refine` mode, telling each agent exactly how to adjust:
 
 ```javascript
 const refined = await seller.getProducts({
-  brief: "Only guaranteed packages. Must include completion rate SLA above 80%.",
-  context_id: products.context_id  // continues the conversation
+  buying_mode: "refine",
+  refine: [
+    {
+      scope: "request",
+      ask: "Only guaranteed packages. Must include completion rate SLA above 80%."
+    }
+  ],
+  brand: { domain: "acmeoutdoor.com" },
+  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" }
 });
 ```
 
-The `context_id` links this to the previous discovery. The agent understands Sam is narrowing, not starting fresh.
+The `refine` array lets Sam layer constraints without starting over. Each refinement narrows the previous result set.
 
 ## Step 3: Match creatives
 
@@ -86,10 +94,20 @@ Sam's creative team already has assets in their library. The platform matches ex
 
 ```javascript
 const result = await seller.syncCreatives({
-  account_id: "acme-outdoor",
+  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" },
   creatives: [
-    { manifest_id: "video_30s_trail_pro", format_id: { agent_url: "https://streamhaus.example", id: "ssai_30s" } },
-    { manifest_id: "display_trail_pro", format_id: { agent_url: "https://outdoornet.example", id: "display_300x250" } }
+    {
+      creative_id: "video_30s_trail_pro",
+      name: "Trail Pro 3000 - 30s CTV Spot",
+      format_id: { agent_url: "https://streamhaus.example", id: "ssai_30s" },
+      assets: { video: { url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4", mime_type: "video/mp4" } }
+    },
+    {
+      creative_id: "display_trail_pro_300x250",
+      name: "Trail Pro 3000 - Display 300x250",
+      format_id: { agent_url: "https://outdoornet.example", id: "display_300x250" },
+      assets: { image: { url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png", mime_type: "image/png" } }
+    }
   ]
 });
 if (result.errors) {
@@ -107,17 +125,17 @@ Sam creates the media buy. One call per seller, same structure everywhere:
 
 ```javascript
 const buy = await seller.createMediaBuy({
-  account_id: "acme-outdoor",
-  name: "Acme Outdoor Q2 - Trail Pro 3000",
+  buyer_ref: "acme-outdoor-q2-ctv",
+  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" },
+  brand: { domain: "acmeoutdoor.com" },
+  start_time: "2026-04-01T00:00:00Z",
+  end_time: "2026-06-30T23:59:59Z",
   packages: [{
-    name: "CTV Sports Pre-Roll",
-    tactics: [{
-      name: "Sports audiences 25-54",
-      budget: { amount: 25000, currency: "USD" },
-      flight: { start_date: "2026-04-01", end_date: "2026-06-30" },
-      pricing: { model: "cpm", amount: 28.00 },
-      creatives: [{ manifest_id: "video_30s_trail_pro" }]
-    }]
+    buyer_ref: "pkg_ctv_sports_preroll",
+    product_id: "streamhaus_sports_preroll_q2",
+    budget: 25000,
+    pricing_option_id: "cpm_standard",
+    creative_assignments: [{ creative_id: "video_30s_trail_pro" }]
   }]
 });
 ```
@@ -169,9 +187,9 @@ The campaign is running. Sam monitors through a single view — his platform cal
 
 ```javascript
 const delivery = await seller.getMediaBuyDelivery({
-  account_id: "acme-outdoor",
-  media_buy_id: buy.media_buy_id,
-  dimensions: ["tactic", "creative", "date"]
+  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" },
+  media_buy_ids: [buy.media_buy_id],
+  include_package_daily_breakdown: true
 });
 ```
 

@@ -20,7 +20,7 @@ This walkthrough follows Jordan as she sets up governance for Sam's $50K campaig
 
 ## The three-party model
 
-<img src="/images/concepts/three-party-governance.png" alt="A triangle diagram with three robot figures: the orchestrator at the top proposes a campaign plan, the governance agent at bottom-left validates it against policies, and the seller at bottom-right confirms and fulfills it — the campaign plan floats in the center" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/concepts/three-party-governance.png" alt="A triangle diagram with humans at the top setting policies, and three agents below — orchestrator proposes, governance validates, seller fulfills — connected by lines showing separation of duties" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 AdCP governance works because humans define the boundaries and no single party controls the full workflow:
 
@@ -42,7 +42,7 @@ Before Sam's orchestrator executes any buy, Jordan's governance setup requires i
 const plan = await governance.syncPlans({
   plans: [{
     plan_id: "acme-q2-trail-pro",
-    brand: { domain: "acme-outdoor-example.com" },
+    brand: { domain: "acmeoutdoor.com" },
     objectives: "Q2 Trail Pro 3000 launch across sports and outdoor lifestyle publishers",
     budget: { total: 50000, currency: "USD", authority_level: "agent_limited" },
     flight: { start: "2026-04-01T00:00:00Z", end: "2026-06-30T23:59:59Z" },
@@ -167,6 +167,8 @@ The campaign is live. Governance doesn't stop at purchase — it monitors delive
 - **Drift detection**: If delivery diverges from the plan — wrong publisher, unexpected creative, budget overrun — governance flags it
 - **Policy updates**: If a new regulation takes effect mid-flight, governance applies it to active plans
 
+First, the orchestrator reports that the seller accepted the purchase and committed budget:
+
 ```javascript
 await governance.reportPlanOutcome({
   plan_id: "acme-q2-trail-pro",
@@ -175,8 +177,18 @@ await governance.reportPlanOutcome({
   outcome: "completed",
   seller_response: {
     media_buy_id: "mb-streamhaus-001",
-    committed_budget: 24850
-  },
+    committed_budget: 25000
+  }
+});
+```
+
+Then, as delivery data comes in, the orchestrator reports delivery outcomes so governance can track actual spend against the committed budget:
+
+```javascript
+await governance.reportPlanOutcome({
+  plan_id: "acme-q2-trail-pro",
+  buyer_campaign_ref: "acme-q2-ctv",
+  outcome: "delivery",
   delivery: {
     media_buy_id: "mb-streamhaus-001",
     reporting_period: {
@@ -189,7 +201,7 @@ await governance.reportPlanOutcome({
 });
 ```
 
-The $25,000 buy delivered $24,850. The governance agent updates the ledger — $25,150 is available for the next buy.
+The $25,000 buy committed budget, and actual delivery came in at $24,850. The governance agent updates the ledger — $25,150 remains of the $50K plan budget for the next buy.
 
 ## Step 6: The audit trail
 
@@ -199,7 +211,8 @@ Six months later, Acme Outdoor's procurement team asks: "Who approved that $25,0
 
 ```javascript
 const audit = await governance.getPlanAuditLogs({
-  plan_id: "acme-q2-trail-pro"
+  plan_ids: ["acme-q2-trail-pro"],
+  include_entries: true
 });
 ```
 
@@ -248,7 +261,7 @@ Every step in this walkthrough reflects a principle from the [Embedded Human Jud
 
 ## Protocol domains
 
-The Governance Protocol covers six domains:
+The Governance Protocol covers five domains:
 
 <CardGroup cols={2}>
   <Card title="Policy registry" icon="book" href="/docs/governance/policy-registry">
