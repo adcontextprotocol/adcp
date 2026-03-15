@@ -70,7 +70,6 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
-              "docs/agentic-advertising",
               "docs/faq",
               "docs/quickstart",
               {
@@ -500,7 +499,6 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
-              "docs/agentic-advertising",
               "docs/faq",
               "docs/quickstart",
               {
