@@ -480,28 +480,41 @@
       height: 20px;
     }
 
-    .suggested-prompts {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 16px;
+    .welcome-prompts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      max-width: 520px;
+      margin: 0 auto;
     }
 
-    .suggested-prompt {
-      padding: 8px 16px;
+    .welcome-prompt-card {
+      display: flex;
+      align-items: center;
+      padding: 16px 20px;
       background: var(--color-bg-card);
       border: 1px solid var(--color-border);
-      border-radius: 20px;
-      font-size: 13px;
-      color: var(--color-text-secondary);
+      border-radius: 16px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.15s ease;
+      text-align: left;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text);
+      line-height: 1.4;
     }
 
-    .suggested-prompt:hover {
-      background: var(--color-bg-subtle);
+    .welcome-prompt-card:hover {
       border-color: var(--color-brand);
+      background: var(--color-bg-subtle);
       color: var(--color-brand);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+
+    @media (max-width: 480px) {
+      .welcome-prompts {
+        grid-template-columns: 1fr;
+      }
     }
 
     .welcome-message {
@@ -2436,20 +2449,19 @@
       <div class="messages-container" id="messagesContainer">
         <!-- Addie Home (shown for authenticated users) -->
         <div class="addie-home-container" id="addieHomeContainer">
-          <div class="addie-home-loading" id="addieHomeLoading">Loading your dashboard...</div>
+          <div class="addie-home-loading" id="addieHomeLoading">Loading...</div>
           <div id="addieHomeContent"></div>
           <style id="addieHomeStyles"></style>
         </div>
 
         <div class="welcome-message" id="welcomeMessage">
-          <h2>Hi! I'm Addie</h2>
-          <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
-          <div class="suggested-prompts" id="suggestedPrompts">
-            <button class="suggested-prompt" data-prompt="What can you do? What kinds of things can I ask you about?">What can you help me with?</button>
-            <button class="suggested-prompt" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
-            <button class="suggested-prompt" data-prompt="How do I set up a sales agent with AdCP?">Get started building</button>
-            <button class="suggested-prompt" data-prompt="How is agentic advertising different from programmatic, and why is it better for sustainability?">AdCP vs programmatic</button>
-            <button class="suggested-prompt" data-prompt="I'd like to start learning AdCP in the Academy. What modules are available?">Start the Academy</button>
+          <h2>Hi, I'm Addie</h2>
+          <p>Your guide to agentic advertising. Ask me anything.</p>
+          <div class="welcome-prompts" id="suggestedPrompts">
+            <button class="welcome-prompt-card" data-prompt="What can you do? What kinds of things can I ask you about?">What can you help me with?</button>
+            <button class="welcome-prompt-card" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
+            <button class="welcome-prompt-card" data-prompt="How do I set up a sales agent with AdCP?">Get started building</button>
+            <button class="welcome-prompt-card" data-prompt="How is agentic advertising different from programmatic, and why does it matter?">AdCP vs programmatic</button>
           </div>
         </div>
       </div>
@@ -3162,20 +3174,12 @@
         } catch (error) {
           console.error('Failed to load Addie Home:', error);
           addieHomeLoading.style.display = 'none';
-          addieHomeContent.innerHTML = '<div class="addie-home-error">Failed to load your dashboard</div>';
+          addieHomeContent.innerHTML = '<div class="addie-home-error">Something went wrong. Try refreshing.</div>';
         }
       }
 
-      // Setup click handlers for Addie Home action buttons
+      // Setup click handlers for Addie Home
       function setupHomeActions() {
-        // Handle quick action buttons
-        addieHomeContent.querySelectorAll('.addie-home-action').forEach(button => {
-          button.addEventListener('click', () => {
-            const actionId = button.dataset.action;
-            handleHomeAction(actionId);
-          });
-        });
-
         // Handle alert action buttons
         addieHomeContent.querySelectorAll('.addie-home-alert-action[data-action]').forEach(button => {
           button.addEventListener('click', () => {
@@ -3184,8 +3188,8 @@
           });
         });
 
-        // Handle suggested prompt buttons (from engagement-aware builder)
-        addieHomeContent.querySelectorAll('.suggested-prompt[data-prompt]').forEach(button => {
+        // Handle prompt cards
+        addieHomeContent.querySelectorAll('.prompt-card[data-prompt]').forEach(button => {
           button.addEventListener('click', () => {
             const prompt = button.dataset.prompt;
             if (prompt) {
@@ -4202,7 +4206,7 @@
 
       // Suggested prompts
       suggestedPrompts.addEventListener('click', (e) => {
-        if (e.target.classList.contains('suggested-prompt')) {
+        if (e.target.classList.contains('welcome-prompt-card')) {
           const prompt = e.target.dataset.prompt;
           chatInput.value = prompt;
           autoResize();

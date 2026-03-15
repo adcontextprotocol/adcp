@@ -120,14 +120,20 @@ export function buildSuggestedPrompts(
     });
   }
 
-  // If we don't have enough prompts, add a general learning one
-  if (prompts.length < 4) {
-    prompts.push({
-      label: 'Learn about AdCP',
-      prompt: 'What is AdCP and how does it work?',
-    });
+  // Pad to even count for clean 2-column grid
+  const filler: SuggestedPrompt[] = [
+    { label: 'Learn about AdCP', prompt: 'What is AdCP and how does it work?' },
+    { label: "What's new?", prompt: "What's been happening at AgenticAdvertising.org recently?" },
+  ];
+  for (const f of filler) {
+    if (prompts.length >= 4) break;
+    if (!prompts.some(p => p.label === f.label)) {
+      prompts.push(f);
+    }
   }
 
-  // Cap at 5
-  return prompts.slice(0, 5);
+  // Cap at 4, ensure even count
+  const capped = prompts.slice(0, 4);
+  if (capped.length % 2 !== 0) capped.pop();
+  return capped;
 }
