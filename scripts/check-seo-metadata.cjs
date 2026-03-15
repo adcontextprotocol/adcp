@@ -6,13 +6,20 @@
  * - ERROR: Missing `description` frontmatter (required)
  * - ERROR: Missing `"og:title"` frontmatter (required)
  * - ERROR: Has deprecated `keywords` field (remove it)
+ * - ERROR: Duplicate `"og:title"` across pages
+ * - ERROR: Duplicate `description` across pages
  * - WARN:  Description exceeds 160 characters
+ * - WARN:  Description under 50 characters
  * - WARN:  og:title exceeds 60 characters
+ * - WARN:  og:title missing "AdCP" prefix
  * - WARN:  Page has walkthrough/concept images but no `og:image`
  *
  * Exit codes:
  *   0 = pass (warnings only or clean)
  *   1 = fail (errors found)
+ *
+ * Note: The frontmatter parser handles single-line YAML values only.
+ * Multiline values (folded `>` or literal `|`) are not supported.
  */
 
 const fs = require('fs');
@@ -20,6 +27,7 @@ const path = require('path');
 
 const DOCS_DIR = path.join(__dirname, '..', 'docs');
 const MAX_DESCRIPTION_LENGTH = 160;
+const MIN_DESCRIPTION_LENGTH = 50;
 const MAX_OG_TITLE_LENGTH = 60;
 const IMAGE_PATTERN = /\/images\/(walkthrough|concepts)\//;
 
@@ -37,10 +45,10 @@ function findMdxFiles(dir) {
 }
 
 function parseFrontmatter(content) {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return {};
   const fm = {};
-  for (const line of match[1].split('\n')) {
+  for (const line of match[1].split(/\r?\n/)) {
     // Handle quoted keys like "og:image": value
     const quoted = line.match(/^"([^"]+)"\s*:\s*(.+)/);
     if (quoted) {
@@ -72,6 +80,10 @@ const stats = {
   hasIllustrations: 0,
 };
 
+// Track duplicates
+const ogTitleMap = new Map(); // og:title -> [relPath, ...]
+const descriptionMap = new Map(); // description -> [relPath, ...]
+
 for (const file of files) {
   const relPath = path.relative(path.join(__dirname, '..'), file);
   const content = fs.readFileSync(file, 'utf8');
@@ -88,6 +100,13 @@ for (const file of files) {
     if (fm.description.length > MAX_DESCRIPTION_LENGTH) {
       warnings.push(`${relPath}: description is ${fm.description.length} chars (max ${MAX_DESCRIPTION_LENGTH})`);
     }
+    if (fm.description.length < MIN_DESCRIPTION_LENGTH) {
+      warnings.push(`${relPath}: description is only ${fm.description.length} chars (min ${MIN_DESCRIPTION_LENGTH})`);
+    }
+    // Track for duplicate detection
+    const descKey = fm.description.toLowerCase();
+    if (!descriptionMap.has(descKey)) descriptionMap.set(descKey, []);
+    descriptionMap.get(descKey).push(relPath);
   }
 
   // Check og:title (required)
@@ -98,6 +117,13 @@ for (const file of files) {
     if (fm['og:title'].length > MAX_OG_TITLE_LENGTH) {
       warnings.push(`${relPath}: og:title is ${fm['og:title'].length} chars (max ${MAX_OG_TITLE_LENGTH})`);
     }
+    if (!fm['og:title'].startsWith('AdCP')) {
+      warnings.push(`${relPath}: og:title should start with "AdCP" (got "${fm['og:title']}")`);
+    }
+    // Track for duplicate detection
+    const titleKey = fm['og:title'].toLowerCase();
+    if (!ogTitleMap.has(titleKey)) ogTitleMap.set(titleKey, []);
+    ogTitleMap.get(titleKey).push(relPath);
   }
 
   // Check for deprecated keywords field
@@ -110,6 +136,20 @@ for (const file of files) {
     stats.hasOgImage++;
   } else if (illustrated) {
     warnings.push(`${relPath}: has illustrations but no og:image`);
+  }
+}
+
+// Check for duplicate og:titles
+for (const [title, paths] of ogTitleMap) {
+  if (paths.length > 1) {
+    errors.push(`Duplicate og:title "${title}" on ${paths.length} pages: ${paths.join(', ')}`);
+  }
+}
+
+// Check for duplicate descriptions
+for (const [desc, paths] of descriptionMap) {
+  if (paths.length > 1) {
+    errors.push(`Duplicate description on ${paths.length} pages: ${paths.join(', ')}`);
   }
 }
 

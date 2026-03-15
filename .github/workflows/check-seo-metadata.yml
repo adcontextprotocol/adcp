@@ -6,6 +6,8 @@ on:
     paths:
       - 'docs/**/*.mdx'
       - 'docs/**/*.md'
+      - 'scripts/check-seo-metadata.cjs'
+      - '.github/workflows/check-seo-metadata.yml'
 
 jobs:
   check-seo:
@@ -24,11 +26,12 @@ jobs:
       - name: Check SEO metadata
         id: check
         run: |
+          DELIMITER="$(openssl rand -hex 16)"
           OUTPUT=$(node scripts/check-seo-metadata.cjs 2>&1) || EXIT_CODE=$?
           echo "$OUTPUT"
-          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "output<<$DELIMITER" >> $GITHUB_OUTPUT
           echo "$OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$DELIMITER" >> $GITHUB_OUTPUT
           if [ "${EXIT_CODE:-0}" -ne 0 ]; then
             echo "has_errors=true" >> $GITHUB_OUTPUT
           else
@@ -43,7 +46,7 @@ jobs:
         with:
           script: |
             const output = process.env.CHECK_OUTPUT;
-            const comment = `## SEO Metadata Check\n\n\`\`\`\n${output}\n\`\`\`\n\nAll doc pages must have a \`description\` in frontmatter. Illustrated pages should also set \`"og:image"\`.`;
+            const comment = `## SEO Metadata Check\n\n\`\`\`\n${output}\n\`\`\`\n\nAll doc pages must have a \`description\` and \`"og:title"\` in frontmatter. Illustrated pages should also set \`"og:image"\`. No duplicate og:titles or descriptions.`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
