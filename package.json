@@ -93,7 +93,7 @@
     "@types/node": "^20.19.26",
     "@types/pg": "^8.16.0",
     "@types/supertest": "^6.0.3",
-    "@vitejs/plugin-react": "^5.1.2",
+    "@vitejs/plugin-react": "^6.0.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "c8": "^10.1.3",
