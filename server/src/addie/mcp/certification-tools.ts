@@ -1225,6 +1225,11 @@ export function createCertificationToolHandlers(
         '',
       ];
 
+      if (moduleId === 'A1') {
+        lines.push('Later in this program, you\'ll build your own working advertising agent. This module is where that journey starts.');
+        lines.push('');
+      }
+
       if (mod.lesson_plan) {
         const lp = mod.lesson_plan as certDb.LessonPlan;
         lines.push('## Teaching guide');
