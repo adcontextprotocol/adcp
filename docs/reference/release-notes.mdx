@@ -27,19 +27,19 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 6. **Account Model Simplification** — Removed `account_resolution` capability. `require_operator_auth` now determines both auth model and account reference style.
 
-7. **Certification Program** — Three-tier certification (Basics, Practitioner, Specialist) taught by Addie through interactive chat. Vibe coding build projects for non-technical participants.
-
-8. **Documentation Overhaul** — Illustrated protocol walkthroughs, buy-side guides, FAQ expansion, schema-compliant examples, and collapsed sidebar navigation.
-
 ### Breaking Changes
 
 | Change | rc.1 | rc.2 |
 |--------|------|------|
 | Brand tone | String or object | Object only — `{ voice, attributes, dos, donts }` |
-| Brand logo fields | `tags` only | Added `orientation`, `background`, `variant`, `usage` |
 | Account resolution | `account_resolution` capability | Removed — `require_operator_auth` determines account model |
 | delete_content_standards | Documented task | Removed — archive standards via `update_content_standards` instead |
 | get_property_features | Standalone task | Removed — use property list filters and `get_adcp_capabilities` for feature discovery |
+
+### Other Updates
+
+- **Certification program** — Three-tier certification (Basics, Practitioner, Specialist) taught by Addie through interactive chat, with vibe coding build projects for non-technical participants.
+- **Documentation** — Illustrated protocol walkthroughs, buy-side guides, FAQ expansion, schema-compliant examples, and collapsed sidebar navigation.
 
 ---
 
