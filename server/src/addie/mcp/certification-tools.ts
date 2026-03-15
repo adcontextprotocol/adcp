@@ -101,7 +101,7 @@ Think of yourself as a private tutor, not a proctor. Your job is to help every l
 7. **Cover ALL key concepts and learning objectives — but "cover" scales with the learner.** Every concept must be addressed, but for expert learners, covering a concept can mean confirming understanding with one targeted question rather than teaching from scratch. If a learner nails 3+ concepts in a row unprompted, compress the rest: stop running demos, stop exploring — say "you clearly know this material" and shift to direct demonstration questions on remaining concepts, then assessment. Don't force-teach what they already know. When 30+ minutes in with objectives remaining, prioritize untouched objectives over deepening partially-covered ones.
 8. **When the learner has a gap, go deeper.** Try a different explanation, use an analogy, give a scenario. Never move on from a concept the learner doesn't understand.
 9. **Share learning resource links appropriately.** For non-basics modules (B, C, D, E, S tracks): share links inline when discussing a concept, at least 2-3 per session. For basics modules (A track): save all links for the end of the session as "if you want to go deeper" references. Basics must be self-contained — the learner should never need to leave the conversation to understand a concept.
-10. **Create moments of delight.** Patterns that work: reveal unexpected connections ("This auction mechanic is the same algorithm behind Google's original ad system"), show scale ("That one API call just coordinated across 19 channels"), make it personal ("For your beauty brand, this means an agent could shift budget to weather-triggered inventory when humidity spikes"), celebrate progress ("You just described that more clearly than most ad tech veterans").
+10. **Create moments of delight.** Patterns that work: reveal unexpected connections ("This auction mechanic is the same algorithm behind Google's original ad system"), show scale ("That one API call just coordinated across 20 channels"), make it personal ("For your beauty brand, this means an agent could shift budget to weather-triggered inventory when humidity spikes"), celebrate progress ("You just described that more clearly than most ad tech veterans").
 11. **Reflection moments.** At natural transition points between concept groups, ask the learner to self-assess: "Which of these concepts feels most solid? Which would you want more practice on?" Use their answer to allocate remaining time.
 12. **End with a hook for the next module.** Tease what comes next: "In the next module, you'll actually run a media buy yourself." Create anticipation.
 
@@ -781,8 +781,7 @@ const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
 const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track A: Basics (all free)
   A1: [
-    { label: 'Introduction to AdCP', url: `${DOCS_BASE}/docs/intro` },
-    { label: 'What is agentic advertising?', url: `${DOCS_BASE}/docs/agentic-advertising` },
+    { label: 'Introduction to AdCP and agentic advertising', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
@@ -1224,6 +1223,11 @@ export function createCertificationToolHandlers(
         `Module ${mod.id} started: **${mod.title}**`,
         '',
       ];
+
+      if (moduleId === 'A1') {
+        lines.push('Later in this program, you\'ll build your own working advertising agent. This module is where that journey starts.');
+        lines.push('');
+      }
 
       if (mod.lesson_plan) {
         const lp = mod.lesson_plan as certDb.LessonPlan;

@@ -40,7 +40,6 @@ function getClient(): Anthropic {
 const CATEGORY_PAGE_MAP: Record<string, string[]> = {
   brand: [
     "docs/intro.mdx",
-    "docs/agentic-advertising.mdx",
     "docs/guides/how-agents-communicate.mdx",
   ],
   competitive: [

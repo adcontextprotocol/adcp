@@ -70,7 +70,6 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
-              "docs/agentic-advertising",
               "docs/faq",
               "docs/quickstart",
               {
@@ -156,10 +155,12 @@
           },
           {
             "group": "Industry Guides",
+            "expanded": false,
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
               "docs/guides/ai-media",
+              "docs/guides/ai-media-networks",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -169,6 +170,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "docs/media-buy/index",
               {
@@ -221,6 +223,7 @@
           },
           {
             "group": "Creative Protocol",
+            "expanded": false,
             "pages": [
               "docs/creative/index",
               {
@@ -305,6 +308,7 @@
           },
           {
             "group": "Governance Protocol",
+            "expanded": false,
             "pages": [
               "docs/governance/overview",
               "docs/governance/embedded-human-judgment",
@@ -339,7 +343,6 @@
                       "docs/governance/content-standards/tasks/get_content_standards",
                       "docs/governance/content-standards/tasks/create_content_standards",
                       "docs/governance/content-standards/tasks/update_content_standards",
-                      "docs/governance/content-standards/tasks/delete_content_standards",
                       "docs/governance/content-standards/tasks/calibrate_content",
                       "docs/governance/content-standards/tasks/get_media_buy_artifacts",
                       "docs/governance/content-standards/tasks/validate_content_delivery"
@@ -377,6 +380,7 @@
           },
           {
             "group": "Brand Protocol",
+            "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/key-concepts",
@@ -398,6 +402,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "docs/signals/overview",
               "docs/signals/key-concepts",
@@ -415,6 +420,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               {
                 "group": "Registry API",
@@ -438,6 +444,7 @@
           },
           {
             "group": "Certification",
+            "expanded": false,
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
@@ -491,7 +498,6 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
-              "docs/agentic-advertising",
               "docs/faq",
               "docs/quickstart",
               {
@@ -577,10 +583,12 @@
           },
           {
             "group": "Industry Guides",
+            "expanded": false,
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
               "docs/guides/ai-media",
+              "docs/guides/ai-media-networks",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -590,6 +598,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "docs/media-buy/index",
               {
@@ -642,6 +651,7 @@
           },
           {
             "group": "Creative Protocol",
+            "expanded": false,
             "pages": [
               "docs/creative/index",
               {
@@ -726,6 +736,7 @@
           },
           {
             "group": "Governance Protocol",
+            "expanded": false,
             "pages": [
               "docs/governance/overview",
               "docs/governance/embedded-human-judgment",
@@ -760,7 +771,6 @@
                       "docs/governance/content-standards/tasks/get_content_standards",
                       "docs/governance/content-standards/tasks/create_content_standards",
                       "docs/governance/content-standards/tasks/update_content_standards",
-                      "docs/governance/content-standards/tasks/delete_content_standards",
                       "docs/governance/content-standards/tasks/calibrate_content",
                       "docs/governance/content-standards/tasks/get_media_buy_artifacts",
                       "docs/governance/content-standards/tasks/validate_content_delivery"
@@ -798,6 +808,7 @@
           },
           {
             "group": "Brand Protocol",
+            "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/key-concepts",
@@ -819,6 +830,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "docs/signals/overview",
               "docs/signals/key-concepts",
@@ -836,6 +848,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               {
                 "group": "Registry API",
@@ -859,6 +872,7 @@
           },
           {
             "group": "Certification",
+            "expanded": false,
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
@@ -937,6 +951,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/signals/overview",
               "dist/docs/2.5.3/signals/specification",
@@ -957,6 +972,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/media-buy/index",
               {
@@ -1055,6 +1071,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/reference/media-buy-quick-reference",
               "dist/docs/2.5.3/reference/creative-quick-reference",

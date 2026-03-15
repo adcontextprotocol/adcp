@@ -7,9 +7,9 @@ description: "AdCP is an open agentic advertising standard. Follow Alex's team f
 ---
 
 <Warning>
-**AdCP 3.0 Release Candidate**
+**AdCP 3.0 Release Candidate 2**
 
-You're viewing the 3.0 release candidate documentation. This release adds AI provenance and disclosure, creative compliance, search and retail media, and 27 other features. See [what's new in 3.0](/docs/reference/release-notes#version-300-rc1) and the [AdCP 3.0 overview](/docs/reference/whats-new-in-v3). For production use, switch to version 2.5 using the version selector above.
+You're viewing the 3.0-rc.2 documentation. Schemas may still change before the final 3.0 release. See [what's new in rc.2](/docs/reference/release-notes#version-300-rc2) and the [AdCP 3.0 overview](/docs/reference/whats-new-in-v3). For production use, switch to version 2.5 using the version selector above.
 </Warning>
 
 <img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex stands arms crossed in a war room of mismatched screens and tangled cables, surveying the chaos — her team hunched over laptops in the background" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
@@ -549,18 +549,50 @@ Sam buys media. Maya builds creative. Jordan governs. Kai provides data. Tomoko 
 
 ## How it works underneath
 
-AdCP defines **tasks** — discrete advertising operations with JSON Schema-defined requests and responses. Agents call tasks through two transport protocols:
+AdCP doesn't assume a single AI handles everything. Specialized agents handle what they're best at:
 
-- **MCP (Model Context Protocol)** — Direct integration with AI assistants. An MCP server exposes AdCP tasks as tools that any MCP-compatible client can call.
-- **A2A (Agent-to-Agent Protocol)** — Multi-agent workflows where specialized agents collaborate on complex campaigns.
+- **Media buying agents** discover inventory and execute campaigns
+- **Creative agents** generate and adapt ads across formats
+- **Signals agents** find and activate audiences
+- **Governance agents** enforce brand safety and compliance
+- **Orchestrators** coordinate the workflow and make sure humans approve what matters
 
-Same task definitions, same schemas, both transports. Build once, serve both.
+These agents communicate over two transport protocols: **MCP** (for AI assistants calling tools) and **A2A** (for agent-to-agent collaboration). Same tasks, same schemas, different transport.
 
-<Card title="Protocol architecture" icon="sitemap" href="/docs/protocol/architecture">
-  How the layers fit together: identity, transaction domains, governance, and technical execution.
-</Card>
+## Brief to live ads
 
----
+Here's what Alex's team does now:
+
+1. **Write a brief**: "Find premium video inventory on sports publishers for Q2 with a $50K budget"
+2. **Agents discover options**: `get_products` goes to every connected seller simultaneously
+3. **Compare proposals**: Products come back in a standard format — pricing, forecasts, targeting — all comparable
+4. **Agents build creatives**: `build_creative` adapts assets to each seller's formats
+5. **Approve and launch**: `create_media_buy` executes across platforms in one call
+6. **Monitor delivery**: `get_media_buy_delivery` aggregates performance from every seller into one view
+
+Each step uses a standard AdCP task with a JSON Schema-defined request and response. No platform-specific code. No manual translation between systems.
+
+## Trust through governance
+
+When AI agents spend money autonomously, trust requires structure. AdCP's governance layer provides it:
+
+- **Before a campaign launches**: `check_governance` validates budget limits, brand safety, and regulatory compliance
+- **If something exceeds authority**: The governance agent escalates to a human — your team approves, not the AI
+- **While campaigns run**: Governance agents monitor delivery against approved parameters
+- **After delivery**: `get_plan_audit_logs` provides a complete decision trail — who proposed what, who approved it, what actually ran
+
+Governance isn't a gate that slows things down. It's the safety net that lets you give agents more autonomy over time.
+
+## Where do you want to start?
+
+<CardGroup cols={2}>
+  <Card title="I want to buy AI media" icon="cart-shopping" href="/docs/guides/buying-ai-media">
+    For brands, agencies, and businesses who want to advertise on AI platforms
+  </Card>
+  <Card title="I want to build with AdCP" icon="code" href="/docs/building">
+    For platforms, publishers, and developers implementing the protocol
+  </Card>
+</CardGroup>
 
 ## Get started
 
@@ -625,7 +657,8 @@ AdCP-enabled agents work across all your media partners through a single interfa
 1. **Read the buyer's guide** — The [guide to buying AI media](/docs/guides/buying-ai-media) explains how this works for brands, agencies, and SMBs.
 2. **Check platform support** — See which of your media partners support AdCP, or browse the [registry](/docs/registry).
 3. **Try it with Addie** — [Ask Addie](https://adcontextprotocol.org/chat) to walk you through the protocol — no code required.
-4. **Connect with your team** — Share the [quickstart guide](/docs/quickstart) with your technical team to integrate client libraries.
+4. **Build your own agent** — No engineering team required. The [certification program](/docs/learning/overview) teaches anyone to build a working advertising agent through vibe coding — describe what you want, an AI coding assistant writes the code.
+5. **Connect with your team** — Share the [quickstart guide](/docs/quickstart) with your technical team to integrate client libraries.
 
 ### Client libraries
 
