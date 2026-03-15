@@ -24,10 +24,8 @@ Sam's agency platform translates the brief into a `get_signals` call. No need to
 
 ```json
 {
-  "tool": "get_signals",
-  "arguments": {
-    "signal_spec": "In-market EV buyers with high purchase propensity, near auto dealerships"
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json",
+  "signal_spec": "In-market EV buyers with high purchase propensity, near auto dealerships"
 }
 ```
 
@@ -131,18 +129,16 @@ Each activation call specifies the destination platform and account:
 
 ```json
 {
-  "tool": "activate_signal",
-  "arguments": {
-    "signal_agent_segment_id": "shopgrid_new_to_brand",
-    "pricing_option_id": "po_shopgrid_retail_cpm",
-    "destinations": [
-      {
-        "type": "platform",
-        "platform": "streamhaus",
-        "account": "agency-ctv-seat-456"
-      }
-    ]
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "signal_agent_segment_id": "shopgrid_new_to_brand",
+  "pricing_option_id": "po_shopgrid_retail_cpm",
+  "destinations": [
+    {
+      "type": "platform",
+      "platform": "streamhaus",
+      "account": "agency-ctv-seat-456"
+    }
+  ]
 }
 ```
 
@@ -165,18 +161,16 @@ The campaign runs. Two weeks in, display CPAs are running 40% above target while
 
 ```json
 {
-  "tool": "activate_signal",
-  "arguments": {
-    "signal_agent_segment_id": "meridian_competitor_visitors",
-    "action": "deactivate",
-    "destinations": [
-      {
-        "type": "platform",
-        "platform": "nova-dsp",
-        "account": "agency-display-seat-123"
-      }
-    ]
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
+  "signal_agent_segment_id": "meridian_competitor_visitors",
+  "action": "deactivate",
+  "destinations": [
+    {
+      "type": "platform",
+      "platform": "nova-dsp",
+      "account": "agency-display-seat-123"
+    }
+  ]
 }
 ```
 

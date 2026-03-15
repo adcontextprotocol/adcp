@@ -3,8 +3,7 @@ title: Introduction to AdCP
 sidebarTitle: Introduction
 "og:image": /images/walkthrough/adcp-01-fragmentation.png
 "og:title": "AdCP — Introduction to the Protocol"
-description: "AdCP is an open standard for advertising automation that works over MCP and A2A protocols. Follow Alex's team from fragmentation to a unified workflow that touches every protocol domain."
-keywords: [advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API]
+description: "AdCP is an open agentic advertising standard. Follow Alex's team from fragmentation to a unified workflow across all protocol domains."
 ---
 
 <Warning>
@@ -15,11 +14,11 @@ You're viewing the 3.0 release candidate documentation. This release adds AI pro
 
 <img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex stands arms crossed in a war room of mismatched screens and tangled cables, surveying the chaos — her team hunched over laptops in the background" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-Alex runs media operations at Pinnacle Agency. Her team manages campaigns across twelve publishers — CTV, display, audio, retail media, social. Each platform has its own API, its own dashboard, its own way of handling creatives, targeting, and reporting. Adding a thirteenth means building a thirteenth integration from scratch.
+Alex runs media operations at Pinnacle Agency. Her team buys across six channels — CTV, display, audio, social, retail media, and digital out-of-home. Each channel has its own buying methods, its own terminology, its own way of handling creatives, targeting, and reporting. IOs for some. APIs for others. DSPs for programmatic. Dashboards for everything.
 
-Mastering one platform is hard enough. Her team juggles twenty.
+Now her clients want to try AI-generated creative, influencer campaigns, and local radio. Each new channel means new tools, new integrations, new workflows to learn. She can't keep scaling her team every time a client wants to try something new.
 
-The problem isn't her people. It's that every platform speaks a different language, and the industry has no common standard for how AI agents discover inventory, execute buys, distribute creative, activate data, or report results.
+The problem isn't her people. It's that every channel speaks a different language, and the industry has no common standard for how agents discover inventory, execute buys, distribute creative, activate data, or report results.
 
 AdCP is that standard. One protocol. Every platform. Every step of the campaign.
 
@@ -120,7 +119,7 @@ The seller responds with the account status — active, pending review, or what 
 
 ## Discover what's available
 
-<img src="/images/walkthrough/intro-03-discover-products.png" alt="Sam stands at an ultrawide monitor comparing three seller proposals side by side, one hand on his chin, weighing the options" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/intro-03-discover-products.png" alt="Sam gestures at three product cards on a wall screen — CTV, display, and audio inventory options all generated from one campaign brief" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 This is where it gets powerful. Sam wants to find premium sports inventory for Acme Outdoor's Q2 campaign. In the old world, he'd log into four dashboards and compare apples to oranges.
 
@@ -153,14 +152,12 @@ Every seller responds in the same format — products with pricing, forecasts, t
           "currency": "USD"
         }
       ],
-      "forecasts": {
+      "forecast": {
         "impressions": { "min": 500000, "max": 750000 }
       },
-      "creative_requirements": {
-        "format_ids": [
-          { "agent_url": "https://ads.streamhaus.tv", "id": "video_16x9_30s" }
-        ]
-      }
+      "format_ids": [
+        { "agent_url": "https://ads.streamhaus.tv", "id": "video_16x9_30s" }
+      ]
     }
   ]
 }
@@ -298,7 +295,7 @@ Sam's campaign needs targeting beyond what the sellers provide. His client has C
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "audiences": [
     {
@@ -546,7 +543,7 @@ Alex started with twelve platforms, twelve integrations, and a team drowning in 
 | Connect commerce | Product catalog sync | `sync_catalogs` |
 | Protect the brand | Machine-readable identity | `brand.json`, `get_brand_identity` |
 
-Sam buys media. Maya builds creative. Jordan governs. Kai provides data. Priya builds the seller experience on the other side. Tomoko protects the brand. They all speak the same protocol.
+Sam buys media. Maya builds creative. Jordan governs. Kai provides data. Tomoko protects the brand. They all speak the same protocol.
 
 ---
 
