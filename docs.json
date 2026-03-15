@@ -219,8 +219,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -400,6 +402,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -648,8 +651,10 @@
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
-              "docs/signals/specification",
+              "docs/signals/key-concepts",
+              "docs/guides/signals-ecosystem",
               "docs/signals/data-providers",
+              "docs/signals/specification",
               {
                 "group": "Tasks",
                 "pages": [
@@ -829,6 +834,7 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/signals-ecosystem",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
