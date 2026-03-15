@@ -13,7 +13,8 @@
   },
   {
     "filename": "images/walkthrough/adcp-04-workflow.png",
-    "prompt": "A horizontal journey from left to right. On the far left, a person (Alex from scene 1, but now confident and relaxed) writes a brief at a clean desk — one screen, no clutter. In the middle section, a team of agent robots processes the brief: one discovers products (magnifying glass), one builds creatives (palette), one checks governance (shield). They work in a smooth assembly line. On the far right, finished ads appear running on screens across a city skyline — billboard, phone, TV, bus shelter. The flow is clean and linear: brief → agents → live ads. Progress and transformation."
+    "prompt": "A horizontal journey from left to right. On the far left, Alex (a woman in her early 40s with dark hair pulled back, professional blazer — same character from scene 1, but now confident and relaxed) writes a brief at a clean desk — one screen, no clutter. In the middle section, a team of agent robots processes the brief: one discovers products (magnifying glass), one builds creatives (palette), one checks governance (shield). They work in a smooth assembly line. On the far right, finished ads appear running on screens across a city skyline — billboard, phone, TV, bus shelter. The flow is clean and linear: brief to agents to live ads. Progress and transformation. Do not include any text, words, or labels in the image.",
+    "alt_text": "A horizontal flow showing a person writing a brief at a desk on the left, then agents in the middle producing different ad formats — video, display, audio — and on the right, finished ads running on screens across a city skyline"
   },
   {
     "filename": "images/walkthrough/adcp-05-governance.png",

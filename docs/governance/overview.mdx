@@ -8,9 +8,11 @@ description: "Follow a campaign ops manager as she builds the trust framework fo
 
 An AI agent is about to spend $50,000 on advertising. No human reviewed the plan. No system checked the budget. No policy filtered the inventory. The agent has credentials, a brief, and a BUY button.
 
-Jordan is a campaign operations manager at Pinnacle Agency. This is her nightmare.
+Jordan is a campaign operations manager at Pinnacle Agency. This is her nightmare. Not because the technology failed — because nobody was accountable. Responsibility cannot be delegated to software.
 
 She doesn't want to slow agents down — they're faster and more thorough than her team at managing cross-platform campaigns. But she needs to know that when an agent buys media for Acme Outdoor, it stays within budget, runs on approved publishers, and meets Canadian privacy rules. She needs to know that if something exceeds authority, a human gets asked — not after the fact, but before the money moves.
+
+AdCP's governance system is built on a principle: [human judgment must be embedded in system design](/docs/governance/embedded-human-judgment), not bolted on afterward. Oversight is architectural — the system cannot operate without it.
 
 This walkthrough follows Jordan as she sets up governance for Sam's $50K campaign and watches it work.
 
@@ -18,7 +20,7 @@ This walkthrough follows Jordan as she sets up governance for Sam's $50K campaig
 
 <img src="/images/concepts/three-party-governance.png" alt="A triangle diagram with three robot figures: the orchestrator at the top proposes a campaign plan, the governance agent at bottom-left validates it against policies, and the seller at bottom-right confirms and fulfills it — the campaign plan floats in the center" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-AdCP governance works because no single party controls the full workflow:
+AdCP governance works because humans define the boundaries and no single party controls the full workflow:
 
 | Party | Role | Cannot do |
 |---|---|---|
@@ -26,7 +28,7 @@ AdCP governance works because no single party controls the full workflow:
 | **Governance agent** | Validates plans against policies, tracks budgets | Execute buys or modify campaigns |
 | **Seller** | Fulfills media buys, reports delivery | Override governance decisions or modify budgets |
 
-The agent that spends money isn't the agent that sets the rules. This separation is what makes autonomous operation safe.
+The agent that spends money isn't the agent that sets the rules. This isn't three agents checking each other — it's a structure designed so that human-defined policies govern every transaction, and no agent can act outside the authority a human granted it.
 
 ## Step 1: Register the plan
 
@@ -50,6 +52,8 @@ const plan = await governance.syncPlans({
 The governance agent now knows about this plan. It resolves applicable policies — brand safety rules, budget limits, regulatory requirements for US and Canada, and Acme Outdoor's brand-specific restrictions from `brand.json`.
 
 No money has moved. The plan is registered, not executed.
+
+Notice `authority_level: "agent_limited"` — Jordan chose this setting. It means the orchestrator can execute buys up to a threshold, but anything larger requires human approval. This boundary is a human decision, not a technical default. The agent cannot change it.
 
 <Accordion title="What policies get resolved">
 
@@ -104,6 +108,8 @@ The response isn't pass/fail — it returns structured findings with severity le
 
 The $25,000 transaction exceeds the agent's $20,000 authority limit. The governance agent flags it with `must` severity — the orchestrator cannot proceed without resolution.
 
+This is not a failure — it is the system working as designed. The agent doesn't need to remember to check; the architecture requires it. Oversight is structural, not procedural.
+
 Two options:
 1. **Reduce the transaction** to $20,000 or less
 2. **Escalate to a human** for approval
@@ -145,9 +151,9 @@ The orchestrator escalates. Jordan receives the flagged plan with full context �
 
 Jordan reviews the plan and approves — with a condition: the agent must report delivery weekly instead of at flight end.
 
-This approval is recorded in the governance system. The governance agent updates the plan's delegation — the orchestrator now has temporary authority for this specific transaction, with the added reporting constraint.
+She isn't rubber-stamping. She reviewed the context, assessed the risk, and exercised judgment by adding a constraint the agent didn't request. This is the human remaining the locus of accountability — the agent proposed, the human decided.
 
-The orchestrator proceeds with the buy. The governance agent records who approved, when, and under what conditions.
+This approval is recorded in the governance system. The governance agent updates the plan's delegation — the orchestrator now has temporary authority for this specific transaction, with the added reporting constraint. The governance agent records who approved, when, and under what conditions.
 
 ## Step 5: Campaign runs under watch
 
@@ -204,7 +210,7 @@ Every event, in sequence:
 5. **Delivery reported** — $24,850 actual spend, 887K impressions
 6. **Budget updated** — $25,150 remaining
 
-Every decision, every approval, every outcome — structured, timestamped, attributable.
+Every decision, every approval, every outcome — structured, timestamped, attributable. Accountability requires legibility. This isn't a log file buried in a server — it's a first-class audit record designed to answer the question "who decided this and why?" at any point in the future.
 
 ## Crawl, walk, run
 
@@ -231,6 +237,12 @@ Budget tracking has three phases:
 A $25,000 buy might deliver $24,850. Governance tracks the difference and frees the remaining $150.
 
 </Accordion>
+
+<Info>
+**Embedded human judgment**
+
+Every step in this walkthrough reflects a principle from the [Embedded Human Judgment manifesto](/docs/governance/embedded-human-judgment) — the framework that ensures humans remain accountable when AI agents operate autonomously. [Read the five principles →](/docs/governance/embedded-human-judgment)
+</Info>
 
 ## Protocol domains
 

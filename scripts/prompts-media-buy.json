@@ -13,11 +13,13 @@
   },
   {
     "filename": "images/walkthrough/media-buy-04-creatives.png",
-    "prompt": "Creative format templates and actual ad assets snap together like puzzle pieces. A 16:9 video frame snaps onto a video ad. A 300x250 banner template connects with display creative. An audio waveform with companion banner clicks into place. A small helper robot assists, checking each connection. Some pieces have green checkmarks (matched). One piece has a yellow gap indicator (the missing audio cut). Clean, satisfying visual of things fitting together perfectly. Bright, organized workspace."
+    "prompt": "Creative format templates and actual ad assets snap together like puzzle pieces. A wide video frame snaps onto a video ad. A square banner template connects with display creative. An audio waveform with companion banner clicks into place. A small helper robot assists, checking each connection. Some pieces have green checkmarks (matched). One piece has a yellow gap indicator (the missing audio cut). Clean, satisfying visual of things fitting together perfectly. Bright, organized workspace. Do not include any text, words, or labels in the image.",
+    "alt_text": "Creative format templates snap together like puzzle pieces — video, display, and audio assets click into place with green checkmarks, while a helper robot checks each connection"
   },
   {
     "filename": "images/walkthrough/media-buy-05-launch.png",
-    "prompt": "Sam presses a glowing teal launch button on his desk. Above him, a holographic campaign blueprint materializes in the air — it shows three branches (CTV, Display, Audio) radiating from a central campaign node. Budget amounts flow along each branch like liquid light ($25K, $15K, $10K). Each branch ends at a seller robot who receives the allocation. The whole scene has an air of confidence and precision — one button, three platforms, everything connected. Sam's expression is focused and determined."
+    "prompt": "Sam (30s man with dark hair, glasses) presses a glowing teal launch button on his desk. Above him, a holographic campaign blueprint materializes in the air — it shows three branches radiating from a central campaign node, each ending at a seller robot who receives the allocation. The whole scene has an air of confidence and precision — one button, three platforms, everything connected. Sam's expression is focused and determined. Do not include any text, words, or labels in the image.",
+    "alt_text": "Sam presses a glowing teal launch button and a holographic campaign blueprint materializes above — three branches radiate to seller robots, each receiving their allocation"
   },
   {
     "filename": "images/walkthrough/media-buy-06-governance.png",

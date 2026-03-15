@@ -61,7 +61,6 @@
               "docs/intro",
               "docs/agentic-advertising",
               "docs/faq",
-              "docs/protocol/architecture",
               "docs/quickstart",
               {
                 "group": "AdCP 3.0",
@@ -85,6 +84,7 @@
             "group": "Building with AdCP",
             "pages": [
               "docs/building/index",
+              "docs/protocol/architecture",
               {
                 "group": "Understanding AdCP",
                 "pages": [
@@ -126,6 +126,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/embedded-human-judgment",
               "docs/governance/policy-registry",
               {
                 "group": "Property Governance",
@@ -490,7 +491,6 @@
               "docs/intro",
               "docs/agentic-advertising",
               "docs/faq",
-              "docs/protocol/architecture",
               "docs/quickstart",
               {
                 "group": "AdCP 3.0",
@@ -514,6 +514,7 @@
             "group": "Building with AdCP",
             "pages": [
               "docs/building/index",
+              "docs/protocol/architecture",
               {
                 "group": "Understanding AdCP",
                 "pages": [
@@ -555,6 +556,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/embedded-human-judgment",
               "docs/governance/policy-registry",
               {
                 "group": "Property Governance",

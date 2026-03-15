@@ -1,0 +1,234 @@
+name: Check Image Alt Text
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**/*.mdx'
+      - 'docs/**/*.md'
+      - 'images/**'
+
+jobs:
+  check-images:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check image references and quality
+        id: check
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          ERRORS=""
+          WARNINGS=""
+
+          # Get files changed in this PR
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null || echo "")
+
+          # Extract all <img src="/images/..." alt="..." from MDX files
+          # Handles both single-line and multiline img tags
+          TEMP_REFS=$(mktemp)
+          for mdx_file in $(find docs -name '*.mdx' -o -name '*.md' 2>/dev/null); do
+            # Extract image src and alt pairs using perl for multiline matching
+            perl -0777 -ne '
+              while (/<img\s+[^>]*src="(\/images\/[^"]+)"[^>]*alt="([^"]*)"[^>]*\/?>/gs) {
+                print "$1\t$2\t'"$mdx_file"'\n";
+              }
+              while (/<img\s+[^>]*alt="([^"]*)"[^>]*src="(\/images\/[^"]+)"[^>]*\/?>/gs) {
+                print "$2\t$1\t'"$mdx_file"'\n";
+              }
+            ' "$mdx_file" >> "$TEMP_REFS"
+          done
+
+          TOTAL_REFS=$(wc -l < "$TEMP_REFS" | tr -d ' ')
+          echo "Found $TOTAL_REFS image references in docs"
+
+          # Check each reference
+          MISSING_COUNT=0
+          CHECKED_COUNT=0
+
+          while IFS=$'\t' read -r img_src alt_text mdx_file; do
+            [ -z "$img_src" ] && continue
+
+            # Convert /images/... to local path
+            local_path="${img_src#/}"
+
+            # Check file exists
+            if [ ! -f "$local_path" ]; then
+              ERRORS="$ERRORS\n- \`$img_src\` referenced in \`$mdx_file\`\n  - **File not found**: \`$local_path\`"
+              MISSING_COUNT=$((MISSING_COUNT + 1))
+              continue
+            fi
+
+            # Only run Gemini vision check on changed images
+            if [ -z "$GEMINI_API_KEY" ]; then
+              continue
+            fi
+
+            if ! echo "$CHANGED_FILES" | grep -q "^${local_path}$"; then
+              continue
+            fi
+
+            CHECKED_COUNT=$((CHECKED_COUNT + 1))
+            echo "Checking image quality: $local_path"
+
+            # Base64 encode the image
+            IMG_B64=$(base64 -w0 "$local_path" 2>/dev/null || base64 -i "$local_path" 2>/dev/null)
+
+            # Build the validation request
+            VALIDATION_PROMPT="Analyze this image. List ALL text visible in the image verbatim. Flag any misspelled, garbled, or nonsensical text. Also assess whether this image matches the following intended alt text: \"${alt_text}\". Respond ONLY with valid JSON (no markdown fences): { \"visible_text\": [\"text1\"], \"gibberish_found\": true/false, \"gibberish_details\": \"...\", \"matches_description\": true/false, \"match_notes\": \"...\" }"
+
+            # Call Gemini API
+            RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
+              -H 'Content-Type: application/json' \
+              -d "{
+                \"contents\": [{
+                  \"parts\": [
+                    {\"inline_data\": {\"mime_type\": \"image/png\", \"data\": \"${IMG_B64}\"}},
+                    {\"text\": $(echo "$VALIDATION_PROMPT" | jq -Rs .)}
+                  ]
+                }]
+              }" 2>/dev/null)
+
+            # Extract the text response
+            RESULT_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
+
+            if [ -z "$RESULT_TEXT" ]; then
+              echo "  Could not validate (API error)"
+              continue
+            fi
+
+            # Strip markdown fences if present
+            RESULT_JSON=$(echo "$RESULT_TEXT" | sed 's/^```\(json\)\?//' | sed 's/```$//')
+
+            # Check for gibberish
+            GIBBERISH=$(echo "$RESULT_JSON" | jq -r '.gibberish_found // false' 2>/dev/null)
+            GIBBERISH_DETAILS=$(echo "$RESULT_JSON" | jq -r '.gibberish_details // empty' 2>/dev/null)
+            MATCHES=$(echo "$RESULT_JSON" | jq -r '.matches_description // true' 2>/dev/null)
+            MATCH_NOTES=$(echo "$RESULT_JSON" | jq -r '.match_notes // empty' 2>/dev/null)
+            VISIBLE_TEXT=$(echo "$RESULT_JSON" | jq -r '.visible_text // [] | join(", ")' 2>/dev/null)
+
+            if [ "$GIBBERISH" = "true" ]; then
+              WARNINGS="$WARNINGS\n- \`$img_src\` in \`$mdx_file\`\n  - **Gibberish text detected**: $GIBBERISH_DETAILS\n  - Visible text: $VISIBLE_TEXT"
+            fi
+
+            if [ "$MATCHES" = "false" ]; then
+              WARNINGS="$WARNINGS\n- \`$img_src\` in \`$mdx_file\`\n  - **Alt text mismatch**: $MATCH_NOTES\n  - Alt text: \`${alt_text:0:100}...\`"
+            fi
+
+            if [ "$GIBBERISH" != "true" ] && [ "$MATCHES" != "false" ]; then
+              echo "  ✓ Passed"
+            fi
+
+          done < "$TEMP_REFS"
+          rm -f "$TEMP_REFS"
+
+          # Build output
+          HAS_ERRORS="false"
+          COMMIT_SHA="$PR_HEAD_SHA"
+          COMMIT_SHA_SHORT="${COMMIT_SHA:0:7}"
+          COMMIT_MSG=$(git log -1 --format='%s' 2>/dev/null || echo "Unknown")
+          COMMIT_INFO="**Commit**: [\`$COMMIT_SHA_SHORT\`](https://github.com/${{ github.repository }}/commit/$COMMIT_SHA) - $COMMIT_MSG"
+
+          if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+
+            COMMENT="## Image Alt Text Check Results\n\n$COMMIT_INFO\n\n"
+            COMMENT="$COMMENT**Checked**: $TOTAL_REFS references, $CHECKED_COUNT images validated via API\n\n"
+
+            if [ -n "$ERRORS" ]; then
+              HAS_ERRORS="true"
+              COMMENT="$COMMENT### ❌ Errors\n$ERRORS\n\n"
+            fi
+
+            if [ -n "$WARNINGS" ]; then
+              COMMENT="$COMMENT### ⚠️ Warnings\n$WARNINGS\n\n"
+              COMMENT="$COMMENT---\n\n**To fix**: Regenerate images using \`npx tsx scripts/generate-images.ts\` with the \`--max-retries 2\` flag, or update the image prompts to include \"Do not include any text, words, or labels in the image.\""
+            fi
+
+            COMMENT=$(echo -e "$COMMENT" | sed 's/"/\\"/g')
+            echo "comment<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$COMMENT" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+            echo "✅ All $TOTAL_REFS image references valid ($CHECKED_COUNT checked via API)"
+          fi
+
+          echo "has_errors=$HAS_ERRORS" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR (only when issues found)
+        if: steps.check.outputs.has_issues == 'true'
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.check.outputs.comment }}
+        with:
+          script: |
+            const comment = process.env.COMMENT_BODY;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('Image Alt Text Check Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Clean up stale comment on success
+        if: steps.check.outputs.has_issues == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('Image Alt Text Check Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id
+              });
+            }
+
+      - name: Fail on errors
+        if: steps.check.outputs.has_errors == 'true'
+        run: |
+          echo "❌ Image check failed: missing image files"
+          exit 1

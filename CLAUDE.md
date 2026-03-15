@@ -326,6 +326,8 @@ Mintlify serves from `/images/...`.
 - `docs/media-buy/index.mdx` — Sam's media buy journey (7 panels)
 - `docs/governance/overview.mdx` — Jordan's governance setup (7 panels)
 - `docs/creative/index.mdx` — Maya's creative campaign workflow (7 panels)
+- `docs/governance/embedded-human-judgment.mdx` — EHJ manifesto (references concept diagrams from governance overview)
+- `docs/protocol/architecture.mdx` — Protocol architecture (2 concept diagrams: domain map, ecosystem layers)
 
 ### Documentation nav structure
 
