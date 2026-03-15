@@ -1,605 +1,185 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AgenticAdvertising.org - Open Standards for AI-Powered Advertising</title>
-  <meta name="description" content="AgenticAdvertising.org is the independent industry organization advancing open standards for AI-powered advertising. We steward protocols like AdCP and bring together brands, agencies, publishers, and technology providers.">
-  <meta property="og:title" content="AgenticAdvertising.org">
-  <meta property="og:description" content="The independent industry organization advancing open standards for AI-powered advertising.">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://agenticadvertising.org">
-  <meta property="og:image" content="https://agenticadvertising.org/img/aao-social-card.jpg">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/design-system.css">
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "name": "AgenticAdvertising.org",
-    "url": "https://agenticadvertising.org",
-    "logo": "https://agenticadvertising.org/AAo.svg",
-    "description": "The independent industry organization advancing open standards for AI-powered advertising",
-    "foundingDate": "2025",
-    "sameAs": [
-      "https://github.com/adcontextprotocol/adcp",
-      "https://join.slack.com/t/agenticads"
-    ]
-  }
-  </script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--color-bg-card);
-      min-height: 100vh;
-      color: var(--color-text-heading);
-      line-height: 1.6;
-    }
-
-    /* Hero Section */
-    .hero {
-      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
-      color: white;
-      padding: 3.5rem 2rem 3rem;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-    /* Subtle background pattern */
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-image:
-        radial-gradient(circle at 20% 80%, rgba(164,194,244,0.15) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(164,194,244,0.15) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(255,255,255,0.08) 0%, transparent 30%);
-      pointer-events: none;
-    }
-    .hero-container {
-      max-width: 800px;
-      margin: 0 auto;
-      position: relative;
-      z-index: 1;
-    }
-    .hero-logo {
-      margin-bottom: 1.25rem;
-    }
-    .aao-logo {
-      height: 64px;
-      width: auto;
-      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
-    }
-    .hero h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
-      line-height: 1.15;
-    }
-    .hero-subtitle {
-      font-size: 1.15rem;
-      opacity: 0.95;
-      margin-bottom: 2rem;
-      line-height: 1.6;
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    .hero-buttons {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.875rem 2rem;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 1rem;
-      text-decoration: none;
-      transition: all 0.2s;
-    }
-    .btn-primary {
-      background: white;
-      color: var(--color-brand);
-    }
-    .btn-primary:hover {
-      background: var(--color-bg-subtle);
-      transform: translateY(-1px);
-    }
-    .btn-secondary {
-      background: transparent;
-      color: white;
-      border: 2px solid rgba(255,255,255,0.5);
-    }
-    .btn-secondary:hover {
-      background: rgba(255,255,255,0.1);
-      border-color: white;
-    }
-
-    /* Projects Section */
-    .projects {
-      padding: 5rem 2rem;
-    }
-    .projects-container {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-    .section-title {
-      font-size: 2rem;
-      font-weight: 700;
-      text-align: center;
-      margin-bottom: 1rem;
-      color: var(--color-text-heading);
-    }
-    .section-subtitle {
-      text-align: center;
-      font-size: 1.1rem;
-      color: var(--color-text-muted);
-      margin-bottom: 3rem;
-    }
-    .projects-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 2rem;
-    }
-    .project-card {
-      background: var(--color-bg-card);
-      border: 1px solid var(--color-border);
-      border-radius: 12px;
-      padding: 2rem;
-      transition: all 0.2s;
-    }
-    .project-card:hover {
-      border-color: var(--color-brand);
-      box-shadow: var(--shadow-primary-md);
-    }
-    .project-icon {
-      width: 48px;
-      height: 48px;
-      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 1.25rem;
-      font-size: 1.5rem;
-    }
-    .project-card h3 {
-      font-size: 1.35rem;
-      font-weight: 700;
-      margin-bottom: 0.75rem;
-      color: var(--color-text-heading);
-    }
-    .project-card p {
-      font-size: 1rem;
-      color: var(--color-text-muted);
-      line-height: 1.7;
-      margin-bottom: 1.25rem;
-    }
-    .project-card a {
-      color: var(--color-brand);
-      font-weight: 600;
-      text-decoration: none;
-      font-size: 0.95rem;
-    }
-    .project-card a:hover {
-      text-decoration: underline;
-    }
-
-    /* Members Section */
-    .members {
-      padding: 5rem 2rem;
-      background: var(--color-bg-subtle);
-    }
-    .members-container {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-    .member-tier {
-      margin-bottom: 3rem;
-    }
-    .member-tier:last-child {
-      margin-bottom: 0;
-    }
-    .tier-label {
-      text-align: center;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--color-text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 1.5rem;
-    }
-    .member-logos {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: center;
-      gap: 2.5rem;
-    }
-    .member-logo {
-      height: 40px;
-      width: auto;
-      opacity: 0.8;
-      transition: opacity 0.2s;
-    }
-    .member-logo:hover {
-      opacity: 1;
-    }
-    .all-members-link {
-      text-align: center;
-      margin-top: 2.5rem;
-    }
-    .all-members-link a {
-      color: var(--color-brand);
-      font-weight: 600;
-      text-decoration: none;
-    }
-    .all-members-link a:hover {
-      text-decoration: underline;
-    }
-    .loading-placeholder {
-      color: var(--color-text-muted);
-      font-size: 0.9rem;
-    }
-    .member-logo-link {
-      display: inline-flex;
-      text-decoration: none;
-      transition: transform 0.2s;
-    }
-    .member-logo-link:hover {
-      transform: scale(1.05);
-    }
-    .member-logo-link:hover .member-logo {
-      opacity: 1;
-    }
-    /* Go Agentic Section */
-    .go-agentic {
-      padding: 2.5rem 2rem;
-      background: linear-gradient(135deg, var(--color-primary-50, #eef2ff) 0%, var(--color-primary-100, #e0e7ff) 100%);
-    }
-    .go-agentic-container {
-      max-width: 800px;
-      margin: 0 auto;
-      text-align: center;
-    }
-    .go-agentic h2 {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--color-text-heading);
-      margin-bottom: 0.5rem;
-    }
-    .go-agentic-subtitle {
-      font-size: 1rem;
-      color: var(--color-text-muted);
-      margin-bottom: 1.5rem;
-    }
-    .prompt-hints {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      justify-content: center;
-      margin-bottom: 1.5rem;
-    }
-    .prompt-hint {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: white;
-      border: 1px solid var(--color-border, #d1d5db);
-      border-radius: 24px;
-      padding: 0.75rem 1.5rem;
-      font-size: 0.95rem;
-      color: var(--color-text-heading);
-      text-decoration: none;
-      transition: all 0.2s;
-      cursor: pointer;
-    }
-    .prompt-hint:hover {
-      background: var(--color-brand);
-      color: white;
-      border-color: var(--color-brand);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.25);
-    }
-    .prompt-hint:focus,
-    .prompt-hint:focus-visible {
-      outline: 2px solid var(--color-brand);
-      outline-offset: 2px;
-    }
-    .prompt-hint::before {
-      content: '→';
-      font-weight: bold;
-    }
-    .go-agentic-footer {
-      font-size: 0.9rem;
-      color: var(--color-text-muted);
-    }
-    .go-agentic-footer a {
-      color: var(--color-brand);
-      text-decoration: none;
-      font-weight: 600;
-    }
-    .go-agentic-footer a:hover {
-      text-decoration: underline;
-    }
-    @media (max-width: 768px) {
-      .go-agentic {
-        padding: 2rem 1.5rem;
-      }
-      .prompt-hints {
-        flex-direction: column;
-        align-items: stretch;
-      }
-      .prompt-hint {
-        justify-content: center;
-      }
-    }
-
-    /* CTA Section */
-    .cta {
-      padding: 5rem 2rem;
-      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
-      text-align: center;
-      color: white;
-    }
-    .cta-container {
-      max-width: 600px;
-      margin: 0 auto;
-    }
-    .cta h2 {
-      font-size: 2rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
-    }
-    .cta p {
-      font-size: 1.15rem;
-      opacity: 0.95;
-      margin-bottom: 2rem;
-    }
-
-
-    @media (max-width: 768px) {
-      .hero {
-        padding: 3rem 1.5rem 2.5rem;
-      }
-      .aao-logo {
-        height: 60px;
-      }
-      .hero-logo {
-        margin-bottom: 1.5rem;
-      }
-      .hero h1 {
-        font-size: 1.75rem;
-      }
-      .hero-subtitle {
-        font-size: 1.05rem;
-      }
-      .section-title {
-        font-size: 1.5rem;
-      }
-      .footer-container {
-        flex-direction: column;
-        text-align: center;
-      }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgenticAdvertising.org — Making advertising work better for everyone</title>
+<meta name="description" content="AgenticAdvertising.org is the member organization shaping how AI and advertising work together. Open standards, human governance, and education for the future of advertising.">
+<meta property="og:title" content="AgenticAdvertising.org">
+<meta property="og:description" content="The member organization shaping how AI and advertising work together — for consumers, for businesses, and for the people who create the content we all depend on.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://agenticadvertising.org">
+<meta property="og:image" content="https://agenticadvertising.org/img/aao-social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/AAo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/design-system.css">
+<link rel="stylesheet" href="/layout.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "AgenticAdvertising.org",
+  "url": "https://agenticadvertising.org",
+  "logo": "https://agenticadvertising.org/AAo.svg",
+  "description": "The member organization shaping how AI and advertising work together — for consumers, for businesses, and for the people who create the content we all depend on",
+  "foundingDate": "2025",
+  "sameAs": [
+    "https://github.com/adcontextprotocol/adcp",
+    "https://join.slack.com/t/agenticads"
+  ]
+}
+</script>
 </head>
 <body>
-  <!-- Navigation -->
-  <div id="adcp-nav">
-    <noscript>
-      <nav>
-        <a href="/members">Members</a>
-        <a href="/agents">Agents</a>
-        <a href="/brands">Brands</a>
-        <a href="/adagents">adagents.json</a>
-        <a href="/brand">brand.json</a>
-        <a href="/about">About</a>
-        <a href="/membership">Membership</a>
-        <a href="/events">Events</a>
-        <a href="/working-groups">Working groups</a>
-        <a href="/committees">Committees</a>
-        <a href="/governance">Governance</a>
-        <a href="/publishers">Publishers</a>
-        <a href="/latest/perspectives">Perspectives</a>
-        <a href="/latest/announcements">Announcements</a>
-        <a href="/latest/industry-news">Industry news</a>
-        <a href="/latest/learning">Learning</a>
-        <a href="/chat">Chat</a>
-        <a href="/community">Community</a>
-        <a href="/meetings">Meetings</a>
-        <a href="/industry-gatherings">Industry gatherings</a>
-        <a href="https://docs.adcontextprotocol.org">Docs</a>
-        <a href="https://adcontextprotocol.org">AdCP</a>
-      </nav>
-    </noscript>
+
+<!-- Navigation -->
+<div id="adcp-nav">
+  <noscript>
+    <nav>
+      <a href="/certification">Academy</a>
+      <a href="/chat">Ask Addie</a>
+      <a href="/membership">Get started</a>
+      <a href="https://docs.adcontextprotocol.org">AdCP Docs</a>
+      <a href="/about">About</a>
+      <a href="/members">Members</a>
+      <a href="/events">Events</a>
+      <a href="/committees">Committees</a>
+    </nav>
+  </noscript>
+</div>
+<script src="/nav.js"></script>
+
+<!-- Panel 1: The world we're in -->
+<section class="homepage-hero">
+  <h1>Making advertising work better for everyone</h1>
+  <p class="subtitle">AgenticAdvertising.org is the member organization shaping how AI and advertising work together — for consumers, for businesses, and for the people who create the content we all depend on.</p>
+</section>
+
+<section>
+  <div class="panel panel-wide">
+    <img src="/images/homepage/panel-01-everyday.png" alt="Four everyday people affected by advertising: a consumer seeing irrelevant ads, a bakery owner struggling with complexity, a journalist worried about declining ad revenue, and an entrepreneur in Nairobi overwhelmed by the tools" class="panel-image">
+    <div class="panel-text">
+      <p class="drop">Advertising connects businesses with the people they serve. It funds the journalism you read, the shows you watch, the apps you use for free.</p>
+      <p>When it works, it's a quiet engine of growth &mdash; for a bakery opening its second location, for a publisher investing in their newsroom, for an entrepreneur in Nairobi reaching her first thousand customers.</p>
+      <p class="closing">It doesn't always work.</p>
+    </div>
   </div>
-  <script src="/nav.js"></script>
+</section>
 
-  <!-- Hero Section -->
-  <section class="hero">
-    <div class="hero-container">
-      <div class="hero-logo">
-        <img src="/AAo.svg" alt="AgenticAdvertising.org" class="aao-logo">
-      </div>
-      <h1>The industry organization for agentic advertising</h1>
-      <p class="hero-subtitle">
-        We steward open standards like AdCP and bring together platforms, brands, agencies, and builders shaping the future of AI-powered advertising.
-      </p>
-      <div class="hero-buttons">
-        <a href="/members" class="btn btn-primary">Find a partner</a>
-        <a href="/membership" class="btn btn-secondary">Become a Founding Member</a>
-        <a href="/about" class="btn btn-secondary">Learn More</a>
-      </div>
-      <p style="font-size: 0.9rem; color: rgba(255,255,255,0.85); margin-top: 1.5rem;"><strong>Limited time:</strong> Founding member pricing ends March 31, 2026</p>
+<!-- Panel 2: What's changing -->
+<section class="bg-subtle">
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">What's changing</p>
     </div>
-  </section>
-
-  <!-- Go Agentic Section -->
-  <section class="go-agentic">
-    <div class="go-agentic-container">
-      <h2>Go Agentic</h2>
-      <p class="go-agentic-subtitle">Tell Addie what you're looking for. She'll help you find the right partners and resources.</p>
-      <div class="prompt-hints">
-        <a href="/chat?prompt=Help%20me%20build%20a%20buyer%20agent%20for%20my%20campaigns" class="prompt-hint">Build a buyer agent for my campaigns</a>
-        <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="prompt-hint">Find a sales agent for my inventory</a>
-        <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="prompt-hint">Set up adagents.json for my site</a>
-        <a href="/chat?prompt=What%20can%20I%20do%20with%20AdCP%3F" class="prompt-hint">What can I do with AdCP?</a>
-      </div>
-      <p class="go-agentic-footer">Or <a href="/members">browse all members</a> to see what's possible</p>
+    <img src="/images/homepage/panel-02-change.png" alt="Sam the media buyer and Priya the publisher, each working with AI agents that connect them across platforms" class="panel-image">
+    <div class="panel-text">
+      <p class="drop">AI agents are learning to do the operational work of advertising &mdash; finding audiences, matching budgets to outcomes, generating creative, executing across dozens of systems at once.</p>
+      <p>This changes the economics of advertising in ways that matter. A local business gets the same media buying intelligence that used to require a six-figure agency retainer. A mid-size publisher competes for premium campaigns without a twenty-person sales team. A brand launches in a new market in days, not months.</p>
+      <p><span class="accent">Agents help people work better together.</span> They help businesses grow. They help fund the content people depend on. They can help grow the global economy responsibly.</p>
     </div>
-  </section>
-
-  <!-- Projects Section -->
-  <section class="projects">
-    <div class="projects-container">
-      <h2 class="section-title">Our Projects</h2>
-      <p class="section-subtitle">Open standards and resources stewarded by AgenticAdvertising.org</p>
-
-      <div class="projects-grid">
-        <div class="project-card">
-          <div class="project-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
-          </div>
-          <h3>Ad Context Protocol (AdCP)</h3>
-          <p>
-            The open standard enabling AI agents to execute advertising tasks across any platform. From media buying to creative generation to audience activation.
-          </p>
-          <a href="https://adcontextprotocol.org">Explore the protocol &rarr;</a>
-        </div>
-
-        <div class="project-card">
-          <div class="project-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-          </div>
-          <h3>adagents.json</h3>
-          <p>
-            A standard discovery mechanism for advertising agents. Add an adagents.json file to your domain to make your agents discoverable by AI assistants and orchestrators.
-          </p>
-          <a href="https://docs.adcontextprotocol.org/docs/media-buy/capability-discovery/adagents" target="_blank" rel="noopener noreferrer">Learn more &rarr;</a>
-        </div>
-
-        <div class="project-card">
-          <div class="project-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <h3>brand.json</h3>
-          <p>
-            A discovery mechanism for brand identity. Host a brand.json file on your domain to claim your brand, declare your portfolio, and make your identity verifiable by AI agents.
-          </p>
-          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol" target="_blank" rel="noopener noreferrer">Learn more &rarr;</a>
-        </div>
-
-        <div class="project-card">
-          <div class="project-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-          </div>
-          <h3>Working Groups</h3>
-          <p>
-            Industry experts collaborating on protocol development, implementation standards, and best practices for responsible AI advertising deployment.
-          </p>
-          <a href="/about#membership">Join a working group &rarr;</a>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-  <!-- Members Section -->
-  <section class="members">
-    <div class="members-container">
-      <h2 class="section-title">Our Members</h2>
-      <p class="section-subtitle">Industry leaders building the future of advertising together</p>
-
-      <!-- Members with Logos -->
-      <div class="member-tier" id="members-tier">
-        <div class="tier-label">Members</div>
-        <div class="member-logos" id="member-logos">
-          <!-- Static logos - shown until cutoff date, then replaced by dynamic list -->
-          <a href="/members/ebiquity" class="member-logo-link"><img src="/img/members/ebiquity.png" alt="Ebiquity" class="member-logo"></a>
-          <a href="/members/optable" class="member-logo-link"><img src="/img/members/optable.png" alt="Optable" class="member-logo"></a>
-          <a href="/members/pubmatic" class="member-logo-link"><img src="/img/members/pubmatic.png" alt="PubMatic" class="member-logo"></a>
-          <a href="/members/scope3" class="member-logo-link"><img src="/img/members/scope3-bright.png" alt="Scope3" class="member-logo"></a>
-          <a href="/members/swivel" class="member-logo-link"><img src="/img/members/swivel.png" alt="Swivel" class="member-logo"></a>
-          <a href="/members/triton-digital" class="member-logo-link"><img src="/img/members/triton-digital.png" alt="Triton Digital" class="member-logo"></a>
-          <a href="/members/yahoo" class="member-logo-link"><img src="/img/members/yahoo-purple.png" alt="Yahoo" class="member-logo"></a>
-        </div>
-      </div>
-
-      <div class="all-members-link">
-        <a href="/members">View all members &rarr;</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA Section -->
-  <section class="cta">
-    <div class="cta-container">
-      <h2>Find a partner who can help you implement AdCP today</h2>
-      <p>
-        Browse our partner directory or ask Addie to match you with the right company.
-      </p>
-      <a href="/members" class="btn btn-primary">Browse partners</a>
-      <a href="/chat?prompt=Help%20me%20find%20a%20partner%20who%20can%20help%20me%20implement%20AdCP" class="btn btn-secondary" style="margin-left: 0.5rem;">Ask Addie</a>
-    </div>
-  </section>
-
-  <!-- Shared Footer -->
-  <div id="adcp-footer">
-    <noscript>
-      <footer>
-        <nav>
-          <a href="https://adcontextprotocol.org">AdCP</a>
-          <a href="https://docs.adcontextprotocol.org/docs/intro">Getting started</a>
-          <a href="https://docs.adcontextprotocol.org/docs/signals/overview">Signals protocol</a>
-          <a href="/adagents">adagents.json</a>
-          <a href="/adagents/builder">adagents.json builder</a>
-          <a href="/brand">brand.json</a>
-          <a href="/brand/builder">brand.json builder</a>
-          <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
-          <a href="/members">Members</a>
-          <a href="/agents">Agents</a>
-          <a href="/brands">Brands</a>
-          <a href="/publishers">Publishers</a>
-          <a href="/about">About</a>
-          <a href="/governance">Governance</a>
-          <a href="/membership">Membership</a>
-          <a href="/api/agreement?type=privacy_policy">Privacy policy</a>
-          <a href="/api/agreement?type=terms_of_service">Terms of use</a>
-          <a href="/api/agreement?type=bylaws">Bylaws</a>
-          <a href="/api/agreement?type=ip_policy">IP policy</a>
-        </nav>
-      </footer>
-    </noscript>
   </div>
+</section>
 
-  <script>
-  // Switch to dynamic member display after cutoff date
-  // Until then, static logos are shown (they're hardcoded in the HTML above)
-  const DYNAMIC_MEMBERS_CUTOFF = new Date('2026-01-15T00:00:00Z');
+<!-- Panel 3: The stakes -->
+<section>
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">The stakes</p>
+    </div>
+    <img src="/images/homepage/panel-03-stakes.png" alt="Without governance, agents optimize blindly. With governance, humans like Jordan stay in the loop on decisions that matter." class="panel-image">
+    <div class="panel-text">
+      <p class="drop">But speed without judgment is just fast mistakes.</p>
+      <p>Without governance, agents optimize for whatever metric they're pointed at &mdash; even when that doesn't align with what a brand intended, what a publisher deserves, or what a consumer should experience. Without standards, every platform becomes a silo, and the promise of efficiency collapses into a different kind of fragmentation.</p>
+      <p class="closing">The question isn't whether AI transforms advertising. It's whether humans stay involved in the decisions that matter.</p>
+    </div>
+  </div>
+</section>
 
-  // Escape HTML to prevent XSS
+<!-- Panel 4: The community -->
+<section class="bg-subtle">
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">Who's building it</p>
+    </div>
+    <img src="/images/homepage/panel-04-community.png" alt="The AgenticAdvertising.org community: Alex, Sam, Jordan, Maya, Priya, Kai, Tomoko, Dayo, and Addie working together" class="panel-image">
+    <div class="panel-text">
+      <p class="drop">That's what we're building.</p>
+      <p>AgenticAdvertising.org brings together the people and companies shaping how AI and advertising work together. Publishers who want fair value for their content. Brands who want their identity respected at machine speed. Agencies finding better outcomes for their clients. Data providers who believe transparency makes markets work. Builders creating the tools. And the people just entering the field &mdash; learning the language of a profession being reinvented underneath them.</p>
+      <p>We publish <a href="https://docs.adcontextprotocol.org" style="color: var(--color-brand); text-decoration: none; font-weight: var(--font-semibold);">AdCP</a>, the open protocol that gives agents a shared language across every advertising platform. We govern through <span class="accent">Embedded Human Judgment</span> &mdash; the principle that humans stay in the loop on decisions with real consequences. We educate through a certification program taught by Addie, our AI, because the best way to build trust in agentic systems is to make sure people understand them deeply.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Panel 5: What better looks like -->
+<section class="bg-warm">
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">What better looks like</p>
+    </div>
+    <img src="/images/homepage/panel-05-outcomes.png" alt="The same four people from Panel 1, now thriving: the consumer sees a relevant ad, the bakery has expanded, the newsroom is growing, and the Nairobi entrepreneur is shipping across the continent" class="panel-image">
+    <div class="panel-text">
+      <ul class="principles">
+        <li><strong>Better for people who see ads</strong> &mdash; relevant, respectful, transparent about when AI was involved.</li>
+        <li><strong>Better for businesses</strong> &mdash; accessible and efficient, no longer requiring a massive team just to participate.</li>
+        <li><strong>Better for the content you depend on</strong> &mdash; advertising that funds creators fairly, so they can invest in what they make.</li>
+        <li><strong>Better for the global economy</strong> &mdash; open standards that work the same whether you're buying media in London or Lagos, so growth isn't gated by geography.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- Member logos -->
+<section class="member-logos-section">
+  <p class="member-logos-label">Our members</p>
+  <div class="member-logos-bar" id="member-logos">
+    <a href="/members/ebiquity" title="Ebiquity"><img src="/img/members/ebiquity.png" alt="Ebiquity"></a>
+    <a href="/members/optable" title="Optable"><img src="/img/members/optable.png" alt="Optable"></a>
+    <a href="/members/pubmatic" title="PubMatic"><img src="/img/members/pubmatic.png" alt="PubMatic"></a>
+    <a href="/members/scope3" title="Scope3"><img src="/img/members/scope3-bright.png" alt="Scope3"></a>
+    <a href="/members/swivel" title="Swivel"><img src="/img/members/swivel.png" alt="Swivel"></a>
+    <a href="/members/triton-digital" title="Triton Digital"><img src="/img/members/triton-digital.png" alt="Triton Digital"></a>
+    <a href="/members/yahoo" title="Yahoo"><img src="/img/members/yahoo-purple.png" alt="Yahoo"></a>
+  </div>
+</section>
+
+<!-- Panel 6: Join -->
+<section>
+  <div class="panel panel-wide">
+    <img src="/images/homepage/panel-06-join.png" alt="The AgenticAdvertising.org community welcoming you in" class="panel-image">
+    <div class="cta-section">
+      <p class="closing-text">This is early. The standards are being written. The governance frameworks are being tested. The first generation of agentic advertising professionals is being certified right now. That means you can shape it.</p>
+      <div class="cta-grid">
+        <div class="cta-card">
+          <h3>Start learning</h3>
+          <p>Understand agentic advertising. Get certified. Free to start.</p>
+          <a href="/certification">Go to the Academy &rarr;</a>
+        </div>
+        <div class="cta-card">
+          <h3>Start building</h3>
+          <p>Implement the open protocol. Ship an agent. Join the ecosystem.</p>
+          <a href="https://docs.adcontextprotocol.org">Read the AdCP Docs &rarr;</a>
+        </div>
+        <div class="cta-card">
+          <h3>Start participating</h3>
+          <p>Join the member organization. Shape the standards.</p>
+          <a href="/membership">Become a member &rarr;</a>
+        </div>
+        <div class="cta-card">
+          <h3>Find a partner</h3>
+          <p>Browse the member directory. Find agencies, publishers, and technology providers.</p>
+          <a href="/members">Member directory &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer injected by nav.js -->
+<div id="adcp-footer"></div>
+
+<script>
+  // Dynamic member logos — replaces static fallbacks with live data
   function escapeHtml(str) {
     if (!str) return '';
     const div = document.createElement('div');
@@ -608,11 +188,6 @@
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
-    // Only load dynamic members after cutoff date
-    if (new Date() < DYNAMIC_MEMBERS_CUTOFF) {
-      return; // Keep static content
-    }
-
     try {
       const response = await fetch('/api/members?limit=100');
       if (!response.ok) throw new Error('Failed to load members');
@@ -620,23 +195,20 @@
       const data = await response.json();
       const members = data.members || [];
 
-      // Only show members with logos (organizations, not individuals)
       const membersWithLogos = members.filter(m => m.show_in_carousel && m.resolved_brand?.logo_url);
 
-      // Render members with logos
       const memberLogosEl = document.getElementById('member-logos');
       if (membersWithLogos.length > 0) {
         memberLogosEl.innerHTML = membersWithLogos.map(member => `
-          <a href="/members/${encodeURIComponent(member.slug)}" class="member-logo-link" title="${escapeHtml(member.display_name)}">
-            <img src="${escapeHtml(member.resolved_brand.logo_url)}" alt="${escapeHtml(member.display_name)}" class="member-logo">
+          <a href="/members/${encodeURIComponent(member.slug)}" title="${escapeHtml(member.display_name)}">
+            <img src="${escapeHtml(member.resolved_brand.logo_url)}" alt="${escapeHtml(member.display_name)}">
           </a>
         `).join('');
       }
     } catch (error) {
       console.debug('Failed to load dynamic members, keeping static content:', error);
-      // Keep static content on error
     }
   });
-  </script>
+</script>
 </body>
 </html>

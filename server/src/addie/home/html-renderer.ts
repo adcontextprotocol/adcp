@@ -9,6 +9,7 @@ import type {
   HomeContent,
   AlertSection,
   QuickAction,
+  SuggestedPrompt,
   ActivityItem,
   UserStats,
   AdminPanel,
@@ -31,6 +32,11 @@ export function renderHomeHTML(content: HomeContent): string {
 
   // Quick Actions
   sections.push(renderQuickActions(content.quickActions));
+
+  // Suggested Prompts
+  if (content.suggestedPrompts && content.suggestedPrompts.length > 0) {
+    sections.push(renderSuggestedPrompts(content.suggestedPrompts));
+  }
 
   // Activity Feed
   if (content.activity.length > 0) {
@@ -127,6 +133,18 @@ function renderQuickActions(actions: QuickAction[]): string {
     <div class="addie-home-section">
       <h3>Quick Actions</h3>
       <div class="addie-home-actions">${buttonsHtml}</div>
+    </div>
+  `;
+}
+
+function renderSuggestedPrompts(prompts: SuggestedPrompt[]): string {
+  const buttonsHtml = prompts.map(p =>
+    `<button class="suggested-prompt" data-prompt="${escapeHtml(p.prompt)}">${escapeHtml(p.label)}</button>`
+  ).join('');
+
+  return `
+    <div class="addie-home-section addie-home-suggested">
+      <div class="addie-home-suggested-prompts">${buttonsHtml}</div>
     </div>
   `;
 }
@@ -536,6 +554,14 @@ export const ADDIE_HOME_CSS = `
   background: var(--color-brand);
   border-radius: var(--radius-full);
   transition: width 0.3s;
+}
+
+/* Suggested Prompts */
+.addie-home-suggested-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
 }
 
 /* Footer */

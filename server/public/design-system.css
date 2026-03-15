@@ -965,6 +965,26 @@ body {
   font-size: var(--text-4xl);
 }
 
+/* Clean hero — white background, dark text (matches homepage feel) */
+.hero--clean {
+  background: #fff;
+  color: var(--color-text-heading);
+  padding: var(--space-16) var(--space-8) var(--space-10);
+}
+
+.hero--clean::before {
+  display: none;
+}
+
+.hero--clean h1 {
+  font-size: var(--text-4xl);
+  color: var(--color-text-heading);
+}
+
+.hero--clean .hero-subtitle {
+  color: var(--color-text-secondary);
+}
+
 .hero-breadcrumb {
   font-size: var(--text-sm);
   opacity: 0.8;

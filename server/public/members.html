@@ -12,26 +12,11 @@
        ============================================================================= */
 
     body {
-      background: var(--color-bg-page);
-      padding-top: var(--nav-height);
+      background: #fff;
+      /* padding-top handled by hero */
     }
 
-    .header {
-      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
-      color: white;
-      padding: var(--space-12) 0;
-      text-align: center;
-    }
-
-    .header h1 {
-      font-size: var(--text-4xl);
-      margin-bottom: var(--space-2);
-    }
-
-    .header .subtitle {
-      font-size: var(--text-lg);
-      color: rgba(255, 255, 255, 0.9);
-    }
+    /* Header uses .hero from design-system.css */
 
     .container {
       max-width: var(--container-xl);
@@ -1107,10 +1092,12 @@
 
   <!-- List View -->
   <div id="list-view">
-    <div class="header">
-      <h1>Partner directory</h1>
-      <p class="subtitle">Find companies who can help you implement AdCP</p>
-    </div>
+    <section class="hero hero--clean">
+      <div class="hero-container">
+        <h1>Partner directory</h1>
+        <p class="hero-subtitle">Find companies who can help you implement AdCP</p>
+      </div>
+    </section>
 
     <div class="container">
       <!-- Join CTA Card -->

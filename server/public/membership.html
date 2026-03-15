@@ -3,87 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Membership - AgenticAdvertising.org</title>
-  <meta name="description" content="Join AgenticAdvertising.org as a founding member. Transparent pricing for corporate and individual memberships, with special founding member benefits through Q1 2026.">
+  <title>Get Started - AgenticAdvertising.org</title>
+  <meta name="description" content="Join AgenticAdvertising.org as a founding member. Shape the standards, governance, and education that define how AI and advertising work together.">
+  <meta property="og:title" content="Get Started - AgenticAdvertising.org">
+  <meta property="og:description" content="The standards are being written. The governance frameworks are being tested. You can shape it.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/membership">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
   <style>
     /* =============================================================================
-       Membership Page styles
-       Uses design system variables - see /design-system.css for tokens
+       Membership page styles
+       Uses design system variables — see /design-system.css for tokens
        ============================================================================= */
 
-    /* Hero - use article variant (shorter) */
-    .hero--membership {
-      padding: var(--space-12) var(--space-5) var(--space-8);
-    }
-    .hero--membership .hero-container {
-      max-width: var(--container-md);
-    }
-    .hero--membership h1 {
-      font-size: var(--text-4xl);
-      margin-bottom: var(--space-4);
-    }
-
-    /* Sub-Navigation */
-    .sub-nav {
-      background: var(--color-bg-page);
-      border-bottom: var(--border-1) solid var(--color-border);
-      position: sticky;
-      top: 60px;
-      z-index: 100;
-    }
-    .sub-nav-container {
-      max-width: var(--container-md);
-      margin: 0 auto;
-      padding: 0 var(--space-5);
-    }
-    .sub-nav-links {
-      display: flex;
-      gap: 0;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .sub-nav-links a {
-      padding: var(--space-4) var(--space-6);
-      color: var(--color-text-secondary);
-      text-decoration: none;
-      font-weight: var(--font-medium);
-      font-size: var(--text-sm);
-      white-space: nowrap;
-      border-bottom: var(--border-3) solid transparent;
-      transition: var(--transition-all);
-    }
-    .sub-nav-links a:hover {
-      color: var(--aao-primary);
-      background: var(--color-primary-50);
-    }
-    .sub-nav-links a.active {
-      color: var(--aao-primary);
-      border-bottom-color: var(--aao-primary);
-    }
+    /* Sub-nav styles are in layout.css */
 
     /* Main Content */
     .container {
-      max-width: var(--container-md);
+      max-width: 900px;
       margin: 0 auto;
-      padding: var(--space-8) var(--space-5);
+      padding: var(--space-16) var(--space-6);
     }
     .section {
       padding: 0;
-      margin-bottom: var(--space-6);
+      margin-bottom: var(--space-16);
       scroll-margin-top: 140px;
     }
     .section:last-child {
       margin-bottom: 0;
     }
     .section h2 {
-      font-size: var(--text-2xl);
+      font-size: var(--text-sm);
       font-weight: var(--font-bold);
-      color: var(--aao-primary);
+      color: var(--color-brand);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wider);
       margin-bottom: var(--space-6);
-      padding-bottom: var(--space-3);
-      border-bottom: var(--border-3) solid var(--aao-primary);
     }
     .section h3 {
       font-size: var(--text-xl);
@@ -236,7 +193,7 @@
       gap: var(--space-2);
     }
     .pricing-features li::before {
-      content: '✓';
+      content: '\2713';
       color: var(--color-success-600);
       font-weight: var(--font-bold);
       flex-shrink: 0;
@@ -246,121 +203,6 @@
     }
     .pricing-cta .btn {
       width: 100%;
-    }
-
-    /* Tier Table */
-    .tier-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: var(--space-4);
-      font-size: var(--text-sm);
-    }
-    .tier-table th,
-    .tier-table td {
-      padding: var(--space-3) var(--space-4);
-      text-align: left;
-      border-bottom: var(--border-1) solid var(--color-border);
-    }
-    .tier-table th {
-      background: var(--color-gray-50);
-      font-weight: var(--font-semibold);
-      color: var(--aao-black);
-    }
-    .tier-table td {
-      color: var(--aao-gray-dark);
-    }
-    .tier-table .price {
-      font-weight: var(--font-semibold);
-      color: var(--aao-primary);
-    }
-    .tier-table .founding-price {
-      color: var(--color-warning-700);
-      font-weight: var(--font-bold);
-    }
-    .tier-note {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      display: block;
-      margin-top: var(--space-1);
-    }
-
-    /* Timeline Box */
-    .timeline-box {
-      background: var(--color-bg-page);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      margin-top: var(--space-6);
-    }
-    .timeline-item {
-      display: flex;
-      gap: var(--space-4);
-      margin-bottom: var(--space-4);
-    }
-    .timeline-item:last-child {
-      margin-bottom: 0;
-    }
-    .timeline-marker {
-      width: 40px;
-      height: 40px;
-      border-radius: var(--radius-full);
-      background: var(--aao-primary);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: var(--font-bold);
-      font-size: var(--text-sm);
-      flex-shrink: 0;
-    }
-    .timeline-marker.future {
-      background: var(--color-gray-300);
-    }
-    .timeline-content h4 {
-      font-size: var(--text-base);
-      font-weight: var(--font-semibold);
-      color: var(--aao-black);
-      margin-bottom: var(--space-1);
-    }
-    .timeline-content p {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      margin: 0;
-      line-height: var(--leading-normal);
-    }
-
-    /* CTA Section */
-    .cta-section {
-      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
-      border: var(--border-2) solid var(--aao-accent);
-      border-radius: var(--radius-lg);
-      padding: var(--space-8);
-      text-align: center;
-      margin-top: var(--space-6);
-    }
-    .cta-section h3 {
-      font-size: var(--text-2xl);
-      color: var(--aao-primary);
-      margin-bottom: var(--space-4);
-      margin-top: 0;
-    }
-    .cta-section p {
-      color: var(--aao-gray-dark);
-      margin-bottom: var(--space-6);
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    /* Info Box */
-    .info-box {
-      background: var(--color-bg-page);
-      border-radius: var(--radius-lg);
-      padding: var(--space-4);
-      margin-top: var(--space-4);
-    }
-    .info-box p {
-      font-size: var(--text-base);
-      margin: 0;
     }
 
     /* Comparison Table */
@@ -420,31 +262,111 @@
       text-align: center;
     }
 
-    /* Key Takeaways */
-    .key-takeaways {
-      background: var(--color-primary-50);
-      border-left: var(--border-4) solid var(--aao-primary);
+    /* Timeline Box */
+    .timeline-box {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
-      padding: var(--space-5);
+      padding: var(--space-6);
       margin-top: var(--space-6);
     }
-    .key-takeaways h3 {
-      color: var(--aao-primary);
-      margin-top: 0;
-      margin-bottom: var(--space-3);
-      font-size: var(--text-lg);
+    .timeline-item {
+      display: flex;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
     }
-    .key-takeaways ul {
+    .timeline-item:last-child {
+      margin-bottom: 0;
+    }
+    .timeline-marker {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-full);
+      background: var(--aao-primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: var(--font-bold);
+      font-size: var(--text-sm);
+      flex-shrink: 0;
+    }
+    .timeline-marker.future {
+      background: var(--color-gray-300);
+    }
+    .timeline-content h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--aao-black);
+      margin-bottom: var(--space-1);
+    }
+    .timeline-content p {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
       margin: 0;
-      padding-left: var(--space-5);
+      line-height: var(--leading-normal);
     }
-    .key-takeaways li {
-      margin-bottom: var(--space-2);
+
+    /* CTA Section */
+    .cta-box {
+      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
+      border: var(--border-2) solid var(--aao-accent);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      text-align: center;
+      margin-top: var(--space-6);
+    }
+    .cta-box h3 {
+      font-size: var(--text-2xl);
+      color: var(--aao-primary);
+      margin-bottom: var(--space-4);
+      margin-top: 0;
+    }
+    .cta-box p {
+      color: var(--aao-gray-dark);
+      margin-bottom: var(--space-6);
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Info Box */
+    .info-box {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      margin-top: var(--space-4);
+    }
+    .info-box p {
+      font-size: var(--text-base);
+      margin: 0;
+    }
+
+    /* Benefits grid */
+    .benefits-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-6);
+      margin: var(--space-6) 0;
+    }
+    .benefit-card {
+      padding: var(--space-5);
+      border-radius: var(--radius-lg);
+      border: var(--border-1) solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+    .benefit-card h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--aao-black);
+      margin: 0 0 var(--space-2) 0;
+    }
+    .benefit-card p {
       font-size: var(--text-base);
       color: var(--aao-gray-dark);
-    }
-    .key-takeaways li:last-child {
-      margin-bottom: 0;
+      line-height: var(--leading-relaxed);
+      margin: 0;
     }
 
     /* Pricing Section - Full width */
@@ -495,7 +417,7 @@
       transition: transform 0.2s ease;
     }
     .faq-item.open .faq-question::after {
-      content: '−';
+      content: '\2212';
     }
     .faq-answer {
       max-height: 0;
@@ -511,12 +433,6 @@
     }
 
     @media (max-width: 768px) {
-      .hero--membership {
-        padding: var(--space-8) var(--space-4) var(--space-6);
-      }
-      .hero--membership h1 {
-        font-size: var(--text-2xl);
-      }
       .container {
         padding: var(--space-6) var(--space-4);
       }
@@ -530,12 +446,8 @@
       .pricing-grid {
         grid-template-columns: 1fr;
       }
-      .tier-table {
-        font-size: var(--text-xs);
-      }
-      .tier-table th,
-      .tier-table td {
-        padding: var(--space-2);
+      .benefits-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -547,7 +459,7 @@
 
   <!-- Pricing summary for search engines and AI indexing (sr-only = visually hidden) -->
   <div class="sr-only" aria-hidden="true">
-    <h2>Membership Pricing Summary</h2>
+    <h2>Membership pricing summary</h2>
     <p>Industry Council Leader: $50,000/year for industry-leading organizations. Benefits include seat on Industry Council with strategic input on roadmap, speaking opportunities at key industry events, priority attendance at flagship events, featured recognition on website and at events, plus all Company Membership benefits.</p>
     <p>Company Membership: $10,000/year for organizations with $5M+ annual revenue, or $2,500/year for organizations under $5M revenue.</p>
     <p>Individual Membership: $250/year for industry professionals, or $50/year for students, academics, and non-profits.</p>
@@ -555,32 +467,35 @@
   </div>
 
   <!-- Hero Section -->
-  <section class="hero hero--membership">
+  <section class="hero hero--clean">
     <div class="hero-container">
-      <h1>Become a Member</h1>
-      <p class="hero-subtitle">Join the organizations building the future of AI-powered advertising</p>
+      <h1 id="membership-hero-title">Get started</h1>
+      <p id="membership-hero-subtitle" class="hero-subtitle">The standards are being written. The governance frameworks are being tested. The first generation of agentic advertising professionals is being certified right now. You can shape it.</p>
     </div>
   </section>
-
-  <!-- CTA Section - Ready to Join (moved to top) -->
-  <section class="cta-section" style="max-width: var(--container-md); margin: var(--space-8) auto 0; border-radius: var(--radius-lg);">
-    <h3>Ready to Join?</h3>
-    <p>
-      Become a founding member today and help shape the future of agentic advertising. Join before March 31, 2026 to participate in the initial board selection process.
-    </p>
-    <a href="#pricing" class="btn btn-primary btn-lg">View Membership Options</a>
-  </section>
+  <script>
+    // Adapt hero for logged-in members
+    (function() {
+      var config = window.__APP_CONFIG__ || {};
+      if (config.user) {
+        var first = (config.user.name || '').split(' ')[0] || 'there';
+        document.getElementById('membership-hero-title').textContent = 'Your membership';
+        document.getElementById('membership-hero-subtitle').textContent =
+          'Thanks for being a founding member, ' + first + '. Here\u2019s what your membership includes and how to make the most of it.';
+      }
+    })();
+  </script>
 
   <!-- Sub-Navigation -->
   <nav class="sub-nav">
-    <div class="sub-nav-container">
+    <div class="sub-nav-inner">
       <div class="sub-nav-links">
-        <a href="#overview" class="active">Overview</a>
-        <a href="#founding-member">Founding Membership</a>
-        <a href="#membership-classes">Membership Classes</a>
-        <a href="#governance">Governance & Board</a>
-        <a href="#faq">FAQ</a>
+        <a href="#why-join" class="active">Why join</a>
+        <a href="#what-you-get">What you get</a>
+        <a href="#membership-tiers">Tiers</a>
+        <a href="#founding-membership">Founding membership</a>
         <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
       </div>
     </div>
   </nav>
@@ -588,50 +503,83 @@
   <!-- Main Content -->
   <div class="container">
 
-    <!-- Overview Section -->
-    <section class="section" id="overview">
-      <h2>What Membership Means</h2>
+    <!-- Section 1: Why join -->
+    <section class="section" id="why-join">
+      <h2>Why join</h2>
       <p>
-        Membership in AgenticAdvertising.org means joining a community of forward-thinking organizations and individuals who believe the future of advertising should be built on open standards, not proprietary platforms.
+        AI agents are learning to buy and sell advertising. The standards that govern how they do it are being written right now. The organizations in the room during that process will shape the rules for everyone else.
       </p>
       <p>
-        As a member, you're not just subscribing to a service. You're investing in shared infrastructure that benefits the entire advertising ecosystem. Your membership dues fund:
+        AgenticAdvertising.org is where that work happens. We're a member organization &mdash; brands, agencies, publishers, ad tech companies, and individual practitioners &mdash; building the open infrastructure for agentic advertising together.
       </p>
-      <ul>
-        <li><strong>Standards Development</strong> - Engineering resources to maintain and evolve AdCP and related protocols</li>
-        <li><strong>Education & Advocacy</strong> - Programs to help the industry understand and adopt agentic advertising, including <a href="/certification">AdCP Academy</a> with three credential tiers</li>
-        <li><strong>Working Groups</strong> - Forums for members to collaborate on specific challenges and opportunities</li>
-        <li><strong>Community Building</strong> - Events, resources, and connections that bring the ecosystem together</li>
-        <li><strong>Brand registry hosting</strong> - Members get a hosted brand.json at <code>agenticadvertising.org/brands/yourdomain.com/brand.json</code>. Place a one-line pointer on your domain to make AgenticAdvertising.org your authoritative brand source. Update your brand data anytime from the member dashboard.</li>
-      </ul>
+      <p>
+        This is early. There's no legacy to navigate, no entrenched interests to work around. The people who join now are founding members, with real influence over the protocol, the governance, and the direction of the organization.
+      </p>
+
+      <div class="founding-banner">
+        <div class="founding-pill">Founding member window</div>
+        <h3>Founding member pricing ends March 31, 2026</h3>
+        <p>Everyone who joins before this date gets founding member status, board voting rights, and Advisory Council membership. These benefits are permanent &mdash; they stay with you as long as you remain a member.</p>
+      </div>
     </section>
 
-    <!-- Membership Classes Section -->
-    <section class="section" id="membership-classes">
-      <h2>Membership Classes</h2>
+    <!-- Section 2: What members get -->
+    <section class="section" id="what-you-get">
+      <h2>What members get</h2>
+
+      <div class="benefits-grid">
+        <div class="benefit-card">
+          <h3>Community</h3>
+          <p>Connect with the people building agentic advertising. Working groups, committees, events, and a member Slack where the real conversations happen.</p>
+        </div>
+        <div class="benefit-card">
+          <h3>Visibility</h3>
+          <p>Member directory listing and partner discovery. Your brand in front of the ecosystem &mdash; the brands, agencies, publishers, and builders looking for partners.</p>
+        </div>
+        <div class="benefit-card">
+          <h3>Governance voice</h3>
+          <p>Vote on standards, serve on the board, join committees. Voting members control the strategic direction of the organization.</p>
+        </div>
+        <div class="benefit-card">
+          <h3>Education</h3>
+          <p><a href="/certification">AdCP Academy</a> access, three-tier certification, and Addie &mdash; an AI assistant that teaches the protocol and answers your questions.</p>
+        </div>
+      </div>
+
       <p>
-        AgenticAdvertising.org offers three membership classes, each with different rights and benefits. Choose the class that best fits your role in the agentic advertising ecosystem.
+        <strong>Standards input.</strong> Members participate in the working groups that shape <a href="https://docs.adcontextprotocol.org">AdCP</a>, the open protocol for agentic advertising. You're not just using the standard &mdash; you're writing it.
+      </p>
+      <p>
+        <strong>Brand registry.</strong> Members get a hosted <code>brand.json</code> at <code>agenticadvertising.org/brands/yourdomain.com/brand.json</code>. Place a one-line pointer on your domain to make AgenticAdvertising.org your authoritative brand source. Update your brand data anytime from the member dashboard.
+      </p>
+    </section>
+
+    <!-- Section 3: Membership tiers -->
+    <section class="section" id="membership-tiers">
+      <h2>Membership tiers</h2>
+      <p>
+        Three classes, each designed for a different role in the ecosystem. Choose the one that fits how you want to participate.
       </p>
 
       <div class="comparison-table-wrapper">
         <table class="comparison-table">
           <thead>
             <tr>
-              <th>Rights & Benefits</th>
-              <th>Voting Member</th>
-              <th>Individual Member</th>
-              <th>Associate Member</th>
+              <th>Rights & benefits</th>
+              <th>Voting member</th>
+              <th>Individual member</th>
+              <th>Associate member</th>
             </tr>
           </thead>
           <tbody>
             <tr class="eligibility-row">
-              <td><strong>Eligibility</strong></td>
-              <td>Primary industry participants (Marketers, Publishers, Agencies, Tech Providers)</td>
-              <td>Individuals working in or interested in agentic advertising</td>
-              <td>Non-primary participants, adjacent organizations</td>
+              <td><strong>Who it's for</strong></td>
+              <td>Companies in the ad ecosystem: brands, agencies, publishers, ad tech</td>
+              <td>Practitioners, independents, students, academics</td>
+              <td>Adjacent organizations, non-primary participants</td>
             </tr>
             <tr class="section-header">
-              <td colspan="4">Governance Rights</td>
+              <td colspan="4">Governance</td>
             </tr>
             <tr>
               <td>Vote on corporate matters</td>
@@ -640,19 +588,13 @@
               <td class="dash">&mdash;</td>
             </tr>
             <tr>
-              <td>Elect & remove Directors</td>
+              <td>Elect and remove directors</td>
               <td class="check">&#10003;</td>
               <td class="dash">&mdash;</td>
               <td class="dash">&mdash;</td>
             </tr>
             <tr>
-              <td>Amend bylaws & certificate</td>
-              <td class="check">&#10003;</td>
-              <td class="dash">&mdash;</td>
-              <td class="dash">&mdash;</td>
-            </tr>
-            <tr>
-              <td>Approve mergers, dissolution, asset sales</td>
+              <td>Amend bylaws and certificate</td>
               <td class="check">&#10003;</td>
               <td class="dash">&mdash;</td>
               <td class="dash">&mdash;</td>
@@ -664,72 +606,56 @@
               <td class="dash">&mdash;</td>
             </tr>
             <tr class="section-header">
-              <td colspan="4">Participation & Benefits</td>
+              <td colspan="4">Participation</td>
             </tr>
             <tr>
-              <td>Participate in Corporation activities</td>
-              <td><strong>All activities</strong></td>
-              <td>Activities open to Individual Members</td>
-              <td><em>Subject to participant limits</em></td>
-            </tr>
-            <tr>
-              <td>Education, training & development programs</td>
+              <td>Working groups and convenings</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
             </tr>
             <tr>
-              <td><a href="/certification">AdCP Academy training</a></td>
+              <td>Category-specific member committees</td>
               <td class="check">&#10003;</td>
-              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
               <td class="dash">&mdash;</td>
             </tr>
             <tr>
-              <td>Participate in working groups & convenings</td>
+              <td>Education, training, and development</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
             </tr>
             <tr>
-              <td>Participate in category-specific Member Committees</td>
+              <td><a href="/certification">AdCP Academy</a> certification</td>
               <td class="check">&#10003;</td>
-              <td class="dash">&mdash;</td>
+              <td class="check">&#10003;</td>
               <td class="dash">&mdash;</td>
             </tr>
           </tbody>
         </table>
       </div>
-
-      <div class="key-takeaways">
-        <h3>Key Takeaways</h3>
-        <ul>
-          <li><strong>Voting Members</strong> control all governance and strategic decisions</li>
-          <li><strong>Individual Members</strong> access professional development without governance rights</li>
-          <li><strong>Associate Members</strong> have important participation rights</li>
-          <li>All membership classes require annual dues (amounts set by Board)</li>
-        </ul>
-      </div>
     </section>
 
-    <!-- Founding Member Section -->
-    <section class="section" id="founding-member">
-      <h2>Founding Membership</h2>
+    <!-- Section 4: Founding membership -->
+    <section class="section" id="founding-membership">
+      <h2>Founding membership</h2>
       <p>
-        AgenticAdvertising.org is in its formation phase. We're offering special founding membership rates through Q1 2026 to organizations and individuals who want to help establish the organization and shape its direction.
+        AgenticAdvertising.org is in its formation phase. Everyone who joins before March 31, 2026 is a founding member &mdash; with benefits that don't expire.
       </p>
 
-      <h3>What Founding Members Get</h3>
+      <h3>What founding members get</h3>
       <ul>
-        <li><strong>Advisory Council membership</strong> - Join the Advisory Council that shapes early strategy and the member value proposition</li>
-        <li><strong>Board voting rights</strong> - Vote on the initial board of directors when elections are held</li>
-        <li><strong>Board eligibility</strong> - Founding members are eligible to serve on the board</li>
-        <li><strong>Launch event priority</strong> - Early founding members have priority access to the April 2026 launch event</li>
-        <li><strong>Recognition</strong> - Permanent recognition as a founding member of the organization</li>
+        <li><strong>Advisory Council membership</strong> &mdash; Shape early strategy, governance structures, and the member value proposition</li>
+        <li><strong>Board voting rights</strong> &mdash; Vote on the initial board of directors</li>
+        <li><strong>Board eligibility</strong> &mdash; Stand for election to the board</li>
+        <li><strong>Launch event priority</strong> &mdash; Priority access to the April 2026 launch event</li>
+        <li><strong>Permanent recognition</strong> &mdash; Founding member status for as long as you maintain membership</li>
       </ul>
 
       <div class="info-box">
         <p>
-          <strong>Important:</strong> Founding membership rates are available through March 31, 2026. After this date, pricing will evolve to reflect the organization's growing programs and services. We expect rates to increase and introduce more tiered complexity as we move into 2026 and beyond.
+          <strong>After March 31, 2026:</strong> Pricing will increase and new tier structures will be introduced. Founding members keep their rates as long as they maintain continuous membership.
         </p>
       </div>
 
@@ -738,83 +664,56 @@
         <div class="timeline-item">
           <div class="timeline-marker">Q4</div>
           <div class="timeline-content">
-            <h4>December 2025 - Launch</h4>
-            <p>Organization launches with founding member program. Founding members join the Advisory Council to help shape early direction.</p>
+            <h4>December 2025 &mdash; Launch</h4>
+            <p>Organization launches. Founding members join the Advisory Council.</p>
           </div>
         </div>
         <div class="timeline-item">
           <div class="timeline-marker">Q1</div>
           <div class="timeline-content">
-            <h4>Q1 2026 - Board Formation</h4>
-            <p>Founding members participate in initial board selection process. Advisory Council shapes governance structures and member value proposition.</p>
+            <h4>Q1 2026 &mdash; Board formation</h4>
+            <p>Founding members participate in initial board selection. Advisory Council shapes governance structures.</p>
           </div>
         </div>
         <div class="timeline-item">
           <div class="timeline-marker">Q2</div>
           <div class="timeline-content">
-            <h4>April 2026 - Launch Event</h4>
+            <h4>April 2026 &mdash; Launch event</h4>
             <p>Official launch event with founding members. Board assumes formal governance.</p>
           </div>
         </div>
         <div class="timeline-item">
           <div class="timeline-marker future">H2</div>
           <div class="timeline-content">
-            <h4>H2 2026 - Standard Operations</h4>
+            <h4>H2 2026 &mdash; Standard operations</h4>
             <p>New pricing structure takes effect for new members.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Governance Section -->
-    <section class="section" id="governance">
-      <h2>Governance & Board</h2>
-      <p>
-        AgenticAdvertising.org is committed to transparent, member-driven governance. The organization's direction will be set by a board elected from and by the membership.
-      </p>
-
-      <h3>Advisory Council</h3>
-      <p>
-        During the formation phase, founding members participate in the Advisory Council - a collaborative group that helps shape early strategy, governance structures, and the member value proposition. The Advisory Council provides input and feedback as we build the organization.
-      </p>
-
-      <h3>Initial Board Selection</h3>
-      <p>
-        The initial board will be selected in Q1 2026 from among the founding members. This is a unique opportunity to help establish the governance structures and strategic priorities that will guide the organization for years to come.
-      </p>
-      <ul>
-        <li><strong>Who can vote:</strong> All founding members (corporate and individual) who join before March 31, 2026</li>
-        <li><strong>Who is eligible to serve:</strong> Founding members in good standing</li>
-        <li><strong>Board composition:</strong> Will represent a balance of buyers (brands/agencies), sellers (publishers), and technology providers</li>
-        <li><strong>Selection process:</strong> Details will be announced in January 2026</li>
-      </ul>
-
-      <div class="info-box">
-        <p>
-          <strong>Recommendation:</strong> If you want to participate in the initial board selection process, we encourage you to join as a founding member in Q1 2026 so you can be part of shaping the organization's governance from the start.
-        </p>
-      </div>
-
-      <h3>Ongoing Governance</h3>
-      <p>
-        After the initial formation period, the board will establish regular governance processes including:
-      </p>
-      <ul>
-        <li>Annual board elections with member voting</li>
-        <li>Working group charters and oversight</li>
-        <li>Financial transparency and reporting</li>
-        <li>Standards development governance</li>
-      </ul>
-    </section>
-
     <!-- FAQ Section -->
     <section class="section" id="faq">
-      <h2>Frequently Asked Questions</h2>
+      <h2>Frequently asked questions</h2>
 
       <div class="faq-item">
-        <div class="faq-question">How do I choose which membership tier is right for me?</div>
+        <div class="faq-question">Do I need to be a member to use AdCP?</div>
         <div class="faq-answer">
-          All membership tiers include identical benefits within their category (corporate or individual). Choose the tier that best reflects your organization's size and ability to contribute. We trust members to self-select honestly.
+          No. AdCP is an open protocol that anyone can implement. Membership is about participating in the community that develops and governs the standard &mdash; not about access to the technology itself.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">How do I choose the right membership tier?</div>
+        <div class="faq-answer">
+          If you're a company in the ad ecosystem (brand, agency, publisher, ad tech provider), Voting Membership gives you governance rights. If you're an individual practitioner, Individual Membership gives you education and community access. Associate Membership is for adjacent organizations that want to participate without governance rights.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">What happens after the founding member window closes?</div>
+        <div class="faq-answer">
+          Pricing will increase and new tier structures will be introduced. Founding members keep their rates as long as they maintain continuous membership. The Advisory Council and board voting rights earned during the founding period are permanent member benefits.
         </div>
       </div>
 
@@ -828,31 +727,24 @@
       <div class="faq-item">
         <div class="faq-question">What if my organization is a non-profit?</div>
         <div class="faq-answer">
-          Non-profit organizations typically qualify for lower-tier pricing regardless of budget size. Contact us to discuss your situation and we'll find the right fit.
+          Non-profit organizations typically qualify for lower-tier pricing regardless of budget size. Contact us and we'll find the right fit.
         </div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">Do I need to be an AAO member to use AdCP?</div>
+        <div class="faq-question">How many people from my organization can participate?</div>
         <div class="faq-answer">
-          No. AdCP is an open protocol that anyone can implement. Membership in AgenticAdvertising.org is about participating in the community that develops and governs these standards, not about access to the technology itself.
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-question">How will rates change in 2026?</div>
-        <div class="faq-answer">
-          We expect rates to evolve as the organization grows its programs and services. We may also introduce additional tiers or membership types. Current founding member rates are available through Q1 2026.
+          Company memberships (Voting Member) cover your entire organization. Every team member can participate in working groups, education programs, and community events. The governance vote is one vote per member organization.
         </div>
       </div>
     </section>
 
   </div>
 
-  <!-- Pricing Section - Full width like members page -->
+  <!-- Pricing Section - Full width -->
   <section class="pricing-section" id="pricing">
     <div class="pricing-section-container">
-      <h2>Membership Pricing</h2>
+      <h2>Membership pricing</h2>
       <div id="join-cta-container">
         <!-- Static pricing for SEO and non-JS clients -->
         <noscript>

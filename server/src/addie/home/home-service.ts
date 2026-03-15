@@ -14,6 +14,7 @@ import { buildQuickActions } from './builders/quick-actions.js';
 import { buildActivityFeed } from './builders/activity.js';
 import { buildStats } from './builders/stats.js';
 import { buildAdminPanel } from './builders/admin.js';
+import { buildSuggestedPrompts } from './builders/suggested-prompts.js';
 import { logger } from '../../logger.js';
 
 export interface GetHomeContentOptions {
@@ -60,12 +61,14 @@ export async function getHomeContent(
   // Build synchronous sections
   const greeting = buildGreeting(memberContext);
   const quickActions = buildQuickActions(memberContext, isAAOAdmin);
+  const suggestedPrompts = buildSuggestedPrompts(memberContext, isAAOAdmin);
   const stats = buildStats(memberContext);
 
   const content: HomeContent = {
     greeting,
     alerts,
     quickActions,
+    suggestedPrompts,
     activity,
     stats,
     adminPanel,

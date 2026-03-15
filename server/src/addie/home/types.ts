@@ -12,10 +12,21 @@ export interface HomeContent {
   greeting: GreetingSection;
   alerts: AlertSection[];
   quickActions: QuickAction[];
+  suggestedPrompts: SuggestedPrompt[];
   activity: ActivityItem[];
   stats: UserStats | null;
   adminPanel: AdminPanel | null;
   lastUpdated: Date;
+}
+
+/**
+ * Contextual conversation starter for Addie chat.
+ * Shown as suggestion buttons — the label is what the user sees,
+ * the prompt is what gets sent to Addie when clicked.
+ */
+export interface SuggestedPrompt {
+  label: string;
+  prompt: string;
 }
 
 /**

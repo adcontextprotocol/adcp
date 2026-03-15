@@ -26,7 +26,7 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
   <style>
-    body { padding-top: 60px; background: var(--color-bg-page); }
+    body { background: #fff; }
 
     .events-container {
       max-width: 1000px;
@@ -289,11 +289,14 @@
 <body>
   <div id="adcp-nav"></div>
 
-  <div class="events-container">
-    <div class="page-header">
+  <section class="hero hero--clean">
+    <div class="hero-container">
       <h1>Events</h1>
-      <p>Join us at upcoming summits, meetups, and webinars to learn about the future of AI-powered advertising.</p>
+      <p class="hero-subtitle">Join us at upcoming summits, meetups, and webinars to learn about the future of AI-powered advertising.</p>
     </div>
+  </section>
+
+  <div class="events-container">
 
     <div class="filter-bar">
       <select id="typeFilter" onchange="filterEvents()">

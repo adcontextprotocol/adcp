@@ -699,7 +699,7 @@ export class HTTPServer {
       // Skip paths that have their own route handlers which manage auth and config injection
       // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
       // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat') {
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
         return next();
       }
 
@@ -1947,9 +1947,9 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'membership.html');
     });
 
-    // Governance page - serve governance.html at /governance
-    this.app.get("/governance", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'governance.html');
+    // Governance page - redirect to about page leadership section
+    this.app.get("/governance", (req, res) => {
+      res.redirect(301, '/about#leadership');
     });
 
     // Perspectives index redirects to perspectives section

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chat with Addie - Agentic Advertising</title>
+  <title>Ask Addie - AgenticAdvertising.org</title>
   <link rel="icon" type="image/svg+xml" href="/AAo.svg">
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -17,7 +17,7 @@
 
     body {
       font-family: var(--font-family-sans);
-      background: var(--color-bg-page);
+      background: #fff;
       color: var(--color-text);
       min-height: 100vh;
       display: flex;
@@ -36,9 +36,9 @@
 
     .chat-header {
       text-align: center;
-      padding: 32px 16px;
+      padding: var(--space-16) 16px var(--space-10);
       border-bottom: 1px solid var(--color-border);
-      background: var(--color-bg-card);
+      background: #fff;
       margin: 0 -16px;
       padding-left: 32px;
       padding-right: 32px;
@@ -64,6 +64,7 @@
       align-items: center;
       justify-content: center;
       font-size: 20px;
+      color: #fff;
     }
 
     .chat-header p {
@@ -2407,9 +2408,9 @@
       <div class="chat-header">
         <h1>
           <span class="addie-avatar">A</span>
-          Chat with Addie
+          Ask Addie
         </h1>
-        <p>Your AI assistant for AdCP and Agentic Advertising</p>
+        <p>Your AI guide to agentic advertising</p>
         <button class="video-call-btn" id="videoCallBtn" title="Video chat with Addie">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="23 7 16 12 23 17 23 7"></polygon>
@@ -3180,6 +3181,19 @@
           button.addEventListener('click', () => {
             const actionId = button.dataset.action;
             handleHomeAction(actionId);
+          });
+        });
+
+        // Handle suggested prompt buttons (from engagement-aware builder)
+        addieHomeContent.querySelectorAll('.suggested-prompt[data-prompt]').forEach(button => {
+          button.addEventListener('click', () => {
+            const prompt = button.dataset.prompt;
+            if (prompt) {
+              chatInput.value = prompt;
+              autoResize();
+              updateSendButton();
+              sendMessage();
+            }
           });
         });
       }

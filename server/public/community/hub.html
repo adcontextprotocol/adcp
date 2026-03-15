@@ -6,9 +6,9 @@
   <title>Community - AgenticAdvertising.org</title>
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
   <style>
     body {
-      background: var(--color-bg-page);
       padding-top: var(--nav-height);
     }
 
@@ -563,10 +563,10 @@
         : '<div class="hub-empty"><p>You haven\'t joined any working groups yet</p><a href="/committees?type=working_group" class="btn btn-ghost btn-sm">Browse groups</a></div>';
 
       content.innerHTML = `
-        <div class="hub-welcome">
+        <header class="page-header page-header--left">
           <h1>${isNewUser ? 'Set up your community profile' : `Welcome back, ${escapeHtml(firstName)}`}</h1>
           <p>${isNewUser ? 'Complete your profile to start connecting with other members.' : `You have ${connection_count} connection${connection_count !== 1 ? 's' : ''} in the community.`}</p>
-        </div>
+        </header>
 
         ${pendingHtml}
 
