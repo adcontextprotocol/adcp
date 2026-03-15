@@ -9,7 +9,7 @@
   },
   {
     "filename": "images/walkthrough/adcp-03-agents.png",
-    "prompt": "Five specialized robots collaborate around a shared circular workspace table. Each robot has a distinct tool reflecting its specialty: Discovery robot holds a magnifying glass and examines product cards. Creative robot has a paintbrush and works on ad mockups. Governance robot carries a shield and checks documents. Signals robot has an antenna receiving audience data streams. In the center, the Orchestrator robot coordinates, gesturing to connect the others' work. Documents and data flow smoothly between them on the table surface. Harmonious teamwork, clean teal palette, well-organized workspace."
+    "prompt": "Five specialized agent robots collaborate around a shared circular workspace table. Each has a distinct tool reflecting its specialty: a sales agent holds a magnifying glass and examines product cards. A creative agent has a paintbrush and works on ad mockups. A governance agent carries a shield and checks documents. A signals agent has an antenna receiving audience data streams. In the center, a media orchestration agent coordinates, gesturing to connect the others' work. Documents and data flow smoothly between them on the table surface. Harmonious teamwork, clean teal palette, well-organized workspace. Do not include any text, words, or labels in the image."
   },
   {
     "filename": "images/walkthrough/adcp-04-workflow.png",
