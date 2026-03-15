@@ -44,7 +44,6 @@ const SLACK_DM_PER_RUN_LIMIT = 10; // Max Slack DMs per scheduler run to avoid b
  */
 interface OutreachResult {
   success: boolean;
-  outreach_id?: number;
   dm_channel_id?: string;
   error?: string;
 }
@@ -331,7 +330,6 @@ export async function runOutreachScheduler(options: {
       const engagementOpportunities = computeEngagementOpportunities({
         relationship: candidate,
         capabilities: context.profile.capabilities,
-        insights: context.profile.insights,
         company: context.profile.company,
         recentMessages: context.recentMessages,
         certification: context.certification,
@@ -445,10 +443,11 @@ export async function runOutreachScheduler(options: {
 
       // 8. Record on the relationship
       await relationshipDb.recordAddieMessage(candidate.id, channel);
-      await relationshipDb.setNextContactAfter(
-        candidate.id,
-        computeNextContactDate(candidate.stage)
-      );
+
+      // Respect cadence preference if set (monthly=30d, quarterly=90d)
+      const nextContact = await getCadenceAwareNextContact(candidate.id, candidate.stage);
+      await relationshipDb.setNextContactAfter(candidate.id, nextContact);
+
       await relationshipDb.evaluateStageTransitions(candidate.id);
 
       // 9. Analytics
@@ -508,12 +507,12 @@ export async function manualOutreach(
   const engagementOpportunities = computeEngagementOpportunities({
     relationship,
     capabilities: context.profile.capabilities,
-    insights: context.profile.insights,
     company: context.profile.company,
     recentMessages: context.recentMessages,
     certification: context.certification,
   });
-  const channel: 'slack' | 'email' = relationship.slack_user_id ? 'slack' : 'email';
+  const channel: 'slack' | 'email' = relationship.contact_preference
+    ?? (relationship.slack_user_id ? 'slack' : 'email');
 
   const composed = await composeMessage(
     { ...context, engagementOpportunities },
@@ -574,7 +573,6 @@ export async function manualOutreach(
       data: {
         subject: composed.subject,
         text: composed.text,
-        to: relationship.email,
         text_length: composed.text.length,
         stage: relationship.stage,
         goal_hint: composed.goalHint,
@@ -634,6 +632,36 @@ export function getOutreachMode(): 'live' {
  * Slackbot sends system notifications that should always be ignored.
  */
 const SLACKBOT_USER_ID = 'USLACKBOT';
+
+/**
+ * Get the next contact date, respecting any cadence preference the user has set.
+ * Checks for the most recent preference_changed event with a cadence value.
+ */
+async function getCadenceAwareNextContact(personId: string, stage: relationshipDb.RelationshipStage): Promise<Date> {
+  const defaultNext = computeNextContactDate(stage);
+
+  try {
+    // Fetch enough events to find the most recent (timeline returns ASC order)
+    const events = await personEvents.getPersonTimeline(personId, {
+      eventTypes: ['preference_changed'],
+    });
+
+    const latest = events[events.length - 1];
+    if (!latest) return defaultNext;
+
+    const cadence = latest.data?.cadence as string | undefined;
+    if (!cadence || cadence === 'default') return defaultNext;
+
+    const cadenceDays = cadence === 'monthly' ? 30 : cadence === 'quarterly' ? 90 : null;
+    if (!cadenceDays) return defaultNext;
+
+    const next = new Date();
+    next.setDate(next.getDate() + cadenceDays);
+    return next;
+  } catch {
+    return defaultNext;
+  }
+}
 
 /**
  * Check if a specific user can be contacted.
