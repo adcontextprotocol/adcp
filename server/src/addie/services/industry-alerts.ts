@@ -145,7 +145,7 @@ function buildAlertBlocks(article: ArticleToAlert): SlackBlock[] {
     elements: [
       {
         type: 'mrkdwn',
-        text: 'DM me if you want help writing a post about this.',
+        text: 'Want to share this? Reply here or DM me and I\'ll help you draft a post.',
       },
     ],
   });
