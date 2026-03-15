@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: main
+    commit-message:
+      prefix: "deps:"
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: main
+    commit-message:
+      prefix: "ci:"
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch

@@ -529,10 +529,8 @@ export function createPublicBillingRouter(): Router {
         });
       } catch (error) {
         logger.error({ err: error }, "Checkout session creation error");
-        const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred. Please try again.";
         res.status(500).json({
           error: "Failed to create checkout session",
-          message: errorMessage,
         });
       }
     }

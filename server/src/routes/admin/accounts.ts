@@ -1823,10 +1823,6 @@ export function setupAccountRoutes(
               status: "success",
             });
           } catch (memberError: unknown) {
-            const errorMessage =
-              memberError instanceof Error
-                ? memberError.message
-                : "Unknown error";
             logger.error(
               {
                 err: memberError,
@@ -1840,7 +1836,7 @@ export function setupAccountRoutes(
               user_id: member.workos_user_id,
               email: member.email,
               status: "error",
-              error: errorMessage,
+              error: "Failed to migrate member",
             });
           }
         }
@@ -2246,8 +2242,7 @@ export function setupAccountRoutes(
             } catch (workosError) {
               logger.error({ err: workosError, orgId }, "Failed to update organization name in WorkOS");
               return res.status(500).json({
-                error: "Failed to update organization name",
-                message: `Could not sync name change to WorkOS: ${workosError instanceof Error ? workosError.message : 'Unknown error'}`,
+                error: "Failed to sync organization name to WorkOS",
               });
             }
           }
@@ -2361,8 +2356,7 @@ export function setupAccountRoutes(
         });
       } catch (error) {
         logger.error({ err: error }, "Error generating payment link");
-        const errorMessage = error instanceof Error ? error.message : "Unable to generate payment link";
-        res.status(500).json({ error: "Internal server error", message: errorMessage });
+        res.status(500).json({ error: "Internal server error" });
       }
     }
   );

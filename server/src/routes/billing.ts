@@ -173,7 +173,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error fetching admin products");
       res.status(500).json({
         error: "Failed to fetch products",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -271,7 +270,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error creating product");
       res.status(500).json({
         error: "Failed to create product",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -336,7 +334,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, productId: req.params.productId }, "Error updating product");
       res.status(500).json({
         error: "Failed to update product",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -380,7 +377,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, productId: req.params.productId }, "Error archiving product");
       res.status(500).json({
         error: "Failed to archive product",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -417,7 +413,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, customerId: req.params.customerId }, "Error fetching pending invoices");
       res.status(500).json({
         error: "Failed to fetch pending invoices",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -468,7 +463,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, invoiceId: req.params.invoiceId }, "Error voiding invoice");
       res.status(500).json({
         error: "Failed to void invoice",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -519,7 +513,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, invoiceId: req.params.invoiceId }, "Error deleting draft invoice");
       res.status(500).json({
         error: "Failed to delete invoice",
-        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -635,7 +628,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error fetching Stripe customers");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to fetch customers",
       });
     }
   });
@@ -789,7 +781,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, customerId, org_id }, "Error linking Stripe customer");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to link customer",
       });
     }
   });
@@ -836,7 +827,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, customerId }, "Error unlinking Stripe customer");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to unlink customer",
       });
     }
   });
@@ -869,7 +859,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error searching organizations");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to search organizations",
       });
     }
   });
@@ -938,7 +927,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error, customerId }, "Error deleting Stripe customer");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to delete customer",
       });
     }
   });
@@ -967,7 +955,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error finding Stripe customer conflicts");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to find conflicts",
       });
     }
   });
@@ -1072,7 +1059,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error resolving Stripe customer conflict");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to resolve conflict",
       });
     }
   });
@@ -1224,7 +1210,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error finding Stripe customer mismatches");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to find mismatches",
       });
     }
   });
@@ -1402,7 +1387,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error resolving Stripe customer mismatch");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to resolve mismatch",
       });
     }
   });
@@ -1459,7 +1443,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       logger.error({ err: error }, "Error unlinking Stripe customer");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Failed to unlink customer",
       });
     }
   });

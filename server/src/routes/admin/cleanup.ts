@@ -328,15 +328,14 @@ export function setupCleanupRoutes(apiRouter: Router): void {
         error.message.startsWith('Both organizations have Stripe customers')
       )) {
         return res.status(400).json({
-          error: "Validation error",
-          message: error.message,
+          error: error.message.startsWith('Cannot merge personal workspaces')
+            ? 'Cannot merge personal workspaces'
+            : 'Organization merge conflict',
         });
       }
 
       res.status(500).json({
         error: "Internal server error",
-        message:
-          error instanceof Error ? error.message : "Unable to execute merge",
       });
     }
   });

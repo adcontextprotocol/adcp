@@ -198,7 +198,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'List working groups error:');
       res.status(500).json({
         error: 'Failed to list working groups',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -226,7 +225,7 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Search users error:');
       res.status(500).json({
         error: 'Failed to search users',
-        message: errorMessage,
+        message: 'An internal error occurred while searching users.',
       });
     }
   });
@@ -252,7 +251,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Sync all working groups from Slack error:');
       res.status(500).json({
         error: 'Failed to sync working groups',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -275,7 +273,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get working group error:');
       res.status(500).json({
         error: 'Failed to get working group',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -383,7 +380,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Create working group error:');
       res.status(500).json({
         error: 'Failed to create working group',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -462,7 +458,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Update working group error:');
       res.status(500).json({
         error: 'Failed to update working group',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -485,7 +480,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Delete working group error:');
       res.status(500).json({
         error: 'Failed to delete working group',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -500,7 +494,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'List working group members error:');
       res.status(500).json({
         error: 'Failed to list members',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -537,7 +530,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Add working group member error:');
       res.status(500).json({
         error: 'Failed to add member',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -563,7 +555,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Remove working group member error:');
       res.status(500).json({
         error: 'Failed to remove member',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -596,7 +587,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'List committee interest error:');
       res.status(500).json({
         error: 'Failed to list interest records',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -636,7 +626,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Sync working group members from Slack error:');
       res.status(500).json({
         error: 'Failed to sync members',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -662,7 +651,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'List working group posts error:');
       res.status(500).json({
         error: 'Failed to list posts',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -705,7 +693,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'List working groups error');
       res.status(500).json({
         error: 'Failed to list working groups',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -748,7 +735,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'List industry gatherings error');
       res.status(500).json({
         error: 'Failed to list industry gatherings',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -763,7 +749,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get org working groups error');
       res.status(500).json({
         error: 'Failed to get working groups',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -819,7 +804,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get working group error');
       res.status(500).json({
         error: 'Failed to get working group',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -870,7 +854,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get working group posts error');
       res.status(500).json({
         error: 'Failed to get posts',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -897,7 +880,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get committee events error');
       res.status(500).json({
         error: 'Failed to get events',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -995,7 +977,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Join working group error');
       res.status(500).json({
         error: 'Failed to join working group',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1080,7 +1061,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Express committee interest error');
       res.status(500).json({
         error: 'Failed to record interest',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1120,7 +1100,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Check committee interest error');
       res.status(500).json({
         error: 'Failed to check interest',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1168,7 +1147,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Withdraw committee interest error');
       res.status(500).json({
         error: 'Failed to withdraw interest',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1213,7 +1191,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Leave working group error');
       res.status(500).json({
         error: 'Failed to leave working group',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1316,7 +1293,6 @@ export function createCommitteeRouters(): {
       }
       res.status(500).json({
         error: 'Failed to create post',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1421,7 +1397,6 @@ export function createCommitteeRouters(): {
       }
       res.status(500).json({
         error: 'Failed to update post',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1483,7 +1458,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Delete working group post error');
       res.status(500).json({
         error: 'Failed to delete post',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1525,7 +1499,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Fetch URL metadata error (member)');
       res.status(500).json({
         error: 'Failed to fetch URL',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1578,7 +1551,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get committee documents error');
       res.status(500).json({
         error: 'Failed to get documents',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1602,7 +1574,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get committee activity error');
       res.status(500).json({
         error: 'Failed to get activity',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1638,7 +1609,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get committee summary error');
       res.status(500).json({
         error: 'Failed to get summary',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1691,7 +1661,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Create committee document error');
       res.status(500).json({
         error: 'Failed to create document',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1747,7 +1716,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Update committee document error');
       res.status(500).json({
         error: 'Failed to update document',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1811,7 +1779,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Reindex committee document error');
       res.status(500).json({
         error: 'Failed to reindex document',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1853,7 +1820,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Delete committee document error');
       res.status(500).json({
         error: 'Failed to delete document',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1892,7 +1858,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'List working group leader posts error');
       res.status(500).json({
         error: 'Failed to list posts',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1928,7 +1893,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get working group post error');
       res.status(500).json({
         error: 'Failed to get post',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2041,7 +2005,6 @@ export function createCommitteeRouters(): {
       }
       res.status(500).json({
         error: 'Failed to create post',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2170,7 +2133,6 @@ export function createCommitteeRouters(): {
       }
       res.status(500).json({
         error: 'Failed to update post',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2206,7 +2168,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Delete working group post error');
       res.status(500).json({
         error: 'Failed to delete post',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2229,7 +2190,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Fetch URL metadata error (working group)');
       res.status(500).json({
         error: 'Failed to fetch URL',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2264,7 +2224,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get committee events error');
       res.status(500).json({
         error: 'Failed to get events',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2314,7 +2273,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get committee event error');
       res.status(500).json({
         error: 'Failed to get event',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2413,7 +2371,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Create committee event error');
       res.status(500).json({
         error: 'Failed to create event',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2494,7 +2451,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Update committee event error');
       res.status(500).json({
         error: 'Failed to update event',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2559,7 +2515,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Delete committee event error');
       res.status(500).json({
         error: 'Failed to delete event',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2578,7 +2533,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get user working groups error');
       res.status(500).json({
         error: 'Failed to get working groups',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2593,7 +2547,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get user led committees error');
       res.status(500).json({
         error: 'Failed to get led committees',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -2618,7 +2571,6 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get user council interests error');
       res.status(500).json({
         error: 'Failed to get council interests',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
