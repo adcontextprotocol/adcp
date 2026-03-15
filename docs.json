@@ -177,8 +177,9 @@
           {
             "group": "Brand Protocol",
             "pages": [
-              "docs/brand-protocol/why-brand-json",
               "docs/brand-protocol/index",
+              "docs/brand-protocol/walkthrough-rights-licensing",
+              "docs/brand-protocol/why-brand-json",
               "docs/brand-protocol/for-advertisers",
               "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",
@@ -560,8 +561,9 @@
           {
             "group": "Brand Protocol",
             "pages": [
-              "docs/brand-protocol/why-brand-json",
               "docs/brand-protocol/index",
+              "docs/brand-protocol/walkthrough-rights-licensing",
+              "docs/brand-protocol/why-brand-json",
               "docs/brand-protocol/for-advertisers",
               "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",

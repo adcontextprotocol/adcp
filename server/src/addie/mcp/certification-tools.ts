@@ -576,6 +576,9 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   ],
   C2: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Brand ecosystem walkthrough', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Brand architecture and resolution', url: `${DOCS_BASE}/docs/brand-protocol/key-concepts` },
+    { label: 'Rights licensing walkthrough', url: `${DOCS_BASE}/docs/brand-protocol/walkthrough-rights-licensing` },
     { label: 'Why brand.json', url: `${DOCS_BASE}/docs/brand-protocol/why-brand-json` },
     { label: 'brand.json specification', url: `${DOCS_BASE}/docs/brand-protocol/brand-json` },
     { label: 'For advertisers', url: `${DOCS_BASE}/docs/brand-protocol/for-advertisers` },
