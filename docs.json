@@ -67,6 +67,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -84,10 +85,8 @@
           {
             "group": "Understanding Agentic Advertising",
             "pages": [
-              "docs/agentic-advertising",
               "docs/guides/buying-ai-media",
-              "docs/learning/overview",
-              "docs/faq"
+              "docs/learning/overview"
             ]
           },
           {
@@ -149,8 +148,8 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/ai-media",
               "docs/guides/ai-media-buying",
-              "docs/guides/buying-ai-media",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
               "docs/guides/signals-ecosystem",
@@ -490,6 +489,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -507,10 +507,8 @@
           {
             "group": "Understanding Agentic Advertising",
             "pages": [
-              "docs/agentic-advertising",
               "docs/guides/buying-ai-media",
-              "docs/learning/overview",
-              "docs/faq"
+              "docs/learning/overview"
             ]
           },
           {
@@ -572,8 +570,8 @@
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/ai-media",
               "docs/guides/ai-media-buying",
-              "docs/guides/buying-ai-media",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
               "docs/guides/signals-ecosystem",

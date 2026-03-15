@@ -121,7 +121,10 @@ export const TOOL_DESCRIPTIONS = buildToolDescriptions();
 
 export const ROUTING_RULES = {
   /**
-   * Topics Addie can help with (and the tools to use)
+   * Topics Addie can help with (and the tools to use).
+   * Note: patterns are used for config version hashing and analytics,
+   * not for direct routing. The LLM router uses tool set descriptions
+   * from getToolSetDescriptionsForRouter() to make routing decisions.
    */
   expertise: {
     capabilities: {
