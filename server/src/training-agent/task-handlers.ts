@@ -25,6 +25,7 @@ import {
   handleReportPlanOutcome,
   handleGetPlanAuditLogs,
 } from './governance-handlers.js';
+import { PUBLISHERS } from './publishers.js';
 
 
 const logger = createLogger('training-agent');
@@ -214,13 +215,11 @@ const TOOLS = [
   ...GOVERNANCE_TOOLS,
   {
     name: 'get_adcp_capabilities',
-    description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version.',
+    description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
-      properties: {
-        agent_url: { type: 'string' },
-      },
+      properties: {},
     },
   },
 ];
@@ -851,7 +850,10 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 }
 
 function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
-  const tasks = TOOLS.map(t => t.name);
+  const tasks = TOOLS
+    .map(t => t.name)
+    .filter(name => name !== 'get_adcp_capabilities');
+  const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
     supported_protocols: ['media_buy', 'governance'],
@@ -862,7 +864,7 @@ function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: Trainin
         inline_creative_management: true,
       },
       portfolio: {
-        channels: ['display', 'video', 'native', 'audio'],
+        channels,
       },
     },
     agent: {

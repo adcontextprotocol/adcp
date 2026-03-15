@@ -67,7 +67,7 @@ export const GOVERNANCE_TOOLS = [
               policy_ids: { type: 'array', items: { type: 'string' } },
               custom_policies: { type: 'array', items: { type: 'string' } },
               mode: { type: 'string', enum: ['enforce', 'advisory', 'audit'], description: 'Governance enforcement mode. Defaults to enforce.' },
-              approved_sellers: { type: ['array', 'null'] },
+              approved_sellers: { type: ['array', 'null'], description: 'Seller allowlist. null = unrestricted, [] = deny all, [...urls] = only listed sellers.' },
               delegations: {
                 type: 'array',
                 items: {
@@ -313,8 +313,11 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
     }
   }
 
-  // Proposed binding: validate payload against plan
-  // Prefer governance_context (canonical shape) over payload heuristics
+  // Proposed binding: validate payload against plan.
+  // Delegation budget/market limits are checked here because the proposed payload
+  // contains the budget and countries. For committed binding, planned_delivery
+  // validation handles these constraints instead.
+  // Prefer governance_context (canonical shape) over payload heuristics.
   if (binding === 'proposed' && (governanceContext || payload)) {
     const { budget: payloadBudget, budgetFieldPath, countries: payloadCountries, channels: payloadChannels, flight: payloadFlight } =
       governanceContext
