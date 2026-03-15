@@ -91,20 +91,18 @@ jobs:
             # Base64 encode the image
             IMG_B64=$(base64 -w0 "$local_path" 2>/dev/null || base64 -i "$local_path" 2>/dev/null)
 
-            # Build the validation request
+            # Build the validation request using jq to safely handle large base64 payloads
             VALIDATION_PROMPT="Analyze this image. List ALL text visible in the image verbatim. Flag any misspelled, garbled, or nonsensical text. Also assess whether this image matches the following intended alt text: \"${alt_text}\". Respond ONLY with valid JSON (no markdown fences): { \"visible_text\": [\"text1\"], \"gibberish_found\": true/false, \"gibberish_details\": \"...\", \"matches_description\": true/false, \"match_notes\": \"...\" }"
 
+            PAYLOAD=$(jq -n \
+              --arg img "$IMG_B64" \
+              --arg prompt "$VALIDATION_PROMPT" \
+              '{contents: [{parts: [{inline_data: {mime_type: "image/png", data: $img}}, {text: $prompt}]}]}')
+
             # Call Gemini API
-            RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
+            RESPONSE=$(curl -s --max-time 60 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
               -H 'Content-Type: application/json' \
-              -d "{
-                \"contents\": [{
-                  \"parts\": [
-                    {\"inline_data\": {\"mime_type\": \"image/png\", \"data\": \"${IMG_B64}\"}},
-                    {\"text\": $(echo "$VALIDATION_PROMPT" | jq -Rs .)}
-                  ]
-                }]
-              }" 2>/dev/null)
+              -d "$PAYLOAD" 2>/dev/null)
 
             # Extract the text response
             RESULT_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
@@ -115,7 +113,7 @@ jobs:
             fi
 
             # Strip markdown fences if present
-            RESULT_JSON=$(echo "$RESULT_TEXT" | sed 's/^```\(json\)\?//' | sed 's/```$//')
+            RESULT_JSON=$(echo "$RESULT_TEXT" | sed '/^```/d')
 
             # Check for gibberish
             GIBBERISH=$(echo "$RESULT_JSON" | jq -r '.gibberish_found // false' 2>/dev/null)

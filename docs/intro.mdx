@@ -96,7 +96,7 @@ AdCP 3.0 covers eight domains:
 | **Signals** | Audience and targeting data | `get_signals`, `activate_signal` | MCP / A2A |
 | **Governance** | Brand suitability, compliance, and provenance verification | `create_property_list`, `calibrate_content` | MCP / A2A |
 | **Sponsored Intelligence** | Conversational brand experiences | `si_initiate_session`, `si_send_message` | MCP / A2A |
-| **Brand Protocol** | Brand identity and discovery | `brand.json` resolution | HTTP / MCP |
+| **Brand Protocol** | Brand identity, rights licensing, and creative approval | `get_brand_identity`, `acquire_rights` | HTTP / MCP / A2A |
 | **Registry** | Entity resolution and agent discovery | `/api/brands/resolve`, `/api/registry/agents` | REST API |
 
 These domains work together. A typical workflow: resolve a brand via **Brand Protocol**, establish billing via **Accounts**, discover inventory via **Media Buy**, find audiences via **Signals**, check brand suitability via **Governance**, build ads via **Creative**, and execute across platforms.

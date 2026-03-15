@@ -1112,6 +1112,10 @@
       "destination": "/docs/signals/overview"
     },
     {
+      "source": "/docs/media-buy/advanced-topics/index",
+      "destination": "/docs/media-buy/index"
+    },
+    {
       "source": "/docs/media-buy/advanced-topics/orchestrator-design",
       "destination": "/docs/building/implementation/orchestrator-design"
     },

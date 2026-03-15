@@ -153,8 +153,8 @@ async function generateImage(
   let retriesLeft = options.maxRetries;
 
   while (lastResult.gibberish_found && retriesLeft > 0) {
+    console.log(`  Retrying with "no text" directive (attempt ${options.maxRetries - retriesLeft + 1}/${options.maxRetries})...`);
     retriesLeft--;
-    console.log(`  Retrying with "no text" directive (${retriesLeft} retries left)...`);
     const retryPrompt = `${fullPrompt}\n\nDo not include any text, words, or labels in the image.`;
     const retryBuffer = await generateAndSaveImage(genAI, retryPrompt, outputPath);
     if (!retryBuffer) return;
@@ -192,7 +192,7 @@ async function main() {
   const onlyPattern = onlyIdx >= 0 ? args[onlyIdx + 1] : null;
   const validate = !args.includes("--no-validate");
   const retriesIdx = args.indexOf("--max-retries");
-  const maxRetries = retriesIdx >= 0 ? parseInt(args[retriesIdx + 1], 10) : 1;
+  const maxRetries = retriesIdx >= 0 ? (parseInt(args[retriesIdx + 1], 10) || 1) : 1;
 
   const prompts: ImagePrompt[] = JSON.parse(fs.readFileSync(promptFile, "utf-8"));
   const filtered = onlyPattern
