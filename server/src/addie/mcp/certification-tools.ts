@@ -760,7 +760,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
-    { label: 'Why brand.json', url: `${DOCS_BASE}/docs/brand-protocol/why-brand-json` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
@@ -817,7 +816,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Brand ecosystem walkthrough', url: `${DOCS_BASE}/docs/brand-protocol` },
     { label: 'Brand architecture and resolution', url: `${DOCS_BASE}/docs/brand-protocol/key-concepts` },
     { label: 'Rights licensing walkthrough', url: `${DOCS_BASE}/docs/brand-protocol/walkthrough-rights-licensing` },
-    { label: 'Why brand.json', url: `${DOCS_BASE}/docs/brand-protocol/why-brand-json` },
     { label: 'brand.json specification', url: `${DOCS_BASE}/docs/brand-protocol/brand-json` },
     { label: 'For advertisers', url: `${DOCS_BASE}/docs/brand-protocol/for-advertisers` },
     { label: 'get_brand_identity task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/get_brand_identity` },
