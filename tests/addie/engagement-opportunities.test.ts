@@ -604,18 +604,18 @@ describe('shouldContact', () => {
     it('allows contact after cooldown expires', () => {
       const r = makeRelationship({
         stage: 'exploring',
-        last_addie_message_at: daysAgo(15), // > 14 day cooldown
+        last_addie_message_at: daysAgo(22), // > 21 day cooldown
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(true);
     });
 
     it('escalates cooldown with 1+ unreplied', () => {
-      // exploring cooldown is 14 days, but with 1 unreplied escalates to participating (30 days)
+      // exploring cooldown is 21 days, but with 1 unreplied escalates to participating (30 days)
       const r = makeRelationship({
         stage: 'exploring',
         unreplied_outreach_count: 1,
-        last_addie_message_at: daysAgo(20), // past 14d but within 30d
+        last_addie_message_at: daysAgo(25), // past 21d but within 30d
       });
       const result = shouldContact(r);
       expect(result.shouldContact).toBe(false);
