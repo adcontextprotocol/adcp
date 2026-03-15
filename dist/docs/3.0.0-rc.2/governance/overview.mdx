@@ -1,0 +1,291 @@
+---
+title: Governance protocol
+sidebarTitle: Overview
+"og:image": /images/walkthrough/governance-01-no-oversight.png
+description: "AdCP governance ensures human oversight of autonomous AI advertising through three-party validation, budget controls, and brand safety enforcement."
+"og:title": "AdCP — Governance protocol"
+---
+
+<img src="/images/walkthrough/governance-01-no-oversight.png" alt="A robot arm reaches for a glowing red BUY button marked $50,000 — no human is present, warning lights blink in the dim room, and unchecked documents pile up nearby" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+An AI agent is about to spend $50,000 on advertising. No human reviewed the plan. No system checked the budget. No policy filtered the inventory. The agent has credentials, a brief, and a BUY button.
+
+Jordan is a campaign operations manager at Pinnacle Agency. This is her nightmare. Not because the technology failed — because nobody was accountable. Responsibility cannot be delegated to software.
+
+She doesn't want to slow agents down — they're faster and more thorough than her team at managing cross-platform campaigns. But she needs to know that when an agent buys media for Acme Outdoor, it stays within budget, runs on approved publishers, and meets Canadian privacy rules. She needs to know that if something exceeds authority, a human gets asked — not after the fact, but before the money moves.
+
+AdCP's governance system is built on a principle: [human judgment must be embedded in system design](/dist/docs/3.0.0-rc.2/governance/embedded-human-judgment), not bolted on afterward. Oversight is architectural — the system cannot operate without it.
+
+This walkthrough follows Jordan as she sets up governance for Sam's $50K campaign and watches it work.
+
+## The three-party model
+
+<img src="/images/concepts/three-party-governance.png" alt="A triangle diagram with humans at the top setting policies, and three agents below — orchestrator proposes, governance validates, seller fulfills — connected by lines showing separation of duties" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+AdCP governance works because humans define the boundaries and no single party controls the full workflow:
+
+| Party | Role | Cannot do |
+|---|---|---|
+| **Orchestrator** | Proposes campaign plans, executes buys | Set its own spending limits or approve its own plans |
+| **Governance agent** | Validates plans against policies, tracks budgets | Execute buys or modify campaigns |
+| **Seller** | Fulfills media buys, reports delivery | Override governance decisions or modify budgets |
+
+The agent that spends money isn't the agent that sets the rules. This isn't three agents checking each other — it's a structure designed so that human-defined policies govern every transaction, and no agent can act outside the authority a human granted it.
+
+## Step 1: Register the plan
+
+<img src="/images/walkthrough/governance-02-plan-synced.png" alt="A buying robot creates a glowing campaign plan document that floats across to a governance robot sitting behind a security desk with a shield emblem — the governance robot examines it carefully" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Before Sam's orchestrator executes any buy, Jordan's governance setup requires it to register the campaign plan:
+
+```javascript
+const plan = await governance.syncPlans({
+  plans: [{
+    plan_id: "acme-q2-trail-pro",
+    brand: { domain: "acmeoutdoor.com" },
+    objectives: "Q2 Trail Pro 3000 launch across sports and outdoor lifestyle publishers",
+    budget: { total: 50000, currency: "USD", authority_level: "agent_limited" },
+    flight: { start: "2026-04-01T00:00:00Z", end: "2026-06-30T23:59:59Z" },
+    countries: ["US", "CA"]
+  }]
+});
+```
+
+The governance agent now knows about this plan. It resolves applicable policies — brand safety rules, budget limits, regulatory requirements for US and Canada, and Acme Outdoor's brand-specific restrictions from `brand.json`.
+
+No money has moved. The plan is registered, not executed.
+
+Notice `authority_level: "agent_limited"` — Jordan chose this setting. It means the orchestrator can execute buys up to a threshold, but anything larger requires human approval. This boundary is a human decision, not a technical default. The agent cannot change it.
+
+<Accordion title="What policies get resolved">
+
+The governance agent pulls policies from multiple sources:
+
+- **Budget limits**: Agent authority level (`agent_limited` means capped per-transaction)
+- **Brand safety**: Acme Outdoor's `brand.json` specifies approved and excluded publisher categories
+- **Regulatory**: US and CA jurisdictions trigger COPPA, PIPEDA, and state privacy rules
+- **Industry**: AgenticAdvertising.org's policy registry provides standardized regulations
+
+Jordan configured these policies once. They apply automatically to every campaign for this brand.
+
+</Accordion>
+
+## Step 2: Check before spending
+
+<img src="/images/walkthrough/governance-03-checks.png" alt="The governance robot reviews three inspection panels side by side — budget (showing a bar chart nearly at limit), brand safety (green checkmark), and compliance (green checkmark) — the budget panel glows amber as a warning" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+When the orchestrator is ready to buy, it calls `check_governance` before executing:
+
+```javascript
+const check = await governance.checkGovernance({
+  plan_id: "acme-q2-trail-pro",
+  buyer_campaign_ref: "acme-q2-ctv",
+  binding: "proposed",
+  caller: "https://orchestrator.pinnacle-agency.example",
+  tool: "create_media_buy",
+  phase: "purchase",
+  payload: {
+    seller: "https://streamhaus.example",
+    amount: 25000,
+    currency: "USD"
+  }
+});
+```
+
+The governance agent evaluates the proposed action against every applicable policy:
+
+| Check | Status | Detail |
+|---|---|---|
+| Budget within plan limit | Passed | $25K of $50K available |
+| Budget within agent authority | **Warning** | Agent authorized up to $20K per transaction |
+| Brand safety | Passed | StreamHaus on approved list |
+| Regulatory compliance | Passed | Targeting meets US/CA requirements |
+| Creative provenance | Passed | All creatives carry required metadata |
+
+The response isn't pass/fail — it returns structured findings with severity levels (`must`, `should`, `may`) and confidence scores. The orchestrator knows exactly what passed, what failed, and why.
+
+## Step 3: Escalation
+
+<img src="/images/walkthrough/governance-04-escalation.png" alt="The governance robot raises an amber flag and routes the campaign plan along a glowing path to a human reviewer — a woman with dark hair sitting at a glass desk, who examines the flagged document thoughtfully" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The $25,000 transaction exceeds the agent's $20,000 authority limit. The governance agent flags it with `must` severity — the orchestrator cannot proceed without resolution.
+
+This is not a failure — it is the system working as designed. The agent doesn't need to remember to check; the architecture requires it. Oversight is structural, not procedural.
+
+Two options:
+1. **Reduce the transaction** to $20,000 or less
+2. **Escalate to a human** for approval
+
+The orchestrator escalates. Jordan receives the flagged plan with full context — what the agent wants to buy, why it was flagged, and which policy triggered it.
+
+<Accordion title="What the escalation looks like">
+
+```json
+{
+  "check_id": "chk-q2-ctv-001",
+  "status": "escalated",
+  "binding": "proposed",
+  "plan_id": "acme-q2-trail-pro",
+  "buyer_campaign_ref": "acme-q2-ctv",
+  "explanation": "Budget authority exceeded. Human approval required.",
+  "findings": [
+    {
+      "category_id": "budget",
+      "policy_id": "budget-authority-limit",
+      "severity": "must",
+      "explanation": "Transaction amount $25,000 exceeds agent authority limit of $20,000.",
+      "confidence": 1.0
+    }
+  ],
+  "escalation": {
+    "reason": "Transaction exceeds agent_limited authority",
+    "severity": "must",
+    "requires_human": true
+  }
+}
+```
+
+</Accordion>
+
+## Step 4: Human approval
+
+<img src="/images/walkthrough/governance-05-approved.png" alt="Jordan stamps the campaign plan with a green approval seal and attaches a yellow condition tag reading 'weekly reporting required' — the approved plan flows back through the governance robot to an open ledger" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Jordan reviews the plan and approves — with a condition: the agent must report delivery weekly instead of at flight end.
+
+She isn't rubber-stamping. She reviewed the context, assessed the risk, and exercised judgment by adding a constraint the agent didn't request. This is the human remaining the locus of accountability — the agent proposed, the human decided.
+
+This approval is recorded in the governance system. The governance agent updates the plan's delegation — the orchestrator now has temporary authority for this specific transaction, with the added reporting constraint. The governance agent records who approved, when, and under what conditions.
+
+## Step 5: Campaign runs under watch
+
+<img src="/images/walkthrough/governance-06-running.png" alt="A cityscape with ads running on billboards, phone screens, and TV displays — above it all, the governance robot monitors from a watchtower, scanning the scene with a teal beam as metrics stream upward" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The campaign is live. Governance doesn't stop at purchase — it monitors delivery against the approved plan:
+
+- **Budget tracking**: As `report_plan_outcome` data flows in, the governance agent tracks actual spend against committed budget
+- **Drift detection**: If delivery diverges from the plan — wrong publisher, unexpected creative, budget overrun — governance flags it
+- **Policy updates**: If a new regulation takes effect mid-flight, governance applies it to active plans
+
+First, the orchestrator reports that the seller accepted the purchase and committed budget:
+
+```javascript
+await governance.reportPlanOutcome({
+  plan_id: "acme-q2-trail-pro",
+  buyer_campaign_ref: "acme-q2-ctv",
+  check_id: "chk-q2-ctv-001",
+  outcome: "completed",
+  seller_response: {
+    media_buy_id: "mb-streamhaus-001",
+    committed_budget: 25000
+  }
+});
+```
+
+Then, as delivery data comes in, the orchestrator reports delivery outcomes so governance can track actual spend against the committed budget:
+
+```javascript
+await governance.reportPlanOutcome({
+  plan_id: "acme-q2-trail-pro",
+  buyer_campaign_ref: "acme-q2-ctv",
+  outcome: "delivery",
+  delivery: {
+    media_buy_id: "mb-streamhaus-001",
+    reporting_period: {
+      start: "2026-04-01T00:00:00Z",
+      end: "2026-06-30T23:59:59Z"
+    },
+    impressions: 887000,
+    spend: 24850
+  }
+});
+```
+
+The $25,000 buy committed budget, and actual delivery came in at $24,850. The governance agent updates the ledger — $25,150 remains of the $50K plan budget for the next buy.
+
+## Step 6: The audit trail
+
+<img src="/images/walkthrough/governance-07-audit-trail.png" alt="A horizontal timeline ribbon showing decision nodes — plan created, check flagged, human reviewed, approved, launched, delivered — with the governance robot presenting a detailed log book to a team of three humans" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Six months later, Acme Outdoor's procurement team asks: "Who approved that $25,000 CTV buy?" Jordan pulls the complete decision history:
+
+```javascript
+const audit = await governance.getPlanAuditLogs({
+  plan_ids: ["acme-q2-trail-pro"],
+  include_entries: true
+});
+```
+
+Every event, in sequence:
+
+1. **Plan registered** — orchestrator synced plan with $50K budget
+2. **Governance check** — $25K buy flagged for exceeding agent authority
+3. **Escalation** — Jordan reviewed, approved with weekly reporting condition
+4. **Buy executed** — StreamHaus media buy created
+5. **Delivery reported** — $24,850 actual spend, 887K impressions
+6. **Budget updated** — $25,150 remaining
+
+Every decision, every approval, every outcome — structured, timestamped, attributable. Accountability requires legibility. This isn't a log file buried in a server — it's a first-class audit record designed to answer the question "who decided this and why?" at any point in the future.
+
+## Crawl, walk, run
+
+Jordan didn't start with full enforcement. She started in audit mode:
+
+| Mode | Behavior | When to use |
+|---|---|---|
+| **Audit** | Log everything, block nothing | First deployment — see what governance would flag without disrupting workflows |
+| **Advisory** | Warn on violations, don't block | Building confidence — review warnings and tune policies before enforcing |
+| **Enforce** | Block violations, require resolution | Production — governance has teeth |
+
+She ran audit mode for two weeks. Reviewed the logs. Tuned policies to reduce false positives. Moved to advisory when she trusted the signals. Moved to enforce when she trusted the system.
+
+<Accordion title="Budget commitment phases">
+
+<img src="/images/concepts/budget-commitment-phases.png" alt="Three-step diagram showing proposed (dotted outline, hypothetical check), execute (solid tag, budget reserved), and committed (ledger records actual spend)" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Budget tracking has three phases:
+
+1. **Proposed**: `check_governance` evaluates whether the amount fits within the plan. No money reserved — this is a hypothetical check.
+2. **Execute**: The seller runs the campaign. The governance agent tracks the authorized amount as reserved, but actual spend may differ.
+3. **Committed**: `report_plan_outcome` records the actual amount. The governance agent updates the ledger with real numbers.
+
+A $25,000 buy might deliver $24,850. Governance tracks the difference and frees the remaining $150.
+
+</Accordion>
+
+<Info>
+**Embedded human judgment**
+
+Every step in this walkthrough reflects a principle from the [Embedded Human Judgment manifesto](/dist/docs/3.0.0-rc.2/governance/embedded-human-judgment) — the framework that ensures humans remain accountable when AI agents operate autonomously. [Read the five principles →](/dist/docs/3.0.0-rc.2/governance/embedded-human-judgment)
+</Info>
+
+## Protocol domains
+
+The Governance Protocol covers five domains:
+
+<CardGroup cols={2}>
+  <Card title="Policy registry" icon="book" href="/dist/docs/3.0.0-rc.2/governance/policy-registry">
+    Community-maintained library of standardized advertising regulations and industry standards, consumed by all governance domains.
+  </Card>
+  <Card title="Property governance" icon="building" href="/dist/docs/3.0.0-rc.2/governance/property/index">
+    Control where ads can run with property lists, compliance filtering, and publisher authorization via adagents.json.
+  </Card>
+  <Card title="Content standards" icon="shield-check" href="/dist/docs/3.0.0-rc.2/governance/content-standards/index">
+    Privacy-preserving brand suitability through calibration-based content evaluation and validation.
+  </Card>
+  <Card title="Creative governance" icon="palette" href="/dist/docs/3.0.0-rc.2/governance/creative/index">
+    Security scanning, creative quality, and content categorization through specialist agents via get_creative_features.
+  </Card>
+  <Card title="Campaign governance" icon="scale-balanced" href="/dist/docs/3.0.0-rc.2/governance/campaign/index">
+    Automated validation of buy-side transactions against authorized plans, budgets, and brand compliance configuration.
+  </Card>
+</CardGroup>
+
+## Go deeper
+
+- **Safety model**: [Three-party trust in depth](/dist/docs/3.0.0-rc.2/governance/campaign/safety-model) — separation of duties, delegation, and escalation patterns
+- **Campaign specification**: [Full data model](/dist/docs/3.0.0-rc.2/governance/campaign/specification) — plans, checks, outcomes, and policy resolution
+- **Content standards**: [Brand suitability](/dist/docs/3.0.0-rc.2/governance/content-standards/index) — privacy-preserving calibration for content evaluation
+- **Property governance**: [Where ads can run](/dist/docs/3.0.0-rc.2/governance/property/index) — property lists, adagents.json, and publisher authorization
+- **Policy registry**: [Community policies](/dist/docs/3.0.0-rc.2/governance/policy-registry) — standardized regulations and brand safety policies
+- **Get certified**: [Specialist governance modules](/dist/docs/3.0.0-rc.2/learning/specialist/governance) teach the full governance system through interactive scenarios

@@ -1,0 +1,179 @@
+---
+title: Accounts Protocol
+sidebarTitle: Overview
+description: "AdCP Accounts Protocol defines the commercial layer for advertising transactions — billing, operator authorization, and usage reporting between buyers, brands, and vendor agents."
+"og:title": "AdCP — Accounts Protocol"
+---
+
+The Accounts Protocol defines the commercial layer beneath all AdCP vendor protocols. Every transaction — a media buy, a data signal, a content standards check — happens between parties that have a commercial relationship. The Accounts Protocol establishes that relationship and provides consumption reporting so vendors can track how their services were used.
+
+## The commercial model
+
+Six questions underlie every AdCP transaction:
+
+| Question | Answered by | Mechanism |
+|----------|-------------|-----------|
+| Who is the advertiser? | Brand registry | `brand.domain` resolves to `brand.json` |
+| Who operates on the brand's behalf? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
+| How does the operator authenticate? | Seller capabilities | `require_operator_auth` determines the account model: `true` means explicit accounts (operator credentials required, discover via `list_accounts`), `false` means implicit accounts (agent trusted, declare via `sync_accounts`) |
+| Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator` or `agent`. Seller accepts or rejects. |
+| What was consumed? | Usage reporting | `report_usage` informs vendor agents how their services were used after delivery |
+
+The seller declares the account model in [`get_adcp_capabilities`](/dist/docs/3.0.0-rc.2/protocol/get_adcp_capabilities) via `require_operator_auth`. When `true` (**explicit accounts**), operators authenticate independently and the buyer discovers accounts via [`list_accounts`](/dist/docs/3.0.0-rc.2/accounts/tasks/list_accounts). When `false` (**implicit accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/dist/docs/3.0.0-rc.2/accounts/tasks/sync_accounts) to provision accounts.
+
+An **ad network** may use both models simultaneously — implicit accounts on the buyer-facing side (the network is agent-trusted) and explicit accounts with each underlying platform (the network authenticates as an operator). See the [AI media guide — account model for networks](/dist/docs/3.0.0-rc.2/guides/ai-media#account-model-for-networks) for the full account chain: `buyer agent → network (implicit) → AI platform (explicit)`.
+
+After delivery, the orchestrator calls [`report_usage`](/dist/docs/3.0.0-rc.2/accounts/tasks/report_usage) to inform vendor agents (signals, governance, creative) how their services were consumed. This is not settlement — it's consumption reporting so the vendor can track earned revenue and verify billing.
+
+## Scope
+
+The Accounts Protocol applies across all vendor protocols. An orchestrator establishes an account once per brand/operator pair per vendor agent and reuses the same account reference across all interactions with that agent:
+
+| Vendor Protocol | Account reference used for |
+|---|---|
+| Media Buy | Rate cards, invoicing, campaign attribution |
+| Signals | Per-account pricing options, activation, usage reporting |
+| Governance | Content standards billing |
+| Creative | Creative service billing |
+
+The account reference may be a seller-assigned `account_id` (explicit accounts, `require_operator_auth: true`) or a natural key — `brand` + `operator` (implicit accounts, `require_operator_auth: false`). For sandbox, the path depends on the account model: explicit accounts discover pre-existing test accounts via `list_accounts`, while implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/dist/docs/3.0.0-rc.2/building/integration/accounts-and-agents#account-references) for details.
+
+## Transaction lifecycle
+
+```
+1. Discover seller capabilities
+   get_adcp_capabilities → require_operator_auth, supported_billing
+
+2. Resolve brand identity
+   Fetch brand.domain/.well-known/brand.json → canonical brand (domain, brand_id)
+
+3. Verify operator identity
+   Check authorized_operators in brand.json → confirm operator is permitted to buy for this brand
+
+4. Authenticate (if required)
+   When require_operator_auth is true → obtain operator credential via authorization_endpoint or out-of-band
+
+5. Establish account reference
+   Explicit (require_operator_auth: true):
+     list_accounts() → find existing account_id for this brand/operator
+   Implicit (require_operator_auth: false):
+     sync_accounts({ accounts: [{ brand, operator, billing }] }) → status, billing terms
+
+6. Execute
+   Protocol tasks use the account reference to apply correct rates and terms
+   Examples: get_products(account: {...}), create_media_buy(account: {...})
+
+7. Report usage
+   report_usage(usage: [{ account: {...}, operator_id, kind, vendor_cost, ... }])
+   Informs vendor agents how their services were consumed after delivery
+```
+
+## Principals
+
+The Accounts Protocol operates with four principal types. See [Accounts and agents](/dist/docs/3.0.0-rc.2/building/integration/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
+
+| Principal | Role | Identified by |
+|-----------|------|---------------|
+| Brand | Whose products are advertised | `brand.domain` + optional `brand.brand_id` via brand.json |
+| Operator | Who drives the buys | Domain (e.g., `pinnacle-media.com`) |
+| Agent | What software places the buys | Authenticated session |
+| Vendor agent | The seller's AdCP agent | `agent_url` |
+
+## Tasks
+
+| Task | Purpose |
+|------|---------|
+| [`sync_accounts`](/dist/docs/3.0.0-rc.2/accounts/tasks/sync_accounts) | Declare brand/operator pairs and billing; provision accounts (implicit accounts, `require_operator_auth: false`) |
+| [`list_accounts`](/dist/docs/3.0.0-rc.2/accounts/tasks/list_accounts) | Discover existing accounts (explicit accounts, `require_operator_auth: true`); poll status on pending accounts |
+| [`get_account_financials`](/dist/docs/3.0.0-rc.2/accounts/tasks/get_account_financials) | Query spend, credit, and invoice status for operator-billed accounts |
+| [`report_usage`](/dist/docs/3.0.0-rc.2/accounts/tasks/report_usage) | Inform vendor agents how their services were consumed after delivery |
+
+## Brand registry connection
+
+The `brand.domain` in account references is not an arbitrary identifier — it is the brand's domain, resolvable to a `brand.json` file that declares the brand's canonical identity, sub-brands, authorized operators, and properties.
+
+Vendor agents can verify buyer claims against the brand registry: if an orchestrator claims to represent `acme-corp.com`, the vendor can fetch `acme-corp.com/.well-known/brand.json` to confirm authorized operators and brand hierarchy. This makes the Accounts Protocol tamper-resistant — account relationships are grounded in publicly verifiable brand identity.
+
+See the [Brand Protocol](/dist/docs/3.0.0-rc.2/brand-protocol/index) for how brand identity resolution works.
+
+## Counterparty verification
+
+Every commercial relationship in advertising depends on knowing who you're actually doing business with. The Accounts Protocol addresses this at the protocol level through the brand registry.
+
+When an orchestrator references an account, the `brand.domain` identifies the advertiser. Vendor agents can fetch `brand.domain/.well-known/brand.json` to verify:
+
+- **Brand identity**: Is this brand who they claim to be?
+- **Operator authorization**: Is the operator listed in the request actually authorized to buy on this brand's behalf?
+- **Brand hierarchy**: Which sub-brands does this house portfolio include?
+
+This verification is grounded in publicly accessible DNS-hosted identity — not in what the buyer agent asserts, but in what the brand itself has declared.
+
+The `pending_approval` account state is where human review occurs: credit checks, legal agreements, and identity verification. Vendor agents that require these steps return a `setup.url` for the human to complete the process before the account becomes active.
+
+### Brand registry and the contribute-back pattern
+
+The [AgenticAdvertising.org brand registry](https://agenticadvertising.org) provides a community-maintained layer of brand identity for brands that haven't yet published their own `brand.json`. Buyer agents resolving brands before account setup can contribute data back to the registry as a byproduct of normal workflows — improving identity coverage for the ecosystem without extra effort.
+
+The recommended pattern for buyer agents uses three building blocks (see [#1166](https://github.com/adcontextprotocol/adcp/issues/1166)):
+
+| Tool | Purpose |
+|------|---------|
+| `resolve_brand` | Check registry and fetch brand.json — returns canonical identity if available |
+| `research_brand` | Enrich via Brandfetch and auto-save to registry as `enriched` |
+| `save_brand` | Manually contribute a brand to the registry as `community` |
+
+```javascript
+async function ensureBrand(domain) {
+  // 1. Check registry (brand.json or previously resolved)
+  const resolved = await resolveBrand(domain);
+
+  if (resolved.errors) {
+    // Resolution failed — brand unknown, proceed to enrich
+  } else if (resolved.source === 'brand_json' || resolved.source === 'enriched') {
+    // Authoritative or enriched data available — confirm with user, then use
+    return await confirmWithUser(resolved);
+  }
+  // source === 'community': registry has a placeholder, but enrich for richer data
+
+  // 2. Enrich via Brandfetch — auto-saves to registry as 'enriched'
+  const enriched = await researchBrand(domain);
+  if (enriched.errors) {
+    // Enrichment unavailable — fall back to community entry or prompt user to correct
+    return resolved ? await confirmWithUser(resolved) : null;
+  }
+
+  // 3. Confirm with user before using enriched data
+  // Enrichment is third-party — user confirmation catches errors and improves registry quality
+  return await confirmWithUser(enriched);
+}
+```
+
+`confirmWithUser` is a placeholder for whatever confirmation mechanism fits your UX — an explicit prompt, a review step in a workflow UI, or a low-confidence flag that triggers human review. The confirmation step is what makes the improvement loop work: enrichment data comes from third parties and isn't guaranteed to be correct. User verification before the data is used in a live campaign is what keeps the registry accurate over time.
+
+#### Source authority
+
+The registry tracks where brand data came from. Sources in descending authority:
+
+| Source | Meaning | Can be overwritten? |
+|--------|---------|---------------------|
+| `brand_json` | Brand self-declared via `/.well-known/brand.json` | No — returns 409 |
+| `enriched` | Third-party enrichment (Brandfetch) | Only by higher authority |
+| `community` | Manually contributed by a registry member | Yes |
+
+When an agent calls `save_brand` or `research_brand`, the registry applies merge logic: existing fields from a higher-authority source are preserved, and only missing fields are filled in. This respects what brands have declared while filling gaps.
+
+`research_brand` skips re-enrichment if the registry already has recent `enriched` data for the domain, avoiding redundant API calls.
+
+The full edit history for any brand — who contributed, when, and with what summary — is queryable via [`GET /api/brands/history`](/dist/docs/3.0.0-rc.2/registry/index#activity-history).
+
+#### Property contribute-back
+
+The same pattern applies to publisher properties. When a buyer agent discovers a new publisher through a sales agent interaction, it can contribute that property back to the registry via `POST /api/properties/save`. This improves property coverage for the ecosystem the same way brand contribute-back improves brand coverage. See [Registry API — save property](/dist/docs/3.0.0-rc.2/registry/index#save-property) for details.
+
+## Usage reporting
+
+Vendor agents (signals, governance, creative) are not direct participants in campaign execution — the orchestrator uses their services as inputs to a media buy. After delivery, `report_usage` tells these vendors what was consumed so they can track earned revenue and verify billing.
+
+`report_usage` is buyer-reported: the orchestrator computes and reports consumption. Each record carries its own `account`, `operator_id`, and `kind` (`"signal"`, `"content_standards"`, `"creative"`). The vendor agent uses the reported `pricing_option_id` to verify the correct rate was applied.
+
+Partial acceptance is valid — a single request can span multiple accounts, operators, and campaigns. The response confirms how many records were accepted and which (if any) failed validation.

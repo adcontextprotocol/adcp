@@ -1,0 +1,201 @@
+---
+title: Frequently asked questions
+sidebarTitle: FAQ
+description: "Answers to common questions about AdCP — licensing (Apache 2.0, free to use), how it relates to OpenRTB and IAB standards, who maintains it (AgenticAdvertising.org), and how to start implementing."
+"og:title": "AdCP — Frequently asked questions"
+---
+
+## About agentic advertising
+
+For a practical guide to buying ads on AI platforms, see the [buyer's guide to AI media](/dist/docs/3.0.0-rc.2/guides/buying-ai-media).
+
+## About AdCP
+
+<AccordionGroup>
+
+<Accordion title="What is AdCP?">
+AdCP (Ad Context Protocol) is an open protocol specification that defines how AI agents interact with advertising platforms. It provides standardized tasks, JSON schemas, and transport mechanisms for operations like media buying, creative generation, audience activation, and brand governance.
+
+AdCP is a specification — not a product, platform, or company. Anyone can implement it.
+</Accordion>
+
+<Accordion title="Who created AdCP?">
+AdCP is developed and maintained by [AgenticAdvertising.org](https://agenticadvertising.org), an open member organization. AgenticAdvertising.org is not owned by or affiliated with any single company. It is an independent organization whose members include platform providers, advertisers, agencies, and developers.
+</Accordion>
+
+<Accordion title="Is AdCP owned by Google, Meta, or any other company?">
+No. AdCP is not owned by Google, Meta, The Trade Desk, or any other company. It is maintained by [AgenticAdvertising.org](https://agenticadvertising.org), an independent member organization. No single company controls the protocol. Governance decisions are made by member working groups and committees.
+</Accordion>
+
+<Accordion title="Is AdCP open source?">
+Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0). You can use, modify, and distribute implementations of the protocol without restriction.
+</Accordion>
+
+<Accordion title="Does it cost anything to use AdCP?">
+No. There is no cost to use, implement, or license AdCP. The protocol specification, JSON schemas, and documentation are all freely available. You do not need to pay a fee or sign a license agreement.
+</Accordion>
+
+<Accordion title="How mature is the protocol?">
+AdCP is currently at version 3.0 release candidate 2 (v3.0-rc.2). This means:
+
+- The protocol design is stable and suitable for pilot implementations
+- Schemas and task definitions may still receive minor refinements based on implementer feedback
+- Breaking changes are possible before the final 3.0 release, but are tracked through semantic versioning
+
+See the [release notes](/dist/docs/3.0.0-rc.2/reference/release-notes) for version history.
+</Accordion>
+
+<Accordion title="Do I need permission to implement AdCP?">
+No. Anyone can implement AdCP without being a member of AgenticAdvertising.org, without requesting permission, and without paying any fees. The Apache 2.0 license grants full rights to use the specification.
+</Accordion>
+
+</AccordionGroup>
+
+## How AdCP relates to other standards
+
+<AccordionGroup>
+
+<Accordion title="Does AdCP replace OpenRTB?">
+No. AdCP and OpenRTB operate at different layers and are complementary.
+
+| | OpenRTB | AdCP |
+|---|---------|------|
+| **Scope** | Impression-level transactions | Agent-level workflows |
+| **Operations** | Bid requests, bid responses, win notifications | Product discovery, media buy creation, creative generation, audience activation |
+| **Participants** | DSPs and SSPs | AI agents and advertising platforms |
+| **Timing** | Real-time (milliseconds) | Asynchronous (seconds to days) |
+
+A platform can implement both. For example, a publisher's AdCP agent might accept a `create_media_buy` task from a buyer agent, then use OpenRTB internally to execute the impression-level delivery. AdCP handles the workflow; OpenRTB handles the auction.
+</Accordion>
+
+<Accordion title="What is AdCP's relationship to IAB Tech Lab?">
+AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising.org is an independent organization. However, AdCP is designed to be compatible with IAB standards — for example, AdCP's content taxonomy fields align with IAB content categories, and AdCP's audience segments can reference IAB audience taxonomy IDs.
+</Accordion>
+
+<Accordion title="Does AdCP support AI platforms and AI ad networks?">
+Yes. AdCP's `ai_media` channel covers advertising within AI assistants, AI search engines, and generative AI experiences — including sponsored responses, AI search sponsored results, generative display, and brand experience handoffs via Sponsored Intelligence. AI platforms and AI ad networks implement AdCP the same way any seller does: publish `adagents.json`, implement `get_products` with `channels: ["ai_media"]`, and accept media buys. See the [AI media guide](/dist/docs/3.0.0-rc.2/guides/ai-media) for product modeling, workflows, and measurement.
+</Accordion>
+
+<Accordion title="How does AdCP relate to MCP and A2A?">
+AdCP uses [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) and [A2A (Agent-to-Agent Protocol)](https://google.github.io/A2A/) as transport layers. Think of it this way:
+
+- **MCP and A2A** define how agents communicate (the transport)
+- **AdCP** defines what agents say about advertising (the domain)
+
+AdCP tasks are the same regardless of transport. A `get_products` call has the same request schema and response schema whether it travels over MCP or A2A. See [protocol comparison](/dist/docs/3.0.0-rc.2/building/understanding/protocol-comparison) for details on how the two transports differ.
+</Accordion>
+
+<Accordion title="Does AdCP compete with platform-specific APIs?">
+No. Platform APIs (self-serve dashboards, management APIs) serve a different purpose than AdCP. Platform APIs expose the full, proprietary feature set of a single platform. AdCP provides a standardized interface for common advertising operations across platforms.
+
+A platform that implements AdCP does not need to replace its existing API. AdCP sits alongside it, providing a standard interface that AI agents can use for cross-platform workflows.
+</Accordion>
+
+</AccordionGroup>
+
+## Buying AI media
+
+<AccordionGroup>
+
+<Accordion title="How much does it cost to advertise on AI platforms?">
+Pricing varies by platform and format. Most AI media is sold on a CPM basis similar to traditional digital, with premium conversational formats typically commanding higher rates. Your buyer agent discovers pricing from connected sellers through the protocol.
+</Accordion>
+
+<Accordion title="Which AI platforms can I reach today?">
+AI assistants, search copilots, and conversational platforms are live today. The ecosystem is early-stage and growing. Your buyer agent discovers available inventory from connected sellers in real time via `get_products` — you always see what's currently reachable.
+</Accordion>
+
+<Accordion title="Do I need to change my measurement stack?">
+No. AdCP supports standard measurement integrations. Your existing attribution, viewability, and brand safety tools work alongside protocol-native reporting.
+</Accordion>
+
+<Accordion title="Can I use my existing agency?">
+Yes. AdCP is additive to existing agency relationships. Your agency can use buyer agents to extend their capabilities, or you can work with AdCP-certified practitioners.
+</Accordion>
+
+<Accordion title="How long does it take to get started?">
+If your agency already supports AdCP, you can be live in days. If not, the [buyer's guide](/dist/docs/3.0.0-rc.2/guides/buying-ai-media) walks through options for brands, agencies, and small businesses — including working with an AdCP-certified partner.
+</Accordion>
+
+</AccordionGroup>
+
+<Card title="Read the buyer's guide" icon="book-open" href="/dist/docs/3.0.0-rc.2/guides/buying-ai-media">
+  What you need, what data to provide, and how to find a partner — whether you're a brand, agency, or small business.
+</Card>
+
+## Certification
+
+<AccordionGroup>
+
+<Accordion title="How do I get certified?">
+Start a conversation with Addie, our AI teaching assistant. She'll guide you through interactive modules at your own pace.
+</Accordion>
+
+<Accordion title="How long does certification take?">
+The Basics track has 3 modules, about 50 minutes total. Most learners finish in a few focused sessions. Practitioner tracks add 4 more modules (~90–105 minutes depending on your role track).
+</Accordion>
+
+<Accordion title="Is the certification free?">
+The Basics track is free and open to everyone. Practitioner and Specialist tracks require AgenticAdvertising.org membership.
+</Accordion>
+
+<Accordion title="Do I need to code?">
+Not for the Basics track. The Practitioner track includes a build project, but it uses vibe coding — you describe what you want in plain language and an AI agent writes the code.
+</Accordion>
+
+<Accordion title="Can a non-technical person build an advertising agent?">
+Yes. That's the point. The Practitioner build project is designed so that anyone — including marketing executives with zero coding experience — can build a working advertising agent through conversation with an AI coding assistant.
+</Accordion>
+
+<Accordion title="What is vibe coding?">
+Vibe coding means describing what you want in plain language and having an AI coding assistant build it. No syntax, no prior programming experience needed. You iterate by describing what to change — the AI handles the code. In the certification build project, you'll vibe-code a working advertising agent.
+</Accordion>
+
+</AccordionGroup>
+
+<Card title="Start the certification program" icon="play" href="https://agenticadvertising.org/addie">
+  Open Addie and say "I want to get certified." The Basics track is free — no account required.
+</Card>
+
+## Getting involved
+
+<AccordionGroup>
+
+<Accordion title="How do I start implementing AdCP?">
+Read the [introduction](/dist/docs/3.0.0-rc.2/intro) for an overview, then explore the domain that matches your use case:
+
+- **Sell-side platforms**: Start with [media buy](/dist/docs/3.0.0-rc.2/media-buy) to expose your inventory
+- **Creative platforms**: Start with [creative](/dist/docs/3.0.0-rc.2/creative) to offer format discovery and ad generation
+- **Data providers**: Start with [signals](/dist/docs/3.0.0-rc.2/signals/overview) to make audiences addressable by agents
+- **Orchestrators and agencies**: Start with the [integration guide](/dist/docs/3.0.0-rc.2/building/integration) to connect to existing AdCP agents
+
+JSON schemas for all tasks are available at [adcontextprotocol.org/schemas](https://adcontextprotocol.org/schemas/latest/).
+</Accordion>
+
+<Accordion title="What does AgenticAdvertising.org membership provide?">
+Membership gives you a voice in protocol decisions. Members can:
+
+- Participate in working groups that shape protocol direction
+- Vote on proposed changes through committees
+- Influence the roadmap for future protocol versions
+- Connect with other implementers in the member community
+
+Membership is not required to implement AdCP. See the [working group](/dist/docs/3.0.0-rc.2/community/working-group) page for how to get involved.
+</Accordion>
+
+<Accordion title="Can I contribute without being a member?">
+Yes. The protocol is developed in the open. You can:
+
+- File issues and feature requests on [GitHub](https://github.com/adcontextprotocol/adcp/issues)
+- Join the community Slack to ask questions and discuss implementations
+- Submit pull requests with bug fixes or documentation improvements
+- Build and publish your own AdCP implementation
+
+Membership is for organizations that want formal influence over protocol governance.
+</Accordion>
+
+</AccordionGroup>
+
+<Card title="Get started with AdCP" icon="rocket" href="/dist/docs/3.0.0-rc.2/quickstart">
+  Code examples and integration guides to start building with the protocol.
+</Card>
