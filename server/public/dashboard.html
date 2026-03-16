@@ -1835,10 +1835,19 @@
           alerts.push({
             id: 'missing-logo',
             icon: '🖼️',
-            title: 'Add Your Company Logo',
-            message: 'Upload a logo so your company appears in the member directory and on the homepage.',
-            actionLabel: 'Add Logo',
+            title: 'Add your company logo',
+            message: 'Upload a logo so your company appears in the member directory and on the homepage. <a href="/logo-preview" style="color:inherit;text-decoration:underline">Preview how logos look</a>.',
+            actionLabel: 'Add logo',
             actionUrl: '/dashboard-settings#logo'
+          });
+        } else if (!isPersonalAccount && profile.resolved_brand?.logo_url && !profile.resolved_brand?.logo_url_dark && !dismissedAlerts.includes('missing-logo-dark')) {
+          alerts.push({
+            id: 'missing-logo-dark',
+            icon: '🖼️',
+            title: 'Add a dark-background logo variant',
+            message: 'Your logo may not be visible on dark surfaces. Add a variant for dark backgrounds in your brand.json. <a href="/logo-preview" style="color:inherit;text-decoration:underline">Preview how it looks</a>.',
+            actionLabel: 'Update brand',
+            actionUrl: '/brand-builder'
           });
         }
 

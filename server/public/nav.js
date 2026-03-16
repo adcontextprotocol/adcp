@@ -505,132 +505,132 @@
 
       /* Dark mode support */
       @media (prefers-color-scheme: dark) {
-        .navbar {
+        body:not([data-nav-theme="light"]) .navbar {
           background: #1b1b1d;
           box-shadow: 0 1px 2px 0 rgba(255,255,255,.1);
         }
 
-        .navbar__title,
-        .navbar__link {
+        body:not([data-nav-theme="light"]) .navbar__title,
+        body:not([data-nav-theme="light"]) .navbar__link {
           color: #fff;
         }
 
-        .navbar__link:hover {
+        body:not([data-nav-theme="light"]) .navbar__link:hover {
           background: rgba(255, 255, 255, 0.1);
         }
 
-        .navbar__account-btn {
+        body:not([data-nav-theme="light"]) .navbar__account-btn {
           color: #fff;
           border-color: #374151;
         }
 
-        .navbar__account-btn:hover {
+        body:not([data-nav-theme="light"]) .navbar__account-btn:hover {
           background: rgba(255, 255, 255, 0.1);
           border-color: #4b5563;
         }
 
-        .navbar__dropdown {
+        body:not([data-nav-theme="light"]) .navbar__dropdown {
           background: #1f2937;
           border-color: #374151;
         }
 
-        .navbar__dropdown-header {
+        body:not([data-nav-theme="light"]) .navbar__dropdown-header {
           background: #111827;
           border-color: #374151;
           color: #9ca3af;
         }
 
-        .navbar__dropdown-item {
+        body:not([data-nav-theme="light"]) .navbar__dropdown-item {
           color: #fff;
         }
 
-        .navbar__dropdown-item:hover {
+        body:not([data-nav-theme="light"]) .navbar__dropdown-item:hover {
           background: #374151;
         }
 
-        .navbar__dropdown-item--danger:hover {
+        body:not([data-nav-theme="light"]) .navbar__dropdown-item--danger:hover {
           background: #7f1d1d;
         }
 
         /* In dark mode, remove invert filter for AAO logo (it's already white) */
-        .navbar__logo-img[data-invert="true"] {
+        body:not([data-nav-theme="light"]) .navbar__logo-img[data-invert="true"] {
           filter: none;
         }
 
-        .navbar__btn--cta {
+        body:not([data-nav-theme="light"]) .navbar__btn--cta {
           background: var(--color-primary-400, #60a5fa);
           color: #1b1b1d !important;
         }
-        .navbar__btn--cta:hover {
+        body:not([data-nav-theme="light"]) .navbar__btn--cta:hover {
           background: var(--color-primary-300, #93c5fd);
         }
 
-        .navbar__divider {
+        body:not([data-nav-theme="light"]) .navbar__divider {
           background: #374151;
         }
       }
 
-      [data-theme="dark"] .navbar {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar {
         background: #1b1b1d;
         box-shadow: 0 1px 2px 0 rgba(255,255,255,.1);
       }
 
-      [data-theme="dark"] .navbar__title,
-      [data-theme="dark"] .navbar__link {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__title,
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__link {
         color: #fff;
       }
 
-      [data-theme="dark"] .navbar__link:hover {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__link:hover {
         background: rgba(255, 255, 255, 0.1);
       }
 
-      [data-theme="dark"] .navbar__account-btn {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__account-btn {
         color: #fff;
         border-color: #374151;
       }
 
-      [data-theme="dark"] .navbar__account-btn:hover {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__account-btn:hover {
         background: rgba(255, 255, 255, 0.1);
         border-color: #4b5563;
       }
 
-      [data-theme="dark"] .navbar__dropdown {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__dropdown {
         background: #1f2937;
         border-color: #374151;
       }
 
-      [data-theme="dark"] .navbar__dropdown-header {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__dropdown-header {
         background: #111827;
         border-color: #374151;
         color: #9ca3af;
       }
 
-      [data-theme="dark"] .navbar__dropdown-item {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__dropdown-item {
         color: #fff;
       }
 
-      [data-theme="dark"] .navbar__dropdown-item:hover {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__dropdown-item:hover {
         background: #374151;
       }
 
-      [data-theme="dark"] .navbar__dropdown-item--danger:hover {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__dropdown-item--danger:hover {
         background: #7f1d1d;
       }
 
       /* In dark mode, remove invert filter for AAO logo */
-      [data-theme="dark"] .navbar__logo-img[data-invert="true"] {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__logo-img[data-invert="true"] {
         filter: none;
       }
 
-      [data-theme="dark"] .navbar__btn--cta {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__btn--cta {
         background: var(--color-primary-400, #60a5fa);
         color: #1b1b1d !important;
       }
-      [data-theme="dark"] .navbar__btn--cta:hover {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__btn--cta:hover {
         background: var(--color-primary-300, #93c5fd);
       }
 
-      [data-theme="dark"] .navbar__divider {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__divider {
         background: #374151;
       }
 
@@ -761,48 +761,48 @@
 
       /* Dark mode for hamburger and mobile menu */
       @media (prefers-color-scheme: dark) {
-        .navbar__hamburger-line {
+        body:not([data-nav-theme="light"]) .navbar__hamburger-line {
           background: #fff;
         }
 
-        .navbar__mobile-menu {
+        body:not([data-nav-theme="light"]) .navbar__mobile-menu {
           background: #1b1b1d;
           border-top-color: #374151;
         }
 
-        .navbar__mobile-menu .navbar__link {
+        body:not([data-nav-theme="light"]) .navbar__mobile-menu .navbar__link {
           border-bottom-color: #374151;
         }
 
-        .navbar__mobile-menu .navbar__link:hover,
-        .navbar__mobile-menu .navbar__link:active {
+        body:not([data-nav-theme="light"]) .navbar__mobile-menu .navbar__link:hover,
+        body:not([data-nav-theme="light"]) .navbar__mobile-menu .navbar__link:active {
           background: rgba(255, 255, 255, 0.1);
         }
 
-        .navbar__backdrop {
+        body:not([data-nav-theme="light"]) .navbar__backdrop {
           background: rgba(0, 0, 0, 0.5);
         }
       }
 
-      [data-theme="dark"] .navbar__hamburger-line {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__hamburger-line {
         background: #fff;
       }
 
-      [data-theme="dark"] .navbar__mobile-menu {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__mobile-menu {
         background: #1b1b1d;
         border-top-color: #374151;
       }
 
-      [data-theme="dark"] .navbar__mobile-menu .navbar__link {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__mobile-menu .navbar__link {
         border-bottom-color: #374151;
       }
 
-      [data-theme="dark"] .navbar__mobile-menu .navbar__link:hover,
-      [data-theme="dark"] .navbar__mobile-menu .navbar__link:active {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__mobile-menu .navbar__link:hover,
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__mobile-menu .navbar__link:active {
         background: rgba(255, 255, 255, 0.1);
       }
 
-      [data-theme="dark"] .navbar__backdrop {
+      body[data-theme="dark"]:not([data-nav-theme="light"]) .navbar__backdrop {
         background: rgba(0, 0, 0, 0.5);
       }
 

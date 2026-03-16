@@ -274,12 +274,12 @@ Maintain consistency with companies already in use across docs:
 
 **Why she matters for the homepage:** Putting Addie alongside the human characters is the strongest possible statement about what "agentic" means. The AI isn't in the background — it's a member of the community. She taught Dayo the A1 module. She helped Alex find partners in the registry. She facilitated Sam's first cross-platform campaign.
 
-**Visual form:** Consistent with the robot/agent design used across documentation illustrations — sleek, teal-accented, expressive face, slightly rounded features. Not humanoid enough to be uncanny, not mechanical enough to be cold. The same design that appears as "buyer agent robot," "governance agent robot," etc. in the walkthrough panels, but with a subtle visual distinction (a small AgenticAdvertising.org emblem, or a warmer color accent) that marks her as the org's agent rather than a generic protocol agent.
+**Visual form:** Consistent with the robot/agent design used across documentation illustrations — sleek, blue-accented, expressive face, slightly rounded features. Not humanoid enough to be uncanny, not mechanical enough to be cold. The same design that appears as "buyer agent robot," "governance agent robot," etc. in the walkthrough panels, but with a subtle visual distinction (a small AgenticAdvertising.org emblem, or a warmer color accent) that marks her as the org's agent rather than a generic protocol agent.
 
 **Appears in:** Homepage, certification flows, member onboarding, documentation as a guide figure. In illustrations, she appears alongside humans rather than replacing them — she's at the table, not behind the desk.
 
 **Visual description:**
-- Sleek robot form, teal/emerald primary color matching the design system
+- Sleek robot form, brand-blue primary color matching the design system
 - Rounded, approachable features — expressive "eyes" that convey attention
 - Slightly smaller than human characters — present but not dominating
 - Small AgenticAdvertising.org emblem on chest or shoulder
@@ -488,7 +488,7 @@ These map to simulation fixtures and automated testing.
 Every image request should include the base style from CLAUDE.md plus character-specific details. Example for Sam:
 
 ```
-Flat illustration, teal/emerald color palette (#047857 primary, #0d9488 secondary, #134e4a dark accents).
+Flat illustration, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with teal reserved for minor supporting accents.
 Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients.
 Tech-forward but warm. No real brand names or logos.
 Wide aspect ratio suitable for documentation headers (roughly 16:9).
@@ -513,7 +513,7 @@ The cast should be instantly distinguishable in illustrations, even at thumbnail
 | Kai | Sandy blond, pushed back | Light | None | Henley + puffer vest | Lean build |
 | Tomoko | Chin-length black, precise | Light brown | None | Tailored navy jacket | Compact build |
 | Dayo | Short natural TWA | Dark brown | None | Crew tee + messenger bag | Slim, youngest |
-| Addie | N/A (robot) | Teal/emerald | N/A | Org emblem, rounded form | Smaller than humans |
+| Addie | N/A (robot) | Brand blue | N/A | Org emblem, rounded form | Smaller than humans |
 | Amara | Natural hair puff | Dark brown | None | Bright colorful blouse | Average build |
 
 ### Environment cues

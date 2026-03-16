@@ -24,7 +24,7 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
-import { BrandDatabase } from "./db/brand-db.js";
+import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
@@ -6793,21 +6793,11 @@ Disallow: /api/admin/
           if (profile.primary_brand_domain) {
             const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
             if (hosted) {
-              const bj = hosted.brand_json as Record<string, unknown>;
-              const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-              const primaryBrand = brands?.[0];
-              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
-              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
-              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
             } else {
               const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered) {
-                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
-                const primaryBrand = brands?.[0];
-                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
-                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
-                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              if (discovered?.brand_manifest) {
+                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
               }
             }
           }
@@ -6837,21 +6827,11 @@ Disallow: /api/admin/
           if (profile.primary_brand_domain) {
             const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
             if (hosted) {
-              const bj = hosted.brand_json as Record<string, unknown>;
-              const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-              const primaryBrand = brands?.[0];
-              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
-              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
-              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
             } else {
               const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered) {
-                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
-                const primaryBrand = brands?.[0];
-                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
-                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
-                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              if (discovered?.brand_manifest) {
+                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
               }
             }
           }
@@ -6956,21 +6936,11 @@ Disallow: /api/admin/
         if (profile.primary_brand_domain) {
           const hostedBrand = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
           if (hostedBrand) {
-            const bj = hostedBrand.brand_json as Record<string, unknown>;
-            const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-            const primaryBrand = brands?.[0];
-            const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
-            const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
-            profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hostedBrand.domain_verified };
+            profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hostedBrand.brand_json as Record<string, unknown>, hostedBrand.domain_verified);
           } else {
             const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-            if (discovered) {
-              const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-              const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
-              const primaryBrand = brands?.[0];
-              const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
-              const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
-              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+            if (discovered?.brand_manifest) {
+              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
             }
           }
         }

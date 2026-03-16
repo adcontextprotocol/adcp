@@ -495,9 +495,19 @@ export interface DataProviderConfig {
   last_validated?: string;
 }
 
+export interface BrandLogo {
+  url: string;
+  orientation?: 'square' | 'horizontal' | 'vertical' | 'stacked';
+  background?: 'dark-bg' | 'light-bg' | 'transparent-bg';
+  variant?: 'primary' | 'secondary' | 'icon' | 'wordmark' | 'full-lockup';
+  usage?: string;
+}
+
 export interface MemberBrandInfo {
   domain: string;
   logo_url?: string;
+  logo_url_dark?: string;
+  logos?: BrandLogo[];
   brand_color?: string;
   verified: boolean;
 }
