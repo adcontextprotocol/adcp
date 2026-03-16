@@ -8,7 +8,7 @@
 import { jobScheduler } from './scheduler.js';
 import { runDocumentIndexerJob } from './committee-document-indexer.js';
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
-import { runOutreachScheduler } from '../services/proactive-outreach.js';
+import { runRelationshipOrchestratorCycle } from '../services/relationship-orchestrator.js';
 import { enrichMissingOrganizations } from '../../services/enrichment.js';
 import { runMoltbookPosterJob } from './moltbook-poster.js';
 import { runMoltbookEngagementJob } from './moltbook-engagement.js';
@@ -111,13 +111,13 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.summariesGenerated > 0,
   });
 
-  // Proactive outreach - sends DMs to eligible users (has internal per-user business hours check)
+  // Relationship orchestrator - continues member relationships across channels
   jobScheduler.register({
-    name: 'proactive-outreach',
-    description: 'Proactive outreach',
+    name: 'relationship-orchestrator',
+    description: 'Relationship orchestrator',
     interval: { value: 20, unit: 'minutes' },
     initialDelay: { value: 2, unit: 'minutes' },
-    runner: runOutreachScheduler,
+    runner: runRelationshipOrchestratorCycle,
     options: { limit: 25 },
   });
 
@@ -384,7 +384,7 @@ export function registerAllJobs(): void {
 export const JOB_NAMES = {
   DOCUMENT_INDEXER: 'document-indexer',
   SUMMARY_GENERATOR: 'summary-generator',
-  PROACTIVE_OUTREACH: 'proactive-outreach',
+  RELATIONSHIP_ORCHESTRATOR: 'relationship-orchestrator',
   ACCOUNT_ENRICHMENT: 'account-enrichment',
   MOLTBOOK_POSTER: 'moltbook-poster',
   MOLTBOOK_ENGAGEMENT: 'moltbook-engagement',

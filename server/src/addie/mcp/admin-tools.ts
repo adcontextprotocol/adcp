@@ -94,9 +94,9 @@ import {
   type PipelineStage,
 } from '../../services/account-lifecycle.js';
 import {
-  manualOutreach,
-  canContactUser,
-} from '../services/proactive-outreach.js';
+  sendRelationshipMessage,
+  canEngageSlackUser,
+} from '../services/relationship-orchestrator.js';
 import {
   shouldContact as shouldContactCheck,
   computeEngagementOpportunities,
@@ -7596,7 +7596,7 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       // Check eligibility first
-      const eligibility = await canContactUser(slackUserId, { adminOverride: true });
+      const eligibility = await canEngageSlackUser(slackUserId, { adminOverride: true });
       if (!eligibility.canContact) {
         return `❌ Cannot contact this user: ${eligibility.reason}`;
       }
@@ -7614,7 +7614,7 @@ Use add_committee_leader to assign a leader.`;
         return dryRunResponse;
       }
 
-      const result = await manualOutreach(slackUserId, triggeredBy);
+      const result = await sendRelationshipMessage(slackUserId, triggeredBy);
 
       if (result.success) {
         captureEvent(slackUserId, 'admin_tool_used', {
@@ -7690,7 +7690,7 @@ Use add_committee_leader to assign a leader.`;
            ORDER BY occurred_at DESC LIMIT 10`,
           [person.id]
         ),
-        person.slack_user_id ? canContactUser(person.slack_user_id) : Promise.resolve({ canContact: false, reason: 'no Slack ID' }),
+        person.slack_user_id ? canEngageSlackUser(person.slack_user_id) : Promise.resolve({ canContact: false, reason: 'no Slack ID' }),
       ]);
 
       let response = `## ${person.display_name || queryStr}\n\n`;

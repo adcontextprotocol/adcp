@@ -13,7 +13,7 @@ import { requireAuth, requireAdmin, requireManage } from "../middleware/auth.js"
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
 import { getMemberCapabilities } from "../db/outbound-db.js";
-import { canContactUser } from "../addie/services/proactive-outreach.js";
+import { canEngageSlackUser } from "../addie/services/relationship-orchestrator.js";
 import { computeEngagementOpportunities } from "../addie/services/engagement-planner.js";
 import type { MemberCapabilities } from "../addie/types.js";
 import * as relationshipDb from "../db/relationship-db.js";
@@ -293,7 +293,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               (extendedContext as typeof extendedContext & { capabilities?: MemberCapabilities }).capabilities = capabilities;
 
               // Get engagement opportunities from the relationship model
-              const contactEligibility = await canContactUser(slackUserId);
+              const contactEligibility = await canEngageSlackUser(slackUserId);
               const relationship = await relationshipDb.getRelationshipBySlackId(slackUserId);
 
               if (relationship) {
