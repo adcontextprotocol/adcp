@@ -918,6 +918,86 @@ function filterToolsBySet(
   };
 }
 
+async function selectRoutedToolsForSlackResponse(
+  messageText: string,
+  source: 'dm' | 'mention' | 'channel',
+  memberContext: MemberContext | null,
+  slackUserId: string,
+  threadId: string,
+  threadContext?: ThreadContext | null,
+  options?: { isThread?: boolean; hasCertificationContext?: boolean }
+): Promise<{
+  tools: RequestTools;
+  isAAOAdmin: boolean;
+  unavailableHint: string;
+  requiresPrecision: boolean;
+}> {
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
+    memberContext,
+    slackUserId,
+    threadId,
+    threadContext
+  );
+
+  if (!addieRouter) {
+    return {
+      tools: userTools,
+      isAAOAdmin: userIsAdmin,
+      unavailableHint: '',
+      requiresPrecision: false,
+    };
+  }
+
+  const routingContext: RoutingContext = {
+    message: messageText,
+    source,
+    memberContext,
+    isThread: options?.isThread,
+    isAAOAdmin: userIsAdmin,
+    channelName: threadContext?.viewing_channel_name,
+  };
+
+  const plan = addieRouter.quickMatch(routingContext) ?? await addieRouter.route(routingContext);
+  // Direct interactions (DMs, mentions, assistant threads) always respond.
+  // Non-respond router actions only make sense for channel messages where Addie can stay silent.
+  const isDirectInteraction = source === 'dm' || source === 'mention';
+  const selectedSets = plan.action === 'respond'
+    ? [...plan.tool_sets]
+    : isDirectInteraction ? ['knowledge'] : [];
+
+  if (options?.hasCertificationContext && !selectedSets.includes('certification')) {
+    selectedSets.push('certification');
+  }
+
+  const { filteredTools, unavailableHint } = filterToolsBySet(
+    userTools,
+    selectedSets,
+    userIsAdmin,
+    threadContext?.viewing_channel_is_private === false
+  );
+
+  logger.debug(
+    {
+      source,
+      action: plan.action,
+      reason: plan.reason,
+      selectedSets,
+      hasCertificationContext: !!options?.hasCertificationContext,
+      filteredToolCount: filteredTools.tools.length,
+      totalToolCount: userTools.tools.length,
+      requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
+    },
+    'Addie Bolt: Routed conversational tools'
+  );
+
+  return {
+    tools: filteredTools,
+    isAAOAdmin: userIsAdmin,
+    unavailableHint,
+    requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
+  };
+}
+
 /**
  * Handle assistant_thread_started event
  * User opened Addie - show suggested prompts
@@ -1208,13 +1288,24 @@ async function handleUserMessage({
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
-  // Create user-scoped tools (includes admin tools if user is admin, meeting tools with channel context)
-  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, slackThreadContext);
+  const routedTools = await selectRoutedToolsForSlackResponse(
+    inputValidation.sanitized,
+    'dm',
+    memberContext,
+    userId,
+    thread.thread_id,
+    slackThreadContext,
+    { isThread: true, hasCertificationContext }
+  );
+  const requestContextWithRouting = [requestContext, routedTools.unavailableHint]
+    .filter(Boolean)
+    .join('\n\n');
 
   // Admin users get higher iteration limit; certification sessions get more conversation history
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
-    requestContext,
-    ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+    requestContext: requestContextWithRouting,
+    ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+    ...(routedTools.requiresPrecision && { modelOverride: ModelConfig.precision }),
     ...(hasCertificationContext && { maxMessages: 50 }),
   };
 
@@ -1249,7 +1340,7 @@ async function handleUserMessage({
       });
 
       // Process Claude response stream (pass conversation history for context)
-      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, userTools, processOptions)) {
+      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
         if (event.type === 'text') {
           fullText += event.text;
           // Append text chunk to Slack stream
@@ -1310,7 +1401,7 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
+      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
       fullText = response.text;
 
       // Send response via say() with feedback buttons and inline images
@@ -1696,16 +1787,30 @@ async function handleAppMention({
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
-  // Create user-scoped tools (includes admin tools if user is admin, meeting tools with channel context)
-  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, mentionChannelContext);
+  const routedTools = await selectRoutedToolsForSlackResponse(
+    inputValidation.sanitized,
+    'mention',
+    memberContext,
+    userId,
+    thread.thread_id,
+    mentionChannelContext,
+    { isThread: isInThread }
+  );
+  requestContext = [requestContext, routedTools.unavailableHint]
+    .filter(Boolean)
+    .join('\n\n');
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+  const processOptions = {
+    ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    requestContext,
+  };
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -2383,16 +2488,29 @@ async function handleDirectMessage(
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
-  // Create user-scoped tools
-  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
+  const routedTools = await selectRoutedToolsForSlackResponse(
+    inputValidation.sanitized,
+    'dm',
+    memberContext,
+    userId,
+    thread.thread_id,
+    null
+  );
+  requestContext = [requestContext, routedTools.unavailableHint]
+    .filter(Boolean)
+    .join('\n\n');
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+  const processOptions = {
+    ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    requestContext,
+  };
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing DM');
     response = {
@@ -2695,16 +2813,30 @@ async function handleActiveThreadReply({
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
-  // Create user-scoped tools (pass channel context for working group auto-detection)
-  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
+  const routedTools = await selectRoutedToolsForSlackResponse(
+    inputValidation.sanitized,
+    'channel',
+    memberContext,
+    userId,
+    thread.thread_id,
+    channelContext,
+    { isThread: true }
+  );
+  requestContext = [requestContext, routedTools.unavailableHint]
+    .filter(Boolean)
+    .join('\n\n');
 
   // Admin users get higher iteration limit
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+  const processOptions = {
+    ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    requestContext,
+  };
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing active thread reply');
     response = {

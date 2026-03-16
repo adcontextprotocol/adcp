@@ -282,6 +282,17 @@ export type StreamEvent =
   | { type: 'done'; response: AddieResponse }
   | { type: 'error'; error: string };
 
+interface PayloadDebugStats {
+  model: string;
+  system_block_count: number;
+  system_chars: number;
+  request_context_chars: number;
+  tool_count: number;
+  tool_chars: number;
+  message_count: number;
+  message_chars: number;
+}
+
 export class AddieClaudeClient {
   private client: Anthropic;
   private model: string;
@@ -369,6 +380,67 @@ export class AddieClaudeClient {
     // Fallback: minimal prompt + tool reference (database unavailable or empty)
     const fallbackPrompt = `${ADDIE_FALLBACK_PROMPT}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
     return { prompt: fallbackPrompt, ruleIds: [], rulesSnapshot: [] };
+  }
+
+  private estimateMessageContentChars(content: Anthropic.MessageParam['content']): number {
+    if (typeof content === 'string') return content.length;
+    if (!Array.isArray(content)) return 0;
+
+    let total = 0;
+    for (const block of content) {
+      if ('text' in block && typeof block.text === 'string') {
+        total += block.text.length;
+      }
+      if ('name' in block && typeof block.name === 'string') {
+        total += block.name.length;
+      }
+      if ('input' in block && block.input !== undefined) {
+        total += JSON.stringify(block.input).length;
+      }
+      if ('content' in block && typeof block.content === 'string') {
+        total += block.content.length;
+      } else if ('content' in block && Array.isArray(block.content)) {
+        total += JSON.stringify(block.content).length;
+      }
+    }
+    return total;
+  }
+
+  private buildPayloadDebugStats(
+    effectiveModel: string,
+    systemBlocks: Anthropic.TextBlockParam[],
+    customTools: Anthropic.Tool[],
+    messages: Anthropic.MessageParam[],
+    extraToolCount: number = 0,
+  ): PayloadDebugStats {
+    const systemChars = systemBlocks.reduce((sum, block) => sum + block.text.length, 0);
+    const requestContextChars = systemBlocks.slice(1).reduce((sum, block) => sum + block.text.length, 0);
+    const messageChars = messages.reduce((sum, msg) => sum + this.estimateMessageContentChars(msg.content), 0);
+
+    return {
+      model: effectiveModel,
+      system_block_count: systemBlocks.length,
+      system_chars: systemChars,
+      request_context_chars: requestContextChars,
+      tool_count: customTools.length + extraToolCount,
+      tool_chars: JSON.stringify(customTools).length,
+      message_count: messages.length,
+      message_chars: messageChars,
+    };
+  }
+
+  private logPromptOverflow(error: unknown, payload: PayloadDebugStats, source: string): void {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('prompt is too long')) return;
+
+    logger.error(
+      {
+        source,
+        error: message,
+        payload,
+      },
+      'Addie: Prompt overflow diagnostics'
+    );
   }
 
   /**
@@ -508,6 +580,13 @@ export class AddieClaudeClient {
         cache_control: { type: 'ephemeral' },
       };
     }
+    const payloadDebugStats = this.buildPayloadDebugStats(
+      effectiveModel,
+      systemBlocks,
+      customTools,
+      messages,
+      this.webSearchEnabled ? 1 : 0,
+    );
 
     let iteration = 0;
 
@@ -516,25 +595,31 @@ export class AddieClaudeClient {
 
       // Use beta API to access web search
       const llmStart = Date.now();
-      const response = await withRetry(
-        () => this.client.beta.messages.create({
-          model: effectiveModel,
-          max_tokens: 4096,
-          system: systemBlocks,
-          tools: [
-            ...customTools,
-            // Add web search tool via beta API
-            ...(this.webSearchEnabled ? [{
-              type: 'web_search_20250305' as const,
-              name: 'web_search' as const,
-            }] : []),
-          ],
-          messages,
-          betas: ['web-search-2025-03-05'],
-        }),
-        { maxRetries: 3, initialDelayMs: 1000 },
-        'processMessage'
-      );
+      let response;
+      try {
+        response = await withRetry(
+          () => this.client.beta.messages.create({
+            model: effectiveModel,
+            max_tokens: 4096,
+            system: systemBlocks,
+            tools: [
+              ...customTools,
+              // Add web search tool via beta API
+              ...(this.webSearchEnabled ? [{
+                type: 'web_search_20250305' as const,
+                name: 'web_search' as const,
+              }] : []),
+            ],
+            messages,
+            betas: ['web-search-2025-03-05'],
+          }),
+          { maxRetries: 3, initialDelayMs: 1000 },
+          'processMessage'
+        );
+      } catch (error) {
+        this.logPromptOverflow(error, payloadDebugStats, 'processMessage');
+        throw error;
+      }
 
       const llmDuration = Date.now() - llmStart;
       totalLlmMs += llmDuration;
@@ -1012,6 +1097,12 @@ export class AddieClaudeClient {
         cache_control: { type: 'ephemeral' },
       };
     }
+    const payloadDebugStats = this.buildPayloadDebugStats(
+      effectiveModel,
+      systemBlocks,
+      customTools,
+      messages,
+    );
 
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
@@ -1067,6 +1158,7 @@ export class AddieClaudeClient {
             streamSucceeded = true;
           } catch (streamError) {
             streamRetryCount++;
+            this.logPromptOverflow(streamError, payloadDebugStats, 'processMessageStream');
 
             // Only retry if we haven't started streaming content to the user
             // Once content is yielded, retry could cause duplicate/inconsistent output
