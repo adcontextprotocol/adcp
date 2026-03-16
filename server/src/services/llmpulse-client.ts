@@ -50,3 +50,36 @@ export async function fetchLLMPulse(
 
   return response.json();
 }
+
+interface LLMPulsePaginatedResponse<T> {
+  data?: T[];
+  page?: number;
+  per_page?: number;
+  total?: number;
+}
+
+export async function fetchAllLLMPulsePages<T>(
+  path: string,
+  params: Record<string, string> = {},
+  perPage = 100
+): Promise<T[]> {
+  const items: T[] = [];
+
+  for (let page = 1; page < 100; page += 1) {
+    const result = (await fetchLLMPulse(path, {
+      ...params,
+      page: String(page),
+      per_page: String(perPage),
+    })) as LLMPulsePaginatedResponse<T>;
+
+    const pageItems = result.data ?? [];
+    items.push(...pageItems);
+
+    const total = result.total ?? items.length;
+    if (pageItems.length === 0 || pageItems.length < perPage || items.length >= total) {
+      break;
+    }
+  }
+
+  return items;
+}

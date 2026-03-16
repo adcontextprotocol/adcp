@@ -90,16 +90,44 @@
       margin-top: 8px;
     }
 
-    .metric-change.positive {
+    .metric-change .positive {
       color: var(--color-success-500);
     }
 
-    .metric-change.negative {
+    .metric-change .negative {
       color: var(--color-error-500);
     }
 
-    .metric-change.neutral {
+    .metric-change .neutral {
       color: var(--color-text-muted);
+    }
+
+    .page-note {
+      background: color-mix(in srgb, var(--color-brand) 8%, var(--color-bg-card));
+      border: 1px solid color-mix(in srgb, var(--color-brand) 20%, transparent);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 30px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .page-note strong {
+      color: var(--color-text-heading);
+    }
+
+    .status-banner {
+      display: none;
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .status-banner.warning {
+      background: color-mix(in srgb, #f59e0b 14%, var(--color-bg-card));
+      border: 1px solid color-mix(in srgb, #f59e0b 35%, transparent);
+      color: var(--color-text-heading);
     }
 
     .section {
@@ -277,6 +305,37 @@
       text-overflow: ellipsis;
     }
 
+    .section-note {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      margin-top: -10px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .empty-state {
+      color: var(--color-text-muted);
+      font-size: 14px;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+      border: 1px solid var(--color-border);
+    }
+
     table a {
       color: var(--color-brand);
       text-decoration: none;
@@ -376,6 +435,7 @@
     </div>
 
     <div id="error" class="error" role="alert" style="display: none;"></div>
+    <div id="stale-banner" class="status-banner warning" role="status" aria-live="polite"></div>
 
     <div id="unconfigured" class="unconfigured" style="display: none;">
       <div class="unconfigured-icon">&#128274;</div>
@@ -387,32 +447,37 @@
       <!-- Metrics Grid -->
       <div class="metrics-grid">
         <div class="metric-card">
-          <div class="metric-label">Brand mention rate</div>
+          <div class="metric-label">LLM visibility rate</div>
           <div class="metric-value" id="mention-rate">0%</div>
           <div class="metric-change" id="mention-rate-change"></div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Share of voice vs IAB Tech Lab</div>
+          <div class="metric-label">Share of voice vs tracked competitors</div>
           <div class="metric-value" id="share-of-voice">0%</div>
           <div class="metric-change" id="share-of-voice-change"></div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Total prompts tracked</div>
+          <div class="metric-label">LLM Pulse prompts tracked</div>
           <div class="metric-value" id="total-prompts">0</div>
           <div class="metric-change" id="total-prompts-change"></div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Citation rate</div>
+          <div class="metric-label">Citation rate in responses</div>
           <div class="metric-value" id="citation-rate">0%</div>
           <div class="metric-change" id="citation-rate-change"></div>
         </div>
       </div>
 
+      <div class="page-note">
+        <strong>Source:</strong> This page reflects the external LLM Pulse project. The internal Claude GEO monitor now syncs to the same prompt inventory, but results can still differ because model coverage and mention detection are separate.
+      </div>
+
       <!-- AI referrer traffic -->
-      <div class="section" id="referrer-section" style="display: none;">
+      <div class="section" id="referrer-section">
         <h2>AI referrer traffic</h2>
         <p class="section-subtitle" id="referrer-subtitle"></p>
-        <div class="referrer-grid">
+        <div id="referrer-unavailable" class="empty-state" style="display: none;"></div>
+        <div class="referrer-grid" id="referrer-grid" style="display: none;">
           <div class="referrer-sources">
             <h3>Traffic by source</h3>
             <div id="referrer-bars"></div>
@@ -435,6 +500,7 @@
       <!-- AI visibility by model -->
       <div class="section">
         <h2>AI visibility by model</h2>
+        <p class="section-note">Mention rates come from the LLM Pulse prompt set. Model trends will become more meaningful as corrected daily snapshots accumulate.</p>
         <table id="model-table">
           <thead>
             <tr>
@@ -451,6 +517,7 @@
       <!-- Tracked prompts -->
       <div class="section">
         <h2>Tracked prompts</h2>
+        <p class="section-note">These prompts come from LLM Pulse and are mirrored into the internal Claude GEO monitor for prompt-level comparisons.</p>
         <div class="table-container">
           <table id="prompts-table">
             <thead>
@@ -528,16 +595,16 @@
       return Number(value).toLocaleString();
     }
 
-    function renderChange(change) {
-      if (change == null) return '';
+    function renderChange(change, fallbackText) {
+      if (change == null) return '<span class="neutral">' + escapeHtml(fallbackText || 'Awaiting comparison history') + '</span>';
       const num = Number(change);
       if (num > 0) return `<span class="positive">+${num.toFixed(1)}pp vs last period</span>`;
       if (num < 0) return `<span class="negative">${num.toFixed(1)}pp vs last period</span>`;
       return '<span class="neutral">No change</span>';
     }
 
-    function renderCountChange(change) {
-      if (change == null) return '';
+    function renderCountChange(change, fallbackText) {
+      if (change == null) return '<span class="neutral">' + escapeHtml(fallbackText || 'Prompt set currently fixed') + '</span>';
       const num = Number(change);
       if (num > 0) return `<span class="positive">+${num} vs last period</span>`;
       if (num < 0) return `<span class="negative">${num} vs last period</span>`;
@@ -565,14 +632,36 @@
       return '<span class="mentioned-no">No</span>';
     }
 
+    function renderCompetitorChips(value) {
+      if (!value) return '<span class="empty-state">None seen</span>';
+      const items = String(value)
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+      if (items.length === 0) return '<span class="empty-state">None seen</span>';
+      return '<div class="chip-list">' + items.map(item =>
+        '<span class="chip">' + escapeHtml(item) + '</span>'
+      ).join('') + '</div>';
+    }
+
+    function renderDomainLink(domain) {
+      if (!domain) return '<span class="empty-state">Unknown</span>';
+      const normalized = String(domain).replace(/^https?:\/\//i, '');
+      const href = 'https://' + normalized;
+      return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(normalized) + '</a>';
+    }
+
     async function loadData() {
       const loadingEl = document.getElementById('loading');
       const errorEl = document.getElementById('error');
+      const staleEl = document.getElementById('stale-banner');
       const unconfiguredEl = document.getElementById('unconfigured');
       const contentEl = document.getElementById('content');
 
       loadingEl.style.display = 'flex';
       errorEl.style.display = 'none';
+      staleEl.style.display = 'none';
+      staleEl.textContent = '';
       unconfiguredEl.style.display = 'none';
       contentEl.style.display = 'none';
 
@@ -594,13 +683,13 @@
         // Update metrics
         const summary = data.summary || {};
         document.getElementById('mention-rate').textContent = formatPercent(summary.brand_mention_rate);
-        document.getElementById('mention-rate-change').innerHTML = renderChange(summary.brand_mention_rate_change);
+        document.getElementById('mention-rate-change').innerHTML = renderChange(summary.brand_mention_rate_change, 'Awaiting comparison history');
         document.getElementById('share-of-voice').textContent = formatPercent(summary.share_of_voice);
-        document.getElementById('share-of-voice-change').innerHTML = renderChange(summary.share_of_voice_change);
+        document.getElementById('share-of-voice-change').innerHTML = renderChange(summary.share_of_voice_change, 'Awaiting comparison history');
         document.getElementById('total-prompts').textContent = formatNumber(summary.total_prompts);
-        document.getElementById('total-prompts-change').innerHTML = renderCountChange(summary.total_prompts_change);
+        document.getElementById('total-prompts-change').innerHTML = renderCountChange(summary.total_prompts_change, 'Prompt set currently fixed');
         document.getElementById('citation-rate').textContent = formatPercent(summary.citation_rate);
-        document.getElementById('citation-rate-change').innerHTML = renderChange(summary.citation_rate_change);
+        document.getElementById('citation-rate-change').innerHTML = renderChange(summary.citation_rate_change, 'Awaiting comparison history');
 
         // AI visibility by model
         const modelTable = document.getElementById('model-table').querySelector('tbody');
@@ -626,7 +715,7 @@
             <tr>
               <td class="prompt-text" title="${escapeHtml(row.text).replace(/"/g, '&quot;')}">${escapeHtml(row.text)}</td>
               <td>${renderMentioned(row.adcp_mentioned)}</td>
-              <td>${escapeHtml(row.competitor_mentioned || 'None')}</td>
+              <td>${renderCompetitorChips(row.competitor_mentioned)}</td>
               <td>${formatDate(row.last_checked)}</td>
             </tr>
           `).join('');
@@ -640,7 +729,7 @@
         if (urls.length > 0) {
           urlsTable.innerHTML = urls.map(row => `
             <tr>
-              <td class="url-text">${escapeHtml(row.url)}</td>
+              <td class="url-text">${renderDomainLink(row.url)}</td>
               <td class="text-right">${formatNumber(row.citation_count)}</td>
               <td class="text-right">${formatPercent(row.avg_visibility)}</td>
             </tr>
@@ -670,6 +759,11 @@
           document.getElementById('last-updated').textContent = 'Last updated: ' + new Date(data.updated_at).toLocaleString();
         }
 
+        if (data._stale) {
+          staleEl.textContent = data._error || 'Showing cached GEO data because the latest refresh failed.';
+          staleEl.style.display = 'block';
+        }
+
         loadingEl.style.display = 'none';
         contentEl.style.display = 'block';
       } catch (error) {
@@ -696,18 +790,46 @@
     }
 
     async function loadReferrerData() {
+      const section = document.getElementById('referrer-section');
+      const subtitle = document.getElementById('referrer-subtitle');
+      const unavailable = document.getElementById('referrer-unavailable');
+      const grid = document.getElementById('referrer-grid');
+
       try {
         const response = await fetch('/api/admin/geo-referrers');
-        if (!response.ok) return;
+        if (!response.ok) {
+          section.style.display = 'block';
+          subtitle.textContent = 'AI referrer traffic could not be loaded.';
+          unavailable.textContent = 'PostHog did not return referrer data for this environment.';
+          unavailable.style.display = 'block';
+          grid.style.display = 'none';
+          return;
+        }
 
         const data = await response.json();
-        if (data.configured === false || !data.sources) return;
-
-        const section = document.getElementById('referrer-section');
         section.style.display = 'block';
+        subtitle.textContent = '';
+        unavailable.style.display = 'none';
+
+        if (data.configured === false) {
+          subtitle.textContent = 'AI referrer traffic is unavailable in this environment.';
+          unavailable.textContent = data.message || 'Configure PostHog query access to populate this section.';
+          unavailable.style.display = 'block';
+          grid.style.display = 'none';
+          return;
+        }
+
+        if (!data.sources) {
+          subtitle.textContent = 'AI referrer traffic is unavailable in this environment.';
+          unavailable.textContent = 'PostHog did not return referrer data for this environment.';
+          unavailable.style.display = 'block';
+          grid.style.display = 'none';
+          return;
+        }
+
+        grid.style.display = 'grid';
 
         // Subtitle with total stats
-        const subtitle = document.getElementById('referrer-subtitle');
         subtitle.textContent = formatNumber(data.totalAiReferrals) + ' visits from AI surfaces (' +
           Number(data.aiReferralShare || 0).toFixed(2) + '% of ' + formatNumber(data.totalPageviews) +
           ' total) \u2014 last 30 days';
@@ -744,6 +866,11 @@
         }
       } catch (err) {
         console.warn('AI referrer data unavailable:', err);
+        section.style.display = 'block';
+        subtitle.textContent = 'AI referrer traffic is unavailable in this environment.';
+        unavailable.textContent = 'PostHog did not return referrer data for this environment.';
+        unavailable.style.display = 'block';
+        grid.style.display = 'none';
       }
     }
 
