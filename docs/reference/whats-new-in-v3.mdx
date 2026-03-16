@@ -1,6 +1,6 @@
 ---
 title: AdCP 3.0
-description: "What's new in AdCP 3.0: brand identity and rights, governance, sponsored intelligence, shows and episodes, 20 media channels, and migration guides from v2."
+description: "What's new in AdCP 3.0: brand identity and rights, creative workflow upgrades, governance, sponsored intelligence, shows and episodes, 20 media channels, and migration guides from v2."
 "og:title": "AdCP — AdCP 3.0"
 ---
 
@@ -19,10 +19,15 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
 | **Brand rights** | No licensing protocol | `get_rights`, `acquire_rights`, `update_rights` with HMAC-authenticated webhooks |
 | **Visual guidelines** | No structured brand visuals | `visual_guidelines` on `brand.json` for generative creative systems |
+| **Creative workflows** | Basic build / preview / sync separation | Inline preview, multi-format `build_creative`, library retrieval, quality tiers, and catalog `item_limit` |
+| **Creative libraries** | Media Buy-centric creative reads/writes | `list_creatives` / `sync_creatives` as Creative Protocol operations plus `supports_generation`, `supports_transformation`, and `has_creative_library` discovery |
 | **Creative governance** | No creative evaluation protocol | `get_creative_features` for security scanning, quality, content categorization |
+| **Disclosure matching** | Position-only disclosure handling | Position + persistence-aware disclosure matching (`continuous`, `initial`, `flexible`) |
 | **Shows and episodes** | No content programming model | `shows` on products with distribution IDs, episode lifecycle, break-based inventory |
+| **Planning ergonomics** | No `time_budget`, `preferred_delivery_types`, `exclusivity`, or per-package flights | `time_budget` + `incomplete`, `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time` |
 | **Channel model** | 9 channels | 20 planning-oriented channels (including `ai_media`) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
+| **Sandbox discovery** | Mixed capability locations | `require_operator_auth` for auth model, `account.sandbox` for sandbox support, sandbox in natural account references |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
 | **Geo targeting** | Implicit US-centric | Explicit named systems (global) |
 | **Keyword targeting** | No keyword support | `keyword_targets` with match types and bid prices |
@@ -228,6 +233,26 @@ Signals now have explicit `value_type` (binary, categorical, numeric) with typed
 <Card title="Data provider guide" icon="arrow-right" href="/docs/signals/data-providers">
   Complete implementation guide for publishing signal catalogs.
 </Card>
+
+---
+
+## rc.1 to rc.2 highlights
+
+This page covers the full v2 → v3 shift. If you already adopted `3.0.0-rc.1`, these are the most important rc.2 changes to review before upgrading.
+
+### Creative workflow and library changes
+
+`build_creative` now supports inline preview (`include_preview`), multi-format output (`target_format_ids`), quality tiers, catalog-driven `item_limit`, and library retrieval using `creative_id` with optional `concept_id`, `media_buy_id`, `package_id`, and `macro_values`. `preview_creative` also adds quality control. Creative library operations are now explicitly Creative Protocol tasks: `list_creatives` and `sync_creatives` live with the rest of the creative lifecycle, and capability discovery adds `supports_generation`, `supports_transformation`, and `has_creative_library` so buyers can route requests intentionally.
+
+### Planning, accounts, and sandbox refinements
+
+`account_resolution` is removed; buyers now use `require_operator_auth` to determine the auth and account model. Sandbox support moves to `account.sandbox`, and sandbox can participate in the natural account key for implicit-account flows. Product discovery adds `preferred_delivery_types`, `exclusivity`, and `time_budget`, with `incomplete` in responses when the seller cannot finish within the requested budget. Packages and product allocations can now carry per-package `start_time` / `end_time`, and `delivery_measurement` becomes optional on products.
+
+### Compliance and governance refinements
+
+Creative compliance now includes disclosure persistence semantics in addition to position and duration, allowing formats to declare which persistence modes they can enforce. Campaign governance also lands in rc.2 with `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`, plus `governance_context` for canonical plan extraction.
+
+For the exhaustive rc.2 change list, see the [Release Notes](/docs/reference/release-notes#version-300-rc2) and [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-rc2).
 
 ---
 
@@ -588,6 +613,9 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Update `SyncCreativesRequest.assignments` from object map to typed array
     - [ ] Migrate brand `tone` from string to object format (`{ voice, attributes, dos, donts }`)
     - [ ] Remove `account_resolution` reads — use `require_operator_auth` instead
+    - [ ] Read sandbox support from `account.sandbox` instead of `media_buy.features.sandbox`
+    - [ ] Add `type: "dooh"` inside `flat_rate.parameters` when DOOH parameters are provided
+    - [ ] Treat `list_creatives` and `sync_creatives` as Creative Protocol operations
     - [ ] Remove `delete_content_standards` calls — archive via `update_content_standards`
     - [ ] Remove `get_property_features` calls — use property list filters
     - [ ] Validate all requests/responses against v3 schemas
@@ -609,6 +637,9 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Implement `rejected` status and `rejection_reason` on media buys
     - [ ] Support `fields` projection parameter on `get_products`
     - [ ] Declare `supported_pricing_models` in `get_adcp_capabilities`
+    - [ ] Support `time_budget` on `get_products` and return `incomplete` when work cannot finish in budget
+    - [ ] Declare sandbox support in `account.sandbox`, not `media_buy.features.sandbox`
+    - [ ] Support `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time`
   </Accordion>
 
   <Accordion title="Buyer agents and orchestrators (DSPs, agencies, brands)">
@@ -633,6 +664,10 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Use `action: "deactivate"` on `activate_signal` for campaign cleanup
     - [ ] Integrate `get_rights` / `acquire_rights` for licensed content campaigns
     - [ ] Handle `visual_guidelines` from `brand.json` for creative generation
+    - [ ] Read `require_operator_auth` and `account.sandbox` when choosing account and sandbox flows
+    - [ ] Handle `time_budget` / `incomplete` for bounded-latency product discovery
+    - [ ] Use creative capability flags (`supports_generation`, `supports_transformation`, `has_creative_library`) to route build vs library workflows
+    - [ ] Submit plans to governance agents via `check_governance` when campaign governance is in use
   </Accordion>
 
   <Accordion title="Signals agents (data providers, measurement vendors)">
@@ -677,6 +712,11 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Check format `supported_disclosure_positions` compatibility
     - [ ] Declare `supports_compliance` in capabilities (replaces `supports_brief`)
     - [ ] Handle `visual_guidelines` from `brand.json` for on-brand asset generation
+    - [ ] Support `include_preview`, `target_format_ids`, `quality`, and `item_limit` on `build_creative`
+    - [ ] Support library retrieval via `creative_id` and declare `supports_generation`, `supports_transformation`, `has_creative_library`
+    - [ ] Implement `list_creatives` and `sync_creatives` as Creative Protocol operations
+    - [ ] Support `quality` parameter on `preview_creative`
+    - [ ] Declare disclosure persistence support via format `disclosure_capabilities`
   </Accordion>
 
   <Accordion title="Brands (new in v3)">
@@ -700,6 +740,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Support `verification` results from AI detection services
     - [ ] Implement `get_creative_features` for creative evaluation
     - [ ] Declare `creative_features` in `get_adcp_capabilities`
+    - [ ] Implement campaign governance tasks (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) when offering plan-level governance
   </Accordion>
 
   <Accordion title="Sponsored Intelligence agents (new in v3)">

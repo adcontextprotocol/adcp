@@ -11,6 +11,29 @@ This page is your single entry point for migrating an AdCP 2.x integration to 3.
 
 For the full list of new features (not just breaking changes), see [What's new in v3](/docs/reference/whats-new-in-v3).
 
+## Upgrading prerelease integrations (rc.1 to rc.2)
+
+This guide primarily covers 2.x → 3.0 migration. If you already adopted `3.0.0-rc.1`, review the rc.2 deltas below before upgrading.
+
+### Potentially breaking for rc.1 adopters
+
+| Area | rc.1 | rc.2 | What to do |
+|---|---|---|---|
+| Account auth model | `account_resolution` capability | Removed — `require_operator_auth` now determines account model | Update capability parsing and auth/account branching logic |
+| Creative library task boundary | `list_creatives` / `sync_creatives` documented under Media Buy | Creative library operations live in the Creative Protocol | Route library reads/writes through Creative Protocol assumptions, even when a sales agent implements both protocols |
+| Sandbox capability discovery | `media_buy.features.sandbox` | `account.sandbox` | Read sandbox support from the account capability block |
+| DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present | Add the discriminator in request builders and validators |
+| Deprecated governance task docs | `delete_content_standards`, `get_property_features` documented | Removed | Use `update_content_standards`, property lists, and `get_adcp_capabilities` instead |
+
+### High-value additive changes in rc.2
+
+- **Creative generation and preview** — `build_creative` adds `include_preview`, `preview_inputs`, `preview_quality`, `preview_output_format`, `quality`, `item_limit`, and multi-format `target_format_ids`. Buyers can now preview inline, choose draft vs production generation, and request multiple output formats in one call.
+- **Creative library retrieval** — `build_creative` also supports library retrieval using `creative_id`, optional `concept_id`, `media_buy_id`, `package_id`, and `macro_values`, so ad servers and creative platforms can resolve stored creatives into delivery-ready manifests.
+- **Creative capability discovery** — Creative agents can declare `supports_generation`, `supports_transformation`, and `has_creative_library`. `list_creatives` now uses library-oriented fields like `include_snapshot`, `has_served`, and `items`.
+- **Product discovery and planning** — `get_products` adds `exclusivity`, `preferred_delivery_types`, and `time_budget`, with `incomplete` in the response. Products may omit `delivery_measurement`, and packages can now carry per-package `start_time` / `end_time`.
+- **Compliance and governance** — Creative disclosures add persistence semantics, and campaign governance introduces `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`.
+- **Accounts and sandbox ergonomics** — `sync_accounts` adds `payment_terms`, and sandbox now participates in the natural account key for implicit account references.
+
 ## Migration checklist
 
 Each row is a breaking change. **Effort** indicates the typical work involved:

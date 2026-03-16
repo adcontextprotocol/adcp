@@ -126,7 +126,7 @@ Set presigned URL expiration long enough to cover the full workflow, but no long
 | --- | --- |
 | [`build_creative`](/docs/creative/task-reference/build_creative) only | 1 hour |
 | [`build_creative`](/docs/creative/task-reference/build_creative) + [`preview_creative`](/docs/creative/task-reference/preview_creative) | 2 hours |
-| Full pipeline (build, preview, iterate, [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives)) | 4 hours |
+| Full pipeline (build, preview, iterate, [`sync_creatives`](/docs/creative/task-reference/sync_creatives)) | 4 hours |
 
 <Warning>
 If a presigned URL expires mid-workflow, the creative agent will receive an HTTP error when fetching the asset. The buyer agent must generate a new presigned URL and resubmit the request.
@@ -206,4 +206,4 @@ Presigned URLs avoid this by encoding authorization into the URL itself:
 - [Creative manifests](/docs/creative/creative-manifests) — manifest structure and asset references
 - [Asset types](/docs/creative/asset-types) — requirements for each asset type
 - [`build_creative`](/docs/creative/task-reference/build_creative) — generating creatives from manifests
-- [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) — syncing creatives to a media buy
+- [`sync_creatives`](/docs/creative/task-reference/sync_creatives) — syncing creatives to an agent-hosted creative library

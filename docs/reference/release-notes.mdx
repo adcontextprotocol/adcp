@@ -25,18 +25,37 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 5. **Property Governance Integration** — Optional `property_list` parameter on `get_products` for filtering products by governance-evaluated property lists. `property_list_applied` response field confirms filtering.
 
-6. **Campaign Governance and Policy Registry** — `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs` for plan-level governance. Adds audit/advisory/enforce modes, delegated budget authority, seller-side governance checks, portfolio governance, and registry-backed shared policies.
+6. **Campaign Governance and Policy Registry** — `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs` for plan-level governance. Adds audit/advisory/enforce modes, delegated budget authority, seller-side governance checks, portfolio governance, registry-backed shared policies, and `governance_context` for canonical plan extraction.
 
 7. **Account Model Simplification** — Removed `account_resolution` capability. `require_operator_auth` now determines both auth model and account reference style.
+
+8. **Creative Workflow Upgrades** — `build_creative` now supports inline preview via `include_preview`, multi-format output via `target_format_ids`, quality tiers for draft vs production output, catalog-driven `item_limit`, and library retrieval using `creative_id` plus optional macro substitution and trafficking context. `preview_creative` also adds quality control parameters.
+
+9. **Creative Library Protocol Unification** — `list_creatives` and `sync_creatives` now live in the Creative Protocol. Creative agents can advertise `supports_generation`, `supports_transformation`, and `has_creative_library` so buyers can route generation, transformation, and library retrieval intentionally.
+
+10. **Disclosure Persistence** — Regulatory disclosure requirements can now specify persistence (`continuous`, `initial`, `flexible`) in addition to position and duration, with matching capability declarations on formats.
+
+11. **Product Discovery and Planning Ergonomics** — Product discovery adds `exclusivity` and `preferred_delivery_types`; products may omit `delivery_measurement`; packages and proposals support per-package `start_time` / `end_time`; and `get_products` now supports `time_budget` with `incomplete` response reporting.
+
+12. **Accounts and Sandbox Refinements** — `sync_accounts` adds `payment_terms`, sandbox capability moves to the account capability block, and sandbox now participates in the account natural key for implicit account flows.
 
 ### Breaking Changes
 
 | Change | rc.1 | rc.2 |
 |--------|------|------|
-| Brand tone | String or object | Object only — `{ voice, attributes, dos, donts }` |
 | Account resolution | `account_resolution` capability | Removed — `require_operator_auth` determines account model |
+| Creative library operations | `list_creatives` and `sync_creatives` documented under Media Buy | Creative library tasks now live in the Creative Protocol |
+| Sandbox capability | `media_buy.features.sandbox` | `account.sandbox` |
+| DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present |
 | delete_content_standards | Documented task | Removed — archive standards via `update_content_standards` instead |
 | get_property_features | Standalone task | Removed — use property list filters and `get_adcp_capabilities` for feature discovery |
+
+### Migration Notes For rc.1 Adopters
+
+- **Creative task routing** — If you adopted 3.0.0-rc.1, update any assumptions that creative library operations are Media Buy tasks. `list_creatives` and `sync_creatives` are Creative Protocol operations in rc.2, even when a sales agent implements them on the same endpoint.
+- **Capability discovery** — Replace reads of `account_resolution` with `require_operator_auth`, and read sandbox support from `account.sandbox` instead of `media_buy.features.sandbox`.
+- **Creative request/response handling** — `build_creative` can now return inline previews, multiple manifests, or a library-resolved manifest. Clients that assumed only single-format manifest-in / manifest-out behavior should update their response handling.
+- **DOOH validation** — Existing v3 DOOH `flat_rate` integrations must add `type: "dooh"` inside `parameters` when those parameters are provided.
 
 ### Other Updates
 
