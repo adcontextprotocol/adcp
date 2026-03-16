@@ -37,5 +37,8 @@ jobs:
     - name: Check for broken links in docs
       run: npx --no-install mintlify broken-links
 
+    - name: Check browser-facing Agentic Advertising links
+      run: npm run check:owned-links
+
     - name: Check README links
       run: npx markdown-link-check README.md --config .markdown-link-check.json
