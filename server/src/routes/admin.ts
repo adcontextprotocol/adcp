@@ -217,55 +217,37 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
             extendedContext.addie_goal = goalResult.rows[0];
           }
 
-          // Get outreach info (if Slack user)
+          // Get relationship info from person_relationships + person_events
           if (slackUserId) {
-            const outreachQuery = `
+            const relationshipQuery = `
               SELECT
-                sm.last_outreach_at,
-                sm.outreach_opt_out,
-                EXTRACT(EPOCH FROM (NOW() - sm.last_outreach_at)) / 86400 as days_since_outreach,
-                (SELECT COUNT(*) FROM member_outreach mo WHERE mo.slack_user_id = sm.slack_user_id) as total_outreach_count,
-                (SELECT COUNT(*) FROM member_outreach mo WHERE mo.slack_user_id = sm.slack_user_id AND mo.user_responded = TRUE) as responses_received
-              FROM slack_user_mappings sm
-              WHERE sm.slack_user_id = $1`;
-            const outreachResult = await pool.query(outreachQuery, [slackUserId]);
-            if (outreachResult.rows.length > 0) {
-              const row = outreachResult.rows[0];
-              (extendedContext as typeof extendedContext & { outreach?: unknown }).outreach = {
-                last_outreach_at: row.last_outreach_at,
-                days_since_outreach: row.days_since_outreach ? Math.floor(row.days_since_outreach) : null,
-                total_outreach_count: parseInt(row.total_outreach_count) || 0,
-                responses_received: parseInt(row.responses_received) || 0,
-                opted_out: row.outreach_opt_out || false,
-              };
-            }
+                pr.id as person_id,
+                pr.stage,
+                pr.interaction_count,
+                pr.unreplied_outreach_count,
+                pr.sentiment_trend,
+                pr.opted_out,
+                pr.last_addie_message_at,
+                pr.last_person_message_at,
+                pr.last_interaction_channel
+              FROM person_relationships pr
+              WHERE pr.slack_user_id = $1`;
+            const relationshipResult = await pool.query(relationshipQuery, [slackUserId]);
+            if (relationshipResult.rows.length > 0) {
+              const row = relationshipResult.rows[0];
+              (extendedContext as typeof extendedContext & { relationship?: unknown }).relationship = row;
 
-            // Get detailed outreach history with goals, responses, and linked threads
-            const outreachHistoryQuery = `
-              SELECT
-                mo.id,
-                mo.sent_at,
-                mo.initial_message,
-                mo.user_responded,
-                mo.response_received_at,
-                mo.response_sentiment,
-                mo.response_intent,
-                mo.response_text,
-                mo.thread_id,
-                mo.dm_channel_id,
-                og.name as goal_name,
-                og.description as goal_question,
-                at.message_count as thread_message_count
-              FROM member_outreach mo
-              LEFT JOIN user_goal_history ugh ON ugh.outreach_id = mo.id
-              LEFT JOIN outreach_goals og ON og.id = ugh.goal_id
-              LEFT JOIN addie_threads at ON at.thread_id = mo.thread_id
-              WHERE mo.slack_user_id = $1
-              ORDER BY mo.sent_at DESC
-              LIMIT 10`;
-            const historyResult = await pool.query(outreachHistoryQuery, [slackUserId]);
-            if (historyResult.rows.length > 0) {
-              (extendedContext as typeof extendedContext & { outreach_history?: unknown }).outreach_history = historyResult.rows;
+              // Get recent person_events for timeline
+              const eventsQuery = `
+                SELECT event_type, channel, data, occurred_at
+                FROM person_events
+                WHERE person_id = $1
+                ORDER BY occurred_at DESC
+                LIMIT 10`;
+              const eventsResult = await pool.query(eventsQuery, [row.person_id]);
+              if (eventsResult.rows.length > 0) {
+                (extendedContext as typeof extendedContext & { event_timeline?: unknown }).event_timeline = eventsResult.rows;
+              }
             }
           }
 

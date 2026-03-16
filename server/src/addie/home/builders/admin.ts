@@ -28,30 +28,35 @@ export async function buildAdminPanel(adminUserId?: string): Promise<AdminPanel>
     logger.warn({ error }, 'Failed to fetch flagged threads count for admin panel');
   }
 
-  // Get outreach goal stats from the planner's tracking
+  // Get relationship stage stats from person_relationships
   try {
     const pool = getPool();
     const result = await pool.query(`
       SELECT
-        og.name,
-        COUNT(ugh.id) FILTER (WHERE ugh.status = 'success') as success_count,
-        COUNT(ugh.id) as attempt_count
-      FROM outreach_goals og
-      LEFT JOIN user_goal_history ugh ON ugh.goal_id = og.id
-      WHERE og.is_enabled = TRUE
-      GROUP BY og.id, og.name
-      ORDER BY og.base_priority DESC
-      LIMIT 5
+        stage,
+        COUNT(*) as count
+      FROM person_relationships
+      WHERE opted_out = FALSE
+      GROUP BY stage
+      ORDER BY
+        CASE stage
+          WHEN 'leading' THEN 1
+          WHEN 'contributing' THEN 2
+          WHEN 'participating' THEN 3
+          WHEN 'exploring' THEN 4
+          WHEN 'welcomed' THEN 5
+          WHEN 'prospect' THEN 6
+        END
     `);
     for (const row of result.rows) {
       insightGoals.push({
-        goalName: row.name,
-        current: parseInt(row.success_count) || 0,
-        target: null, // No fixed target - show success count
+        goalName: row.stage,
+        current: parseInt(row.count) || 0,
+        target: null,
       });
     }
   } catch (error) {
-    logger.warn({ error }, 'Failed to fetch outreach goals for admin panel');
+    logger.warn({ error }, 'Failed to fetch relationship stage stats for admin panel');
   }
 
   // Get prospect stats if we have a user ID

@@ -92,7 +92,6 @@ import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
-import { InsightsDatabase } from "./db/insights-db.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
@@ -5446,24 +5445,18 @@ Disallow: /api/admin/
                 'Auto-linked Slack account after signup'
               );
 
-              // Track this as an outreach conversion if there was pending outreach
+              // Record account linking in the relationship system
               try {
-                const insightsDb = new InsightsDatabase();
-                const pendingOutreach = await insightsDb.getPendingOutreach(slackUserIdToLink);
-                if (pendingOutreach) {
-                  // Mark as converted - they clicked the link and completed account linking
-                  await insightsDb.markOutreachConverted(
-                    pendingOutreach.id,
-                    'Converted via link click - account linked'
-                  );
-                  logger.info({
-                    slackUserId: slackUserIdToLink,
-                    outreachId: pendingOutreach.id,
-                    outreachType: pendingOutreach.outreach_type,
-                  }, 'Recorded outreach conversion from link click');
-                }
+                const { resolvePersonId } = await import('./db/relationship-db.js');
+                const { recordEvent } = await import('./db/person-events-db.js');
+                const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
+                await recordEvent(personId, 'account_linked', {
+                  channel: 'web',
+                  data: { workos_user_id: user.id },
+                });
+                logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
               } catch (trackingError) {
-                logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to track outreach conversion');
+                logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
               }
 
               // Send proactive Addie message if user has a recent conversation

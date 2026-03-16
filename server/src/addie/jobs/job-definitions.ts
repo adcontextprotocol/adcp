@@ -13,8 +13,7 @@ import { enrichMissingOrganizations } from '../../services/enrichment.js';
 import { runMoltbookPosterJob } from './moltbook-poster.js';
 import { runMoltbookEngagementJob } from './moltbook-engagement.js';
 import { runTaskReminderJob } from './task-reminder.js';
-import { runEngagementScoringJob } from './engagement-scoring.js';
-// goal-follow-up job removed — old goal-based outreach system replaced by engagement planner
+// engagement-scoring job removed — old scoring replaced by person_relationships/person_events
 import {
   processPendingResources,
   processRssPerspectives,
@@ -198,17 +197,7 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.remindersSent > 0,
   });
 
-  // Engagement scoring - updates engagement scores
-  jobScheduler.register({
-    name: 'engagement-scoring',
-    description: 'Engagement scoring',
-    interval: { value: 1, unit: 'hours' },
-    initialDelay: { value: 10, unit: 'seconds' },
-    runner: runEngagementScoringJob,
-    shouldLogResult: (r) => r.usersUpdated > 0 || r.orgsUpdated > 0,
-  });
-
-  // Goal follow-up job removed — old goal-based outreach replaced by engagement planner
+  // Engagement scoring job removed — old scoring replaced by person_relationships/person_events
 
   // Persona inference - infers personas from signals for unclassified orgs
   jobScheduler.register({
