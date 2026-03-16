@@ -101,6 +101,7 @@ Optional media-buy features. **If declared true, seller MUST honor requests usin
 | `inline_creative_management` | Accepts creatives inline in `create_media_buy` requests |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `content_standards` | Full support for content standards configuration |
+| `audience_targeting` | Support for audience targeting and ingestion, including `sync_audiences` |
 
 #### execution
 
@@ -138,6 +139,8 @@ Technical execution capabilities:
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
+| `supported_identifier_types` | string[] | Supported identifier types for audience targeting (e.g., `['nielsen_dma', 'zip_code']`). Presence indicates support. |
+| `supported_uid_types` | string[] | Supported UID types for audience targeting (e.g., `['maid']`). Presence indicates support. |
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 

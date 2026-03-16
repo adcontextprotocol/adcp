@@ -136,7 +136,7 @@ Every member requires an `external_id` (buyer-assigned stable identifier) plus a
 
 Providing multiple identifiers for the same person improves match rates. Composite identifiers (e.g. hashed first name + last name + zip) are not yet standardized — use `ext` for platform-specific extensions.
 
-**Identifier support varies by seller**: Check `get_adcp_capabilities` → `audience_targeting.supported_identifier_types` and `supported_uid_types` before sending. MAID support is not universal (LinkedIn does not accept MAIDs; iOS IDFA requires App Tracking Transparency consent). The `matching_latency_hours` range and `minimum_audience_size` in capabilities are also seller-specific.
+**Identifier support varies by seller**: Check `get_adcp_capabilities` → `targeting.supported_identifier_types` and `targeting.supported_uid_types` before sending. MAID support is not universal (LinkedIn does not accept MAIDs; iOS IDFA requires App Tracking Transparency consent). The `matching_latency_hours` range and `minimum_audience_size` in capabilities are also seller-specific.
 
 **Size limit**: Payloads are limited to 100,000 members per call across all audiences. For larger lists, chunk into sequential calls using `add` deltas.
 
