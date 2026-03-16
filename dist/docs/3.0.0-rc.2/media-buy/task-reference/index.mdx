@@ -65,7 +65,7 @@ Start here to understand what's available and plan your campaign.
 
 - **[`get_adcp_capabilities`](/dist/docs/3.0.0-rc.2/protocol/get_adcp_capabilities)** - Discover agent capabilities, portfolio, and supported features (protocol-level task)
 - **[`get_products`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/get_products)** - The core discovery task using natural language briefs
-- **[`list_creative_formats`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/list_creative_formats)** - Understand creative requirements
+- **[`list_creative_formats`](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creative_formats)** - Understand creative requirements
 
 ### Media Buy Management  
 Create and manage your advertising campaigns.
@@ -148,7 +148,7 @@ Long-running tasks provide:
 1. **Discover Capabilities**: Use [`get_adcp_capabilities`](/dist/docs/3.0.0-rc.2/protocol/get_adcp_capabilities) to understand what the agent supports
 2. **Find Inventory**: Use [`get_products`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/get_products) to find relevant inventory
 3. **Refine Products**: Re-call [`get_products`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/get_products) with `buying_mode: "refine"` to iterate on budgets, pricing, and targeting
-4. **Understand Formats**: Check [`list_creative_formats`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/list_creative_formats) for requirements
+4. **Understand Formats**: Check [`list_creative_formats`](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creative_formats) for requirements
 5. **Sync Catalogs**: Use [`sync_catalogs`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/sync_catalogs) to push product feeds to the account
 6. **Upload Creatives**: Use [`sync_creatives`](/dist/docs/3.0.0-rc.2/creative/task-reference/sync_creatives) for asset management
 7. **Create Campaign**: Use [`create_media_buy`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/create_media_buy) with selected products
