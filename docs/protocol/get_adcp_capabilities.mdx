@@ -139,8 +139,6 @@ Technical execution capabilities:
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
-| `supported_identifier_types` | string[] | Supported identifier types for audience targeting (e.g., `['nielsen_dma', 'zip_code']`). Presence indicates support. |
-| `supported_uid_types` | string[] | Supported UID types for audience targeting (e.g., `['maid']`). Presence indicates support. |
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
@@ -177,6 +175,18 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `au_postcode` | Australian postcode (e.g., `2000`) |
 | `ch_plz` | Swiss Postleitzahl (e.g., `8000`) |
 | `at_plz` | Austrian Postleitzahl (e.g., `1010`) |
+
+#### audience_targeting
+
+Audience targeting capabilities. Only present when `features.audience_targeting` is `true`. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported_identifier_types` | string[] | **Required** | PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. Values: `hashed_email`, `hashed_phone`. |
+| `minimum_audience_size` | integer | **Required** | Minimum matched audience size required for targeting. Audiences below this threshold will have `status: too_small`. Varies by platform (100–1000 is typical). |
+| `supports_platform_customer_id` | boolean | | When `true`, the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). Buyers can include `platform_customer_id` values in `AudienceMember.identifiers`. Reporting on matched IDs typically requires a clean room or the seller's own reporting surface. |
+| `supported_uid_types` | string[] | | Universal ID types accepted for audience matching (MAIDs, RampID, UID2, etc.). MAID support varies significantly by platform — check this field before sending `uids` with `type: maid`. |
+| `matching_latency_hours` | object | | Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring `push_notification_config`. Shape: `{ min: integer, max: integer }`. |
 
 #### conversion_tracking
 
@@ -520,7 +530,8 @@ const buy = await client.createMediaBuy({
     "features": {
       "inline_creative_management": true,
       "property_list_filtering": true,
-      "content_standards": false
+      "content_standards": false,
+      "audience_targeting": true
     },
     "execution": {
       "axe_integrations": ["https://agentic.scope3.com"],
@@ -558,6 +569,13 @@ const buy = await client.createMediaBuy({
         }
       }
     },
+    "audience_targeting": {
+      "supported_identifier_types": ["hashed_email", "hashed_phone"],
+      "supports_platform_customer_id": false,
+      "supported_uid_types": ["uid2", "ramp_id"],
+      "minimum_audience_size": 500,
+      "matching_latency_hours": { "min": 1, "max": 24 }
+    },
     "conversion_tracking": {
       "multi_source_event_dedup": false,
       "supported_event_types": ["purchase", "lead", "add_to_cart", "view_content"],
@@ -586,6 +604,7 @@ This tells buyers:
 - **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
 - **Metro targeting**: Nielsen DMA only (US market)
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
+- **Audience targeting**: Accepts hashed email, hashed phone, UID2, and RampID; minimum matched audience size of 500; matching latency 1–24 hours
 - **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
 - **Extensions**: Scope3 sustainability data in `ext.scope3`
 
