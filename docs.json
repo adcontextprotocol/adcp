@@ -923,9 +923,6 @@
         "version": "2.5",
         "groups": [
           {
-            "group": "Documentation",
-            "pages": [
-          {
             "group": "Getting Started",
             "expanded": false,
             "pages": [
@@ -1104,8 +1101,6 @@
             "expanded": false,
             "pages": [
               "dist/docs/2.5.3/community/working-group"
-            ]
-          }
             ]
           }
         ]
