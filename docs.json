@@ -13,11 +13,11 @@
     "twitter:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png"
   },
   "logo": {
-    "light": "/logo/AAo-dark.svg",
-    "dark": "/logo/AAo.svg",
+    "light": "/logo/sage.svg",
+    "dark": "/logo/sage.svg",
     "href": "https://agenticadvertising.org"
   },
-  "favicon": "/logo/AAo.svg",
+  "favicon": "/logo/sage.svg",
   "theme": "mint",
   "colors": {
     "primary": "#047857",
@@ -67,11 +67,14 @@
         "version": "3.0-rc",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Documentation",
             "pages": [
-              "docs/intro",
-              "docs/faq",
-              "docs/quickstart",
+          "docs/intro",
+          {
+            "group": "Building with AdCP",
+            "expanded": false,
+            "pages": [
+              "docs/building/index",
               {
                 "group": "AdCP 3.0",
                 "expanded": false,
@@ -89,20 +92,7 @@
                   "docs/reference/migration/audiences",
                   "docs/reference/migration/attribution"
                 ]
-              }
-            ]
-          },
-          {
-            "group": "Understanding Agentic Advertising",
-            "pages": [
-              "docs/guides/buying-ai-media",
-              "docs/learning/overview"
-            ]
-          },
-          {
-            "group": "Building with AdCP",
-            "pages": [
-              "docs/building/index",
+              },
               "docs/protocol/architecture",
               {
                 "group": "Understanding AdCP",
@@ -158,6 +148,7 @@
             "expanded": false,
             "pages": [
               "docs/guides/index",
+              "docs/guides/buying-ai-media",
               "docs/guides/commerce-media",
               "docs/guides/ai-media",
               "docs/guides/ai-media-networks",
@@ -169,7 +160,11 @@
             ]
           },
           {
-            "group": "Media Buy Protocol",
+            "group": "Protocol",
+            "expanded": false,
+            "pages": [
+          {
+            "group": "Media Buy",
             "expanded": false,
             "pages": [
               "docs/media-buy/index",
@@ -222,7 +217,7 @@
             ]
           },
           {
-            "group": "Creative Protocol",
+            "group": "Creative",
             "expanded": false,
             "pages": [
               "docs/creative/index",
@@ -307,7 +302,7 @@
             ]
           },
           {
-            "group": "Governance Protocol",
+            "group": "Governance",
             "expanded": false,
             "pages": [
               "docs/governance/overview",
@@ -379,7 +374,7 @@
             ]
           },
           {
-            "group": "Brand Protocol",
+            "group": "Brand",
             "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
@@ -401,7 +396,7 @@
             ]
           },
           {
-            "group": "Signals Protocol",
+            "group": "Signals",
             "expanded": false,
             "pages": [
               "docs/signals/overview",
@@ -417,7 +412,10 @@
                 ]
               }
             ]
+          }
+            ]
           },
+          "docs/faq",
           {
             "group": "Reference",
             "expanded": false,
@@ -487,6 +485,8 @@
                   "docs/learning/policies/refund"
                 ]
               }
+            ]
+          }
             ]
           }
         ]
@@ -495,11 +495,14 @@
         "version": "latest",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Documentation",
             "pages": [
-              "docs/intro",
-              "docs/faq",
-              "docs/quickstart",
+          "docs/intro",
+          {
+            "group": "Building with AdCP",
+            "expanded": false,
+            "pages": [
+              "docs/building/index",
               {
                 "group": "AdCP 3.0",
                 "expanded": false,
@@ -517,20 +520,7 @@
                   "docs/reference/migration/audiences",
                   "docs/reference/migration/attribution"
                 ]
-              }
-            ]
-          },
-          {
-            "group": "Understanding Agentic Advertising",
-            "pages": [
-              "docs/guides/buying-ai-media",
-              "docs/learning/overview"
-            ]
-          },
-          {
-            "group": "Building with AdCP",
-            "pages": [
-              "docs/building/index",
+              },
               "docs/protocol/architecture",
               {
                 "group": "Understanding AdCP",
@@ -586,6 +576,7 @@
             "expanded": false,
             "pages": [
               "docs/guides/index",
+              "docs/guides/buying-ai-media",
               "docs/guides/commerce-media",
               "docs/guides/ai-media",
               "docs/guides/ai-media-networks",
@@ -597,7 +588,11 @@
             ]
           },
           {
-            "group": "Media Buy Protocol",
+            "group": "Protocol",
+            "expanded": false,
+            "pages": [
+          {
+            "group": "Media Buy",
             "expanded": false,
             "pages": [
               "docs/media-buy/index",
@@ -650,7 +645,7 @@
             ]
           },
           {
-            "group": "Creative Protocol",
+            "group": "Creative",
             "expanded": false,
             "pages": [
               "docs/creative/index",
@@ -735,7 +730,7 @@
             ]
           },
           {
-            "group": "Governance Protocol",
+            "group": "Governance",
             "expanded": false,
             "pages": [
               "docs/governance/overview",
@@ -807,7 +802,7 @@
             ]
           },
           {
-            "group": "Brand Protocol",
+            "group": "Brand",
             "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
@@ -829,7 +824,7 @@
             ]
           },
           {
-            "group": "Signals Protocol",
+            "group": "Signals",
             "expanded": false,
             "pages": [
               "docs/signals/overview",
@@ -845,7 +840,10 @@
                 ]
               }
             ]
+          }
+            ]
           },
+          "docs/faq",
           {
             "group": "Reference",
             "expanded": false,
@@ -917,13 +915,19 @@
               }
             ]
           }
+            ]
+          }
         ]
       },
       {
         "version": "2.5",
         "groups": [
           {
+            "group": "Documentation",
+            "pages": [
+          {
             "group": "Getting Started",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/intro",
               "dist/docs/2.5.3/quickstart"
@@ -931,6 +935,7 @@
           },
           {
             "group": "Protocols",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/protocols/getting-started",
               "dist/docs/2.5.3/protocols/core-concepts",
@@ -950,7 +955,7 @@
             ]
           },
           {
-            "group": "Signals Protocol",
+            "group": "Signals",
             "expanded": false,
             "pages": [
               "dist/docs/2.5.3/signals/overview",
@@ -966,12 +971,13 @@
           },
           {
             "group": "Curation Protocol",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/curation/coming-soon"
             ]
           },
           {
-            "group": "Media Buy Protocol",
+            "group": "Media Buy",
             "expanded": false,
             "pages": [
               "dist/docs/2.5.3/media-buy/index",
@@ -1038,6 +1044,7 @@
           },
           {
             "group": "Creative",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/creative/index",
               "dist/docs/2.5.3/creative/formats",
@@ -1094,8 +1101,11 @@
           },
           {
             "group": "Community",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/community/working-group"
+            ]
+          }
             ]
           }
         ]
