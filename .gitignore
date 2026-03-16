@@ -17,6 +17,7 @@ server/node_modules
 .docusaurus
 .cache-loader
 *.tsbuildinfo
+.codex/
 
 # Misc
 .DS_Store
