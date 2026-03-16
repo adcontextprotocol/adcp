@@ -40,7 +40,8 @@
     "update-schema-versions": "echo 'Schema versioning is now handled by build:schemas script'",
     "release": "npm run version && npm test && npm run build && git add -A && git commit -m 'Version packages' && git push",
     "verify-version-sync": "node scripts/verify-version-sync.cjs",
-    "check:seo": "node scripts/check-seo-metadata.cjs"
+    "check:seo": "node scripts/check-seo-metadata.cjs",
+    "check:owned-links": "node scripts/check-owned-links.js"
   },
   "dependencies": {
     "@adcp/client": "^4.8.0",
