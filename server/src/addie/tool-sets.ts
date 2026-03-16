@@ -36,6 +36,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'capture_learning',    // Save insights from conversations
   'web_search',          // Built-in Claude tool, always available
   'set_outreach_preference', // Users can always opt out of proactive outreach
+  'search_image_library', // Illustrations to enrich explanations — not topic-dependent
 ];
 
 /**
