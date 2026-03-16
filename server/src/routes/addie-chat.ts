@@ -96,6 +96,10 @@ import {
   PROPERTY_TOOLS,
   createPropertyToolHandlers,
 } from "../addie/mcp/property-tools.js";
+import {
+  IMAGE_TOOLS,
+  createImageToolHandlers,
+} from "../addie/mcp/image-tools.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
@@ -110,6 +114,8 @@ import {
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
+import * as relationshipDb from "../db/relationship-db.js";
+import * as personEvents from "../db/person-events-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -479,13 +485,14 @@ async function prepareRequestWithMemberTools(
 
   // Create per-request tools (same tools as Slack, minus Slack-specific ones)
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
-  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS];
+  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
     ...createMemberToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext),
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
     ...createBillingToolHandlers(memberContext),
+    ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
   ]);
 
   // Certification tools (for authenticated users)
@@ -701,6 +708,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
       });
+
+      // Record inbound message in the relationship system
+      if (userId) {
+        try {
+          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
+          await relationshipDb.recordPersonMessage(personId, 'web');
+          await relationshipDb.deriveSentiment(personId);
+          await personEvents.recordEvent(personId, 'message_received', {
+            channel: 'web',
+            data: { source: 'web_chat', text_length: message.length },
+          });
+        } catch {
+          // Not all web users have person_relationships records — that's OK
+        }
+      }
 
       // Build context from history, passing tool calls as structured
       // data so they are reconstructed as proper tool_use/tool_result API blocks.
@@ -935,6 +957,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
       });
+
+      // Record inbound message in the relationship system
+      if (userId) {
+        try {
+          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
+          await relationshipDb.recordPersonMessage(personId, 'web');
+          await relationshipDb.deriveSentiment(personId);
+          await personEvents.recordEvent(personId, 'message_received', {
+            channel: 'web',
+            data: { source: 'web_chat_stream', text_length: message.length },
+          });
+        } catch {
+          // Not all web users have person_relationships records
+        }
+      }
 
       // Build context messages, passing tool calls as structured data
       // Token-aware trimming in processMessageStream handles length; no hard slice here.

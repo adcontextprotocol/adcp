@@ -5,7 +5,7 @@
  * and that the system respects cooldowns after the welcome.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { getPool, initializeDatabase, closeDatabase } from '../../../src/db/client.js';
 import { runMigrations } from '../../../src/db/migrate.js';
 import type { Pool } from 'pg';
@@ -64,26 +64,20 @@ describe('Welcome flow', () => {
     clock.uninstall();
   });
 
-  it('welcomes a Slack prospect on first outreach cycle', async () => {
+  it('does not welcome a Slack prospect with no engagement signals', async () => {
     const ids = await engine.seedProfiles([slackNewJoiner]);
     const personId = ids.get('slack-new-joiner')!;
 
     const result = await engine.runOutreachCycle({ limit: 5 });
 
-    expect(result.sent).toBeGreaterThanOrEqual(1);
+    expect(result.sent).toBe(0);
+    expect(interceptors.slack.sentMessages.length).toBe(0);
 
-    // Verify a Slack message was intercepted
-    expect(interceptors.slack.sentMessages.length).toBeGreaterThanOrEqual(1);
-
-    // Verify the relationship was updated
-    const relationship = await engine.getRelationship(personId);
-    expect(relationship).not.toBeNull();
-    expect(relationship!.last_addie_message_at).not.toBeNull();
-
-    // Verify person_events recorded the send
     const events = await engine.getPersonEvents(personId);
-    const sendEvents = events.filter(e => e.event_type === 'message_sent');
-    expect(sendEvents.length).toBeGreaterThanOrEqual(1);
+    const skippedEvents = events.filter(
+      e => e.event_type === 'outreach_skipped' && e.data?.reason === 'no meaningful engagement signal yet'
+    );
+    expect(skippedEvents.length).toBeGreaterThanOrEqual(1);
   });
 
   it('does not welcome the same person twice on consecutive cycles', async () => {
@@ -104,14 +98,50 @@ describe('Welcome flow', () => {
     expect(secondSendCount).toBe(firstSendCount);
   });
 
-  it('welcomes an email-only prospect via email', async () => {
+  it('does not email a cold prospect with no engagement signals', async () => {
     await engine.seedProfiles([coldEmailProspect]);
 
-    await engine.runOutreachCycle({ limit: 5 });
+    const result = await engine.runOutreachCycle({ limit: 5 });
 
-    // Verify email was sent (not Slack)
-    expect(interceptors.resend.sentEmails.length).toBeGreaterThanOrEqual(1);
-    expect(interceptors.resend.sentEmails[0]?.to).toBe('alex@meridianmedia.example');
+    expect(result.sent).toBe(0);
+    expect(interceptors.resend.sentEmails.length).toBe(0);
+  });
+
+  it('persists proactive Slack messages into unified thread history', async () => {
+    const ids = await engine.seedProfiles([{
+      id: 'engaged-slack-prospect',
+      description: 'Slack prospect who linked an account and is eligible for a welcome',
+      relationship: {
+        slack_user_id: 'SIM_U_ENGAGED01',
+        workos_user_id: 'sim_workos_engaged01',
+        email: 'engaged@example.com',
+        display_name: 'Engaged Prospect',
+        stage: 'prospect',
+      },
+    }]);
+    const personId = ids.get('engaged-slack-prospect')!;
+
+    const result = await engine.runOutreachCycle({ limit: 5 });
+
+    expect(result.sent).toBeGreaterThanOrEqual(1);
+    expect(interceptors.slack.sentMessages.length).toBeGreaterThanOrEqual(1);
+
+    const threadResult = await pool.query<{
+      content: string;
+      role: string;
+      external_id: string;
+    }>(
+      `SELECT m.content, m.role, t.external_id
+       FROM addie_thread_messages m
+       JOIN addie_threads t ON t.thread_id = m.thread_id
+       WHERE t.person_id = $1
+       ORDER BY m.created_at DESC`,
+      [personId]
+    );
+
+    expect(threadResult.rows[0]?.role).toBe('assistant');
+    expect(threadResult.rows[0]?.content).toContain('Welcome');
+    expect(threadResult.rows[0]?.external_id).toContain('SIM_DM_SIM_U_ENGAGED01:');
   });
 
   it('respects contact_preference for channel routing', async () => {

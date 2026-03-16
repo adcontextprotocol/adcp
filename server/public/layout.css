@@ -332,20 +332,35 @@ body {
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--space-10);
   max-width: 1100px;
   margin: 0 auto;
 }
 
+.member-logos-bar a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 40px;
+}
+
 .member-logos-bar img {
-  height: 36px;
+  max-height: 36px;
+  max-width: 110px;
   width: auto;
+  height: auto;
+  object-fit: contain;
   opacity: 0.7;
   transition: opacity 0.2s;
 }
 
 .member-logos-bar img:hover {
   opacity: 1;
+}
+
+.member-logos-bar img[src$=".svg"] {
+  max-height: 32px;
 }
 
 /* =============================================================================

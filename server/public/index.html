@@ -30,7 +30,7 @@
 }
 </script>
 </head>
-<body>
+<body data-nav-theme="light">
 
 <!-- Shared navigation -->
 <div id="adcp-nav">
@@ -38,6 +38,7 @@
     <nav>
       <a href="/certification">Academy</a>
       <a href="/chat">Ask Addie</a>
+      <a href="/registry">Registry</a>
       <a href="/membership">Get started</a>
       <a href="https://docs.adcontextprotocol.org">AdCP Docs</a>
       <a href="/about">About</a>
@@ -133,13 +134,7 @@
 <section class="member-logos-section">
   <p class="member-logos-label">Our members</p>
   <div class="member-logos-bar" id="member-logos">
-    <a href="/members/ebiquity" title="Ebiquity"><img src="/img/members/ebiquity.png" alt="Ebiquity"></a>
-    <a href="/members/optable" title="Optable"><img src="/img/members/optable.png" alt="Optable"></a>
-    <a href="/members/pubmatic" title="PubMatic"><img src="/img/members/pubmatic.png" alt="PubMatic"></a>
-    <a href="/members/scope3" title="Scope3"><img src="/img/members/scope3-bright.png" alt="Scope3"></a>
-    <a href="/members/swivel" title="Swivel"><img src="/img/members/swivel.png" alt="Swivel"></a>
-    <a href="/members/triton-digital" title="Triton Digital"><img src="/img/members/triton-digital.png" alt="Triton Digital"></a>
-    <a href="/members/yahoo" title="Yahoo"><img src="/img/members/yahoo-purple.png" alt="Yahoo"></a>
+    <noscript><a href="/members">View our members &rarr;</a></noscript>
   </div>
 </section>
 
@@ -189,17 +184,15 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     try {
-      const response = await fetch('/api/members?limit=100');
+      const response = await fetch('/api/members/carousel');
       if (!response.ok) throw new Error('Failed to load members');
 
       const data = await response.json();
-      const members = data.members || [];
-
-      const membersWithLogos = members.filter(m => m.show_in_carousel && m.resolved_brand?.logo_url);
+      const members = (data.members || []).filter(m => m.resolved_brand?.logo_url);
 
       const memberLogosEl = document.getElementById('member-logos');
-      if (membersWithLogos.length > 0) {
-        memberLogosEl.innerHTML = membersWithLogos.map(member => `
+      if (members.length > 0) {
+        memberLogosEl.innerHTML = members.map(member => `
           <a href="/members/${encodeURIComponent(member.slug)}" title="${escapeHtml(member.display_name)}">
             <img src="${escapeHtml(member.resolved_brand.logo_url)}" alt="${escapeHtml(member.display_name)}">
           </a>

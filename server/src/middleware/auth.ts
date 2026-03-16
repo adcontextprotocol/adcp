@@ -397,7 +397,7 @@ function hasValidAdminApiKey(req: Request): boolean {
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+  const isHtmlRequest = req.accepts('html') && !req.originalUrl.startsWith('/api/');
 
   // Check for static admin API key first (for internal tooling)
   if (hasValidAdminApiKey(req)) {
@@ -845,7 +845,7 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
  * Or checks if user's email is in ADMIN_EMAILS list
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+  const isHtmlRequest = req.accepts('html') && !req.originalUrl.startsWith('/api/');
 
   // Check for static admin API key (set by requireAuth)
   if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
@@ -1008,7 +1008,13 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
  * Kitchen cabinet members can access /manage pages; admins pass automatically.
  */
 export async function requireManage(req: Request, res: Response, next: NextFunction) {
-  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+  const isHtmlRequest = req.accepts('html') && !req.originalUrl.startsWith('/api/');
+
+  // Static admin API key has manage access even in dev mode.
+  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
+    logger.debug({ path: req.path, method: req.method }, 'Manage access via static admin API key');
+    return next();
+  }
 
   // Dev mode: check isManage or isAdmin flag
   if (DEV_MODE_ENABLED) {
@@ -1066,12 +1072,6 @@ export async function requireManage(req: Request, res: Response, next: NextFunct
         current_user: devUser.email,
       });
     }
-    return next();
-  }
-
-  // Static admin API key has manage access
-  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
-    logger.debug({ path: req.path, method: req.method }, 'Manage access via static admin API key');
     return next();
   }
 

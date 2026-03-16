@@ -3,96 +3,162 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent registry - AgenticAdvertising.org</title>
+    <title>Agents | AgenticAdvertising.org</title>
+    <meta name="description" content="Sales, creative, and signals agents implementing AdCP.">
     <link rel="icon" href="/AAo.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
+    <link rel="stylesheet" href="/layout.css">
     <style>
-        /* =============================================================================
-           Registry Page Styles
-           Uses design system variables - see /design-system.css for tokens
-           Registry uses success/green color as accent
-           ============================================================================= */
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: var(--font-sans);
-            line-height: var(--leading-normal);
-            color: var(--color-text-body);
-            background: var(--color-bg-page);
+            background: #fff;
             padding-top: var(--nav-height);
         }
-        header {
-            background: linear-gradient(135deg, var(--color-success-500) 0%, var(--color-success-600) 100%);
-            color: white;
-            padding: var(--space-8) 0;
-            text-align: center;
+
+        .container {
+            max-width: var(--container-xl);
+            margin: 0 auto;
+            padding: var(--space-8) var(--space-4);
         }
-        h1 { font-size: var(--text-4xl); margin-bottom: var(--space-2); }
-        .subtitle { font-size: var(--text-lg); opacity: 0.9; }
-        .container { max-width: var(--container-2xl); margin: var(--space-8) auto; padding: 0 var(--space-4); }
 
-
-        /* Search and Filters */
-        .search-filters {
+        /* Search and filters */
+        .search-section {
             background: var(--color-bg-card);
+            border-radius: var(--card-radius);
             padding: var(--space-6);
-            border-radius: var(--radius-lg);
             margin-bottom: var(--space-8);
             box-shadow: var(--shadow-sm);
         }
         .search-box { margin-bottom: var(--space-4); }
         .search-box input {
             width: 100%;
-            padding: var(--space-3);
+            padding: var(--space-3) var(--space-4);
             border: var(--border-2) solid var(--color-border);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-lg);
             font-size: var(--text-base);
+            transition: var(--transition-colors);
         }
-        .search-box input:focus { outline: none; border-color: var(--color-success-500); }
-        .filter-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; }
-        .filter-group { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
-        .filter-group label { font-weight: var(--font-semibold); font-size: var(--text-sm); color: var(--color-text-muted); }
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--color-brand);
+            box-shadow: 0 0 0 3px var(--color-primary-100);
+        }
+        .filter-row {
+            display: flex;
+            gap: var(--space-4);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-group {
+            display: flex;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-group label {
+            font-weight: var(--font-semibold);
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
+        }
         .filter-btn {
             padding: var(--space-2) var(--space-4);
-            background: var(--color-gray-50);
+            background: var(--color-gray-100);
             border: var(--border-2) solid var(--color-border);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-lg);
             cursor: pointer;
             font-size: var(--text-sm);
             transition: var(--transition-all);
         }
-        .filter-btn:hover { border-color: var(--color-success-500); color: var(--color-success-500); }
-        .filter-btn.active { background: var(--color-success-500); border-color: var(--color-success-500); color: white; }
+        .filter-btn:hover {
+            border-color: var(--color-brand);
+        }
+        .filter-btn.active {
+            background: var(--color-primary-100);
+            border-color: var(--color-brand);
+            color: var(--color-brand);
+        }
 
-        /* Agent Grid */
-        .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: var(--space-6); }
+        /* Agent grid */
+        .agent-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: var(--space-6);
+        }
         .agent-card {
             background: var(--color-bg-card);
             border-radius: var(--radius-lg);
             padding: var(--space-6);
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition-all);
+            border: 1px solid var(--color-border);
+            transition: border-color 0.15s ease;
             cursor: pointer;
         }
-        .agent-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
-        .agent-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4); }
+        .agent-card:hover {
+            border-color: var(--color-brand);
+        }
+        .agent-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: var(--space-4);
+        }
         .agent-title { flex: 1; }
-        .agent-name { font-size: var(--text-lg); font-weight: var(--font-semibold); margin-bottom: var(--space-1); }
-        .agent-url { font-size: var(--text-sm); color: var(--color-success-500); }
+        .agent-name {
+            font-size: var(--text-lg);
+            font-weight: var(--font-semibold);
+            color: var(--color-text-heading);
+            margin-bottom: var(--space-1);
+        }
+        .agent-url {
+            font-size: var(--text-sm);
+            color: var(--color-brand);
+        }
         .status-badge {
             padding: var(--space-1) var(--space-3);
             border-radius: var(--radius-full);
             font-size: var(--text-xs);
             font-weight: var(--font-semibold);
             text-transform: uppercase;
+            white-space: nowrap;
         }
-        .status-badge.online { background: var(--color-success-100); color: var(--color-success-800); }
-        .status-badge.offline { background: var(--color-error-100); color: var(--color-error-700); }
-        .agent-meta { display: flex; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-        .meta-item { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
-        .meta-value { font-weight: var(--font-semibold); color: var(--color-text-heading); }
-        .agent-properties { margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-border-light); }
-        .property-tags { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+        .status-badge.online {
+            background: var(--color-success-100);
+            color: var(--color-success-700);
+        }
+        .status-badge.offline {
+            background: var(--color-error-100);
+            color: var(--color-error-700);
+        }
+        .agent-description {
+            color: var(--color-text-muted);
+            font-size: var(--text-sm);
+            margin-bottom: var(--space-2);
+        }
+        .agent-meta {
+            display: flex;
+            gap: var(--space-4);
+            flex-wrap: wrap;
+        }
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
+        }
+        .meta-value {
+            font-weight: var(--font-semibold);
+            color: var(--color-text-heading);
+        }
+        .agent-properties {
+            margin-top: var(--space-4);
+            padding-top: var(--space-4);
+            border-top: 1px solid var(--color-border-light);
+        }
+        .property-tags {
+            display: flex;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+            margin-top: var(--space-2);
+        }
         .property-tag {
             padding: var(--space-1) var(--space-3);
             background: var(--color-purple-100);
@@ -101,7 +167,12 @@
             font-size: var(--text-xs);
             font-weight: var(--font-semibold);
         }
-        .formats-list { margin-top: var(--space-2); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+        .formats-list {
+            margin-top: var(--space-2);
+            display: flex;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+        }
         .format-badge {
             padding: var(--space-1) var(--space-3);
             background: var(--color-primary-100);
@@ -111,1307 +182,1262 @@
             font-weight: var(--font-semibold);
         }
 
-        /* Detail Page */
+        /* Detail view */
+        .detail-header {
+            background: var(--color-bg-subtle);
+            padding: var(--space-8) 0 var(--space-6);
+        }
+        .detail-header h2 {
+            font-size: var(--text-3xl);
+            margin-bottom: var(--space-2);
+            color: var(--color-text-heading);
+        }
         .back-btn {
             display: inline-flex;
             align-items: center;
             gap: var(--space-2);
-            padding: var(--space-3) var(--space-6);
-            background: var(--color-bg-card);
-            border: var(--border-2) solid var(--color-success-500);
-            color: var(--color-success-500);
-            border-radius: var(--radius-md);
+            color: var(--color-brand);
             text-decoration: none;
             font-weight: var(--font-semibold);
-            margin-bottom: var(--space-8);
+            font-size: var(--text-sm);
+            margin-bottom: var(--space-4);
         }
-        .back-btn:hover { background: var(--color-success-500); color: white; }
-        .detail-hero {
-            background: linear-gradient(135deg, var(--color-success-500) 0%, var(--color-success-600) 100%);
-            color: white;
-            padding: var(--space-12) 0;
-        }
-        .detail-hero h2 { font-size: var(--text-3xl); margin-bottom: var(--space-2); }
+        .back-btn:hover { text-decoration: underline; }
+
         .detail-content {
             background: var(--color-bg-card);
-            margin-top: calc(-1 * var(--space-8));
-            border-radius: var(--card-radius) var(--card-radius) 0 0;
+            border-radius: var(--card-radius);
             padding: var(--space-8);
+            border: 1px solid var(--color-border);
         }
-        .detail-section { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: var(--border-1) solid var(--color-border-light); }
-        .detail-section:last-child { border-bottom: none; }
+        .detail-section {
+            margin-bottom: var(--space-8);
+            padding-bottom: var(--space-8);
+            border-bottom: 1px solid var(--color-border-light);
+        }
+        .detail-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         .detail-section h3 {
             font-size: var(--text-xl);
             margin-bottom: var(--space-4);
-            color: var(--color-success-500);
+            color: var(--color-text-heading);
+        }
+
+        /* Status banner */
+        .status-banner {
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-8);
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: var(--space-2);
+            color: white;
         }
-        .tools-list, .publishers-grid { display: grid; gap: var(--space-4); }
-        .tool-item, .publisher-item {
-            background: var(--color-gray-50);
-            padding: var(--space-4);
-            border-radius: var(--radius-md);
-            border-left: 3px solid var(--color-success-500);
-        }
-        .tool-name { font-weight: var(--font-semibold); font-family: var(--font-mono); margin-bottom: var(--space-1); }
-        .tool-description { font-size: var(--text-sm); color: var(--color-text-muted); }
-        .publisher-domain { font-weight: var(--font-semibold); margin-bottom: var(--space-1); }
-        .info-box { background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); }
-        .loading { text-align: center; padding: var(--space-12); color: var(--color-text-muted); }
-        .error-text { color: var(--color-error-500); font-size: var(--text-sm); }
-        .hidden { display: none !important; }
-        .add-record-cta { margin-top: var(--space-4); text-align: center; }
-        .view { display: none; }
-        .view.active { display: block; }
-
-        footer {
-            background: var(--color-bg-card);
-            border-top: var(--border-2) solid var(--color-border-light);
-            padding: var(--space-8);
-            margin-top: var(--space-12);
-        }
-        .footer-content {
-            max-width: var(--container-2xl);
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: var(--space-8);
-        }
-        .footer-section h3 { font-size: var(--text-lg); margin-bottom: var(--space-4); color: var(--color-success-500); }
-        .mcp-box {
-            background: var(--color-gray-50);
-            padding: var(--space-4);
-            border-radius: var(--radius-md);
-            border-left: 3px solid var(--color-success-500);
-        }
-        .mcp-box code {
-            background: var(--color-purple-100);
-            padding: var(--space-1) var(--space-2);
-            border-radius: var(--radius-sm);
-            font-family: var(--font-mono);
-            font-size: var(--text-sm);
-            color: var(--color-purple-700);
-        }
-        .mcp-url {
-            background: var(--color-purple-100);
-            padding: var(--space-3);
-            border-radius: var(--radius-md);
-            margin: var(--space-3) 0;
-            font-family: var(--font-mono);
-            font-size: var(--text-sm);
-            word-break: break-all;
-            color: var(--color-purple-700);
-        }
-        .footer-links {
-            text-align: center;
-            margin-top: var(--space-8);
-            padding-top: var(--space-8);
-            border-top: var(--border-1) solid var(--color-border-light);
-            color: var(--color-text-muted);
-        }
-        .footer-links a { color: var(--color-success-500); text-decoration: none; margin: 0 var(--space-4); }
-
-
-        /* Collapsible details */
-        details[open] summary span { transform: rotate(90deg); }
-        details summary { user-select: none; }
-        details summary::-webkit-details-marker { display: none; }
-
-        /* Dynamic JS template styles */
-        .agent-description { color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-2); }
-        .property-section-small { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
-        .format-discovery-note { margin-top: var(--space-4); font-size: var(--text-xs); color: var(--color-text-light); }
-
-        /* Status banner styles */
-        .status-banner { padding: var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-8); display: flex; justify-content: space-between; align-items: center; color: white; }
         .status-banner--online { background: var(--color-success-500); }
         .status-banner--offline { background: var(--color-error-500); }
         .status-banner__text { font-size: var(--text-lg); font-weight: var(--font-semibold); }
         .status-banner__meta { opacity: 0.9; margin-left: var(--space-4); }
         .status-banner__time { opacity: 0.9; font-size: var(--text-sm); }
 
-        /* Compliance badge styles */
-        .compliance-badge { border-left: 4px solid; padding: var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-8); display: flex; align-items: center; gap: var(--space-3); }
+        /* Compliance badge */
+        .compliance-badge {
+            border-left: 4px solid;
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-8);
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
         .compliance-badge--compliant { background: var(--color-success-50); border-color: var(--color-success-500); }
         .compliance-badge--incomplete { background: var(--color-warning-50); border-color: var(--color-warning-500); }
-        .compliance-badge__icon { font-size: var(--text-2xl); }
         .compliance-badge__title { font-size: var(--text-lg); font-weight: var(--font-semibold); }
         .compliance-badge__subtitle { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
 
-        /* Detail section styles */
-        .detail-section__summary { font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--color-success-500); list-style: none; display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+        /* Collapsible detail sections */
+        .detail-section__summary {
+            font-size: var(--text-xl);
+            font-weight: var(--font-semibold);
+            color: var(--color-text-heading);
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            cursor: pointer;
+        }
         .detail-section__arrow { transition: transform 0.2s; }
+        details[open] .detail-section__arrow { transform: rotate(90deg); }
         .detail-section__content { margin-top: var(--space-4); }
+        details summary::-webkit-details-marker { display: none; }
 
-        /* Publishers grid styles */
+        /* Tools list */
+        .tools-summary {
+            background: var(--color-info-50);
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            border-left: 3px solid var(--color-info-500);
+            margin-bottom: var(--space-6);
+        }
+        .tools-summary__count { font-weight: var(--font-semibold); }
+        .tools-summary__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
+        .tools-list { display: grid; gap: var(--space-4); }
+        .tool-item {
+            background: var(--color-gray-50);
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            border-left: 3px solid var(--color-border);
+        }
+        .tool-item__header { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-2); }
+        .tool-name { font-weight: var(--font-semibold); font-family: var(--font-mono); margin-bottom: var(--space-1); }
+        .tool-description { font-size: var(--text-sm); color: var(--color-text-muted); }
+        .tool-schema-toggle { font-size: var(--text-xs); color: var(--color-brand); cursor: pointer; }
+        .tool-schema-pre { margin-top: var(--space-2); background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto; font-size: var(--text-xs); max-height: 200px; }
+
+        /* Publishers grid in detail */
+        .publishers-grid { display: grid; gap: var(--space-4); }
         .publishers-group { margin-bottom: var(--space-6); }
         .publishers-group__title { font-size: var(--text-base); margin-bottom: var(--space-4); }
         .publishers-group__title--verified { color: var(--color-success-500); }
         .publishers-group__title--unverified { color: var(--color-error-500); }
         .publishers-group__title--unchecked { color: var(--color-warning-500); }
-
+        .publisher-item {
+            background: var(--color-gray-50);
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+        }
         .publisher-item--verified { border-left: 3px solid var(--color-success-500); }
         .publisher-item--unverified { border-left: 3px solid var(--color-error-500); background: var(--color-error-50); }
         .publisher-item--unchecked { border-left: 3px solid var(--color-warning-500); }
-
-        .publisher-verify-link { color: var(--color-success-500); text-decoration: none; font-size: var(--text-xs); white-space: nowrap; }
+        .publisher-domain { font-weight: var(--font-semibold); margin-bottom: var(--space-1); }
+        .publisher-verify-link { color: var(--color-brand); text-decoration: none; font-size: var(--text-xs); white-space: nowrap; }
         .publisher-verify-link--error { color: var(--color-error-500); }
-
         .publisher-warning { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-error-700); background: var(--color-error-100); padding: var(--space-2); border-radius: var(--radius-sm); }
-
-        .property-metadata-toggle { margin-top: var(--space-3); font-size: var(--text-xs); cursor: pointer; color: var(--color-success-500); }
+        .property-metadata-toggle { margin-top: var(--space-3); font-size: var(--text-xs); cursor: pointer; color: var(--color-brand); }
         .property-metadata-pre { margin-top: var(--space-2); background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto; }
 
-        /* Tools section styles */
-        .tools-summary { background: var(--color-info-50); padding: var(--space-4); border-radius: var(--radius-md); border-left: 3px solid var(--color-info-500); margin-bottom: var(--space-6); }
-        .tools-summary__count { font-weight: var(--font-semibold); }
-        .tools-summary__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
+        /* Products */
+        .products-grid { display: grid; gap: var(--space-4); }
+        .product-card {
+            background: var(--color-bg-subtle);
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            border-left: 3px solid var(--color-border);
+        }
+        .product-card__name { font-weight: var(--font-semibold); margin-bottom: var(--space-2); }
+        .product-card__desc { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+        .product-card__meta { font-size: var(--text-xs); color: var(--color-text-muted); }
+        .agent-params-required {
+            background: var(--color-warning-50);
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            border-left: 3px solid var(--color-warning-500);
+        }
+        .agent-params-required__title { font-weight: var(--font-semibold); }
+        .agent-params-required__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
 
-        .tool-item__header { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-2); }
-        .tool-schema-toggle { font-size: var(--text-xs); color: var(--color-success-500); cursor: pointer; }
-        .tool-schema-pre { margin-top: var(--space-2); background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto; font-size: var(--text-xs); max-height: 200px; }
-
-        /* Format card styles */
+        /* Format cards */
         .format-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
-        .format-card-item { background: var(--color-bg-card); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; transition: var(--transition-all); cursor: pointer; }
-        .format-card-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .format-card-item {
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            transition: border-color 0.15s ease;
+            cursor: pointer;
+        }
+        .format-card-item:hover { border-color: var(--color-brand); }
         .format-card-preview { width: 100%; height: 200px; background: var(--color-bg-subtle); display: flex; align-items: center; justify-content: center; overflow: hidden; }
         .format-card-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
         .format-card-preview__placeholder { color: var(--color-text-light); font-size: var(--text-4xl); }
         .format-card-body { padding: var(--space-4); }
         .format-card-name { font-weight: var(--font-semibold); margin-bottom: var(--space-2); color: var(--color-text-heading); }
         .format-card-dimensions { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1); }
-        .format-card-type { display: inline-block; padding: var(--space-1) var(--space-2); background: var(--color-brand-50); color: var(--color-brand); border-radius: var(--radius-sm); font-size: var(--text-xs); text-transform: capitalize; margin-top: var(--space-2); }
+        .format-card-type { display: inline-block; padding: var(--space-1) var(--space-2); background: var(--color-primary-100); color: var(--color-brand); border-radius: var(--radius-sm); font-size: var(--text-xs); text-transform: capitalize; margin-top: var(--space-2); }
 
-        /* Format filter buttons */
+        /* Format filters */
         .format-filters { margin-bottom: var(--space-4); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
         .format-filters__label { font-size: var(--text-sm); font-weight: var(--font-semibold); }
-        .format-filter-btn { padding: var(--space-2) var(--space-4); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); cursor: pointer; font-size: var(--text-xs); text-transform: capitalize; transition: var(--transition-all); }
-        .format-filter-btn.active { background: var(--color-success-500); color: white; border-color: var(--color-success-500); }
+        .format-filter-btn {
+            padding: var(--space-2) var(--space-4);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            background: var(--color-bg-card);
+            cursor: pointer;
+            font-size: var(--text-xs);
+            text-transform: capitalize;
+            transition: var(--transition-all);
+        }
+        .format-filter-btn.active {
+            background: var(--color-primary-100);
+            color: var(--color-brand);
+            border-color: var(--color-brand);
+        }
 
-        /* Products grid styles */
-        .products-grid { display: grid; gap: var(--space-4); }
-        .product-card { background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); border-left: 3px solid var(--color-success-500); }
-        .product-card__name { font-weight: var(--font-semibold); margin-bottom: var(--space-2); }
-        .product-card__desc { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-2); }
-        .product-card__meta { font-size: var(--text-xs); color: var(--color-text-muted); }
-
-        /* Agent requires params box */
-        .agent-params-required { background: var(--color-warning-50); padding: var(--space-4); border-radius: var(--radius-md); border-left: 3px solid var(--color-warning-500); }
-        .agent-params-required__title { font-weight: var(--font-semibold); }
-        .agent-params-required__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
-
-        /* Agent info box styles */
-        .info-box__desc { margin-bottom: var(--space-4); font-size: var(--text-base); }
-        .info-box__grid { display: grid; gap: var(--space-3); }
-        .info-box__code { background: var(--color-brand-50); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); word-break: break-all; }
-        .info-box__contact { margin-top: var(--space-6); padding-top: var(--space-6); border-top: var(--border-1) solid var(--color-border); }
-        .info-box__contact-link { color: var(--color-success-500); }
-
-        /* Modal styles for format detail */
+        /* Format modal */
         .format-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-8); }
         .format-modal { background: var(--color-bg-card); border-radius: var(--radius-xl); max-width: 800px; max-height: 90vh; overflow: auto; box-shadow: var(--shadow-2xl); }
-        .format-modal__header { position: sticky; top: 0; background: var(--color-bg-card); border-bottom: var(--border-1) solid var(--color-border); padding: var(--space-6); display: flex; justify-content: space-between; align-items: center; }
+        .format-modal__header { position: sticky; top: 0; background: var(--color-bg-card); border-bottom: 1px solid var(--color-border); padding: var(--space-6); display: flex; justify-content: space-between; align-items: center; }
         .format-modal__title { margin: 0; font-size: var(--text-xl); }
         .format-modal__close { background: none; border: none; font-size: var(--text-2xl); cursor: pointer; color: var(--color-text-light); }
         .format-modal__body { padding: var(--space-6); }
         .format-modal__preview { margin-bottom: var(--space-6); text-align: center; }
-        .format-modal__preview img { max-width: 100%; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+        .format-modal__preview img { max-width: 100%; border-radius: var(--radius-lg); }
         .format-modal__desc { color: var(--color-text-muted); margin-bottom: var(--space-6); }
         .format-modal__meta { display: grid; gap: var(--space-4); margin-bottom: var(--space-6); }
         .format-modal__code { background: var(--color-bg-subtle); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); }
-        .format-modal__cta { display: inline-block; padding: var(--space-3) var(--space-6); background: var(--color-success-500); color: white; text-decoration: none; border-radius: var(--radius-md); margin-top: var(--space-4); }
+        .format-modal__cta { display: inline-block; padding: var(--space-3) var(--space-6); background: var(--color-brand); color: white; text-decoration: none; border-radius: var(--radius-md); margin-top: var(--space-4); }
+        .format-modal__cta:hover { background: var(--color-brand-hover); }
 
-        /* Error styling in tool errors */
+        /* Info box */
+        .info-box { background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); }
+        .info-box__desc { margin-bottom: var(--space-4); font-size: var(--text-base); }
+        .info-box__grid { display: grid; gap: var(--space-3); }
+        .info-box__code { background: var(--color-primary-100); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); word-break: break-all; }
+        .info-box__contact { margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--color-border); }
+        .info-box__contact-link { color: var(--color-brand); }
+
+        /* Error states */
         .tool-error-box { font-size: var(--text-xs); color: var(--color-error-600); padding: var(--space-2); background: var(--color-error-50); border-radius: var(--radius-sm); border-left: 3px solid var(--color-error-500); }
         .tool-error-box__title { font-weight: var(--font-semibold); }
         .tool-error-box__msg { font-size: var(--text-xs); color: var(--color-error-700); font-family: monospace; word-break: break-word; }
 
-        /* Footer link color */
-        .footer-resource-link { color: var(--color-success-500); text-decoration: none; }
+        .property-section-small { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+        .loading { text-align: center; padding: var(--space-12); color: var(--color-text-muted); }
+        .error-text { color: var(--color-error-500); font-size: var(--text-sm); }
+        .hidden { display: none !important; }
+        .view { display: none; }
+        .view.active { display: block; }
 
-        /* Skeleton shimmer animation */
+        /* Skeleton animation */
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        .skeleton-bg { background: linear-gradient(90deg, var(--color-bg-subtle) 25%, var(--color-border-light) 50%, var(--color-bg-subtle) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        .skeleton-bg {
+            background: linear-gradient(90deg, var(--color-bg-subtle) 25%, var(--color-border-light) 50%, var(--color-bg-subtle) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
 
-        @media (max-width: 768px) { .footer-content { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) {
+            .agent-grid { grid-template-columns: 1fr; }
+            .format-card-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
-    <!-- Navigation (loaded by nav.js) -->
-    <div id="adcp-nav"></div>
-    <script src="/nav.js"></script>
 
-    <header>
-        <h1>Agent registry</h1>
-        <p class="subtitle">Discover agents for advertising automation</p>
+<div id="adcp-nav"></div>
+<script src="/nav.js"></script>
+<script src="/registry-nav.js"></script>
+
+<!-- List View -->
+<div id="list-view" class="view active">
+    <header class="page-header">
+        <h1>Agents</h1>
+        <p>Sales, creative, and signals agents implementing AdCP</p>
     </header>
 
-    <!-- List View -->
-    <div id="list-view" class="view active">
-        <div class="container">
-            <div class="search-filters">
-                <div class="search-box">
-                    <input type="text" id="agent-search" placeholder="Search by agent name, URL, or publisher..." onkeyup="filterAgents()">
+    <div class="container">
+        <div class="search-section">
+            <div class="search-box">
+                <input type="text" id="agent-search" placeholder="Search by agent name, URL, or publisher..." aria-label="Search agents" onkeyup="filterAgents()">
+            </div>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Type:</label>
+                    <button class="filter-btn active" data-type="all" onclick="setTypeFilter('all')">All</button>
+                    <button class="filter-btn" data-type="sales" onclick="setTypeFilter('sales')">Sales</button>
+                    <button class="filter-btn" data-type="creative" onclick="setTypeFilter('creative')">Creative</button>
+                    <button class="filter-btn" data-type="signals" onclick="setTypeFilter('signals')">Signals</button>
                 </div>
-                <div class="filter-row">
-                    <div class="filter-group">
-                        <label>Type:</label>
-                        <button class="filter-btn active" data-type="all" onclick="setTypeFilter('all')">All</button>
-                        <button class="filter-btn" data-type="sales" onclick="setTypeFilter('sales')">Sales</button>
-                        <button class="filter-btn" data-type="creative" onclick="setTypeFilter('creative')">Creative</button>
-                        <button class="filter-btn" data-type="signals" onclick="setTypeFilter('signals')">Signals</button>
-                    </div>
-                    <div class="filter-group">
-                        <label>Status:</label>
-                        <button class="filter-btn active" data-status="all" onclick="setStatusFilter('all')">All</button>
-                        <button class="filter-btn" data-status="online" onclick="setStatusFilter('online')">Active</button>
-                        <button class="filter-btn" data-status="offline" onclick="setStatusFilter('offline')">Issues</button>
-                    </div>
+                <div class="filter-group">
+                    <label>Status:</label>
+                    <button class="filter-btn active" data-status="all" onclick="setStatusFilter('all')">All</button>
+                    <button class="filter-btn" data-status="online" onclick="setStatusFilter('online')">Active</button>
+                    <button class="filter-btn" data-status="offline" onclick="setStatusFilter('offline')">Issues</button>
                 </div>
             </div>
-            <div id="agents-grid" class="agent-grid"></div>
+        </div>
+        <div id="agents-grid" class="agent-grid"></div>
+    </div>
+</div>
+
+<!-- Detail View -->
+<div id="detail-view" class="view">
+    <div class="detail-header">
+        <div class="container">
+            <a href="#" class="back-btn" onclick="navigateToList(); return false;">&larr; Back to agents</a>
+            <h2 id="detail-name"></h2>
+            <div id="detail-url" class="agent-url"></div>
         </div>
     </div>
-
-    <!-- Detail View -->
-    <div id="detail-view" class="view">
-        <div class="detail-hero">
-            <div class="container">
-                <a href="#" class="back-btn" onclick="navigateToList(); return false;">← Back to Agents</a>
-                <h2 id="detail-name"></h2>
-                <div id="detail-url" class="agent-url"></div>
-            </div>
-        </div>
-        <div class="container">
-            <div class="detail-content" id="detail-body"></div>
-        </div>
+    <div class="container">
+        <div class="detail-content" id="detail-body"></div>
     </div>
+</div>
 
-    <footer>
-        <div class="footer-content">
-            <div class="footer-section">
-                <h3>🤖 Use in Your AI Assistant</h3>
-                <div class="mcp-box">
-                    <p>Add this MCP server to Claude Desktop or ChatGPT:</p>
-                    <div class="mcp-url">https://agenticadvertising.org/mcp</div>
-                    <p class="property-section-small">Exposes 4 tools: <code>list_agents</code>, <code>get_agent</code>, <code>find_agents_for_property</code>, <code>get_properties_for_agent</code></p>
+<div id="adcp-footer"></div>
+
+<script type="module">
+    let allAgents = [];
+    let filters = { type: 'all', status: 'all', search: '' };
+    let isLoading = true;
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        handleRoute();
+        window.addEventListener('hashchange', handleRoute);
+        renderAgents();
+        await loadAllAgents();
+        handleQueryParams();
+    });
+
+    function handleQueryParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const type = urlParams.get('type');
+        if (type && ['sales', 'creative', 'signals'].includes(type)) {
+            setTypeFilter(type);
+        }
+    }
+
+    async function loadAllAgents() {
+        try {
+            const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
+            const data = await response.json();
+            const agents = data.agents || data;
+
+            allAgents = agents.map(agent => {
+                const hasPropertyError = agent.propertiesError && agent.propertiesError.length > 0;
+                return {
+                    ...agent,
+                    properties: agent.properties || [],
+                    formats: agent.capabilities?.creative_capabilities?.formats_supported || [],
+                    propertiesError: agent.propertiesError,
+                    health: hasPropertyError
+                        ? { ...agent.health, online: false, error: `Missing required tool: ${agent.propertiesError}` }
+                        : agent.health
+                };
+            });
+
+            isLoading = false;
+            renderAgents();
+        } catch (error) {
+            console.error('Failed to load agents:', error);
+            isLoading = false;
+            renderAgents();
+        }
+    }
+
+    function renderLoadingSkeleton(count = 4) {
+        return Array(count).fill(0).map(() => `
+            <div class="agent-card" style="pointer-events: none; opacity: 0.6;">
+                <div class="agent-header">
+                    <div class="agent-title" style="flex: 1;">
+                        <div class="skeleton-bg" style="height: 20px; border-radius: var(--radius-sm); width: 60%; margin-bottom: var(--space-2);"></div>
+                        <div class="skeleton-bg" style="height: 14px; border-radius: var(--radius-sm); width: 80%;"></div>
+                    </div>
+                    <span class="status-badge" style="background: var(--color-bg-subtle); color: transparent;">...</span>
+                </div>
+                <div class="skeleton-bg" style="height: 40px; border-radius: var(--radius-sm); margin-bottom: var(--space-4);"></div>
+                <div class="agent-meta">
+                    <div class="skeleton-bg" style="height: 16px; border-radius: var(--radius-sm); width: 100px;"></div>
                 </div>
             </div>
-            <div class="footer-section">
-                <h3>📚 Resources</h3>
-                <p style="margin-bottom: var(--space-2);">Learn more about the Ad Context Protocol:</p>
-                <ul style="list-style: none; padding: 0;">
-                    <li style="margin: var(--space-2) 0;"><a href="https://adcontextprotocol.org" target="_blank" class="footer-resource-link">→ AdCP Documentation</a></li>
-                    <li style="margin: var(--space-2) 0;"><a href="/api/registry/agents" class="footer-resource-link">→ REST API</a></li>
-                    <li style="margin: var(--space-2) 0;"><a href="https://github.com/adcontextprotocol" target="_blank" class="footer-resource-link">→ GitHub</a></li>
-                </ul>
-            </div>
-        </div>
-        <div class="footer-links">
-            <a href="/api/agreement?type=privacy_policy">Privacy Policy</a> |
-            <a href="/api/agreement?type=terms_of_service">Terms of Use</a> |
-            Powered by <a href="https://adcontextprotocol.org" target="_blank">Ad Context Protocol</a>
-        </div>
-    </footer>
+        `).join('');
+    }
 
-    <script type="module">
-        let allAgents = [];
-        let filters = { type: 'all', status: 'all', search: '' };
-        let isLoading = true;
+    function typeLabel(type) {
+        if (type === 'sales') return 'Sales';
+        if (type === 'creative') return 'Creative';
+        if (type === 'signals') return 'Signals';
+        return 'Unclassified';
+    }
 
-        function escapeHtml(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = String(str);
-            return div.innerHTML;
+    function renderAgents() {
+        const container = document.getElementById('agents-grid');
+
+        if (isLoading) {
+            container.innerHTML = renderLoadingSkeleton(4);
+            return;
         }
 
-        // Initialize
-        window.addEventListener('DOMContentLoaded', async () => {
-            handleRoute();
-            window.addEventListener('hashchange', handleRoute);
-
-            // Show loading skeletons immediately
-            renderAgents();
-
-            await loadAllAgents();
-            handleQueryParams();
+        const filtered = allAgents.filter(agent => {
+            if (filters.type !== 'all' && agent.type !== filters.type) return false;
+            if (filters.status !== 'all') {
+                const online = agent.health?.online || false;
+                if (filters.status === 'online' && !online) return false;
+                if (filters.status === 'offline' && online) return false;
+            }
+            if (filters.search) {
+                const query = filters.search.toLowerCase();
+                const matchesName = agent.name.toLowerCase().includes(query);
+                const matchesUrl = agent.url.toLowerCase().includes(query);
+                const matchesProperty = agent.properties.some(p =>
+                    (p.identifier && p.identifier.toLowerCase().includes(query)) ||
+                    (p.domain && p.domain.toLowerCase().includes(query)) ||
+                    (p.country && p.country.toLowerCase().includes(query))
+                );
+                const matchesFormat = agent.formats.some(f => f.toLowerCase().includes(query));
+                if (!matchesName && !matchesUrl && !matchesProperty && !matchesFormat) return false;
+            }
+            return true;
         });
 
-        function handleQueryParams() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const type = urlParams.get('type');
+        // Update filter button counts
+        const typeCounts = { all: allAgents.length };
+        for (const a of allAgents) {
+            typeCounts[a.type] = (typeCounts[a.type] || 0) + 1;
+        }
+        document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
+            const t = btn.dataset.type;
+            const count = typeCounts[t] || 0;
+            const label = t === 'all' ? 'All' : typeLabel(t);
+            btn.textContent = `${label} (${count})`;
+        });
 
-            if (type && ['sales', 'creative', 'signals'].includes(type)) {
-                setTypeFilter(type);
-            }
+        if (filtered.length === 0) {
+            container.innerHTML = '<div class="loading">No agents found matching your filters.</div>';
+            return;
         }
 
-        async function loadAllAgents() {
-            try {
-                const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
-                const data = await response.json();
-                const agents = data.agents || data;
+        container.innerHTML = filtered.map(agent => {
+            const agentSlug = agent.name.toLowerCase().replace(/\s+/g, '-');
+            const toolCount = agent.capabilities?.tools_count || 0;
 
-                allAgents = agents.map(agent => {
-                    const hasPropertyError = agent.propertiesError && agent.propertiesError.length > 0;
-                    return {
-                        ...agent,
-                        properties: agent.properties || [],
-                        formats: agent.capabilities?.creative_capabilities?.formats_supported || [],
-                        propertiesError: agent.propertiesError,
-                        health: hasPropertyError
-                            ? { ...agent.health, online: false, error: `Missing required tool: ${agent.propertiesError}` }
-                            : agent.health
-                    };
+            let metaHtml = `
+                <div class="meta-item">
+                    <span class="meta-value">${typeLabel(agent.type)}</span>
+                </div>
+            `;
+
+            if (toolCount > 0) {
+                metaHtml += `
+                    <div class="meta-item">
+                        <span class="meta-value">${toolCount}</span> tools
+                    </div>
+                `;
+            }
+
+            if (agent.type === 'sales' && agent.properties.length > 0) {
+                metaHtml += `
+                    <div class="meta-item">
+                        <span class="meta-value">${agent.properties.length}</span> properties
+                    </div>
+                `;
+            }
+
+            if (agent.type === 'creative' && agent.formats.length > 0) {
+                metaHtml += `
+                    <div class="meta-item">
+                        <span class="meta-value">${agent.formats.length}</span> formats
+                    </div>
+                `;
+            }
+
+            if (agent.health?.response_time_ms) {
+                metaHtml += `
+                    <div class="meta-item">
+                        <span class="meta-value">${agent.health.response_time_ms}ms</span>
+                    </div>
+                `;
+            }
+
+            let extrasHtml = '';
+
+            if (agent.type === 'sales' && agent.properties.length > 0) {
+                extrasHtml = `
+                    <div class="agent-properties">
+                        <div class="property-section-small">
+                            <strong>Publishers:</strong> ${agent.properties.slice(0, 3).map(p => escapeHtml(p.identifier || p.domain)).join(', ')}${agent.properties.length > 3 ? ` +${agent.properties.length - 3} more` : ''}
+                        </div>
+                        <div class="property-tags">
+                            ${Array.from(new Set(agent.properties.flatMap(p => p.tags || []))).slice(0, 5).map(tag =>
+                                `<span class="property-tag">${escapeHtml(tag)}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (agent.propertiesError) {
+                extrasHtml = `
+                    <div class="agent-properties">
+                        <div class="tool-error-box">
+                            <span class="tool-error-box__title">Tool error:</span><br>
+                            <span class="tool-error-box__msg">${escapeHtml(agent.propertiesError)}</span>
+                        </div>
+                    </div>
+                `;
+            } else if (agent.type === 'creative' && agent.formats.length > 0) {
+                extrasHtml = `
+                    <div class="formats-list">
+                        ${agent.formats.slice(0, 5).map(format =>
+                            `<span class="format-badge">${escapeHtml(format)}</span>`
+                        ).join('')}
+                        ${agent.formats.length > 5 ? `<span class="format-badge">+${agent.formats.length - 5} more</span>` : ''}
+                    </div>
+                `;
+            }
+
+            if (agent.capabilities?.discovery_error) {
+                extrasHtml += `
+                    <div class="agent-properties">
+                        <div class="tool-error-box">
+                            <span class="tool-error-box__title">Discovery error:</span><br>
+                            <span class="tool-error-box__msg">${escapeHtml(agent.capabilities.discovery_error)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="agent-card" data-agent-id="${escapeHtml(agent.type)}/${escapeHtml(agentSlug)}">
+                    <div class="agent-header">
+                        <div class="agent-title">
+                            <div class="agent-name">${escapeHtml(agent.name)}</div>
+                            <div class="agent-url">${escapeHtml(agent.url)}</div>
+                        </div>
+                        <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
+                            ${agent.health?.online ? 'Active' : 'Issues'}
+                        </span>
+                    </div>
+                    ${agent.description ? `<p class="agent-description">${escapeHtml(agent.description)}</p>` : ''}
+                    <div class="agent-meta">${metaHtml}</div>
+                    ${extrasHtml}
+                </div>
+            `;
+        }).join('');
+
+        container.querySelectorAll('.agent-card[data-agent-id]').forEach(card => {
+            card.addEventListener('click', () => navigateToAgent(card.dataset.agentId));
+        });
+    }
+
+    window.setTypeFilter = function(type) {
+        filters.type = type;
+        document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.type === type);
+        });
+        renderAgents();
+    };
+
+    window.setStatusFilter = function(status) {
+        filters.status = status;
+        document.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.status === status);
+        });
+        renderAgents();
+    };
+
+    window.filterAgents = function() {
+        filters.search = document.getElementById('agent-search').value;
+        renderAgents();
+    };
+
+    // Navigation
+    window.navigateToAgent = function(agentId) {
+        window.location.hash = `#agent/${agentId}`;
+    };
+
+    window.navigateToList = function() {
+        window.location.hash = '';
+    };
+
+    function handleRoute() {
+        const hash = window.location.hash.slice(1);
+        if (hash.startsWith('agent/')) {
+            const agentId = hash.replace('agent/', '');
+            showAgentDetail(agentId);
+        } else {
+            showListView();
+        }
+    }
+
+    function showListView() {
+        document.getElementById('list-view').classList.add('active');
+        document.getElementById('detail-view').classList.remove('active');
+    }
+
+    async function showAgentDetail(agentId) {
+        document.getElementById('list-view').classList.remove('active');
+        document.getElementById('detail-view').classList.add('active');
+
+        try {
+            const [type, ...nameParts] = agentId.split('/');
+            const name = nameParts.join('/');
+
+            const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true');
+            const capsData = await capsResp.json();
+            const allAgents = capsData.agents || [];
+
+            const agentWithCaps =
+                allAgents.find(a => {
+                    const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                    return a.type === type && slugName === name;
+                }) ||
+                allAgents.find(a => {
+                    try {
+                        const hostname = new URL(a.url).hostname.toLowerCase();
+                        return a.type === type && hostname.includes(name.toLowerCase());
+                    } catch { return false; }
+                }) ||
+                allAgents.find(a => {
+                    const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                    return slugName === name;
                 });
 
-                isLoading = false;
-                renderAgents();
-            } catch (error) {
-                console.error('Failed to load agents:', error);
-                isLoading = false;
-                renderAgents();
-            }
-        }
+            const agent = agentWithCaps || { name: name, url: '', type: type };
 
-        function renderLoadingSkeleton(count = 4) {
-            return Array(count).fill(0).map(() => `
-                <div class="agent-card" style="pointer-events: none; opacity: 0.6;">
-                    <div class="agent-header">
-                        <div class="agent-title" style="flex: 1;">
-                            <div class="skeleton-bg" style="height: 20px; border-radius: var(--radius-sm); width: 60%; margin-bottom: var(--space-2);"></div>
-                            <div class="skeleton-bg" style="height: 14px; border-radius: var(--radius-sm); width: 80%;"></div>
-                        </div>
-                        <span class="status-badge" style="background: var(--color-bg-subtle); color: transparent;">...</span>
+            document.getElementById('detail-name').textContent = agent.name;
+            document.getElementById('detail-url').textContent = agent.url;
+
+            let html = '';
+
+            // Health status banner
+            const health = agent.health || {};
+            const statusText = health.online ? 'Active' : 'Offline';
+            html += `
+                <div class="status-banner ${health.online ? 'status-banner--online' : 'status-banner--offline'}">
+                    <div>
+                        <span class="status-banner__text">Status: ${statusText}</span>
+                        ${health.response_time_ms ? `<span class="status-banner__meta">Response time: ${health.response_time_ms}ms</span>` : ''}
                     </div>
-                    <div class="skeleton-bg" style="height: 40px; border-radius: var(--radius-sm); margin-bottom: var(--space-4);"></div>
-                    <div class="agent-meta">
-                        <div class="skeleton-bg" style="height: 16px; border-radius: var(--radius-sm); width: 100px;"></div>
-                    </div>
+                    ${health.last_check ? `<div class="status-banner__time">Last check: ${new Date(health.last_check).toLocaleString()}</div>` : ''}
                 </div>
-            `).join('');
-        }
+            `;
 
-        function typeLabel(type) {
-            if (type === 'sales') return 'Sales';
-            if (type === 'creative') return 'Creative';
-            if (type === 'signals') return 'Signals';
-            return 'Unclassified';
-        }
+            // Spec compliance badge
+            if (agentWithCaps?.capabilities) {
+                const caps = agentWithCaps.capabilities;
 
-        function typeIcon(type) {
-            if (type === 'sales') return '🏢';
-            if (type === 'creative') return '🎨';
-            if (type === 'signals') return '📊';
-            return '🤖';
-        }
+                if (agent.type === 'sales' && caps.tools) {
+                    const toolNames = new Set(caps.tools.map(t => t.name.toLowerCase()));
+                    const requiredTools = [
+                        'get_products',
+                        'create_media_buy',
+                        'update_media_buy',
+                        'get_media_buy_delivery',
+                        'sync_creatives',
+                        'list_authorized_properties'
+                    ];
+                    const implementedTools = requiredTools.filter(tool => toolNames.has(tool));
+                    const isCompliant = implementedTools.length === requiredTools.length;
 
-        function renderAgents() {
-            const container = document.getElementById('agents-grid');
-
-            if (isLoading) {
-                container.innerHTML = renderLoadingSkeleton(4);
-                return;
-            }
-
-            const filtered = allAgents.filter(agent => {
-                if (filters.type !== 'all' && agent.type !== filters.type) return false;
-
-                if (filters.status !== 'all') {
-                    const online = agent.health?.online || false;
-                    if (filters.status === 'online' && !online) return false;
-                    if (filters.status === 'offline' && online) return false;
-                }
-
-                if (filters.search) {
-                    const query = filters.search.toLowerCase();
-                    const matchesName = agent.name.toLowerCase().includes(query);
-                    const matchesUrl = agent.url.toLowerCase().includes(query);
-                    const matchesProperty = agent.properties.some(p =>
-                        (p.identifier && p.identifier.toLowerCase().includes(query)) ||
-                        (p.domain && p.domain.toLowerCase().includes(query)) ||
-                        (p.country && p.country.toLowerCase().includes(query))
-                    );
-                    const matchesFormat = agent.formats.some(f => f.toLowerCase().includes(query));
-                    if (!matchesName && !matchesUrl && !matchesProperty && !matchesFormat) return false;
-                }
-
-                return true;
-            });
-
-            // Update filter button counts
-            const typeCounts = { all: allAgents.length };
-            for (const a of allAgents) {
-                typeCounts[a.type] = (typeCounts[a.type] || 0) + 1;
-            }
-            document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
-                const t = btn.dataset.type;
-                const count = typeCounts[t] || 0;
-                const label = t === 'all' ? 'All' : typeLabel(t);
-                btn.textContent = `${label} (${count})`;
-            });
-
-            if (filtered.length === 0) {
-                container.innerHTML = '<div class="loading">No agents found matching your filters.</div>';
-                return;
-            }
-
-            container.innerHTML = filtered.map(agent => {
-                const agentSlug = agent.name.toLowerCase().replace(/\s+/g, '-');
-                const toolCount = agent.capabilities?.tools_count || 0;
-
-                let metaHtml = `
-                    <div class="meta-item">
-                        <span>${typeIcon(agent.type)}</span>
-                        <span class="meta-value">${typeLabel(agent.type)}</span>
-                    </div>
-                `;
-
-                if (toolCount > 0) {
-                    metaHtml += `
-                        <div class="meta-item">
-                            <span>🛠️</span>
-                            <span class="meta-value">${toolCount}</span> tools
-                        </div>
-                    `;
-                }
-
-                if (agent.type === 'sales' && agent.properties.length > 0) {
-                    metaHtml += `
-                        <div class="meta-item">
-                            <span>📰</span>
-                            <span class="meta-value">${agent.properties.length}</span> properties
-                        </div>
-                    `;
-                }
-
-                if (agent.type === 'creative' && agent.formats.length > 0) {
-                    metaHtml += `
-                        <div class="meta-item">
-                            <span>📐</span>
-                            <span class="meta-value">${agent.formats.length}</span> formats
-                        </div>
-                    `;
-                }
-
-                if (agent.health?.response_time_ms) {
-                    metaHtml += `
-                        <div class="meta-item">
-                            <span>⚡</span>
-                            <span class="meta-value">${agent.health.response_time_ms}ms</span>
-                        </div>
-                    `;
-                }
-
-                let extrasHtml = '';
-
-                if (agent.type === 'sales' && agent.properties.length > 0) {
-                    extrasHtml = `
-                        <div class="agent-properties">
-                            <div class="property-section-small">
-                                <strong>Publishers:</strong> ${agent.properties.slice(0, 3).map(p => escapeHtml(p.identifier || p.domain)).join(', ')}${agent.properties.length > 3 ? ` +${agent.properties.length - 3} more` : ''}
-                            </div>
-                            <div class="property-tags">
-                                ${Array.from(new Set(agent.properties.flatMap(p => p.tags || []))).slice(0, 5).map(tag =>
-                                    `<span class="property-tag">${escapeHtml(tag)}</span>`
-                                ).join('')}
-                            </div>
-                        </div>
-                    `;
-                } else if (agent.propertiesError) {
-                    extrasHtml = `
-                        <div class="agent-properties">
-                            <div class="tool-error-box">
-                                <span class="tool-error-box__title">Tool error:</span><br>
-                                <span class="tool-error-box__msg">${escapeHtml(agent.propertiesError)}</span>
-                            </div>
-                        </div>
-                    `;
-                } else if (agent.type === 'creative' && agent.formats.length > 0) {
-                    extrasHtml = `
-                        <div class="formats-list">
-                            ${agent.formats.slice(0, 5).map(format =>
-                                `<span class="format-badge">${escapeHtml(format)}</span>`
-                            ).join('')}
-                            ${agent.formats.length > 5 ? `<span class="format-badge">+${agent.formats.length - 5} more</span>` : ''}
-                        </div>
-                    `;
-                }
-
-                if (agent.capabilities?.discovery_error) {
-                    extrasHtml += `
-                        <div class="agent-properties">
-                            <div class="tool-error-box">
-                                <span class="tool-error-box__title">Discovery error:</span><br>
-                                <span class="tool-error-box__msg">${escapeHtml(agent.capabilities.discovery_error)}</span>
-                            </div>
-                        </div>
-                    `;
-                }
-
-                return `
-                    <div class="agent-card" data-agent-id="${escapeHtml(agent.type)}/${escapeHtml(agentSlug)}">
-                        <div class="agent-header">
-                            <div class="agent-title">
-                                <div class="agent-name">${escapeHtml(agent.name)}</div>
-                                <div class="agent-url">${escapeHtml(agent.url)}</div>
-                            </div>
-                            <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
-                                ${agent.health?.online ? 'Active' : 'Issues'}
-                            </span>
-                        </div>
-                        ${agent.description ? `<p class="agent-description">${escapeHtml(agent.description)}</p>` : ''}
-                        <div class="agent-meta">${metaHtml}</div>
-                        ${extrasHtml}
-                    </div>
-                `;
-            }).join('');
-
-            // Delegated click handler for agent cards
-            container.querySelectorAll('.agent-card[data-agent-id]').forEach(card => {
-                card.addEventListener('click', () => navigateToAgent(card.dataset.agentId));
-            });
-        }
-
-        window.setTypeFilter = function(type) {
-            filters.type = type;
-            document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.type === type);
-            });
-            renderAgents();
-        };
-
-        window.setStatusFilter = function(status) {
-            filters.status = status;
-            document.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.status === status);
-            });
-            renderAgents();
-        };
-
-        window.filterAgents = function() {
-            filters.search = document.getElementById('agent-search').value;
-            renderAgents();
-        };
-
-        // Navigation
-        window.navigateToAgent = function(agentId) {
-            window.location.hash = `#agent/${agentId}`;
-        };
-
-        window.navigateToList = function() {
-            window.location.hash = '';
-        };
-
-        function handleRoute() {
-            const hash = window.location.hash.slice(1);
-            if (hash.startsWith('agent/')) {
-                const agentId = hash.replace('agent/', '');
-                showAgentDetail(agentId);
-            } else {
-                showListView();
-            }
-        }
-
-        function showListView() {
-            document.getElementById('list-view').classList.add('active');
-            document.getElementById('detail-view').classList.remove('active');
-        }
-
-        async function showAgentDetail(agentId) {
-            document.getElementById('list-view').classList.remove('active');
-            document.getElementById('detail-view').classList.add('active');
-
-            try {
-                const [type, ...nameParts] = agentId.split('/');
-                const name = nameParts.join('/');
-
-                // Fetch all agents with enrichment and find the specific one
-                const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true');
-                const capsData = await capsResp.json();
-                const allAgents = capsData.agents || [];
-
-                // Find the specific agent using multiple matching strategies (most to least specific)
-                const agentWithCaps =
-                    // 1. Exact type + slug match
-                    allAgents.find(a => {
-                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
-                        return a.type === type && slugName === name;
-                    }) ||
-                    // 2. Type match + URL hostname contains the name (more specific than includes)
-                    allAgents.find(a => {
-                        try {
-                            const hostname = new URL(a.url).hostname.toLowerCase();
-                            return a.type === type && hostname.includes(name.toLowerCase());
-                        } catch { return false; }
-                    }) ||
-                    // 3. Any agent with exact slug match (fallback for type mismatch)
-                    allAgents.find(a => {
-                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
-                        return slugName === name;
-                    });
-
-                const agent = agentWithCaps || { name: name, url: '', type: type };
-
-                document.getElementById('detail-name').textContent = agent.name;
-                document.getElementById('detail-url').textContent = agent.url;
-
-                let html = '';
-
-                // Health status banner
-                const health = agent.health || {};
-                const statusText = health.online ? 'Active' : 'Offline';
-                html += `
-                    <div class="status-banner ${health.online ? 'status-banner--online' : 'status-banner--offline'}">
-                        <div>
-                            <span class="status-banner__text">Status: ${statusText}</span>
-                            ${health.response_time_ms ? `<span class="status-banner__meta">Response time: ${health.response_time_ms}ms</span>` : ''}
-                        </div>
-                        ${health.last_check ? `<div class="status-banner__time">Last check: ${new Date(health.last_check).toLocaleString()}</div>` : ''}
-                    </div>
-                `;
-
-                // Spec Compliance Badge
-                if (agentWithCaps.capabilities) {
-                    const caps = agentWithCaps.capabilities;
-
-                    if (agent.type === 'sales' && caps.tools) {
-                        // Check for actual AdCP spec required tools (from @adcp/client types)
-                        const toolNames = new Set(caps.tools.map(t => t.name.toLowerCase()));
-                        const requiredTools = [
-                            'get_products',
-                            'create_media_buy',
-                            'update_media_buy',
-                            'get_media_buy_delivery',
-                            'sync_creatives',
-                            'list_authorized_properties'
-                        ];
-                        const implementedTools = requiredTools.filter(tool => toolNames.has(tool));
-                        const isCompliant = implementedTools.length === requiredTools.length;
-
-                        html += `
-                            <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
-                                <span class="compliance-badge__icon">${isCompliant ? '✅' : '⚠️'}</span>
-                                <div>
-                                    <div class="compliance-badge__title">${isCompliant ? 'AdCP Sales Agent' : 'Incomplete Implementation'}</div>
-                                    <div class="compliance-badge__subtitle">
-                                        Implements ${implementedTools.length} of ${requiredTools.length} required tools: ${requiredTools.join(', ')}
-                                    </div>
+                    html += `
+                        <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
+                            <div>
+                                <div class="compliance-badge__title">${isCompliant ? 'AdCP sales agent' : 'Incomplete implementation'}</div>
+                                <div class="compliance-badge__subtitle">
+                                    Implements ${implementedTools.length} of ${requiredTools.length} required tools: ${requiredTools.join(', ')}
                                 </div>
                             </div>
-                        `;
-                    } else if (agent.type === 'creative' && caps.creative_capabilities) {
-                        const cc = caps.creative_capabilities;
-                        // Only list_creative_formats is required per AdCP spec
-                        const isCompliant = cc.formats_supported.length > 0;
-                        const hasOptionalBuild = cc.can_generate;
-                        const hasOptionalPreview = cc.can_preview;
+                        </div>
+                    `;
+                } else if (agent.type === 'creative' && caps.creative_capabilities) {
+                    const cc = caps.creative_capabilities;
+                    const isCompliant = cc.formats_supported.length > 0;
+                    const hasOptionalBuild = cc.can_generate;
+                    const hasOptionalPreview = cc.can_preview;
 
-                        const capabilities = [];
-                        if (hasOptionalBuild) capabilities.push('Generate');
-                        if (hasOptionalPreview) capabilities.push('Preview');
+                    const capabilities = [];
+                    if (hasOptionalBuild) capabilities.push('Generate');
+                    if (hasOptionalPreview) capabilities.push('Preview');
 
-                        html += `
-                            <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
-                                <span class="compliance-badge__icon">${isCompliant ? '✅' : '⚠️'}</span>
-                                <div>
-                                    <div class="compliance-badge__title">${isCompliant ? 'AdCP Creative Agent' : 'Incomplete Implementation'}</div>
-                                    <div class="compliance-badge__subtitle">
-                                        ${isCompliant ?
-                                            `${cc.formats_supported.length} format(s)${capabilities.length > 0 ? ' • ' + capabilities.join(' • ') : ' • Formats only'}` :
-                                            'Missing required list_creative_formats tool'}
-                                    </div>
+                    html += `
+                        <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
+                            <div>
+                                <div class="compliance-badge__title">${isCompliant ? 'AdCP creative agent' : 'Incomplete implementation'}</div>
+                                <div class="compliance-badge__subtitle">
+                                    ${isCompliant ?
+                                        `${cc.formats_supported.length} format(s)${capabilities.length > 0 ? ' &middot; ' + capabilities.join(' &middot; ') : ' &middot; Formats only'}` :
+                                        'Missing required list_creative_formats tool'}
                                 </div>
                             </div>
-                        `;
-                    }
-                }
-
-                // Type-specific sections (MOVED TO TOP)
-                if (agent.type === 'sales') {
-                    html += `
-                        <div class="detail-section">
-                            <h3>📰 Publishers & Properties</h3>
-                            <div id="publishers-section"><div class="loading">Loading publishers...</div></div>
-                        </div>
-                        <div class="detail-section">
-                            <details>
-                                <summary class="detail-section__summary">
-                                    <span class="detail-section__arrow">▶</span>
-                                    📦 Public Products
-                                </summary>
-                                <div id="products-section" class="detail-section__content"><div class="loading">Click to load available products...</div></div>
-                            </details>
-                        </div>
-                        <div class="detail-section">
-                            <details>
-                                <summary class="detail-section__summary">
-                                    <span class="detail-section__arrow">▶</span>
-                                    🎨 Creative Formats
-                                </summary>
-                                <div id="creative-formats-section" class="detail-section__content"><div class="loading">Click to load supported formats...</div></div>
-                            </details>
-                        </div>
-                    `;
-                } else if (agent.type === 'creative') {
-                    html += `
-                        <div class="detail-section">
-                            <h3>🎨 Creative Formats</h3>
-                            <div id="formats-section"><div class="loading">Loading formats...</div></div>
                         </div>
                     `;
                 }
+            }
 
-                // Tools section (moved to bottom, collapsible)
+            // Type-specific sections
+            if (agent.type === 'sales') {
                 html += `
+                    <div class="detail-section">
+                        <h3>Publishers &amp; properties</h3>
+                        <div id="publishers-section"><div class="loading">Loading publishers...</div></div>
+                    </div>
                     <div class="detail-section">
                         <details>
                             <summary class="detail-section__summary">
-                                <span class="detail-section__arrow">▶</span>
-                                🛠️ Tools (${agentWithCaps.capabilities?.tools_count || 0})
+                                <span class="detail-section__arrow">&#9654;</span>
+                                Public products
                             </summary>
-                            <div id="tools-section" class="detail-section__content"><div class="loading">Loading tools...</div></div>
+                            <div id="products-section" class="detail-section__content"><div class="loading">Click to load available products...</div></div>
+                        </details>
+                    </div>
+                    <div class="detail-section">
+                        <details>
+                            <summary class="detail-section__summary">
+                                <span class="detail-section__arrow">&#9654;</span>
+                                Creative formats
+                            </summary>
+                            <div id="creative-formats-section" class="detail-section__content"><div class="loading">Click to load supported formats...</div></div>
                         </details>
                     </div>
                 `;
-
-                // Agent info
+            } else if (agent.type === 'creative') {
                 html += `
                     <div class="detail-section">
-                        <h3>ℹ️ Agent Information</h3>
-                        <div class="info-box">
-                            ${agent.description ? `<p class="info-box__desc">${agent.description}</p>` : ''}
-                            <div class="info-box__grid">
-                                <div><strong>Type:</strong> <span style="text-transform: capitalize;">${agent.type}</span></div>
-                                <div><strong>Protocol:</strong> ${agent.protocol || 'mcp'}</div>
-                                <div><strong>Endpoint:</strong> <code class="info-box__code">${agent.url}</code></div>
-                                ${agent.mcp_endpoint ? `<div><strong>MCP Endpoint:</strong> <code class="info-box__code">${agent.mcp_endpoint}</code></div>` : ''}
-                            </div>
-                            ${agent.contact ? `
-                                <div class="info-box__contact">
-                                    <strong>Contact Information</strong><br>
-                                    <div style="margin-top: var(--space-2);">
-                                        ${agent.contact.name}<br>
-                                        <a href="mailto:${agent.contact.email}" class="info-box__contact-link">${agent.contact.email}</a>
-                                        ${agent.contact.website ? `<br><a href="${agent.contact.website}" target="_blank" class="info-box__contact-link">${agent.contact.website}</a>` : ''}
-                                    </div>
-                                </div>
-                            ` : ''}
-                        </div>
+                        <h3>Creative formats</h3>
+                        <div id="formats-section"><div class="loading">Loading formats...</div></div>
                     </div>
                 `;
-
-                document.getElementById('detail-body').innerHTML = html;
-
-                // Fetch tools and additional data
-                fetchTools(agent);
-                if (agent.type === 'sales') {
-                    fetchPublishers(agent);
-
-                    // Add event listeners for lazy-loaded sections
-                    const productsDetails = document.querySelector('#products-section').closest('details');
-                    const creativeFormatsDetails = document.querySelector('#creative-formats-section').closest('details');
-
-                    productsDetails.addEventListener('toggle', function() {
-                        if (this.open && document.getElementById('products-section').innerHTML.includes('Click to load')) {
-                            fetchPublicProducts(agent);
-                        }
-                    });
-
-                    creativeFormatsDetails.addEventListener('toggle', function() {
-                        if (this.open && document.getElementById('creative-formats-section').innerHTML.includes('Click to load')) {
-                            fetchCreativeFormats(agent);
-                        }
-                    });
-                } else if (agent.type === 'creative') {
-                    fetchFormats(agent);
-                }
-            } catch (error) {
-                document.getElementById('detail-body').innerHTML = `<div class="error-text">Failed to load agent details: ${error.message}</div>`;
             }
-        }
 
-        async function fetchTools(agent) {
-            const section = document.getElementById('tools-section');
-            try {
-                // Fetch capability discovery which includes all tools
-                const response = await fetch('/api/registry/agents?health=true&capabilities=true');
-                const data = await response.json();
-                const allAgents = data.agents || data;
-                const agentWithCaps = allAgents.find(a => a.url === agent.url);
+            // Tools section
+            html += `
+                <div class="detail-section">
+                    <details>
+                        <summary class="detail-section__summary">
+                            <span class="detail-section__arrow">&#9654;</span>
+                            Tools (${agentWithCaps?.capabilities?.tools_count || 0})
+                        </summary>
+                        <div id="tools-section" class="detail-section__content"><div class="loading">Loading tools...</div></div>
+                    </details>
+                </div>
+            `;
 
-                if (!agentWithCaps || !agentWithCaps.capabilities || agentWithCaps.capabilities.tools_count === 0) {
-                    section.innerHTML = `<div class="property-section-small">No tools discovered yet.</div>`;
-                    return;
-                }
-
-                const tools = agentWithCaps.capabilities.tools || [];
-
-                if (tools.length === 0) {
-                    section.innerHTML = `
-                        <div class="tools-summary">
-                            <span class="tools-summary__count">Total Tools: ${agentWithCaps.capabilities.tools_count}</span>
-                            <p class="tools-summary__desc">This agent exposes ${agentWithCaps.capabilities.tools_count} tools via ${agent.protocol || 'mcp'} protocol.</p>
+            // Agent info
+            html += `
+                <div class="detail-section">
+                    <h3>Agent information</h3>
+                    <div class="info-box">
+                        ${agent.description ? `<p class="info-box__desc">${escapeHtml(agent.description)}</p>` : ''}
+                        <div class="info-box__grid">
+                            <div><strong>Type:</strong> <span style="text-transform: capitalize;">${escapeHtml(agent.type)}</span></div>
+                            <div><strong>Protocol:</strong> ${escapeHtml(agent.protocol || 'mcp')}</div>
+                            <div><strong>Endpoint:</strong> <code class="info-box__code">${escapeHtml(agent.url)}</code></div>
+                            ${agent.mcp_endpoint ? `<div><strong>MCP endpoint:</strong> <code class="info-box__code">${escapeHtml(agent.mcp_endpoint)}</code></div>` : ''}
                         </div>
-                    `;
-                    return;
-                }
-
-                let html = `
-                    <div class="tools-summary">
-                        <span class="tools-summary__count">Total Tools: ${tools.length}</span>
-                        <p class="tools-summary__desc">This agent exposes ${tools.length} tools via ${agent.protocol || 'mcp'} protocol.</p>
-                    </div>
-                    <div class="tools-list">
-                `;
-
-                tools.forEach((tool, index) => {
-                    const hasSchema = tool.input_schema && Object.keys(tool.input_schema).length > 0;
-                    html += `
-                        <div class="tool-item">
-                            <div class="tool-item__header">
-                                <div class="tool-name">${index + 1}. ${tool.name}</div>
-                                ${hasSchema ? `<details class="tool-schema-toggle">
-                                    <summary>Schema</summary>
-                                    <pre class="tool-schema-pre">${JSON.stringify(tool.input_schema, null, 2)}</pre>
-                                </details>` : ''}
+                        ${agent.contact ? `
+                            <div class="info-box__contact">
+                                <strong>Contact information</strong><br>
+                                <div style="margin-top: var(--space-2);">
+                                    ${escapeHtml(agent.contact.name)}<br>
+                                    <a href="mailto:${escapeHtml(agent.contact.email)}" class="info-box__contact-link">${escapeHtml(agent.contact.email)}</a>
+                                    ${agent.contact.website ? `<br><a href="${escapeHtml(agent.contact.website)}" target="_blank" rel="noopener noreferrer" class="info-box__contact-link">${escapeHtml(agent.contact.website)}</a>` : ''}
+                                </div>
                             </div>
-                            ${tool.description ? `<div class="tool-description">${tool.description}</div>` : '<div class="tool-description" style="color: var(--color-text-light);">No description available</div>'}
-                        </div>
-                    `;
-                });
-
-                html += '</div>';
-                section.innerHTML = html;
-            } catch (error) {
-                section.innerHTML = `<div class="error-text">Failed to load tools: ${error.message}</div>`;
-            }
-        }
-
-        async function fetchPublishers(agent) {
-            try {
-                const response = await fetch(`/mcp`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: 1,
-                        method: 'tools/call',
-                        params: {
-                            name: 'get_properties_for_agent',
-                            arguments: { agent_url: agent.url }
-                        }
-                    })
-                });
-                const data = await response.json();
-                const result = JSON.parse(data.result.content[0].resource.text);
-
-                const section = document.getElementById('publishers-section');
-
-                if (result.error) {
-                    section.innerHTML = `<div class="tool-error-box">
-                        <strong>Error:</strong> ${result.error}
-                    </div>`;
-                    return;
-                }
-
-                if (result.properties && result.properties.length > 0) {
-                    // Group by verification status
-                    const verified = result.properties.filter(p => p.verified === true);
-                    const unverified = result.properties.filter(p => p.verified === false);
-                    const unchecked = result.properties.filter(p => p.verified === undefined);
-
-                    let html = '';
-
-                    if (verified.length > 0) {
-                        html += '<div class="publishers-group">';
-                        html += '<h4 class="publishers-group__title publishers-group__title--verified">✓ Verified Properties</h4>';
-                        html += '<div class="publishers-grid">' +
-                            verified.map(p => `
-                                <div class="publisher-item publisher-item--verified">
-                                    <div style="display: flex; justify-content: between; align-items: start; gap: var(--space-2);">
-                                        <div style="flex: 1;">
-                                            <div class="publisher-domain">${p.identifier || p.domain || 'Unknown'}</div>
-                                            <div class="property-section-small" style="margin-top: var(--space-1);">
-                                                <strong>Type:</strong> ${p.type || 'domain'}
-                                                ${p.country ? ` | <strong>Country:</strong> ${p.country}` : ''}
-                                            </div>
-                                        </div>
-                                        <a href="${p.verification_url}" target="_blank" class="publisher-verify-link" title="View adagents.json">
-                                            🔗 Verified
-                                        </a>
-                                    </div>
-                                    ${p.description ? `<div class="property-section-small" style="margin-top: var(--space-2);">${p.description}</div>` : ''}
-                                    ${p.tags && p.tags.length > 0 ? `
-                                        <div class="property-tags" style="margin-top: var(--space-3);">
-                                            ${p.tags.map(tag => `<span class="property-tag">${tag}</span>`).join('')}
-                                        </div>
-                                    ` : ''}
-                                    ${p.metadata ? `<details class="property-metadata-toggle">
-                                        <summary>Additional metadata</summary>
-                                        <pre class="property-metadata-pre">${JSON.stringify(p.metadata, null, 2)}</pre>
-                                    </details>` : ''}
-                                </div>
-                            `).join('') +
-                        '</div>';
-                        html += '</div>';
-                    }
-
-                    if (unverified.length > 0) {
-                        html += '<div class="publishers-group">';
-                        html += '<h4 class="publishers-group__title publishers-group__title--unverified">✗ Unverified Properties (Claims Not Authorized)</h4>';
-                        html += '<div class="publishers-grid">' +
-                            unverified.map(p => `
-                                <div class="publisher-item publisher-item--unverified">
-                                    <div style="display: flex; justify-content: space-between; align-items: start; gap: var(--space-2);">
-                                        <div style="flex: 1;">
-                                            <div class="publisher-domain">${p.identifier || p.domain || 'Unknown'}</div>
-                                            <div class="property-section-small" style="margin-top: var(--space-1);">${p.type || 'domain'}</div>
-                                        </div>
-                                        ${p.verification_url ? `<a href="${p.verification_url}" target="_blank" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
-                                            🔗 Check
-                                        </a>` : ''}
-                                    </div>
-                                    <div class="publisher-warning">
-                                        <strong>⚠️ Warning:</strong> ${p.verification_error || 'This agent is not listed in the domain\'s .well-known/adagents.json file'}
-                                    </div>
-                                </div>
-                            `).join('') +
-                        '</div>';
-                        html += '</div>';
-                    }
-
-                    if (unchecked.length > 0) {
-                        html += '<div class="publishers-group">';
-                        html += '<h4 class="publishers-group__title publishers-group__title--unchecked">⚠️ Unchecked Properties</h4>';
-                        html += '<div class="publishers-grid">' +
-                            unchecked.map(p => `
-                                <div class="publisher-item publisher-item--unchecked">
-                                    <div class="publisher-domain">${p.identifier || p.domain || 'Unknown'}</div>
-                                    <div class="property-section-small" style="margin-top: var(--space-1);">${p.type || 'domain'}</div>
-                                </div>
-                            `).join('') +
-                        '</div>';
-                        html += '</div>';
-                    }
-
-                    section.innerHTML = html;
-                } else {
-                    section.innerHTML = `<div class="property-section-small">No properties available from this agent yet.</div>`;
-                }
-            } catch (error) {
-                document.getElementById('publishers-section').innerHTML = `<div class="error-text">Failed to load publishers: ${error.message}</div>`;
-            }
-        }
-
-        async function fetchFormats(agent) {
-            const section = document.getElementById('formats-section');
-            section.innerHTML = '<div class="loading">Loading formats...</div>';
-
-            try {
-                const response = await fetch(`/mcp`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: 1,
-                        method: 'tools/call',
-                        params: {
-                            name: 'list_creative_formats_for_agent',
-                            arguments: { agent_url: agent.url, params: {} }
-                        }
-                    })
-                });
-                const data = await response.json();
-
-                if (data.error) {
-                    section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${data.error.message || 'Unknown error'}</div>`;
-                    return;
-                }
-
-                const result = JSON.parse(data.result.content[0].resource.text);
-
-                if (result.error) {
-                    section.innerHTML = `<div class="property-section-small">${result.error}</div>`;
-                    return;
-                }
-
-                // Handle different response formats
-                let formats = [];
-                if (Array.isArray(result)) {
-                    formats = result;
-                } else if (result.formats && Array.isArray(result.formats)) {
-                    formats = result.formats;
-                } else if (result.data && Array.isArray(result.data)) {
-                    formats = result.data;
-                } else if (result.data && result.data.formats) {
-                    formats = result.data.formats;
-                }
-
-                if (formats.length === 0) {
-                    section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
-                    return;
-                }
-
-                // Display formats in a grid
-                let html = '<div class="format-card-grid">';
-                formats.forEach(format => {
-                    const formatName = typeof format === 'string' ? format : (format.name || format.format || 'Unknown');
-                    const dimensions = typeof format === 'object' ? (format.dimensions || format.size) : null;
-                    const type = typeof format === 'object' ? (format.type || format.format_type) : null;
-                    const description = typeof format === 'object' ? format.description : null;
-
-                    html += `
-                        <div class="product-card">
-                            <div class="product-card__name">${formatName}</div>
-                            ${dimensions ? `<div class="format-card-dimensions">📐 ${dimensions}</div>` : ''}
-                            ${type ? `<div class="format-card-type">${type}</div>` : ''}
-                            ${description ? `<div class="product-card__desc">${description}</div>` : ''}
-                        </div>
-                    `;
-                });
-                html += '</div>';
-
-                section.innerHTML = html;
-            } catch (error) {
-                section.innerHTML = `<div class="error-text">Failed to load formats: ${error.message}</div>`;
-            }
-        }
-
-        async function fetchPublicProducts(agent) {
-            const section = document.getElementById('products-section');
-            section.innerHTML = '<div class="loading">Loading products...</div>';
-
-            try {
-                const response = await fetch(`/mcp`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: 1,
-                        method: 'tools/call',
-                        params: {
-                            name: 'get_products_for_agent',
-                            arguments: { agent_url: agent.url, params: {} }
-                        }
-                    })
-                });
-                const data = await response.json();
-
-                if (data.error) {
-                    section.innerHTML = `<div class="property-section-small">Unable to fetch products: ${data.error.message || 'Unknown error'}</div>`;
-                    return;
-                }
-
-                const result = JSON.parse(data.result.content[0].resource.text);
-
-                if (result.error) {
-                    const isValidationError = result.error.includes('does not match') || result.error.includes('Input should be');
-                    section.innerHTML = `
-                        <div class="agent-params-required">
-                            <div class="agent-params-required__title">${isValidationError ? 'Agent Requires Parameters' : 'Agent Error'}</div>
-                            <div class="agent-params-required__desc">
-                                ${isValidationError ? 'This agent requires specific targeting criteria (brief, brand_manifest, etc.) and does not support browsing public products.' : result.error}
-                            </div>
-                        </div>
-                    `;
-                    return;
-                }
-
-                const products = result.products || [];
-
-                if (products.length === 0) {
-                    section.innerHTML = '<div class="property-section-small">No public products available (may require targeting)</div>';
-                    return;
-                }
-
-                let html = '<div class="products-grid">';
-                products.forEach(product => {
-                    html += `
-                        <div class="product-card">
-                            <div class="product-card__name">${product.name || product.id || 'Unnamed Product'}</div>
-                            ${product.description ? `<div class="product-card__desc">${product.description}</div>` : ''}
-                            ${product.inventory_type ? `<div class="product-card__meta"><strong>Type:</strong> ${product.inventory_type}</div>` : ''}
-                            ${product.price ? `<div class="product-card__meta"><strong>Price:</strong> ${product.price.amount} ${product.price.currency}</div>` : ''}
-                            ${product.publisher_domain ? `<div class="product-card__meta"><strong>Publisher:</strong> ${product.publisher_domain}</div>` : ''}
-                        </div>
-                    `;
-                });
-                html += '</div>';
-
-                section.innerHTML = html;
-            } catch (error) {
-                section.innerHTML = `<div class="error-text">Failed to load products: ${error.message}</div>`;
-            }
-        }
-
-        async function fetchCreativeFormats(agent) {
-            const section = document.getElementById('creative-formats-section');
-            section.innerHTML = '<div class="loading">Loading formats...</div>';
-
-            try {
-                const response = await fetch(`/mcp`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: 1,
-                        method: 'tools/call',
-                        params: {
-                            name: 'list_creative_formats_for_agent',
-                            arguments: { agent_url: agent.url, params: {} }
-                        }
-                    })
-                });
-                const data = await response.json();
-
-                if (data.error) {
-                    section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${data.error.message || 'Unknown error'}</div>`;
-                    return;
-                }
-
-                const result = JSON.parse(data.result.content[0].resource.text);
-
-                if (result.error) {
-                    section.innerHTML = `<div class="property-section-small">${result.error}</div>`;
-                    return;
-                }
-
-                const formats = result.formats || [];
-
-                if (formats.length === 0) {
-                    section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
-                    return;
-                }
-
-                // Extract unique types for filtering
-                const types = [...new Set(formats.map(f => f.type).filter(Boolean))];
-
-                let html = `
-                    <div class="format-filters">
-                        <span class="format-filters__label">Filter:</span>
-                        <button onclick="filterFormats('all')" class="format-filter-btn active" data-type="all">
-                            All (${formats.length})
-                        </button>
-                        ${types.map(type => `
-                            <button onclick="filterFormats('${type}')" class="format-filter-btn" data-type="${type}">
-                                ${type.replace(/_/g, ' ')} (${formats.filter(f => f.type === type).length})
-                            </button>
-                        `).join('')}
-                    </div>
-                    <div id="formats-grid" class="format-card-grid">
-                `;
-
-                formats.forEach((format, index) => {
-                    const dimensions = format.renders?.[0]?.dimensions;
-                    const width = dimensions?.width || dimensions?.max_width;
-                    const height = dimensions?.height || dimensions?.max_height;
-                    const isResponsive = dimensions?.min_width || dimensions?.min_height;
-
-                    html += `
-                        <div class="format-card format-card-item" data-type="${format.type || 'unknown'}" onclick="showFormatDetails(${index}, ${JSON.stringify(format).replace(/"/g, '&quot;')})">
-                            ${format.preview_image ? `
-                                <div class="format-card-preview">
-                                    <img src="${format.preview_image}" alt="${format.name}" onerror="this.parentElement.innerHTML='<div class=&quot;format-card-preview__placeholder&quot;>🎨</div>'">
-                                </div>
-                            ` : `
-                                <div class="format-card-preview">
-                                    <span class="format-card-preview__placeholder">🎨</span>
-                                </div>
-                            `}
-                            <div class="format-card-body">
-                                <div class="format-card-name">${format.name || format.format_id || 'Unnamed Format'}</div>
-                                ${width && height ? `
-                                    <div class="format-card-dimensions">
-                                        📐 ${isResponsive ? 'Responsive: ' : ''}${width}×${height}${dimensions?.unit ? dimensions.unit : 'px'}
-                                    </div>
-                                ` : ''}
-                                ${format.type ? `
-                                    <div class="format-card-type">
-                                        ${format.type.replace(/_/g, ' ')}
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `;
-                });
-
-                html += '</div>';
-
-                section.innerHTML = html;
-
-                // Store formats for filtering
-                window.currentFormats = formats;
-
-            } catch (error) {
-                section.innerHTML = `<div class="error-text">Failed to load formats: ${error.message}</div>`;
-            }
-        }
-
-        function filterFormats(type) {
-            const cards = document.querySelectorAll('.format-card');
-            const buttons = document.querySelectorAll('.format-filter-btn');
-
-            buttons.forEach(btn => {
-                if (btn.dataset.type === type) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-
-            cards.forEach(card => {
-                if (type === 'all' || card.dataset.type === type) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-        }
-
-        function showFormatDetails(index, format) {
-            const modal = document.createElement('div');
-            modal.className = 'format-modal-overlay';
-            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-
-            const dimensions = format.renders?.[0]?.dimensions;
-            const width = dimensions?.width || dimensions?.max_width;
-            const height = dimensions?.height || dimensions?.max_height;
-
-            modal.innerHTML = `
-                <div class="format-modal" onclick="event.stopPropagation()">
-                    <div class="format-modal__header">
-                        <h3 class="format-modal__title">${format.name || format.format_id}</h3>
-                        <button onclick="this.closest('.format-modal-overlay').remove()" class="format-modal__close">×</button>
-                    </div>
-                    <div class="format-modal__body">
-                        ${format.preview_image ? `
-                            <div class="format-modal__preview">
-                                <img src="${format.preview_image}" alt="${format.name}">
-                            </div>
-                        ` : ''}
-                        ${format.description ? `<p class="format-modal__desc">${format.description}</p>` : ''}
-                        <div class="format-modal__meta">
-                            ${format.format_id ? `<div><strong>Format ID:</strong> <code class="format-modal__code">${format.format_id}</code></div>` : ''}
-                            ${format.type ? `<div><strong>Type:</strong> <span style="text-transform: capitalize;">${format.type.replace(/_/g, ' ')}</span></div>` : ''}
-                            ${width && height ? `<div><strong>Dimensions:</strong> ${width}×${height}${dimensions?.unit || 'px'}</div>` : ''}
-                            ${dimensions?.min_width || dimensions?.min_height ? `<div><strong>Responsive:</strong> Yes (${dimensions.min_width || 0}×${dimensions.min_height || 0} to ${dimensions.max_width || width}×${dimensions.max_height || height})</div>` : ''}
-                        </div>
-                        ${format.example_url ? `
-                            <a href="${format.example_url}" target="_blank" class="format-modal__cta">
-                                View Examples & Demos →
-                            </a>
                         ` : ''}
                     </div>
                 </div>
             `;
 
-            document.body.appendChild(modal);
+            document.getElementById('detail-body').innerHTML = html;
+
+            // Fetch tools and additional data
+            fetchTools(agent);
+            if (agent.type === 'sales') {
+                fetchPublishers(agent);
+
+                const productsDetails = document.querySelector('#products-section').closest('details');
+                const creativeFormatsDetails = document.querySelector('#creative-formats-section').closest('details');
+
+                productsDetails.addEventListener('toggle', function() {
+                    if (this.open && document.getElementById('products-section').innerHTML.includes('Click to load')) {
+                        fetchPublicProducts(agent);
+                    }
+                });
+
+                creativeFormatsDetails.addEventListener('toggle', function() {
+                    if (this.open && document.getElementById('creative-formats-section').innerHTML.includes('Click to load')) {
+                        fetchCreativeFormats(agent);
+                    }
+                });
+            } else if (agent.type === 'creative') {
+                fetchFormats(agent);
+            }
+        } catch (error) {
+            document.getElementById('detail-body').innerHTML = `<div class="error-text">Failed to load agent details: ${escapeHtml(error.message)}</div>`;
         }
-    </script>
+    }
+
+    async function fetchTools(agent) {
+        const section = document.getElementById('tools-section');
+        try {
+            const response = await fetch('/api/registry/agents?health=true&capabilities=true');
+            const data = await response.json();
+            const allAgents = data.agents || data;
+            const agentWithCaps = allAgents.find(a => a.url === agent.url);
+
+            if (!agentWithCaps || !agentWithCaps.capabilities || agentWithCaps.capabilities.tools_count === 0) {
+                section.innerHTML = `<div class="property-section-small">No tools discovered yet.</div>`;
+                return;
+            }
+
+            const tools = agentWithCaps.capabilities.tools || [];
+
+            if (tools.length === 0) {
+                section.innerHTML = `
+                    <div class="tools-summary">
+                        <span class="tools-summary__count">Total tools: ${agentWithCaps.capabilities.tools_count}</span>
+                        <p class="tools-summary__desc">This agent exposes ${agentWithCaps.capabilities.tools_count} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="tools-summary">
+                    <span class="tools-summary__count">Total tools: ${tools.length}</span>
+                    <p class="tools-summary__desc">This agent exposes ${tools.length} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                </div>
+                <div class="tools-list">
+            `;
+
+            tools.forEach((tool, index) => {
+                const hasSchema = tool.input_schema && Object.keys(tool.input_schema).length > 0;
+                html += `
+                    <div class="tool-item">
+                        <div class="tool-item__header">
+                            <div class="tool-name">${index + 1}. ${escapeHtml(tool.name)}</div>
+                            ${hasSchema ? `<details class="tool-schema-toggle">
+                                <summary>Schema</summary>
+                                <pre class="tool-schema-pre">${escapeHtml(JSON.stringify(tool.input_schema, null, 2))}</pre>
+                            </details>` : ''}
+                        </div>
+                        ${tool.description ? `<div class="tool-description">${escapeHtml(tool.description)}</div>` : '<div class="tool-description" style="color: var(--color-text-light);">No description available</div>'}
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            section.innerHTML = html;
+        } catch (error) {
+            section.innerHTML = `<div class="error-text">Failed to load tools: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    async function fetchPublishers(agent) {
+        try {
+            const response = await fetch(`/mcp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'tools/call',
+                    params: {
+                        name: 'get_properties_for_agent',
+                        arguments: { agent_url: agent.url }
+                    }
+                })
+            });
+            const data = await response.json();
+            const result = JSON.parse(data.result.content[0].resource.text);
+
+            const section = document.getElementById('publishers-section');
+
+            if (result.error) {
+                section.innerHTML = `<div class="tool-error-box">
+                    <strong>Error:</strong> ${escapeHtml(result.error)}
+                </div>`;
+                return;
+            }
+
+            if (result.properties && result.properties.length > 0) {
+                const verified = result.properties.filter(p => p.verified === true);
+                const unverified = result.properties.filter(p => p.verified === false);
+                const unchecked = result.properties.filter(p => p.verified === undefined);
+
+                let html = '';
+
+                if (verified.length > 0) {
+                    html += '<div class="publishers-group">';
+                    html += '<h4 class="publishers-group__title publishers-group__title--verified">Verified properties</h4>';
+                    html += '<div class="publishers-grid">' +
+                        verified.map(p => `
+                            <div class="publisher-item publisher-item--verified">
+                                <div style="display: flex; justify-content: between; align-items: start; gap: var(--space-2);">
+                                    <div style="flex: 1;">
+                                        <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
+                                        <div class="property-section-small" style="margin-top: var(--space-1);">
+                                            <strong>Type:</strong> ${escapeHtml(p.type || 'domain')}
+                                            ${p.country ? ` | <strong>Country:</strong> ${escapeHtml(p.country)}` : ''}
+                                        </div>
+                                    </div>
+                                    <a href="${escapeHtml(p.verification_url)}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link" title="View adagents.json">
+                                        Verified
+                                    </a>
+                                </div>
+                                ${p.description ? `<div class="property-section-small" style="margin-top: var(--space-2);">${escapeHtml(p.description)}</div>` : ''}
+                                ${p.tags && p.tags.length > 0 ? `
+                                    <div class="property-tags" style="margin-top: var(--space-3);">
+                                        ${p.tags.map(tag => `<span class="property-tag">${escapeHtml(tag)}</span>`).join('')}
+                                    </div>
+                                ` : ''}
+                                ${p.metadata ? `<details class="property-metadata-toggle">
+                                    <summary>Additional metadata</summary>
+                                    <pre class="property-metadata-pre">${escapeHtml(JSON.stringify(p.metadata, null, 2))}</pre>
+                                </details>` : ''}
+                            </div>
+                        `).join('') +
+                    '</div>';
+                    html += '</div>';
+                }
+
+                if (unverified.length > 0) {
+                    html += '<div class="publishers-group">';
+                    html += '<h4 class="publishers-group__title publishers-group__title--unverified">Unverified properties (claims not authorized)</h4>';
+                    html += '<div class="publishers-grid">' +
+                        unverified.map(p => `
+                            <div class="publisher-item publisher-item--unverified">
+                                <div style="display: flex; justify-content: space-between; align-items: start; gap: var(--space-2);">
+                                    <div style="flex: 1;">
+                                        <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
+                                        <div class="property-section-small" style="margin-top: var(--space-1);">${escapeHtml(p.type || 'domain')}</div>
+                                    </div>
+                                    ${p.verification_url ? `<a href="${escapeHtml(p.verification_url)}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
+                                        Check
+                                    </a>` : ''}
+                                </div>
+                                <div class="publisher-warning">
+                                    <strong>Warning:</strong> ${escapeHtml(p.verification_error || 'This agent is not listed in the domain\'s .well-known/adagents.json file')}
+                                </div>
+                            </div>
+                        `).join('') +
+                    '</div>';
+                    html += '</div>';
+                }
+
+                if (unchecked.length > 0) {
+                    html += '<div class="publishers-group">';
+                    html += '<h4 class="publishers-group__title publishers-group__title--unchecked">Unchecked properties</h4>';
+                    html += '<div class="publishers-grid">' +
+                        unchecked.map(p => `
+                            <div class="publisher-item publisher-item--unchecked">
+                                <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
+                                <div class="property-section-small" style="margin-top: var(--space-1);">${escapeHtml(p.type || 'domain')}</div>
+                            </div>
+                        `).join('') +
+                    '</div>';
+                    html += '</div>';
+                }
+
+                section.innerHTML = html;
+            } else {
+                section.innerHTML = `<div class="property-section-small">No properties available from this agent yet.</div>`;
+            }
+        } catch (error) {
+            document.getElementById('publishers-section').innerHTML = `<div class="error-text">Failed to load publishers: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    async function fetchFormats(agent) {
+        const section = document.getElementById('formats-section');
+        section.innerHTML = '<div class="loading">Loading formats...</div>';
+
+        try {
+            const response = await fetch(`/mcp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'tools/call',
+                    params: {
+                        name: 'list_creative_formats_for_agent',
+                        arguments: { agent_url: agent.url, params: {} }
+                    }
+                })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${escapeHtml(data.error.message || 'Unknown error')}</div>`;
+                return;
+            }
+
+            const result = JSON.parse(data.result.content[0].resource.text);
+
+            if (result.error) {
+                section.innerHTML = `<div class="property-section-small">${escapeHtml(result.error)}</div>`;
+                return;
+            }
+
+            let formats = [];
+            if (Array.isArray(result)) {
+                formats = result;
+            } else if (result.formats && Array.isArray(result.formats)) {
+                formats = result.formats;
+            } else if (result.data && Array.isArray(result.data)) {
+                formats = result.data;
+            } else if (result.data && result.data.formats) {
+                formats = result.data.formats;
+            }
+
+            if (formats.length === 0) {
+                section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
+                return;
+            }
+
+            let html = '<div class="format-card-grid">';
+            formats.forEach(format => {
+                const formatName = typeof format === 'string' ? format : (format.name || format.format || 'Unknown');
+                const dimensions = typeof format === 'object' ? (format.dimensions || format.size) : null;
+                const type = typeof format === 'object' ? (format.type || format.format_type) : null;
+                const description = typeof format === 'object' ? format.description : null;
+
+                html += `
+                    <div class="product-card">
+                        <div class="product-card__name">${escapeHtml(formatName)}</div>
+                        ${dimensions ? `<div class="format-card-dimensions">${escapeHtml(String(dimensions))}</div>` : ''}
+                        ${type ? `<div class="format-card-type">${escapeHtml(type)}</div>` : ''}
+                        ${description ? `<div class="product-card__desc">${escapeHtml(description)}</div>` : ''}
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            section.innerHTML = html;
+        } catch (error) {
+            section.innerHTML = `<div class="error-text">Failed to load formats: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    async function fetchPublicProducts(agent) {
+        const section = document.getElementById('products-section');
+        section.innerHTML = '<div class="loading">Loading products...</div>';
+
+        try {
+            const response = await fetch(`/mcp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'tools/call',
+                    params: {
+                        name: 'get_products_for_agent',
+                        arguments: { agent_url: agent.url, params: {} }
+                    }
+                })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                section.innerHTML = `<div class="property-section-small">Unable to fetch products: ${escapeHtml(data.error.message || 'Unknown error')}</div>`;
+                return;
+            }
+
+            const result = JSON.parse(data.result.content[0].resource.text);
+
+            if (result.error) {
+                const isValidationError = result.error.includes('does not match') || result.error.includes('Input should be');
+                section.innerHTML = `
+                    <div class="agent-params-required">
+                        <div class="agent-params-required__title">${isValidationError ? 'Agent requires parameters' : 'Agent error'}</div>
+                        <div class="agent-params-required__desc">
+                            ${isValidationError ? 'This agent requires specific targeting criteria (brief, brand_manifest, etc.) and does not support browsing public products.' : escapeHtml(result.error)}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const products = result.products || [];
+
+            if (products.length === 0) {
+                section.innerHTML = '<div class="property-section-small">No public products available (may require targeting)</div>';
+                return;
+            }
+
+            let html = '<div class="products-grid">';
+            products.forEach(product => {
+                html += `
+                    <div class="product-card">
+                        <div class="product-card__name">${escapeHtml(product.name || product.id || 'Unnamed Product')}</div>
+                        ${product.description ? `<div class="product-card__desc">${escapeHtml(product.description)}</div>` : ''}
+                        ${product.inventory_type ? `<div class="product-card__meta"><strong>Type:</strong> ${escapeHtml(product.inventory_type)}</div>` : ''}
+                        ${product.price ? `<div class="product-card__meta"><strong>Price:</strong> ${escapeHtml(String(product.price.amount))} ${escapeHtml(product.price.currency)}</div>` : ''}
+                        ${product.publisher_domain ? `<div class="product-card__meta"><strong>Publisher:</strong> ${escapeHtml(product.publisher_domain)}</div>` : ''}
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            section.innerHTML = html;
+        } catch (error) {
+            section.innerHTML = `<div class="error-text">Failed to load products: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    async function fetchCreativeFormats(agent) {
+        const section = document.getElementById('creative-formats-section');
+        section.innerHTML = '<div class="loading">Loading formats...</div>';
+
+        try {
+            const response = await fetch(`/mcp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'tools/call',
+                    params: {
+                        name: 'list_creative_formats_for_agent',
+                        arguments: { agent_url: agent.url, params: {} }
+                    }
+                })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${escapeHtml(data.error.message || 'Unknown error')}</div>`;
+                return;
+            }
+
+            const result = JSON.parse(data.result.content[0].resource.text);
+
+            if (result.error) {
+                section.innerHTML = `<div class="property-section-small">${escapeHtml(result.error)}</div>`;
+                return;
+            }
+
+            const formats = result.formats || [];
+
+            if (formats.length === 0) {
+                section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
+                return;
+            }
+
+            const types = [...new Set(formats.map(f => f.type).filter(Boolean))];
+
+            // Store formats for use by filter buttons and detail modal
+            window.currentFormats = formats;
+
+            let html = `
+                <div class="format-filters">
+                    <span class="format-filters__label">Filter:</span>
+                    <button class="format-filter-btn active" data-type="all">
+                        All (${formats.length})
+                    </button>
+                    ${types.map(type => `
+                        <button class="format-filter-btn" data-type="${escapeHtml(type)}">
+                            ${escapeHtml(type.replace(/_/g, ' '))} (${formats.filter(f => f.type === type).length})
+                        </button>
+                    `).join('')}
+                </div>
+                <div id="formats-grid" class="format-card-grid">
+            `;
+
+            formats.forEach((format, index) => {
+                const dimensions = format.renders?.[0]?.dimensions;
+                const width = dimensions?.width || dimensions?.max_width;
+                const height = dimensions?.height || dimensions?.max_height;
+                const isResponsive = dimensions?.min_width || dimensions?.min_height;
+
+                html += `
+                    <div class="format-card format-card-item" data-type="${escapeHtml(format.type || 'unknown')}" data-index="${index}">
+                        ${format.preview_image ? `
+                            <div class="format-card-preview">
+                                <img src="${escapeHtml(format.preview_image)}" alt="${escapeHtml(format.name || '')}" onerror="this.parentElement.innerHTML='<div class=&quot;format-card-preview__placeholder&quot;>&#127912;</div>'">
+                            </div>
+                        ` : `
+                            <div class="format-card-preview">
+                                <span class="format-card-preview__placeholder">&#127912;</span>
+                            </div>
+                        `}
+                        <div class="format-card-body">
+                            <div class="format-card-name">${escapeHtml(format.name || format.format_id || 'Unnamed format')}</div>
+                            ${width && height ? `
+                                <div class="format-card-dimensions">
+                                    ${isResponsive ? 'Responsive: ' : ''}${escapeHtml(String(width))}&times;${escapeHtml(String(height))}${escapeHtml(dimensions?.unit ? dimensions.unit : 'px')}
+                                </div>
+                            ` : ''}
+                            ${format.type ? `
+                                <div class="format-card-type">
+                                    ${escapeHtml(format.type.replace(/_/g, ' '))}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            section.innerHTML = html;
+
+            // Event delegation for format filter buttons
+            section.querySelectorAll('.format-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => filterFormats(btn.dataset.type));
+            });
+
+            // Event delegation for format card clicks
+            section.querySelectorAll('.format-card-item[data-index]').forEach(card => {
+                card.addEventListener('click', () => {
+                    const idx = parseInt(card.dataset.index, 10);
+                    showFormatDetails(idx, window.currentFormats[idx]);
+                });
+            });
+
+        } catch (error) {
+            section.innerHTML = `<div class="error-text">Failed to load formats: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    window.filterFormats = function(type) {
+        const cards = document.querySelectorAll('.format-card');
+        const buttons = document.querySelectorAll('.format-filter-btn');
+
+        buttons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.type === type);
+        });
+
+        cards.forEach(card => {
+            card.style.display = (type === 'all' || card.dataset.type === type) ? 'block' : 'none';
+        });
+    };
+
+    window.showFormatDetails = function(index, format) {
+        const modal = document.createElement('div');
+        modal.className = 'format-modal-overlay';
+        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+        const dimensions = format.renders?.[0]?.dimensions;
+        const width = dimensions?.width || dimensions?.max_width;
+        const height = dimensions?.height || dimensions?.max_height;
+
+        modal.innerHTML = `
+            <div class="format-modal" onclick="event.stopPropagation()">
+                <div class="format-modal__header">
+                    <h3 class="format-modal__title">${escapeHtml(format.name || format.format_id || '')}</h3>
+                    <button onclick="this.closest('.format-modal-overlay').remove()" class="format-modal__close">&times;</button>
+                </div>
+                <div class="format-modal__body">
+                    ${format.preview_image ? `
+                        <div class="format-modal__preview">
+                            <img src="${escapeHtml(format.preview_image)}" alt="${escapeHtml(format.name || '')}">
+                        </div>
+                    ` : ''}
+                    ${format.description ? `<p class="format-modal__desc">${escapeHtml(format.description)}</p>` : ''}
+                    <div class="format-modal__meta">
+                        ${format.format_id ? `<div><strong>Format ID:</strong> <code class="format-modal__code">${escapeHtml(format.format_id)}</code></div>` : ''}
+                        ${format.type ? `<div><strong>Type:</strong> <span style="text-transform: capitalize;">${escapeHtml(format.type.replace(/_/g, ' '))}</span></div>` : ''}
+                        ${width && height ? `<div><strong>Dimensions:</strong> ${escapeHtml(String(width))}&times;${escapeHtml(String(height))}${escapeHtml(dimensions?.unit || 'px')}</div>` : ''}
+                        ${dimensions?.min_width || dimensions?.min_height ? `<div><strong>Responsive:</strong> Yes (${dimensions.min_width || 0}&times;${dimensions.min_height || 0} to ${dimensions.max_width || width}&times;${dimensions.max_height || height})</div>` : ''}
+                    </div>
+                    ${format.example_url ? `
+                        <a href="${escapeHtml(format.example_url)}" target="_blank" rel="noopener noreferrer" class="format-modal__cta">
+                            View examples &amp; demos &rarr;
+                        </a>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+    };
+</script>
 </body>
 </html>

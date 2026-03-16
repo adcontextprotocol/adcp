@@ -5,7 +5,52 @@ import type {
   LocalizedName,
   KellerType,
   RegistryRevision,
+  MemberBrandInfo,
+  BrandLogo,
 } from '../types.js';
+
+/**
+ * Extract logos and colors from a brand JSON structure, resolving both
+ * light-background and dark-background logo URLs.
+ */
+export function resolveBrandFromJson(
+  domain: string,
+  brandJson: Record<string, unknown>,
+  verified: boolean,
+): MemberBrandInfo {
+  const brands = brandJson.brands as Array<Record<string, unknown>> | undefined;
+  const primaryBrand = brands?.[0];
+  const logos = (primaryBrand?.logos ?? brandJson.logos) as Array<Record<string, unknown>> | undefined;
+  const colors = (primaryBrand?.colors ?? brandJson.colors) as Record<string, unknown> | undefined;
+
+  const typedLogos: BrandLogo[] | undefined = logos
+    ?.filter(l => typeof l.url === 'string' && l.url)
+    .map(l => ({
+      url: l.url as string,
+      orientation: l.orientation as BrandLogo['orientation'],
+      background: l.background as BrandLogo['background'],
+      variant: l.variant as BrandLogo['variant'],
+      usage: l.usage as string | undefined,
+    }));
+
+  // Pick the best logo for light backgrounds (default)
+  const lightLogo = typedLogos?.find(l => l.background === 'light-bg')
+    ?? typedLogos?.find(l => l.background === 'transparent-bg')
+    ?? typedLogos?.[0];
+
+  // Pick the best logo for dark backgrounds
+  const darkLogo = typedLogos?.find(l => l.background === 'dark-bg')
+    ?? typedLogos?.find(l => l.background === 'transparent-bg');
+
+  return {
+    domain,
+    logo_url: lightLogo?.url,
+    logo_url_dark: darkLogo?.url,
+    logos: typedLogos,
+    brand_color: colors?.primary as string | undefined,
+    verified,
+  };
+}
 
 /**
  * Input for creating a hosted brand

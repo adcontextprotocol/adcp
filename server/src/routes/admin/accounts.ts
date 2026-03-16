@@ -1221,15 +1221,17 @@ export function setupAccountRoutes(
             [orgIds]
           ),
 
-          // Addie outreach activity (orgs with outreach in last 30 days)
+          // Addie outreach activity (orgs with outreach in last 30 days via person_events)
           pool.query(
             `
             SELECT DISTINCT om.workos_organization_id
-            FROM member_outreach mo
-            JOIN slack_user_mappings sm ON sm.slack_user_id = mo.slack_user_id
+            FROM person_events pe
+            JOIN person_relationships pr ON pr.id = pe.person_id
+            JOIN slack_user_mappings sm ON sm.slack_user_id = pr.slack_user_id
             JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
             WHERE om.workos_organization_id = ANY($1)
-              AND mo.sent_at >= NOW() - INTERVAL '30 days'
+              AND pe.event_type = 'message_sent'
+              AND pe.occurred_at >= NOW() - INTERVAL '30 days'
           `,
             [orgIds]
           ),

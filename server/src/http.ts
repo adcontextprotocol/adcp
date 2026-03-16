@@ -24,7 +24,7 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
-import { BrandDatabase } from "./db/brand-db.js";
+import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
@@ -92,7 +92,6 @@ import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
-import { InsightsDatabase } from "./db/insights-db.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
@@ -1854,6 +1853,16 @@ export class HTTPServer {
     // Registry UI route - serve registry.html at /registry
     this.app.get("/registry", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'registry.html');
+    });
+
+    // Tools hub for registry utilities and builder workflows
+    this.app.get("/registry/tools", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'registry-tools.html');
+    });
+
+    // Backward-compatible tools alias
+    this.app.get("/tools", (_req, res) => {
+      res.redirect(301, '/registry/tools');
     });
 
     // adagents.json project landing page
@@ -5446,24 +5455,18 @@ Disallow: /api/admin/
                 'Auto-linked Slack account after signup'
               );
 
-              // Track this as an outreach conversion if there was pending outreach
+              // Record account linking in the relationship system
               try {
-                const insightsDb = new InsightsDatabase();
-                const pendingOutreach = await insightsDb.getPendingOutreach(slackUserIdToLink);
-                if (pendingOutreach) {
-                  // Mark as converted - they clicked the link and completed account linking
-                  await insightsDb.markOutreachConverted(
-                    pendingOutreach.id,
-                    'Converted via link click - account linked'
-                  );
-                  logger.info({
-                    slackUserId: slackUserIdToLink,
-                    outreachId: pendingOutreach.id,
-                    outreachType: pendingOutreach.outreach_type,
-                  }, 'Recorded outreach conversion from link click');
-                }
+                const { resolvePersonId } = await import('./db/relationship-db.js');
+                const { recordEvent } = await import('./db/person-events-db.js');
+                const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
+                await recordEvent(personId, 'account_linked', {
+                  channel: 'web',
+                  data: { workos_user_id: user.id },
+                });
+                logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
               } catch (trackingError) {
-                logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to track outreach conversion');
+                logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
               }
 
               // Send proactive Addie message if user has a recent conversation
@@ -6793,21 +6796,11 @@ Disallow: /api/admin/
           if (profile.primary_brand_domain) {
             const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
             if (hosted) {
-              const bj = hosted.brand_json as Record<string, unknown>;
-              const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-              const primaryBrand = brands?.[0];
-              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
-              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
-              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
             } else {
               const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered) {
-                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
-                const primaryBrand = brands?.[0];
-                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
-                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
-                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              if (discovered?.brand_manifest) {
+                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
               }
             }
           }
@@ -6837,21 +6830,11 @@ Disallow: /api/admin/
           if (profile.primary_brand_domain) {
             const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
             if (hosted) {
-              const bj = hosted.brand_json as Record<string, unknown>;
-              const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-              const primaryBrand = brands?.[0];
-              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
-              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
-              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
             } else {
               const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-              if (discovered) {
-                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
-                const primaryBrand = brands?.[0];
-                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
-                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
-                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              if (discovered?.brand_manifest) {
+                profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
               }
             }
           }
@@ -6956,21 +6939,11 @@ Disallow: /api/admin/
         if (profile.primary_brand_domain) {
           const hostedBrand = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
           if (hostedBrand) {
-            const bj = hostedBrand.brand_json as Record<string, unknown>;
-            const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-            const primaryBrand = brands?.[0];
-            const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
-            const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
-            profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hostedBrand.domain_verified };
+            profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, hostedBrand.brand_json as Record<string, unknown>, hostedBrand.domain_verified);
           } else {
             const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
-            if (discovered) {
-              const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-              const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
-              const primaryBrand = brands?.[0];
-              const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
-              const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
-              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+            if (discovered?.brand_manifest) {
+              profile.resolved_brand = resolveBrandFromJson(profile.primary_brand_domain, discovered.brand_manifest as Record<string, unknown>, true);
             }
           }
         }

@@ -36,6 +36,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'capture_learning',    // Save insights from conversations
   'web_search',          // Built-in Claude tool, always available
   'set_outreach_preference', // Users can always opt out of proactive outreach
+  'search_image_library', // Illustrations to enrich explanations — not topic-dependent
 ];
 
 /**
@@ -90,6 +91,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_my_content',
       'bookmark_resource',
       'set_outreach_preference',
+      'draft_social_posts',
     ],
   },
 
@@ -215,6 +217,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'list_pending_invoices',
       'get_account',
     ],
+    adminOnly: true,
     requiresPrecision: true,
   },
 
@@ -356,6 +359,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'test_out_modules',
       'start_certification_exam',
       'complete_certification_exam',
+      // Brand sandbox tools for certification exercises
+      'sandbox_get_brand_identity',
+      'sandbox_get_rights',
+      'sandbox_acquire_rights',
+      'sandbox_update_rights',
     ],
   },
 };

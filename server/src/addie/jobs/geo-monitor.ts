@@ -10,6 +10,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger as baseLogger } from '../../logger.js';
 import { query } from '../../db/client.js';
 import { ModelConfig } from '../../config/models.js';
+import { syncGeoPromptsFromLLMPulse } from '../../services/geo-prompt-sync.js';
 
 const logger = baseLogger.child({ module: 'geo-monitor' });
 
@@ -122,9 +123,20 @@ export async function runGeoMonitorJob(options: { limit?: number } = {}): Promis
   promptsChecked: number;
   mentions: number;
 }> {
-  const { limit = 15 } = options;
+  const { limit } = options;
 
-  // Fetch active prompts that haven't been checked in the last 7 days
+  try {
+    const syncResult = await syncGeoPromptsFromLLMPulse();
+    if (syncResult.configured) {
+      logger.info(syncResult, 'Aligned GEO prompts with LLM Pulse before Claude monitor run');
+    }
+  } catch (error) {
+    logger.warn({ error }, 'Failed to sync GEO prompts from LLM Pulse before monitor run');
+  }
+
+  // Fetch active prompts that haven't been checked in the last 7 days.
+  // When no explicit limit is set, run the full synced inventory.
+  const limitClause = limit != null ? 'LIMIT $1' : '';
   const promptsResult = await query<GeoPrompt>(
     `SELECT gp.id, gp.prompt_text, gp.category
      FROM geo_prompts gp
@@ -135,8 +147,8 @@ export async function runGeoMonitorJob(options: { limit?: number } = {}): Promis
            AND gpr.checked_at > NOW() - INTERVAL '7 days'
        )
      ORDER BY gp.id
-     LIMIT $1`,
-    [limit]
+     ${limitClause}`,
+    limit != null ? [limit] : []
   );
 
   const prompts = promptsResult.rows;

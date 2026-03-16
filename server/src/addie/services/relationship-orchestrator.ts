@@ -1,9 +1,9 @@
 /**
- * Proactive Outreach Service
+ * Relationship Orchestrator
  *
- * Manages proactive outreach to people via Slack DMs and email.
- * Uses the engagement planner for relationship-aware message composition.
- * Handles eligibility checking, rate limiting, and business hours.
+ * Runs Addie's single proactive relationship loop across channels.
+ * Uses the engagement planner for relationship-aware message composition,
+ * unified delivery, thread persistence, and eligibility checks.
  */
 
 import { logger } from '../../logger.js';
@@ -15,19 +15,20 @@ import * as relationshipDb from '../../db/relationship-db.js';
 import { loadRelationshipContext } from './relationship-context.js';
 import {
   shouldContact,
+  hasMeaningfulEngagement,
   composeMessage,
   computeNextContactDate,
   computeEngagementOpportunities,
   MAX_TOTAL_UNREPLIED,
 } from './engagement-planner.js';
 import {
-  sendProspectEmail,
-  getOrCreateUnsubscribeToken,
   getEmailBudget,
   EMAIL_PER_RUN_LIMIT,
 } from './email-outreach.js';
+import { sendProspectEmail, getOrCreateUnsubscribeToken } from './email-outreach.js';
 import { captureEvent } from '../../utils/posthog.js';
 import * as personEvents from '../../db/person-events-db.js';
+import { getThreadService } from '../thread-service.js';
 
 // Outreach is always live - rate limiting and business hours provide safety
 const OUTREACH_MODE = 'live' as const;
@@ -41,7 +42,7 @@ const BUSINESS_HOURS_END = 17; // 5 PM
 const SLACK_DM_PER_RUN_LIMIT = 20; // Max Slack DMs per scheduler run to avoid burst spam
 
 /**
- * Result of sending outreach
+ * Result of sending a relationship message
  */
 interface OutreachResult {
   success: boolean;
@@ -207,7 +208,7 @@ async function getSlackTzOffset(slackUserId: string): Promise<number | null> {
 async function sendSlackViaPermThread(
   candidate: relationshipDb.PersonRelationship,
   text: string
-): Promise<{ channelId: string; messageTs: string } | null> {
+): Promise<{ channelId: string; messageTs: string; rootThreadTs: string } | null> {
   // If we have a permanent thread, reply to it
   if (candidate.slack_dm_channel_id && candidate.slack_dm_thread_ts) {
     const messageTs = await sendDmMessage(
@@ -216,7 +217,11 @@ async function sendSlackViaPermThread(
       candidate.slack_dm_thread_ts
     );
     if (messageTs) {
-      return { channelId: candidate.slack_dm_channel_id, messageTs };
+      return {
+        channelId: candidate.slack_dm_channel_id,
+        messageTs,
+        rootThreadTs: candidate.slack_dm_thread_ts,
+      };
     }
     // Thread send failed — fall through to open a new channel
     logger.warn(
@@ -235,14 +240,163 @@ async function sendSlackViaPermThread(
   // Save as the permanent thread for this relationship
   await relationshipDb.setSlackDmThread(candidate.id, channelId, messageTs);
 
-  return { channelId, messageTs };
+  return { channelId, messageTs, rootThreadTs: messageTs };
+}
+
+function getEmailThreadExternalId(personId: string): string {
+  return `relationship:${personId}`;
+}
+
+function formatEmailMessageForThread(subject: string, body: string): string {
+  return `Subject: ${subject}\n\n${body}`;
+}
+
+async function persistSlackThreadMessage(options: {
+  relationship: relationshipDb.PersonRelationship;
+  channelId: string;
+  rootThreadTs: string;
+  text: string;
+}): Promise<void> {
+  if (!options.relationship.slack_user_id) {
+    return;
+  }
+
+  const threadService = getThreadService();
+  const thread = await threadService.getOrCreateThread({
+    channel: 'slack',
+    external_id: `${options.channelId}:${options.rootThreadTs}`,
+    user_type: 'slack',
+    user_id: options.relationship.slack_user_id,
+    user_display_name: options.relationship.display_name ?? undefined,
+  });
+
+  await threadService.linkThreadToPerson(thread.thread_id, options.relationship.id);
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'assistant',
+    content: options.text,
+  });
+}
+
+async function persistEmailThreadMessage(options: {
+  relationship: relationshipDb.PersonRelationship;
+  subject: string;
+  text: string;
+}): Promise<void> {
+  const threadService = getThreadService();
+  const thread = await threadService.getOrCreateThread({
+    channel: 'email',
+    external_id: getEmailThreadExternalId(options.relationship.id),
+    user_type: options.relationship.workos_user_id ? 'workos' : options.relationship.slack_user_id ? 'slack' : 'anonymous',
+    user_id: options.relationship.workos_user_id
+      ?? options.relationship.slack_user_id
+      ?? options.relationship.email
+      ?? options.relationship.id,
+    user_display_name: options.relationship.display_name ?? undefined,
+    title: options.subject,
+  });
+
+  await threadService.linkThreadToPerson(thread.thread_id, options.relationship.id);
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'assistant',
+    content: formatEmailMessageForThread(options.subject, options.text),
+  });
+}
+
+async function deliverRelationshipMessage(options: {
+  relationship: relationshipDb.PersonRelationship;
+  channel: 'slack' | 'email';
+  composed: { text: string; subject?: string; html?: string; goalHint?: string };
+  triggeredBy?: { id: string; name: string; email: string };
+}): Promise<{ channelId?: string }> {
+  const { relationship, channel, composed, triggeredBy } = options;
+
+  if (channel === 'slack') {
+    if (!relationship.slack_user_id) {
+      throw new Error('No Slack ID on relationship');
+    }
+
+    const slackResult = await sendSlackViaPermThread(relationship, composed.text);
+    if (!slackResult) {
+      throw new Error('Failed to send Slack message');
+    }
+
+    try {
+      await persistSlackThreadMessage({
+        relationship,
+        channelId: slackResult.channelId,
+        rootThreadTs: slackResult.rootThreadTs,
+        text: composed.text,
+      });
+    } catch (err) {
+      logger.error({ err, person_id: relationship.id }, 'Failed to persist Slack outreach to thread history');
+    }
+
+    personEvents.recordEvent(relationship.id, 'message_sent', {
+      channel: 'slack',
+      data: {
+        text: composed.text,
+        channel_id: slackResult.channelId,
+        thread_ts: slackResult.messageTs,
+        stage: relationship.stage,
+        goal_hint: composed.goalHint,
+        triggered_by: triggeredBy?.id,
+      },
+    }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+
+    return { channelId: slackResult.channelId };
+  }
+
+  if (!relationship.email) {
+    throw new Error('No email on relationship');
+  }
+
+  const subject = composed.subject ?? 'AgenticAdvertising.org update';
+  const unsubToken = await getOrCreateUnsubscribeToken(relationship.email);
+  const sendResult = await sendProspectEmail({
+    to: relationship.email,
+    subject,
+    bodyHtml: composed.html ?? composed.text,
+    bodyText: composed.text,
+    prospectOrgId: relationship.prospect_org_id ?? '',
+    unsubscribeToken: unsubToken,
+  });
+
+  if (!sendResult.success) {
+    throw new Error(`Failed to send email: ${sendResult.error}`);
+  }
+
+  try {
+    await persistEmailThreadMessage({
+      relationship,
+      subject,
+      text: composed.text,
+    });
+  } catch (err) {
+    logger.error({ err, person_id: relationship.id }, 'Failed to persist email outreach to thread history');
+  }
+
+  personEvents.recordEvent(relationship.id, 'message_sent', {
+    channel: 'email',
+    data: {
+      text: composed.text,
+      subject,
+      text_length: composed.text.length,
+      stage: relationship.stage,
+      goal_hint: composed.goalHint,
+      triggered_by: triggeredBy?.id,
+    },
+  }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+
+  return {};
 }
 
 /**
- * Run the outreach scheduler
- * Called periodically (e.g., every 30 minutes) by background job
+ * Run one relationship orchestration cycle.
+ * Called periodically by the background job runner.
  */
-export async function runOutreachScheduler(options: {
+export async function runRelationshipOrchestratorCycle(options: {
   limit?: number;
   forceRun?: boolean;
 } = {}): Promise<{
@@ -259,7 +413,7 @@ export async function runOutreachScheduler(options: {
     return { processed: 0, sent: 0, skipped: 0, errors: 0 };
   }
 
-  logger.debug({ limit }, 'Running outreach scheduler');
+  logger.debug({ limit }, 'Running relationship orchestrator cycle');
 
   // Get candidates from the relationship model
   const candidates = await relationshipDb.getEngagementCandidates({ limit: limit * 3 });
@@ -327,6 +481,30 @@ export async function runOutreachScheduler(options: {
       // 4. Load full relationship context
       const context = await loadRelationshipContext(candidate.id, { includeCommunity: true });
 
+      // 4b. Do not proactively message completely cold prospects or silent welcomes
+      if (
+        (candidate.stage === 'prospect' || candidate.stage === 'welcomed')
+        && candidate.last_person_message_at === null
+        && !hasMeaningfulEngagement(context)
+      ) {
+        logger.debug(
+          { person_id: candidate.id, stage: candidate.stage },
+          'Skipped — no meaningful engagement signal yet'
+        );
+        personEvents.recordEvent(candidate.id, 'outreach_skipped', {
+          channel: 'system',
+          data: { reason: 'no meaningful engagement signal yet', stage: candidate.stage },
+        }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+
+        await relationshipDb.setNextContactAfter(
+          candidate.id,
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        );
+
+        skipped++;
+        continue;
+      }
+
       // 5. Compute engagement opportunities (pass contact reason for pulse boost)
       const engagementOpportunities = computeEngagementOpportunities({
         relationship: candidate,
@@ -378,71 +556,37 @@ export async function runOutreachScheduler(options: {
       let channelId: string | undefined;
 
       if (channel === 'slack') {
-        if (!candidate.slack_user_id) {
-          logger.warn({ person_id: candidate.id }, 'Slack channel selected but no slack_user_id');
+        try {
+          const result = await deliverRelationshipMessage({
+            relationship: candidate,
+            channel,
+            composed,
+          });
+          channelId = result.channelId;
+        } catch (err) {
           errors++;
+          logger.warn({ person_id: candidate.id, err }, 'Failed to send Slack message');
           continue;
         }
-
-        const slackResult = await sendSlackViaPermThread(candidate, composed.text);
-        if (!slackResult) {
-          errors++;
-          logger.warn({ person_id: candidate.id }, 'Failed to send Slack message');
-          continue;
-        }
-        channelId = slackResult.channelId;
-
-        personEvents.recordEvent(candidate.id, 'message_sent', {
-          channel: 'slack',
-          data: {
-            text: composed.text,
-            channel_id: slackResult.channelId,
-            thread_ts: slackResult.messageTs,
-            stage: candidate.stage,
-            goal_hint: composed.goalHint,
-          },
-        }).catch(err => logger.warn({ err }, 'Failed to record person event'));
 
         slackDmsSentThisRun++;
 
         // Delay between Slack messages
         await new Promise(resolve => setTimeout(resolve, 2000));
       } else {
-        // Email
-        if (!candidate.email) {
-          logger.warn({ person_id: candidate.id }, 'Email channel selected but no email');
+        try {
+          await deliverRelationshipMessage({
+            relationship: candidate,
+            channel,
+            composed,
+          });
+        } catch (err) {
           errors++;
-          continue;
-        }
-
-        const unsubToken = await getOrCreateUnsubscribeToken(candidate.email);
-        const sendResult = await sendProspectEmail({
-          to: candidate.email,
-          subject: composed.subject ?? 'AgenticAdvertising.org update',
-          bodyHtml: composed.html ?? composed.text,
-          bodyText: composed.text,
-          prospectOrgId: candidate.prospect_org_id ?? '',
-          unsubscribeToken: unsubToken,
-        });
-
-        if (!sendResult.success) {
-          errors++;
-          logger.warn({ person_id: candidate.id, error: sendResult.error }, 'Failed to send email');
+          logger.warn({ person_id: candidate.id, err }, 'Failed to send email');
           continue;
         }
 
         emailsSentThisRun++;
-
-        personEvents.recordEvent(candidate.id, 'message_sent', {
-          channel: 'email',
-          data: {
-            text: composed.text,
-            subject: composed.subject,
-            text_length: composed.text.length,
-            stage: candidate.stage,
-            goal_hint: composed.goalHint,
-          },
-        }).catch(err => logger.warn({ err }, 'Failed to record person event'));
 
         // Delay between emails
         await new Promise(resolve => setTimeout(resolve, 5000));
@@ -473,7 +617,7 @@ export async function runOutreachScheduler(options: {
       }, 'Sent engagement message');
     } catch (error) {
       errors++;
-      logger.error({ error, person_id: candidate.id }, 'Error during outreach');
+      logger.error({ error, person_id: candidate.id }, 'Error during relationship orchestration');
     }
   }
 
@@ -487,11 +631,11 @@ export async function runOutreachScheduler(options: {
 }
 
 /**
- * Manually trigger outreach to a specific user (admin function).
+ * Manually trigger a relationship message to a specific user (admin function).
  * Uses the engagement planner to compose a contextual message.
- * When an admin sends outreach, they become the account owner if no owner exists.
+ * When an admin sends a message, they become the account owner if no owner exists.
  */
-export async function manualOutreach(
+export async function sendRelationshipMessage(
   slackUserId: string,
   triggeredBy?: { id: string; name: string; email: string }
 ): Promise<OutreachResult> {
@@ -542,58 +686,16 @@ export async function manualOutreach(
   // Send via appropriate channel
   let dmChannelId: string | undefined;
 
-  if (channel === 'slack') {
-    if (!relationship.slack_user_id) {
-      return { success: false, error: 'No Slack ID on relationship' };
-    }
-
-    const slackResult = await sendSlackViaPermThread(relationship, composed.text);
-    if (!slackResult) {
-      return { success: false, error: 'Failed to send Slack message' };
-    }
-    dmChannelId = slackResult.channelId;
-
-    personEvents.recordEvent(relationship.id, 'message_sent', {
-      channel: 'slack',
-      data: {
-        text: composed.text,
-        channel_id: slackResult.channelId,
-        thread_ts: slackResult.messageTs,
-        stage: relationship.stage,
-        goal_hint: composed.goalHint,
-        triggered_by: triggeredBy?.id,
-      },
-    }).catch(err => logger.warn({ err }, 'Failed to record person event'));
-  } else {
-    if (!relationship.email) {
-      return { success: false, error: 'No email on relationship' };
-    }
-
-    const unsubToken = await getOrCreateUnsubscribeToken(relationship.email);
-    const sendResult = await sendProspectEmail({
-      to: relationship.email,
-      subject: composed.subject ?? 'AgenticAdvertising.org update',
-      bodyHtml: composed.html ?? composed.text,
-      bodyText: composed.text,
-      prospectOrgId: relationship.prospect_org_id ?? '',
-      unsubscribeToken: unsubToken,
+  try {
+    const result = await deliverRelationshipMessage({
+      relationship,
+      channel,
+      composed,
+      triggeredBy,
     });
-
-    if (!sendResult.success) {
-      return { success: false, error: `Failed to send email: ${sendResult.error}` };
-    }
-
-    personEvents.recordEvent(relationship.id, 'message_sent', {
-      channel: 'email',
-      data: {
-        text: composed.text,
-        subject: composed.subject,
-        text_length: composed.text.length,
-        stage: relationship.stage,
-        goal_hint: composed.goalHint,
-        triggered_by: triggeredBy?.id,
-      },
-    }).catch(err => logger.warn({ err }, 'Failed to record person event'));
+    dmChannelId = result.channelId;
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to deliver message' };
   }
 
   // Update relationship
@@ -637,9 +739,9 @@ export async function manualOutreach(
 
 
 /**
- * Get current outreach mode (always 'live')
+ * Get current relationship orchestrator mode (always 'live')
  */
-export function getOutreachMode(): 'live' {
+export function getRelationshipOrchestratorMode(): 'live' {
   return OUTREACH_MODE;
 }
 
@@ -687,7 +789,7 @@ async function getCadenceAwareNextContact(personId: string, stage: relationshipD
  * negative sentiment) are enforced. Timing rules (cooldowns, circuit breaker,
  * pulse) are skipped so admins can override cadence.
  */
-export async function canContactUser(slackUserId: string, options?: { adminOverride?: boolean }): Promise<{
+export async function canEngageSlackUser(slackUserId: string, options?: { adminOverride?: boolean }): Promise<{
   canContact: boolean;
   reason?: string;
   channel?: 'slack' | 'email';
@@ -709,7 +811,7 @@ export async function canContactUser(slackUserId: string, options?: { adminOverr
     return { canContact: false, reason: 'negative sentiment' };
   }
 
-  // Timing rules only apply for automated outreach
+  // Timing rules only apply for automated orchestration
   if (!options?.adminOverride) {
     const decision = shouldContact(relationship);
     return {
@@ -723,4 +825,3 @@ export async function canContactUser(slackUserId: string, options?: { adminOverr
     ?? (relationship.slack_user_id ? 'slack' : 'email');
   return { canContact: true, channel };
 }
-

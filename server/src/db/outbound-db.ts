@@ -52,7 +52,7 @@ export async function getMemberCapabilities(
                WHERE om.workos_user_id = $1
                AND mp.display_name IS NOT NULL
                AND mp.description IS NOT NULL) as has_profile,
-        COALESCE((SELECT array_length(mp.offerings, 1) FROM member_profiles mp
+        COALESCE((SELECT MAX(array_length(mp.offerings, 1)) FROM member_profiles mp
                   JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
                   WHERE om.workos_user_id = $1), 0) as offerings_count`,
       [workosUserId]

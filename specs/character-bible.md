@@ -526,7 +526,7 @@ These map to simulation fixtures and automated testing.
 Every image request should include the base style from CLAUDE.md plus character-specific details. Example for Sam:
 
 ```
-Flat illustration, teal/emerald color palette (#047857 primary, #0d9488 secondary, #134e4a dark accents).
+Flat illustration, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with teal reserved for minor supporting accents.
 Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients.
 Tech-forward but warm. No real brand names or logos.
 Wide aspect ratio suitable for documentation headers (roughly 16:9).

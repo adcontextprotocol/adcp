@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registry tools | AgenticAdvertising.org</title>
+  <meta name="description" content="Builder and validation workflows for brand.json, adagents.json, and other AdCP implementation tasks.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
+  <style>
+    body {
+      padding-top: var(--nav-height);
+    }
+
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-6);
+      margin-top: var(--space-8);
+    }
+
+    .tool-card {
+      height: 100%;
+    }
+
+    .tool-card .meta {
+      display: block;
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-2);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wider);
+      font-weight: var(--font-semibold);
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-brand);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+      margin-bottom: var(--space-4);
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 768px) {
+      .tool-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+  <script src="/registry-nav.js"></script>
+
+  <header class="page-header">
+    <h1>Registry tools</h1>
+    <p>Create and validate the files that agents use for discovery, identity, and authorization</p>
+  </header>
+
+  <section>
+    <div class="panel panel-wide">
+
+      <div class="tool-grid">
+        <div class="cta-card tool-card">
+          <span class="meta">Brand protocol</span>
+          <h3>brand.json builder</h3>
+          <p>Create and validate a hosted brand identity file, then publish or update it through the registry.</p>
+          <a href="/brand/builder">Open builder</a>
+        </div>
+
+        <div class="cta-card tool-card">
+          <span class="meta">Property governance</span>
+          <h3>adagents.json builder</h3>
+          <p>Validate publisher declarations, generate compliant payloads, and check referenced agent cards.</p>
+          <a href="/adagents/builder">Open builder</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-subtle">
+    <div class="panel panel-wide">
+      <div class="tool-grid">
+        <div class="cta-card tool-card">
+          <span class="meta">Specification</span>
+          <h3>brand.json docs</h3>
+          <p>Reference for the brand identity file format, its variants, and associated rights workflows.</p>
+          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json">View docs</a>
+        </div>
+
+        <div class="cta-card tool-card">
+          <span class="meta">Specification</span>
+          <h3>adagents.json docs</h3>
+          <p>Reference for publisher authorization declarations and how governance agents consume them.</p>
+          <a href="https://docs.adcontextprotocol.org/docs/governance/property/adagents">View docs</a>
+        </div>
+
+        <div class="cta-card tool-card">
+          <span class="meta">API reference</span>
+          <h3>Registry API</h3>
+          <p>Endpoint reference for brand resolution, property lookup, agent discovery, and authorization.</p>
+          <a href="https://docs.adcontextprotocol.org/docs/registry/index">View API docs</a>
+        </div>
+
+        <div class="cta-card tool-card">
+          <span class="meta">Guide</span>
+          <h3>Building with AdCP</h3>
+          <p>Architecture, implementation patterns, authentication, sessions, and transport guidance.</p>
+          <a href="https://docs.adcontextprotocol.org/docs/building/index">View guide</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="adcp-footer"></div>
+</body>
+</html>

@@ -15,11 +15,11 @@ import { getPool } from '../db/client.js';
 import { query } from '../db/client.js';
 import * as personEvents from '../db/person-events-db.js';
 import {
-  runOutreachScheduler,
-  manualOutreach,
-  getOutreachMode,
-  canContactUser,
-} from '../addie/services/proactive-outreach.js';
+  runRelationshipOrchestratorCycle,
+  sendRelationshipMessage,
+  getRelationshipOrchestratorMode,
+  canEngageSlackUser,
+} from '../addie/services/relationship-orchestrator.js';
 import {
   getActionItems,
   getOpenActionItems,
@@ -286,22 +286,22 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
 
   // GET /api/admin/outreach/mode - Get current outreach mode
   apiRouter.get('/outreach/mode', requireAuth, requireAdmin, (req, res) => {
-    res.json({ mode: getOutreachMode() });
+    res.json({ mode: getRelationshipOrchestratorMode() });
   });
 
-  // POST /api/admin/outreach/run - Manually trigger outreach scheduler
+  // POST /api/admin/outreach/run - Manually trigger relationship orchestrator
   apiRouter.post('/outreach/run', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { limit, forceRun } = req.body;
-      const result = await runOutreachScheduler({
+      const result = await runRelationshipOrchestratorCycle({
         limit: limit ?? 5,
         forceRun: forceRun ?? true,
       });
 
-      logger.info({ result, triggeredBy: req.user?.id }, 'Manual outreach run triggered');
+      logger.info({ result, triggeredBy: req.user?.id }, 'Manual relationship orchestrator run triggered');
       res.json(result);
     } catch (error) {
-      logger.error({ err: error }, 'Error running outreach scheduler');
+      logger.error({ err: error }, 'Error running relationship orchestrator');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -312,7 +312,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       const { slackUserId } = req.params;
 
       // Check if user can be contacted
-      const eligibility = await canContactUser(slackUserId, { adminOverride: true });
+      const eligibility = await canEngageSlackUser(slackUserId, { adminOverride: true });
       if (!eligibility.canContact) {
         return res.status(400).json({ error: eligibility.reason });
       }
@@ -324,7 +324,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         email: req.user.email,
       } : undefined;
 
-      const result = await manualOutreach(slackUserId, triggeredBy);
+      const result = await sendRelationshipMessage(slackUserId, triggeredBy);
 
       if (result.success) {
         logger.info({ slackUserId, triggeredBy: req.user?.id }, 'Manual outreach sent');
@@ -348,7 +348,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       }
 
       // Check if user can be contacted
-      const eligibility = await canContactUser(slack_user_id, { adminOverride: true });
+      const eligibility = await canEngageSlackUser(slack_user_id, { adminOverride: true });
       if (!eligibility.canContact) {
         return res.status(400).json({ error: eligibility.reason });
       }
@@ -360,7 +360,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         email: req.user.email,
       } : undefined;
 
-      const result = await manualOutreach(
+      const result = await sendRelationshipMessage(
         slack_user_id,
         triggeredBy
       );
@@ -380,7 +380,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   // GET /api/admin/outreach/check/:slackUserId - Check if user can be contacted
   apiRouter.get('/outreach/check/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const eligibility = await canContactUser(req.params.slackUserId);
+      const eligibility = await canEngageSlackUser(req.params.slackUserId);
       res.json(eligibility);
     } catch (error) {
       logger.error({ err: error }, 'Error checking outreach eligibility');
