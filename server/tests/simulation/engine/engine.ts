@@ -169,8 +169,8 @@ export class SimulationEngine {
   // -------------------------------------------------------------------------
 
   /**
-   * Run one outreach scheduler cycle.
-   * Imports and calls the actual runOutreachScheduler function.
+   * Run one relationship orchestrator cycle.
+   * Imports and calls the actual relationship orchestrator cycle.
    */
   async runOutreachCycle(options?: { limit?: number }): Promise<OutreachCycleResult> {
     this.outreachCycleCount++;
@@ -180,9 +180,9 @@ export class SimulationEngine {
     await this.syncPgClock();
 
     // Import dynamically to ensure mocks are in place
-    const { runOutreachScheduler } = await import('../../../src/addie/services/proactive-outreach.js');
+    const { runRelationshipOrchestratorCycle } = await import('../../../src/addie/services/relationship-orchestrator.js');
 
-    const result = await runOutreachScheduler({
+    const result = await runRelationshipOrchestratorCycle({
       limit: options?.limit ?? 10,
       forceRun: true, // Skip business hours check
     });

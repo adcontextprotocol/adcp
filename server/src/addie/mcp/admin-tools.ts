@@ -94,9 +94,9 @@ import {
   type PipelineStage,
 } from '../../services/account-lifecycle.js';
 import {
-  manualOutreach,
-  canContactUser,
-} from '../services/proactive-outreach.js';
+  sendRelationshipMessage,
+  canEngageSlackUser,
+} from '../services/relationship-orchestrator.js';
 import {
   shouldContact as shouldContactCheck,
   computeEngagementOpportunities,
@@ -6677,71 +6677,68 @@ Use add_committee_leader to assign a leader.`;
     try {
       const pool = getPool();
       const limit = Math.min(Math.max((input.limit as number) || 25, 1), 100);
-      const validStages = ['new', 'active', 'engaged', 'champion', 'at_risk'];
+      const validStages = ['prospect', 'welcomed', 'exploring', 'participating', 'contributing', 'leading'];
       const rawStage = (input.lifecycle_stage as string) || 'all';
-      const lifecycleFilter = validStages.includes(rawStage) ? rawStage : 'all';
-      const memberOnly = (input.member_only as boolean) || false;
+      const stageFilter = validStages.includes(rawStage) ? rawStage : 'all';
 
       const result = await pool.query<{
-        first_name: string | null;
-        last_name: string | null;
-        email: string;
-        org_name: string | null;
-        engagement_score: number | null;
-        excitement_score: number | null;
-        lifecycle_stage: string | null;
-        goal_name: string | null;
+        display_name: string | null;
+        email: string | null;
+        stage: string;
+        interaction_count: number;
+        unreplied_outreach_count: number;
+        sentiment_trend: string | null;
+        last_person_message_at: string | null;
+        last_addie_message_at: string | null;
       }>(`
         SELECT
-          u.first_name,
-          u.last_name,
-          u.email,
-          o.name AS org_name,
-          u.engagement_score,
-          u.excitement_score,
-          u.lifecycle_stage,
-          (SELECT uc.goal_name FROM unified_contacts_with_goals uc
-           WHERE uc.workos_user_id = u.workos_user_id LIMIT 1) AS goal_name
-        FROM users u
-        LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
-        WHERE ($1 = 'all' OR u.lifecycle_stage = $1)
-          AND ($2::boolean = false OR o.subscription_status = 'active')
-        ORDER BY
-          (COALESCE(u.engagement_score, 0) + COALESCE(u.excitement_score, 0) * 0.5) DESC,
-          u.engagement_score DESC NULLS LAST
-        LIMIT $3
-      `, [lifecycleFilter, memberOnly, limit]);
+          pr.display_name,
+          pr.email,
+          pr.stage,
+          pr.interaction_count,
+          pr.unreplied_outreach_count,
+          pr.sentiment_trend,
+          pr.last_person_message_at,
+          pr.last_addie_message_at
+        FROM person_relationships pr
+        WHERE pr.opted_out = FALSE
+          AND ($1 = 'all' OR pr.stage = $1)
+        ORDER BY pr.interaction_count DESC
+        LIMIT $2
+      `, [stageFilter, limit]);
 
       const sorted = result.rows;
 
       if (sorted.length === 0) {
-        return `No users found${lifecycleFilter !== 'all' ? ` with lifecycle stage: ${lifecycleFilter}` : ''}${memberOnly ? ' at paying member organizations' : ''}.`;
+        return `No people found${stageFilter !== 'all' ? ` with stage: ${stageFilter}` : ''}.`;
       }
 
-      const lifecycleEmoji: Record<string, string> = {
-        champion: '🏆',
-        engaged: '⭐',
-        active: '✅',
-        new: '🆕',
-        at_risk: '⚠️',
+      const stageEmoji: Record<string, string> = {
+        leading: '🏆',
+        contributing: '⭐',
+        participating: '✅',
+        exploring: '🔍',
+        welcomed: '👋',
+        prospect: '🆕',
       };
 
       let response = `## Most Engaged Community Members\n\n`;
-      if (lifecycleFilter !== 'all') response += `_Filtered to: ${lifecycleFilter}_\n\n`;
-      if (memberOnly) response += `_Paying members only_\n\n`;
+      if (stageFilter !== 'all') response += `_Filtered to: ${stageFilter}_\n\n`;
 
-      response += `| Rank | Name | Email | Organization | Engagement | Excitement | Stage | Next Goal |\n`;
-      response += `|------|------|-------|--------------|------------|------------|-------|-----------|\n`;
+      response += `| Rank | Name | Stage | Interactions | Unreplied | Sentiment | Last active |\n`;
+      response += `|------|------|-------|-------------|-----------|-----------|-------------|\n`;
 
       for (let i = 0; i < sorted.length; i++) {
         const u = sorted[i];
-        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email;
-        const emoji = lifecycleEmoji[u.lifecycle_stage || ''] || '—';
-        const stage = u.lifecycle_stage ? `${emoji} ${u.lifecycle_stage}` : '—';
-        response += `| ${i + 1} | **${name}** | ${u.email} | ${u.org_name} | ${u.engagement_score ?? '—'} | ${u.excitement_score ?? '—'} | ${stage} | ${u.goal_name ?? '—'} |\n`;
+        const name = u.display_name || u.email || '—';
+        const emoji = stageEmoji[u.stage] || '—';
+        const lastActive = u.last_person_message_at
+          ? new Date(u.last_person_message_at).toLocaleDateString()
+          : '—';
+        response += `| ${i + 1} | **${name}** | ${emoji} ${u.stage} | ${u.interaction_count} | ${u.unreplied_outreach_count} | ${u.sentiment_trend || 'neutral'} | ${lastActive} |\n`;
       }
 
-      response += `\n_Ranked by engagement score + (excitement × 0.5). WorkOS-registered users only. Showing top ${sorted.length} individuals._\n`;
+      response += `\n_Ranked by interaction count from person_relationships. Showing top ${sorted.length}._\n`;
       return response;
     } catch (error) {
       logger.error({ error }, 'Error listing users by engagement');
@@ -7596,7 +7593,7 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       // Check eligibility first
-      const eligibility = await canContactUser(slackUserId, { adminOverride: true });
+      const eligibility = await canEngageSlackUser(slackUserId, { adminOverride: true });
       if (!eligibility.canContact) {
         return `❌ Cannot contact this user: ${eligibility.reason}`;
       }
@@ -7614,7 +7611,7 @@ Use add_committee_leader to assign a leader.`;
         return dryRunResponse;
       }
 
-      const result = await manualOutreach(slackUserId, triggeredBy);
+      const result = await sendRelationshipMessage(slackUserId, triggeredBy);
 
       if (result.success) {
         captureEvent(slackUserId, 'admin_tool_used', {
@@ -7690,7 +7687,7 @@ Use add_committee_leader to assign a leader.`;
            ORDER BY occurred_at DESC LIMIT 10`,
           [person.id]
         ),
-        person.slack_user_id ? canContactUser(person.slack_user_id) : Promise.resolve({ canContact: false, reason: 'no Slack ID' }),
+        person.slack_user_id ? canEngageSlackUser(person.slack_user_id) : Promise.resolve({ canContact: false, reason: 'no Slack ID' }),
       ]);
 
       let response = `## ${person.display_name || queryStr}\n\n`;

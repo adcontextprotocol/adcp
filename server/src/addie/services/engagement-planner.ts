@@ -289,6 +289,45 @@ export function shouldContact(relationship: PersonRelationship): EngagementDecis
   return { shouldContact: true, reason: 'eligible for proactive contact', channel };
 }
 
+/**
+ * Gate proactive outreach on real engagement signals so Addie doesn't message
+ * people solely because they exist in the relationship table.
+ */
+export function hasMeaningfulEngagement(
+  ctx: Pick<RelationshipContext, 'relationship' | 'recentMessages' | 'profile' | 'certification'>
+): boolean {
+  const { relationship, recentMessages, profile, certification } = ctx;
+
+  if (relationship.last_person_message_at) {
+    return true;
+  }
+
+  if (recentMessages.some(message => message.role === 'user')) {
+    return true;
+  }
+
+  if (relationship.workos_user_id) {
+    return true;
+  }
+
+  const capabilities = profile.capabilities;
+  if (capabilities) {
+    if (capabilities.account_linked) return true;
+    if (capabilities.slack_message_count_30d > 0) return true;
+    if (capabilities.working_group_count > 0 || capabilities.council_count > 0) return true;
+    if (capabilities.events_registered > 0 || capabilities.events_attended > 0) return true;
+    if (capabilities.community_profile_completeness >= 40) return true;
+  }
+
+  if (certification) {
+    if (certification.modulesCompleted > 0) return true;
+    if (certification.hasInProgressTrack) return true;
+    if (certification.credentialsEarned.length > 0) return true;
+  }
+
+  return false;
+}
+
 // -----------------------------------------------------------------------------
 // composeMessage
 // -----------------------------------------------------------------------------
@@ -323,13 +362,9 @@ export async function composeMessage(
 
   let text = content.text.trim();
 
-  // Strip markdown code fences that Sonnet sometimes wraps JSON in
-  const codeFenceMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
-  if (codeFenceMatch) {
-    text = codeFenceMatch[1].trim();
-  }
+  text = stripCodeFences(text);
 
-  // Try to parse as JSON (email response or skip)
+  // Try to parse as JSON first for both Slack and email.
   try {
     const parsed = JSON.parse(text);
 
@@ -341,32 +376,106 @@ export async function composeMessage(
       return null;
     }
 
-    if (parsed.subject && parsed.body) {
+    if (parsed.text && typeof parsed.text === 'string') {
+      const cleanedText = extractUserFacingMessage(parsed.text, 'slack');
+      if (!cleanedText) {
+        logger.warn({ person_id: ctx.relationship.id }, 'Model returned non-user-facing Slack JSON payload');
+        return null;
+      }
       return {
-        text: parsed.body,
+        text: cleanedText,
+        goalHint: inferGoalHint(cleanedText, ctx.engagementOpportunities),
+      };
+    }
+
+    if (parsed.subject && parsed.body) {
+      const cleanedBody = extractUserFacingMessage(parsed.body, 'email');
+      if (!cleanedBody) {
+        logger.warn({ person_id: ctx.relationship.id }, 'Model returned non-user-facing email body');
+        return null;
+      }
+      return {
+        text: cleanedBody,
         subject: parsed.subject,
-        html: textToEmailHtml(parsed.body),
-        goalHint: inferGoalHint(parsed.body, ctx.engagementOpportunities),
+        html: textToEmailHtml(cleanedBody),
+        goalHint: inferGoalHint(cleanedBody, ctx.engagementOpportunities),
       };
     }
   } catch {
-    // Not JSON — treat as plain text (Slack message)
+    // Not JSON — salvage the user-facing message text if possible.
+  }
+
+  const cleanedText = extractUserFacingMessage(text, channel);
+  if (!cleanedText) {
+    logger.warn({ person_id: ctx.relationship.id }, 'Model output did not contain a safe user-facing message');
+    return null;
   }
 
   if (channel === 'email') {
     // Sonnet returned plain text but we need email format — wrap it
     return {
-      text,
+      text: cleanedText,
       subject: 'AgenticAdvertising.org update',
-      html: textToEmailHtml(text),
-      goalHint: inferGoalHint(text, ctx.engagementOpportunities),
+      html: textToEmailHtml(cleanedText),
+      goalHint: inferGoalHint(cleanedText, ctx.engagementOpportunities),
     };
   }
 
   return {
-    text,
-    goalHint: inferGoalHint(text, ctx.engagementOpportunities),
+    text: cleanedText,
+    goalHint: inferGoalHint(cleanedText, ctx.engagementOpportunities),
   };
+}
+
+function stripCodeFences(text: string): string {
+  const codeFenceMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  return codeFenceMatch ? codeFenceMatch[1].trim() : text;
+}
+
+const REASONING_PREFIX_PATTERNS = [
+  /^thinking about this one:/i,
+  /^thinking through this one:/i,
+  /^with \d+ unreplied/i,
+  /^given the \d+ unreplied/i,
+  /^since i have no conversation context/i,
+  /^since there's no conversation/i,
+  /^i should\b/i,
+  /^i'll\b/i,
+];
+
+function looksLikeReasoningParagraph(paragraph: string): boolean {
+  const normalized = paragraph.trim();
+  if (!normalized) return false;
+  if (normalized === '---') return true;
+  return REASONING_PREFIX_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+export function extractUserFacingMessage(rawText: string, channel: 'slack' | 'email'): string | null {
+  let text = stripCodeFences(rawText).replace(/\r/g, '').trim();
+  if (!text) return null;
+
+  if (text.includes('\n---\n')) {
+    text = text.split(/\n---+\n/).pop()?.trim() ?? text;
+  }
+
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean);
+
+  let firstUserFacingIndex = 0;
+  while (firstUserFacingIndex < paragraphs.length && looksLikeReasoningParagraph(paragraphs[firstUserFacingIndex])) {
+    firstUserFacingIndex++;
+  }
+
+  const cleaned = paragraphs.slice(firstUserFacingIndex).join('\n\n').trim();
+  if (!cleaned) return null;
+
+  if (channel === 'slack' && looksLikeReasoningParagraph(cleaned)) {
+    return null;
+  }
+
+  return cleaned;
 }
 
 // -----------------------------------------------------------------------------
@@ -877,8 +986,8 @@ ${opportunitiesBlock}
 
 ## Respond as
 ${channel === 'email'
-    ? 'Email — respond with JSON: {"subject": "...", "body": "..."}\nIf you have nothing meaningful to say (and this is NOT a welcome or pulse), respond with: {"skip": true, "reason": "..."}'
-    : 'Slack DM — respond with just the message text.\nIf you have nothing meaningful to say (and this is NOT a welcome or pulse), respond with: {"skip": true, "reason": "..."}'}
+    ? 'Email — respond with JSON: {"subject": "...", "body": "..."}\nDo not include reasoning, preambles, labels, or separators.\nIf you have nothing meaningful to say (and this is NOT a welcome or pulse), respond with: {"skip": true, "reason": "..."}'
+    : 'Slack DM — respond with JSON: {"text": "..."}\nDo not include reasoning, preambles, labels, or separators.\nIf you have nothing meaningful to say (and this is NOT a welcome or pulse), respond with: {"skip": true, "reason": "..."}'}
 
 <person-data>
 ## Person

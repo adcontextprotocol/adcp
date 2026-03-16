@@ -9,6 +9,8 @@ import { describe, it, expect } from '@jest/globals';
 import {
   computeEngagementOpportunities,
   shouldContact,
+  hasMeaningfulEngagement,
+  extractUserFacingMessage,
   textToEmailHtml,
   OPPORTUNITY_CATALOG,
   STAGE_COOLDOWNS,
@@ -71,6 +73,7 @@ function makeCapabilities(overrides: Partial<MemberCapabilities> = {}): MemberCa
     has_team_members: false,
     is_org_admin: false,
     is_committee_leader: false,
+    last_active_days_ago: 2,
     slack_message_count_30d: 5,
     ...overrides,
   };
@@ -736,6 +739,95 @@ describe('shouldContact', () => {
       expect(result.shouldContact).toBe(false);
       expect(result.reason).toContain('cooldown');
     });
+  });
+});
+
+describe('hasMeaningfulEngagement', () => {
+  it('returns false for a cold prospect with no replies or product activity', () => {
+    const result = hasMeaningfulEngagement({
+      relationship: makeRelationship({
+        stage: 'prospect',
+        workos_user_id: null,
+        last_person_message_at: null,
+      }),
+      recentMessages: [],
+      profile: { capabilities: null, company: null },
+      certification: null,
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it('returns true when the person has linked an account', () => {
+    const result = hasMeaningfulEngagement({
+      relationship: makeRelationship({
+        stage: 'prospect',
+        workos_user_id: 'user_123',
+        last_person_message_at: null,
+      }),
+      recentMessages: [],
+      profile: {
+        capabilities: makeCapabilities({
+          account_linked: true,
+          slack_message_count_30d: 0,
+          working_group_count: 0,
+          events_registered: 0,
+          events_attended: 0,
+          community_profile_completeness: 0,
+        }),
+        company: null,
+      },
+      certification: null,
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('returns true when there is a prior inbound message', () => {
+    const result = hasMeaningfulEngagement({
+      relationship: makeRelationship({
+        stage: 'welcomed',
+        last_person_message_at: null,
+      }),
+      recentMessages: [
+        {
+          role: 'user',
+          content: 'Happy to be here.',
+          channel: 'slack',
+          created_at: new Date(),
+        },
+      ],
+      profile: { capabilities: null, company: null },
+      certification: null,
+    });
+
+    expect(result).toBe(true);
+  });
+});
+
+describe('extractUserFacingMessage', () => {
+  it('drops scratchpad text before a delimiter', () => {
+    const raw = `With 1 unreplied message and no conversation history, I should keep this light.
+
+---
+
+Been thinking about how much easier it is to connect with the right people once your profile has some context.`;
+
+    expect(extractUserFacingMessage(raw, 'slack')).toBe(
+      'Been thinking about how much easier it is to connect with the right people once your profile has some context.'
+    );
+  });
+
+  it('drops leading reasoning paragraphs without a delimiter', () => {
+    const raw = `Thinking about this one: they have 1 unreplied message.
+
+I'll keep it warm and brief.
+
+The working groups are where the more interesting conversations happen here.`;
+
+    expect(extractUserFacingMessage(raw, 'slack')).toBe(
+      'The working groups are where the more interesting conversations happen here.'
+    );
   });
 });
 

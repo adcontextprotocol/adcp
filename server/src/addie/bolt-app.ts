@@ -112,10 +112,11 @@ import {
   extractArticleUrls,
   queueCommunityArticle,
 } from './services/community-articles.js';
-import { InsightsDatabase } from '../db/insights-db.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { getDigestByReviewMessage, approveDigest } from '../db/digest-db.js';
+import * as relationshipDb from '../db/relationship-db.js';
+import * as personEvents from '../db/person-events-db.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -171,6 +172,30 @@ const NEGATIVE_REACTIONS = new Set([
   'thumbsdown', '-1', 'x', 'negative_squared_cross_mark', 'no_entry',
   'no_entry_sign', 'octagonal_sign', 'stop_sign', 'hand', 'raised_hand',
 ]);
+
+/**
+ * Record a person's inbound message in the relationship system.
+ * Resets unreplied_outreach_count, derives sentiment, and logs the event.
+ */
+async function recordPersonInboundMessage(
+  slackUserId: string,
+  channel: 'slack' | 'email' | 'web',
+  source: string,
+  textLength: number
+): Promise<void> {
+  try {
+    const personId = await relationshipDb.resolvePersonId({ slack_user_id: slackUserId });
+    await relationshipDb.recordPersonMessage(personId, channel);
+    await relationshipDb.deriveSentiment(personId);
+    await personEvents.recordEvent(personId, 'message_received', {
+      channel,
+      data: { source, text_length: textLength },
+    });
+  } catch (error) {
+    // Not all Slack users have person_relationships records yet — that's OK
+    logger.debug({ error, slackUserId }, 'Addie Bolt: Could not record person inbound message');
+  }
+}
 
 /**
  * Extract text content from forwarded messages in Slack attachments.
@@ -1135,36 +1160,8 @@ async function handleUserMessage({
   // Sanitize input
   const inputValidation = sanitizeInput(messageText || '');
 
-  // Check if this is a response to proactive outreach
-  const insightsDb = new InsightsDatabase();
-  let respondedOutreachId: number | null = null;
-  try {
-    const pendingOutreach = await insightsDb.getPendingOutreach(userId);
-    if (pendingOutreach) {
-      const analysis = await insightsDb.markOutreachRespondedWithAnalysis(
-        pendingOutreach.id,
-        messageText || '',
-        false
-      );
-      respondedOutreachId = pendingOutreach.id;
-      logger.info({
-        userId,
-        outreachId: pendingOutreach.id,
-        outreachType: pendingOutreach.outreach_type,
-        sentiment: analysis.sentiment,
-        intent: analysis.intent,
-      }, 'Addie Bolt: Recorded outreach response (Assistant)');
-      captureEvent(userId, 'outreach_responded', {
-        outreach_id: pendingOutreach.id,
-        outreach_type: pendingOutreach.outreach_type,
-        sentiment: analysis.sentiment,
-        intent: analysis.intent,
-        channel: 'assistant_thread',
-      });
-    }
-  } catch (err) {
-    logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
-  }
+  // Record inbound message in the relationship system (resets unreplied count, derives sentiment)
+  recordPersonInboundMessage(userId, 'slack', 'assistant_thread', (messageText || '').length);
 
   // Set status with rotating loading messages
   try {
@@ -1221,16 +1218,6 @@ async function handleUserMessage({
     user_display_name: memberContext?.slack_user?.display_name || undefined,
     context: slackThreadContext,
   });
-
-  // Link outreach to thread if this was a response to outreach
-  if (respondedOutreachId) {
-    try {
-      await insightsDb.linkOutreachToThread(respondedOutreachId, thread.thread_id);
-      logger.debug({ outreachId: respondedOutreachId, threadId: thread.thread_id }, 'Addie Bolt: Linked outreach to thread (Assistant)');
-    } catch (err) {
-      logger.warn({ err, outreachId: respondedOutreachId }, 'Addie Bolt: Failed to link outreach to thread');
-    }
-  }
 
   // Fetch conversation history from database for context
   // This ensures Claude has context from previous turns in the DM thread
@@ -2377,41 +2364,8 @@ async function handleDirectMessage(
 
   logger.info({ userId, channelId }, 'Addie Bolt: Processing direct message');
 
-  // Check if this is a response to proactive outreach
-  // We do this early to track responses even if later processing fails
-  const insightsDb = new InsightsDatabase();
-  let respondedOutreachId: number | null = null;
-  try {
-    const pendingOutreach = await insightsDb.getPendingOutreach(userId);
-    if (pendingOutreach) {
-      // Mark the outreach as responded with full analysis
-      const analysis = await insightsDb.markOutreachRespondedWithAnalysis(
-        pendingOutreach.id,
-        messageText,
-        false // insight_extracted - will be updated later if we extract insights
-      );
-      respondedOutreachId = pendingOutreach.id;
-      logger.info({
-        userId,
-        outreachId: pendingOutreach.id,
-        outreachType: pendingOutreach.outreach_type,
-        sentiment: analysis.sentiment,
-        intent: analysis.intent,
-        followUpDays: analysis.followUpDays,
-      }, 'Addie Bolt: Recorded outreach response');
-      captureEvent(userId, 'outreach_responded', {
-        outreach_id: pendingOutreach.id,
-        outreach_type: pendingOutreach.outreach_type,
-        sentiment: analysis.sentiment,
-        intent: analysis.intent,
-        follow_up_days: analysis.followUpDays,
-        channel: 'dm',
-      });
-    }
-  } catch (err) {
-    // Don't fail the DM handling if outreach tracking fails
-    logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
-  }
+  // Record inbound message in the relationship system (resets unreplied count, derives sentiment)
+  recordPersonInboundMessage(userId, 'slack', 'dm', messageText.length);
 
   // Get member context
   let memberContext: MemberContext | null = null;
@@ -2432,16 +2386,6 @@ async function handleDirectMessage(
       channel_type: 'im',
     },
   });
-
-  // Link outreach to thread if this was a response to outreach
-  if (respondedOutreachId) {
-    try {
-      await insightsDb.linkOutreachToThread(respondedOutreachId, thread.thread_id);
-      logger.debug({ outreachId: respondedOutreachId, threadId: thread.thread_id }, 'Addie Bolt: Linked outreach to thread');
-    } catch (err) {
-      logger.warn({ err, outreachId: respondedOutreachId }, 'Addie Bolt: Failed to link outreach to thread');
-    }
-  }
 
   // Fetch conversation history from database for context
   const MAX_HISTORY_MESSAGES = 20;

@@ -110,6 +110,8 @@ import {
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
+import * as relationshipDb from "../db/relationship-db.js";
+import * as personEvents from "../db/person-events-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -702,6 +704,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
+      // Record inbound message in the relationship system
+      if (userId) {
+        try {
+          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
+          await relationshipDb.recordPersonMessage(personId, 'web');
+          await relationshipDb.deriveSentiment(personId);
+          await personEvents.recordEvent(personId, 'message_received', {
+            channel: 'web',
+            data: { source: 'web_chat', text_length: message.length },
+          });
+        } catch {
+          // Not all web users have person_relationships records — that's OK
+        }
+      }
+
       // Build context from history, passing tool calls as structured
       // data so they are reconstructed as proper tool_use/tool_result API blocks.
       // Token-aware trimming in processMessage handles length; no hard slice here.
@@ -935,6 +952,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
       });
+
+      // Record inbound message in the relationship system
+      if (userId) {
+        try {
+          const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
+          await relationshipDb.recordPersonMessage(personId, 'web');
+          await relationshipDb.deriveSentiment(personId);
+          await personEvents.recordEvent(personId, 'message_received', {
+            channel: 'web',
+            data: { source: 'web_chat_stream', text_length: message.length },
+          });
+        } catch {
+          // Not all web users have person_relationships records
+        }
+      }
 
       // Build context messages, passing tool calls as structured data
       // Token-aware trimming in processMessageStream handles length; no hard slice here.

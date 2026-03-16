@@ -8,13 +8,12 @@
 import { jobScheduler } from './scheduler.js';
 import { runDocumentIndexerJob } from './committee-document-indexer.js';
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
-import { runOutreachScheduler } from '../services/proactive-outreach.js';
+import { runRelationshipOrchestratorCycle } from '../services/relationship-orchestrator.js';
 import { enrichMissingOrganizations } from '../../services/enrichment.js';
 import { runMoltbookPosterJob } from './moltbook-poster.js';
 import { runMoltbookEngagementJob } from './moltbook-engagement.js';
 import { runTaskReminderJob } from './task-reminder.js';
-import { runEngagementScoringJob } from './engagement-scoring.js';
-// goal-follow-up job removed — old goal-based outreach system replaced by engagement planner
+// engagement-scoring job removed — old scoring replaced by person_relationships/person_events
 import {
   processPendingResources,
   processRssPerspectives,
@@ -111,13 +110,13 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.summariesGenerated > 0,
   });
 
-  // Proactive outreach - sends DMs to eligible users (has internal per-user business hours check)
+  // Relationship orchestrator - continues member relationships across channels
   jobScheduler.register({
-    name: 'proactive-outreach',
-    description: 'Proactive outreach',
+    name: 'relationship-orchestrator',
+    description: 'Relationship orchestrator',
     interval: { value: 20, unit: 'minutes' },
     initialDelay: { value: 2, unit: 'minutes' },
-    runner: runOutreachScheduler,
+    runner: runRelationshipOrchestratorCycle,
     options: { limit: 25 },
   });
 
@@ -198,17 +197,7 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.remindersSent > 0,
   });
 
-  // Engagement scoring - updates engagement scores
-  jobScheduler.register({
-    name: 'engagement-scoring',
-    description: 'Engagement scoring',
-    interval: { value: 1, unit: 'hours' },
-    initialDelay: { value: 10, unit: 'seconds' },
-    runner: runEngagementScoringJob,
-    shouldLogResult: (r) => r.usersUpdated > 0 || r.orgsUpdated > 0,
-  });
-
-  // Goal follow-up job removed — old goal-based outreach replaced by engagement planner
+  // Engagement scoring job removed — old scoring replaced by person_relationships/person_events
 
   // Persona inference - infers personas from signals for unclassified orgs
   jobScheduler.register({
@@ -384,7 +373,7 @@ export function registerAllJobs(): void {
 export const JOB_NAMES = {
   DOCUMENT_INDEXER: 'document-indexer',
   SUMMARY_GENERATOR: 'summary-generator',
-  PROACTIVE_OUTREACH: 'proactive-outreach',
+  RELATIONSHIP_ORCHESTRATOR: 'relationship-orchestrator',
   ACCOUNT_ENRICHMENT: 'account-enrichment',
   MOLTBOOK_POSTER: 'moltbook-poster',
   MOLTBOOK_ENGAGEMENT: 'moltbook-engagement',
