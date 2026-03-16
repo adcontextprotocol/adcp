@@ -281,7 +281,7 @@ Maintain consistency with companies already in use across docs:
 
 **Logo usage:**
 - AdCP docs favicon and sidebar logo: Sage (teal)
-- File: `logo/addie-teal.svg`
+- File: `logo/sage.svg`
 
 ---
 

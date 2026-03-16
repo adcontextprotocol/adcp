@@ -13,11 +13,11 @@
     "twitter:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png"
   },
   "logo": {
-    "light": "/logo/addie-teal.svg",
-    "dark": "/logo/addie-teal.svg",
+    "light": "/logo/sage.svg",
+    "dark": "/logo/sage.svg",
     "href": "https://agenticadvertising.org"
   },
-  "favicon": "/logo/addie-teal.svg",
+  "favicon": "/logo/sage.svg",
   "theme": "mint",
   "colors": {
     "primary": "#047857",
