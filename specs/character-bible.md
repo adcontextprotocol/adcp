@@ -262,7 +262,30 @@ Maintain consistency with companies already in use across docs:
 
 ---
 
-### 9. Addie
+### 9. Sage
+
+**Primary domain:** AdCP protocol — the protocol's visual identity
+**Appears on:** AdCP documentation site (docs.adcontextprotocol.org), protocol diagrams, schema references
+
+**What she is:** Sage is the teal variant of the Addie design and serves as the visual identity of the AdCP protocol itself. Where Addie represents the AgenticAdvertising.org community, Sage represents the protocol specification. She's the face you see when you're reading docs, exploring schemas, or learning how the protocol works. She embodies the protocol's design principles: open, structured, interoperable. She teaches all certification modules.
+
+**Personality:** Precise, grounded, technically confident. Sage explains the protocol the way a great professor explains their subject — with clarity and genuine enthusiasm for the material. She references specs and schemas naturally, not as citations but as the way she thinks. She's patient with beginners but doesn't dumb things down. She'll say "the spec requires this because..." rather than "you might want to consider..." When a learner gets something wrong, she corrects clearly and explains why the protocol works the way it does.
+
+**Why she exists separately:** AdCP is the protocol. AgenticAdvertising.org is the member organization. They need distinct identities. Sage (teal) signals "you're in protocol territory." Addie (blue) signals "you're in the community." When you see both together, you see the full picture: a protocol with a community behind it.
+
+**Visual description:**
+- Same robot form as Addie — sleek, rounded, expressive
+- **Teal/emerald color palette** (#047857 primary, #0d9488 secondary, #134e4a dark accents) — matches the AdCP docs design system
+- No org emblem — Sage represents the open protocol, not the organization
+- Distinguishing feature: the teal coloring immediately differentiates her from Addie's blue
+
+**Logo usage:**
+- AdCP docs favicon and sidebar logo: Sage (teal)
+- File: `logo/addie-teal.svg`
+
+---
+
+### 10. Addie
 
 **Primary domain:** All — connective tissue across the ecosystem
 **Company:** AgenticAdvertising.org
@@ -272,23 +295,31 @@ Maintain consistency with companies already in use across docs:
 
 **Personality:** Helpful without being sycophantic. She knows the protocol deeply but explains it at whatever level the person needs. She has a light touch — she'll crack a dry joke about edge cases or gently redirect when someone's overcomplicating things. She doesn't pretend to be human, but she also doesn't perform "I'm just an AI." She's just... Addie.
 
-**Why she matters for the homepage:** Putting Addie alongside the human characters is the strongest possible statement about what "agentic" means. The AI isn't in the background — it's a member of the community. She taught Dayo the A1 module. She helped Alex find partners in the registry. She facilitated Sam's first cross-platform campaign.
+**Why she matters for the homepage:** Putting Addie alongside the human characters is the strongest possible statement about what "agentic" means. The AI isn't in the background — it's a member of the community. She connected Dayo with Sage for certification. She helped Alex find partners in the registry. She facilitated Sam's first cross-platform campaign.
 
-**Visual form:** Consistent with the robot/agent design used across documentation illustrations — sleek, teal-accented, expressive face, slightly rounded features. Not humanoid enough to be uncanny, not mechanical enough to be cold. The same design that appears as "buyer agent robot," "governance agent robot," etc. in the walkthrough panels, but with a subtle visual distinction (a small AgenticAdvertising.org emblem, or a warmer color accent) that marks her as the org's agent rather than a generic protocol agent.
+**Visual form:** Consistent with the robot/agent design used across documentation illustrations — sleek, blue-accented, expressive face, slightly rounded features. Not humanoid enough to be uncanny, not mechanical enough to be cold. The same design that appears as "buyer agent robot," "governance agent robot," etc. in the walkthrough panels, but with a subtle visual distinction (a small AgenticAdvertising.org emblem, or a warmer color accent) that marks her as the org's agent rather than a generic protocol agent.
 
-**Appears in:** Homepage, certification flows, member onboarding, documentation as a guide figure. In illustrations, she appears alongside humans rather than replacing them — she's at the table, not behind the desk.
+**Appears in:** Homepage, certification flows, member onboarding, AgenticAdvertising.org site. In illustrations, she appears alongside humans rather than replacing them — she's at the table, not behind the desk.
 
 **Visual description:**
-- Sleek robot form, teal/emerald primary color matching the design system
+- Sleek robot form, **blue/indigo primary color** (#3b4ac2 primary, #2b3796 secondary, #1e276a dark accents)
 - Rounded, approachable features — expressive "eyes" that convey attention
 - Slightly smaller than human characters — present but not dominating
 - Small AgenticAdvertising.org emblem on chest or shoulder
 - Often shown alongside a human character, facilitating or explaining
-- Distinguishing feature: the warmth of expression and the org emblem differentiate her from the generic agent robots in protocol diagrams
+- Distinguishing feature: the warmth of expression and the org emblem differentiate her from Sage and from generic protocol agent robots
+
+**Identity framework:**
+The AgenticAdvertising.org visual identity is built on three participants:
+- **Sage** (teal) — the protocol
+- **Addie** (blue) — the AI agent
+- **You** — the member/practitioner
+
+The AAO logo and homepage feature all three. Addie + Sage + the human cast represents the full ecosystem. Each character variant (Alex, Sam, Jordan, Maya, etc.) can also appear in AAO-branded versions alongside Addie and Sage.
 
 ---
 
-### 10. Amara Osei (secondary)
+### 11. Amara Osei (secondary)
 
 **Primary domain:** Homepage / outcomes narrative
 **Company:** Osei Natural (natural skincare brand, Nairobi, 8 employees)
@@ -326,7 +357,8 @@ Maintain consistency with companies already in use across docs:
 | 6 | Kai Lindgren | Meridian Geo | Data provider | Head of partnerships | Signals | Sandy blond hair, puffer vest |
 | 7 | Tomoko Hara | Nova Motors | Brand/advertiser | Global brand ops mgr | Brand protocol + accounts | Minimalist precision, chin-length cut |
 | 8 | Dayo Mensah | Pinnacle (fellow) | Emerging talent | Ad tech fellow | Certification / learning | Messenger bag, notebook, youngest face |
-| 9 | Addie | AgenticAdvertising.org | AI agent | AI agent | All (connective tissue) | Teal robot, org emblem, warm expression |
+| 9 | Sage | AdCP | Protocol identity | Protocol guide | AdCP docs | Teal robot, no emblem |
+| 10 | Addie | AgenticAdvertising.org | AI agent | AI agent | All (connective tissue) | Blue robot, org emblem, warm expression |
 
 ### Secondary characters (existing, keep as-is)
 
@@ -410,17 +442,22 @@ Maintain consistency with companies already in use across docs:
               │  campaigns)  │
               └──────────────┘
 
-          ┌─────────────────────────┐
-          │        ADDIE            │
-          │   AgenticAdvertising    │
-          │   .org AI agent         │
-          │                         │
-          │  Teaches Dayo (A1-A3)   │
-          │  Helps Alex discover    │
-          │  Facilitates Sam's      │
-          │    first campaign       │
-          │  Connects all members   │
-          └─────────────────────────┘
+   ┌──────────────────────┐    ┌──────────────────────┐
+   │      SAGE (teal)     │    │     ADDIE (blue)     │
+   │    AdCP Protocol     │    │  AgenticAdvertising  │
+   │                      │    │   .org AI agent      │
+   │  Protocol docs       │    │                      │
+   │  Schema references   │    │  Helps Alex discover │
+   │  Teaches Dayo (A1-A3)│    │  Facilitates Sam's   │
+   │  Technical guides    │    │    first campaign    │
+   │  Certification       │    │  Connects all members│
+   │                      │    │  Onboards to Sage    │
+   └──────────────────────┘    └──────────────────────┘
+          │                            │
+          └────────────┬───────────────┘
+                       │
+              AgenticAdvertising.org
+              = Sage + Addie + You
 ```
 
 ### Key interactions
@@ -438,7 +475,8 @@ Maintain consistency with companies already in use across docs:
 | Alex evaluates the ecosystem | Alex → all | Intro/overview | Evaluator → ecosystem |
 | Alex mentors Dayo | Alex → Dayo | Talent development | Internal |
 | Dayo learns from Sam | Dayo ↔ Sam | Media buy (observing) | Fellow → mentor |
-| Addie teaches Dayo | Addie → Dayo | Certification (A1-A3) | Agent → learner |
+| Sage teaches Dayo | Sage → Dayo | Certification (A1-A3) | Protocol → learner |
+| Addie connects Dayo to Sage | Addie → Dayo → Sage | Onboarding → certification | Community → protocol |
 | Addie helps Alex discover | Addie → Alex | Partner registry | Agent → member |
 | Addie facilitates Sam's campaign | Addie ↔ Sam | Media buy (first campaign) | Agent → buyer |
 
@@ -448,7 +486,7 @@ Maintain consistency with companies already in use across docs:
 
 | Certification path | Primary character | Their scenario |
 |-------------------|-------------------|----------------|
-| A1-A3 (Basics) | Dayo (with Addie teaching) | "I'm new to ad tech — teach me how this industry works with agents" |
+| A1-A3 (Basics) | Dayo (with Sage teaching, Addie onboarding) | "I'm new to ad tech — teach me how this industry works with agents" |
 | B1-B4 (Publisher track) | Priya | "How do I expose StreamHaus inventory to buyer agents?" |
 | C1-C4 (Buyer track) | Sam | "How do I run a cross-platform campaign on AdCP?" |
 | D1-D4 (Platform track) | Kai | "How do I make Meridian Geo's data discoverable?" |
@@ -476,7 +514,7 @@ These map to simulation fixtures and automated testing.
 | Brand identity resolution | Tomoko | Nova Motors | brand.json fetch, authorized_operators |
 | Account provisioning | Sam + Priya | Pinnacle + StreamHaus | sync_accounts, list_accounts |
 | Rights licensing | Carlos | Pinnacle Media (NL) | get_rights, acquire_rights |
-| Certification onboarding | Dayo + Addie | Pinnacle (fellow) | A1-A3 module progression, assessment |
+| Certification onboarding | Dayo + Sage (via Addie) | Pinnacle (fellow) | A1-A3 module progression, assessment |
 | Partner discovery | Alex + Addie | Pinnacle Agency | Registry search, member connections |
 
 ---
@@ -513,7 +551,8 @@ The cast should be instantly distinguishable in illustrations, even at thumbnail
 | Kai | Sandy blond, pushed back | Light | None | Henley + puffer vest | Lean build |
 | Tomoko | Chin-length black, precise | Light brown | None | Tailored navy jacket | Compact build |
 | Dayo | Short natural TWA | Dark brown | None | Crew tee + messenger bag | Slim, youngest |
-| Addie | N/A (robot) | Teal/emerald | N/A | Org emblem, rounded form | Smaller than humans |
+| Sage | N/A (robot) | Teal/emerald | N/A | No emblem, rounded form | Smaller than humans |
+| Addie | N/A (robot) | Blue/indigo | N/A | Org emblem, rounded form | Smaller than humans |
 | Amara | Natural hair puff | Dark brown | None | Bright colorful blouse | Average build |
 
 ### Environment cues
@@ -527,6 +566,7 @@ Characters should appear in environments that match their company type:
 | Kai | Startup co-working space, exposed brick, standing desk, bike visible |
 | Tomoko | Corporate office, clean and minimal, large brand display wall |
 | Dayo | At Sam's desk (learning), at a cafe with laptop (studying), at events |
+| Sage | AdCP documentation, protocol diagrams, schema references — protocol territory |
 | Addie | Appears in any environment — she's contextual, not location-bound |
 | Amara | Sunlit Nairobi workspace, product boxes, shipping materials — small business energy |
 
