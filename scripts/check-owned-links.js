@@ -10,13 +10,20 @@ function getCandidateFiles() {
   return globSync(['docs/**/*.{md,mdx}', 'dist/docs/**/*.{md,mdx}', 'README.md'], {
     cwd: ROOT,
     nodir: true,
-  }).filter((file) => readFileSync(join(ROOT, file), 'utf8').includes(LINK_HOST));
+  });
 }
 
 function extractUrls(file) {
   const text = readFileSync(join(ROOT, file), 'utf8');
-  const matches = text.match(/https?:\/\/agenticadvertising\.org[^\s)"'>`]+/g) ?? [];
-  return [...new Set(matches)];
+  const matches = text.match(/https?:\/\/[^\s)"'>`]+/g) ?? [];
+
+  return [...new Set(matches)].filter((url) => {
+    try {
+      return new URL(url).hostname === LINK_HOST;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function shouldCheck(url) {
