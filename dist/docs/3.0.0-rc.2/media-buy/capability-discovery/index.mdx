@@ -41,7 +41,7 @@ These capability discovery tasks provide the reference data needed for effective
 ### [`get_adcp_capabilities`](/dist/docs/3.0.0-rc.2/protocol/get_adcp_capabilities)
 The primary capability discovery task. Returns protocol versions, supported features, portfolio information, and governance capabilities in a single call. Use this as your first interaction with any AdCP agent.
 
-### [`list_creative_formats`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/list_creative_formats)
+### [`list_creative_formats`](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creative_formats)
 Discover all supported creative formats with detailed specifications including dimensions, file types, duration limits, and technical requirements.
 
 ## Integration Pattern
@@ -49,7 +49,7 @@ Discover all supported creative formats with detailed specifications including d
 Capability discovery typically happens early in your AdCP workflow:
 
 1. **Discover Capabilities**: Call [`get_adcp_capabilities`](/dist/docs/3.0.0-rc.2/protocol/get_adcp_capabilities) to learn what the agent supports
-2. **Understand Formats**: Call [`list_creative_formats`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/list_creative_formats) to learn supported creative types
+2. **Understand Formats**: Call [`list_creative_formats`](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creative_formats) to learn supported creative types
 3. **Validate Authorization**: Check the `media_buy.portfolio` from capabilities, then verify via publisher `adagents.json`
 4. **Discover Products**: Search for advertising inventory with [`get_products`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/get_products)
 5. **Plan Creatives**: Match discovered products to available formats for production planning
