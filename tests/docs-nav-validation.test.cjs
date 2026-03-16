@@ -57,7 +57,6 @@ function collectGroups(node) {
   } else if (node && typeof node === 'object') {
     if (node.group) groups.push(node);
     if (node.pages) groups.push(...collectGroups(node.pages));
-    if (node.groups) groups.push(...collectGroups(node.groups));
   }
   return groups;
 }
@@ -76,6 +75,7 @@ if (!navigation || !navigation.versions) {
 }
 
 const rootDir = path.join(__dirname, '..');
+const defaultVersion = navigation.default;
 
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
@@ -95,7 +95,7 @@ for (const versionEntry of navigation.versions) {
       }
     }
     if (missing.length > 0) {
-      throw new Error(`Missing files:\n      ${missing.slice(0, 10).join('\n      ')}${missing.length > 10 ? `\n      ... and ${missing.length - 10} more` : ''}`);
+      throw new Error(`Missing files:\n      ${missing.join('\n      ')}`);
     }
   });
 
@@ -110,7 +110,24 @@ for (const versionEntry of navigation.versions) {
     }
   });
 
-  // Test 3: Versioned (dist/docs/) pages must have consistent version prefix
+  // Test 3: No duplicate page references
+  test('no duplicate page references', () => {
+    const seen = new Set();
+    const dupes = allPages.filter(p => seen.has(p) || !seen.add(p));
+    if (dupes.length > 0) {
+      throw new Error(`Duplicate pages: ${dupes.join(', ')}`);
+    }
+  });
+
+  // Test 4: Page paths should not contain file extensions
+  test('page paths have no file extensions', () => {
+    const withExt = allPages.filter(p => /\.(mdx?|json|ya?ml)$/.test(p));
+    if (withExt.length > 0) {
+      throw new Error(`Page paths should not include file extensions: ${withExt.join(', ')}`);
+    }
+  });
+
+  // Test 5: Versioned (dist/docs/) pages must have consistent version prefix
   const distPages = allPages.filter(p => p.startsWith('dist/docs/'));
   if (distPages.length > 0) {
     test('dist/docs pages share a consistent version prefix', () => {
@@ -122,17 +139,21 @@ for (const versionEntry of navigation.versions) {
         throw new Error(`Mixed version prefixes: ${[...prefixes].join(', ')}`);
       }
     });
+  }
 
-    // Test 4: Snapshot versions need flat top-level groups (not a single wrapper)
-    // Mintlify breaks when non-default versioned docs use a single wrapper group.
-    test('snapshot version uses flat top-level groups', () => {
+  // Test 6: Non-default versions must not use a single wrapper group containing sub-groups.
+  // Mintlify breaks routing when non-default versions nest all groups inside a wrapper.
+  if (version !== defaultVersion) {
+    test('non-default version uses flat top-level groups', () => {
       if (groups.length === 1 && groups[0].pages) {
-        const innerPages = collectPages(groups[0].pages);
-        if (innerPages.length > 2) {
+        const hasNestedGroups = groups[0].pages.some(
+          p => p && typeof p === 'object' && p.group
+        );
+        if (hasNestedGroups) {
           throw new Error(
             `Version "${version}" has a single wrapper group "${groups[0].group}" ` +
-            `containing ${innerPages.length} pages. Snapshot (dist/docs/) versions ` +
-            `must use flat top-level groups to avoid Mintlify routing failures.`
+            `containing nested sub-groups. Non-default versions must use flat ` +
+            `top-level groups to avoid Mintlify routing failures.`
           );
         }
       }
