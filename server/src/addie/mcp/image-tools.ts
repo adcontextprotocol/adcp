@@ -67,7 +67,7 @@ export function createImageToolHandlers(
     const searchQuery = input.query as string;
     const topics = input.topics as string[] | undefined;
     const category = input.category as string | undefined;
-    const intent = input.intent as string | undefined;
+    const intent = input.intent as string;
 
     try {
       const images = await imageDb.searchImages(searchQuery, {
