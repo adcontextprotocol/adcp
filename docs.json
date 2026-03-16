@@ -61,10 +61,10 @@
     }
   ],
   "navigation": {
-    "default": "3.0-rc",
     "versions": [
       {
         "version": "3.0-rc",
+        "default": true,
         "groups": [
           {
             "group": "Documentation",

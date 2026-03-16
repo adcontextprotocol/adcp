@@ -75,7 +75,7 @@ if (!navigation || !navigation.versions) {
 }
 
 const rootDir = path.join(__dirname, '..');
-const defaultVersion = navigation.default;
+const defaultVersion = (navigation.versions.find(v => v.default) || navigation.versions[0]).version;
 
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
