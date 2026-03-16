@@ -2597,7 +2597,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         limit: limit ? parseInt(limit as string, 10) : undefined,
         offset: offset ? parseInt(offset as string, 10) : undefined,
       });
-      res.json({ images, total: images.length });
+      res.json({ images });
     } catch (error) {
       logger.error({ err: error }, "Error fetching images");
       res.status(500).json({ error: "Internal server error" });
@@ -2673,7 +2673,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         offset: offset ? parseInt(offset as string, 10) : undefined,
         zeroResultsOnly: zero_results_only === "true",
       });
-      res.json({ searches, total: searches.length });
+      res.json({ searches });
     } catch (error) {
       logger.error({ err: error }, "Error fetching image searches");
       res.status(500).json({ error: "Internal server error" });
@@ -2683,7 +2683,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/images/misses - Top zero-result queries
   apiRouter.get("/images/misses", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const limit = Math.max(1, Math.min(rawLimit || 20, 100));
       const misses = await imageDb.getTopMisses(limit);
       res.json({ misses });
     } catch (error) {

@@ -76,8 +76,8 @@ export function createImageToolHandlers(
         limit: 6,
       });
 
-      // Log the search event
-      await imageDb.logImageSearch({
+      // Log asynchronously — don't let logging failure affect the response
+      imageDb.logImageSearch({
         query: searchQuery,
         intent,
         context_type: threadId ? 'conversation' : 'general',
@@ -85,7 +85,7 @@ export function createImageToolHandlers(
         slack_user_id: slackUserId,
         results_returned: images.length,
         result_ids: images.map(i => i.id),
-      });
+      }).catch(err => logger.error({ err, searchQuery }, 'Failed to log image search'));
 
       if (images.length === 0) {
         return JSON.stringify({

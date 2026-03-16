@@ -45,6 +45,8 @@ export interface ImageSearchEvent {
 // IMAGE ASSET QUERIES
 // ============================================================================
 
+const IMAGE_COLUMNS = 'id, filename, alt_text, topics, category, characters, description, image_url, approved, created_at, updated_at';
+
 /** Search images using full-text search with relevance ranking */
 export async function searchImages(
   searchQuery: string,
@@ -88,7 +90,7 @@ export async function searchImages(
     : 'created_at DESC';
 
   const sql = `
-    SELECT * FROM addie_images
+    SELECT ${IMAGE_COLUMNS} FROM addie_images
     WHERE ${conditions.join(' AND ')}
     ORDER BY ${orderBy}
     LIMIT $${paramIndex}
@@ -125,7 +127,7 @@ export async function listImages(options?: {
   params.push(limit, offset);
 
   const result = await query<AddieImage>(
-    `SELECT * FROM addie_images ${where} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+    `SELECT ${IMAGE_COLUMNS} FROM addie_images ${where} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
     params as any[]
   );
   return result.rows;
@@ -134,7 +136,7 @@ export async function listImages(options?: {
 /** Get a single image by ID */
 export async function getImage(id: number): Promise<AddieImage | null> {
   const result = await query<AddieImage>(
-    'SELECT * FROM addie_images WHERE id = $1',
+    `SELECT ${IMAGE_COLUMNS} FROM addie_images WHERE id = $1`,
     [id]
   );
   return result.rows[0] || null;
@@ -170,6 +172,11 @@ export async function createImage(data: {
 }
 
 /** Update an image asset */
+const UPDATABLE_COLUMNS = new Set([
+  'alt_text', 'topics', 'category', 'characters',
+  'description', 'image_url', 'approved',
+]);
+
 export async function updateImage(
   id: number,
   data: Partial<{
@@ -187,7 +194,7 @@ export async function updateImage(
   let paramIndex = 1;
 
   for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
+    if (value !== undefined && UPDATABLE_COLUMNS.has(key)) {
       sets.push(`${key} = $${paramIndex++}`);
       params.push(value);
     }
