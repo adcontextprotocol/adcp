@@ -16,7 +16,7 @@ import {
 } from "../middleware/auth.js";
 import { query, getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
-import { BrandDatabase } from "../db/brand-db.js";
+import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
@@ -54,36 +54,12 @@ export interface MemberProfileRoutesConfig {
 async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
   const hosted = await brandDb.getHostedBrandByDomain(domain);
   if (hosted) {
-    const bj = hosted.brand_json as Record<string, unknown>;
-    // house_portfolio: read from brands[0]; fall back to top-level logos for simple brand.json
-    const brands = bj.brands as Array<Record<string, unknown>> | undefined;
-    const primaryBrand = brands?.[0];
-    const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
-    const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
-    return {
-      domain,
-      logo_url: logos?.[0]?.url as string | undefined,
-      brand_color: colors?.primary as string | undefined,
-      verified: hosted.domain_verified,
-    };
+    return resolveBrandFromJson(domain, hosted.brand_json as Record<string, unknown>, hosted.domain_verified);
   }
-
   const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
-  if (discovered) {
-    const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-    // house_portfolio: logos are in brands[0].logos; fall back to top-level logos for other structures
-    const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
-    const primaryBrand = brands?.[0];
-    const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
-    const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
-    return {
-      domain,
-      logo_url: logos?.[0]?.url as string | undefined,
-      brand_color: colors?.primary as string | undefined,
-      verified: true, // discovered brands have live brand.json
-    };
+  if (discovered?.brand_manifest) {
+    return resolveBrandFromJson(domain, discovered.brand_manifest as Record<string, unknown>, true);
   }
-
   return undefined;
 }
 

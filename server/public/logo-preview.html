@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Member logo preview - AgenticAdvertising.org</title>
+<link rel="icon" href="/AAo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/design-system.css">
+<link rel="stylesheet" href="/layout.css">
+<style>
+  body {
+    background: var(--color-bg-page);
+  }
+
+  .preview-container {
+    max-width: var(--container-xl);
+    margin: 0 auto;
+    padding: var(--space-8) var(--space-4);
+  }
+
+  .preview-intro {
+    max-width: 640px;
+    margin: 0 auto var(--space-10);
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+  }
+
+  .preview-section {
+    margin-bottom: var(--space-12);
+  }
+
+  .preview-section h2 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-heading);
+    margin-bottom: var(--space-2);
+  }
+
+  .preview-section p {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-6);
+  }
+
+  /* Logo rail previews */
+  .rail-preview {
+    border-radius: var(--radius-lg);
+    padding: var(--space-8) var(--space-6);
+    margin-bottom: var(--space-4);
+  }
+
+  .rail-preview--light {
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+  }
+
+  .rail-preview--dark {
+    background: var(--color-gray-900);
+  }
+
+  .rail-preview .member-logos-label {
+    margin-bottom: var(--space-4);
+  }
+
+  .rail-preview--dark .member-logos-label {
+    color: var(--color-gray-400);
+  }
+
+  .rail-preview--dark .member-logos-bar img {
+    opacity: 0.8;
+  }
+
+  .rail-preview--dark .member-logos-bar img:hover {
+    opacity: 1;
+  }
+
+  /* Individual logo cards */
+  .logo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-6);
+  }
+
+  .logo-card {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+  }
+
+  .logo-card__header {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--color-bg-subtle);
+  }
+
+  .logo-card__name {
+    font-weight: var(--font-semibold);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+  }
+
+  .logo-card__domain {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+  }
+
+  .logo-card__previews {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .logo-card__preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6) var(--space-4);
+    min-height: 80px;
+    position: relative;
+  }
+
+  .logo-card__preview--light {
+    background: #ffffff;
+  }
+
+  .logo-card__preview--dark {
+    background: var(--color-gray-900);
+  }
+
+  .logo-card__preview img {
+    max-height: 36px;
+    max-width: 110px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .logo-card__preview--empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  .logo-card__preview--dark .logo-card__preview--empty {
+    color: var(--color-gray-500);
+  }
+
+  .logo-card__bg-label {
+    position: absolute;
+    bottom: 4px;
+    right: 6px;
+    font-size: 10px;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .logo-card__preview--dark .logo-card__bg-label {
+    color: var(--color-gray-500);
+  }
+
+  .logo-card__meta {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-subtle);
+  }
+
+  .logo-card__detail {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    margin-bottom: 2px;
+  }
+
+  .logo-card__detail:last-child {
+    margin-bottom: 0;
+  }
+
+  .logo-card__issues {
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .logo-card__issue {
+    font-size: var(--text-xs);
+    color: var(--color-warning-700);
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    margin-bottom: 2px;
+  }
+
+  .logo-card__issue::before {
+    content: "!";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--color-warning-100);
+    color: var(--color-warning-700);
+    font-size: 9px;
+    font-weight: var(--font-bold);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .loading-state {
+    text-align: center;
+    padding: var(--space-16);
+    color: var(--color-text-secondary);
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: var(--space-16);
+    color: var(--color-text-muted);
+  }
+
+  @media (max-width: 640px) {
+    .logo-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Shared navigation -->
+<div id="adcp-nav"></div>
+<script src="/nav.js"></script>
+
+<header class="page-header">
+  <h1>Member logo preview</h1>
+  <p>See how member logos render across light and dark backgrounds at homepage-rail size.</p>
+</header>
+
+<div class="preview-container">
+  <p class="preview-intro">
+    For best results, provide an SVG logo or a high-resolution PNG (at least 2x) with a transparent background.
+    If your logo only works on light or dark backgrounds, upload separate variants using the <code>background</code>
+    field in your brand.json (<code>light-bg</code>, <code>dark-bg</code>, or <code>transparent-bg</code>).
+  </p>
+
+  <!-- Homepage rail preview -->
+  <section class="preview-section">
+    <h2>Homepage rail</h2>
+    <p>How logos appear in the member logo bar on the homepage.</p>
+
+    <div class="rail-preview rail-preview--light" id="rail-light">
+      <p class="member-logos-label">Our members</p>
+      <div class="member-logos-bar" id="rail-light-logos">
+        <div class="loading-state">Loading...</div>
+      </div>
+    </div>
+
+    <div class="rail-preview rail-preview--dark" id="rail-dark">
+      <p class="member-logos-label">Our members</p>
+      <div class="member-logos-bar" id="rail-dark-logos">
+        <div class="loading-state" style="color: var(--color-gray-400)">Loading...</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Individual logo cards -->
+  <section class="preview-section">
+    <h2>Per-member detail</h2>
+    <p>Each member's logo shown on light and dark backgrounds, with metadata and quality notes.</p>
+    <div class="logo-grid" id="logo-grid">
+      <div class="loading-state">Loading...</div>
+    </div>
+  </section>
+</div>
+
+<!-- Footer injected by nav.js -->
+<div id="adcp-footer"></div>
+
+<script>
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function getFileExtension(url) {
+    try {
+      const pathname = new URL(url, window.location.origin).pathname;
+      const ext = pathname.split('.').pop()?.toLowerCase();
+      return ext || 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  function isSafeColor(val) {
+    return /^#[0-9a-fA-F]{3,8}$/.test(val) || /^rgb\(\d{1,3},\s*\d{1,3},\s*\d{1,3}\)$/.test(val);
+  }
+
+  function analyzeLogos(member) {
+    const issues = [];
+    const brand = member.resolved_brand;
+
+    if (!brand?.logo_url) {
+      issues.push('No logo configured');
+      return issues;
+    }
+
+    const ext = getFileExtension(brand.logo_url);
+    if (ext !== 'svg' && ext !== 'png') {
+      issues.push(`Logo is ${ext.toUpperCase()} — SVG or high-res PNG recommended`);
+    }
+
+    if (!brand.logo_url_dark && !brand.logos?.some(l => l.background === 'dark-bg')) {
+      issues.push('No dark-background variant — may not be visible on dark surfaces');
+    }
+
+    if (!brand.logos?.some(l => l.background === 'transparent-bg') &&
+        !brand.logos?.some(l => l.background === 'dark-bg')) {
+      issues.push('Only one logo variant — consider adding transparent-bg or dark-bg');
+    }
+
+    return issues;
+  }
+
+  function renderLogoLink(member, logoUrl) {
+    if (!logoUrl) return '<span class="logo-card__preview--empty">No variant</span>';
+    return `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(member.display_name)}" loading="lazy">`;
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const response = await fetch('/api/members?limit=100');
+      if (!response.ok) throw new Error('Failed to load members');
+
+      const data = await response.json();
+      const members = (data.members || []).filter(m => m.show_in_carousel);
+
+      // Rail previews
+      const railLightEl = document.getElementById('rail-light-logos');
+      const railDarkEl = document.getElementById('rail-dark-logos');
+
+      const withLogos = members.filter(m => m.resolved_brand?.logo_url);
+      const withDarkLogos = members.filter(m => m.resolved_brand?.logo_url_dark || m.resolved_brand?.logo_url);
+
+      if (withLogos.length > 0) {
+        railLightEl.innerHTML = withLogos.map(m => `
+          <a href="/members/${encodeURIComponent(m.slug)}" title="${escapeHtml(m.display_name)}">
+            <img src="${escapeHtml(m.resolved_brand.logo_url)}" alt="${escapeHtml(m.display_name)}">
+          </a>
+        `).join('');
+
+        railDarkEl.innerHTML = withDarkLogos.map(m => {
+          const darkUrl = m.resolved_brand.logo_url_dark || m.resolved_brand.logo_url;
+          return `
+            <a href="/members/${encodeURIComponent(m.slug)}" title="${escapeHtml(m.display_name)}">
+              <img src="${escapeHtml(darkUrl)}" alt="${escapeHtml(m.display_name)}">
+            </a>
+          `;
+        }).join('');
+      } else {
+        railLightEl.innerHTML = '<div class="empty-state">No carousel members with logos found</div>';
+        railDarkEl.innerHTML = '<div class="empty-state" style="color: var(--color-gray-400)">No carousel members with logos found</div>';
+      }
+
+      // Logo cards
+      const gridEl = document.getElementById('logo-grid');
+
+      if (members.length === 0) {
+        gridEl.innerHTML = '<div class="empty-state">No carousel members found</div>';
+        return;
+      }
+
+      gridEl.innerHTML = members.map(member => {
+        const brand = member.resolved_brand;
+        const lightUrl = brand?.logo_url;
+        const darkUrl = brand?.logo_url_dark;
+        const issues = analyzeLogos(member);
+        const logoCount = brand?.logos?.length || 0;
+        const ext = lightUrl ? getFileExtension(lightUrl) : null;
+
+        return `
+          <div class="logo-card">
+            <div class="logo-card__header">
+              <span class="logo-card__name">${escapeHtml(member.display_name)}</span>
+              <span class="logo-card__domain">${escapeHtml(brand?.domain || '—')}</span>
+            </div>
+            <div class="logo-card__previews">
+              <div class="logo-card__preview logo-card__preview--light">
+                ${renderLogoLink(member, lightUrl)}
+                <span class="logo-card__bg-label">light</span>
+              </div>
+              <div class="logo-card__preview logo-card__preview--dark">
+                ${renderLogoLink(member, darkUrl || lightUrl)}
+                <span class="logo-card__bg-label">dark</span>
+              </div>
+            </div>
+            <div class="logo-card__meta">
+              <div class="logo-card__detail">${logoCount} variant${logoCount !== 1 ? 's' : ''} registered${ext ? ` &middot; ${ext.toUpperCase()}` : ''}</div>
+              ${brand?.brand_color && isSafeColor(brand.brand_color) ? `<div class="logo-card__detail">Brand color: <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${brand.brand_color};vertical-align:middle;margin-left:4px;border:1px solid var(--color-border)"></span> ${escapeHtml(brand.brand_color)}</div>` : ''}
+              ${issues.length > 0 ? `
+                <div class="logo-card__issues">
+                  ${issues.map(issue => `<div class="logo-card__issue">${escapeHtml(issue)}</div>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+    } catch (error) {
+      console.error('Failed to load members:', error);
+      document.getElementById('logo-grid').innerHTML =
+        '<div class="empty-state">Failed to load member data</div>';
+      document.getElementById('rail-light-logos').innerHTML =
+        '<div class="empty-state">Failed to load</div>';
+      document.getElementById('rail-dark-logos').innerHTML =
+        '<div class="empty-state" style="color: var(--color-gray-400)">Failed to load</div>';
+    }
+  });
+</script>
+</body>
+</html>
