@@ -1,138 +1,154 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registry - AgenticAdvertising.org</title>
-    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/design-system.css">
-    <style>
-        /* =============================================================================
-           Registry Hub Page Styles
-           Uses design system variables - see /design-system.css for tokens
-           ============================================================================= */
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registry | AgenticAdvertising.org</title>
+  <meta name="description" content="Browse members, agents, brands, properties, and tools in the AdCP ecosystem.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
+  <style>
+    body {
+      padding-top: var(--nav-height);
+    }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: var(--font-sans);
-            line-height: var(--leading-normal);
-            color: var(--color-text-body);
-            background: var(--color-bg-page);
-            padding-top: var(--nav-height);
-        }
+    .registry-hero {
+      text-align: center;
+      padding: var(--space-16) var(--space-6) var(--space-10);
+      background: linear-gradient(180deg, var(--color-primary-50) 0%, #fff 100%);
+    }
 
-        header {
-            background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
-            color: white;
-            padding: var(--space-12) 0;
-            text-align: center;
-        }
-        header h1 { font-size: var(--text-4xl); margin-bottom: var(--space-2); }
-        header .subtitle { font-size: var(--text-lg); opacity: 0.9; }
+    .registry-hero h1 {
+      font-size: var(--text-4xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      line-height: var(--leading-tight);
+      letter-spacing: var(--tracking-tight);
+      margin-bottom: var(--space-2);
+    }
 
-        .container {
-            max-width: var(--container-xl);
-            margin: 0 auto;
-            padding: var(--space-10) var(--space-4);
-        }
+    .registry-hero p {
+      font-size: var(--text-xl);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      max-width: 600px;
+      margin: 0 auto;
+    }
 
-        .entity-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: var(--space-6);
-        }
+    .registry-hero-links {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-6);
+      margin-top: var(--space-6);
+    }
 
-        .entity-card {
-            background: var(--color-bg-card);
-            border-radius: var(--radius-xl);
-            padding: var(--space-8);
-            box-shadow: var(--shadow-sm);
-            text-decoration: none;
-            color: inherit;
-            display: block;
-            border: var(--border-2) solid transparent;
-            transition: var(--transition-all);
-        }
-        .entity-card:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow-lg);
-            border-color: var(--color-brand);
-        }
+    .registry-hero-links a {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-brand);
+      text-decoration: none;
+    }
 
-        .entity-icon {
-            font-size: var(--text-4xl);
-            margin-bottom: var(--space-4);
-            display: block;
-        }
+    .registry-hero-links a:hover {
+      text-decoration: underline;
+    }
 
-        .entity-title {
-            font-size: var(--text-xl);
-            font-weight: var(--font-semibold);
-            color: var(--color-text-heading);
-            margin-bottom: var(--space-2);
-        }
+    .registry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-6);
+      margin-top: var(--space-8);
+    }
 
-        .entity-desc {
-            font-size: var(--text-sm);
-            color: var(--color-text-muted);
-            line-height: var(--leading-relaxed);
-            margin-bottom: var(--space-4);
-        }
+    .registry-card {
+      height: 100%;
+    }
 
-        .entity-link {
-            display: inline-flex;
-            align-items: center;
-            gap: var(--space-1);
-            font-size: var(--text-sm);
-            font-weight: var(--font-semibold);
-            color: var(--color-brand);
-        }
+    .registry-card .meta {
+      display: block;
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-2);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wider);
+      font-weight: var(--font-semibold);
+    }
 
-        @media (max-width: 640px) {
-            .entity-grid { grid-template-columns: 1fr; }
-        }
-    </style>
+    @media (max-width: 768px) {
+      .registry-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
-    <!-- Navigation (loaded by nav.js) -->
-    <div id="adcp-nav"></div>
-    <script src="/nav.js"></script>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+  <script src="/registry-nav.js"></script>
 
-    <header>
-        <h1>Registry</h1>
-        <p class="subtitle">Explore the AdCP ecosystem — members, agents, brands, and properties</p>
-    </header>
-
-    <div class="container">
-        <div class="entity-grid">
-            <a href="/members" class="entity-card">
-                <span class="entity-icon">🏢</span>
-                <div class="entity-title">Members</div>
-                <div class="entity-desc">Organizations participating in AgenticAdvertising.org — brands, agencies, publishers, and technology providers.</div>
-                <div class="entity-link">Browse members →</div>
-            </a>
-
-            <a href="/agents" class="entity-card">
-                <span class="entity-icon">🤖</span>
-                <div class="entity-title">Agents</div>
-                <div class="entity-desc">Sales, creative, and signals agents implementing the Ad Context Protocol for advertising automation.</div>
-                <div class="entity-link">Browse agents →</div>
-            </a>
-
-            <a href="/brands" class="entity-card">
-                <span class="entity-icon">✨</span>
-                <div class="entity-title">Brands</div>
-                <div class="entity-desc">Brand identities and brand.json manifests for advertisers in the AI advertising ecosystem.</div>
-                <div class="entity-link">Browse brands →</div>
-            </a>
-
-            <a href="/publishers" class="entity-card">
-                <span class="entity-icon">📰</span>
-                <div class="entity-title">Properties</div>
-                <div class="entity-desc">Publisher properties and domains verified as AdCP-compatible advertising inventory sources.</div>
-                <div class="entity-link">Browse properties →</div>
-            </a>
-        </div>
+  <header class="registry-hero">
+    <h1>Registry</h1>
+    <p>Who's participating, what's live, and what's discoverable in the AdCP ecosystem</p>
+    <div class="registry-hero-links">
+      <a href="https://docs.adcontextprotocol.org/docs/registry/index">Registry API docs &rarr;</a>
+      <a href="https://docs.adcontextprotocol.org/docs/building/index">Building with AdCP &rarr;</a>
+      <a href="https://docs.adcontextprotocol.org/docs/governance/property/adagents">adagents.json spec &rarr;</a>
     </div>
+  </header>
+
+  <section>
+    <div class="panel panel-wide">
+      <div class="registry-grid">
+        <div class="cta-card registry-card">
+          <span class="meta">Community</span>
+          <h3>Members</h3>
+          <p>Organizations participating in AgenticAdvertising.org — brands, agencies, publishers, and technology providers.</p>
+          <a href="/members">Browse members</a>
+        </div>
+
+        <div class="cta-card registry-card">
+          <span class="meta">Directory</span>
+          <h3>Agents</h3>
+          <p>Sales, creative, and signals agents implementing AdCP, including health, capabilities, and linked properties.</p>
+          <a href="/agents">Browse agents</a>
+        </div>
+
+        <div class="cta-card registry-card">
+          <span class="meta">Identity</span>
+          <h3>Brands</h3>
+          <p>Brand identities with machine-readable brand.json manifests for the AI advertising ecosystem.</p>
+          <a href="/brands">Browse brands</a>
+          <span style="margin: 0 var(--space-2); color: var(--color-text-light);">&middot;</span>
+          <a href="/brand/builder">Build brand.json</a>
+        </div>
+
+        <div class="cta-card registry-card">
+          <span class="meta">Inventory</span>
+          <h3>Properties</h3>
+          <p>Publisher properties and domains verified as AdCP-compatible advertising inventory sources.</p>
+          <a href="/publishers">Browse properties</a>
+          <span style="margin: 0 var(--space-2); color: var(--color-text-light);">&middot;</span>
+          <a href="/adagents/builder">Build adagents.json</a>
+        </div>
+
+        <div class="cta-card registry-card">
+          <span class="meta">Utilities</span>
+          <h3>Tools</h3>
+          <p>Builder and validation workflows for <code>brand.json</code>, <code>adagents.json</code>, and other implementation tasks.</p>
+          <a href="/registry/tools">Open tools</a>
+        </div>
+
+        <div class="cta-card registry-card">
+          <span class="meta">Reference</span>
+          <h3>Registry API</h3>
+          <p>Endpoint reference for brand resolution, property lookup, agent discovery, and authorization validation.</p>
+          <a href="https://docs.adcontextprotocol.org/docs/registry/index">View API docs</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="adcp-footer"></div>
 </body>
 </html>
