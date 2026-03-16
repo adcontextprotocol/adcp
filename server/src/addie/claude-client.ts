@@ -284,6 +284,7 @@ export type StreamEvent =
 
 interface PayloadDebugStats {
   model: string;
+  iteration: number;
   system_block_count: number;
   system_chars: number;
   request_context_chars: number;
@@ -291,6 +292,7 @@ interface PayloadDebugStats {
   tool_chars: number;
   message_count: number;
   message_chars: number;
+  largest_message?: { index: number; role: string; chars: number };
 }
 
 export class AddieClaudeClient {
@@ -402,6 +404,13 @@ export class AddieClaudeClient {
       } else if ('content' in block && Array.isArray(block.content)) {
         total += JSON.stringify(block.content).length;
       }
+      // Base64 image data
+      if ('source' in block) {
+        const source = (block as unknown as { source: { data?: string } }).source;
+        if (typeof source?.data === 'string') {
+          total += source.data.length;
+        }
+      }
     }
     return total;
   }
@@ -411,14 +420,25 @@ export class AddieClaudeClient {
     systemBlocks: Anthropic.TextBlockParam[],
     customTools: Anthropic.Tool[],
     messages: Anthropic.MessageParam[],
+    iteration: number = 0,
     extraToolCount: number = 0,
   ): PayloadDebugStats {
     const systemChars = systemBlocks.reduce((sum, block) => sum + block.text.length, 0);
     const requestContextChars = systemBlocks.slice(1).reduce((sum, block) => sum + block.text.length, 0);
-    const messageChars = messages.reduce((sum, msg) => sum + this.estimateMessageContentChars(msg.content), 0);
+
+    let largestMessage: PayloadDebugStats['largest_message'];
+    let messageChars = 0;
+    for (let i = 0; i < messages.length; i++) {
+      const chars = this.estimateMessageContentChars(messages[i].content);
+      messageChars += chars;
+      if (!largestMessage || chars > largestMessage.chars) {
+        largestMessage = { index: i, role: messages[i].role, chars };
+      }
+    }
 
     return {
       model: effectiveModel,
+      iteration,
       system_block_count: systemBlocks.length,
       system_chars: systemChars,
       request_context_chars: requestContextChars,
@@ -426,17 +446,34 @@ export class AddieClaudeClient {
       tool_chars: JSON.stringify(customTools).length,
       message_count: messages.length,
       message_chars: messageChars,
+      largest_message: largestMessage,
     };
   }
 
-  private logPromptOverflow(error: unknown, payload: PayloadDebugStats, source: string): void {
+  private isPromptOverflow(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes('prompt is too long')) return;
+    if (message.includes('prompt is too long')) return true;
+    // RetriesExhaustedError wraps the original — check .cause
+    if (error instanceof RetriesExhaustedError) {
+      const causeMsg = error.cause instanceof Error ? error.cause.message : String(error.cause);
+      if (causeMsg.includes('prompt is too long')) return true;
+    }
+    return false;
+  }
+
+  private logPromptOverflow(error: unknown, payload: PayloadDebugStats, source: string): void {
+    if (!this.isPromptOverflow(error)) return;
+
+    const message = error instanceof Error ? error.message : String(error);
+    // Parse actual token count from Anthropic error (e.g., "... 2457832 tokens ...")
+    const tokenMatch = message.match(/(\d[\d,]+)\s*tokens/);
+    const reportedTokens = tokenMatch ? parseInt(tokenMatch[1].replace(/,/g, ''), 10) : undefined;
 
     logger.error(
       {
         source,
         error: message,
+        reported_tokens: reportedTokens,
         payload,
       },
       'Addie: Prompt overflow diagnostics'
@@ -580,14 +617,6 @@ export class AddieClaudeClient {
         cache_control: { type: 'ephemeral' },
       };
     }
-    const payloadDebugStats = this.buildPayloadDebugStats(
-      effectiveModel,
-      systemBlocks,
-      customTools,
-      messages,
-      this.webSearchEnabled ? 1 : 0,
-    );
-
     let iteration = 0;
 
     while (iteration < maxIterations) {
@@ -617,7 +646,8 @@ export class AddieClaudeClient {
           'processMessage'
         );
       } catch (error) {
-        this.logPromptOverflow(error, payloadDebugStats, 'processMessage');
+        const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration, this.webSearchEnabled ? 1 : 0);
+        this.logPromptOverflow(error, stats, 'processMessage');
         throw error;
       }
 
@@ -1097,13 +1127,6 @@ export class AddieClaudeClient {
         cache_control: { type: 'ephemeral' },
       };
     }
-    const payloadDebugStats = this.buildPayloadDebugStats(
-      effectiveModel,
-      systemBlocks,
-      customTools,
-      messages,
-    );
-
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
 
@@ -1158,7 +1181,8 @@ export class AddieClaudeClient {
             streamSucceeded = true;
           } catch (streamError) {
             streamRetryCount++;
-            this.logPromptOverflow(streamError, payloadDebugStats, 'processMessageStream');
+            const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration);
+            this.logPromptOverflow(streamError, stats, 'processMessageStream');
 
             // Only retry if we haven't started streaming content to the user
             // Once content is yielded, retry could cause duplicate/inconsistent output

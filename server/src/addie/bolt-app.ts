@@ -940,10 +940,17 @@ async function selectRoutedToolsForSlackResponse(
   );
 
   if (!addieRouter) {
+    logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
+    const { filteredTools, unavailableHint } = filterToolsBySet(
+      userTools,
+      ['knowledge'],
+      userIsAdmin,
+      false
+    );
     return {
-      tools: userTools,
+      tools: filteredTools,
       isAAOAdmin: userIsAdmin,
-      unavailableHint: '',
+      unavailableHint,
       requiresPrecision: false,
     };
   }
