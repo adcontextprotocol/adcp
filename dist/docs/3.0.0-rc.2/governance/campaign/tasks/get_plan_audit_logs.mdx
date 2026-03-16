@@ -1,0 +1,247 @@
+---
+title: get_plan_audit_logs
+description: "get_plan_audit_logs retrieves governance state, budget tracking, and a complete audit trail for AdCP campaign plans or portfolios."
+"og:title": "AdCP — get_plan_audit_logs"
+---
+
+
+# get_plan_audit_logs
+
+Retrieve governance state and audit trail for a plan, multiple plans, or an entire portfolio. Returns budget tracking, validation history, and compliance summary.
+
+## Request
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "plan_ids": ["plan_q1_2026_launch"],
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "include_entries": true
+  }
+}
+```
+
+Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the plan.
+
+**Multiple plans** -- retrieve specific plans in one call:
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "plan_ids": ["plan_q1_2026_launch", "plan_q1_2026_emea"],
+    "include_entries": false
+  }
+}
+```
+
+**Portfolio query** -- retrieve combined audit data for all member plans in one or more portfolios:
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "portfolio_plan_ids": ["portfolio_nova_brands_2026"],
+    "include_entries": true
+  }
+}
+```
+
+You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans and portfolios in a single call.
+
+## Response
+
+```json
+{
+  "plans": [
+    {
+      "plan_id": "plan_q1_2026_launch",
+      "plan_version": 1,
+      "status": "active",
+      "budget": {
+        "authorized": 500000,
+        "committed": 425000,
+        "remaining": 75000,
+        "utilization_pct": 85
+      },
+      "channel_allocation": {
+        "olv": { "committed": 275000, "pct": 55 },
+        "display": { "committed": 150000, "pct": 30 }
+      },
+      "campaigns": [
+        {
+          "buyer_campaign_ref": "q1-2026-spring-launch",
+          "status": "active",
+          "committed": 425000,
+          "active_media_buys": ["mb_seller_456", "mb_seller_789"]
+        }
+      ],
+      "summary": {
+        "checks_performed": 15,
+        "outcomes_reported": 12,
+        "statuses": {
+          "approved": 12,
+          "denied": 1,
+          "conditions": 1,
+          "escalated": 1
+        },
+        "findings_count": 2,
+        "escalations": [
+          {
+            "check_id": "chk_esc_001",
+            "reason": "Budget reallocation exceeds threshold",
+            "resolution": "approved_by_human",
+            "resolved_at": "2026-03-16T09:30:00Z"
+          }
+        ],
+        "drift_metrics": {
+          "escalation_rate": 0.07,
+          "escalation_rate_trend": "stable",
+          "auto_approval_rate": 0.80,
+          "human_override_rate": 0.02,
+          "mean_confidence": 0.88,
+          "thresholds": {
+            "escalation_rate_min": 0.02,
+            "auto_approval_rate_max": 0.95,
+            "human_override_rate_max": 0.15
+          }
+        }
+      },
+      "entries": [
+        {
+          "id": "chk_001",
+          "type": "check",
+          "timestamp": "2026-03-10T10:05:00Z",
+          "caller": "https://orchestrator.pinnacle-media.com/agent",
+          "tool": "get_products",
+          "status": "approved",
+          "binding": "proposed",
+          "explanation": "Product discovery within budget and channel constraints.",
+          "categories_evaluated": ["budget_authority", "strategic_alignment"],
+          "policies_evaluated": ["us_coppa"]
+        },
+        {
+          "id": "chk_003",
+          "type": "check",
+          "timestamp": "2026-03-15T11:05:00Z",
+          "caller": "https://ads.seller-example.com/adcp",
+          "tool": "create_media_buy",
+          "status": "approved",
+          "binding": "committed",
+          "explanation": "Media buy within plan budget ($150,000 of $500,000 remaining). Geo targeting matches authorized markets. COPPA compliance verified.",
+          "categories_evaluated": ["budget_authority", "regulatory_compliance", "brand_policy"],
+          "policies_evaluated": ["us_coppa", "alcohol_advertising"],
+          "findings": [
+            {
+              "category_id": "budget_authority",
+              "severity": "info",
+              "explanation": "Budget utilization at 70% after this buy."
+            }
+          ]
+        },
+        {
+          "id": "out_001",
+          "type": "outcome",
+          "timestamp": "2026-03-15T11:10:00Z",
+          "caller": "https://orchestrator.pinnacle-media.com/agent",
+          "outcome": "completed",
+          "committed_budget": 150000
+        },
+        {
+          "id": "out_del_001",
+          "type": "outcome",
+          "timestamp": "2026-03-22T00:00:00Z",
+          "caller": "https://ads.seller-example.com/adcp",
+          "outcome": "delivery",
+          "media_buy_id": "mb_seller_456",
+          "outcome_status": "accepted"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Fields
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Plan IDs to retrieve. |
+| `portfolio_plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Portfolio plan IDs. Expanded to member plans. |
+| `buyer_campaign_ref` | string | No | Filter to a specific campaign. Omit for plan-level aggregate. |
+| `include_entries` | boolean | No | Include the full audit trail. Default: `false`. |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `plans` | array | Audit data for each requested plan. |
+| `plans[].plan_id` | string | Plan identifier. |
+| `plans[].plan_version` | number | Current plan version. |
+| `plans[].status` | enum | `active`, `suspended`, or `completed`. |
+| `plans[].budget` | object | Budget state. |
+| `plans[].budget.authorized` | number | Total authorized budget from the plan. |
+| `plans[].budget.committed` | number | Total budget committed from confirmed outcomes. |
+| `plans[].budget.remaining` | number | Authorized minus committed. |
+| `plans[].budget.utilization_pct` | number | Committed as a percentage of authorized. |
+| `plans[].channel_allocation` | object | Current channel mix. Keyed by channel ID. |
+| `plans[].channel_allocation[channel].committed` | number | Budget committed to this channel. |
+| `plans[].channel_allocation[channel].pct` | number | Channel's share of the authorized total budget. |
+| `plans[].campaigns` | array | Per-campaign breakdown. |
+| `plans[].campaigns[].buyer_campaign_ref` | string | Campaign identifier. |
+| `plans[].campaigns[].status` | enum | `active`, `suspended`, or `completed`. |
+| `plans[].campaigns[].committed` | number | Budget committed in this campaign. |
+| `plans[].campaigns[].active_media_buys` | array | Media buy IDs currently active. |
+| `plans[].summary` | object | Aggregate validation and outcome statistics. |
+| `plans[].summary.checks_performed` | number | Total governance checks performed. |
+| `plans[].summary.outcomes_reported` | number | Total outcomes reported. |
+| `plans[].summary.statuses` | object | Count of each governance check status (`approved`, `denied`, `conditions`, `escalated`). |
+| `plans[].summary.findings_count` | number | Total findings across all checks and outcomes. |
+| `plans[].summary.escalations` | array | All escalations and their resolutions. |
+| `plans[].summary.escalations[].check_id` | string | The escalated governance check. |
+| `plans[].summary.escalations[].reason` | string | Why it was escalated. |
+| `plans[].summary.escalations[].resolution` | string | How it was resolved (e.g., `approved_by_human`, `rejected_by_human`). |
+| `plans[].summary.escalations[].resolved_at` | string | ISO 8601 resolution timestamp. |
+| `plans[].summary.drift_metrics` | object | Aggregate governance metrics for detecting oversight drift. See [specification](/dist/docs/3.0.0-rc.2/governance/campaign/specification#drift-detection). |
+| `plans[].summary.drift_metrics.escalation_rate` | number | Fraction of checks that resulted in escalation (0-1). |
+| `plans[].summary.drift_metrics.escalation_rate_trend` | enum | `increasing`, `stable`, or `declining`. |
+| `plans[].summary.drift_metrics.auto_approval_rate` | number | Fraction of checks approved without human intervention (0-1). |
+| `plans[].summary.drift_metrics.human_override_rate` | number | Fraction of escalations where the human overrode the agent (0-1). |
+| `plans[].summary.drift_metrics.mean_confidence` | number | Average confidence score across findings (0-1). Present when findings include confidence. |
+| `plans[].summary.drift_metrics.thresholds` | object | Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the governance agent includes a finding. |
+| `plans[].summary.drift_metrics.thresholds.escalation_rate_max` | number | Maximum acceptable escalation rate. |
+| `plans[].summary.drift_metrics.thresholds.escalation_rate_min` | number | Minimum acceptable escalation rate. A rate below this may indicate eroding oversight. |
+| `plans[].summary.drift_metrics.thresholds.auto_approval_rate_max` | number | Maximum acceptable auto-approval rate. |
+| `plans[].summary.drift_metrics.thresholds.human_override_rate_max` | number | Maximum acceptable human override rate. |
+| `plans[].entries` | array | Ordered audit trail (only when `include_entries` is `true`). |
+| `plans[].entries[].id` | string | Entry identifier. |
+| `plans[].entries[].type` | enum | `check` or `outcome`. |
+| `plans[].entries[].timestamp` | string | ISO 8601 timestamp. |
+| `plans[].entries[].plan_id` | string | Plan this entry belongs to. Present when querying multiple plans or a portfolio. |
+| `plans[].entries[].caller` | string | URL of the agent that made the request. Resolved from the credentials used on the governance callback. |
+| `plans[].entries[].tool` | string | The AdCP tool (present for `check` entries). |
+| `plans[].entries[].status` | enum | Governance check status (present for `check` entries). |
+| `plans[].entries[].binding` | enum | `proposed` or `committed` (present for `check` entries). |
+| `plans[].entries[].explanation` | string | Human-readable explanation of the governance decision (present for `check` entries). |
+| `plans[].entries[].policies_evaluated` | array | Registry policy IDs evaluated during this check. |
+| `plans[].entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). |
+| `plans[].entries[].findings` | array | Findings from this check, including category, severity, policy ID, explanation, and confidence. |
+| `plans[].entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
+| `plans[].entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
+| `plans[].entries[].media_buy_id` | string | Media buy ID (present for `delivery` outcome entries). |
+| `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
+
+## Error codes
+
+| Code | Recovery | Description |
+|------|----------|-------------|
+| `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
+
+## Related tasks
+
+- [`sync_plans`](./sync_plans) -- Push or update plans
+- [`check_governance`](./check_governance) -- Validate actions against the plan
+- [`report_plan_outcome`](./report_plan_outcome) -- Report outcomes to update plan state

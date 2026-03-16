@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/right-use.json",
+  "title": "Right Use",
+  "description": "Types of rights usage that can be licensed through the brand protocol. Aligned with DDEX UseType direction for interoperability with music and media rights systems.",
+  "type": "string",
+  "enum": [
+    "likeness",
+    "voice",
+    "name",
+    "endorsement",
+    "motion_capture",
+    "signature",
+    "catchphrase",
+    "sync",
+    "background_music",
+    "editorial",
+    "commercial"
+  ],
+  "enumDescriptions": {
+    "likeness": "Visual representation of a person's appearance, including AI-generated imagery",
+    "voice": "Audio reproduction of a person's voice, including AI-generated speech",
+    "name": "Use of a person's name in advertising or promotional materials",
+    "endorsement": "Implied or explicit endorsement of a product or service by a person",
+    "motion_capture": "Use of a person's movement patterns for animation or video",
+    "signature": "Use of a person's signature or autograph",
+    "catchphrase": "Use of a person's well-known phrases or sayings",
+    "sync": "Synchronization of music with visual media (ads, video)",
+    "background_music": "Use of music as background audio in advertising",
+    "editorial": "Use in editorial or informational contexts",
+    "commercial": "Use in commercial advertising and promotional contexts"
+  }
+}

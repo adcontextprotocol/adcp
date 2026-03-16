@@ -1,6 +1,17 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
+  "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
+  "metadata": {
+    "og:site_name": "AdCP — Ad Context Protocol",
+    "og:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png",
+    "og:image:width": "1200",
+    "og:image:height": "630",
+    "og:description": "AdCP is the open protocol for agentic advertising. It standardizes how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
+    "og:type": "article",
+    "twitter:card": "summary_large_image",
+    "twitter:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png"
+  },
   "logo": {
     "light": "/logo/AAo-dark.svg",
     "dark": "/logo/AAo.svg",
@@ -59,7 +70,6 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
-              "docs/agentic-advertising",
               "docs/faq",
               "docs/quickstart",
               {
@@ -67,6 +77,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -79,6 +90,13 @@
                   "docs/reference/migration/attribution"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Understanding Agentic Advertising",
+            "pages": [
+              "docs/guides/buying-ai-media",
+              "docs/learning/overview"
             ]
           },
           {
@@ -137,9 +155,12 @@
           },
           {
             "group": "Industry Guides",
+            "expanded": false,
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/ai-media",
+              "docs/guides/ai-media-networks",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -149,6 +170,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "docs/media-buy/index",
               {
@@ -158,6 +180,7 @@
                   "docs/media-buy/product-discovery/brief-expectations",
                   "docs/media-buy/product-discovery/example-briefs",
                   "docs/media-buy/product-discovery/media-products",
+                  "docs/media-buy/product-discovery/shows-and-episodes",
                   "docs/media-buy/product-discovery/refinement",
                   "docs/media-buy/media-buys/index",
                   "docs/media-buy/media-buys/optimization-reporting",
@@ -185,7 +208,6 @@
                   "docs/media-buy/specification",
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
-                  "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/get_media_buys",
@@ -201,6 +223,7 @@
           },
           {
             "group": "Creative Protocol",
+            "expanded": false,
             "pages": [
               "docs/creative/index",
               {
@@ -285,6 +308,7 @@
           },
           {
             "group": "Governance Protocol",
+            "expanded": false,
             "pages": [
               "docs/governance/overview",
               "docs/governance/embedded-human-judgment",
@@ -319,7 +343,6 @@
                       "docs/governance/content-standards/tasks/get_content_standards",
                       "docs/governance/content-standards/tasks/create_content_standards",
                       "docs/governance/content-standards/tasks/update_content_standards",
-                      "docs/governance/content-standards/tasks/delete_content_standards",
                       "docs/governance/content-standards/tasks/calibrate_content",
                       "docs/governance/content-standards/tasks/get_media_buy_artifacts",
                       "docs/governance/content-standards/tasks/validate_content_delivery"
@@ -357,11 +380,11 @@
           },
           {
             "group": "Brand Protocol",
+            "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/key-concepts",
               "docs/brand-protocol/walkthrough-rights-licensing",
-              "docs/brand-protocol/why-brand-json",
               "docs/brand-protocol/for-advertisers",
               "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",
@@ -379,6 +402,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "docs/signals/overview",
               "docs/signals/key-concepts",
@@ -396,6 +420,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               {
                 "group": "Registry API",
@@ -419,6 +444,7 @@
           },
           {
             "group": "Certification",
+            "expanded": false,
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
@@ -472,7 +498,6 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
-              "docs/agentic-advertising",
               "docs/faq",
               "docs/quickstart",
               {
@@ -480,6 +505,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/index",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
@@ -492,6 +518,13 @@
                   "docs/reference/migration/attribution"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Understanding Agentic Advertising",
+            "pages": [
+              "docs/guides/buying-ai-media",
+              "docs/learning/overview"
             ]
           },
           {
@@ -550,9 +583,12 @@
           },
           {
             "group": "Industry Guides",
+            "expanded": false,
             "pages": [
               "docs/guides/index",
               "docs/guides/commerce-media",
+              "docs/guides/ai-media",
+              "docs/guides/ai-media-networks",
               "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
@@ -562,6 +598,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "docs/media-buy/index",
               {
@@ -571,6 +608,7 @@
                   "docs/media-buy/product-discovery/brief-expectations",
                   "docs/media-buy/product-discovery/example-briefs",
                   "docs/media-buy/product-discovery/media-products",
+                  "docs/media-buy/product-discovery/shows-and-episodes",
                   "docs/media-buy/product-discovery/refinement",
                   "docs/media-buy/media-buys/index",
                   "docs/media-buy/media-buys/optimization-reporting",
@@ -598,7 +636,6 @@
                   "docs/media-buy/specification",
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
-                  "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/get_media_buys",
@@ -614,6 +651,7 @@
           },
           {
             "group": "Creative Protocol",
+            "expanded": false,
             "pages": [
               "docs/creative/index",
               {
@@ -698,6 +736,7 @@
           },
           {
             "group": "Governance Protocol",
+            "expanded": false,
             "pages": [
               "docs/governance/overview",
               "docs/governance/embedded-human-judgment",
@@ -732,7 +771,6 @@
                       "docs/governance/content-standards/tasks/get_content_standards",
                       "docs/governance/content-standards/tasks/create_content_standards",
                       "docs/governance/content-standards/tasks/update_content_standards",
-                      "docs/governance/content-standards/tasks/delete_content_standards",
                       "docs/governance/content-standards/tasks/calibrate_content",
                       "docs/governance/content-standards/tasks/get_media_buy_artifacts",
                       "docs/governance/content-standards/tasks/validate_content_delivery"
@@ -770,11 +808,11 @@
           },
           {
             "group": "Brand Protocol",
+            "expanded": false,
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/key-concepts",
               "docs/brand-protocol/walkthrough-rights-licensing",
-              "docs/brand-protocol/why-brand-json",
               "docs/brand-protocol/for-advertisers",
               "docs/brand-protocol/for-rights-holders",
               "docs/brand-protocol/brand-json",
@@ -792,6 +830,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "docs/signals/overview",
               "docs/signals/key-concepts",
@@ -809,6 +848,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               {
                 "group": "Registry API",
@@ -832,6 +872,7 @@
           },
           {
             "group": "Certification",
+            "expanded": false,
             "pages": [
               "docs/learning/overview",
               "docs/learning/instructional-design",
@@ -910,6 +951,7 @@
           },
           {
             "group": "Signals Protocol",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/signals/overview",
               "dist/docs/2.5.3/signals/specification",
@@ -930,6 +972,7 @@
           },
           {
             "group": "Media Buy Protocol",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/media-buy/index",
               {
@@ -1028,6 +1071,7 @@
           },
           {
             "group": "Reference",
+            "expanded": false,
             "pages": [
               "dist/docs/2.5.3/reference/media-buy-quick-reference",
               "dist/docs/2.5.3/reference/creative-quick-reference",
@@ -1118,6 +1162,10 @@
     {
       "source": "/docs/media-buy/advanced-topics/orchestrator-design",
       "destination": "/docs/building/implementation/orchestrator-design"
+    },
+    {
+      "source": "/docs/media-buy/task-reference/list_creative_formats",
+      "destination": "/docs/creative/task-reference/list_creative_formats"
     },
     {
       "source": "/docs/media-buy/task-reference/list_creatives",

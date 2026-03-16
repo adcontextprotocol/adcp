@@ -1,8 +1,8 @@
 ---
 title: Task Reference
 sidebarTitle: Overview
-description: Complete reference for all AdCP Media Buy tasks with response times, schemas, and workflow context.
-keywords: [task reference, API reference, media buy tasks, AdCP tasks, advertising automation]
+description: "AdCP media buy task reference — all tasks for product discovery, campaign creation, delivery reporting, creatives, audiences, and conversion tracking with schemas and examples."
+"og:title": "AdCP — Media buy task reference"
 ---
 
 
@@ -15,7 +15,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory and refine products | ~60s | Discovery |
 | [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
 | [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
-| [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
+| [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
 | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) | Sync catalog feeds (products, stores, inventory) | Minutes-Days | Catalogs |
 | [`sync_creatives`](/docs/creative/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
 | [`list_creatives`](/docs/creative/task-reference/list_creatives) | Query creative library with filtering | ~1s | Creatives |
@@ -32,7 +32,7 @@ AdCP tasks fall into four response time categories:
 
 ### 🟢 Instant (~1 second)
 **Simple lookups and event ingestion**
-- [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) - Format specifications
+- [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) - Format specifications
 - [`list_creatives`](/docs/creative/task-reference/list_creatives) - Creative library queries
 - [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) - Media buy status and creative approvals
 - [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) - Performance signal submission

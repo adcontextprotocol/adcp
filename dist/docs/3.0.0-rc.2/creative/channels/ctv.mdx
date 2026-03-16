@@ -1,0 +1,640 @@
+---
+title: CTV and connected TV
+description: "CTV ad formats in AdCP define SSAI and CSAI delivery, companion ads, interactive overlays, and encoding requirements for connected TV."
+"og:title": "AdCP — CTV and connected TV"
+---
+
+
+This guide covers how AdCP represents CTV (connected TV) advertising, including delivery models, companion ads, interactive overlays, and VAST tag generation.
+
+CTV differs from web video in fundamental ways: there is no mouse or touch input, viewers sit 6-10 feet from the screen, audio is always on, and ads are typically non-skippable. These constraints shape how formats, assets, and interactions are defined in AdCP.
+
+The protocol-level operations (`list_creative_formats`, `build_creative`, `sync_creatives`, `get_creative_delivery`) work identically for CTV as for any other format. The CTV-specific details are in format definitions, asset requirements, and delivery models covered below. For distributing CTV creatives across multiple sellers, see [Multi-agent creative orchestration](/dist/docs/3.0.0-rc.2/creative/multi-agent-orchestration).
+
+## Delivery models
+
+CTV ads reach the screen through two delivery paths. The delivery model determines what kind of creative asset the seller's format requires.
+
+### SSAI (server-side ad insertion)
+
+With SSAI, the ad server stitches the video ad directly into the content stream before it reaches the player. The viewer's device receives a single continuous video -- it never knows where content ends and the ad begins.
+
+SSAI formats require **muxed video files** (MP4/MOV) with strict encoding constraints. The ad's GOP structure, frame rate, and audio configuration must align precisely with the content stream for seamless splicing.
+
+Key requirements for SSAI compatibility:
+- **Closed GOP** with 1-2 second keyframe intervals
+- **Constant frame rate** matching the content (typically 29.97 or 30 fps)
+- **moov atom at file start** for progressive download
+- **48 kHz stereo audio** with loudness normalized to -24 LUFS
+
+### CSAI (client-side ad insertion)
+
+With CSAI, the player on the CTV device fetches and renders the ad separately from the content. The player requests a VAST tag, parses the XML, and plays the enclosed media files or loads an interactive experience.
+
+CSAI formats typically require a **VAST tag URL** or **inline VAST XML**. The player handles rendering, which opens the door to interactive features like companion banners, QR code overlays, and remote-control navigation.
+
+## CTV format definitions
+
+### SSAI instream video with companion
+
+This format represents a 30-second SSAI pre-roll/mid-roll with an optional companion display banner. The `renders` array defines both the primary video and the companion placement.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://sales.streamhaus.example",
+    "id": "ctv_30s_ssai_companion"
+  },
+  "name": "CTV 30s SSAI with companion banner",
+  "description": "30-second SSAI instream video with 300x250 companion display banner. Video is spliced into the content stream; companion renders alongside the player.",
+  "type": "video",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 1920,
+        "height": 1080,
+        "aspect_ratio": "16:9"
+      }
+    },
+    {
+      "role": "companion",
+      "dimensions": {
+        "width": 300,
+        "height": 250
+      }
+    }
+  ],
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "required": true,
+      "requirements": {
+        "duration_seconds": 30,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080"],
+        "min_bitrate_mbps": 15,
+        "acceptable_frame_rates": ["29.97", "30"],
+        "frame_rate_type": "constant",
+        "scan_type": "progressive",
+        "gop_interval_seconds_min": 1,
+        "gop_interval_seconds_max": 2,
+        "gop_type": "closed",
+        "moov_atom_position": "start",
+        "audio_required": true,
+        "audio_codec": ["aac"],
+        "audio_sampling_rate_hz": [48000],
+        "audio_channels": "stereo",
+        "audio_loudness_lufs": -24,
+        "audio_loudness_tolerance_db": 2,
+        "audio_true_peak_dbfs": -2
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "companion_image",
+      "asset_type": "image",
+      "asset_role": "companion_banner",
+      "required": false,
+      "requirements": {
+        "min_width": 300,
+        "max_width": 300,
+        "min_height": 250,
+        "max_height": 250,
+        "formats": ["jpg", "png"],
+        "max_file_size_kb": 200
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "click_url",
+      "asset_type": "url",
+      "asset_role": "clickthrough",
+      "required": false
+    }
+  ]
+}
+```
+
+The companion banner is optional because SSAI environments vary -- some display a companion alongside the player, others show the video full-screen with no companion slot. The creative agent provides the companion asset when available; the seller ignores it when the placement does not support it.
+
+### Interactive CTV overlay
+
+This format supports CSAI delivery with clickable overlay elements. The viewer navigates using a TV remote D-pad, and the overlay can include a QR code for second-screen engagement.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://sales.streamhaus.example",
+    "id": "ctv_30s_interactive"
+  },
+  "name": "CTV 30s interactive with overlay",
+  "description": "30-second CSAI video with interactive HTML overlay. Supports D-pad navigation and QR code second-screen engagement.",
+  "type": "video",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 1920,
+        "height": 1080,
+        "aspect_ratio": "16:9"
+      }
+    },
+    {
+      "role": "overlay",
+      "dimensions": {
+        "width": 1920,
+        "height": 1080
+      }
+    }
+  ],
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "vast_tag",
+      "asset_type": "vast",
+      "asset_role": "video_tag",
+      "required": true,
+      "requirements": {
+        "vast_version": "4.2"
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "overlay_html",
+      "asset_type": "html",
+      "asset_role": "interactive_overlay",
+      "required": true,
+      "requirements": {
+        "max_file_size_kb": 300,
+        "sandbox": "iframe",
+        "external_resources_allowed": true
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "qr_image",
+      "asset_type": "image",
+      "asset_role": "qr_code",
+      "required": false,
+      "requirements": {
+        "min_width": 200,
+        "min_height": 200,
+        "formats": ["png", "svg"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "qr_landing_url",
+      "asset_type": "url",
+      "asset_role": "qr_destination",
+      "required": false
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "click_url",
+      "asset_type": "url",
+      "asset_role": "clickthrough",
+      "required": true
+    }
+  ]
+}
+```
+
+The overlay HTML renders on top of the video and handles D-pad focus states. The QR code image is separate from the overlay so that platforms without overlay support can still display it as a static element.
+
+## VAST tag generation
+
+When a buyer has a video creative and needs to deliver it as a VAST tag for CSAI environments, they use `build_creative` to produce the tag.
+
+### Request
+
+The buyer references an existing creative by `creative_id` and targets the seller's CTV format:
+
+```json
+{
+  "creative_id": "nova_spring_ctv_30s",
+  "target_format_id": {
+    "agent_url": "https://sales.streamhaus.example",
+    "id": "ctv_30s_interactive"
+  },
+  "media_buy_id": "nova-streamhaus-q2",
+  "macro_values": {
+    "CLICK_URL": "https://nova-brands.example/spring?src=ctv"
+  },
+  "include_preview": true
+}
+```
+
+### Response
+
+The creative agent returns a manifest with a VAST asset. Macros that depend on runtime context remain as placeholders:
+
+```json
+{
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://sales.streamhaus.example",
+      "id": "ctv_30s_interactive"
+    },
+    "assets": {
+      "vast_tag": {
+        "delivery_type": "url",
+        "url": "https://adserve.pinnacle-creative.example/vast?cr=nova_spring_ctv_30s&buy=nova-streamhaus-q2&cb={CACHEBUSTER}&ifa=[IFA]",
+        "vast_version": "4.2",
+        "duration_ms": 30000
+      },
+      "overlay_html": {
+        "asset_type": "html",
+        "content": "<div class=\"ctv-overlay\" data-nav=\"dpad\">...</div>"
+      },
+      "qr_image": {
+        "asset_type": "image",
+        "url": "https://cdn.pinnacle-creative.example/qr/nova-spring-ctv.png",
+        "width": 200,
+        "height": 200
+      },
+      "qr_landing_url": {
+        "asset_type": "url",
+        "url_type": "clickthrough",
+        "url": "https://nova-brands.example/spring?src=qr&buy=nova-streamhaus-q2"
+      },
+      "click_url": {
+        "asset_type": "url",
+        "url_type": "clickthrough",
+        "url": "https://nova-brands.example/spring?src=ctv"
+      }
+    }
+  },
+  "expires_at": "2026-03-15T12:00:00Z"
+}
+```
+
+The VAST tag URL contains a mix of AdCP macros (`{CACHEBUSTER}`) and IAB VAST macros (`[IFA]`). The seller's ad server resolves the IAB macros at serve time, while the creative agent resolved the AdCP macros it could (like `CLICK_URL`) during build.
+
+## Companion ads
+
+A companion ad is a secondary creative element that displays alongside the primary video. In AdCP, companion ads are modeled as multiple entries in the format's `renders` array -- one render per distinct visual piece.
+
+### How renders map to assets
+
+The format defines the visual layout. The manifest provides the content for each piece.
+
+| Render role | Dimensions | Corresponding assets |
+|---|---|---|
+| `primary` | 1920x1080 (16:9 video) | `video_file` or `vast_tag` |
+| `companion` | 300x250 (display banner) | `companion_image`, `click_url` |
+
+A single format can declare both pieces. The creative agent knows it needs to provide assets for each render. The seller's player knows where to place each piece based on the render roles.
+
+### Companion manifest example
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://sales.streamhaus.example",
+    "id": "ctv_30s_ssai_companion"
+  },
+  "assets": {
+    "video_file": {
+      "asset_type": "video",
+      "url": "https://cdn.nova-brands.example/ctv/spring_30s_1080p.mp4",
+      "duration": 30,
+      "width": 1920,
+      "height": 1080,
+      "format": "video/mp4",
+      "codec": "H.264",
+      "bitrate_kbps": 15000
+    },
+    "companion_image": {
+      "asset_type": "image",
+      "url": "https://cdn.nova-brands.example/companion/spring_300x250.jpg",
+      "width": 300,
+      "height": 250
+    },
+    "click_url": {
+      "asset_type": "url",
+      "url_type": "clickthrough",
+      "url": "https://nova-brands.example/spring?src=companion&buy={MEDIA_BUY_ID}"
+    }
+  }
+}
+```
+
+## CTV-specific considerations
+
+### Remote control navigation
+
+CTV devices use a D-pad (directional pad) with up/down/left/right and select buttons. There is no mouse cursor, no touch, and no hover state. Interactive CTV creatives must:
+
+- Define a clear **focus order** for navigable elements
+- Provide visible **focus indicators** (highlight, border, scale change)
+- Keep navigation simple -- 2-4 focusable elements maximum
+- Ensure the **default focus** lands on the primary CTA
+
+Overlay HTML assets handle this through standard web focus management (`tabindex`, `:focus-visible` CSS). The CTV player maps D-pad input to keyboard navigation events.
+
+### QR code overlays
+
+QR codes bridge the CTV screen to the viewer's phone. They work because CTV is a lean-back, sound-on environment where viewers have their phones nearby.
+
+Effective QR code placement in CTV ads:
+- Display for **8 seconds minimum** so the viewer has time to pick up their phone
+- Position in the **bottom-right quadrant** to avoid overlapping with player controls
+- Include a clear label: "Scan to shop" or "Scan for offer"
+- Use a **separate landing URL** from the main click-through so you can attribute QR scans independently
+
+In AdCP, the QR code image and its destination URL are separate assets. This lets the creative agent generate the QR code encoding the exact destination, and lets the seller validate the landing URL independently.
+
+### Co-viewing context
+
+CTV is a shared screen. Multiple people may be watching the same ad. This affects creative strategy but also has protocol implications:
+
+- **Frequency** means household frequency, not individual frequency
+- **Device ID** is the TV's identifier, not a personal device
+- Content rating and genre metadata from the publisher helps the buyer agent assess brand safety for a shared viewing context
+
+### Content metadata
+
+CTV sellers provide content context through macros that the buyer can use in tracking URLs:
+
+- `{CONTENT_GENRE}` -- Comedy, drama, sports, news, etc.
+- `{CONTENT_RATING}` -- TV-G, TV-PG, TV-14, TV-MA
+- `{VIDEO_TITLE}` -- Title of the content being watched
+- `{VIDEO_CATEGORY}` -- IAB content category
+- `{POD_POSITION}` -- Position within the ad break (1st, 2nd, 3rd ad)
+- `{POD_SIZE}` -- Total number of ads in the break
+
+These macros are especially useful for post-campaign analysis, letting buyers understand which content environments drove performance.
+
+## End-to-end workflow
+
+### 1. Discover CTV formats
+
+The buyer agent calls `list_creative_formats` on the seller to see available CTV placements:
+
+```json
+{
+  "filter": {
+    "type": "video"
+  }
+}
+```
+
+The response includes formats like `ctv_30s_ssai_companion` and `ctv_30s_interactive` along with their full `renders` and `assets` arrays. The buyer agent inspects the requirements to understand what assets it needs to provide.
+
+### 2. Build the creative
+
+The buyer agent sends the source creative to its creative agent with the seller's target format:
+
+```json
+{
+  "creative_id": "nova_spring_ctv_30s",
+  "target_format_ids": [
+    {
+      "agent_url": "https://sales.streamhaus.example",
+      "id": "ctv_30s_ssai_companion"
+    },
+    {
+      "agent_url": "https://sales.streamhaus.example",
+      "id": "ctv_30s_interactive"
+    }
+  ],
+  "media_buy_id": "nova-streamhaus-q2",
+  "include_preview": true
+}
+```
+
+Using `target_format_ids` produces manifests for both SSAI and CSAI delivery in a single call. The creative agent adapts the source video to each format's requirements -- encoding a muxed file for SSAI and generating a VAST tag for CSAI.
+
+### 3. Preview in CTV context
+
+The `build_creative` response includes preview renders when `include_preview` is true. For CTV formats with companions, the preview includes multiple render pieces:
+
+```json
+{
+  "creative_manifests": [
+    {
+      "format_id": {
+        "agent_url": "https://sales.streamhaus.example",
+        "id": "ctv_30s_ssai_companion"
+      },
+      "assets": {
+        "video_file": {
+          "asset_type": "video",
+          "url": "https://cdn.pinnacle-creative.example/encoded/nova-spring-ssai.mp4",
+          "duration": 30,
+          "width": 1920,
+          "height": 1080,
+          "codec": "H.264",
+          "bitrate_kbps": 15000
+        },
+        "companion_image": {
+          "asset_type": "image",
+          "url": "https://cdn.pinnacle-creative.example/companions/nova-spring-300x250.jpg",
+          "width": 300,
+          "height": 250
+        },
+        "click_url": {
+          "asset_type": "url",
+          "url_type": "clickthrough",
+          "url": "https://nova-brands.example/spring?src=companion&buy={MEDIA_BUY_ID}"
+        }
+      }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://sales.streamhaus.example",
+        "id": "ctv_30s_interactive"
+      },
+      "assets": {
+        "vast_tag": {
+          "delivery_type": "url",
+          "url": "https://adserve.pinnacle-creative.example/vast?cr=nova_spring_ctv_30s&buy=nova-streamhaus-q2&cb={CACHEBUSTER}",
+          "vast_version": "4.2",
+          "duration_ms": 30000
+        },
+        "overlay_html": {
+          "asset_type": "html",
+          "content": "<div class=\"ctv-overlay\" data-nav=\"dpad\">...</div>"
+        },
+        "qr_image": {
+          "asset_type": "image",
+          "url": "https://cdn.pinnacle-creative.example/qr/nova-spring-ctv.png",
+          "width": 200,
+          "height": 200
+        },
+        "qr_landing_url": {
+          "asset_type": "url",
+          "url_type": "clickthrough",
+          "url": "https://nova-brands.example/spring?src=qr&buy=nova-streamhaus-q2"
+        },
+        "click_url": {
+          "asset_type": "url",
+          "url_type": "clickthrough",
+          "url": "https://nova-brands.example/spring?src=ctv"
+        }
+      }
+    }
+  ],
+  "expires_at": "2026-03-15T12:00:00Z",
+  "preview": {
+    "previews": [
+      {
+        "preview_id": "ssai-preview",
+        "format_id": {
+          "agent_url": "https://sales.streamhaus.example",
+          "id": "ctv_30s_ssai_companion"
+        },
+        "renders": [
+          {
+            "role": "primary",
+            "preview_url": "https://preview.pinnacle-creative.example/r/nova-spring-ssai-video"
+          },
+          {
+            "role": "companion",
+            "preview_url": "https://preview.pinnacle-creative.example/r/nova-spring-ssai-companion"
+          }
+        ],
+        "input": {
+          "name": "Default preview"
+        }
+      },
+      {
+        "preview_id": "interactive-preview",
+        "format_id": {
+          "agent_url": "https://sales.streamhaus.example",
+          "id": "ctv_30s_interactive"
+        },
+        "renders": [
+          {
+            "role": "primary",
+            "preview_url": "https://preview.pinnacle-creative.example/r/nova-spring-interactive"
+          },
+          {
+            "role": "overlay",
+            "preview_url": "https://preview.pinnacle-creative.example/r/nova-spring-overlay"
+          }
+        ],
+        "input": {
+          "name": "Default preview"
+        }
+      }
+    ],
+    "expires_at": "2026-03-15T12:00:00Z"
+  }
+}
+```
+
+### 4. Create the media buy
+
+Once the creative looks right, the buyer agent creates a media buy with the seller, referencing the creative manifests:
+
+```json
+{
+  "buyer_ref": "nova-streamhaus-q2",
+  "packages": [
+    {
+      "product_id": "streamhaus-premium-ctv",
+      "creatives": [
+        {
+          "creative_id": "nova_spring_ctv_30s",
+          "format_id": {
+            "agent_url": "https://sales.streamhaus.example",
+            "id": "ctv_30s_ssai_companion"
+          }
+        },
+        {
+          "creative_id": "nova_spring_ctv_30s",
+          "format_id": {
+            "agent_url": "https://sales.streamhaus.example",
+            "id": "ctv_30s_interactive"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+The same source creative (`nova_spring_ctv_30s`) is attached in both SSAI and CSAI formats. The seller selects the appropriate version based on the delivery environment at serve time.
+
+### 5. Review delivered variants
+
+After the campaign runs, the buyer agent can review delivery data to understand which format and context combinations performed. CTV-specific metrics to watch:
+
+- **Completion rate** -- Should be 95%+ for non-skippable CTV. Lower rates indicate technical delivery issues, not creative problems.
+- **Companion click-through rate** -- Measures engagement with the companion banner.
+- **QR scan rate** -- Requires the QR landing URL to be trackable. Low single-digit percentages are normal.
+- **Content genre breakdown** -- Which content environments drove the most completions and companion clicks.
+
+### 6. Review delivery data
+
+Call `get_creative_delivery` on the seller to see variant-level CTV performance:
+
+```json
+{
+  "media_buy_ids": ["nova-streamhaus-q2"],
+  "creative_ids": ["nova_spring_ctv_30s"],
+  "max_variants": 10
+}
+```
+
+The response includes per-format breakdowns. For CTV campaigns using both SSAI and CSAI, you see separate metrics for each delivery path:
+
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "nova_spring_ctv_30s",
+      "format_id": {
+        "agent_url": "https://sales.streamhaus.example",
+        "id": "ctv_30s_ssai_companion"
+      },
+      "totals": {
+        "impressions": 250000,
+        "spend": 12500,
+        "completion_rate": 0.97
+      },
+      "variants": [{
+        "variant_id": "ssai_default",
+        "impressions": 250000,
+        "completion_rate": 0.97
+      }]
+    },
+    {
+      "creative_id": "nova_spring_ctv_30s",
+      "format_id": {
+        "agent_url": "https://sales.streamhaus.example",
+        "id": "ctv_30s_interactive"
+      },
+      "totals": {
+        "impressions": 85000,
+        "spend": 5100,
+        "completion_rate": 0.95,
+        "clicks": 2550
+      },
+      "variants": [{
+        "variant_id": "interactive_default",
+        "impressions": 85000,
+        "completion_rate": 0.95,
+        "clicks": 2550
+      }]
+    }
+  ]
+}
+```
+
+SSAI typically shows higher completion rates (97%+) because the ad is stitched into the stream. CSAI rates are slightly lower but include click data from interactive elements.
+
+## Related documentation
+
+- [Video ads](/dist/docs/3.0.0-rc.2/creative/channels/video) -- Video format specs, codecs, and encoding details
+- [Display ads](/dist/docs/3.0.0-rc.2/creative/channels/display) -- Companion banner format patterns
+- [Multi-agent creative orchestration](/dist/docs/3.0.0-rc.2/creative/multi-agent-orchestration) -- Distributing CTV creatives across multiple sellers
+- [Universal macros](/dist/docs/3.0.0-rc.2/creative/universal-macros) -- Complete macro reference including CTV-specific macros
+- [Creative manifests](/dist/docs/3.0.0-rc.2/creative/creative-manifests) -- Manifest structure and asset specifications

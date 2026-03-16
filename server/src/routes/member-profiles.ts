@@ -174,7 +174,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
       res.status(500).json({
         error: 'Failed to get member profile',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -378,7 +377,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile error');
       res.status(500).json({
         error: 'Failed to create member profile',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -523,7 +521,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       logger.error({ err: error, durationMs: duration }, 'Update member profile error');
       res.status(500).json({
         error: 'Failed to update member profile',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -750,7 +747,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const duration = Date.now() - startTime;
       const statusCode = error?.statusCode || 500;
       logger.error({ err: error, durationMs: duration }, 'Update brand identity error');
-      res.status(statusCode).json({ error: 'Failed to update brand identity', message: error instanceof Error ? error.message : 'Unknown error' });
+      res.status(statusCode).json({ error: 'Failed to update brand identity' });
     }
   });
 
@@ -846,7 +843,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       logger.error({ err: error, durationMs: duration }, 'Update member profile visibility error');
       res.status(500).json({
         error: 'Failed to update profile visibility',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -931,7 +927,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile error');
       res.status(500).json({
         error: 'Failed to delete member profile',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -964,7 +959,6 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       logger.error({ err: error }, 'Admin list member profiles error');
       res.status(500).json({
         error: 'Failed to list member profiles',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1011,7 +1005,6 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       logger.error({ err: error }, 'Admin update member profile error');
       res.status(500).json({
         error: 'Failed to update member profile',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1040,7 +1033,6 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       logger.error({ err: error }, 'Admin delete member profile error');
       res.status(500).json({
         error: 'Failed to delete member profile',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

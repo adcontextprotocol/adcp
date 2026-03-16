@@ -358,6 +358,34 @@
             "email": { "type": "string", "format": "email", "description": "Contact email" },
             "phone": { "type": "string", "description": "Contact phone number" }
           }
+        },
+        "shows": {
+          "type": "array",
+          "description": "Shows this person or brand is associated with. Enables bidirectional linking: a show's talent references brand.json via brand_url, and brand.json links back to shows.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "show_id": {
+                "type": "string",
+                "description": "Show identifier as used in the seller's get_products responses"
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable show name"
+              },
+              "role": {
+                "$ref": "/schemas/enums/talent-role.json",
+                "description": "This person's role on the show"
+              },
+              "seller_agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the sales agent that sells inventory for this show. Buyer agents can query this agent for show products."
+              }
+            },
+            "required": ["name"],
+            "additionalProperties": true
+          }
         }
       },
       "required": ["id", "names"],

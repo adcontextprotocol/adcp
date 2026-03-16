@@ -1,6 +1,7 @@
 ---
 title: AdCP 3.0
-description: "Overview of AdCP 3.0: new capabilities, breaking changes, and migration guides"
+description: "What's new in AdCP 3.0: brand identity and rights, governance, sponsored intelligence, shows and episodes, 20 media channels, and migration guides from v2."
+"og:title": "AdCP — AdCP 3.0"
 ---
 
 AdCP 3.0 expands the protocol beyond media buying into brand identity, governance, media planning, and conversational brand experiences.
@@ -11,12 +12,16 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 |------|------|------|
 | **Protocol scope** | Media Buy, Signals, Creative | Adds Brand Protocol, Governance, Sponsored Intelligence |
 | **Brand identity** | No standard mechanism | `brand.json` + community brand registry |
-| **Governance** | No brand suitability protocol | Property lists, content standards, and brand calibration |
+| **Governance** | No brand suitability protocol | Property lists, content standards, campaign governance, policy registry, and brand calibration |
 | **Sponsored Intelligence** | No conversational brand protocol | Consent-first brand sessions in AI assistants |
 | **Accounts Protocol** | No formal account model | Named protocol layer: `sync_accounts`, `list_accounts`, `report_usage`, brand registry-grounded identity |
 | **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 13 catalog types |
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
-| **Channel model** | 9 channels | 19 planning-oriented channels |
+| **Brand rights** | No licensing protocol | `get_rights`, `acquire_rights`, `update_rights` with HMAC-authenticated webhooks |
+| **Visual guidelines** | No structured brand visuals | `visual_guidelines` on `brand.json` for generative creative systems |
+| **Creative governance** | No creative evaluation protocol | `get_creative_features` for security scanning, quality, content categorization |
+| **Shows and episodes** | No content programming model | `shows` on products with distribution IDs, episode lifecycle, break-based inventory |
+| **Channel model** | 9 channels | 20 planning-oriented channels (including `ai_media`) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
 | **Geo targeting** | Implicit US-centric | Explicit named systems (global) |
@@ -68,6 +73,38 @@ shoes.novabrands.example.com
 
 ---
 
+### Brand rights lifecycle
+
+Three tasks for licensing and usage rights between brands and content owners:
+
+| Task | Purpose |
+|------|---------|
+| `get_rights` | Discover available rights for a brand's content |
+| `acquire_rights` | Request and negotiate rights acquisition |
+| `update_rights` | Modify active rights (extend, restrict, revoke) |
+
+Rights include generation credentials (API keys or tokens for accessing licensed content), creative approval webhooks (HMAC-SHA256 authenticated callbacks when creatives are submitted for review), and revocation notifications. The protocol distinguishes actionable rejections (fix and resubmit) from final rejections (do not retry).
+
+Structured `visual_guidelines` on `brand.json` complement rights by giving generative creative systems structured rules for on-brand asset production: photography style, graphic elements, composition, motion, logo placement, colorways, type scale, and restrictions.
+
+<Card title="Brand rights" icon="arrow-right" href="/docs/brand-protocol/tasks/get_rights">
+  Task reference for rights discovery, acquisition, and management.
+</Card>
+
+---
+
+### Shows and episodes
+
+Products can now reference persistent content programs — podcasts, TV series, YouTube channels — via `show_ids`. `get_products` responses include a top-level `shows` array with distribution identifiers for cross-seller matching, episode lifecycle states (scheduled, tentative, live, postponed, cancelled, aired, published), break-based ad inventory configuration, talent linking to `brand.json`, and international content rating systems.
+
+Shows support relationships (spinoff, companion, sequel, prequel, crossover) and derivative content (clips, highlights, recaps) for comprehensive content modeling.
+
+<Card title="Shows and episodes" icon="arrow-right" href="/docs/media-buy/product-discovery/shows-and-episodes">
+  Full specification including show schemas, episode lifecycle, and break-based inventory.
+</Card>
+
+---
+
 ### Registry API
 
 The AgenticAdvertising.org registry provides a public REST API for resolving brands and properties, discovering agents, and validating authorization. Most endpoints require no authentication.
@@ -102,6 +139,10 @@ Publishers can return **proposals** alongside products — structured media plan
 ---
 
 ### Accounts
+
+<Tip>
+**Migrating from v2?** Accounts are entirely new in v3 — there is no v2 equivalent to migrate from. Start with [Accounts and Agents](/docs/building/integration/accounts-and-agents) for the setup guide.
+</Tip>
 
 Formal billing relationships between buyers and sellers via `sync_accounts`.
 
@@ -138,14 +179,11 @@ Formats declare what catalogs they need via `catalog_requirements`. Creatives re
 
 ### Capability discovery
 
-`get_adcp_capabilities` replaces static agent card extensions with runtime capability discovery. It returns supported protocols, account billing models, portfolio information, targeting systems, and governance features — all schema-validated.
+`get_adcp_capabilities` replaces both `adcp-extension.json` and the MCP agent card with runtime capability discovery. It returns supported protocols, account billing models, portfolio information, targeting systems, and governance features — all schema-validated.
 
-| Agent card extension | get_adcp_capabilities |
-|---------------------|----------------------|
-| Static JSON file | Runtime discovery |
-| Single file location | Works with any transport |
-| Limited schema | Rich capability declaration |
-| No validation | Schema-validated responses |
+<Warning>
+**Agent cards and `adcp-extension.json` are no longer needed.** Buyers discover sellers through `adagents.json` and call `get_adcp_capabilities` at runtime. If your v2 integration reads capability data from agent card extensions, switch to `get_adcp_capabilities`.
+</Warning>
 
 <Card title="get_adcp_capabilities" icon="arrow-right" href="/docs/protocol/get_adcp_capabilities">
   Full task reference with request/response schemas.
@@ -156,6 +194,8 @@ Formats declare what catalogs they need via `catalog_requirements`. Creatives re
 ### Governance Protocol
 
 Brand suitability and inventory curation. Governance agents manage **property lists** (curated sets of properties for targeting or exclusion) and **content standards** (brand suitability policies with per-category block/allow rules). Buyers pass property lists to `get_products` for filtered inventory discovery, and use `calibrate_content` for collaborative alignment between brand and governance agent. Governance agents can enforce `provenance_required` on creative policy and support third-party AI content verification via the `verification` array on provenance claims.
+
+Campaign governance extends this with plan-level policy and budget enforcement via `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`. Governance agents can operate in `audit`, `advisory`, or `enforce` mode, validate seller-side actions against delegated authority, and resolve standardized policies through the shared [policy registry](/docs/governance/policy-registry).
 
 <Card title="Governance Protocol" icon="arrow-right" href="/docs/governance/overview">
   Full specification including property lists, content standards, and calibration.
@@ -195,7 +235,7 @@ Signals now have explicit `value_type` (binary, categorical, numeric) with typed
 
 ### Media channel taxonomy
 
-v2's 9 channels are replaced by 19 planning-oriented channels. Five channels carried over unchanged (`display`, `social`, `ctv`, `podcast`, `dooh`). The remaining four are split, removed, or renamed.
+v2's 9 channels are replaced by 20 planning-oriented channels. Five channels carried over unchanged (`display`, `social`, `ctv`, `podcast`, `dooh`). The remaining four are split, removed, or renamed.
 
 <Warning>
 All code that reads or writes channel values must be updated.
@@ -213,7 +253,7 @@ All code that reads or writes channel values must be updated.
 | `dooh` | `dooh` | Unchanged |
 | `retail` | `retail_media` | Renamed for clarity |
 
-New channels in v3 (no v2 equivalent): `search`, `linear_tv`, `radio`, `streaming_audio`, `ooh`, `print`, `cinema`, `email`, `gaming`, `retail_media`, `influencer`, `affiliate`, `product_placement`.
+New channels in v3 (no v2 equivalent): `search`, `linear_tv`, `radio`, `streaming_audio`, `ooh`, `print`, `cinema`, `email`, `gaming`, `retail_media`, `influencer`, `affiliate`, `product_placement`, `ai_media`.
 
 <Note>
 The `gaming` channel covers intrinsic in-game ads, rewarded video, and playable ads. Rewarded video in gaming apps could also be classified as `olv` — use `gaming` when the inventory comes from a gaming budget.
@@ -455,6 +495,26 @@ Two consistency changes to signals schemas:
 
 ---
 
+### Brand tone structured format
+
+Brand `tone` is now an object type only — string format is removed. Structured tone includes `voice`, `attributes`, `dos`, and `donts` fields. Existing string values should migrate to `{ "voice": "<previous-string>" }`.
+
+| v2/beta field | v3 rc.2 field |
+|---------------|---------------|
+| `tone` (string or object) | `tone` (object: `{ voice, attributes, dos, donts }`) |
+
+---
+
+### Account resolution removed
+
+`account_resolution` capability field is removed. `require_operator_auth` now determines both the auth model and account reference style: `true` means explicit accounts (discover via `list_accounts`, pass `account_id`), `false` means implicit accounts (declare via `sync_accounts`, pass natural key).
+
+| v2/beta/rc.1 field | v3 rc.2 field |
+|---------------------|---------------|
+| `account_resolution` capability | Removed — use `require_operator_auth` |
+
+---
+
 ### Privacy and consent
 
 AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, US Privacy String) should be passed via the brief's `ext` field or through transport-level headers. Sellers that require consent signals should declare this in `get_adcp_capabilities` using the extension mechanism.
@@ -487,6 +547,10 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `account_id` (string) on signals tasks | `account` (AccountReference) |
 | `report_usage.kind` and `report_usage.operator_id` | Removed |
 | `catalog` (singular) on Package | `catalogs` (array) |
+| `account_resolution` capability | `require_operator_auth` determines account model |
+| `delete_content_standards` task | Archive via `update_content_standards` instead |
+| `get_property_features` task | Property list filters + `get_adcp_capabilities` for feature discovery |
+| `tone` as string on brand.json | Object only: `{ voice, attributes, dos, donts }` |
 
 ---
 
@@ -522,6 +586,10 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Move `creative_brief` to `brief` asset type in manifest `assets` map
     - [ ] Handle `report_usage` without `kind` and `operator_id` fields
     - [ ] Update `SyncCreativesRequest.assignments` from object map to typed array
+    - [ ] Migrate brand `tone` from string to object format (`{ voice, attributes, dos, donts }`)
+    - [ ] Remove `account_resolution` reads — use `require_operator_auth` instead
+    - [ ] Remove `delete_content_standards` calls — archive via `update_content_standards`
+    - [ ] Remove `get_property_features` calls — use property list filters
     - [ ] Validate all requests/responses against v3 schemas
   </Accordion>
 
@@ -563,6 +631,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Use `fields` projection on `get_products` for efficient discovery
     - [ ] Handle `rejected` status on media buys
     - [ ] Use `action: "deactivate"` on `activate_signal` for campaign cleanup
+    - [ ] Integrate `get_rights` / `acquire_rights` for licensed content campaigns
+    - [ ] Handle `visual_guidelines` from `brand.json` for creative generation
   </Accordion>
 
   <Accordion title="Signals agents (data providers, measurement vendors)">
@@ -606,6 +676,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Handle `compliance.required_disclosures` on creative briefs
     - [ ] Check format `supported_disclosure_positions` compatibility
     - [ ] Declare `supports_compliance` in capabilities (replaces `supports_brief`)
+    - [ ] Handle `visual_guidelines` from `brand.json` for on-brand asset generation
   </Accordion>
 
   <Accordion title="Brands (new in v3)">
@@ -614,6 +685,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Host `/.well-known/brand.json` on your domain
     - [ ] Declare brand portfolio, properties, and authorized operators
     - [ ] Optionally provide brand data (logos, colors, fonts, tone) inline in `brand.json` or via brand agent
+    - [ ] Add `visual_guidelines` to `brand.json` for generative creative systems
+    - [ ] Implement `get_rights` / `acquire_rights` / `update_rights` if licensing content
     - [ ] Register in the [community brand registry](/docs/registry) if not hosting `brand.json`
   </Accordion>
 
@@ -625,6 +698,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Implement `get_adcp_capabilities` with `governance` in `supported_protocols`
     - [ ] Implement `provenance_required` enforcement on creative policy
     - [ ] Support `verification` results from AI detection services
+    - [ ] Implement `get_creative_features` for creative evaluation
+    - [ ] Declare `creative_features` in `get_adcp_capabilities`
   </Accordion>
 
   <Accordion title="Sponsored Intelligence agents (new in v3)">

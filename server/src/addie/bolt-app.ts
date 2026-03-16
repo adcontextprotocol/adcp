@@ -90,8 +90,6 @@ import {
   getToolsForSets,
   buildUnavailableSetsHint,
 } from './tool-sets.js';
-import { getCachedInsights, prefetchInsights } from './insights-cache.js';
-import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
@@ -101,6 +99,7 @@ import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers } from './mcp/brand-sandbox-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
+import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
@@ -659,22 +658,6 @@ async function buildRequestContext(
       channelContextText = channelLines.join('\n');
     }
 
-    // Get insight goals to naturally work into conversation
-    // Skip in public channels — goals like enrollment drive unwanted pitching
-    const isPublicChannel = threadContext?.viewing_channel_is_private === false;
-    const isMapped = !!memberContext?.is_mapped;
-    let insightGoalsText = '';
-    if (!isPublicChannel) {
-      try {
-        const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
-        if (goalsPrompt) {
-          insightGoalsText = goalsPrompt;
-        }
-      } catch (error) {
-        logger.warn({ error }, 'Addie Bolt: Failed to get insight goals for prompt');
-      }
-    }
-
     // Add certification module state so Addie remembers active modules
     // even when conversation history is trimmed
     let certContextText = '';
@@ -689,7 +672,7 @@ async function buildRequestContext(
       }
     }
 
-    const sections = [memberContextText, channelContextText, insightGoalsText, certContextText].filter(Boolean);
+    const sections = [memberContextText, channelContextText, certContextText].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
@@ -812,6 +795,15 @@ async function createUserScopedTools(
   allTools.push(...COLLABORATION_TOOLS);
   for (const [name, handler] of collaborationHandlers) {
     allHandlers.set(name, handler);
+  }
+
+  // Add social drafting tools (help members write social posts about industry articles)
+  if (memberContext?.is_member) {
+    const socialDraftHandlers = createSocialDraftToolHandlers(memberContext);
+    allTools.push(...SOCIAL_DRAFT_TOOLS);
+    for (const [name, handler] of socialDraftHandlers) {
+      allHandlers.set(name, handler);
+    }
   }
 
   // Add committee leader tools (co-leader management, self-enforcing permissions)
@@ -942,9 +934,6 @@ async function handleThreadStarted({
     { userId, channelId: context.channel_id },
     'Addie Bolt: Thread started'
   );
-
-  // Prefetch member insights in background (warms cache before first message)
-  prefetchInsights(userId);
 
   // Save the initial context
   try {
@@ -3019,20 +3008,11 @@ async function handleChannelMessage({
       logger.debug({ error, channelId }, 'Addie Bolt: Could not get channel context');
     }
 
-    // Fetch member context, insights, and admin status in parallel (all independent)
-    // Insights use a cache with 5-minute TTL to reduce DB load
-    const [memberContext, memberInsights, isAdminForRouting] = await Promise.all([
+    // Fetch member context and admin status in parallel
+    const [memberContext, isAdminForRouting] = await Promise.all([
       getMemberContext(userId),
-      getCachedInsights(userId),
       isSlackUserAAOAdmin(userId),
     ]);
-
-    if (memberInsights && memberInsights.length > 0) {
-      logger.debug(
-        { userId, insightCount: memberInsights.length, types: memberInsights.map(i => i.insight_type_name) },
-        'Addie Bolt: Found member insights for routing'
-      );
-    }
 
     // Build routing context
     const routingCtx: RoutingContext = {
@@ -3040,7 +3020,6 @@ async function handleChannelMessage({
       source: 'channel',
       memberContext,
       isThread: isInThread,
-      memberInsights,
       isAAOAdmin: isAdminForRouting,
       channelName: channelContext?.viewing_channel_name,
     };

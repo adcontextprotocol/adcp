@@ -25,7 +25,6 @@ import {
   type AppMentionEvent,
   type AssistantMessageEvent,
 } from '../addie/index.js';
-import { queueForNoteExtraction } from '../addie/services/passive-note-extractor.js';
 import { triageAndCreateProspect } from '../services/prospect-triage.js';
 import { sendWelcomeSocialPosts } from '../notifications/welcome-social-posts.js';
 
@@ -508,17 +507,6 @@ export async function handleMessage(event: SlackMessageEvent): Promise<void> {
     if (shouldIndex && event.text && event.text.length > 20) {
       await indexMessageForSearch(event);
 
-      // Queue for passive note extraction (async, rate-limited)
-      // This extracts interesting tidbits from channel conversations
-      const channel = await getChannelInfo(event.channel);
-      queueForNoteExtraction({
-        slackUserId: event.user,
-        workosUserId: mapping?.workos_user_id ?? undefined,
-        channelId: event.channel,
-        channelName: channel?.name,
-        messageText: event.text,
-        messageTs: event.ts,
-      });
     }
   } catch (error) {
     logger.error({ error, userId: event.user }, 'Failed to record message activity');

@@ -261,6 +261,71 @@
     .member-logo-link:hover .member-logo {
       opacity: 1;
     }
+    /* What is Agentic Advertising Section */
+    .explainer {
+      padding: 4rem 2rem;
+      background: white;
+    }
+    .explainer-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .explainer h2 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 1.5rem;
+      color: var(--color-text-heading);
+    }
+    .explainer-lead {
+      font-size: 1.15rem;
+      line-height: 1.7;
+      color: var(--color-text-muted);
+      text-align: center;
+      margin-bottom: 2.5rem;
+      max-width: 750px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .explainer-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+    }
+    .explainer-item {
+      text-align: center;
+    }
+    .explainer-item h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--color-text-heading);
+    }
+    .explainer-item p {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--color-text-muted);
+    }
+    .explainer-cta {
+      text-align: center;
+      margin-top: 2.5rem;
+    }
+    .explainer-cta a {
+      color: var(--color-brand);
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 1rem;
+    }
+    .explainer-cta a:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 768px) {
+      .explainer-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+      }
+    }
+
     /* Go Agentic Section */
     .go-agentic {
       padding: 2.5rem 2rem;
@@ -444,16 +509,44 @@
     </div>
   </section>
 
+  <!-- What is Agentic Advertising Section -->
+  <section class="explainer">
+    <div class="explainer-container">
+      <h2>What is agentic advertising?</h2>
+      <p class="explainer-lead">
+        Agentic advertising is a shift in how advertising works. Instead of manually managing campaigns across dozens of platforms, AI agents handle the execution — discovering inventory, pushing your brand data to platforms, placing buys, and optimizing toward your goals. You set the strategy and approve what matters.
+      </p>
+      <div class="explainer-grid">
+        <div class="explainer-item">
+          <h3>For brands and agencies</h3>
+          <p>Your job shifts from setting up campaigns on every platform to providing the right ingredients — product catalogs, brand guidelines, content standards — and defining what success looks like. Agents do the rest across every platform through one standard.</p>
+        </div>
+        <div class="explainer-item">
+          <h3>For platforms</h3>
+          <p>Agents are allocating media budgets. If your platform speaks the standard, any buyer agent can discover your inventory and transact — without custom integrations for each one.</p>
+        </div>
+        <div class="explainer-item">
+          <h3>Why it matters now</h3>
+          <p>New media channels — AI assistants, AI search, generative experiences — need new approaches. You can't place an IO or send a bid request for AI-generated advertising. Open standards make it work at scale.</p>
+        </div>
+      </div>
+      <div class="explainer-cta">
+        <a href="https://docs.adcontextprotocol.org/docs/guides/buying-ai-media">Buyer's guide to AI media &rarr;</a>
+      </div>
+    </div>
+  </section>
+
   <!-- Go Agentic Section -->
   <section class="go-agentic">
     <div class="go-agentic-container">
       <h2>Go Agentic</h2>
       <p class="go-agentic-subtitle">Tell Addie what you're looking for. She'll help you find the right partners and resources.</p>
       <div class="prompt-hints">
+        <a href="/chat?prompt=I%20want%20to%20advertise%20on%20AI%20platforms.%20How%20do%20I%20get%20started%3F" class="prompt-hint">Advertise on AI platforms</a>
+        <a href="/chat?prompt=I%20have%20a%20Shopify%20store%20and%20want%20my%20products%20to%20show%20up%20in%20AI%20assistants.%20Can%20you%20help%3F" class="prompt-hint">Get my products into AI assistants</a>
         <a href="/chat?prompt=Help%20me%20build%20a%20buyer%20agent%20for%20my%20campaigns" class="prompt-hint">Build a buyer agent for my campaigns</a>
         <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="prompt-hint">Find a sales agent for my inventory</a>
-        <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="prompt-hint">Set up adagents.json for my site</a>
-        <a href="/chat?prompt=What%20can%20I%20do%20with%20AdCP%3F" class="prompt-hint">What can I do with AdCP?</a>
+        <a href="/chat?prompt=How%20is%20AI%20changing%20advertising%3F%20What%20should%20I%20know%3F" class="prompt-hint">How is AI changing advertising?</a>
       </div>
       <p class="go-agentic-footer">Or <a href="/members">browse all members</a> to see what's possible</p>
     </div>

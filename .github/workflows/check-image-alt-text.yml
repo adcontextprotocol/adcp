@@ -14,12 +14,12 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -88,21 +88,25 @@ jobs:
             CHECKED_COUNT=$((CHECKED_COUNT + 1))
             echo "Checking image quality: $local_path"
 
-            # Base64 encode the image
-            IMG_B64=$(base64 -w0 "$local_path" 2>/dev/null || base64 -i "$local_path" 2>/dev/null)
+            # Base64 encode the image to a temp file (too large for shell args)
+            IMG_B64_FILE=$(mktemp)
+            base64 -w0 "$local_path" > "$IMG_B64_FILE" 2>/dev/null || base64 -i "$local_path" > "$IMG_B64_FILE" 2>/dev/null
 
-            # Build the validation request using jq to safely handle large base64 payloads
+            # Build the validation request using jq --rawfile to avoid arg length limits
             VALIDATION_PROMPT="Analyze this image. List ALL text visible in the image verbatim. Flag any misspelled, garbled, or nonsensical text. Also assess whether this image matches the following intended alt text: \"${alt_text}\". Respond ONLY with valid JSON (no markdown fences): { \"visible_text\": [\"text1\"], \"gibberish_found\": true/false, \"gibberish_details\": \"...\", \"matches_description\": true/false, \"match_notes\": \"...\" }"
 
-            PAYLOAD=$(jq -n \
-              --arg img "$IMG_B64" \
+            PAYLOAD_FILE=$(mktemp)
+            jq -n \
+              --rawfile img "$IMG_B64_FILE" \
               --arg prompt "$VALIDATION_PROMPT" \
-              '{contents: [{parts: [{inline_data: {mime_type: "image/png", data: $img}}, {text: $prompt}]}]}')
+              '{contents: [{parts: [{inline_data: {mime_type: "image/png", data: ($img | rtrimstr("\n"))}}, {text: $prompt}]}]}' > "$PAYLOAD_FILE"
+            rm -f "$IMG_B64_FILE"
 
-            # Call Gemini API
+            # Call Gemini API using file input to avoid shell arg limits
             RESPONSE=$(curl -s --max-time 60 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
               -H 'Content-Type: application/json' \
-              -d "$PAYLOAD" 2>/dev/null)
+              -d @"$PAYLOAD_FILE" 2>/dev/null)
+            rm -f "$PAYLOAD_FILE"
 
             # Extract the text response
             RESULT_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
@@ -142,6 +146,8 @@ jobs:
           COMMIT_SHA="$PR_HEAD_SHA"
           COMMIT_SHA_SHORT="${COMMIT_SHA:0:7}"
           COMMIT_MSG=$(git log -1 --format='%s' 2>/dev/null || echo "Unknown")
+          # Sanitize commit message to prevent markdown injection in PR comments
+          COMMIT_MSG=$(echo "$COMMIT_MSG" | sed 's/[][()\\`*_{}#+=|!>~-]/ /g')
           COMMIT_INFO="**Commit**: [\`$COMMIT_SHA_SHORT\`](https://github.com/${{ github.repository }}/commit/$COMMIT_SHA) - $COMMIT_MSG"
 
           if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
@@ -160,9 +166,10 @@ jobs:
               COMMENT="$COMMENT---\n\n**To fix**: Regenerate images using \`npx tsx scripts/generate-images.ts\` with the \`--max-retries 2\` flag, or update the image prompts to include \"Do not include any text, words, or labels in the image.\""
             fi
 
-            echo "comment<<EOF" >> $GITHUB_OUTPUT
+            DELIMITER="$(openssl rand -hex 16)"
+            echo "comment<<$DELIMITER" >> $GITHUB_OUTPUT
             echo -e "$COMMENT" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "$DELIMITER" >> $GITHUB_OUTPUT
           else
             echo "has_issues=false" >> $GITHUB_OUTPUT
             echo "✅ All $TOTAL_REFS image references valid ($CHECKED_COUNT checked via API)"
@@ -172,7 +179,7 @@ jobs:
 
       - name: Comment on PR (only when issues found)
         if: steps.check.outputs.has_issues == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           COMMENT_BODY: ${{ steps.check.outputs.comment }}
         with:
@@ -208,7 +215,7 @@ jobs:
 
       - name: Clean up stale comment on success
         if: steps.check.outputs.has_issues == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { data: comments } = await github.rest.issues.listComments({

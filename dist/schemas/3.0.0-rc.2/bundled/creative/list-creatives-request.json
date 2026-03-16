@@ -1,0 +1,467 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/bundled/creative/list-creatives-request.json",
+  "title": "List Creatives Request",
+  "description": "Request parameters for querying creative assets from a creative library with filtering, sorting, and pagination. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative platforms) and sales agents that manage creatives.",
+  "type": "object",
+  "properties": {
+    "filters": {
+      "title": "Creative Filters",
+      "description": "Filter criteria for querying creatives from a creative library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
+      "type": "object",
+      "properties": {
+        "accounts": {
+          "type": "array",
+          "description": "Filter creatives by owning accounts. Useful for agencies managing multiple client accounts.",
+          "items": {
+            "title": "Account Reference",
+            "description": "Reference to an account by seller-assigned ID or natural key. Use account_id for explicit accounts (require_operator_auth: true, discovered via list_accounts). Use the natural key (brand + operator) for implicit accounts (require_operator_auth: false, declared via sync_accounts). For sandbox: explicit accounts use account_id (pre-existing test account), implicit accounts use the natural key with sandbox: true.",
+            "type": "object",
+            "oneOf": [
+              {
+                "properties": {
+                  "account_id": {
+                    "type": "string",
+                    "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)"
+                  }
+                },
+                "required": [
+                  "account_id"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "properties": {
+                  "brand": {
+                    "title": "Brand Reference",
+                    "description": "Brand reference identifying the advertiser",
+                    "type": "object",
+                    "properties": {
+                      "domain": {
+                        "type": "string",
+                        "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                      },
+                      "brand_id": {
+                        "title": "Brand ID",
+                        "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                        "type": "string",
+                        "pattern": "^[a-z0-9_]+$",
+                        "examples": [
+                          "tide",
+                          "cheerios",
+                          "air_jordan",
+                          "nike",
+                          "pampers"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "domain"
+                    ],
+                    "additionalProperties": false,
+                    "examples": [
+                      {
+                        "domain": "nova-brands.com",
+                        "brand_id": "spark"
+                      },
+                      {
+                        "domain": "nova-brands.com",
+                        "brand_id": "glow"
+                      },
+                      {
+                        "domain": "acme-corp.com"
+                      }
+                    ]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                  },
+                  "sandbox": {
+                    "type": "boolean",
+                    "description": "When true, references the sandbox account for this brand/operator pair. Defaults to false (production account).",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "brand",
+                  "operator"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "examples": [
+              {
+                "account_id": "acc_acme_001"
+              },
+              {
+                "brand": {
+                  "domain": "acme-corp.com"
+                },
+                "operator": "acme-corp.com"
+              },
+              {
+                "brand": {
+                  "domain": "nova-brands.com",
+                  "brand_id": "spark"
+                },
+                "operator": "pinnacle-media.com"
+              },
+              {
+                "brand": {
+                  "domain": "acme-corp.com"
+                },
+                "operator": "acme-corp.com",
+                "sandbox": true
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "format_types": {
+          "type": "array",
+          "description": "Filter by high-level format types (e.g., 'video', 'audio', 'display'). For specific format matching, use format_ids instead.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "statuses": {
+          "type": "array",
+          "description": "Filter by creative approval statuses",
+          "items": {
+            "title": "Creative Status",
+            "description": "Status of a creative asset",
+            "type": "string",
+            "enum": [
+              "processing",
+              "approved",
+              "rejected",
+              "pending_review",
+              "archived"
+            ],
+            "enumDescriptions": {
+              "processing": "Creative is being processed or transcoded",
+              "approved": "Creative has been approved and is ready for delivery",
+              "rejected": "Creative has been rejected due to policy or technical issues",
+              "pending_review": "Creative is under review",
+              "archived": "Creative has been archived and is excluded from default queries"
+            }
+          },
+          "minItems": 1
+        },
+        "tags": {
+          "type": "array",
+          "description": "Filter by creative tags (all tags must match)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "tags_any": {
+          "type": "array",
+          "description": "Filter by creative tags (any tag must match)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "name_contains": {
+          "type": "string",
+          "description": "Filter by creative names containing this text (case-insensitive)"
+        },
+        "creative_ids": {
+          "type": "array",
+          "description": "Filter by specific creative IDs",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        },
+        "created_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives created after this date (ISO 8601)"
+        },
+        "created_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives created before this date (ISO 8601)"
+        },
+        "updated_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated after this date (ISO 8601)"
+        },
+        "updated_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated before this date (ISO 8601)"
+        },
+        "assigned_to_packages": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these packages. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these media buys. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "buyer_refs": {
+          "type": "array",
+          "description": "Filter creatives assigned to media buys with any of these buyer references. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "unassigned": {
+          "type": "boolean",
+          "description": "Filter for unassigned creatives when true, assigned creatives when false. Sales-agent-specific — standalone creative agents SHOULD ignore this filter."
+        },
+        "has_served": {
+          "type": "boolean",
+          "description": "When true, return only creatives that have served at least one impression. When false, return only creatives that have never served."
+        },
+        "concept_ids": {
+          "type": "array",
+          "description": "Filter by creative concept IDs. Concepts group related creatives across sizes and formats (e.g., Flashtalking concepts, Celtra campaign folders, CM360 creative groups).",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "format_ids": {
+          "type": "array",
+          "description": "Filter by structured format IDs. Returns creatives that match any of these formats.",
+          "items": {
+            "title": "Format ID",
+            "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "duration_ms": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+              }
+            },
+            "required": [
+              "agent_url",
+              "id"
+            ],
+            "additionalProperties": true,
+            "dependencies": {
+              "width": [
+                "height"
+              ],
+              "height": [
+                "width"
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "has_variables": {
+          "type": "boolean",
+          "description": "When true, return only creatives with dynamic variables (DCO). When false, return only static creatives."
+        }
+      },
+      "additionalProperties": true
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "title": "Creative Sort Field",
+          "description": "Field to sort by",
+          "type": "string",
+          "enum": [
+            "created_date",
+            "updated_date",
+            "name",
+            "status",
+            "assignment_count"
+          ],
+          "default": "created_date"
+        },
+        "direction": {
+          "title": "Sort Direction",
+          "description": "Sort direction",
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "default": "desc"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pagination": {
+      "title": "Pagination Request",
+      "description": "Standard cursor-based pagination parameters for list operations",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "include_assignments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include package assignment information in response"
+    },
+    "include_snapshot": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include a lightweight delivery snapshot per creative (lifetime impressions and last-served date). For detailed performance analytics, use get_creative_delivery."
+    },
+    "include_items": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include items for multi-asset formats like carousels and native ads"
+    },
+    "include_variables": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include dynamic content variable definitions (DCO slots) for each creative"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "creative_id",
+          "name",
+          "format_id",
+          "status",
+          "created_date",
+          "updated_date",
+          "tags",
+          "assignments",
+          "snapshot",
+          "items",
+          "variables",
+          "concept"
+        ]
+      }
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List all approved video creatives",
+      "data": {
+        "filters": {
+          "format_types": [
+            "video"
+          ],
+          "statuses": [
+            "approved"
+          ]
+        }
+      }
+    },
+    {
+      "description": "List creatives in a specific concept matching a format",
+      "data": {
+        "filters": {
+          "concept_ids": [
+            "concept_holiday_2026"
+          ],
+          "format_ids": [
+            {
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 300,
+              "height": 250
+            }
+          ]
+        },
+        "include_variables": true
+      }
+    },
+    {
+      "description": "Find DCO creatives for dynamic campaigns",
+      "data": {
+        "filters": {
+          "has_variables": true,
+          "statuses": [
+            "approved"
+          ]
+        },
+        "include_variables": true
+      }
+    },
+    {
+      "description": "Lightweight list with minimal fields",
+      "data": {
+        "fields": [
+          "creative_id",
+          "name",
+          "status"
+        ],
+        "include_assignments": false
+      }
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-03-15T23:02:20.206Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

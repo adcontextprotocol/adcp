@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Remove deprecated schema files no longer part of v3 schema design:

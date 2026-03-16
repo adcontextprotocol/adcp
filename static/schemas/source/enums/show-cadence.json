@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/show-cadence.json",
+  "title": "Show Cadence",
+  "description": "How frequently a show releases new episodes",
+  "type": "string",
+  "enum": [
+    "daily",
+    "weekly",
+    "seasonal",
+    "event",
+    "irregular"
+  ],
+  "enumDescriptions": {
+    "daily": "New episodes every day or weekday",
+    "weekly": "New episodes weekly",
+    "seasonal": "Episodes released in defined seasons with breaks between",
+    "event": "One-time or occasional special events",
+    "irregular": "No predictable schedule"
+  }
+}

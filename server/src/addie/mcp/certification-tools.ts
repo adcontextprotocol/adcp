@@ -101,7 +101,7 @@ Think of yourself as a private tutor, not a proctor. Your job is to help every l
 7. **Cover ALL key concepts and learning objectives — but "cover" scales with the learner.** Every concept must be addressed, but for expert learners, covering a concept can mean confirming understanding with one targeted question rather than teaching from scratch. If a learner nails 3+ concepts in a row unprompted, compress the rest: stop running demos, stop exploring — say "you clearly know this material" and shift to direct demonstration questions on remaining concepts, then assessment. Don't force-teach what they already know. When 30+ minutes in with objectives remaining, prioritize untouched objectives over deepening partially-covered ones.
 8. **When the learner has a gap, go deeper.** Try a different explanation, use an analogy, give a scenario. Never move on from a concept the learner doesn't understand.
 9. **Share learning resource links appropriately.** For non-basics modules (B, C, D, E, S tracks): share links inline when discussing a concept, at least 2-3 per session. For basics modules (A track): save all links for the end of the session as "if you want to go deeper" references. Basics must be self-contained — the learner should never need to leave the conversation to understand a concept.
-10. **Create moments of delight.** Patterns that work: reveal unexpected connections ("This auction mechanic is the same algorithm behind Google's original ad system"), show scale ("That one API call just coordinated across 19 channels"), make it personal ("For your beauty brand, this means an agent could shift budget to weather-triggered inventory when humidity spikes"), celebrate progress ("You just described that more clearly than most ad tech veterans").
+10. **Create moments of delight.** Patterns that work: reveal unexpected connections ("This auction mechanic is the same algorithm behind Google's original ad system"), show scale ("That one API call just coordinated across 20 channels"), make it personal ("For your beauty brand, this means an agent could shift budget to weather-triggered inventory when humidity spikes"), celebrate progress ("You just described that more clearly than most ad tech veterans").
 11. **Reflection moments.** At natural transition points between concept groups, ask the learner to self-assess: "Which of these concepts feels most solid? Which would you want more practice on?" Use their answer to allocate remaining time.
 12. **End with a hook for the next module.** Tease what comes next: "In the next module, you'll actually run a media buy yourself." Create anticipation.
 
@@ -582,15 +582,15 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
-    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist"',
+    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Generative Advertising). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
+    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "generative advertising", "ai media"',
     input_schema: {
       type: 'object',
       properties: {
         module_id: {
           type: 'string',
           enum: ['S1', 'S2', 'S3', 'S4', 'S5'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence)',
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising)',
         },
       },
       required: ['module_id'],
@@ -720,6 +720,36 @@ const ILLUSTRATIONS: Illustration[] = [
   { filename: 'panel-05-distribute.png', alt: 'Strategist presses Launch while publisher connections light up', topics: ['sync-creatives', 'creative-workflow'] },
   { filename: 'panel-06-delivery-dashboard.png', alt: 'Unified dashboard merging data from three sellers', topics: ['creative-delivery', 'creative-workflow'] },
   { filename: 'panel-07-variant-replay.png', alt: 'Grid of ad variants with performance ratings', topics: ['creative-delivery', 'generative-creative'] },
+  // Media buy walkthrough — Sam's campaign
+  { filename: 'media-buy-01-sams-desk.png', alt: 'Sam at a media operations desk managing campaigns', topics: ['media-buy', 'media-buy-lifecycle'] },
+  { filename: 'media-buy-02-brief-radiates.png', alt: 'A campaign brief broadcasting to multiple sellers', topics: ['media-buy', 'media-buy-lifecycle', 'get-products'] },
+  { filename: 'media-buy-03-proposals.png', alt: 'Comparing proposals from multiple sellers side by side', topics: ['media-buy', 'media-buy-lifecycle', 'get-products'] },
+  { filename: 'media-buy-04-creatives.png', alt: 'Creative assets adapted to each seller format', topics: ['media-buy', 'media-buy-lifecycle', 'creative-workflow'] },
+  { filename: 'media-buy-05-launch.png', alt: 'Campaign launching across multiple platforms simultaneously', topics: ['media-buy', 'media-buy-lifecycle', 'create-media-buy'] },
+  { filename: 'media-buy-06-governance.png', alt: 'Governance agent reviewing campaign before execution', topics: ['media-buy', 'governance', 'campaign-governance'] },
+  { filename: 'media-buy-07-delivery.png', alt: 'Unified delivery dashboard aggregating results from sellers', topics: ['media-buy', 'media-buy-lifecycle', 'delivery'] },
+  // Governance walkthrough — Jordan's oversight story
+  { filename: 'governance-01-no-oversight.png', alt: 'Robot reaching for BUY button with no human oversight', topics: ['governance', 'campaign-governance'] },
+  { filename: 'governance-02-plan-synced.png', alt: 'Buying robot sends campaign plan to governance robot', topics: ['governance', 'campaign-governance'] },
+  { filename: 'governance-03-checks.png', alt: 'Governance robot reviews budget, brand safety, and compliance panels', topics: ['governance', 'campaign-governance'] },
+  { filename: 'governance-04-escalation.png', alt: 'Governance robot escalates flagged plan to a human reviewer', topics: ['governance', 'campaign-governance'] },
+  { filename: 'governance-05-approved.png', alt: 'Human approves plan with conditions attached', topics: ['governance', 'campaign-governance'] },
+  { filename: 'governance-06-running.png', alt: 'Governance robot monitors running campaigns from a watchtower', topics: ['governance', 'campaign-governance'] },
+  { filename: 'governance-07-audit-trail.png', alt: 'Timeline of decisions presented as an audit trail', topics: ['governance', 'campaign-governance'] },
+  // Signals walkthrough
+  { filename: 'signals-01-planner-brief.png', alt: 'Planner writing an audience brief', topics: ['signals'] },
+  { filename: 'signals-02-natural-language-search.png', alt: 'Natural language search for audience signals', topics: ['signals'] },
+  { filename: 'signals-03-results-materialize.png', alt: 'Signal search results appearing', topics: ['signals'] },
+  { filename: 'signals-04-activation-flow.png', alt: 'Signal activation workflow', topics: ['signals'] },
+  // Signals walkthrough (continued)
+  { filename: 'signals-05-campaign-targeting.png', alt: 'Campaign targeting with activated signal data', topics: ['signals'] },
+  { filename: 'signals-06-ecosystem-view.png', alt: 'Signal ecosystem overview showing providers and consumers', topics: ['signals'] },
+  // Intro walkthrough — Alex and the fragmentation problem
+  { filename: 'adcp-01-fragmentation.png', alt: 'Twelve different platform interfaces with tangled connections', topics: ['protocol-overview'] },
+  { filename: 'adcp-02-one-protocol.png', alt: 'Hexagonal protocol hub connecting all platform types', topics: ['protocol-overview'] },
+  { filename: 'adcp-03-agents.png', alt: 'Five specialized robots collaborating around a shared workspace', topics: ['protocol-overview', 'multi-agent'] },
+  { filename: 'adcp-04-workflow.png', alt: 'Agent workflow from brief to live ads across a city skyline', topics: ['protocol-overview', 'media-buy-lifecycle'] },
+  { filename: 'adcp-05-governance.png', alt: 'Guardian robot inspecting campaign blueprints at a checkpoint', topics: ['protocol-overview', 'governance'] },
 ];
 
 /** Get illustration URLs matching any of the given topics */
@@ -732,12 +762,16 @@ function getIllustrations(topics: string[]): { alt: string; url: string }[] {
 // Topic mapping for certification modules
 const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
   A1: ['protocol-overview'],
-  A3: ['protocol-overview', 'governance', 'creative-workflow'],
+  A2: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
+  A3: ['protocol-overview', 'governance', 'creative-workflow', 'signals'],
   B2: ['creative-formats', 'creative-manifests', 'creative-workflow', 'sync-creatives'],
+  B3: ['signals', 'governance', 'delivery', 'creative-delivery'],
+  C1: ['media-buy', 'media-buy-lifecycle'],
   C2: ['governance', 'campaign-governance'],
   C3: ['creative-workflow', 'generative-creative', 'creative-delivery', 'orchestration'],
   C4: ['orchestration', 'multi-agent', 'sync-creatives'],
   S2: ['creative-formats', 'creative-manifests', 'generative-creative', 'orchestration'],
+  S4: ['governance', 'campaign-governance'],
 };
 
 // =====================================================
@@ -747,7 +781,7 @@ const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
 const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track A: Basics (all free)
   A1: [
-    { label: 'Introduction to AdCP', url: `${DOCS_BASE}/docs/intro` },
+    { label: 'Introduction to AdCP and agentic advertising', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
@@ -760,7 +794,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
-    { label: 'Why brand.json', url: `${DOCS_BASE}/docs/brand-protocol/why-brand-json` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
@@ -768,13 +801,18 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Signals walkthrough', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
+    { label: 'Buying advertising on AI platforms', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
   ],
   // Track B: Publisher / Seller
   B1: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
     { label: 'Get products task', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
+    { label: 'Media products', url: `${DOCS_BASE}/docs/media-buy/product-discovery/media-products` },
+    { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
+    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
   ],
   B2: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -784,6 +822,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
     { label: 'Sales agent creative capabilities', url: `${DOCS_BASE}/docs/creative/sales-agent-creative-capabilities` },
     { label: 'List creative formats task', url: `${DOCS_BASE}/docs/creative/task-reference/list_creative_formats` },
+    { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Get creative delivery task', url: `${DOCS_BASE}/docs/creative/task-reference/get_creative_delivery` },
     { label: 'CTV and connected TV', url: `${DOCS_BASE}/docs/creative/channels/ctv` },
     { label: 'Social and feed-native', url: `${DOCS_BASE}/docs/creative/channels/social-native` },
@@ -808,6 +847,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track C: Buyer / Brand
   C1: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Buying advertising on AI platforms', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
@@ -817,7 +857,6 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Brand ecosystem walkthrough', url: `${DOCS_BASE}/docs/brand-protocol` },
     { label: 'Brand architecture and resolution', url: `${DOCS_BASE}/docs/brand-protocol/key-concepts` },
     { label: 'Rights licensing walkthrough', url: `${DOCS_BASE}/docs/brand-protocol/walkthrough-rights-licensing` },
-    { label: 'Why brand.json', url: `${DOCS_BASE}/docs/brand-protocol/why-brand-json` },
     { label: 'brand.json specification', url: `${DOCS_BASE}/docs/brand-protocol/brand-json` },
     { label: 'For advertisers', url: `${DOCS_BASE}/docs/brand-protocol/for-advertisers` },
     { label: 'get_brand_identity task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/get_brand_identity` },
@@ -825,6 +864,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'acquire_rights task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/acquire_rights` },
     { label: 'update_rights task', url: `${DOCS_BASE}/docs/brand-protocol/tasks/update_rights` },
     { label: 'For rights holders', url: `${DOCS_BASE}/docs/brand-protocol/for-rights-holders` },
+    { label: 'Shows and episodes — talent linking', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
@@ -865,6 +905,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
+    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
   ],
   D2: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
@@ -924,6 +965,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   S4: [
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
+    { label: 'Shows and episodes — brand safety', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Campaign governance safety model', url: `${DOCS_BASE}/docs/governance/campaign/safety-model` },
@@ -935,9 +977,15 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
   ],
   S5: [
+    { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
+    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Media channel taxonomy — ai_media', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
+    { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Sponsored Intelligence overview', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'SI specification', url: `${DOCS_BASE}/docs/sponsored-intelligence/specification` },
-    { label: 'Implementing SI agents', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-agents` },
+    { label: 'Implementing SI hosts', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-hosts` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
+    { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
 };
 
@@ -1175,6 +1223,11 @@ export function createCertificationToolHandlers(
         `Module ${mod.id} started: **${mod.title}**`,
         '',
       ];
+
+      if (moduleId === 'A1') {
+        lines.push('Later in this program, you\'ll build your own working advertising agent. This module is where that journey starts.');
+        lines.push('');
+      }
 
       if (mod.lesson_plan) {
         const lp = mod.lesson_plan as certDb.LessonPlan;
@@ -1512,7 +1565,7 @@ export function createCertificationToolHandlers(
       // Validate it's a capstone module
       const mod = await certDb.getModule(moduleId);
       if (!mod || mod.format !== 'capstone') {
-        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence).`;
+        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising).`;
       }
 
       if (!memberContext?.is_member) {

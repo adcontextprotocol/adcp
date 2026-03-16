@@ -14,7 +14,7 @@ import { runMoltbookPosterJob } from './moltbook-poster.js';
 import { runMoltbookEngagementJob } from './moltbook-engagement.js';
 import { runTaskReminderJob } from './task-reminder.js';
 import { runEngagementScoringJob } from './engagement-scoring.js';
-import { runGoalFollowUpJob } from './goal-follow-up.js';
+// goal-follow-up job removed — old goal-based outreach system replaced by engagement planner
 import {
   processPendingResources,
   processRssPerspectives,
@@ -118,7 +118,7 @@ export function registerAllJobs(): void {
     interval: { value: 20, unit: 'minutes' },
     initialDelay: { value: 2, unit: 'minutes' },
     runner: runOutreachScheduler,
-    options: { limit: 8 },
+    options: { limit: 25 },
   });
 
   // Account enrichment - enriches accounts via Lusha API
@@ -208,16 +208,7 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.usersUpdated > 0 || r.orgsUpdated > 0,
   });
 
-  // Goal follow-up - sends follow-up messages during business hours
-  jobScheduler.register({
-    name: 'goal-follow-up',
-    description: 'Goal follow-up',
-    interval: { value: 4, unit: 'hours' },
-    initialDelay: { value: 3, unit: 'minutes' },
-    runner: runGoalFollowUpJob,
-    businessHours: { startHour: 9, endHour: 18, skipWeekends: true },
-    shouldLogResult: (r) => r.followUpsSent > 0 || r.goalsReconciled > 0,
-  });
+  // Goal follow-up job removed — old goal-based outreach replaced by engagement planner
 
   // Persona inference - infers personas from signals for unclassified orgs
   jobScheduler.register({
@@ -403,7 +394,6 @@ export const JOB_NAMES = {
   ALERT_PROCESSOR: 'alert-processor',
   TASK_REMINDER: 'task-reminder',
   ENGAGEMENT_SCORING: 'engagement-scoring',
-  GOAL_FOLLOW_UP: 'goal-follow-up',
   PERSONA_INFERENCE: 'persona-inference',
   JOURNEY_COMPUTATION: 'journey-computation',
   KNOWLEDGE_STALENESS: 'knowledge-staleness',

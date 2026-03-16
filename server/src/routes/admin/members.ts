@@ -198,10 +198,7 @@ export function setupMembersRoutes(
           } catch (error) {
             syncResults.workos = {
               success: false,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Unknown error fetching from WorkOS",
+              error: "Failed to sync from WorkOS",
             };
           }
         } else {
@@ -344,10 +341,7 @@ export function setupMembersRoutes(
             } catch (error) {
               syncResults.stripe = {
                 success: false,
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : "Unknown error fetching from Stripe",
+                error: "Failed to sync from Stripe",
               };
             }
           } else {

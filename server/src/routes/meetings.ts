@@ -904,7 +904,6 @@ export function createMeetingRouters(): {
       logger.error({ err: error }, 'Get user meetings error');
       res.status(500).json({
         error: 'Failed to get meetings',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -938,7 +937,6 @@ export function createMeetingRouters(): {
       logger.error({ err: error }, 'Get topic subscriptions error');
       res.status(500).json({
         error: 'Failed to get subscriptions',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -976,7 +974,6 @@ export function createMeetingRouters(): {
       logger.error({ err: error }, 'Update topic subscriptions error');
       res.status(500).json({
         error: 'Failed to update subscriptions',
-        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

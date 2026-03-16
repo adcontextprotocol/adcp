@@ -39,6 +39,8 @@ import { PERSONA_LABELS } from '../../config/personas.js';
 import { getRecommendedGroupsForOrg, type GroupRecommendation } from '../services/group-recommendations.js';
 import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
+import * as relationshipDb from '../../db/relationship-db.js';
+import * as personEvents from '../../db/person-events-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -720,17 +722,21 @@ export const MEMBER_TOOLS: AddieTool[] = [
   },
   {
     name: 'set_outreach_preference',
-    description: `Set the user's preference for receiving proactive outreach messages from Addie (tips, reminders, follow-ups). Opt out to stop receiving them.`,
-    usage_hints: 'use for "stop sending me messages", "unsubscribe from reminders", "opt out of outreach", "turn off notifications"',
+    description: `Set how often Addie sends proactive messages (tips, reminders, follow-ups). Choose a cadence or opt out entirely.`,
+    usage_hints: 'use for "stop sending me messages", "unsubscribe from reminders", "opt out of outreach", "turn off notifications", "message me less", "only monthly"',
     input_schema: {
       type: 'object' as const,
       properties: {
         opt_out: {
           type: 'boolean',
-          description: 'true to stop receiving proactive outreach, false to resume',
+          description: 'true to stop receiving proactive outreach entirely. Overrides cadence.',
+        },
+        cadence: {
+          type: 'string',
+          description: 'How often to receive proactive messages. Default = normal rules, monthly = once a month, quarterly = once every 3 months.',
+          enum: ['default', 'monthly', 'quarterly'],
         },
       },
-      required: ['opt_out'],
     },
   },
 ];
@@ -2906,33 +2912,63 @@ export function createMemberToolHandlers(
     }
   });
 
-  // Set outreach preference (opt in/out of proactive messages)
+  // Set outreach preference (opt in/out of proactive messages, cadence control)
   handlers.set('set_outreach_preference', async (input) => {
     if (!slackUserId) {
       return '❌ Unable to identify your Slack user. This tool is only available in Slack.';
     }
 
     const optOut = input.opt_out === true;
+    const cadence = input.cadence as 'default' | 'monthly' | 'quarterly' | undefined;
 
     try {
-      const pool = getPool();
-      const result = await pool.query(
-        `UPDATE slack_user_mappings
-         SET outreach_opt_out = $2,
-             outreach_opt_out_at = CASE WHEN $2 THEN NOW() ELSE NULL END
-         WHERE slack_user_id = $1`,
-        [slackUserId, optOut]
-      );
-
-      if (result.rowCount === 0) {
-        return '❌ Could not find your Slack user mapping. Please try again or contact support.';
+      // Find the person relationship
+      const relationship = await relationshipDb.getRelationshipBySlackId(slackUserId);
+      if (!relationship) {
+        return '❌ Could not find your profile. Please try again or contact support.';
       }
 
       if (optOut) {
+        await relationshipDb.setOptedOut(relationship.id, true);
+        await personEvents.recordEvent(relationship.id, 'preference_changed', {
+          channel: 'slack',
+          data: { preference: 'opted_out' },
+        });
         return '✅ You\'ve been opted out of proactive outreach messages. You can opt back in anytime by asking me to turn them on again.';
-      } else {
-        return '✅ Proactive outreach messages are now turned on. I\'ll send you helpful tips and reminders from time to time.';
       }
+
+      // Handle cadence preference
+      if (cadence && cadence !== 'default') {
+        const cadenceDays = cadence === 'monthly' ? 30 : 90;
+        const nextContact = new Date();
+        nextContact.setDate(nextContact.getDate() + cadenceDays);
+
+        // Clear opted_out — setting a cadence implies opting back in
+        await relationshipDb.setOptedOut(relationship.id, false);
+
+        // Set next_contact_after to enforce the cadence
+        await query(
+          `UPDATE person_relationships SET next_contact_after = $2, updated_at = NOW() WHERE id = $1`,
+          [relationship.id, nextContact]
+        );
+        await personEvents.recordEvent(relationship.id, 'preference_changed', {
+          channel: 'slack',
+          data: { cadence, nextContactAfter: nextContact.toISOString() },
+        });
+        return `✅ Got it — I'll reach out ${cadence === 'monthly' ? 'about once a month' : 'about once a quarter'}. You can change this anytime.`;
+      }
+
+      // Default: opt back in with normal cadence
+      await relationshipDb.setOptedOut(relationship.id, false);
+      await query(
+        `UPDATE person_relationships SET next_contact_after = NULL, updated_at = NOW() WHERE id = $1`,
+        [relationship.id]
+      );
+      await personEvents.recordEvent(relationship.id, 'preference_changed', {
+        channel: 'slack',
+        data: { preference: 'opted_in', cadence: 'default' },
+      });
+      return '✅ Proactive outreach messages are now turned on with normal frequency. I\'ll send you helpful tips and reminders from time to time.';
     } catch (error) {
       logger.error({ error, slackUserId }, 'Addie: Error setting outreach preference');
       return '❌ Failed to update outreach preference. Please try again.';

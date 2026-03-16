@@ -108,6 +108,15 @@
       "type": "string",
       "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
     },
+    "preferred_delivery_types": {
+      "type": "array",
+      "description": "Delivery types the buyer prefers, in priority order. Unlike filters.delivery_type which excludes non-matching products, this signals preference for curation — the publisher may still include other delivery types when they match the brief well.",
+      "items": {
+        "$ref": "/schemas/enums/delivery-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "filters": {
       "$ref": "/schemas/core/product-filters.json"
     },
@@ -130,6 +139,7 @@
           "format_ids",
           "placements",
           "delivery_type",
+          "exclusivity",
           "pricing_options",
           "forecast",
           "outcome_measurement",
@@ -142,6 +152,8 @@
           "data_provider_signals",
           "max_optimization_goals",
           "catalog_match",
+          "show_ids",
+          "episodes",
           "brief_relevance",
           "expires_at",
           "product_card",

@@ -24,7 +24,6 @@ import type { MemberContext } from './member-context.js';
 import type { AddieTool } from './types.js';
 import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
 import { MEMBER_TOOLS } from './mcp/member-tools.js';
-import { InsightsDatabase, type MemberInsight } from '../db/insights-db.js';
 import { trackApiCall, ApiPurpose } from './services/api-tracker.js';
 import {
   getToolSetDescriptionsForRouter,
@@ -69,8 +68,6 @@ export interface RoutingContext {
   isThread?: boolean;
   /** Channel name (if available) */
   channelName?: string;
-  /** Member insights (what we know about this user from past conversations) */
-  memberInsights?: MemberInsight[];
   /** Whether the user is an AAO platform admin (checked via aao-admin working group) */
   isAAOAdmin?: boolean;
 }
@@ -121,7 +118,10 @@ export const TOOL_DESCRIPTIONS = buildToolDescriptions();
 
 export const ROUTING_RULES = {
   /**
-   * Topics Addie can help with (and the tools to use)
+   * Topics Addie can help with (and the tools to use).
+   * Note: patterns are used for config version hashing and analytics,
+   * not for direct routing. The LLM router uses tool set descriptions
+   * from getToolSetDescriptionsForRouter() to make routing decisions.
    */
   expertise: {
     capabilities: {
@@ -130,9 +130,9 @@ export const ROUTING_RULES = {
       description: 'Questions about what Addie can help with - respond with capability overview',
     },
     adcp_protocol: {
-      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief'],
+      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief', 'ai media', 'ai platform', 'ai ad network', 'ai assistant', 'sponsored response', 'ad network', 'aggregator', 'migration', 'upgrade', 'breaking change', 'v2 to v3', 'deprecated', 'what changed', 'reversed data flow', 'catalog sync', 'buy ads', 'buying ads', 'advertise on', 'advertising on', 'brand safety', 'content standards', 'product feed', 'shopify', 'agency buying', 'agency integration', 'brand identity'],
       tools: ['search_docs'],
-      description: 'AdCP protocol questions - understanding how things work',
+      description: 'AdCP protocol questions - understanding how things work, migration, AI media',
     },
     salesagent: {
       patterns: ['salesagent', 'sales agent', 'open source agent', 'reference implementation'],
@@ -279,30 +279,6 @@ export const ROUTING_RULES = {
 } as const;
 
 /**
- * Format member insights for the routing prompt
- */
-function formatMemberInsights(insights: MemberInsight[] | undefined): string {
-  if (!insights || insights.length === 0) {
-    return '';
-  }
-
-  const insightLines = insights.map(i => {
-    const typeName = i.insight_type_name || `type_${i.insight_type_id}`;
-    return `- ${typeName}: ${i.value} (confidence: ${i.confidence})`;
-  });
-
-  return `
-## What We Know About This User
-These insights were gleaned from previous conversations:
-${insightLines.join('\n')}
-
-Use these insights to:
-- Tailor tool selection to their role/expertise level
-- Skip basic explanations if they're clearly technical
-- Prioritize tools relevant to what they're building`;
-}
-
-/**
  * Build the routing prompt based on context
  */
 function buildRoutingPrompt(ctx: RoutingContext): string {
@@ -317,9 +293,6 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
   const reactList = Object.entries(ROUTING_RULES.reactWith)
     .map(([key, rule]) => `- ${key}: emoji=${rule.emoji}`)
     .join('\n');
-
-  // Format member insights for context
-  const insightsSection = formatMemberInsights(ctx.memberInsights);
 
   // Conditional rules based on user context
   let conditionalRules = '';
@@ -357,7 +330,6 @@ ${channelLine}
 - Is admin: ${isAAOAdmin}
 - In thread: ${ctx.isThread ?? false}
 ${conditionalRules}
-${insightsSection}
 ${communityChannelGuidance}
 
 ## Available Tool Sets

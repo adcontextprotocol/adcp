@@ -1,0 +1,202 @@
+---
+title: Embedded human judgment
+sidebarTitle: Embedded human judgment
+"og:image": /images/concepts/three-party-governance.png
+description: "Embedded Human Judgment (EHJ) defines five principles for keeping humans accountable when AI agents buy media autonomously in AdCP."
+"og:title": "AdCP — Embedded human judgment"
+---
+
+As AI agents gain autonomy in advertising — discovering inventory, building creatives, spending budgets — the question is not whether to use automation but how to ensure human judgment remains embedded in the system's architecture.
+
+Embedded Human Judgment (EHJ) is AdCP's answer. It is not an after-the-fact review process. It is not a temporary safety phase while AI "matures." It is a permanent design constraint for accountable systems.
+
+## The five principles
+
+### 1. Humans remain the locus of judgment and accountability
+
+AI systems can analyze, predict, and execute. But responsibility cannot be delegated to software. Any system that allocates capital, shapes information environments, or affects public trust must retain human-owned judgment.
+
+Humans define intent, acceptable risk, and reasonable trade-offs — even when execution is automated. Accountability must remain legible at every stage of automation.
+
+### 2. Automated decisioning without abdication
+
+As we embrace autonomous advertising agents, we need to scale execution without diluting accountability. Automation should:
+
+- Scale execution
+- Increase precision in allocation decisions
+- Navigate complex systems to identify optimal execution paths
+- Reduce manual operational friction
+
+But automation must not remove authorship and responsibility for value judgments. Humans remain accountable for decisions that define risk, intent, and societal impact. Advanced automation is acceptable only when accountability remains intact.
+
+### 3. Optimization is not intelligence
+
+Not all decisions can be reduced to metrics. Certain classes of decisions must remain human-owned by design because they involve:
+
+- Values
+- Strategy
+- Legitimacy
+- Trust
+
+These judgments exist precisely because optimization cannot resolve them. System design must recognize how and when a decision exceeds mere optimization and requires human judgment.
+
+### 4. Oversight must be architectural, not procedural
+
+Human oversight must be embedded in system design. This requires:
+
+- Explicit decision boundaries
+- Escalation triggers
+- Auditability
+- Explainability
+- Identifiable human owners
+
+Systems must be built so that control cannot silently migrate away from humans over time.
+
+### 5. Efficiency does not override legitimacy
+
+Speed, scale, and optimization cannot justify:
+
+- Loss of accountability
+- Erosion of judgment
+- Opaque decision chains
+
+The goal is to ensure systems remain governable to avoid loss of legitimacy over time.
+
+---
+
+## EHJ in AdCP's architecture
+
+EHJ operates at the protocol layer, not inside any individual agent and not at the execution layer. The protocol defines decision boundaries: which decisions require human judgment, when escalation is triggered, what must be logged and explainable. Agents implement their own internal logic and operate autonomously within those boundaries.
+
+### Human judgment without human bottlenecks
+
+The goal is not maximum human involvement, but human ownership where it structurally matters.
+
+| Dimension | How EHJ handles it |
+|---|---|
+| **Autonomy** | Agents handle the majority of routine decisions |
+| **Accountability** | Humans retain authority over brand, budget, legality, and ethics |
+| **Efficiency** | Oversight does not recreate approval hell |
+| **Transparency** | Every decision is auditable and explainable |
+
+### Human roles in the system
+
+"Human" refers to accountable roles, not individuals:
+
+- **Advertiser decision owners** — brand, budget, ethics
+- **Agency decision owners** — strategy, planning, execution
+- **Platform owners** — compliance, infrastructure
+- **Legal and regulatory authorities**
+
+Some decisions are human-owned permanently, by definition — not because AI is weak, but because accountability must remain human.
+
+## Governance layers
+
+EHJ operates through a layered governance model that allows policy composition across organizations, brand portfolios, and campaigns.
+
+### Protocol layer
+
+Defines universal standards applied across the ecosystem: escalation requirements, confidence scoring rules, regulatory policy registry, minimum audit and logging standards. These rules apply to all participating agents.
+
+### Corporate governance layer
+
+Large organizations define corporate-level policies that apply across a brand portfolio: regulatory compliance requirements, global brand safety standards, prohibited targeting categories, data protection policies. Corporate policies act as baseline constraints for all brands within the organization.
+
+### Brand governance layer
+
+Individual brands define additional policies reflecting brand identity, positioning, and risk tolerance. A luxury brand may impose stricter placement rules. A mass-market brand may allow broader contextual environments. Brand policies inherit corporate standards but may introduce stricter constraints.
+
+### Campaign governance layer
+
+Campaign-level configuration provides temporary execution parameters: budget thresholds, pacing constraints, creative eligibility rules, audience definitions. Campaign rules operate within the boundaries established by corporate and brand governance.
+
+Each layer may add restrictions but cannot override higher-level governance constraints. If a lower governance layer attempts to relax a constraint defined by a higher layer, the governance agent treats the higher-level constraint as authoritative, rejects the conflicting rule, and records the conflict in the audit log.
+
+## Decision types
+
+All agent decisions must be classifiable:
+
+| Type | Description | Example |
+|---|---|---|
+| **AI-owned, deterministic** | Rule-based, predictable outcomes | Format validation, schema compliance |
+| **AI-led, human-bounded** | Probabilistic optimization with thresholds | Budget pacing within approved limits |
+| **Human-owned, strategic** | Trade-offs, intent, ethics, and values | Brand positioning, risk tolerance |
+| **Human-owned by necessity** | Novel situations agents cannot confidently resolve | Emerging regulation, unprecedented market event |
+
+The decision type determines whether and how escalation occurs.
+
+## Confidence and escalation
+
+Every agent recommendation must include a confidence score, an explanation of uncertainty, and a defined escalation rule.
+
+### Risk-aware escalation
+
+Agents evaluate recommendations based on both:
+
+- **Decision confidence** — how certain the agent is
+- **Decision risk** — the potential impact if the decision is incorrect
+
+Risk may include financial exposure, brand safety implications, regulatory sensitivity, scale of audience reach, or deviation from defined campaign intent.
+
+When confidence is insufficient for the level of risk involved, agents must escalate to human oversight rather than execute autonomously.
+
+### Escalation mechanics
+
+EHJ defines three modes of invoking human judgment:
+
+| Mode | Behavior | When to use |
+|---|---|---|
+| **Synchronous** | Block until human decides | High-risk decisions: large budget commits, new partner approvals |
+| **Asynchronous** | Proceed conservatively, allow override | Medium-risk: agent acts within safe defaults, human reviews and can adjust |
+| **Audit-only** | Act, log, review later | Low-risk routine decisions with full traceability |
+
+### Timeout and fallback handling
+
+Timeouts follow a risk-tiered approach:
+
+- **Low-risk decisions**: Execution may proceed within predefined guardrails
+- **Medium-risk decisions**: Agents apply conservative defaults or limited execution while notifying human owners
+- **High-risk decisions**: Agents escalate for human review or temporarily restrict execution until guidance is received
+
+In cases of uncertainty, systems prioritize governable outcomes over maximum speed.
+
+## Audit, transparency, and learning
+
+Governable automation requires that all significant decisions remain observable, explainable, and reconstructable.
+
+### Immutable audit trail
+
+Every high-impact decision generates an auditable record including:
+
+- Decision inputs
+- Confidence score
+- Agent reasoning
+- Human interventions
+- Execution outcome
+
+Organizations retain their own logs to satisfy internal governance and regulatory compliance requirements.
+
+### Explainability
+
+Decisions must be explainable at multiple levels:
+
+| Audience | Detail level |
+|---|---|
+| **Approvers and oversight** | Summary: what happened, what was decided, by whom |
+| **Campaign managers** | Operational: why this action was taken, what alternatives existed |
+| **Auditors and compliance** | Technical: full decision inputs, model confidence, policy chain |
+
+Decision intent is captured by design within the protocol for each message and targeting instruction.
+
+## How this manifests in practice
+
+The [governance protocol overview](/dist/docs/3.0.0-rc.2/governance/overview) walks through a complete campaign scenario where every one of these principles is visible in action — from plan registration through human approval to audit trail. The [campaign governance safety model](/dist/docs/3.0.0-rc.2/governance/campaign/safety-model) details the structural controls that implement these principles at the protocol level.
+
+<CardGroup cols={2}>
+  <Card title="Governance overview" icon="shield-halved" href="/dist/docs/3.0.0-rc.2/governance/overview">
+    Follow Jordan through the trust model — see EHJ principles in action
+  </Card>
+  <Card title="Safety model" icon="lock" href="/dist/docs/3.0.0-rc.2/governance/campaign/safety-model">
+    Three-party trust, separation of duties, confidence scoring, drift detection
+  </Card>
+</CardGroup>

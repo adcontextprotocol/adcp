@@ -294,11 +294,44 @@ When building new features (member profiles, dashboards, community pages):
 
 Module and exam completion is only available through Addie's tool calls — never through REST API. This prevents users from self-reporting scores without actual assessment.
 
+## Character Bible
+
+**`specs/character-bible.md`** is the authoritative source for all recurring characters across documentation, certification, test fixtures, illustrations, and the homepage. Read it before writing narrative content or generating images.
+
+### When to use the character bible
+
+- **Writing walkthrough or overview pages** — Use the correct character for that domain. Don't invent new characters or rename existing ones.
+- **Generating illustrations** — Copy the exact visual description from the bible into every Gemini prompt where that character appears. Character consistency across panels requires the full description in every prompt (Gemini has no cross-call memory).
+- **Writing certification content** — Each certification path has a primary character and scenario. Use them.
+- **Creating test fixtures** — Test scenarios map to specific characters and companies. Use canonical names.
+- **Building homepage or marketing content** — The full cast (including Dayo and Addie) represents the breadth of the org's audience. Reference the bible for tone and framing.
+
+### Character quick reference
+
+| Character | Domain | Company | Role |
+|-----------|--------|---------|------|
+| Alex Reeves | Intro / overview | Pinnacle Agency | VP media ops |
+| Sam Adeyemi | Media buy, signals (buy-side) | Pinnacle Agency | Senior media buyer |
+| Jordan Ochoa | Governance | Pinnacle Agency | Campaign ops manager |
+| Maya Johal | Creative | Pinnacle Agency | Creative strategist |
+| Priya Nair | Seller integration | StreamHaus | Dir. ad products |
+| Kai Lindgren | Signals (data provider side) | Meridian Geo | Head of partnerships |
+| Tomoko Hara | Brand protocol + accounts | Nova Motors | Global brand ops manager |
+| Dayo Mensah | Certification / learning | Pinnacle (fellow) | Ad tech fellow |
+| Addie | All (connective tissue) | AgenticAdvertising.org | AI agent |
+
+### Rules
+
+- **Don't invent characters.** If a walkthrough needs a person, use someone from the bible. If no one fits, propose adding to the bible first.
+- **Don't change visual descriptions.** The bible defines exactly what each character looks like. Copy it verbatim into image prompts.
+- **First names only in docs.** Use "Sam" not "Sam Adeyemi" in walkthrough prose. Full names are for the bible and metadata.
+- **Addie is a participant, not a tool.** In any context where Addie appears alongside humans, she's at the table — not behind the desk, not in the background.
+- **Dayo uses they/them pronouns.**
+- **Companies are fictional.** Pinnacle Agency, StreamHaus, Meridian Geo, Nova Motors, etc. Never substitute real company names.
+
 ## Illustrated Documentation
 
-### Gemini image generation style guide
-
-Walkthrough and overview pages use AI-generated illustrations in a consistent graphic novel style. When generating images with Gemini, use this prompt structure:
+### Gemini image generation
 
 **Model**: `gemini-3.1-flash-image-preview` (via `responseModalities: ["TEXT", "IMAGE"]`)
 
@@ -311,9 +344,11 @@ Wide aspect ratio suitable for documentation headers (roughly 16:9).
 Characters should have simple but expressive faces. Use white/light backgrounds for readability.
 ```
 
-**Per-panel additions**: Describe the scene, characters, and key visual elements. Keep characters consistent within a walkthrough (same hair, glasses, outfit). Use the same robot design for AI agents across all illustrations.
+**Character prompts**: Copy the full visual description from `specs/character-bible.md` into every panel prompt where that character appears. Include hair, skin tone, clothing, and distinguishing features. Gemini cannot share state across API calls — if you skip the description in one panel, the character will look different.
 
 **Generation script**: `scripts/generate-images.ts` — accepts a JSON prompt file and generates images via Gemini API. Run with `npx tsx scripts/generate-images.ts <prompt-file.json>`.
+
+**Prompt files**: `scripts/prompts-*.json` — one per walkthrough. Each entry has `filename`, `prompt`, and `alt_text`. The script validates generated images for gibberish text and alt text accuracy.
 
 **Image locations**:
 - `images/walkthrough/` — narrative panels for walkthrough pages
@@ -322,12 +357,13 @@ Characters should have simple but expressive faces. Use white/light backgrounds 
 Mintlify serves from `/images/...`.
 
 **Pages with illustrated walkthrough treatment**:
-- `docs/intro.mdx` — AdCP overview with Alex's fragmentation story (5 panels)
+- `docs/intro.mdx` — Alex's fragmentation story (5 panels)
 - `docs/media-buy/index.mdx` — Sam's media buy journey (7 panels)
 - `docs/governance/overview.mdx` — Jordan's governance setup (7 panels)
 - `docs/creative/index.mdx` — Maya's creative campaign workflow (7 panels)
-- `docs/governance/embedded-human-judgment.mdx` — EHJ manifesto (references concept diagrams from governance overview)
-- `docs/protocol/architecture.mdx` — Protocol architecture (2 concept diagrams: domain map, ecosystem layers)
+- `docs/signals/overview.mdx` — Sam + Kai's signals ecosystem (6 panels)
+- `docs/governance/embedded-human-judgment.mdx` — EHJ manifesto (references governance concept diagrams)
+- `docs/protocol/architecture.mdx` — Protocol architecture (2 concept diagrams)
 
 ### Documentation nav structure
 

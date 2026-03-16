@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/governance/check-governance-response.json",
+  "title": "Check Governance Response",
+  "description": "Governance agent's response to a check request. Returns whether the action is approved under the campaign plan.",
+  "type": "object",
+  "properties": {
+    "check_id": {
+      "type": "string",
+      "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["approved", "denied", "conditions", "escalated"],
+      "description": "Governance decision. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved if the caller accepts the listed conditions, then re-calls check_governance with the adjusted parameters. 'escalated': halted pending human review."
+    },
+    "binding": {
+      "type": "string",
+      "enum": ["proposed", "committed"],
+      "description": "Echoed from request. Lets the caller confirm the governance agent understood the commitment level."
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Echoed from request."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "Echoed from request."
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Human-readable explanation of the governance decision."
+    },
+    "mode": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/governance-mode.json",
+      "description": "The governance mode under which this check was evaluated. Present so audit trails can distinguish 'denied in advisory mode (action proceeded)' from 'denied in enforce mode (action blocked)'."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Specific issues found during the governance check. Present when status is 'denied', 'conditions', or 'escalated'. MAY also be present on 'approved' for advisory findings (e.g., budget approaching limit).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety')."
+          },
+          "policy_id": {
+            "type": "string",
+            "description": "Registry policy ID that triggered this finding. Present when the finding originates from a specific registry policy. Enables programmatic routing of compliance failures."
+          },
+          "severity": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/escalation-severity.json"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Human-readable description of the issue."
+          },
+          "details": {
+            "type": "object",
+            "description": "Structured details for programmatic consumption.",
+            "additionalProperties": true
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score (0-1) in this finding. Distinguishes 'this definitely violates the policy' (0.95) from 'this might violate depending on how audience segments resolve' (0.6). When absent, the finding is presented without a confidence qualifier."
+          },
+          "uncertainty_reason": {
+            "type": "string",
+            "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
+          }
+        },
+        "required": ["category_id", "severity", "explanation"],
+        "additionalProperties": false
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "description": "Present when status is 'conditions'. Specific adjustments the caller must make. After applying conditions, the caller MUST re-call check_governance with the adjusted parameters before proceeding.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Dot-path to the field that needs adjustment (in payload for proposed, in planned_delivery for committed)."
+          },
+          "required_value": {
+            "description": "The value the field must have for approval. When present, the condition is machine-actionable. When absent, the condition is advisory."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this condition is required."
+          }
+        },
+        "required": ["field", "reason"],
+        "additionalProperties": false
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "description": "Present when status is 'escalated'. The action is halted pending human review.",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Human-readable explanation of why the action was escalated."
+        },
+        "severity": {
+          "$ref": "/schemas/3.0.0-rc.2/enums/escalation-severity.json",
+          "description": "Escalation severity level."
+        },
+        "requires_human": {
+          "type": "boolean",
+          "description": "Whether human approval is required before proceeding."
+        },
+        "approval_tier": {
+          "type": "string",
+          "description": "Organizational role or tier required to resolve this escalation. The value is organization-defined; the governance agent infers the tier from the escalation context. Common values include 'manager', 'director', 'legal', 'cfo'. Enables programmatic routing of escalations to the right person."
+        }
+      },
+      "required": ["reason", "severity", "requires_human"],
+      "additionalProperties": false
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this approval expires. Present when status is 'approved' or 'conditions'. The caller must act before this time or re-call check_governance. A lapsed approval is no approval."
+    },
+    "next_check": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
+    },
+    "categories_evaluated": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Governance categories evaluated during this check."
+    },
+    "policies_evaluated": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Registry policy IDs evaluated during this check."
+    }
+  },
+  "required": ["check_id", "status", "binding", "plan_id", "buyer_campaign_ref", "explanation"],
+  "additionalProperties": false
+}

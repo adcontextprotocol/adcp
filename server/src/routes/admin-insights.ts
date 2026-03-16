@@ -11,16 +11,15 @@ import { Router } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { serveHtmlWithConfig } from '../utils/html-config.js';
-import { InsightsDatabase } from '../db/insights-db.js';
 import { getPool } from '../db/client.js';
+import { query } from '../db/client.js';
+import * as personEvents from '../db/person-events-db.js';
 import {
   runOutreachScheduler,
   manualOutreach,
-  manualOutreachWithGoal,
   getOutreachMode,
   canContactUser,
 } from '../addie/services/proactive-outreach.js';
-import { invalidateInsightsCache } from '../addie/insights-cache.js';
 import {
   getActionItems,
   getOpenActionItems,
@@ -38,10 +37,8 @@ import {
 } from '../db/account-management-db.js';
 import { runMomentumCheck, dryRunMomentumCheck, previewMomentumForUser } from '../addie/jobs/momentum-check.js';
 import { runTaskReminderJob, previewTaskReminders } from '../addie/jobs/task-reminder.js';
-import { runGoalFollowUpJob, previewFollowUps, previewReconciliation } from '../addie/jobs/goal-follow-up.js';
 
 const logger = createLogger('admin-insights-routes');
-const insightsDb = new InsightsDatabase();
 
 /**
  * Parse and validate an integer ID from request params
@@ -62,20 +59,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   // =========================================================================
   // ADMIN PAGE ROUTES (mounted at /admin)
   // =========================================================================
-
-  pageRouter.get('/insight-types', requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, 'admin-insight-types.html').catch((err) => {
-      logger.error({ err }, 'Error serving insight types page');
-      res.status(500).send('Internal server error');
-    });
-  });
-
-  pageRouter.get('/insights', requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, 'admin-insights.html').catch((err) => {
-      logger.error({ err }, 'Error serving insights page');
-      res.status(500).send('Internal server error');
-    });
-  });
 
   pageRouter.get('/outreach', requireAuth, requireAdmin, (req, res) => {
     serveHtmlWithConfig(req, res, 'admin-outreach.html').catch((err) => {
@@ -105,325 +88,131 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // GET /api/admin/insight-types - List all insight types
-  apiRouter.get('/insight-types', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const activeOnly = req.query.activeOnly === 'true';
-      const types = await insightsDb.listInsightTypes(activeOnly);
-      res.json(types);
-    } catch (error) {
-      logger.error({ err: error }, 'Error listing insight types');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/insight-types/:id - Get single insight type
-  apiRouter.get('/insight-types/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const type = await insightsDb.getInsightType(id);
-      if (!type) {
-        return res.status(404).json({ error: 'Insight type not found' });
-      }
-      res.json(type);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting insight type');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/admin/insight-types - Create insight type
-  apiRouter.post('/insight-types', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { name, description, example_values, is_active } = req.body;
-
-      if (!name) {
-        return res.status(400).json({ error: 'Name is required' });
-      }
-
-      const type = await insightsDb.createInsightType({
-        name,
-        description,
-        example_values,
-        is_active,
-        created_by: req.user?.id,
-      });
-
-      logger.info({ typeId: type.id, name }, 'Created insight type');
-      res.status(201).json(type);
-    } catch (error) {
-      if ((error as any)?.code === '23505') {
-        return res.status(409).json({ error: 'An insight type with that name already exists' });
-      }
-      logger.error({ err: error }, 'Error creating insight type');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // PUT /api/admin/insight-types/:id - Update insight type
-  apiRouter.put('/insight-types/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const { name, description, example_values, is_active } = req.body;
-      const type = await insightsDb.updateInsightType(id, {
-        name,
-        description,
-        example_values,
-        is_active,
-      });
-
-      if (!type) {
-        return res.status(404).json({ error: 'Insight type not found' });
-      }
-
-      logger.info({ typeId: type.id }, 'Updated insight type');
-      res.json(type);
-    } catch (error) {
-      logger.error({ err: error }, 'Error updating insight type');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // DELETE /api/admin/insight-types/:id - Delete (deactivate) insight type
-  apiRouter.delete('/insight-types/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const deleted = await insightsDb.deleteInsightType(id);
-      if (!deleted) {
-        return res.status(404).json({ error: 'Insight type not found' });
-      }
-
-      logger.info({ typeId: id }, 'Deleted insight type');
-      res.json({ success: true });
-    } catch (error) {
-      logger.error({ err: error }, 'Error deleting insight type');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =========================================================================
-  // MEMBER INSIGHTS API
-  // =========================================================================
-
-  // GET /api/admin/insights - List member insight summaries
-  apiRouter.get('/insights', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { search, hasInsights, limit, offset } = req.query;
-      const summaries = await insightsDb.getMemberInsightSummaries({
-        search: search as string,
-        hasInsights: hasInsights === 'true' ? true : hasInsights === 'false' ? false : undefined,
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
-      });
-      res.json(summaries);
-    } catch (error) {
-      logger.error({ err: error }, 'Error listing member insights');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/insights/members - List member insight summaries (alias)
-  apiRouter.get('/insights/members', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { search, hasInsights, limit, offset } = req.query;
-      const summaries = await insightsDb.getMemberInsightSummaries({
-        search: search as string,
-        hasInsights: hasInsights === 'true' ? true : hasInsights === 'false' ? false : undefined,
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
-      });
-      res.json(summaries);
-    } catch (error) {
-      logger.error({ err: error }, 'Error listing member insights');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/insights/stats - Get insight statistics
-  apiRouter.get('/insights/stats', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const stats = await insightsDb.getInsightStats();
-      res.json(stats);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting insight stats');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/insights/user/:slackUserId - Get insights for a specific user
-  apiRouter.get('/insights/user/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const insights = await insightsDb.getInsightsForUser(req.params.slackUserId);
-      res.json(insights);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting user insights');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =========================================================================
-  // UNIFIED PERSON VIEW API
-  // =========================================================================
-  // These endpoints join insights from both Slack and email channels via workos_user_id
-
-  // GET /api/admin/insights/unified/slack/:slackUserId - Get unified view by Slack user ID
-  apiRouter.get('/insights/unified/slack/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const unified = await insightsDb.getUnifiedInsightsBySlackUser(req.params.slackUserId);
-      res.json(unified);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting unified insights by Slack user');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/insights/unified/workos/:workosUserId - Get unified view by WorkOS user ID
-  apiRouter.get('/insights/unified/workos/:workosUserId', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const unified = await insightsDb.getUnifiedInsightsByWorkosUser(req.params.workosUserId);
-      if (!unified) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      res.json(unified);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting unified insights by WorkOS user');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/insights/unified/email/:email - Get unified view by email address
-  apiRouter.get('/insights/unified/email/:email', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const email = req.params.email;
-      // Basic email format validation
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Invalid email format' });
-      }
-
-      const unified = await insightsDb.getUnifiedInsightsByEmail(email);
-      if (!unified) {
-        return res.status(404).json({ error: 'Contact not found' });
-      }
-      res.json(unified);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting unified insights by email');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/admin/insights - Add manual insight
-  apiRouter.post('/insights', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const {
-        slack_user_id,
-        workos_user_id,
-        insight_type_id,
-        value,
-        confidence,
-      } = req.body;
-
-      if (!slack_user_id || !insight_type_id || !value) {
-        return res.status(400).json({ error: 'slack_user_id, insight_type_id, and value are required' });
-      }
-
-      const insight = await insightsDb.addInsight({
-        slack_user_id,
-        workos_user_id,
-        insight_type_id,
-        value,
-        confidence,
-        source_type: 'manual',
-        created_by: req.user?.id,
-      });
-
-      // Invalidate cache so routing uses fresh insights
-      invalidateInsightsCache(slack_user_id);
-
-      logger.info({ insightId: insight.id, slackUserId: slack_user_id }, 'Added manual insight');
-      res.status(201).json(insight);
-    } catch (error) {
-      logger.error({ err: error }, 'Error adding insight');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // DELETE /api/admin/insights/:id - Delete an insight
-  apiRouter.delete('/insights/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const deleted = await insightsDb.deleteInsight(id);
-      if (!deleted) {
-        return res.status(404).json({ error: 'Insight not found' });
-      }
-
-      logger.info({ insightId: id }, 'Deleted insight');
-      res.json({ success: true });
-    } catch (error) {
-      logger.error({ err: error }, 'Error deleting insight');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
 
   // =========================================================================
   // OUTREACH STATS & HISTORY API
   // =========================================================================
 
-  // GET /api/admin/outreach/stats - Get outreach statistics
+  // GET /api/admin/outreach/stats - Get outreach statistics from person_events
   apiRouter.get('/outreach/stats', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const stats = await insightsDb.getOutreachStats();
-      res.json(stats);
+      const result = await query<{
+        sent_today: string;
+        sent_this_week: string;
+        total_sent: string;
+        total_responded: string;
+      }>(`
+        SELECT
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > CURRENT_DATE)::text as sent_today,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply' AND occurred_at > CURRENT_DATE - INTERVAL '7 days')::text as sent_this_week,
+          COUNT(*) FILTER (WHERE event_type = 'message_sent' AND data->>'source' IS DISTINCT FROM 'dm_reply')::text as total_sent,
+          COUNT(DISTINCT person_id) FILTER (WHERE event_type = 'message_received')::text as total_responded
+        FROM person_events
+      `);
+      const row = result.rows[0];
+      const totalSent = parseInt(row.total_sent, 10);
+      const totalResponded = parseInt(row.total_responded, 10);
+      res.json({
+        sent_today: parseInt(row.sent_today, 10),
+        sent_this_week: parseInt(row.sent_this_week, 10),
+        total_responded: totalResponded,
+        total_sent: totalSent,
+        response_rate: totalSent > 0 ? Math.round((100 * totalResponded) / totalSent) : 0,
+        insights_gathered: 0,
+      });
     } catch (error) {
       logger.error({ err: error }, 'Error getting outreach stats');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // GET /api/admin/outreach/stats/by-goal - Get response rates by goal type
-  apiRouter.get('/outreach/stats/by-goal', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const stats = await insightsDb.getOutreachGoalStats();
-      res.json(stats);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting outreach goal stats');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
 
-  // GET /api/admin/outreach/stats/time-series - Get time-windowed outreach stats
+  // GET /api/admin/outreach/stats/time-series - Get time-windowed outreach stats from person_events
   apiRouter.get('/outreach/stats/time-series', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const stats = await insightsDb.getOutreachTimeStats();
-      res.json(stats);
+      const result = await query<{
+        sent_today: string;
+        responded_today: string;
+        sent_this_week: string;
+        responded_this_week: string;
+        sent_this_month: string;
+        responded_this_month: string;
+        total_sent: string;
+        total_responded: string;
+      }>(`
+        SELECT
+          COUNT(*) FILTER (WHERE event_type = 'outreach_decided' AND occurred_at > CURRENT_DATE)::text as sent_today,
+          COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > CURRENT_DATE)::text as responded_today,
+          COUNT(*) FILTER (WHERE event_type = 'outreach_decided' AND occurred_at > CURRENT_DATE - INTERVAL '7 days')::text as sent_this_week,
+          COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > CURRENT_DATE - INTERVAL '7 days')::text as responded_this_week,
+          COUNT(*) FILTER (WHERE event_type = 'outreach_decided' AND occurred_at > CURRENT_DATE - INTERVAL '30 days')::text as sent_this_month,
+          COUNT(*) FILTER (WHERE event_type = 'message_received' AND occurred_at > CURRENT_DATE - INTERVAL '30 days')::text as responded_this_month,
+          COUNT(*) FILTER (WHERE event_type = 'outreach_decided')::text as total_sent,
+          COUNT(DISTINCT person_id) FILTER (WHERE event_type = 'message_received')::text as total_responded
+        FROM person_events
+      `);
+      const row = result.rows[0];
+      const totalSent = parseInt(row.total_sent, 10);
+      const totalResponded = parseInt(row.total_responded, 10);
+      res.json({
+        sent_today: parseInt(row.sent_today, 10),
+        responded_today: parseInt(row.responded_today, 10),
+        sent_this_week: parseInt(row.sent_this_week, 10),
+        responded_this_week: parseInt(row.responded_this_week, 10),
+        sent_this_month: parseInt(row.sent_this_month, 10),
+        responded_this_month: parseInt(row.responded_this_month, 10),
+        total_sent: totalSent,
+        total_responded: totalResponded,
+        total_insights: 0,
+        overall_response_rate_pct: totalSent > 0 ? Math.round((100 * totalResponded) / totalSent) : null,
+      });
     } catch (error) {
       logger.error({ err: error }, 'Error getting outreach time stats');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // GET /api/admin/outreach/history - Get recent outreach history
+  // GET /api/admin/outreach/history - Get recent outreach history from person_events
   apiRouter.get('/outreach/history', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-      const history = await insightsDb.getRecentOutreach(limit);
-      res.json(history);
+      const limit = Math.min(req.query.limit ? parseInt(req.query.limit as string, 10) : 50, 200);
+      const result = await query<{
+        id: number;
+        person_id: string;
+        occurred_at: Date;
+        event_type: string;
+        channel: string | null;
+        data: string;
+        display_name: string | null;
+        slack_user_id: string | null;
+        stage: string | null;
+      }>(`
+        SELECT pe.id, pe.person_id, pe.occurred_at, pe.event_type, pe.channel, pe.data::text,
+               pr.display_name, pr.slack_user_id, pr.stage
+        FROM person_events pe
+        LEFT JOIN person_relationships pr ON pr.id = pe.person_id
+        WHERE pe.event_type IN ('outreach_decided', 'message_sent', 'message_received')
+          AND (pe.event_type != 'message_sent' OR pe.data->>'source' IS DISTINCT FROM 'dm_reply')
+        ORDER BY pe.occurred_at DESC
+        LIMIT $1
+      `, [limit]);
+
+      // Map to legacy shape expected by admin-outreach.html
+      res.json(result.rows.map(row => {
+        const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+        return {
+          id: row.id,
+          slack_user_id: row.slack_user_id || row.person_id,
+          slack_display_name: row.display_name,
+          slack_real_name: row.display_name,
+          sent_at: row.occurred_at,
+          outreach_type: row.channel || 'slack',
+          user_responded: row.event_type === 'message_received',
+          insight_extracted: false,
+          thread_id: data.thread_ts || data.thread_id || null,
+          initial_message: data.text || null,
+        };
+      }));
     } catch (error) {
       logger.error({ err: error }, 'Error getting outreach history');
       res.status(500).json({ error: 'Internal server error' });
@@ -437,7 +226,8 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   // GET /api/admin/outreach/test-accounts - List test accounts
   apiRouter.get('/outreach/test-accounts', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const accounts = await insightsDb.listTestAccounts();
+      const result = await query('SELECT * FROM outreach_test_accounts WHERE is_active = TRUE ORDER BY created_at');
+      const accounts = result.rows;
       res.json(accounts);
     } catch (error) {
       logger.error({ err: error }, 'Error listing test accounts');
@@ -450,11 +240,18 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     try {
       const { slack_user_id, description } = req.body;
 
-      if (!slack_user_id) {
-        return res.status(400).json({ error: 'slack_user_id is required' });
+      if (!slack_user_id || !/^[UW][A-Z0-9]+$/i.test(slack_user_id)) {
+        return res.status(400).json({ error: 'Valid Slack user ID is required (e.g., U1234ABCD)' });
       }
 
-      const account = await insightsDb.addTestAccount(slack_user_id, description);
+      const addResult = await query(
+        `INSERT INTO outreach_test_accounts (slack_user_id, description)
+         VALUES ($1, $2)
+         ON CONFLICT (slack_user_id) DO UPDATE SET description = EXCLUDED.description, is_active = TRUE
+         RETURNING *`,
+        [slack_user_id, description || null]
+      );
+      const account = addResult.rows[0];
       logger.info({ slackUserId: slack_user_id }, 'Added test account');
       res.status(201).json(account);
     } catch (error) {
@@ -466,7 +263,11 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   // DELETE /api/admin/outreach/test-accounts/:slackUserId - Remove test account
   apiRouter.delete('/outreach/test-accounts/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const removed = await insightsDb.removeTestAccount(req.params.slackUserId);
+      const removeResult = await query(
+        'UPDATE outreach_test_accounts SET is_active = FALSE WHERE slack_user_id = $1',
+        [req.params.slackUserId]
+      );
+      const removed = (removeResult.rowCount ?? 0) > 0;
       if (!removed) {
         return res.status(404).json({ error: 'Test account not found' });
       }
@@ -511,7 +312,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       const { slackUserId } = req.params;
 
       // Check if user can be contacted
-      const eligibility = await canContactUser(slackUserId);
+      const eligibility = await canContactUser(slackUserId, { adminOverride: true });
       if (!eligibility.canContact) {
         return res.status(400).json({ error: eligibility.reason });
       }
@@ -537,19 +338,17 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // POST /api/admin/outreach/send-with-goal - Send outreach with a specific goal (admin override)
+  // POST /api/admin/outreach/send-with-goal - Admin-triggered outreach (goal_id accepted but unused)
   apiRouter.post('/outreach/send-with-goal', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { slack_user_id, goal_id, admin_context } = req.body;
+      const { slack_user_id } = req.body;
 
-      // Validate inputs
-      const goalIdNum = parseInt(goal_id, 10);
-      if (!slack_user_id || isNaN(goalIdNum) || goalIdNum <= 0) {
-        return res.status(400).json({ error: 'Valid slack_user_id and goal_id are required' });
+      if (!slack_user_id) {
+        return res.status(400).json({ error: 'slack_user_id is required' });
       }
 
       // Check if user can be contacted
-      const eligibility = await canContactUser(slack_user_id);
+      const eligibility = await canContactUser(slack_user_id, { adminOverride: true });
       if (!eligibility.canContact) {
         return res.status(400).json({ error: eligibility.reason });
       }
@@ -561,26 +360,19 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         email: req.user.email,
       } : undefined;
 
-      const result = await manualOutreachWithGoal(
+      const result = await manualOutreach(
         slack_user_id,
-        goalIdNum,
-        admin_context,
         triggeredBy
       );
 
       if (result.success) {
-        logger.info({
-          slackUserId: slack_user_id,
-          goalId: goal_id,
-          hasContext: !!admin_context,
-          triggeredBy: req.user?.id,
-        }, 'Admin-override outreach sent');
+        logger.info({ slackUserId: slack_user_id, triggeredBy: req.user?.id }, 'Admin outreach sent');
         res.json(result);
       } else {
         res.status(400).json({ error: result.error });
       }
     } catch (error) {
-      logger.error({ err: error }, 'Error sending admin-override outreach');
+      logger.error({ err: error }, 'Error sending admin outreach');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -596,210 +388,68 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
-  // GET /api/admin/outreach/preview/:slackUserId - Preview what outreach message would be sent
-  apiRouter.get('/outreach/preview/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { slackUserId } = req.params;
-      const pool = getPool();
 
-      // Get user info with goal from unified_contacts view
-      const userResult = await pool.query(`
-        SELECT
-          sm.*,
-          uc.goal_key,
-          uc.goal_name,
-          uc.goal_reasoning
-        FROM slack_user_mappings sm
-        LEFT JOIN unified_contacts_with_goals uc ON uc.slack_user_id = sm.slack_user_id
-        WHERE sm.slack_user_id = $1
-      `, [slackUserId]);
 
-      if (userResult.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      const user = userResult.rows[0];
-      const goalKey = user.goal_key;
-
-      // Map goal_key to outreach_type
-      let outreachType: string;
-      if (goalKey === 'link_account') {
-        outreachType = 'account_link';
-      } else if (!user.last_outreach_at && !user.workos_user_id) {
-        outreachType = 'introduction';
-      } else {
-        outreachType = goalKey || 'insight_goal';
-      }
-
-      // Get the goal and its message template
-      const goalResult = await pool.query(`
-        SELECT id, name, description, message_template, category
-        FROM outreach_goals
-        WHERE is_enabled = TRUE
-        ORDER BY base_priority DESC
-        LIMIT 1
-      `);
-
-      const goal = goalResult.rows[0];
-
-      // Build preview message from goal template
-      const userName = user.slack_display_name || user.slack_real_name || 'there';
-      const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
-      let previewMessage = goal?.message_template || '[No active outreach goal configured]';
-      previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
-      previewMessage = previewMessage.replace(/\{\{link_url\}\}/g, linkUrl);
-
-      // Check eligibility
-      const eligibility = await canContactUser(slackUserId);
-
-      res.json({
-        user: {
-          slack_user_id: user.slack_user_id,
-          slack_display_name: user.slack_display_name,
-          slack_real_name: user.slack_real_name,
-          workos_user_id: user.workos_user_id,
-          last_outreach_at: user.last_outreach_at,
-        },
-        outreach_type: outreachType,
-        addie_goal: {
-          goal_key: user.goal_key,
-          goal_name: user.goal_name,
-          reasoning: user.goal_reasoning,
-        },
-        goal: goal ? {
-          id: goal.id,
-          name: goal.name,
-          category: goal.category,
-        } : null,
-        preview_message: previewMessage,
-        eligibility,
-        mode: getOutreachMode(),
-      });
-    } catch (error) {
-      logger.error({ err: error }, 'Error previewing outreach');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =========================================================================
-  // GOAL FOLLOW-UP ROUTES
-  // =========================================================================
-
-  // GET /api/admin/outreach/follow-ups/preview - Preview pending follow-ups
-  apiRouter.get('/outreach/follow-ups/preview', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const pending = await previewFollowUps();
-      res.json({ pending, count: pending.length });
-    } catch (error) {
-      logger.error({ err: error }, 'Error previewing follow-ups');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/outreach/reconciliation/preview - Preview goals that could be reconciled
-  apiRouter.get('/outreach/reconciliation/preview', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const goals = await previewReconciliation();
-      res.json({ goals, count: goals.length });
-    } catch (error) {
-      logger.error({ err: error }, 'Error previewing reconciliation');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/admin/outreach/follow-ups/run - Run the follow-up job
-  apiRouter.post('/outreach/follow-ups/run', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { dryRun, skipFollowUps, skipReconciliation } = req.body;
-      const result = await runGoalFollowUpJob({
-        dryRun: dryRun ?? false,
-        skipFollowUps: skipFollowUps ?? false,
-        skipReconciliation: skipReconciliation ?? false,
-      });
-
-      logger.info({ result, triggeredBy: req.user?.id, dryRun }, 'Goal follow-up job triggered');
-      res.json(result);
-    } catch (error) {
-      logger.error({ err: error }, 'Error running follow-up job');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/outreach/timeline/:slackUserId - Get outreach timeline for a user
+  // GET /api/admin/outreach/timeline/:slackUserId - Get person event timeline
   apiRouter.get('/outreach/timeline/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { slackUserId } = req.params;
 
-      // Validate Slack user ID format (starts with U or W, followed by alphanumeric)
+      // Validate Slack user ID format
       if (!/^[UW][A-Z0-9]+$/i.test(slackUserId)) {
         return res.status(400).json({ error: 'Invalid Slack user ID format' });
       }
 
-      const pool = getPool();
-
-      // Get all outreach events for this user with full details
-      const result = await pool.query(`
-        SELECT
-          mo.id,
-          mo.sent_at,
-          mo.outreach_type,
-          mo.initial_message,
-          mo.user_responded,
-          mo.response_received_at,
-          mo.response_text,
-          mo.response_sentiment,
-          mo.response_intent,
-          mo.insight_extracted,
-          -- Goal info from user_goal_history if linked
-          ugh.goal_id,
-          og.name as goal_name,
-          og.category as goal_category,
-          ugh.status as goal_status,
-          ugh.attempt_count
-        FROM member_outreach mo
-        LEFT JOIN user_goal_history ugh ON ugh.outreach_id = mo.id
-        LEFT JOIN outreach_goals og ON og.id = ugh.goal_id
-        WHERE mo.slack_user_id = $1
-        ORDER BY mo.sent_at DESC
-        LIMIT 50
-      `, [slackUserId]);
-
-      // Get user info
-      const userResult = await pool.query(`
-        SELECT
-          slack_user_id,
-          slack_display_name,
-          slack_real_name,
-          slack_email,
-          workos_user_id,
-          last_outreach_at,
-          outreach_opt_out
-        FROM slack_user_mappings
+      // Resolve person from Slack ID
+      const personResult = await query<{
+        id: string;
+        display_name: string | null;
+        slack_user_id: string | null;
+        email: string | null;
+        stage: string | null;
+        opted_out: boolean;
+      }>(`
+        SELECT id, display_name, slack_user_id, email, stage, opted_out
+        FROM person_relationships
         WHERE slack_user_id = $1
       `, [slackUserId]);
 
+      const person = personResult.rows[0];
+      if (!person) {
+        return res.json({ user: null, timeline: [] });
+      }
+
+      // Get person events
+      const events = await personEvents.getPersonTimeline(person.id, { limit: 50 });
+
       res.json({
-        user: userResult.rows[0] || null,
-        timeline: result.rows.map(row => ({
-          id: row.id,
-          sent_at: row.sent_at,
-          outreach_type: row.outreach_type,
-          message_preview: row.initial_message?.substring(0, 200) + (row.initial_message?.length > 200 ? '...' : ''),
-          response: row.user_responded ? {
-            received_at: row.response_received_at,
-            text: row.response_text,
-            sentiment: row.response_sentiment,
-            intent: row.response_intent,
-            insight_extracted: row.insight_extracted,
-          } : null,
-          goal: row.goal_id ? {
-            id: row.goal_id,
-            name: row.goal_name,
-            category: row.goal_category,
-            status: row.goal_status,
-            attempt_count: row.attempt_count,
-          } : null,
-        })),
+        user: {
+          slack_user_id: person.slack_user_id,
+          slack_display_name: person.display_name,
+          slack_real_name: person.display_name,
+          stage: person.stage,
+          outreach_opt_out: person.opted_out,
+        },
+        timeline: events.reverse().map(event => {
+          const text = (event.data?.text as string) || (event.data?.subject as string) || null;
+          // Filter data to avoid leaking full message content and internal metadata
+          const safeData: Record<string, unknown> = {};
+          if (event.data?.stage) safeData.stage = event.data.stage;
+          if (event.data?.goal_hint) safeData.goal_hint = event.data.goal_hint;
+          if (event.data?.reason) safeData.reason = event.data.reason;
+          if (event.data?.cadence) safeData.cadence = event.data.cadence;
+          if (event.data?.preference) safeData.preference = event.data.preference;
+          if (event.data?.from) safeData.from = event.data.from;
+          if (event.data?.to) safeData.to = event.data.to;
+          return {
+            id: event.id,
+            sent_at: event.occurred_at,
+            outreach_type: event.event_type,
+            channel: event.channel,
+            message_preview: text ? text.substring(0, 200) + (text.length > 200 ? '...' : '') : null,
+            data: safeData,
+          };
+        }),
       });
     } catch (error) {
       logger.error({ err: error }, 'Error fetching outreach timeline');
@@ -1025,7 +675,8 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     } catch (error) {
       logger.error({ err: error, slackUserId: req.params.slackUserId }, 'Error previewing momentum for user');
       if (error instanceof Error && error.message.includes('not found')) {
-        return res.status(404).json({ error: error.message });
+        logger.warn({ err: error, slackUserId: req.params.slackUserId }, 'Resource not found');
+        return res.status(404).json({ error: 'Resource not found' });
       }
       res.status(500).json({ error: 'Internal server error' });
     }

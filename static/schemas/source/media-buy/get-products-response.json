@@ -12,6 +12,13 @@
         "$ref": "/schemas/core/product.json"
       }
     },
+    "shows": {
+      "type": "array",
+      "description": "Shows referenced by products in this response. Only includes shows referenced by the returned products. Under pagination, each page includes all show objects needed for that page's products.",
+      "items": {
+        "$ref": "/schemas/core/show.json"
+      }
+    },
     "proposals": {
       "type": "array",
       "description": "Optional array of proposed media plans with budget allocations across products. Publishers include proposals when they can provide strategic guidance based on the brief. Proposals are actionable - buyers can refine them via follow-up get_products calls within the same session, or execute them directly via create_media_buy.",

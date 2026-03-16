@@ -15,7 +15,6 @@ import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
 import { invalidateAdminStatusCache, invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
 import { getPool } from '../db/client.js';
-import { markLinkAccountGoalsSucceeded } from '../db/outbound-db.js';
 import { workos } from '../auth/workos-client.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
 import type { SyncSlackUsersResult } from './types.js';
@@ -749,13 +748,6 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
       mappedWorkosUserIds.add(workosUserId);
       // Clear cached admin status so Addie recognizes newly linked admins immediately.
       invalidateAdminStatusCache(slackUser.slack_user_id);
-
-      // Mark any pending "Link Account" goals as succeeded so Addie stops following up
-      try {
-        await markLinkAccountGoalsSucceeded(slackUser.slack_user_id);
-      } catch (goalErr) {
-        logger.warn({ error: goalErr, slackUserId: slackUser.slack_user_id }, 'Failed to mark Link Account goal as success during auto-link');
-      }
 
       const chapterResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUser.slack_user_id);
       chaptersJoined += chapterResult.chapters_joined;
