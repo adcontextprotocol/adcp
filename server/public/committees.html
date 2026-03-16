@@ -26,26 +26,11 @@
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body {
-      background: var(--color-bg-page);
-      padding-top: var(--nav-height);
+      background: #fff;
+      /* padding-top handled by hero */
     }
 
-    .header {
-      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
-      color: white;
-      padding: var(--space-12) 0;
-      text-align: center;
-    }
-
-    .header h1 {
-      font-size: var(--text-4xl);
-      margin-bottom: var(--space-2);
-    }
-
-    .header .subtitle {
-      font-size: var(--text-lg);
-      color: rgba(255, 255, 255, 0.9);
-    }
+    /* Header uses .hero from design-system.css */
 
     .container {
       max-width: var(--container-xl);
@@ -412,10 +397,12 @@
   <script src="/nav.js"></script>
 
   <!-- Header -->
-  <div class="header">
-    <h1 id="headerTitle">Committees</h1>
-    <p id="headerSubtitle" class="subtitle">Collaborate with industry leaders to shape the future of agentic advertising</p>
-  </div>
+  <section class="hero hero--clean">
+    <div class="hero-container">
+      <h1 id="headerTitle">Committees</h1>
+      <p id="headerSubtitle" class="hero-subtitle">Collaborate with industry leaders to shape the future of agentic advertising</p>
+    </div>
+  </section>
 
   <div class="container">
     <!-- Type Tabs -->
@@ -469,24 +456,12 @@
     <!-- Join CTA (for non-members) -->
     <div id="join-cta" class="join-cta" style="display: none;">
       <h2>Want to Get Involved?</h2>
-      <p id="joinCtaMessage">Become an AAO member to join committees and help shape industry standards.</p>
+      <p id="joinCtaMessage">Become a member to join committees and help shape industry standards.</p>
       <a href="/membership" class="join-cta-btn">Learn About Membership</a>
     </div>
   </div>
 
-  <!-- Footer -->
-  <footer class="footer footer--centered">
-    <div class="footer-links">
-      <a href="/">Home</a>
-      <a href="https://docs.adcontextprotocol.org">AdCP Documentation</a>
-      <a href="/members">Members</a>
-      <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
-      <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA">Slack Community</a>
-    </div>
-    <div class="footer-copyright">
-      &copy; 2025 AgenticAdvertising.org
-    </div>
-  </footer>
+  <div id="adcp-footer"></div>
 
   <script>
     // Committee type configurations
@@ -500,7 +475,7 @@
         emptyTitle: 'No Committees Yet',
         emptyMessage: 'Committees are being set up. Check back soon!',
         myGroupsTitle: 'Your Committees',
-        joinCta: 'Become an AAO member to join committees and help shape industry standards.',
+        joinCta: 'Become a member to join committees and help shape industry standards.',
         viewButton: 'View',
         apiType: null // Fetch all non-governance types
       },

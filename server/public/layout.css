@@ -1,0 +1,434 @@
+/* =============================================================================
+   Layout — shared patterns extracted from the homepage
+   Depends on design-system.css variables
+   ============================================================================= */
+
+/* -- Reset -- */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: #fff;
+  line-height: var(--leading-relaxed);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =============================================================================
+   Page header — lightweight hero for app/dashboard pages
+   Same typography and spacing as hero--clean, works without the full .hero class.
+   Use: <header class="page-header"><h1>Title</h1><p>Subtitle</p></header>
+   ============================================================================= */
+
+.page-header {
+  text-align: center;
+  padding: var(--space-16) var(--space-6) var(--space-10);
+  background: #fff;
+}
+
+.page-header h1 {
+  font-size: var(--text-4xl);
+  font-weight: var(--font-bold);
+  color: var(--color-text-heading);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  margin-bottom: var(--space-2);
+}
+
+.page-header p {
+  font-size: var(--text-xl);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-relaxed);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.page-header--left {
+  text-align: left;
+  max-width: var(--container-xl);
+  margin: 0 auto;
+}
+
+.page-header--left p {
+  margin: 0;
+}
+
+/* =============================================================================
+   Panel layouts
+   ============================================================================= */
+
+.panel {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-16) var(--space-6);
+}
+
+.panel-wide {
+  max-width: 1100px;
+}
+
+.panel-image {
+  width: 100%;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-8);
+  border: 1px solid var(--color-border);
+}
+
+.story-panel-image {
+  margin-top: var(--space-8);
+  margin-bottom: 0;
+}
+
+/* =============================================================================
+   Typography utilities
+   ============================================================================= */
+
+.panel-text {
+  font-size: var(--text-lg);
+  color: var(--color-gray-700);
+  line-height: var(--leading-loose);
+}
+
+.panel-text p {
+  margin-bottom: var(--space-4);
+}
+
+.panel-text p:last-child {
+  margin-bottom: 0;
+}
+
+/* Lead-in paragraphs */
+.panel-text .drop {
+  font-size: var(--text-2xl);
+  line-height: var(--leading-snug);
+  color: var(--color-text-heading);
+  font-weight: var(--font-medium);
+  margin-bottom: var(--space-6);
+}
+
+/* Emphasized text */
+.panel-text .accent {
+  color: var(--color-text);
+  font-weight: var(--font-semibold);
+}
+
+/* Closing statements */
+.panel-text .closing {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-heading);
+  line-height: var(--leading-snug);
+}
+
+/* Section labels */
+.panel-text .kicker {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--color-brand);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--space-2);
+}
+
+/* =============================================================================
+   Sub-navigation — sticky section nav below the main nav
+   Use: <nav class="sub-nav"><div class="sub-nav-inner"><div class="sub-nav-links">...</div></div></nav>
+   ============================================================================= */
+
+.sub-nav {
+  background: #fff;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 60px;
+  z-index: 100;
+}
+
+.sub-nav-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+.sub-nav-links {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sub-nav-links a {
+  padding: var(--space-3) var(--space-5);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-weight: var(--font-medium);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.sub-nav-links a:hover {
+  color: var(--color-brand);
+  background: var(--color-primary-50);
+}
+
+.sub-nav-links a.active {
+  color: var(--color-brand);
+  border-bottom-color: var(--color-brand);
+}
+
+/* =============================================================================
+   Background variants
+   ============================================================================= */
+
+.bg-subtle {
+  background: var(--color-bg-subtle);
+}
+
+.bg-warm {
+  background: linear-gradient(180deg, var(--color-surface) 0%, #faf8f0 100%);
+}
+
+/* =============================================================================
+   Hero
+   ============================================================================= */
+
+.homepage-hero {
+  text-align: center;
+  padding: var(--space-20) var(--space-6) var(--space-12);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.homepage-hero h1 {
+  font-size: var(--text-4xl);
+  font-weight: var(--font-bold);
+  color: var(--color-text-heading);
+  line-height: var(--leading-tight);
+  margin-bottom: var(--space-4);
+  letter-spacing: var(--tracking-tight);
+}
+
+.homepage-hero .subtitle {
+  font-size: var(--text-xl);
+  color: var(--color-gray-600);
+  line-height: var(--leading-relaxed);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* =============================================================================
+   Principles list
+   ============================================================================= */
+
+.principles {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-6) 0;
+}
+
+.principles li {
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-gray-700);
+}
+
+.principles li:last-child {
+  border-bottom: none;
+}
+
+.principles li strong {
+  color: var(--color-text-heading);
+  font-weight: var(--font-semibold);
+}
+
+/* =============================================================================
+   CTA patterns
+   ============================================================================= */
+
+.cta-section {
+  text-align: center;
+  padding: var(--space-16) var(--space-6);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.cta-section .closing-text {
+  font-size: var(--text-xl);
+  color: var(--color-gray-700);
+  line-height: var(--leading-relaxed);
+  margin-bottom: var(--space-10);
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6);
+  text-align: left;
+}
+
+.cta-card {
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  transition: border-color 0.15s ease;
+}
+
+.cta-card:hover {
+  border-color: var(--color-brand);
+}
+
+.cta-card h3 {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-heading);
+  margin-bottom: var(--space-2);
+}
+
+.cta-card p {
+  font-size: var(--text-base);
+  color: var(--color-gray-600);
+  line-height: var(--leading-normal);
+  margin-bottom: var(--space-4);
+}
+
+.cta-card a {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-brand);
+  text-decoration: none;
+}
+
+.cta-card a:hover {
+  text-decoration: underline;
+}
+
+/* =============================================================================
+   Member logos
+   ============================================================================= */
+
+.member-logos-section {
+  text-align: center;
+  padding: var(--space-12) var(--space-6);
+}
+
+.member-logos-label {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--color-gray-500);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--space-6);
+}
+
+.member-logos-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-8);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.member-logos-bar img {
+  height: 36px;
+  width: auto;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.member-logos-bar img:hover {
+  opacity: 1;
+}
+
+/* =============================================================================
+   Footer
+   ============================================================================= */
+
+.site-footer {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-10) var(--space-6);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: var(--space-8);
+}
+
+.footer-brand {
+  font-size: var(--text-sm);
+  color: var(--color-gray-500);
+  line-height: var(--leading-relaxed);
+}
+
+.footer-brand strong {
+  font-size: var(--text-base);
+  color: var(--color-text-heading);
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.footer-col h4 {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-heading);
+  margin-bottom: var(--space-3);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.footer-col a {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-gray-600);
+  text-decoration: none;
+  padding: var(--space-1) 0;
+}
+
+.footer-col a:hover {
+  color: var(--color-brand);
+}
+
+/* =============================================================================
+   Responsive breakpoints
+   ============================================================================= */
+
+@media (max-width: 768px) {
+  .sub-nav-links a {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .cta-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+  }
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: var(--space-10) var(--space-4);
+  }
+
+  .homepage-hero {
+    padding: var(--space-12) var(--space-4) var(--space-8);
+  }
+
+  .homepage-hero h1 {
+    font-size: var(--text-3xl);
+  }
+}

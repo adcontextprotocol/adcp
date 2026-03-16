@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AdCP Academy - AgenticAdvertising.org</title>
+  <title>Academy - AgenticAdvertising.org</title>
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
   <style>
     :root {
       --color-tier-3: #7c3aed;
@@ -14,8 +15,8 @@
     }
 
     body {
-      background: var(--color-bg-page);
-      padding-top: var(--nav-height);
+      background: #fff;
+      /* padding-top handled by hero */
     }
 
     .cert-container {
@@ -25,25 +26,8 @@
     }
 
     /* =========================================================================
-       Hero / header
+       Hero / header — uses .hero--article from design-system.css
        ========================================================================= */
-    .cert-header {
-      margin-bottom: var(--space-8);
-    }
-
-    .cert-header h1 {
-      font-size: var(--text-3xl);
-      font-weight: var(--font-bold);
-      color: var(--color-text-heading);
-      margin-bottom: var(--space-2);
-    }
-
-    .cert-header p {
-      font-size: var(--text-lg);
-      color: var(--color-text-secondary);
-      max-width: 640px;
-      line-height: var(--leading-relaxed);
-    }
 
     .cert-header-actions {
       display: flex;
@@ -65,11 +49,10 @@
       border: var(--border-1) solid var(--color-brand);
       background: var(--color-brand);
       color: #fff;
-      transition: background var(--duration-normal) var(--ease-in-out);
+      transition: opacity var(--duration-normal) var(--ease-in-out);
     }
 
     .btn-primary:hover {
-      background: var(--color-brand-dark, var(--color-brand));
       opacity: 0.9;
     }
 
@@ -86,13 +69,11 @@
       border: var(--border-1) solid var(--color-border);
       background: var(--color-bg-card);
       color: var(--color-text-primary);
-      transition: border-color var(--duration-normal) var(--ease-in-out),
-                  background var(--duration-normal) var(--ease-in-out);
+      transition: border-color var(--duration-normal) var(--ease-in-out);
     }
 
     .btn-secondary:hover {
       border-color: var(--color-brand);
-      background: var(--color-bg-hover);
     }
 
     .link-tertiary {
@@ -840,16 +821,19 @@
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
 
-  <div class="cert-container">
-    <div class="cert-header">
-      <h1>AdCP Academy</h1>
-      <p>Learn AdCP through hands-on training with Addie, our AI instructor. Work with real sandbox agents and earn a verifiable credential at each tier.</p>
+  <section class="hero hero--clean">
+    <div class="hero-container">
+      <h1>Academy</h1>
+      <p class="hero-subtitle">Learn agentic advertising through hands-on training with Addie, our AI instructor. Work with real sandbox agents and earn a verifiable credential at each tier.</p>
       <div class="cert-header-actions">
         <a id="start-btn" href="/chat?topic=certification&action=start" class="btn-primary">Start with the basics</a>
         <a id="assess-btn" href="/chat?topic=certification&action=assess" class="btn-secondary">Find your tier</a>
         <a href="/study-guide.html" class="link-tertiary">See the full curriculum</a>
       </div>
     </div>
+  </section>
+
+  <div class="cert-container">
 
     <!-- Tier progression -->
     <div id="tier-section" class="tier-section">
@@ -1475,5 +1459,7 @@
       init();
     })();
   </script>
+
+  <div id="adcp-footer"></div>
 </body>
 </html>

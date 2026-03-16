@@ -11,6 +11,7 @@ export type {
   AlertSection,
   AlertSeverity,
   QuickAction,
+  SuggestedPrompt,
   ActivityItem,
   ActivityType,
   UserStats,

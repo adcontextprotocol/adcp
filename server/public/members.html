@@ -12,26 +12,11 @@
        ============================================================================= */
 
     body {
-      background: var(--color-bg-page);
-      padding-top: var(--nav-height);
+      background: #fff;
+      /* padding-top handled by hero */
     }
 
-    .header {
-      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
-      color: white;
-      padding: var(--space-12) 0;
-      text-align: center;
-    }
-
-    .header h1 {
-      font-size: var(--text-4xl);
-      margin-bottom: var(--space-2);
-    }
-
-    .header .subtitle {
-      font-size: var(--text-lg);
-      color: rgba(255, 255, 255, 0.9);
-    }
+    /* Header uses .hero from design-system.css */
 
     .container {
       max-width: var(--container-xl);
@@ -1107,17 +1092,19 @@
 
   <!-- List View -->
   <div id="list-view">
-    <div class="header">
-      <h1>Partner directory</h1>
-      <p class="subtitle">Find companies who can help you implement AdCP</p>
-    </div>
+    <section class="hero hero--clean">
+      <div class="hero-container">
+        <h1>Partner directory</h1>
+        <p class="hero-subtitle">Find companies who can help you implement AdCP</p>
+      </div>
+    </section>
 
     <div class="container">
       <!-- Join CTA Card -->
       <div class="join-cta">
         <h3>Looking for implementation help?</h3>
         <p>Browse partners below, or ask Addie to help you find the right match and make an introduction.</p>
-        <a href="/chat?prompt=Help%20me%20find%20a%20partner%20who%20can%20help%20me%20implement%20AdCP" class="join-cta-btn">Ask Addie to help</a>
+        <a href="/chat?prompt=Help%20me%20find%20a%20partner%20who%20can%20help%20me%20implement%20AdCP" class="join-cta-btn" style="display: inline-flex; align-items: center; gap: 6px;"><img src="/addie-avatar.svg" alt="" style="width: 20px; height: auto;"> Ask Addie to help</a>
       </div>
 
       <div class="search-section">
@@ -1153,7 +1140,7 @@
       <div class="join-cta" id="general-inquiry" style="display: none;">
         <h3>Not finding the right fit?</h3>
         <p>Tell Addie what you're looking for and get matched with the right partner.</p>
-        <a href="/chat?prompt=I%27m%20looking%20for%20a%20partner%20who%20can%20help%20me%20with%20AdCP%20implementation" class="join-cta-btn">Ask Addie</a>
+        <a href="/chat?prompt=I%27m%20looking%20for%20a%20partner%20who%20can%20help%20me%20with%20AdCP%20implementation" class="join-cta-btn" style="display: inline-flex; align-items: center; gap: 6px;"><img src="/addie-avatar.svg" alt="" style="width: 20px; height: auto;"> Ask Addie</a>
       </div>
     </div>
   </div>

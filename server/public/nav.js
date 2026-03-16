@@ -41,9 +41,6 @@
   // Docs always live on docs.adcontextprotocol.org
   const aaoBaseUrl = 'https://agenticadvertising.org';
   let docsUrl = 'https://docs.adcontextprotocol.org';
-  let adagentsUrl = `${aaoBaseUrl}/adagents`;
-  let brandUrl = `${aaoBaseUrl}/brand`;
-  let membersUrl = `${aaoBaseUrl}/members`;
   let homeUrl = aaoBaseUrl;
   let apiBaseUrl = '';
 
@@ -59,17 +56,11 @@
     if (parseInt(currentPort) === likelyMintlifyPort || parseInt(currentPort) === 3001) {
       // We're on docs site, link back to HTTP server
       docsUrl = `http://localhost:${currentPort}`;
-      adagentsUrl = `http://localhost:${likelyHttpPort}/adagents`;
-      brandUrl = `http://localhost:${likelyHttpPort}/brand`;
-      membersUrl = `http://localhost:${likelyHttpPort}/members`;
       homeUrl = `http://localhost:${likelyHttpPort}`;
       apiBaseUrl = `http://localhost:${likelyHttpPort}`;
     } else {
       // We're on HTTP server, use relative links for same-server pages
       docsUrl = `http://localhost:${likelyMintlifyPort}`;
-      adagentsUrl = '/adagents';
-      brandUrl = '/brand';
-      membersUrl = '/members';
       homeUrl = '/';
       apiBaseUrl = '';
     }
@@ -77,13 +68,6 @@
 
   // Get current path to mark active link
   const currentPath = window.location.pathname;
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
 
   // Build navigation HTML - will be updated after config fetch
   function buildNavHTML(config) {
@@ -143,109 +127,14 @@
       }
     }
 
-    // Registry URLs used in Projects dropdown and mobile menu
-    const agentsUrl = isLocal ? '/agents' : `${aaoBaseUrl}/agents`;
-    const brandsUrl = isLocal ? '/brands' : `${aaoBaseUrl}/brands`;
-    const publishersUrl = isLocal ? '/publishers' : `${aaoBaseUrl}/publishers`;
-
-    // Build about dropdown (only on beta site - links to trade association)
-    // Includes About page, Membership page, Governance page, and content feeds
-    const aboutUrl = isLocal ? '/about' : 'https://agenticadvertising.org/about';
-    const membershipUrl = isLocal ? '/membership' : 'https://agenticadvertising.org/membership';
-    const governanceUrl = isLocal ? '/governance' : 'https://agenticadvertising.org/governance';
-    const latestBaseUrl = isLocal ? '/latest' : `${aaoBaseUrl}/latest`;
-    const isLatestActive = currentPath.startsWith('/latest') || currentPath.startsWith('/perspectives');
-    const isAboutActive = currentPath === '/about' || currentPath === '/membership' || currentPath === '/governance' || isLatestActive;
-    const aboutDropdown = membershipEnabled
-      ? `<div class="navbar__dropdown-wrapper">
-          <button class="navbar__link navbar__dropdown-trigger ${isAboutActive ? 'active' : ''}">
-            About
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
-              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            </svg>
-          </button>
-          <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${aboutUrl}" class="navbar__dropdown-item ${currentPath === '/about' ? 'active' : ''}">About</a>
-            <a href="${membershipUrl}" class="navbar__dropdown-item ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
-            <a href="${governanceUrl}" class="navbar__dropdown-item ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
-            <div class="navbar__dropdown-divider"></div>
-            <a href="${latestBaseUrl}/perspectives" class="navbar__dropdown-item ${currentPath === '/latest/perspectives' ? 'active' : ''}">Perspectives</a>
-            <a href="${latestBaseUrl}/industry-news" class="navbar__dropdown-item ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>
-            <a href="${latestBaseUrl}/announcements" class="navbar__dropdown-item ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>
-          </div>
-        </div>`
-      : '';
-
-    // Build Projects dropdown
-    const adagentsUrlLocal = isLocal ? '/adagents' : `${aaoBaseUrl}/adagents`;
-    const brandUrlLocal = isLocal ? '/brand' : `${aaoBaseUrl}/brand`;
-    const isProjectsActive = currentPath === '/adagents' || currentPath.startsWith('/adagents/') ||
-                             currentPath === '/brand' || currentPath.startsWith('/brand/') ||
-                             currentPath === '/members' || currentPath.startsWith('/members/') ||
-                             currentPath === '/registry' || currentPath === '/agents' || currentPath === '/brands' || currentPath === '/publishers';
-    const projectsDropdown = `<div class="navbar__dropdown-wrapper">
-          <button class="navbar__link navbar__dropdown-trigger ${isProjectsActive ? 'active' : ''}">
-            Projects
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
-              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            </svg>
-          </button>
-          <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="https://adcontextprotocol.org" class="navbar__dropdown-item">AdCP</a>
-            <a href="${adagentsUrlLocal}" class="navbar__dropdown-item ${currentPath === '/adagents' || currentPath.startsWith('/adagents/') ? 'active' : ''}">adagents.json</a>
-            <a href="${brandUrlLocal}" class="navbar__dropdown-item ${currentPath === '/brand' || currentPath.startsWith('/brand/') ? 'active' : ''}">brand.json</a>
-            <div class="navbar__dropdown-divider"></div>
-            <span class="navbar__dropdown-header-text">Registry</span>
-            <div class="navbar__dropdown-search">
-              <input type="search" class="navbar__dropdown-search-input" id="registrySearchInput"
-                     placeholder="Search registries..." autocomplete="off" aria-label="Search brands, publishers, and properties" />
-              <div class="navbar__dropdown-search-results" id="registrySearchResults" role="listbox" aria-label="Search results"></div>
-            </div>
-            <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
-            <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/agents' ? 'active' : ''}">Agents</a>
-            <a href="${brandsUrl}" class="navbar__dropdown-item ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
-            <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
-          </div>
-        </div>`;
-
-    // Build "Participate" dropdown (combines Events + Committees)
-    const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
-    const isEventsActive = currentPath.startsWith('/events');
-    const committeesBaseUrl = isLocal ? '/committees' : 'https://agenticadvertising.org/committees';
-    const meetingsUrl = isLocal ? '/meetings' : 'https://agenticadvertising.org/meetings';
-    const workingGroupsUrl = `${committeesBaseUrl}?type=working_group`;
-    const councilsUrl = `${committeesBaseUrl}?type=council`;
-    const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
-    const gatheringsUrl = `${committeesBaseUrl}?type=industry_gathering`;
-    const communityHubUrl = isLocal ? '/community' : `${aaoBaseUrl}/community`;
-    const communityPeopleUrl = isLocal ? '/community/people' : `${aaoBaseUrl}/community/people`;
-    const isCommunityActive = currentPath.startsWith('/community');
-    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings') || currentPath.startsWith('/meetings');
     const isCertificationActive = currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
-    const isParticipateActive = isEventsActive || isCommitteesActive || isCommunityActive;
-    const participateDropdown = membershipEnabled
-      ? `<div class="navbar__dropdown-wrapper">
-          <button class="navbar__link navbar__dropdown-trigger ${isParticipateActive ? 'active' : ''}">
-            Participate
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
-              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            </svg>
-          </button>
-          <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${communityHubUrl}" class="navbar__dropdown-item ${currentPath === '/community' ? 'active' : ''}">Community hub</a>
-            <a href="${communityPeopleUrl}" class="navbar__dropdown-item ${currentPath.startsWith('/community/people') ? 'active' : ''}">People</a>
-            <div class="navbar__dropdown-divider"></div>
-            <a href="${eventsUrl}" class="navbar__dropdown-item ${isEventsActive ? 'active' : ''}">Events</a>
-            <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">Committees</a>
-            <a href="${meetingsUrl}" class="navbar__dropdown-item ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>
-            <div class="navbar__dropdown-divider"></div>
-            <a href="${workingGroupsUrl}" class="navbar__dropdown-item">Working Groups</a>
-            <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
-            <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
-            <a href="${gatheringsUrl}" class="navbar__dropdown-item ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>
-          </div>
-        </div>`
-      : '';
+    const isCommunityActive = currentPath.startsWith('/community') || currentPath.startsWith('/events') || currentPath.startsWith('/committees') || currentPath.startsWith('/meetings');
+    const communityUrl = isLocal ? '/community' : 'https://agenticadvertising.org/community';
+    const membershipUrl = isLocal ? '/membership' : 'https://agenticadvertising.org/membership';
+
+    // Contextual CTA: "Dashboard" for logged-in users, "Get started" for visitors
+    const ctaText = user ? 'Dashboard' : 'Get started';
+    const ctaUrl = user ? `${authBaseUrl}/dashboard` : membershipUrl;
 
     // Always use AAO logo
     const logoSrc = '/AAo.svg';
@@ -263,21 +152,18 @@
               </div>
             </a>
             <div class="navbar__links-desktop">
-              ${projectsDropdown}
-              ${participateDropdown}
-              ${aboutDropdown}
+              <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
+              <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
+              <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
+              <a href="${ctaUrl}" class="navbar__btn--cta">${ctaText}</a>
             </div>
           </div>
           <div class="navbar__items navbar__items--right">
             <div class="navbar__links-desktop">
-              <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
-              <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
-              <a href="${docsUrl}" class="navbar__link">Docs</a>
+              <div class="navbar__divider"></div>
+              <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
             </div>
             ${authSection}
-            <button class="navbar__search-mobile-btn" id="mobileSearchBtn" aria-label="Search">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            </button>
             <button class="navbar__hamburger" id="mobileMenuBtn" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
               <span class="navbar__hamburger-line"></span>
               <span class="navbar__hamburger-line"></span>
@@ -287,45 +173,11 @@
         </div>
         <div class="navbar__backdrop" id="mobileBackdrop" aria-hidden="true" role="presentation"></div>
         <div class="navbar__mobile-menu" id="mobileMenu" role="navigation" aria-label="Mobile navigation">
-          <span class="navbar__link navbar__link--header">Projects</span>
-          <a href="https://adcontextprotocol.org" class="navbar__link navbar__link--indent">AdCP</a>
-          <a href="${adagentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
-          <a href="${brandUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brand' ? 'active' : ''}">brand.json</a>
-          <span class="navbar__link navbar__link--subheader">Registry</span>
-          <a href="${membersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
-          <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/agents' ? 'active' : ''}">Agents</a>
-          <a href="${brandsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
-          <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
-          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Participate</span>` : ''}
-          ${membershipEnabled ? `<a href="${communityHubUrl}" class="navbar__link navbar__link--indent ${currentPath === '/community' ? 'active' : ''}">Community hub</a>` : ''}
-          ${membershipEnabled ? `<a href="${communityPeopleUrl}" class="navbar__link navbar__link--indent ${currentPath.startsWith('/community/people') ? 'active' : ''}">People</a>` : ''}
-          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/events' ? 'active' : ''}">Events</a>` : ''}
-          ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">Committees</a>` : ''}
-          ${membershipEnabled ? `<a href="${meetingsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>` : ''}
-          ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent">Working Groups</a>` : ''}
-          ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
-          ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
-          ${membershipEnabled ? `<a href="${gatheringsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>` : ''}
-          <span class="navbar__link navbar__link--header">About</span>
-          <a href="${aboutUrl}" class="navbar__link navbar__link--indent ${currentPath === '/about' ? 'active' : ''}">About</a>
-          <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
-          <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
-          ${membershipEnabled ? `<a href="${latestBaseUrl}/perspectives" class="navbar__link navbar__link--indent ${currentPath === '/latest/perspectives' ? 'active' : ''}">Perspectives</a>` : ''}
-          ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
-          ${membershipEnabled ? `<a href="${latestBaseUrl}/announcements" class="navbar__link navbar__link--indent ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>` : ''}
           <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
           <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
-          <a href="${docsUrl}" class="navbar__link">Docs</a>
-        </div>
-        <div class="navbar__search-overlay" id="searchOverlay">
-          <div class="navbar__search-overlay-header">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input type="search" class="navbar__search-overlay-input" id="mobileSearchInput"
-                   placeholder="Search brands, publishers, properties..."
-                   autocomplete="off" aria-label="Search registries" />
-            <button class="navbar__search-overlay-close" id="searchOverlayClose" aria-label="Close search">&times;</button>
-          </div>
-          <div class="navbar__search-overlay-results" id="mobileSearchResults" role="listbox" aria-label="Search results"></div>
+          <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
+          <a href="${ctaUrl}" class="navbar__link ${currentPath === '/membership' || currentPath === '/dashboard' ? 'active' : ''}">${ctaText}</a>
+          <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
         </div>
       </nav>
     `;
@@ -392,12 +244,6 @@
         display: block;
       }
 
-      .navbar__title {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #000;
-      }
-
       .navbar__link {
         text-decoration: none;
         color: #000;
@@ -434,6 +280,35 @@
 
       .navbar__btn--primary:hover {
         background: #2d4fd6;
+      }
+
+      /* CTA button */
+      .navbar__btn--cta {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 16px;
+        background: var(--color-brand);
+        color: white !important;
+        border-radius: var(--radius-md, 6px);
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background 0.15s ease;
+        border: none;
+        cursor: pointer;
+      }
+      .navbar__btn--cta:hover {
+        background: var(--color-brand-hover);
+        text-decoration: none;
+      }
+
+      /* Vertical divider between left and right nav items */
+      .navbar__divider {
+        width: 1px;
+        height: 20px;
+        background: var(--color-border, #e2e8f0);
+        margin: 0 8px;
+        align-self: center;
       }
 
       /* Notification bell */
@@ -588,71 +463,6 @@
         display: block;
       }
 
-      /* Nav dropdown wrapper for hover menus */
-      .navbar__dropdown-wrapper {
-        position: relative;
-      }
-
-      .navbar__dropdown-trigger {
-        display: flex;
-        align-items: center;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: inherit;
-        font-family: inherit;
-        padding: 0.5rem 0.75rem;
-        padding-bottom: 1rem;
-        margin-bottom: -0.5rem;
-      }
-
-      .navbar__dropdown--nav {
-        display: none;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        min-width: 220px;
-      }
-
-      .navbar__dropdown-wrapper:hover .navbar__dropdown--nav {
-        display: block;
-      }
-
-      .navbar__dropdown--nav .navbar__dropdown-item.active {
-        color: var(--aao-primary, #1a36b4);
-        font-weight: 600;
-      }
-
-      .navbar__dropdown-divider {
-        height: 1px;
-        background: #e5e7eb;
-        margin: 0.5rem 0;
-      }
-
-      .navbar__dropdown-mcp {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        font-size: 0.75rem;
-        color: #6b7280;
-      }
-
-      .navbar__mcp-badge {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 0.125rem 0.375rem;
-        border-radius: 0.25rem;
-        font-size: 0.625rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-
-      .navbar__mcp-text {
-        color: #9ca3af;
-      }
-
       .navbar__dropdown-header {
         padding: 0.75rem 1rem;
         font-size: 0.75rem;
@@ -672,65 +482,6 @@
 
       .navbar__dropdown-item:hover {
         background: #f3f4f6;
-      }
-
-      .navbar__dropdown-header-text {
-        display: block;
-        padding: 0.5rem 1rem 0.25rem;
-        font-size: 0.7rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #6b7280;
-      }
-
-      /* Search inside dropdown */
-      .navbar__dropdown-search {
-        padding: 0.375rem 0.75rem;
-        position: relative;
-      }
-
-      .navbar__dropdown-search-input {
-        width: 100%;
-        padding: 5px 10px;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.375rem;
-        font-size: 0.8125rem;
-        font-family: inherit;
-        background: #f9fafb;
-        color: #000;
-        outline: none;
-        transition: border-color 0.2s;
-        box-sizing: border-box;
-      }
-
-      .navbar__dropdown-search-input::placeholder {
-        color: #9ca3af;
-      }
-
-      .navbar__dropdown-search-input:focus {
-        border-color: var(--aao-primary, #1a36b4);
-        background: #fff;
-      }
-
-      .navbar__dropdown-search-input::-webkit-search-cancel-button {
-        -webkit-appearance: none;
-      }
-
-      .navbar__dropdown-search-results {
-        display: none;
-        max-height: 280px;
-        overflow-y: auto;
-        border-top: 1px solid #e5e7eb;
-        margin-top: 0.375rem;
-      }
-
-      .navbar__dropdown-search-results.open {
-        display: block;
-      }
-
-      .navbar__dropdown-wrapper--pinned .navbar__dropdown--nav {
-        display: block;
       }
 
       .navbar__dropdown-item--danger {
@@ -801,13 +552,21 @@
           background: #7f1d1d;
         }
 
-        .navbar__dropdown--nav .navbar__dropdown-item.active {
-          color: var(--color-primary-400, #60a5fa);
-        }
-
         /* In dark mode, remove invert filter for AAO logo (it's already white) */
         .navbar__logo-img[data-invert="true"] {
           filter: none;
+        }
+
+        .navbar__btn--cta {
+          background: var(--color-primary-400, #60a5fa);
+          color: #1b1b1d !important;
+        }
+        .navbar__btn--cta:hover {
+          background: var(--color-primary-300, #93c5fd);
+        }
+
+        .navbar__divider {
+          background: #374151;
         }
       }
 
@@ -858,13 +617,21 @@
         background: #7f1d1d;
       }
 
-      [data-theme="dark"] .navbar__dropdown--nav .navbar__dropdown-item.active {
-        color: var(--color-primary-400, #60a5fa);
-      }
-
       /* In dark mode, remove invert filter for AAO logo */
       [data-theme="dark"] .navbar__logo-img[data-invert="true"] {
         filter: none;
+      }
+
+      [data-theme="dark"] .navbar__btn--cta {
+        background: var(--color-primary-400, #60a5fa);
+        color: #1b1b1d !important;
+      }
+      [data-theme="dark"] .navbar__btn--cta:hover {
+        background: var(--color-primary-300, #93c5fd);
+      }
+
+      [data-theme="dark"] .navbar__divider {
+        background: #374151;
       }
 
       /* Hamburger menu button */
@@ -963,43 +730,6 @@
         background: #f3f4f6;
       }
 
-      .navbar__mobile-menu .navbar__link--indent {
-        padding-left: 2.5rem;
-        font-size: 0.9375rem;
-        background: #fafafa;
-      }
-
-      .navbar__mobile-menu .navbar__link--header {
-        padding: 1rem 1.25rem 0.5rem;
-        color: #6b7280;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        cursor: default;
-        min-height: auto;
-        border-bottom: none;
-        background: #f9fafb;
-        margin-top: 0.5rem;
-      }
-
-      .navbar__mobile-menu .navbar__link--header:first-child {
-        margin-top: 0;
-      }
-
-      .navbar__mobile-menu .navbar__link--subheader {
-        padding: 0.75rem 1.25rem 0.25rem;
-        color: #9ca3af;
-        font-size: 0.6875rem;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        cursor: default;
-        min-height: auto;
-        border-bottom: none;
-        background: #fafafa;
-      }
-
       /* Safe area padding at bottom of mobile menu */
       .navbar__mobile-menu::after {
         content: '';
@@ -1014,170 +744,6 @@
         gap: 1.5rem;
       }
 
-      /* ========== Search Results (shared by dropdown + mobile overlay) ========== */
-      .navbar__search-group {
-        padding: 4px 0;
-      }
-
-      .navbar__search-group:not(:last-child) {
-        border-bottom: 1px solid #e5e7eb;
-      }
-
-      .navbar__search-group-header {
-        padding: 8px 12px 4px;
-        font-size: 0.6875rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #6b7280;
-      }
-
-      .navbar__search-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 12px;
-        text-decoration: none;
-        color: #000;
-        font-size: 0.8125rem;
-        transition: background-color 0.15s;
-        cursor: pointer;
-      }
-
-      .navbar__search-item:hover,
-      .navbar__search-item.active {
-        background: #f3f4f6;
-      }
-
-      .navbar__search-item-icon {
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.75rem;
-        flex-shrink: 0;
-      }
-
-      .navbar__search-item-icon--brand {
-        background: #eff0ff;
-        color: #1a36b4;
-      }
-
-      .navbar__search-item-icon--publisher {
-        background: #ecfdf5;
-        color: #059669;
-      }
-
-      .navbar__search-item-icon--property {
-        background: #f3e8ff;
-        color: #7c3aed;
-      }
-
-      .navbar__search-item-content {
-        flex: 1;
-        min-width: 0;
-      }
-
-      .navbar__search-item-title {
-        font-weight: 500;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .navbar__search-item-meta {
-        font-size: 0.6875rem;
-        color: #6b7280;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .navbar__search-empty,
-      .navbar__search-loading {
-        padding: 16px 12px;
-        text-align: center;
-        font-size: 0.8125rem;
-        color: #6b7280;
-      }
-
-      /* Mobile search button */
-      .navbar__search-mobile-btn {
-        display: none;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 4px;
-        color: #000;
-        line-height: 0;
-      }
-
-      /* Mobile search overlay */
-      .navbar__search-overlay {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: #fff;
-        z-index: 1002;
-        flex-direction: column;
-      }
-
-      .navbar__search-overlay.open {
-        display: flex;
-      }
-
-      .navbar__search-overlay-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 12px 16px;
-        border-bottom: 1px solid #e5e7eb;
-      }
-
-      .navbar__search-overlay-input {
-        flex: 1;
-        padding: 8px 12px;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        font-size: 1rem;
-        font-family: inherit;
-        outline: none;
-        color: #000;
-      }
-
-      .navbar__search-overlay-input:focus {
-        border-color: var(--aao-primary, #1a36b4);
-      }
-
-      .navbar__search-overlay-close {
-        font-size: 1.5rem;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 4px 8px;
-        color: #6b7280;
-        line-height: 1;
-      }
-
-      .navbar__search-overlay-results {
-        flex: 1;
-        overflow-y: auto;
-        padding: 8px 0;
-      }
-
-      .navbar__search-overlay-results .navbar__search-item {
-        padding: 12px 16px;
-      }
-
-      .navbar__search-overlay-results .navbar__search-group-header {
-        padding: 12px 16px 6px;
-      }
-
       /* Mobile responsive breakpoint */
       @media (max-width: 768px) {
         .navbar__links-desktop {
@@ -1188,88 +754,9 @@
           display: flex;
         }
 
-
-        .navbar__search-mobile-btn {
-          display: block;
-        }
-
         .navbar__items--right {
           gap: 0.75rem;
         }
-      }
-
-      /* Dark mode for search */
-      @media (prefers-color-scheme: dark) {
-        .navbar__dropdown-search-input {
-          background: #374151;
-          border-color: #4b5563;
-          color: #fff;
-        }
-        .navbar__dropdown-search-input:focus {
-          background: #1f2937;
-          border-color: var(--color-primary-400, #60a5fa);
-        }
-        .navbar__dropdown-search-results {
-          border-color: #374151;
-        }
-        .navbar__search-item {
-          color: #fff;
-        }
-        .navbar__search-item:hover,
-        .navbar__search-item.active {
-          background: #374151;
-        }
-        .navbar__search-group:not(:last-child) {
-          border-color: #374151;
-        }
-        .navbar__search-mobile-btn {
-          color: #fff;
-        }
-        .navbar__search-overlay {
-          background: #1b1b1d;
-        }
-        .navbar__search-overlay-header {
-          border-color: #374151;
-        }
-        .navbar__search-overlay-input {
-          background: #374151;
-          border-color: #4b5563;
-          color: #fff;
-        }
-      }
-
-      [data-theme="dark"] .navbar__dropdown-search-input {
-        background: #374151;
-        border-color: #4b5563;
-        color: #fff;
-      }
-      [data-theme="dark"] .navbar__dropdown-search-input:focus {
-        background: #1f2937;
-        border-color: var(--color-primary-400, #60a5fa);
-      }
-      [data-theme="dark"] .navbar__dropdown-search-results {
-        border-color: #374151;
-      }
-      [data-theme="dark"] .navbar__search-item {
-        color: #fff;
-      }
-      [data-theme="dark"] .navbar__search-item:hover,
-      [data-theme="dark"] .navbar__search-item.active {
-        background: #374151;
-      }
-      [data-theme="dark"] .navbar__search-mobile-btn {
-        color: #fff;
-      }
-      [data-theme="dark"] .navbar__search-overlay {
-        background: #1b1b1d;
-      }
-      [data-theme="dark"] .navbar__search-overlay-header {
-        border-color: #374151;
-      }
-      [data-theme="dark"] .navbar__search-overlay-input {
-        background: #374151;
-        border-color: #4b5563;
-        color: #fff;
       }
 
       /* Dark mode for hamburger and mobile menu */
@@ -1290,18 +777,6 @@
         .navbar__mobile-menu .navbar__link:hover,
         .navbar__mobile-menu .navbar__link:active {
           background: rgba(255, 255, 255, 0.1);
-        }
-
-        .navbar__mobile-menu .navbar__link--indent {
-          background: #141414;
-        }
-
-        .navbar__mobile-menu .navbar__link--header {
-          background: #111;
-        }
-
-        .navbar__mobile-menu .navbar__link--subheader {
-          background: #141414;
         }
 
         .navbar__backdrop {
@@ -1327,18 +802,6 @@
         background: rgba(255, 255, 255, 0.1);
       }
 
-      [data-theme="dark"] .navbar__mobile-menu .navbar__link--indent {
-        background: #141414;
-      }
-
-      [data-theme="dark"] .navbar__mobile-menu .navbar__link--header {
-        background: #111;
-      }
-
-      [data-theme="dark"] .navbar__mobile-menu .navbar__link--subheader {
-        background: #141414;
-      }
-
       [data-theme="dark"] .navbar__backdrop {
         background: rgba(0, 0, 0, 0.5);
       }
@@ -1362,68 +825,59 @@
   function buildFooterHTML() {
     const currentYear = new Date().getFullYear();
 
+    // Footer URLs - use relative on local, full AAO URLs on production
+    const aboutUrl = isLocal ? '/about' : `${aaoBaseUrl}/about`;
+    const membershipUrl = isLocal ? '/membership' : `${aaoBaseUrl}/membership`;
+    const leadershipUrl = isLocal ? '/about#leadership' : `${aaoBaseUrl}/about#leadership`;
+    const membersUrl = isLocal ? '/members' : `${aaoBaseUrl}/members`;
+    const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
+    const committeesUrl = isLocal ? '/committees' : `${aaoBaseUrl}/committees`;
+    const latestBaseUrl = isLocal ? '/latest' : `${aaoBaseUrl}/latest`;
+
     return `
       <footer class="aao-footer">
         <div class="aao-footer__inner">
           <div class="aao-footer__columns">
-            <div class="aao-footer__column">
-              <div class="aao-footer__title">AdCP</div>
-              <ul class="aao-footer__list">
-                <li><a href="https://docs.adcontextprotocol.org/docs/intro" target="_blank" rel="noopener noreferrer">Getting Started</a></li>
-                <li><a href="https://docs.adcontextprotocol.org/docs/signals/overview" target="_blank" rel="noopener noreferrer">Signals Protocol</a></li>
-              </ul>
-            </div>
-            <div class="aao-footer__column">
-              <div class="aao-footer__title">adagents.json</div>
-              <ul class="aao-footer__list">
-                <li><a href="/adagents/builder">Builder</a></li>
-                <li><a href="https://docs.adcontextprotocol.org/docs/media-buy/capability-discovery/adagents" target="_blank" rel="noopener noreferrer">Specification</a></li>
-              </ul>
-            </div>
-            <div class="aao-footer__column">
-              <div class="aao-footer__title">brand.json</div>
-              <ul class="aao-footer__list">
-                <li><a href="/brand/builder">Builder</a></li>
-                <li><a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json" target="_blank" rel="noopener noreferrer">Specification</a></li>
-              </ul>
-            </div>
-            <div class="aao-footer__column">
-              <div class="aao-footer__title">Developers</div>
-              <ul class="aao-footer__list">
-                <li><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer">GitHub</a></li>
-                <li><a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA" target="_blank" rel="noopener noreferrer">Slack</a></li>
-              </ul>
-            </div>
-            <div class="aao-footer__column">
-              <div class="aao-footer__title">Registry</div>
-              <ul class="aao-footer__list">
-                <li><a href="/members">Members</a></li>
-                <li><a href="/agents">Agents</a></li>
-                <li><a href="/brands">Brands</a></li>
-                <li><a href="/publishers">Publishers</a></li>
-              </ul>
+            <div class="aao-footer__column aao-footer__column--brand">
+              <div class="aao-footer__brand-name">AgenticAdvertising.org</div>
+              <p class="aao-footer__brand-mission">The trade association for agentic advertising. We develop open standards, certify practitioners, and bring together the companies building the future of AI-powered media.</p>
             </div>
             <div class="aao-footer__column">
               <div class="aao-footer__title">Organization</div>
               <ul class="aao-footer__list">
-                <li><a href="/about">About</a></li>
-                <li><a href="/governance">Governance</a></li>
-                <li><a href="/membership">Membership</a></li>
+                <li><a href="${aboutUrl}">About</a></li>
+                <li><a href="${membershipUrl}">Membership</a></li>
+                <li><a href="${leadershipUrl}">Leadership</a></li>
+                <li><a href="${membersUrl}">Members</a></li>
               </ul>
             </div>
             <div class="aao-footer__column">
-              <div class="aao-footer__title">Legal</div>
+              <div class="aao-footer__title">Resources</div>
               <ul class="aao-footer__list">
-                <li><a href="/api/agreement?type=privacy_policy">Privacy Policy</a></li>
-                <li><a href="/api/agreement?type=terms_of_service">Terms of Use</a></li>
-                <li><a href="/api/agreement?type=bylaws">Bylaws</a></li>
-                <li><a href="/api/agreement?type=ip_policy">IP Policy</a></li>
+                <li><a href="/certification">Academy</a></li>
+                <li><a href="/chat">Ask Addie</a></li>
+                <li><a href="${docsUrl}">AdCP Docs</a></li>
+                <li><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+              </ul>
+            </div>
+            <div class="aao-footer__column">
+              <div class="aao-footer__title">Community</div>
+              <ul class="aao-footer__list">
+                <li><a href="${eventsUrl}">Events</a></li>
+                <li><a href="${committeesUrl}">Committees</a></li>
+                <li><a href="${latestBaseUrl}/perspectives">Perspectives</a></li>
+                <li><a href="${latestBaseUrl}/announcements">Announcements</a></li>
               </ul>
             </div>
           </div>
           <div class="aao-footer__bottom">
+            <div class="aao-footer__legal">
+              <a href="/api/agreement?type=privacy_policy">Privacy</a>
+              <a href="/api/agreement?type=terms_of_service">Terms</a>
+              <a href="/api/agreement?type=bylaws">Bylaws</a>
+            </div>
             <div class="aao-footer__copyright">
-              © ${currentYear} Agentic Advertising Organization
+              &copy; ${currentYear} Agentic Advertising Organization
             </div>
           </div>
         </div>
@@ -1448,13 +902,31 @@
 
       .aao-footer__columns {
         display: grid;
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: 2fr 1fr 1fr 1fr;
         gap: 2rem;
         margin-bottom: 2rem;
       }
 
       .aao-footer__column {
         min-width: 0;
+      }
+
+      .aao-footer__column--brand {
+        padding-right: 2rem;
+      }
+
+      .aao-footer__brand-name {
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 0.75rem;
+      }
+
+      .aao-footer__brand-mission {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: #9ca3af;
+        margin: 0;
       }
 
       .aao-footer__title {
@@ -1488,7 +960,25 @@
       .aao-footer__bottom {
         border-top: 1px solid #374151;
         padding-top: 1.5rem;
-        text-align: center;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .aao-footer__legal {
+        display: flex;
+        gap: 1.5rem;
+      }
+
+      .aao-footer__legal a {
+        color: #6b7280;
+        text-decoration: none;
+        font-size: 0.75rem;
+        transition: color 0.2s;
+      }
+
+      .aao-footer__legal a:hover {
+        color: #9ca3af;
       }
 
       .aao-footer__copyright {
@@ -1498,8 +988,19 @@
 
       @media (max-width: 768px) {
         .aao-footer__columns {
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: 1fr 1fr;
           gap: 1.5rem;
+        }
+
+        .aao-footer__column--brand {
+          grid-column: 1 / -1;
+          padding-right: 0;
+        }
+
+        .aao-footer__bottom {
+          flex-direction: column;
+          gap: 0.75rem;
+          text-align: center;
         }
       }
 
@@ -1674,7 +1175,7 @@
       });
 
       // Close mobile menu when clicking a link
-      mobileMenu.querySelectorAll('.navbar__link:not(.navbar__link--header):not(.navbar__link--subheader)').forEach(link => {
+      mobileMenu.querySelectorAll('.navbar__link').forEach(link => {
         link.addEventListener('click', () => {
           toggleMobileMenu(false);
         });
@@ -1695,12 +1196,6 @@
       if (mobileMenu && mobileMenu.classList.contains('open')) {
         toggleMobileMenu(false);
       }
-      // Close registry search results if clicking outside
-      const regSearchResults = document.getElementById('registrySearchResults');
-      const regSearchInput = document.getElementById('registrySearchInput');
-      if (regSearchResults && regSearchInput && !regSearchInput.contains(e.target) && !regSearchResults.contains(e.target)) {
-        regSearchResults.classList.remove('open');
-      }
     });
 
     // Close menu on escape key
@@ -1711,244 +1206,8 @@
         if (mobileMenu && mobileMenu.classList.contains('open')) {
           toggleMobileMenu(false);
         }
-        // Close registry search and unpin dropdown
-        const regSearchEl = document.getElementById('registrySearchInput');
-        const regResults = document.getElementById('registrySearchResults');
-        if (regResults) regResults.classList.remove('open');
-        if (regSearchEl) regSearchEl.blur();
-        const searchOverlay = document.getElementById('searchOverlay');
-        if (searchOverlay && searchOverlay.classList.contains('open')) {
-          searchOverlay.classList.remove('open');
-          document.body.style.overflow = '';
-        }
       }
     });
-  }
-
-  // Global search functionality
-  function setupGlobalSearch() {
-    const registrySearchInput = document.getElementById('registrySearchInput');
-    const registrySearchResults = document.getElementById('registrySearchResults');
-    const mobileSearchBtn = document.getElementById('mobileSearchBtn');
-    const searchOverlay = document.getElementById('searchOverlay');
-    const mobileSearchInput = document.getElementById('mobileSearchInput');
-    const mobileSearchResults = document.getElementById('mobileSearchResults');
-    const searchOverlayClose = document.getElementById('searchOverlayClose');
-
-    let searchTimeout;
-    let searchAbortController;
-    let activeIndex = -1;
-
-    function escapeHtml(str) {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
-    }
-
-    function renderResults(data, container) {
-      const totalResults = (data.brands?.length || 0) +
-                           (data.publishers?.length || 0) +
-                           (data.properties?.length || 0);
-
-      if (totalResults === 0) {
-        container.innerHTML = '<div class="navbar__search-empty">No results found</div>';
-        return;
-      }
-
-      let html = '';
-
-      if (data.brands && data.brands.length > 0) {
-        html += '<div class="navbar__search-group">';
-        html += '<div class="navbar__search-group-header">Brands</div>';
-        data.brands.forEach(function(brand) {
-          html += '<a href="/brand/view/' + encodeURIComponent(brand.domain) + '" class="navbar__search-item" role="option">';
-          html += '<div class="navbar__search-item-icon navbar__search-item-icon--brand">B</div>';
-          html += '<div class="navbar__search-item-content">';
-          html += '<div class="navbar__search-item-title">' + escapeHtml(brand.brand_name || brand.domain) + '</div>';
-          html += '<div class="navbar__search-item-meta">' + escapeHtml(brand.domain) + '</div>';
-          html += '</div></a>';
-        });
-        html += '</div>';
-      }
-
-      // Merge publishers (member-org) and properties (registry) into one group
-      var allPublishers = [];
-      var seenDomains = {};
-      if (data.properties && data.properties.length > 0) {
-        data.properties.forEach(function(prop) {
-          allPublishers.push({ domain: prop.domain, meta: prop.source + (prop.property_count ? ' \u00b7 ' + prop.property_count + ' properties' : '') });
-          seenDomains[prop.domain] = true;
-        });
-      }
-      if (data.publishers && data.publishers.length > 0) {
-        data.publishers.forEach(function(pub) {
-          if (!seenDomains[pub.domain]) {
-            allPublishers.push({ domain: pub.domain, meta: pub.member && pub.member.display_name ? pub.member.display_name : '' });
-            seenDomains[pub.domain] = true;
-          }
-        });
-      }
-      if (allPublishers.length > 0) {
-        html += '<div class="navbar__search-group">';
-        html += '<div class="navbar__search-group-header">Publishers</div>';
-        allPublishers.forEach(function(pub) {
-          html += '<a href="/property/view/' + encodeURIComponent(pub.domain) + '" class="navbar__search-item" role="option">';
-          html += '<div class="navbar__search-item-icon navbar__search-item-icon--publisher">P</div>';
-          html += '<div class="navbar__search-item-content">';
-          html += '<div class="navbar__search-item-title">' + escapeHtml(pub.domain) + '</div>';
-          if (pub.meta) {
-            html += '<div class="navbar__search-item-meta">' + escapeHtml(pub.meta) + '</div>';
-          }
-          html += '</div></a>';
-        });
-        html += '</div>';
-      }
-
-      container.innerHTML = html;
-    }
-
-    async function performSearch(query, resultsContainer) {
-      if (searchAbortController) {
-        searchAbortController.abort();
-      }
-      searchAbortController = new AbortController();
-
-      resultsContainer.innerHTML = '<div class="navbar__search-loading">Searching...</div>';
-      if (!resultsContainer.classList.contains('open')) {
-        resultsContainer.classList.add('open');
-      }
-
-      try {
-        const response = await fetch('/api/search?q=' + encodeURIComponent(query), {
-          signal: searchAbortController.signal
-        });
-        if (!response.ok) throw new Error('Search failed');
-        const data = await response.json();
-        renderResults(data, resultsContainer);
-        activeIndex = -1;
-      } catch (error) {
-        if (error.name === 'AbortError') return;
-        resultsContainer.innerHTML = '<div class="navbar__search-empty">Search failed</div>';
-      }
-    }
-
-    function handleInput(input, resultsContainer) {
-      const query = input.value.trim();
-      if (query.length < 2) {
-        resultsContainer.classList.remove('open');
-        resultsContainer.innerHTML = '';
-        return;
-      }
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(function() {
-        performSearch(query, resultsContainer);
-      }, 300);
-    }
-
-    function handleKeydown(e, resultsContainer) {
-      const items = resultsContainer.querySelectorAll('.navbar__search-item');
-      if (!items.length) return;
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        activeIndex = Math.min(activeIndex + 1, items.length - 1);
-        updateActive(items);
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        activeIndex = Math.max(activeIndex - 1, -1);
-        updateActive(items);
-      } else if (e.key === 'Enter' && activeIndex >= 0 && items[activeIndex]) {
-        e.preventDefault();
-        items[activeIndex].click();
-      }
-    }
-
-    function updateActive(items) {
-      items.forEach(function(item, i) {
-        if (i === activeIndex) {
-          item.classList.add('active');
-          item.scrollIntoView({ block: 'nearest' });
-        } else {
-          item.classList.remove('active');
-        }
-      });
-    }
-
-    // Registry search inside Projects dropdown
-    if (registrySearchInput && registrySearchResults) {
-      // Pin the dropdown open while search input is focused or has results
-      const dropdownWrapper = registrySearchInput.closest('.navbar__dropdown-wrapper');
-
-      function pinDropdown(pin) {
-        if (dropdownWrapper) {
-          dropdownWrapper.classList.toggle('navbar__dropdown-wrapper--pinned', pin);
-        }
-      }
-
-      registrySearchInput.addEventListener('focus', function() {
-        pinDropdown(true);
-      });
-
-      registrySearchInput.addEventListener('blur', function() {
-        // Delay to allow click on search results
-        setTimeout(function() {
-          if (!registrySearchInput.matches(':focus')) {
-            pinDropdown(false);
-            registrySearchResults.classList.remove('open');
-          }
-        }, 200);
-      });
-
-      // Stop click events from bubbling (prevents dropdown close)
-      registrySearchInput.addEventListener('click', function(e) {
-        e.stopPropagation();
-      });
-      registrySearchResults.addEventListener('click', function(e) {
-        e.stopPropagation();
-      });
-
-      registrySearchInput.addEventListener('input', function() {
-        handleInput(registrySearchInput, registrySearchResults);
-      });
-      registrySearchInput.addEventListener('keydown', function(e) {
-        handleKeydown(e, registrySearchResults);
-      });
-    }
-
-    // Mobile search overlay
-    if (mobileSearchBtn && searchOverlay) {
-      mobileSearchBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        searchOverlay.classList.add('open');
-        document.body.style.overflow = 'hidden';
-        if (mobileSearchInput) {
-          setTimeout(function() { mobileSearchInput.focus(); }, 100);
-        }
-      });
-    }
-
-    if (searchOverlayClose && searchOverlay) {
-      searchOverlayClose.addEventListener('click', function() {
-        searchOverlay.classList.remove('open');
-        document.body.style.overflow = '';
-        if (mobileSearchInput) {
-          mobileSearchInput.value = '';
-        }
-        if (mobileSearchResults) {
-          mobileSearchResults.innerHTML = '';
-        }
-      });
-    }
-
-    if (mobileSearchInput && mobileSearchResults) {
-      mobileSearchInput.addEventListener('input', function() {
-        handleInput(mobileSearchInput, mobileSearchResults);
-      });
-      mobileSearchInput.addEventListener('keydown', function(e) {
-        handleKeydown(e, mobileSearchResults);
-      });
-    }
   }
 
   // Insert CSS, navigation, and footer when DOM is ready
@@ -1984,9 +1243,8 @@
       }
     }
 
-    // Setup dropdown toggle and global search
+    // Setup dropdown toggle
     setupDropdown();
-    setupGlobalSearch();
   }
 
   // Run when DOM is ready

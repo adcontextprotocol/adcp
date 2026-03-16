@@ -3,282 +3,78 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AgenticAdvertising.org: About the Organization</title>
-  <meta name="description" content="AgenticAdvertising.org is the independent industry body overseeing development, education, and rollout of standards and practices for agentic advertising deployment.">
+  <title>About AgenticAdvertising.org</title>
+  <meta name="description" content="AgenticAdvertising.org is the member organization shaping how AI and advertising work together. Open standards, human governance, and education for the agentic era.">
+  <meta property="og:title" content="About AgenticAdvertising.org">
+  <meta property="og:description" content="The member organization shaping how AI and advertising work together — for consumers, businesses, and the people who create the content we all depend on.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/about">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
   <style>
     /* =============================================================================
-       About Page styles
-       Uses design system variables - see /design-system.css for tokens
+       About page — extends layout.css panel system
+       Sub-nav styles are in layout.css
        ============================================================================= */
 
-    /* Hero - use article variant (shorter) */
-    .hero--about {
-      padding: var(--space-12) var(--space-5) var(--space-8);
-    }
-    .hero--about .hero-container {
-      max-width: var(--container-md);
-    }
-    .hero--about h1 {
-      font-size: var(--text-4xl);
-      margin-bottom: var(--space-4);
-    }
-
-    /* Sub-Navigation */
-    .sub-nav {
-      background: var(--color-bg-page);
-      border-bottom: var(--border-1) solid var(--color-border);
-      position: sticky;
-      top: 60px;
-      z-index: 100;
-    }
-    .sub-nav-container {
-      max-width: var(--container-md);
-      margin: 0 auto;
-      padding: 0 var(--space-5);
-    }
-    .sub-nav-links {
-      display: flex;
-      gap: 0;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .sub-nav-links a {
-      padding: var(--space-4) var(--space-6);
-      color: var(--color-text-secondary);
-      text-decoration: none;
-      font-weight: var(--font-medium);
-      font-size: var(--text-sm);
-      white-space: nowrap;
-      border-bottom: var(--border-3) solid transparent;
-      transition: var(--transition-all);
-    }
-    .sub-nav-links a:hover {
-      color: var(--aao-primary);
-      background: var(--color-primary-50);
-    }
-    .sub-nav-links a.active {
-      color: var(--aao-primary);
-      border-bottom-color: var(--aao-primary);
-    }
-
-    /* Main Content */
-    .container {
-      max-width: var(--container-md);
-      margin: 0 auto;
-      padding: var(--space-8) var(--space-5);
-    }
+    /* Section anchors */
     .section {
-      padding: 0;
-      margin-bottom: var(--space-6);
       scroll-margin-top: 140px;
     }
-    .section:last-child {
-      margin-bottom: 0;
-    }
-    .section h2 {
-      font-size: var(--text-2xl);
-      font-weight: var(--font-bold);
-      color: var(--aao-primary);
-      margin-bottom: var(--space-6);
-      padding-bottom: var(--space-3);
-      border-bottom: var(--border-3) solid var(--aao-primary);
-    }
-    .section h3 {
-      font-size: var(--text-xl);
-      font-weight: var(--font-semibold);
-      color: var(--aao-black);
-      margin-top: var(--space-6);
-      margin-bottom: var(--space-4);
-    }
-    .section h3:first-child {
-      margin-top: 0;
-    }
-    .section p {
-      font-size: var(--text-lg);
-      line-height: var(--leading-relaxed);
-      color: var(--aao-gray-dark);
-      margin-bottom: var(--space-4);
-    }
-    .section p:last-child {
-      margin-bottom: 0;
-    }
-    .section a:not(.btn) {
-      color: var(--aao-primary);
-      font-weight: var(--font-medium);
-    }
-    .section a:not(.btn):hover {
-      text-decoration: underline;
-    }
-    .section ul {
-      margin: var(--space-4) 0 var(--space-6) var(--space-6);
-      color: var(--aao-gray-dark);
-    }
-    .section ul li {
-      margin-bottom: var(--space-2);
-      font-size: var(--text-base);
-      line-height: var(--leading-relaxed);
-    }
 
-    /* Mission Statement Box */
-    .mission-box {
-      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
-      border: var(--border-2) solid var(--aao-accent);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      margin: var(--space-6) 0;
-    }
-    .mission-label {
-      display: inline-block;
-      background: var(--aao-primary);
-      color: white;
-      padding: var(--space-1) var(--space-3);
-      border-radius: var(--radius-full);
-      font-size: var(--text-xs);
-      font-weight: var(--font-bold);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: var(--space-4);
-    }
-    .mission-box p {
-      font-size: var(--text-lg);
-      line-height: var(--leading-relaxed);
-      color: var(--color-primary-800);
-      font-weight: var(--font-medium);
-      margin: 0;
-    }
-
-    /* News Banner */
-    .news-banner {
-      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
-      border: var(--border-2) solid var(--aao-accent);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6) var(--space-6);
-      margin-bottom: var(--space-6);
-    }
-    .news-pill {
-      display: inline-block;
-      background: var(--aao-primary);
-      color: white;
-      padding: var(--space-1) var(--space-3);
-      border-radius: var(--radius-full);
-      font-size: var(--text-xs);
-      font-weight: var(--font-bold);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: var(--space-3);
-    }
-    .news-banner p {
-      color: var(--color-primary-800);
-      font-size: var(--text-base);
-      line-height: var(--leading-normal);
-      margin: 0;
-    }
-    .news-banner a {
-      color: var(--aao-primary);
-      font-weight: var(--font-semibold);
-    }
-    .news-banner a:hover {
-      text-decoration: underline;
-    }
-
-    /* Two Column Comparison */
-    .comparison-grid {
+    /* Pillars grid */
+    .pillars-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: var(--space-6);
       margin-top: var(--space-6);
     }
-    .comparison-card {
-      background: var(--color-bg-page);
+    .pillar-card {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
       padding: var(--space-6);
-      border-left: var(--border-4) solid var(--aao-primary);
+      border-top: 4px solid var(--color-brand);
     }
-    .comparison-card h4 {
+    .pillar-card h3 {
       font-size: var(--text-lg);
       font-weight: var(--font-bold);
-      color: var(--aao-primary);
-      margin-bottom: var(--space-2);
+      color: var(--color-text-heading);
+      margin: 0 0 var(--space-3) 0;
     }
-    .comparison-card .subtitle {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      font-style: italic;
-      margin-bottom: var(--space-3);
-    }
-    .comparison-card p {
-      font-size: var(--text-sm);
-      line-height: var(--leading-relaxed);
-      color: var(--aao-gray-dark);
-      margin-bottom: 0;
-    }
-
-    /* CTA Section */
-    .cta-section {
-      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
-      border: var(--border-2) solid var(--aao-accent);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      text-align: center;
-      margin-top: var(--space-6);
-    }
-    .cta-section h3 {
-      font-size: var(--text-xl);
-      color: var(--aao-primary);
-      margin-bottom: var(--space-4);
-      margin-top: 0;
-    }
-    .cta-section p {
-      color: var(--aao-gray-dark);
-      margin-bottom: var(--space-6);
-    }
-
-    /* Founding Member Banner */
-    .founding-banner {
-      background: linear-gradient(135deg, var(--aao-primary) 0%, var(--color-primary-700) 100%);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      margin-bottom: var(--space-6);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-6);
-      flex-wrap: wrap;
-    }
-    .founding-banner-content h3 {
-      font-size: var(--text-xl);
-      font-weight: var(--font-bold);
-      color: white;
-      margin: 0 0 var(--space-2) 0;
-    }
-    .founding-banner-content p {
+    .pillar-card p {
       font-size: var(--text-base);
-      color: var(--color-primary-100);
+      line-height: var(--leading-relaxed);
+      color: var(--color-gray-600);
       margin: 0;
     }
-    .founding-banner .btn {
-      background: white;
-      color: var(--aao-primary);
-      font-weight: var(--font-semibold);
-      white-space: nowrap;
+    .pillar-card a {
+      color: var(--color-brand);
+      font-weight: var(--font-medium);
     }
-    .founding-banner .btn:hover {
-      background: var(--color-primary-50);
+
+    /* Audience list */
+    .audience-list {
+      list-style: none;
+      padding: 0;
+      margin: var(--space-6) 0 0 0;
     }
-    .founding-banner .urgency {
-      font-size: var(--text-sm);
-      color: var(--color-warning-300);
-      margin-top: var(--space-2);
+    .audience-list li {
+      font-size: var(--text-lg);
+      line-height: var(--leading-relaxed);
+      color: var(--color-gray-700);
+      padding: var(--space-4) 0;
+      border-bottom: 1px solid var(--color-border);
     }
-    @media (max-width: 640px) {
-      .founding-banner {
-        flex-direction: column;
-        text-align: center;
-      }
+    .audience-list li:last-child {
+      border-bottom: none;
     }
-    /* Leadership Section */
+    .audience-list li strong {
+      color: var(--color-text-heading);
+    }
+
+    /* Leaders grid */
     .leaders-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -288,7 +84,8 @@
     .leader-card {
       text-align: center;
       padding: var(--space-6) var(--space-5);
-      background: var(--color-bg-page);
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
     }
     .leader-photo {
@@ -297,12 +94,6 @@
       border-radius: 50%;
       background: linear-gradient(135deg, var(--color-brand), var(--color-primary-500));
       margin: 0 auto var(--space-4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: var(--text-4xl);
-      font-weight: var(--font-bold);
       overflow: hidden;
     }
     .leader-photo img {
@@ -313,12 +104,12 @@
     .leader-name {
       font-size: var(--text-lg);
       font-weight: var(--font-semibold);
-      color: var(--aao-black);
+      color: var(--color-text-heading);
       margin-bottom: var(--space-1);
     }
     .leader-title {
       font-size: var(--text-sm);
-      color: var(--aao-primary);
+      color: var(--color-brand);
       font-weight: var(--font-medium);
       margin-bottom: var(--space-3);
     }
@@ -328,35 +119,92 @@
       line-height: var(--leading-normal);
     }
 
-    /* Info Box */
+    /* Info box */
     .info-box {
-      background: var(--color-bg-page);
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
-      padding: var(--space-4);
-      margin-top: var(--space-4);
+      padding: var(--space-5);
+      margin-top: var(--space-6);
     }
     .info-box p {
       font-size: var(--text-base);
       margin: 0;
     }
 
+    /* Org details list */
+    .org-details {
+      list-style: none;
+      padding: 0;
+      margin: var(--space-4) 0;
+    }
+    .org-details li {
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+      color: var(--color-gray-700);
+      padding: var(--space-2) 0;
+    }
+
+    /* CTA banner */
+    .join-banner {
+      background: var(--color-primary-50);
+      border-radius: var(--radius-lg);
+      padding: var(--space-10) var(--space-8);
+      text-align: center;
+    }
+    .join-banner h2 {
+      font-size: var(--text-2xl);
+      margin-bottom: var(--space-3);
+      color: var(--color-text-heading);
+    }
+    .join-banner p {
+      color: var(--color-text-secondary);
+      max-width: 560px;
+      margin: 0 auto var(--space-6);
+      font-size: var(--text-lg);
+    }
+    .join-banner-actions {
+      display: flex;
+      gap: var(--space-4);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn-join {
+      display: inline-block;
+      padding: var(--space-3) var(--space-8);
+      border-radius: var(--radius-md);
+      font-weight: var(--font-semibold);
+      text-decoration: none;
+      font-size: var(--text-base);
+    }
+    .btn-join--primary {
+      background: var(--color-brand);
+      color: #fff;
+    }
+    .btn-join--primary:hover {
+      opacity: 0.9;
+    }
+    .btn-join--secondary {
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+    }
+    .btn-join--secondary:hover {
+      border-color: var(--color-brand);
+    }
 
     @media (max-width: 768px) {
-      .hero {
-        padding: var(--space-8) var(--space-4) var(--space-6);
-      }
-      .hero h1 {
-        font-size: var(--text-2xl);
-      }
-      .container {
-        padding: var(--space-6) var(--space-4);
+      .pillars-grid {
+        grid-template-columns: 1fr;
       }
       .sub-nav-links a {
         padding: var(--space-3) var(--space-4);
-        font-size: var(--text-sm);
       }
       .section {
         scroll-margin-top: 120px;
+      }
+      .join-banner {
+        padding: var(--space-8) var(--space-5);
       }
     }
   </style>
@@ -364,228 +212,159 @@
 <body>
   <!-- Navigation -->
   <div id="adcp-nav"></div>
-  <script src="/nav.js"></script>
 
-  <!-- Hero Section -->
-  <section class="hero hero--about">
+  <!-- Hero -->
+  <section class="hero hero--clean">
     <div class="hero-container">
       <h1>AgenticAdvertising.org</h1>
-      <p class="hero-subtitle">The independent industry organization advancing open standards for AI-powered advertising</p>
+      <p class="hero-subtitle">The member organization shaping how AI and advertising work together &mdash; for consumers, businesses, and the people who create the content we all depend on.</p>
     </div>
   </section>
 
-  <!-- Sub-Navigation -->
+  <!-- Sub-navigation -->
   <nav class="sub-nav">
-    <div class="sub-nav-container">
+    <div class="sub-nav-inner">
       <div class="sub-nav-links">
-        <a href="#what-is-agentic-advertising" class="active">What is Agentic Advertising?</a>
-        <a href="#about-aao">About AAO</a>
-        <a href="/membership">Membership</a>
+        <a href="#why-we-exist" class="active">Why we exist</a>
+        <a href="#what-we-do">What we do</a>
+        <a href="#who-we-serve">Who we serve</a>
+        <a href="#members">Our members</a>
         <a href="#leadership">Leadership</a>
-        <a href="#organization-details">Organization Details</a>
-        <a href="#news">News</a>
+        <a href="#organization">Organization</a>
       </div>
     </div>
   </nav>
 
-  <!-- Main Content -->
-  <div class="container">
-    <!-- News Banner -->
-    <div class="news-banner">
-      <span class="news-pill">Latest News</span>
-      <p>
-        Industry veterans Randall Rothenberg and Matthew Egol to guide the formation of a new independent organization following Ad Context Protocol launch.
-        <a href="/perspectives/launch-announcement">Read the press release</a> + see Randall + Matt's thoughts on <a href="https://winningexperience.substack.com/p/the-three-superpowers-of-agentic" target="_blank" rel="noopener noreferrer">The Three Superpowers of Agentic Advertising</a>.
-      </p>
+  <!-- Why we exist -->
+  <div class="panel section" id="why-we-exist">
+    <div class="panel-text">
+      <p class="kicker">Why we exist</p>
+      <p class="drop">Advertising funds the open web. It pays for the journalism you read, the shows you watch, the apps you use for free.</p>
+      <p>When it works, it connects businesses with the people they serve &mdash; and everyone benefits.</p>
+      <p>AI agents are changing how that connection happens. They can find audiences, match budgets to outcomes, and execute across dozens of systems at once. A local business gets the media buying intelligence that used to require a six-figure agency retainer. A mid-size publisher competes for premium campaigns without a twenty-person sales team.</p>
+      <p>But speed without judgment is just fast mistakes. Without governance, agents optimize for whatever metric they're pointed at &mdash; even when that doesn't align with what a brand intended, what a publisher deserves, or what a consumer should experience.</p>
+      <p class="closing">AgenticAdvertising.org exists to make sure humans stay in the decisions that matter.</p>
     </div>
-
-    <!-- What is Agentic Advertising Section -->
-    <section class="section" id="what-is-agentic-advertising">
-      <h2>What is Agentic Advertising?</h2>
-      <p>
-        <strong>Agentic advertising</strong> is a new paradigm where AI agents autonomously execute advertising tasks on behalf of brands, agencies, and publishers. Instead of humans manually navigating dozens of platforms, configuring campaigns, and reconciling data, AI agents handle these operations through standardized protocols.
-      </p>
-      <p>
-        This isn't just automation. It's a fundamental shift in how advertising gets done:
-      </p>
-      <ul>
-        <li><strong>Natural language briefs</strong> replace complex platform interfaces</li>
-        <li><strong>Agents negotiate</strong> inventory, pricing, and placement across publishers</li>
-        <li><strong>Open standards</strong> enable interoperability between any buyer and seller</li>
-        <li><strong>Humans focus on strategy</strong> while agents handle execution</li>
-      </ul>
-
-      <h3>Why Now?</h3>
-      <p>
-        The advertising ecosystem has been fragmented for decades. Every platform has its own API, workflow, and data format. AI agents can bridge this fragmentation, but only if they speak a common language. That's where open standards come in.
-      </p>
-      <p>
-        <a href="/perspectives/agentic-protocol-landscape">Learn more about the broader agentic protocol landscape</a> - including how horizontal middleware like the Agentic AI Foundation (AAIF) works alongside vertical protocols like AdCP and the Agentic Commerce Protocol (ACP).
-      </p>
-
-      <h3>AAO vs. AdCP</h3>
-      <p>
-        <strong>Key distinction:</strong> AdCP is a technical standard. AgenticAdvertising.org is the organization ensuring standards like AdCP develop as shared infrastructure that benefits everyone.
-      </p>
-      <div class="comparison-grid">
-        <div class="comparison-card">
-          <h4>AgenticAdvertising.org</h4>
-          <p class="subtitle">The Organization</p>
-          <p>
-            An independent industry body that shapes standards, defines best practices, fosters collaboration, and advances understanding of agentic advertising.
-          </p>
-        </div>
-        <div class="comparison-card">
-          <h4>Ad Context Protocol (AdCP)</h4>
-          <p class="subtitle">The Technical Standard</p>
-          <p>
-            The first protocol enabling agent-to-agent communication in advertising. Built by the community, governed by AAO. <a href="https://docs.adcontextprotocol.org">Learn more</a>.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <!-- About AAO Section -->
-    <section class="section" id="about-aao">
-      <h2>About AgenticAdvertising.org</h2>
-
-      <div class="mission-box">
-        <span class="mission-label">Our Mission</span>
-        <p>
-          Rebuild the media and marketing ecosystem around collaboration. After decades of fragmentation that separated creativity from distribution and buried strategy under infrastructure challenges, AI is enabling something fundamentally different: open standards, transparent practices, and interoperable systems that let brands, agencies, and publishers focus on what actually drives business results.
-        </p>
-      </div>
-
-      <p>
-        AgenticAdvertising.org exists to make sure this opportunity doesn't get lost to proprietary platforms and fragmented approaches. We're an independent industry organization dedicated to ensuring agentic AI develops as shared infrastructure that benefits the entire ecosystem.
-      </p>
-
-      <h3>What We Do</h3>
-      <ul>
-        <li><strong>Standards Development</strong> - Govern and evolve open protocols like AdCP</li>
-        <li><strong>Education</strong> - Help the industry understand and adopt agentic advertising</li>
-        <li><strong>Best Practices</strong> - Define guidelines for responsible deployment</li>
-        <li><strong>Community Building</strong> - Connect brands, agencies, publishers, and technologists</li>
-      </ul>
-
-      <h3>Our History</h3>
-      <p>
-        AgenticAdvertising.org launched in December 2025 following the public release of the Ad Context Protocol. Industry veterans Randall Rothenberg and Matthew Egol are guiding the organization's formation, with an initial group of founding members providing the funding and strategic direction to establish governance and programs.
-      </p>
-    </section>
-
-    <!-- Membership Section -->
-    <section class="section" id="membership">
-      <h2>Membership</h2>
-      <p>
-        Membership in AgenticAdvertising.org is open to any organization committed to advancing open standards in AI-powered advertising. Members shape the future of the industry by participating in standards development, working groups, and strategic initiatives.
-      </p>
-
-      <h3>Who Can Join</h3>
-      <ul>
-        <li><strong>Brands</strong> - Advertisers seeking to modernize their media buying</li>
-        <li><strong>Agencies</strong> - Media and creative agencies building for the agentic future</li>
-        <li><strong>Publishers</strong> - Content creators and media owners enabling agent access to inventory</li>
-        <li><strong>Technology Providers</strong> - Ad tech companies building agentic infrastructure</li>
-      </ul>
-
-      <h3>Member Benefits</h3>
-      <ul>
-        <li>Participate in working groups shaping protocol development</li>
-        <li>Early access to new standards and educational resources</li>
-        <li>Listing in the <a href="/members">member directory</a> with agent discovery</li>
-        <li>Connect with peers navigating the transition to agentic advertising</li>
-        <li>Influence the organization's strategic direction</li>
-      </ul>
-
-      <div class="cta-section">
-        <h3>Become a Member</h3>
-        <p>Join the organizations building the future of advertising.</p>
-        <a href="/membership" class="btn btn-primary">Learn About Membership</a>
-      </div>
-    </section>
-
-    <!-- Leadership Section -->
-    <section class="section" id="leadership">
-      <h2>Leadership</h2>
-      <p>
-        AgenticAdvertising.org is guided by experienced leaders from across the advertising and technology industries.
-      </p>
-
-      <h3>Interim Leadership</h3>
-      <p>
-        During the organization's formation phase, interim advisors are providing strategic guidance to establish governance, programs, and membership structure.
-      </p>
-      <div class="leaders-grid">
-        <div class="leader-card">
-          <div class="leader-photo">
-            <img src="/randall-rothenberg.jpeg" alt="Randall Rothenberg">
-          </div>
-          <div class="leader-name">Randall Rothenberg</div>
-          <div class="leader-title">Interim Advisor</div>
-          <p class="leader-bio">Former CEO of the Interactive Advertising Bureau (IAB)</p>
-        </div>
-        <div class="leader-card">
-          <div class="leader-photo">
-            <img src="/matt-egol.jpeg" alt="Matthew Egol">
-          </div>
-          <div class="leader-name">Matthew Egol</div>
-          <div class="leader-title">Interim Advisor</div>
-          <p class="leader-bio">Former Partner at Booz & Company / Strategy&</p>
-        </div>
-      </div>
-
-      <div class="info-box">
-        <p>
-          <strong>Coming soon:</strong> Permanent leadership appointments and board structure will be announced as the organization completes its formation phase.
-        </p>
-      </div>
-    </section>
-
-    <!-- Organization Details Section -->
-    <section class="section" id="organization-details">
-      <h2>Organization Details</h2>
-
-      <h3>Legal Status</h3>
-      <p>
-        AgenticAdvertising.org is a <strong>pending 501(c)(6)</strong> nonprofit trade organization incorporated in the State of Delaware. We do not engage in lobbying activities.
-      </p>
-
-      <h3>Administrative Information</h3>
-      <ul>
-        <li><strong>Legal Name:</strong> AgenticAdvertisingOrg Inc</li>
-        <li><strong>EIN:</strong> 41-3039297</li>
-        <li><strong>D-U-N-S Number:</strong> 144923975</li>
-        <li><strong>Registered Address:</strong> 228 Park Ave S PMB 24984, New York, NY 10003</li>
-      </ul>
-
-      <h3>Vendor & Billing Inquiries</h3>
-      <p>
-        For vendor onboarding, W-9 requests, or billing inquiries, contact <a href="mailto:support@agenticadvertising.org">support@agenticadvertising.org</a>.
-      </p>
-    </section>
-
-    <!-- News Section -->
-    <section class="section" id="news">
-      <h2>News & Press</h2>
-
-      <h3>Press Release</h3>
-      <p>
-        <a href="/perspectives/launch-announcement"><strong>AgenticAdvertising.org Launches to Help Brands, Publishers, Agencies, Ad Tech Adopt AI</strong></a><br>
-        New nonprofit to unify marketing-media ecosystem around standards and practices. Industry veterans Randall Rothenberg and Matthew Egol brought in as interim leaders following Ad Context Protocol launch.
-      </p>
-
-      <h3>In the Media</h3>
-      <p>
-        Read Randall Rothenberg and Matthew Egol's perspective on the future of agentic advertising:
-      </p>
-      <ul>
-        <li><a href="https://winningexperience.substack.com/p/the-three-superpowers-of-agentic" target="_blank" rel="noopener noreferrer">The Three Superpowers of Agentic Advertising</a> - Winning Experience</li>
-      </ul>
-    </section>
   </div>
 
-  <!-- Shared Footer -->
+  <!-- What we do -->
+  <div class="panel panel-wide bg-subtle section" id="what-we-do">
+    <div class="panel-text">
+      <p class="kicker">What we do</p>
+      <p class="drop">Three pillars. Each reinforces the others.</p>
+      <p>Standards without education don't get adopted. Education without governance teaches the wrong lessons. Governance without standards has nothing to enforce.</p>
+    </div>
+    <div class="pillars-grid">
+      <div class="pillar-card">
+        <h3>Open standards</h3>
+        <p>We publish <a href="https://docs.adcontextprotocol.org">AdCP</a>, the open protocol that gives agents a shared language across every advertising platform. Built by the community, governed in the open, free to implement.</p>
+      </div>
+      <div class="pillar-card">
+        <h3>Education</h3>
+        <p>We certify agentic advertising professionals through the <a href="/certification">Academy</a>, taught by Addie, our AI. The best way to build trust in agentic systems is to make sure people understand them deeply.</p>
+      </div>
+      <div class="pillar-card">
+        <h3>Governance</h3>
+        <p>We believe AI agents should be fast, but humans should stay in the decisions that matter. Our <a href="https://docs.adcontextprotocol.org/governance/overview">governance framework</a> gives organizations the tools to set boundaries, require approvals, and audit what agents do on their behalf.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Who we serve -->
+  <div class="panel section" id="who-we-serve">
+    <div class="panel-text">
+      <p class="kicker">Who we serve</p>
+      <p class="drop">Everything we build is measured against the same question: does this make advertising work better for the people it touches?</p>
+    </div>
+    <ul class="audience-list">
+      <li><strong>Consumers</strong> &mdash; who deserve advertising that's relevant, respectful, and transparent about when AI was involved.</li>
+      <li><strong>Businesses</strong> &mdash; who need accessible, efficient tools to grow, without requiring a massive team just to participate.</li>
+      <li><strong>Content creators</strong> &mdash; who deserve fair value for their work, so they can keep investing in what they make.</li>
+      <li><strong>The global economy</strong> &mdash; open standards that work the same whether you're growing a business in London or Lagos, creating content in S&atilde;o Paulo or Seoul. Opportunity shouldn't be gated by geography.</li>
+    </ul>
+  </div>
+
+  <!-- Our members -->
+  <div class="panel bg-subtle section" id="members">
+    <div class="panel-text">
+      <p class="kicker">Our members</p>
+      <p class="drop">Built by the people doing the work.</p>
+      <p>AgenticAdvertising.org is built by its members &mdash; the brands, agencies, publishers, technology providers, and individuals shaping how AI and advertising work together. Members participate in standards development, working groups, and strategic initiatives. They shape the protocols their own agents will use.</p>
+      <p>Membership is open to any organization or individual committed to open standards in advertising. <a href="/members">See the full member directory</a> or <a href="/membership">learn how to join</a>.</p>
+    </div>
+  </div>
+
+  <!-- Leadership -->
+  <div class="panel section" id="leadership">
+    <div class="panel-text">
+      <p class="kicker">Leadership</p>
+      <p class="drop">Guided by experienced leaders from across advertising and technology.</p>
+      <p>During the organization's formation phase, interim advisors are providing strategic guidance to establish governance, programs, and membership structure.</p>
+    </div>
+
+    <h3 style="font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-4);">Interim advisors</h3>
+    <div class="leaders-grid">
+      <div class="leader-card">
+        <div class="leader-photo">
+          <img src="/randall-rothenberg.jpeg" alt="Randall Rothenberg">
+        </div>
+        <div class="leader-name">Randall Rothenberg</div>
+        <div class="leader-title">Interim advisor</div>
+        <p class="leader-bio">Former CEO of the Interactive Advertising Bureau (IAB)</p>
+      </div>
+      <div class="leader-card">
+        <div class="leader-photo">
+          <img src="/matt-egol.jpeg" alt="Matthew Egol">
+        </div>
+        <div class="leader-name">Matthew Egol</div>
+        <div class="leader-title">Interim advisor</div>
+        <p class="leader-bio">Former Partner at Booz &amp; Company / Strategy&amp;</p>
+      </div>
+    </div>
+
+    <h3 style="font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-top: var(--space-8); margin-bottom: var(--space-4);">Board structure</h3>
+    <div class="panel-text">
+      <p>The organization's bylaws establish a 40-director elected board drawn from four member categories: brands, agencies, publishers, and technology providers. Board elections will follow the completion of the formation phase.</p>
+    </div>
+    <div class="info-box">
+      <p><a href="/api/agreement?type=bylaws" style="color: var(--color-brand); font-weight: var(--font-medium);">Read the bylaws</a> for details on governance structure, board composition, and election process.</p>
+    </div>
+  </div>
+
+  <!-- Join CTA -->
+  <div class="panel panel-wide section" id="join">
+    <div class="join-banner">
+      <h2>Shape the future of advertising</h2>
+      <p>The standards are being written now. Join the organizations and individuals building agentic advertising the right way.</p>
+      <div class="join-banner-actions">
+        <a href="/membership" class="btn-join btn-join--primary">Become a member</a>
+        <a href="/members" class="btn-join btn-join--secondary">Find a partner</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Organization details -->
+  <div class="panel bg-subtle section" id="organization">
+    <div class="panel-text">
+      <p class="kicker">Organization details</p>
+
+      <h3 style="font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-3);">Legal status</h3>
+      <p>AgenticAdvertising.org is a Delaware 501(c)(6) nonprofit trade organization. Founded in 2025.</p>
+
+      <h3 style="font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-top: var(--space-6); margin-bottom: var(--space-3);">Contact</h3>
+      <p>General inquiries, vendor onboarding, W-9 requests, or billing: <a href="mailto:addie@agenticadvertising.org" style="color: var(--color-brand);">addie@agenticadvertising.org</a></p>
+
+      <h3 style="font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-top: var(--space-6); margin-bottom: var(--space-3);">Administrative information</h3>
+      <ul class="org-details">
+        <li><strong>Legal name:</strong> AgenticAdvertisingOrg Inc</li>
+        <li><strong>EIN:</strong> 41-3039297</li>
+        <li><strong>D-U-N-S number:</strong> 144923975</li>
+        <li><strong>Registered address:</strong> 228 Park Ave S PMB 24984, New York, NY 10003</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Footer -->
   <div id="adcp-footer"></div>
 
   <script>
@@ -595,12 +374,10 @@
 
     function updateActiveNav() {
       const scrollPos = window.scrollY + 160;
-
       sections.forEach(section => {
         const top = section.offsetTop;
         const height = section.offsetHeight;
         const id = section.getAttribute('id');
-
         if (scrollPos >= top && scrollPos < top + height) {
           navLinks.forEach(link => {
             link.classList.remove('active');
@@ -615,20 +392,19 @@
     window.addEventListener('scroll', updateActiveNav);
     updateActiveNav();
 
-    // Smooth scroll for sub-nav links (only for anchor links)
+    // Smooth scroll for sub-nav anchor links
     navLinks.forEach(link => {
       link.addEventListener('click', (e) => {
         const href = link.getAttribute('href');
         if (!href.startsWith('#')) return;
-
         e.preventDefault();
-        const targetId = href.slice(1);
-        const target = document.getElementById(targetId);
+        const target = document.getElementById(href.slice(1));
         if (target) {
           target.scrollIntoView({ behavior: 'smooth' });
         }
       });
     });
   </script>
+  <script src="/nav.js"></script>
 </body>
 </html>
