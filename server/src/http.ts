@@ -1856,6 +1856,16 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'registry.html');
     });
 
+    // Tools hub for registry utilities and builder workflows
+    this.app.get("/registry/tools", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'registry-tools.html');
+    });
+
+    // Backward-compatible tools alias
+    this.app.get("/tools", (_req, res) => {
+      res.redirect(301, '/registry/tools');
+    });
+
     // adagents.json project landing page
     this.app.get("/adagents", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'adagents-landing.html');

@@ -129,6 +129,14 @@
 
     const isCertificationActive = currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
     const isCommunityActive = currentPath.startsWith('/community') || currentPath.startsWith('/events') || currentPath.startsWith('/committees') || currentPath.startsWith('/meetings');
+    const isRegistryActive = currentPath === '/registry'
+      || currentPath.startsWith('/registry/')
+      || currentPath === '/agents'
+      || currentPath === '/brands'
+      || currentPath === '/publishers'
+      || currentPath.startsWith('/brand')
+      || currentPath.startsWith('/adagents')
+      || currentPath.startsWith('/property/view');
     const communityUrl = isLocal ? '/community' : 'https://agenticadvertising.org/community';
     const membershipUrl = isLocal ? '/membership' : 'https://agenticadvertising.org/membership';
 
@@ -155,6 +163,7 @@
               <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
               <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
               <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
+              <a href="/registry" class="navbar__link ${isRegistryActive ? 'active' : ''}">Registry</a>
               <a href="${ctaUrl}" class="navbar__btn--cta">${ctaText}</a>
             </div>
           </div>
@@ -176,6 +185,7 @@
           <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
           <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
           <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
+          <a href="/registry" class="navbar__link ${isRegistryActive ? 'active' : ''}">Registry</a>
           <a href="${ctaUrl}" class="navbar__link ${currentPath === '/membership' || currentPath === '/dashboard' ? 'active' : ''}">${ctaText}</a>
           <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
         </div>
