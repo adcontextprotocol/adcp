@@ -17,6 +17,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger on insert/update
+DROP TRIGGER IF EXISTS addie_images_search_vector_trigger ON addie_images;
 CREATE TRIGGER addie_images_search_vector_trigger
   BEFORE INSERT OR UPDATE ON addie_images
   FOR EACH ROW EXECUTE FUNCTION addie_images_search_vector_update();

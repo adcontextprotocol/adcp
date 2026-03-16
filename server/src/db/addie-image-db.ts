@@ -56,15 +56,20 @@ export async function searchImages(
   const params: unknown[] = [];
   let paramIndex = 1;
 
-  // Full-text search with plainto_tsquery handles word splitting, stemming,
-  // and hyphen normalization (topics are stored with hyphens replaced by spaces
-  // in the search_vector generated column).
+  // OR-based full-text search: split query into words joined with | so that
+  // "governance workflow" matches images containing either term. ts_rank
+  // naturally boosts results matching more terms.
   let hasTextSearch = false;
+  let tsqueryExpr = '';
   if (searchQuery) {
-    conditions.push(`search_vector @@ plainto_tsquery('english', $${paramIndex})`);
-    params.push(searchQuery);
-    paramIndex++;
-    hasTextSearch = true;
+    const words = searchQuery.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
+    if (words.length > 0) {
+      tsqueryExpr = words.join(' | ');
+      conditions.push(`search_vector @@ to_tsquery('english', $${paramIndex})`);
+      params.push(tsqueryExpr);
+      paramIndex++;
+      hasTextSearch = true;
+    }
   }
 
   // Topic overlap filter
@@ -86,7 +91,7 @@ export async function searchImages(
 
   // Order by relevance when text search is used, otherwise by recency
   const orderBy = hasTextSearch
-    ? `ts_rank(search_vector, plainto_tsquery('english', $1)) DESC`
+    ? `ts_rank(search_vector, to_tsquery('english', $1)) DESC`
     : 'created_at DESC';
 
   const sql = `
