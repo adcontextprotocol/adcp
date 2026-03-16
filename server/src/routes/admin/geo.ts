@@ -10,7 +10,11 @@ import { Router } from "express";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireManage } from "../../middleware/auth.js";
 import { query } from "../../db/client.js";
-import { fetchLLMPulse, getLLMPulseApiKey } from "../../services/llmpulse-client.js";
+import {
+  fetchAllLLMPulsePages,
+  fetchLLMPulse,
+  getLLMPulseApiKey,
+} from "../../services/llmpulse-client.js";
 import { fetchAiReferrerData, getPostHogQueryConfig } from "../../services/posthog-query.js";
 
 const logger = createLogger("admin-geo");
@@ -42,25 +46,31 @@ interface LLMPulseCompetitor {
 }
 
 interface LLMPulseModelSummary {
-  model: string;
+  prompt_id: number;
+  prompt_text: string;
+  responses: number;
   mentions: number;
-  mention_rate: number;
   citations: number;
-  citation_rate: number;
-  net_sentiment: number;
-  visibility: number;
+  citation_rate: number | null;
+  net_sentiment?: number | null;
+  visibility: number | null;
+  model: string;
 }
 
 interface LLMPulseAnswer {
+  id: number;
   prompt_id: number;
+  model: string;
+  executed_at?: string;
   mentions_count: number;
   citations_count: number;
-  competitor_name?: string;
 }
 
 interface LLMPulseCompetitorMention {
   competitor_id: number;
-  mentions_count: number;
+  name: string;
+  prompt_execution_id: number;
+  created_at: string;
 }
 
 // Dashboard output types
@@ -131,16 +141,23 @@ function getLatestValue(data: Array<{ date: string; value: number }>): number {
   // but don't reach far back into stale data
   const lookback = Math.min(3, data.length);
   for (let i = data.length - 1; i >= data.length - lookback; i--) {
-    if (data[i].value !== 0) return data[i].value;
+    const value = data[i]?.value;
+    if (value == null || Number.isNaN(value)) continue;
+    if (value !== 0) return value;
   }
-  return data[data.length - 1].value ?? 0;
+  for (let i = data.length - 1; i >= 0; i--) {
+    const value = data[i]?.value;
+    if (value != null && !Number.isNaN(value)) return value;
+  }
+  return 0;
 }
 
 function computeTrend(data: Array<{ date: string; value: number }>): "up" | "down" | "flat" {
-  if (!data || data.length < 14) return "flat";
+  const numericData = (data || []).filter((point) => point.value != null && !Number.isNaN(point.value));
+  if (numericData.length < 14) return "flat";
   // Compare last 7 days vs previous 7 days
-  const recent = data.slice(-7);
-  const previous = data.slice(-14, -7);
+  const recent = numericData.slice(-7);
+  const previous = numericData.slice(-14, -7);
   const recentAvg = recent.reduce((sum, d) => sum + d.value, 0) / recent.length;
   const previousAvg = previous.reduce((sum, d) => sum + d.value, 0) / previous.length;
   if (recentAvg > previousAvg * 1.1) return "up";
@@ -149,125 +166,177 @@ function computeTrend(data: Array<{ date: string; value: number }>): "up" | "dow
 }
 
 function computeChange(data: Array<{ date: string; value: number }>): number | null {
-  if (!data || data.length < 14) return null;
-  const recent = data.slice(-7);
-  const previous = data.slice(-14, -7);
+  const numericData = (data || []).filter((point) => point.value != null && !Number.isNaN(point.value));
+  if (numericData.length < 14) return null;
+  const recent = numericData.slice(-7);
+  const previous = numericData.slice(-14, -7);
   const recentAvg = recent.reduce((sum, d) => sum + d.value, 0) / recent.length;
   const previousAvg = previous.reduce((sum, d) => sum + d.value, 0) / previous.length;
   return Math.round((recentAvg - previousAvg) * 10) / 10;
 }
 
+function computeRate(numerator: number, denominator: number): number {
+  if (!denominator) return 0;
+  return (numerator / denominator) * 100;
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function aggregatePromptSummaryByModel(rows: LLMPulseModelSummary[]): Array<{
+  model: string;
+  responses: number;
+  mentions: number;
+  citations: number;
+  mention_rate: number;
+  net_sentiment: number | null;
+}> {
+  const byModel = new Map<
+    string,
+    {
+      responses: number;
+      mentions: number;
+      citations: number;
+      weightedSentiment: number;
+      sentimentWeight: number;
+    }
+  >();
+
+  for (const row of rows) {
+    const current = byModel.get(row.model) ?? {
+      responses: 0,
+      mentions: 0,
+      citations: 0,
+      weightedSentiment: 0,
+      sentimentWeight: 0,
+    };
+
+    current.responses += row.responses || 0;
+    current.mentions += row.mentions || 0;
+    current.citations += row.citations || 0;
+    if (row.net_sentiment != null) {
+      current.weightedSentiment += row.net_sentiment * (row.responses || 0);
+      current.sentimentWeight += row.responses || 0;
+    }
+
+    byModel.set(row.model, current);
+  }
+
+  return Array.from(byModel.entries())
+    .map(([model, totals]) => ({
+      model,
+      responses: totals.responses,
+      mentions: totals.mentions,
+      citations: totals.citations,
+      mention_rate: computeRate(totals.mentions, totals.responses),
+      net_sentiment: totals.sentimentWeight
+        ? totals.weightedSentiment / totals.sentimentWeight
+        : null,
+    }))
+    .sort((a, b) => b.mention_rate - a.mention_rate);
+}
+
 async function fetchVisibilityData(): Promise<GeoVisibilityData> {
   const pid = await getProjectId();
   const pidStr = String(pid);
+  const competitorsResult = await fetchLLMPulse("/dimensions/competitors", {
+    project_id: pidStr,
+  }) as { competitors: LLMPulseCompetitor[] };
+  const competitorIds = (competitorsResult.competitors || []).map((c) => String(c.id)).join(",");
 
-  // Core metrics (required for dashboard)
-  const [metricsResult, sovResult, topSourcesResult, competitorsResult, promptsResult] =
-    await Promise.all([
-      fetchLLMPulse("/metrics/summary", {
-        project_id: pidStr,
-        metrics: "mentions,citations,visibility,net_sentiment",
-        range: "30",
-      }) as Promise<{ series: Record<string, LLMPulseMetricSeries[]> }>,
-      fetchLLMPulse("/metrics/sov", {
-        project_id: pidStr,
-        range: "30",
-      }) as Promise<{ over_time: Array<{ actor: { type: string; id: number; name: string }; data: Array<{ date: string; value: number }> }> }>,
-      fetchLLMPulse("/metrics/top_sources", {
-        project_id: pidStr,
-        range: "30",
-        per_page: "10",
-      }) as Promise<{ data: LLMPulseTopSource[] }>,
-      fetchLLMPulse("/dimensions/competitors", {
-        project_id: pidStr,
-      }) as Promise<{ competitors: LLMPulseCompetitor[] }>,
-      fetchLLMPulse("/dimensions/prompts", {
-        project_id: pidStr,
-        per_page: "100",
-      }) as Promise<{ data: Array<{ id: number; prompt_text: string; last_executed_at: string }>; total: number }>,
-    ]);
+  const [metricsResult, sovResult, topSourcesResult, promptsResult] = await Promise.all([
+    fetchLLMPulse("/metrics/summary", {
+      project_id: pidStr,
+      metrics: "mentions,citations,visibility,net_sentiment",
+      range: "30",
+    }) as Promise<{ series: Record<string, LLMPulseMetricSeries[]> }>,
+    fetchLLMPulse("/metrics/sov", {
+      project_id: pidStr,
+      range: "30",
+      ...(competitorIds ? { competitors: competitorIds } : {}),
+    }) as Promise<{
+      over_time: Array<{ actor: { type: string; id: number; name: string }; data: Array<{ date: string; value: number }> }>;
+      current?: Array<{ actor: { type: string; id: number; name: string }; share: number }>;
+    }>,
+    fetchLLMPulse("/metrics/top_sources", {
+      project_id: pidStr,
+      range: "30",
+      per_page: "10",
+    }) as Promise<{ data: LLMPulseTopSource[] }>,
+    fetchLLMPulse("/dimensions/prompts", {
+      project_id: pidStr,
+      per_page: "100",
+    }) as Promise<{ data: Array<{ id: number; prompt_text: string; last_executed_at: string }>; total: number }>,
+  ]);
 
-  // Enrichment calls — degrade gracefully if any fail
-  const [modelSummaryResult, answersResult, competitorMentionsResult] = await Promise.all([
-    fetchLLMPulse("/metrics/prompt_summary", {
+  const [modelSummaryRows, answersResult, competitorMentionsResult] = await Promise.all([
+    fetchAllLLMPulsePages<LLMPulseModelSummary>("/metrics/prompt_summary", {
       project_id: pidStr,
       breakdown: "model",
       sort: "mentions",
       sort_dir: "desc",
-      per_page: "20",
       range: "30",
-    }).then((result) => {
-      const r = result as { data: LLMPulseModelSummary[] };
-      logger.info({ modelCount: r.data?.length ?? 0 }, "LLM Pulse model summary fetched");
-      return r;
     }).catch((err) => {
       logger.warn({ err }, "Failed to fetch model summary from LLM Pulse");
-      return { data: [] as LLMPulseModelSummary[] };
+      return [] as LLMPulseModelSummary[];
     }),
-    fetchLLMPulse("/answers", {
+    fetchAllLLMPulsePages<LLMPulseAnswer>("/answers", {
       project_id: pidStr,
-      per_page: "500",
-    }).then((result) => {
-      const r = result as { data: LLMPulseAnswer[] };
-      logger.info({ answerCount: r.data?.length ?? 0 }, "LLM Pulse answers fetched");
-      return r;
     }).catch((err) => {
       logger.warn({ err }, "Failed to fetch answers from LLM Pulse");
-      return { data: [] as LLMPulseAnswer[] };
+      return [] as LLMPulseAnswer[];
     }),
-    fetchLLMPulse("/dimensions/competitor_mentions", {
+    fetchAllLLMPulsePages<LLMPulseCompetitorMention>("/dimensions/competitor_mentions", {
       project_id: pidStr,
-    }).then((result) => {
-      const r = result as { data: LLMPulseCompetitorMention[] };
-      logger.info({ competitorMentionCount: r.data?.length ?? 0 }, "LLM Pulse competitor mentions fetched");
-      return r;
     }).catch((err) => {
       logger.warn({ err }, "Failed to fetch competitor mentions from LLM Pulse");
-      return { data: [] as LLMPulseCompetitorMention[] };
+      return [] as LLMPulseCompetitorMention[];
     }),
   ]);
 
-  // Log available metric series keys for debugging
+  logger.info(
+    {
+      modelSummaryRows: modelSummaryRows.length,
+      answers: answersResult.length,
+      competitorMentions: competitorMentionsResult.length,
+    },
+    "LLM Pulse GEO enrichment data fetched"
+  );
+
   const seriesKeys = Object.keys(metricsResult.series || {});
   logger.info({ seriesKeys }, "LLM Pulse metrics summary series keys");
 
-  // Extract brand mention rate from mentions metric
   const mentionsSeries = metricsResult.series?.mentions?.find(
     (s) => s.actor.type === "project"
   );
-  // Fall back to visibility metric if mentions not available
   const visibilitySeries = metricsResult.series?.visibility?.find(
     (s) => s.actor.type === "project"
   );
-  const brandMentionSeries = mentionsSeries || visibilitySeries;
-  const brandMentionRate = brandMentionSeries
-    ? getLatestValue(brandMentionSeries.data)
-    : 0;
 
-  if (!mentionsSeries && visibilitySeries) {
-    logger.warn("Using 'visibility' series as fallback for brand mention rate — 'mentions' series not found");
-  } else if (!mentionsSeries && !visibilitySeries) {
-    logger.warn({ seriesKeys }, "Neither 'mentions' nor 'visibility' series found in metrics response");
+  const aggregatedModelSummary = aggregatePromptSummaryByModel(modelSummaryRows);
+  const totalResponses = aggregatedModelSummary.reduce((sum, row) => sum + row.responses, 0);
+  const totalMentions = aggregatedModelSummary.reduce((sum, row) => sum + row.mentions, 0);
+  const totalCitations = aggregatedModelSummary.reduce((sum, row) => sum + row.citations, 0);
+
+  const brandMentionRate = visibilitySeries
+    ? getLatestValue(visibilitySeries.data)
+    : computeRate(totalMentions, totalResponses);
+
+  if (visibilitySeries) {
+    logger.info("Using LLM Pulse visibility series for brand mention rate");
+  } else if (!mentionsSeries) {
+    logger.warn({ seriesKeys }, "Neither visibility nor mentions series found in metrics response");
   }
 
-  // Extract citation rate from citations metric
-  const citationsSeries = metricsResult.series?.citations?.find(
-    (s) => s.actor.type === "project"
-  );
-  const citationRate = citationsSeries
-    ? getLatestValue(citationsSeries.data)
-    : 0;
-
-  // Extract share of voice (project's SOV)
   const projectSov = sovResult.over_time?.find(
     (s) => s.actor.type === "project"
   );
-  const shareOfVoice = projectSov
-    ? getLatestValue(projectSov.data)
-    : 0;
+  const projectSovCurrent = sovResult.current?.find(
+    (s) => s.actor.type === "project"
+  );
+  const shareOfVoice = projectSovCurrent?.share ?? (projectSov ? getLatestValue(projectSov.data) : 0);
 
-  // Build per-model breakdown from prompt_summary with model breakdown
-  // Query stored snapshots for trend computation (last 14+ days)
   const modelTrends = new Map<string, "up" | "down" | "flat">();
   try {
     const snapshotsResult = await query<{ model: string; snapshot_date: string; mention_rate: number }>(
@@ -276,7 +345,6 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
        WHERE snapshot_date >= CURRENT_DATE - INTERVAL '30 days'
        ORDER BY model, snapshot_date`
     );
-    // Group by model and compute trend from snapshot history
     const byModelSnapshots = new Map<string, Array<{ date: string; value: number }>>();
     for (const row of snapshotsResult.rows) {
       const arr = byModelSnapshots.get(row.model) || [];
@@ -290,57 +358,80 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
     logger.warn({ err }, "Failed to query snapshot trends, using flat");
   }
 
-  const byModel: GeoVisibilityData["by_model"] = (modelSummaryResult.data || []).map((row) => ({
+  const byModel: GeoVisibilityData["by_model"] = aggregatedModelSummary.map((row) => ({
     model: row.model,
-    mention_rate: Math.round(row.mention_rate * 10) / 10,
-    sentiment: row.net_sentiment > 0.2 ? "positive" as const
-      : row.net_sentiment < -0.2 ? "negative" as const
+    mention_rate: round1(row.mention_rate),
+    sentiment: (row.net_sentiment ?? 0) > 0.2 ? "positive" as const
+      : (row.net_sentiment ?? 0) < -0.2 ? "negative" as const
       : "neutral" as const,
     trend: modelTrends.get(row.model) || "flat" as const,
   }));
 
-  // Build per-prompt mention lookup from answers (sticky-true: once mentioned, stays mentioned)
-  const answersByPrompt = new Map<number, { mentioned: boolean; competitor: string | null }>();
-  for (const answer of answersResult.data || []) {
-    const existing = answersByPrompt.get(answer.prompt_id);
-    answersByPrompt.set(answer.prompt_id, {
-      mentioned: (existing?.mentioned ?? false) || answer.mentions_count > 0,
-      competitor: answer.competitor_name || existing?.competitor || null,
+  const answersByPrompt = new Map<number, LLMPulseAnswer[]>();
+  for (const answer of answersResult) {
+    const promptAnswers = answersByPrompt.get(answer.prompt_id) || [];
+    promptAnswers.push(answer);
+    promptAnswers.sort((a, b) => {
+      const aTime = a.executed_at ? Date.parse(a.executed_at) : 0;
+      const bTime = b.executed_at ? Date.parse(b.executed_at) : 0;
+      return bTime - aTime;
     });
+    answersByPrompt.set(answer.prompt_id, promptAnswers);
   }
 
-  // Transform prompts with real mention data
+  const competitorNamesByAnswerId = new Map<number, string[]>();
+  for (const mention of competitorMentionsResult) {
+    const names = competitorNamesByAnswerId.get(mention.prompt_execution_id) || [];
+    if (!names.includes(mention.name)) {
+      names.push(mention.name);
+    }
+    competitorNamesByAnswerId.set(mention.prompt_execution_id, names);
+  }
+
   const prompts: GeoVisibilityData["prompts"] = (promptsResult.data || []).map((p) => {
-    const answerData = answersByPrompt.get(p.id);
+    const promptAnswers = answersByPrompt.get(p.id) || [];
+    const latestCompetitorAnswer = promptAnswers.find((answer) =>
+      competitorNamesByAnswerId.has(answer.id)
+    );
     return {
       text: p.prompt_text,
-      adcp_mentioned: answerData?.mentioned ?? false,
-      competitor_mentioned: answerData?.competitor ?? null,
+      adcp_mentioned: promptAnswers.some((answer) => answer.mentions_count > 0),
+      competitor_mentioned: latestCompetitorAnswer
+        ? competitorNamesByAnswerId.get(latestCompetitorAnswer.id)?.join(", ") || null
+        : null,
       last_checked: p.last_executed_at,
     };
   });
 
-  // Transform top sources
   const topCitedUrls: GeoVisibilityData["top_cited_urls"] = (topSourcesResult.data || []).map((s) => ({
     url: s.domain,
     citation_count: s.total_responses,
-    avg_visibility: Math.round(s.avg_visibility * 10) / 10,
+    avg_visibility: round1(s.avg_visibility),
   }));
 
-  // Build competitor data from SOV time series + dedicated mention counts
   const competitorMentionMap = new Map<number, number>();
-  for (const cm of competitorMentionsResult.data || []) {
-    competitorMentionMap.set(cm.competitor_id, cm.mentions_count);
+  for (const cm of competitorMentionsResult) {
+    competitorMentionMap.set(
+      cm.competitor_id,
+      (competitorMentionMap.get(cm.competitor_id) || 0) + 1
+    );
   }
 
   const competitors: GeoVisibilityData["competitors"] = (competitorsResult.competitors || []).map((c) => {
     const competitorSov = sovResult.over_time?.find(
       (s) => s.actor.type === "competitor" && s.actor.id === c.id
     );
+    const competitorCurrent = sovResult.current?.find(
+      (s) => s.actor.type === "competitor" && s.actor.id === c.id
+    );
     return {
       name: c.name,
       mention_count: competitorMentionMap.get(c.id) || 0,
-      share_of_voice: competitorSov ? Math.round(getLatestValue(competitorSov.data) * 10) / 10 : 0,
+      share_of_voice: competitorCurrent
+        ? round1(competitorCurrent.share)
+        : competitorSov
+          ? round1(getLatestValue(competitorSov.data))
+          : 0,
       trend: competitorSov ? computeTrend(competitorSov.data) : "flat" as const,
     };
   });
@@ -349,14 +440,14 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
     configured: true,
     updated_at: new Date().toISOString(),
     summary: {
-      brand_mention_rate: Math.round(brandMentionRate * 10) / 10,
-      brand_mention_rate_change: brandMentionSeries ? computeChange(brandMentionSeries.data) : null,
-      share_of_voice: Math.round(shareOfVoice * 10) / 10,
+      brand_mention_rate: round1(brandMentionRate),
+      brand_mention_rate_change: visibilitySeries ? computeChange(visibilitySeries.data) : null,
+      share_of_voice: round1(shareOfVoice),
       share_of_voice_change: projectSov ? computeChange(projectSov.data) : null,
       total_prompts: promptsResult.total || prompts.length,
       total_prompts_change: null,
-      citation_rate: Math.round(citationRate * 10) / 10,
-      citation_rate_change: citationsSeries ? computeChange(citationsSeries.data) : null,
+      citation_rate: round1(computeRate(totalCitations, totalResponses)),
+      citation_rate_change: null,
     },
     by_model: byModel,
     prompts,
@@ -587,6 +678,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
         // Fetch all prompts with their latest result
         const promptsResult = await query(
           `SELECT gp.id, gp.prompt_text, gp.category, gp.is_active, gp.created_at,
+                  gp.source, gp.external_prompt_id, gp.external_project_id, gp.last_synced_at,
                   gpr.model, gpr.response_text, gpr.adcp_mentioned, gpr.competitor_mentioned,
                   gpr.sentiment, gpr.checked_at
            FROM geo_prompts gp
@@ -596,14 +688,15 @@ export function setupGeoRoutes(apiRouter: Router): void {
              ORDER BY r.checked_at DESC
              LIMIT 1
            ) gpr ON true
-           ORDER BY gp.category, gp.id`
+           ORDER BY gp.is_active DESC, gp.category, gp.id`
         );
 
         const prompts = promptsResult.rows;
+        const activePrompts = prompts.filter((p: { is_active: boolean }) => p.is_active);
 
         // Compute summary
-        const checkedPrompts = prompts.filter((p: { checked_at: string | null }) => p.checked_at !== null);
-        const totalPrompts = prompts.length;
+        const checkedPrompts = activePrompts.filter((p: { checked_at: string | null }) => p.checked_at !== null);
+        const totalPrompts = activePrompts.length;
         const mentionedCount = checkedPrompts.filter((p: { adcp_mentioned: boolean }) => p.adcp_mentioned).length;
         const mentionRate = checkedPrompts.length > 0
           ? Math.round((mentionedCount / checkedPrompts.length) * 1000) / 10
@@ -619,7 +712,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
 
         // By category breakdown
         const byCategory: Record<string, number> = {};
-        const categories = [...new Set(prompts.map((p: { category: string }) => p.category))];
+        const categories = [...new Set(activePrompts.map((p: { category: string }) => p.category))];
         for (const cat of categories) {
           const catPrompts = checkedPrompts.filter((p: { category: string }) => p.category === cat);
           const catMentions = catPrompts.filter((p: { adcp_mentioned: boolean }) => p.adcp_mentioned).length;
@@ -644,6 +737,10 @@ export function setupGeoRoutes(apiRouter: Router): void {
             prompt_text: string;
             category: string;
             is_active: boolean;
+            source: string;
+            external_prompt_id: number | null;
+            external_project_id: number | null;
+            last_synced_at: string | null;
             adcp_mentioned: boolean | null;
             competitor_mentioned: string | null;
             sentiment: string | null;
@@ -654,6 +751,10 @@ export function setupGeoRoutes(apiRouter: Router): void {
             prompt_text: p.prompt_text,
             category: p.category,
             is_active: p.is_active,
+            source: p.source,
+            external_prompt_id: p.external_prompt_id,
+            external_project_id: p.external_project_id,
+            last_synced_at: p.last_synced_at,
             last_result: p.checked_at ? {
               adcp_mentioned: p.adcp_mentioned,
               competitor_mentioned: p.competitor_mentioned,
@@ -664,6 +765,8 @@ export function setupGeoRoutes(apiRouter: Router): void {
           })),
           summary: {
             total_prompts: totalPrompts,
+            inactive_prompts: prompts.length - activePrompts.length,
+            synced_prompts: activePrompts.filter((p: { source: string }) => p.source === 'llmpulse').length,
             last_checked: lastChecked,
             mention_rate: mentionRate,
             by_category: byCategory,

@@ -311,7 +311,6 @@ export function registerAllJobs(): void {
     interval: { value: 168, unit: 'hours' },
     initialDelay: { value: 15, unit: 'minutes' },
     runner: runGeoMonitorJob,
-    options: { limit: 15 },
     shouldLogResult: (r) => r.promptsChecked > 0,
   });
 

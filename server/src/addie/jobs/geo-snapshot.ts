@@ -8,16 +8,80 @@
 
 import { createLogger } from "../../logger.js";
 import { query } from "../../db/client.js";
-import { fetchLLMPulse, getLLMPulseApiKey } from "../../services/llmpulse-client.js";
+import {
+  fetchAllLLMPulsePages,
+  fetchLLMPulse,
+  getLLMPulseApiKey,
+} from "../../services/llmpulse-client.js";
 
 const logger = createLogger("geo-snapshot");
 
 interface ModelMetric {
+  prompt_id: number;
+  responses: number;
+  mentions: number;
+  citations: number;
+  model: string;
+  citation_rate: number | null;
+  net_sentiment?: number | null;
+  visibility: number | null;
+}
+
+function computeRate(numerator: number, denominator: number): number {
+  if (!denominator) return 0;
+  return (numerator / denominator) * 100;
+}
+
+function aggregateModelMetrics(rows: ModelMetric[]): Array<{
   model: string;
   mention_rate: number;
   citation_rate: number;
   net_sentiment: number;
   visibility: number;
+}> {
+  const byModel = new Map<
+    string,
+    {
+      responses: number;
+      mentions: number;
+      citations: number;
+      weightedVisibility: number;
+      weightedSentiment: number;
+      sentimentWeight: number;
+    }
+  >();
+
+  for (const row of rows) {
+    const current = byModel.get(row.model) ?? {
+      responses: 0,
+      mentions: 0,
+      citations: 0,
+      weightedVisibility: 0,
+      weightedSentiment: 0,
+      sentimentWeight: 0,
+    };
+
+    current.responses += row.responses || 0;
+    current.mentions += row.mentions || 0;
+    current.citations += row.citations || 0;
+    current.weightedVisibility += (row.visibility || 0) * (row.responses || 0);
+    if (row.net_sentiment != null) {
+      current.weightedSentiment += row.net_sentiment * (row.responses || 0);
+      current.sentimentWeight += row.responses || 0;
+    }
+
+    byModel.set(row.model, current);
+  }
+
+  return Array.from(byModel.entries()).map(([model, totals]) => ({
+    model,
+    mention_rate: computeRate(totals.mentions, totals.responses),
+    citation_rate: computeRate(totals.citations, totals.responses),
+    net_sentiment: totals.sentimentWeight
+      ? totals.weightedSentiment / totals.sentimentWeight
+      : 0,
+    visibility: totals.responses ? totals.weightedVisibility / totals.responses : 0,
+  }));
 }
 
 export async function runGeoSnapshotJob(): Promise<{
@@ -55,15 +119,14 @@ export async function runGeoSnapshotJob(): Promise<{
   const projectId = String(projectsResult.projects[0].id);
 
   // Fetch per-model metrics
-  const modelSummary = (await fetchLLMPulse("/metrics/prompt_summary", {
+  const modelSummaryRows = await fetchAllLLMPulsePages<ModelMetric>("/metrics/prompt_summary", {
     project_id: projectId,
     breakdown: "model",
     sort: "mentions",
     sort_dir: "desc",
-    per_page: "20",
-  })) as { data: ModelMetric[] };
+  });
 
-  const models = modelSummary.data || [];
+  const models = aggregateModelMetrics(modelSummaryRows);
   if (models.length === 0) {
     logger.warn("No model data returned from LLM Pulse");
     return { modelsSnapped: 0, skipped: false };
