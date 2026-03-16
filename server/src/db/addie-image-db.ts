@@ -62,9 +62,10 @@ export async function searchImages(
   let hasTextSearch = false;
   let tsqueryExpr = '';
   if (searchQuery) {
-    const words = searchQuery.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
+    const words = searchQuery.replace(/[^a-zA-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
     if (words.length > 0) {
       tsqueryExpr = words.join(' | ');
+      logger.debug({ searchQuery, tsqueryExpr }, 'image search tsquery');
       conditions.push(`search_vector @@ to_tsquery('english', $${paramIndex})`);
       params.push(tsqueryExpr);
       paramIndex++;
