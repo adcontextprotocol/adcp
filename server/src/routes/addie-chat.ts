@@ -96,6 +96,10 @@ import {
   PROPERTY_TOOLS,
   createPropertyToolHandlers,
 } from "../addie/mcp/property-tools.js";
+import {
+  IMAGE_TOOLS,
+  createImageToolHandlers,
+} from "../addie/mcp/image-tools.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
@@ -479,13 +483,14 @@ async function prepareRequestWithMemberTools(
 
   // Create per-request tools (same tools as Slack, minus Slack-specific ones)
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
-  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS];
+  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
     ...createMemberToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext),
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
     ...createBillingToolHandlers(memberContext),
+    ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
   ]);
 
   // Certification tools (for authenticated users)

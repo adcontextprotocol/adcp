@@ -38,6 +38,7 @@ import {
   type EscalationStatus,
   type EscalationCategory,
 } from "../db/escalation-db.js";
+import * as imageDb from "../db/addie-image-db.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -2568,6 +2569,126 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         error: "Internal server error",
         message: "Unable to update escalation",
       });
+    }
+  });
+
+  // =========================================================================
+  // IMAGE LIBRARY API (mounted at /api/admin/addie/images)
+  // =========================================================================
+
+  // GET /api/admin/addie/images/stats - Dashboard stats
+  apiRouter.get("/images/stats", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await imageDb.getSearchStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching image stats");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/addie/images - List all images
+  apiRouter.get("/images", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { category, approved, limit, offset } = req.query;
+      const images = await imageDb.listImages({
+        category: category as string | undefined,
+        approved: approved !== undefined ? approved === "true" : undefined,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
+      });
+      res.json({ images, total: images.length });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching images");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/admin/addie/images - Create a new image
+  apiRouter.post("/images", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { filename, alt_text, topics, category, characters, description, image_url, approved } = req.body;
+      if (!filename || !alt_text || !image_url) {
+        return res.status(400).json({ error: "filename, alt_text, and image_url are required" });
+      }
+      const image = await imageDb.createImage({
+        filename,
+        alt_text,
+        topics: topics || [],
+        category: category || "walkthrough",
+        characters,
+        description,
+        image_url,
+        approved,
+      });
+      res.status(201).json(image);
+    } catch (error) {
+      logger.error({ err: error }, "Error creating image");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // PUT /api/admin/addie/images/:id - Update an image
+  apiRouter.put("/images/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid image ID" });
+      }
+      const image = await imageDb.updateImage(numericId, req.body);
+      if (!image) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+      res.json(image);
+    } catch (error) {
+      logger.error({ err: error }, "Error updating image");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/admin/addie/images/:id - Delete an image
+  apiRouter.delete("/images/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid image ID" });
+      }
+      const deleted = await imageDb.deleteImage(numericId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, "Error deleting image");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/addie/images/searches - List search events
+  apiRouter.get("/images/searches", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { limit, offset, zero_results_only } = req.query;
+      const searches = await imageDb.listSearches({
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
+        zeroResultsOnly: zero_results_only === "true",
+      });
+      res.json({ searches, total: searches.length });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching image searches");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/addie/images/misses - Top zero-result queries
+  apiRouter.get("/images/misses", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const misses = await imageDb.getTopMisses(limit);
+      res.json({ misses });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching image misses");
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
