@@ -83,6 +83,10 @@ import {
   SOCIAL_DRAFT_TOOLS,
   createSocialDraftToolHandlers,
 } from './mcp/social-draft-tools.js';
+import {
+  IMAGE_TOOLS,
+  createImageToolHandlers,
+} from './mcp/image-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -320,6 +324,13 @@ async function createUserScopedTools(
     for (const [name, handler] of socialDraftHandlers) {
       allHandlers.set(name, handler);
     }
+  }
+
+  // Add image library tools (search approved illustrations, log requests)
+  const imageHandlers = createImageToolHandlers(slackUserId, threadId);
+  allTools.push(...IMAGE_TOOLS);
+  for (const [name, handler] of imageHandlers) {
+    allHandlers.set(name, handler);
   }
 
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)

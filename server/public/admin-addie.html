@@ -1290,6 +1290,7 @@
       <button class="tab" data-tab="evaluation">Evaluation</button>
       <button class="tab" data-tab="performance">Performance</button>
       <button class="tab" data-tab="queue">Approval Queue</button>
+      <button class="tab" data-tab="images">Images</button>
     </div>
 
     <!-- Rules Tab -->
@@ -1980,6 +1981,65 @@
       </div>
     </div>
 
+    <!-- Images Tab -->
+    <div class="tab-content" id="tab-images">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h2 style="margin: 0;">Image library</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
+              Approved illustrations Addie can use in conversations. Track search activity and gaps.
+            </p>
+          </div>
+        </div>
+
+        <!-- Image stats -->
+        <div id="image-stats" style="display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4);"></div>
+
+        <!-- Sub-tabs for Library / Searches / Requests -->
+        <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-4); border-bottom: 1px solid var(--color-border);">
+          <button class="btn btn-secondary image-subtab active" data-subtab="library" onclick="switchImageSubtab('library')" style="border-bottom: 2px solid transparent; border-radius: 0;">Library</button>
+          <button class="btn btn-secondary image-subtab" data-subtab="searches" onclick="switchImageSubtab('searches')" style="border-bottom: 2px solid transparent; border-radius: 0;">Searches</button>
+          <button class="btn btn-secondary image-subtab" data-subtab="misses" onclick="switchImageSubtab('misses')" style="border-bottom: 2px solid transparent; border-radius: 0;">Top misses</button>
+        </div>
+
+        <!-- Library sub-tab -->
+        <div id="image-subtab-library" class="image-subtab-content">
+          <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">
+            <select id="image-category-filter" onchange="loadImageLibrary()" style="padding: var(--space-1) var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm);">
+              <option value="">All categories</option>
+              <option value="diagram">Diagrams</option>
+              <option value="scene">Scenes</option>
+              <option value="walkthrough">Walkthroughs</option>
+              <option value="concept">Concepts</option>
+            </select>
+          </div>
+          <div id="image-library-list">
+            <div class="empty-state"><h3>Loading...</h3></div>
+          </div>
+        </div>
+
+        <!-- Searches sub-tab -->
+        <div id="image-subtab-searches" class="image-subtab-content" style="display: none;">
+          <div style="margin-bottom: var(--space-3);">
+            <label style="font-size: var(--text-sm);">
+              <input type="checkbox" id="zero-results-filter" onchange="loadImageSearches()"> Zero results only
+            </label>
+          </div>
+          <div id="image-searches-list">
+            <div class="empty-state"><h3>Loading...</h3></div>
+          </div>
+        </div>
+
+        <!-- Top misses sub-tab -->
+        <div id="image-subtab-misses" class="image-subtab-content" style="display: none;">
+          <div id="image-misses-list">
+            <div class="empty-state"><h3>Loading...</h3></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Rule Modal -->
@@ -2126,6 +2186,7 @@
           if (tabName === 'knowledge') loadKnowledge();
           if (tabName === 'queue') loadQueue();
           if (tabName === 'suggestions') loadSuggestions();
+          if (tabName === 'images') loadImagesTab();
         }
       });
     });
@@ -4878,6 +4939,189 @@
     function filterInsightsByTopic(topic) {
       // For now, just scroll to the insights list - could add filtering later
       document.getElementById('insights-list-container').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // =========================================================================
+    // IMAGE LIBRARY TAB
+    // =========================================================================
+
+    function switchImageSubtab(subtab) {
+      document.querySelectorAll('.image-subtab-content').forEach(el => el.style.display = 'none');
+      document.querySelectorAll('.image-subtab').forEach(el => {
+        el.classList.toggle('active', el.dataset.subtab === subtab);
+        el.style.borderBottomColor = el.dataset.subtab === subtab ? 'var(--color-brand)' : 'transparent';
+      });
+      document.getElementById('image-subtab-' + subtab).style.display = 'block';
+
+      if (subtab === 'library') loadImageLibrary();
+      if (subtab === 'searches') loadImageSearches();
+      if (subtab === 'misses') loadImageMisses();
+    }
+
+    async function loadImagesTab() {
+      await Promise.all([loadImageStats(), loadImageLibrary()]);
+    }
+
+    async function loadImageStats() {
+      try {
+        const res = await fetch('/api/admin/addie/images/stats');
+        const stats = await res.json();
+        document.getElementById('image-stats').innerHTML = `
+          <span class="badge badge-info">Images: ${stats.total_images}</span>
+          <span class="badge badge-info">Searches: ${stats.total_searches}</span>
+          <span class="badge badge-warning">Misses: ${stats.zero_result_searches}</span>
+        `;
+      } catch (error) {
+        console.error('Error loading image stats:', error);
+      }
+    }
+
+    async function loadImageLibrary() {
+      const category = document.getElementById('image-category-filter').value;
+      const params = new URLSearchParams();
+      if (category) params.append('category', category);
+
+      try {
+        const res = await fetch('/api/admin/addie/images?' + params.toString());
+        const data = await res.json();
+        const list = document.getElementById('image-library-list');
+        const images = data.images || [];
+
+        if (images.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No images found</h3></div>';
+          return;
+        }
+
+        list.innerHTML = `
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 2px solid var(--color-border); text-align: left;">
+                <th style="padding: var(--space-2);">Preview</th>
+                <th style="padding: var(--space-2);">Filename</th>
+                <th style="padding: var(--space-2);">Alt text</th>
+                <th style="padding: var(--space-2);">Category</th>
+                <th style="padding: var(--space-2);">Topics</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${images.map(img => `
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                  <td style="padding: var(--space-2);">
+                    <img src="${escapeHtml(img.image_url)}" alt="${escapeHtml(img.alt_text)}"
+                         style="width: 80px; height: 50px; object-fit: cover; border-radius: var(--radius-sm);"
+                         onerror="this.style.display='none'">
+                  </td>
+                  <td style="padding: var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs);">${escapeHtml(img.filename)}</td>
+                  <td style="padding: var(--space-2); font-size: var(--text-sm);">${escapeHtml(img.alt_text)}</td>
+                  <td style="padding: var(--space-2);"><span class="badge badge-info">${escapeHtml(img.category)}</span></td>
+                  <td style="padding: var(--space-2); font-size: var(--text-xs);">${(img.topics || []).map(t => `<span class="badge" style="margin: 1px;">${escapeHtml(t)}</span>`).join(' ')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        console.error('Error loading image library:', error);
+        document.getElementById('image-library-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading images</h3></div>';
+      }
+    }
+
+    async function loadImageSearches() {
+      const zeroOnly = document.getElementById('zero-results-filter').checked;
+      const params = new URLSearchParams();
+      if (zeroOnly) params.append('zero_results_only', 'true');
+      params.append('limit', '50');
+
+      try {
+        const res = await fetch('/api/admin/addie/images/searches?' + params.toString());
+        const data = await res.json();
+        const list = document.getElementById('image-searches-list');
+        const searches = data.searches || [];
+
+        if (searches.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No search events yet</h3><p>Searches will appear here once Addie starts using the image library tool.</p></div>';
+          return;
+        }
+
+        list.innerHTML = `
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 2px solid var(--color-border); text-align: left;">
+                <th style="padding: var(--space-2);">Query</th>
+                <th style="padding: var(--space-2);">Intent</th>
+                <th style="padding: var(--space-2);">Results</th>
+                <th style="padding: var(--space-2);">Used</th>
+                <th style="padding: var(--space-2);">When</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${searches.map(s => `
+                <tr style="border-bottom: 1px solid var(--color-border); ${s.results_returned === 0 ? 'background: var(--color-bg-warning-subtle, #fef3c7);' : ''}">
+                  <td style="padding: var(--space-2); font-weight: var(--font-medium);">${escapeHtml(s.query)}</td>
+                  <td style="padding: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary);">${escapeHtml(s.intent || '-')}</td>
+                  <td style="padding: var(--space-2); text-align: center;">
+                    <span class="badge ${s.results_returned === 0 ? 'badge-warning' : 'badge-success'}">${s.results_returned}</span>
+                  </td>
+                  <td style="padding: var(--space-2); text-align: center;">
+                    ${s.image_used_id ? '<span class="badge badge-success">Yes</span>' : '<span style="color: var(--color-text-muted);">-</span>'}
+                  </td>
+                  <td style="padding: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">
+                    ${new Date(s.created_at).toLocaleString()}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        console.error('Error loading image searches:', error);
+        document.getElementById('image-searches-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading searches</h3></div>';
+      }
+    }
+
+    async function loadImageMisses() {
+      try {
+        const res = await fetch('/api/admin/addie/images/misses');
+        const data = await res.json();
+        const list = document.getElementById('image-misses-list');
+        const misses = data.misses || [];
+
+        if (misses.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No misses yet</h3><p>Queries that return zero results will be aggregated here.</p></div>';
+          return;
+        }
+
+        list.innerHTML = `
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 2px solid var(--color-border); text-align: left;">
+                <th style="padding: var(--space-2);">Query</th>
+                <th style="padding: var(--space-2);">Times searched</th>
+                <th style="padding: var(--space-2);">Last searched</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${misses.map(m => `
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                  <td style="padding: var(--space-2); font-weight: var(--font-medium);">${escapeHtml(m.query)}</td>
+                  <td style="padding: var(--space-2); text-align: center;">
+                    <span class="badge badge-warning">${m.count}</span>
+                  </td>
+                  <td style="padding: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">
+                    ${new Date(m.last_searched).toLocaleString()}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        console.error('Error loading image misses:', error);
+        document.getElementById('image-misses-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading misses</h3></div>';
+      }
     }
 
     // Initial load
