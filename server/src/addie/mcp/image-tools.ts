@@ -25,7 +25,7 @@ export const IMAGE_TOOLS: AddieTool[] = [
   {
     name: 'search_image_library',
     description: 'Search the approved illustration library for images that match a topic or concept. Returns image URLs and alt text that you can include in your response. All searches are logged automatically.',
-    usage_hints: 'use when explaining a concept visually, illustrating a walkthrough, or when a diagram would help understanding',
+    usage_hints: 'use when giving a substantive first explanation of a concept where a diagram or illustration would aid understanding — not for follow-ups, short answers, or troubleshooting',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -48,7 +48,7 @@ export const IMAGE_TOOLS: AddieTool[] = [
           description: 'Why you want this image (e.g., "explaining governance to a new member", "certification module A1")',
         },
       },
-      required: ['query'],
+      required: ['query', 'intent'],
     },
   },
 ];
@@ -67,7 +67,7 @@ export function createImageToolHandlers(
     const searchQuery = input.query as string;
     const topics = input.topics as string[] | undefined;
     const category = input.category as string | undefined;
-    const intent = input.intent as string | undefined;
+    const intent = input.intent as string;
 
     try {
       const images = await imageDb.searchImages(searchQuery, {
