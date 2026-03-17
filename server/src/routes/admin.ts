@@ -35,6 +35,15 @@ import { setupGeoRoutes } from "./admin/geo.js";
 import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
 
+// Timeout helper for external API calls
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+
 const logger = createLogger("admin-routes");
 
 // Initialize WorkOS client only if authentication is enabled
@@ -275,18 +284,43 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               (extendedContext as typeof extendedContext & { capabilities?: MemberCapabilities }).capabilities = capabilities;
 
               // Get engagement opportunities from the relationship model
-              const contactEligibility = await canEngageSlackUser(slackUserId);
-              const relationship = await relationshipDb.getRelationshipBySlackId(slackUserId);
+              // Wrap external calls with timeout to prevent indefinite hanging
+              const contactEligibility = await withTimeout(
+                canEngageSlackUser(slackUserId),
+                5000
+              ).catch((err) => {
+                logger.warn({ err, slackUserId }, 'canEngageSlackUser timed out or failed');
+                return { canContact: false, reason: 'error', channel: null };
+              }) as { canContact: boolean; reason?: string; channel: string | null };
+              const relationship = await withTimeout(
+                relationshipDb.getRelationshipBySlackId(slackUserId),
+                5000
+              ).catch((err) => {
+                logger.warn({ err, slackUserId }, 'getRelationshipBySlackId timed out or failed');
+                return null;
+              }) as { stage: string; unreplied_outreach_count: number } | null;
 
               if (relationship) {
-                const relCtx = await loadRelationshipContext(relationship.id, { includeCommunity: true });
-                const opportunities = computeEngagementOpportunities({
-                  relationship,
-                  capabilities: relCtx.profile.capabilities,
-                  company: relCtx.profile.company,
-                  recentMessages: relCtx.recentMessages,
-                  certification: relCtx.certification,
-                });
+                const relCtx = await withTimeout(
+                  loadRelationshipContext(relationship.id, { includeCommunity: true }),
+                  5000
+                ).catch((err) => {
+                  logger.warn({ err, relationshipId: relationship.id }, 'loadRelationshipContext timed out or failed');
+                  return { profile: { capabilities: {}, company: null }, recentMessages: [], certification: null };
+                }) as { profile: { capabilities: {}; company: unknown }; recentMessages: unknown[]; certification: unknown };
+                const opportunities = await withTimeout(
+                  computeEngagementOpportunities({
+                    relationship,
+                    capabilities: relCtx.profile.capabilities,
+                    company: relCtx.profile.company,
+                    recentMessages: relCtx.recentMessages,
+                    certification: relCtx.certification,
+                  }),
+                  5000
+                ).catch((err) => {
+                  logger.warn({ err, relationshipId: relationship.id }, 'computeEngagementOpportunities timed out or failed');
+                  return [];
+                }) as Array<{ id: string; description: string; dimension: string; relevance: number }>;
 
                 (extendedContext as unknown as Record<string, unknown>).engagement = {
                   opportunities: opportunities.map(o => ({
