@@ -150,7 +150,7 @@ The following 20 channels MUST be supported. Implementations MAY extend with add
 | `influencer` | Creator and influencer partnerships |
 | `affiliate` | Affiliate networks and performance-based partnerships |
 | `product_placement` | Product placement and branded content |
-| `ai_media` | AI assistants, AI search, and generative AI platforms |
+| `sponsored_intelligence` | AI assistants, AI search, and generative AI platforms |
 
 ### Channel Definitions
 
@@ -490,7 +490,7 @@ Product placement, branded content, and sponsorship integrations.
 
 **Typical Formats**: native, video
 
-#### `ai_media`
+#### `sponsored_intelligence`
 
 AI platform advertising — ads within AI assistants, AI search results, and generative AI experiences.
 
@@ -507,7 +507,7 @@ AI platform advertising — ads within AI assistants, AI search results, and gen
 
 **Typical Formats**: native, display, video
 
-**Note**: `ai_media` describes the BUYING CONTEXT (AI platform ad tools) where the user is interacting with an AI system, not traditional web or app surfaces.
+**Note**: `sponsored_intelligence` describes the BUYING CONTEXT (AI platform ad tools) where the user is interacting with an AI system, not traditional web or app surfaces.
 
 ## Property Types
 
@@ -541,7 +541,7 @@ The following channels do not have corresponding property types because they lac
 - `retail_media` - Platform-managed inventory within retail ecosystems
 - `search` - Platform-managed inventory
 - `social` - Platform-managed inventory
-- `ai_media` - Platform-managed inventory within AI ecosystems
+- `sponsored_intelligence` - Platform-managed inventory within AI ecosystems
 
 ## Relationship Between Concepts
 
@@ -553,7 +553,7 @@ The following channels do not have corresponding property types because they lac
 │   display, olv, social, search, ctv, linear_tv, podcast,       │
 │   streaming_audio, radio, dooh, ooh, print, cinema, email,     │
 │   gaming, retail_media, influencer, affiliate,                  │
-│   product_placement, ai_media                                   │
+│   product_placement, sponsored_intelligence                                   │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -609,7 +609,7 @@ Channels are defined in the AdCP schema at:
     "influencer",
     "affiliate",
     "product_placement",
-    "ai_media"
+    "sponsored_intelligence"
   ]
 }
 ```
@@ -779,7 +779,7 @@ The following channels may be added in future versions based on market evolution
 
 ### 1.1.0-draft (2026-03-13)
 
-- Add `ai_media` channel for AI platform advertising (AI assistants, AI search, generative AI experiences)
+- Add `sponsored_intelligence` channel for AI platform advertising (AI assistants, AI search, generative AI experiences)
 - 20 channels defined
 
 ### 1.0.0-draft (2026-01-23)

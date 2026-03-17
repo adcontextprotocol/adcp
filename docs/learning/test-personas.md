@@ -107,7 +107,7 @@ He knows ad tech deeply (ran ad ops at a mid-size SSP before this) and has built
 - OAuth, API key management, multi-tenant architecture
 
 ### What he doesn't know
-- That AdCP has a specific `ai_media` channel for his use case
+- That AdCP has a specific `sponsored_intelligence` channel for his use case
 - How `sync_catalogs` standardizes the catalog pipe he's been building custom for each platform
 - How the accounts model works for a network (implicit accounts, agent-trusted model) vs. a first-party platform (explicit accounts, walled garden)
 - How `adagents.json` works — he needs it for buyer agents to discover his network, and he needs to understand it from the AI platforms he connects to
@@ -150,7 +150,7 @@ Determine whether AdCP works for a network topology (buyer → network → platf
 9. `/docs/protocol/get_adcp_capabilities` — What capabilities a network declares
 10. `/docs/sponsored-intelligence/overview` — SI through a network intermediary
 11. `/docs/building/integration/mcp-guide` — MCP server patterns (he's familiar but wants AdCP-specific guidance)
-12. `/docs/reference/media-channel-taxonomy` — `ai_media` channel definition
+12. `/docs/reference/media-channel-taxonomy` — `sponsored_intelligence` channel definition
 
 ### Success criteria
 - He understands how his network appears to buyers (seller agent with implicit accounts) and how it interacts with AI platforms (operator with explicit accounts on each platform)
@@ -183,7 +183,7 @@ She's evaluated two approaches: (1) build a proprietary API and let each buyer i
 - OAuth, API design, webhook patterns — she's technical enough to evaluate protocol specs
 
 ### What she doesn't know
-- That AdCP has a specific `ai_media` channel designed for her platform's use case
+- That AdCP has a specific `sponsored_intelligence` channel designed for her platform's use case
 - How `sync_catalogs` works as the standard pipe for getting advertiser product data in at scale
 - How `sync_event_sources` lets advertisers push conversion signals in so the platform can optimize on real outcomes
 - How governance policies let brands push content standards in — suitability rules the platform enforces at generation time
@@ -310,7 +310,7 @@ Understand whether AdCP is the right standard for her agency to adopt for AI med
 7. `/docs/governance/overview` — How brand safety works in this world
 8. `/docs/creative/catalogs` — Understanding the catalog workflow
 9. `/docs/accounts/overview` — How multi-platform billing works
-10. `/docs/reference/media-channel-taxonomy` — Looking for `ai_media` in the channel list
+10. `/docs/reference/media-channel-taxonomy` — Looking for `sponsored_intelligence` in the channel list
 
 ### Success criteria
 - She can explain to her CEO why AI media is different from adding a new DSP, and why adopting a standard matters

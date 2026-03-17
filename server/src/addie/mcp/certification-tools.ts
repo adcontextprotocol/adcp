@@ -583,15 +583,15 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Generative Advertising). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
-    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "generative advertising", "ai media"',
+    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
+    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "sponsored intelligence"',
     input_schema: {
       type: 'object',
       properties: {
         module_id: {
           type: 'string',
           enum: ['S1', 'S2', 'S3', 'S4', 'S5'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising)',
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence)',
         },
       },
       required: ['module_id'],
@@ -802,7 +802,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Signals walkthrough', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
-    { label: 'Buying advertising on AI platforms', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
+    { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
   ],
   // Track B: Publisher / Seller
   B1: [
@@ -812,7 +812,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
-    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
     { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
   ],
   B2: [
@@ -848,7 +848,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track C: Buyer / Brand
   C1: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
-    { label: 'Buying advertising on AI platforms', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
+    { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
@@ -906,7 +906,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
-    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
   ],
   D2: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
@@ -979,12 +979,13 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   ],
   S5: [
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
-    { label: 'AI media guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
-    { label: 'Media channel taxonomy — ai_media', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
-    { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Sponsored Intelligence overview', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'SI specification', url: `${DOCS_BASE}/docs/sponsored-intelligence/specification` },
-    { label: 'Implementing SI hosts', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-hosts` },
+    { label: 'SI Chat Protocol', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-hosts` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
+    { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
+    { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
     { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
@@ -1134,7 +1135,7 @@ export function createCertificationToolHandlers(
             || process.env.BASE_URL
             || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
           lines.push('', `## Demo scenarios (use agent_url: ${trainingAgentUrl}/api/training-agent/mcp)`);
-          lines.push('Run ONE demo early (turn 2-3) to ground the concepts. Save remaining demos for the practice phase. Do NOT run a demo on every turn.');
+          lines.push('YOU (Sage) run ONE demo early (turn 2-3) to ground concepts. Clearly label it as YOUR demonstration — say "Let me show you..." before calling the tool. Do NOT attribute tool results to the learner. After the demo, invite the learner to try the exercise themselves.');
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
             lines.push(`Tools: ${ds.tools.join(', ')}`);

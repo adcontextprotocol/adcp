@@ -299,13 +299,18 @@
 
       <!-- Credentials by tier -->
       <div class="section">
-        <h2>Credentials issued</h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h2 style="margin-bottom:0;">Credentials issued</h2>
+          <button id="backfill-btn" onclick="backfillBadges()" style="padding:8px 16px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:14px;">Issue missing badges</button>
+        </div>
+        <div id="backfill-result" style="display:none;padding:12px;border-radius:8px;margin-bottom:16px;font-size:14px;"></div>
         <table id="credentials-table">
           <thead>
             <tr>
               <th>Credential</th>
               <th>Tier</th>
               <th class="text-right">Issued</th>
+              <th class="text-right">Badges</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -436,15 +441,22 @@
         // Credentials by tier
         const credBody = document.querySelector('#credentials-table tbody');
         if (data.credentials_by_tier.length === 0) {
-          credBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--color-text-secondary);">No credentials issued yet</td></tr>';
+          credBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--color-text-secondary);">No credentials issued yet</td></tr>';
         } else {
-          credBody.innerHTML = data.credentials_by_tier.map(c => `
-            <tr>
-              <td>${escapeHtml(c.name)}</td>
-              <td>${tierBadge(c.tier)}</td>
-              <td class="text-right">${c.count}</td>
-            </tr>
-          `).join('');
+          credBody.innerHTML = data.credentials_by_tier.map(c => {
+            const missing = c.count - c.badges_issued;
+            const badgeCell = missing > 0
+              ? `${c.badges_issued} <span style="color:var(--color-warning-600);font-size:12px;">(${missing} missing)</span>`
+              : `${c.badges_issued}`;
+            return `
+              <tr>
+                <td>${escapeHtml(c.name)}</td>
+                <td>${tierBadge(c.tier)}</td>
+                <td class="text-right">${c.count}</td>
+                <td class="text-right">${badgeCell}</td>
+              </tr>
+            `;
+          }).join('');
         }
 
         // Module health
@@ -573,13 +585,19 @@
           `;
         }).join('');
 
-        const credentialRows = data.credentials.map(c => `
-          <tr>
-            <td>${escapeHtml(c.name)}</td>
-            <td>${tierBadge(c.tier)}</td>
-            <td>${formatDate(c.awarded_at)}</td>
-          </tr>
-        `).join('');
+        const credentialRows = data.credentials.map(c => {
+          const badgeStatus = c.certifier_credential_id
+            ? '<span class="badge badge-active">issued</span>'
+            : '<span class="badge badge-stuck">pending</span>';
+          return `
+            <tr>
+              <td>${escapeHtml(c.name)}</td>
+              <td>${tierBadge(c.tier)}</td>
+              <td>${formatDate(c.awarded_at)}</td>
+              <td>${badgeStatus}</td>
+            </tr>
+          `;
+        }).join('');
 
         const checkpointItems = (data.checkpoints || []).map(cp => `
           <div class="checkpoint-item">
@@ -600,7 +618,7 @@
             <div class="detail-section">
               <h4>Credentials</h4>
               <table>
-                <thead><tr><th>Credential</th><th>Tier</th><th>Awarded</th></tr></thead>
+                <thead><tr><th>Credential</th><th>Tier</th><th>Awarded</th><th>Badge</th></tr></thead>
                 <tbody>${credentialRows}</tbody>
               </table>
             </div>
@@ -649,6 +667,44 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeDetail();
     });
+
+    async function backfillBadges() {
+      const btn = document.getElementById('backfill-btn');
+      const result = document.getElementById('backfill-result');
+      btn.disabled = true;
+      btn.textContent = 'Issuing...';
+      result.style.display = 'none';
+
+      try {
+        const response = await AdminSidebar.fetch('/api/admin/certification/backfill-badges', { method: 'POST' });
+        const data = await response.json();
+
+        if (!response.ok) {
+          result.style.background = 'var(--color-error-50)';
+          result.style.color = 'var(--color-error-800)';
+          result.textContent = data.error || 'Failed to backfill badges';
+        } else if (data.total === 0) {
+          result.style.background = 'var(--color-success-50, #f0fdf4)';
+          result.style.color = 'var(--color-success-800, #166534)';
+          result.textContent = 'All badges are up to date.';
+        } else {
+          result.style.background = data.errors.length > 0 ? 'var(--color-warning-100)' : 'var(--color-success-50, #f0fdf4)';
+          result.style.color = data.errors.length > 0 ? 'var(--color-warning-800)' : 'var(--color-success-800, #166534)';
+          result.textContent = `Updated ${data.updated}/${data.total} badges.` +
+            (data.errors.length > 0 ? ` ${data.errors.length} errors.` : '');
+        }
+        result.style.display = 'block';
+        loadOverview();
+      } catch (err) {
+        result.style.background = 'var(--color-error-50)';
+        result.style.color = 'var(--color-error-800)';
+        result.textContent = 'Network error issuing badges.';
+        result.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Issue missing badges';
+      }
+    }
 
     // Load data
     loadOverview();
