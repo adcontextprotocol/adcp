@@ -3,7 +3,7 @@
   "name": "AdCP - Ad Context Protocol",
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
   "metadata": {
-    "og:site_name": "AdCP — Ad Context Protocol",
+    "og:site_name": "AdCP \u2014 Ad Context Protocol",
     "og:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png",
     "og:image:width": "1200",
     "og:image:height": "630",
@@ -148,11 +148,8 @@
                 "expanded": false,
                 "pages": [
                   "docs/guides/index",
-                  "docs/guides/buying-ai-media",
+                  "docs/guides/monetizing-ai",
                   "docs/guides/commerce-media",
-                  "docs/guides/ai-media",
-                  "docs/guides/ai-media-networks",
-                  "docs/guides/ai-media-buying",
                   "docs/guides/seller-integration",
                   "docs/guides/how-agents-communicate",
                   "docs/guides/signals-ecosystem",
@@ -271,21 +268,6 @@
                         ]
                       },
                       {
-                        "group": "Sponsored Intelligence",
-                        "expanded": false,
-                        "pages": [
-                          "docs/sponsored-intelligence/overview",
-                          "docs/sponsored-intelligence/implementing-si-agents",
-                          "docs/sponsored-intelligence/implementing-si-hosts",
-                          "docs/sponsored-intelligence/specification",
-                          "docs/sponsored-intelligence/tasks/index",
-                          "docs/sponsored-intelligence/tasks/si_get_offering",
-                          "docs/sponsored-intelligence/tasks/si_initiate_session",
-                          "docs/sponsored-intelligence/tasks/si_send_message",
-                          "docs/sponsored-intelligence/tasks/si_terminate_session"
-                        ]
-                      },
-                      {
                         "group": "Reference",
                         "expanded": false,
                         "pages": [
@@ -369,6 +351,42 @@
                               "docs/governance/campaign/tasks/get_plan_audit_logs"
                             ]
                           }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "group": "Sponsored Intelligence",
+                    "expanded": false,
+                    "pages": [
+                      "docs/sponsored-intelligence/overview",
+                      {
+                        "group": "Concepts",
+                        "pages": [
+                          "docs/sponsored-intelligence/product-spectrum",
+                          "docs/sponsored-intelligence/networks",
+                          "docs/sponsored-intelligence/workflow",
+                          "docs/sponsored-intelligence/measurement"
+                        ]
+                      },
+                      {
+                        "group": "SI Chat Protocol",
+                        "pages": [
+                          "docs/sponsored-intelligence/si-chat-protocol",
+                          "docs/sponsored-intelligence/implementing-si-agents",
+                          "docs/sponsored-intelligence/implementing-si-hosts"
+                        ]
+                      },
+                      {
+                        "group": "Reference",
+                        "expanded": false,
+                        "pages": [
+                          "docs/sponsored-intelligence/specification",
+                          "docs/sponsored-intelligence/tasks/index",
+                          "docs/sponsored-intelligence/tasks/si_get_offering",
+                          "docs/sponsored-intelligence/tasks/si_initiate_session",
+                          "docs/sponsored-intelligence/tasks/si_send_message",
+                          "docs/sponsored-intelligence/tasks/si_terminate_session"
                         ]
                       }
                     ]
@@ -578,11 +596,8 @@
             "expanded": false,
             "pages": [
               "docs/guides/index",
-              "docs/guides/buying-ai-media",
+              "docs/guides/monetizing-ai",
               "docs/guides/commerce-media",
-              "docs/guides/ai-media",
-              "docs/guides/ai-media-networks",
-              "docs/guides/ai-media-buying",
               "docs/guides/seller-integration",
               "docs/guides/how-agents-communicate",
               "docs/guides/signals-ecosystem",
@@ -701,21 +716,6 @@
                     ]
                   },
                   {
-                    "group": "Sponsored Intelligence",
-                    "expanded": false,
-                    "pages": [
-                      "docs/sponsored-intelligence/overview",
-                      "docs/sponsored-intelligence/implementing-si-agents",
-                      "docs/sponsored-intelligence/implementing-si-hosts",
-                      "docs/sponsored-intelligence/specification",
-                      "docs/sponsored-intelligence/tasks/index",
-                      "docs/sponsored-intelligence/tasks/si_get_offering",
-                      "docs/sponsored-intelligence/tasks/si_initiate_session",
-                      "docs/sponsored-intelligence/tasks/si_send_message",
-                      "docs/sponsored-intelligence/tasks/si_terminate_session"
-                    ]
-                  },
-                  {
                     "group": "Reference",
                     "expanded": false,
                     "pages": [
@@ -799,6 +799,42 @@
                           "docs/governance/campaign/tasks/get_plan_audit_logs"
                         ]
                       }
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Sponsored Intelligence",
+                "expanded": false,
+                "pages": [
+                  "docs/sponsored-intelligence/overview",
+                  {
+                    "group": "Concepts",
+                    "pages": [
+                      "docs/sponsored-intelligence/product-spectrum",
+                      "docs/sponsored-intelligence/networks",
+                      "docs/sponsored-intelligence/workflow",
+                      "docs/sponsored-intelligence/measurement"
+                    ]
+                  },
+                  {
+                    "group": "SI Chat Protocol",
+                    "pages": [
+                      "docs/sponsored-intelligence/si-chat-protocol",
+                      "docs/sponsored-intelligence/implementing-si-agents",
+                      "docs/sponsored-intelligence/implementing-si-hosts"
+                    ]
+                  },
+                  {
+                    "group": "Reference",
+                    "expanded": false,
+                    "pages": [
+                      "docs/sponsored-intelligence/specification",
+                      "docs/sponsored-intelligence/tasks/index",
+                      "docs/sponsored-intelligence/tasks/si_get_offering",
+                      "docs/sponsored-intelligence/tasks/si_initiate_session",
+                      "docs/sponsored-intelligence/tasks/si_send_message",
+                      "docs/sponsored-intelligence/tasks/si_terminate_session"
                     ]
                   }
                 ]
@@ -1196,6 +1232,30 @@
     {
       "source": "/docs/governance/walkthrough-governance",
       "destination": "/docs/governance/overview"
+    },
+    {
+      "source": "/docs/guides/ai-media",
+      "destination": "/docs/sponsored-intelligence/overview"
+    },
+    {
+      "source": "/docs/guides/ai-media-networks",
+      "destination": "/docs/sponsored-intelligence/networks"
+    },
+    {
+      "source": "/docs/guides/buying-ai-media",
+      "destination": "/docs/guides/monetizing-ai"
+    },
+    {
+      "source": "/docs/guides/ai-media-buying",
+      "destination": "/docs/media-buy/index"
+    },
+    {
+      "source": "/docs/guides/sponsored-intelligence",
+      "destination": "/docs/sponsored-intelligence/overview"
+    },
+    {
+      "source": "/docs/guides/agent-based-media-buying",
+      "destination": "/docs/media-buy/index"
     }
   ],
   "modeToggle": {

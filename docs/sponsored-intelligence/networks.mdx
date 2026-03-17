@@ -1,13 +1,13 @@
 ---
-title: AI ad networks
-sidebarTitle: AI ad networks
-description: "How AI ad networks aggregate inventory across multiple AI platforms using AdCP — product modeling, account chains, catalog forwarding, governance, delivery reporting, and Sponsored Intelligence routing."
-"og:title": "AdCP — AI ad networks"
+title: Ad networks
+description: "How AI ad networks aggregate inventory across multiple AI platforms using AdCP — product modeling, account chains, catalog forwarding, governance, delivery reporting, and SI Chat Protocol routing."
+"og:title": "AdCP — SI ad networks"
+sidebarTitle: Ad networks
 ---
 
-# AI ad networks
+# Ad networks
 
-AI ad networks sit between buyer agents and AI platforms, aggregating inventory across multiple platforms into a single seller interface. The protocol supports this topology natively — an ad network is a seller agent that represents multiple publisher properties it doesn't own.
+Ad networks aggregate inventory across multiple AI platforms into a single seller interface. The protocol supports this topology natively — a network is a seller agent that represents multiple publisher properties it doesn't own.
 
 ## How a network appears
 
@@ -62,9 +62,9 @@ The network decides which platform serves each impression based on context, rele
 Networks typically use implicit accounts (`require_operator_auth: false`). The buyer agent is trusted and declares brands via `sync_accounts`. The network then manages its own accounts with each underlying AI platform:
 
 ```
-Buyer agent → Network (implicit accounts, agent-trusted)
-Network → AI Platform A (explicit accounts, operator auth)
-Network → AI Platform B (explicit accounts, operator auth)
+Buyer agent -> Network (implicit accounts, agent-trusted)
+Network -> AI Platform A (explicit accounts, operator auth)
+Network -> AI Platform B (explicit accounts, operator auth)
 ```
 
 Declare capabilities accordingly:
@@ -84,7 +84,7 @@ Declare capabilities accordingly:
 
 ## Catalog forwarding
 
-Networks receive catalogs from buyers via `sync_catalogs` and forward them to the relevant AI platforms. The same task works on both legs — the network acts as a buyer when syncing catalogs to each platform. This is the core data pipe: brand catalog data flows from buyer → network → platform, giving each platform the raw material to generate ads.
+Networks receive catalogs from buyers via `sync_catalogs` and forward them to the relevant AI platforms. The same task works on both legs — the network acts as a buyer when syncing catalogs to each platform. This is the core data pipe: brand catalog data flows from buyer to network to platform, giving each platform the raw material to generate ads.
 
 ## Governance and content standards
 
@@ -124,12 +124,12 @@ A network's [`adagents.json`](/docs/governance/property/adagents) lists the publ
 
 Each underlying AI platform authorizes the network in its own `adagents.json`. Buyer agents discover the network through the platforms' authorization chains.
 
-## Sponsored Intelligence through networks
+## SI Chat Protocol through networks
 
-When an ad network sells [Sponsored Intelligence](/docs/sponsored-intelligence/overview) on behalf of brands, it acts as an intermediary in the SI session flow. The brand syncs offerings to the network via `sync_catalogs` with `type: "offering"`, and the network forwards them to underlying platforms. When a platform triggers a session, the network routes it to the correct brand agent.
+When an ad network sells [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) sessions on behalf of brands, it acts as an intermediary in the session flow. The brand syncs offerings to the network via `sync_catalogs` with `type: "offering"`, and the network forwards them to underlying platforms. When a platform triggers a session, the network routes it to the correct brand agent.
 
 ```
-AI Platform → Network → Brand Agent
+AI Platform -> Network -> Brand Agent
 
 1. Platform calls si_initiate_session with the network's media_buy_id
 2. Network maps media_buy_id to the brand's offering_id
@@ -139,7 +139,7 @@ AI Platform → Network → Brand Agent
 
 The key fields at each leg:
 
-| Field | Platform → Network | Network → Brand |
+| Field | Platform to Network | Network to Brand |
 |---|---|---|
 | `media_buy_id` | Network's media buy ID | May differ or be omitted |
 | `offering_id` | Not set (platform doesn't know) | Brand-specific offering |
@@ -151,5 +151,5 @@ The network handles attribution correlation across the two legs. It knows which 
 Networks should forward `identity` and `supported_capabilities` unchanged — the brand agent needs accurate host capabilities to negotiate modalities, and the user's consent was granted for the brand, not the network.
 
 <Note>
-For the SI session lifecycle and capability negotiation details, see the [SI overview](/docs/sponsored-intelligence/overview) and [implementing SI hosts](/docs/sponsored-intelligence/implementing-si-hosts).
+For the SI Chat Protocol session lifecycle and capability negotiation details, see the [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) and [implementing SI hosts](/docs/sponsored-intelligence/implementing-si-hosts).
 </Note>

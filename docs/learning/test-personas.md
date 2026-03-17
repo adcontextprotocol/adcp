@@ -139,7 +139,7 @@ Determine whether AdCP works for a network topology (buyer → network → platf
 10. "Are there other networks using AdCP or am I the first?"
 
 ### Pages he'd likely visit
-1. `/docs/guides/ai-media` — Core page, looking for network-specific guidance
+1. `/docs/sponsored-intelligence/overview` — Core page, looking for network-specific guidance
 2. `/docs/guides/seller-integration` — How to appear as a seller to buyer agents
 3. `/docs/accounts/overview` — Network account model (agent-trusted, implicit accounts)
 4. `/docs/building/integration/accounts-and-agents` — Multi-level account delegation
@@ -220,7 +220,7 @@ Decide whether to adopt AdCP as the standard interface for her platform's demand
 
 ### Pages she'd likely visit
 1. `/docs/intro` — Starting point, looking for AI-specific framing
-2. `/docs/guides/ai-media` — The core page for her use case — expects to find the reversed data flow argument, catalog sync, governance, and product modeling
+2. `/docs/sponsored-intelligence/overview` — The core page for her use case — expects to find the reversed data flow argument, catalog sync, governance, and product modeling
 3. `/docs/creative/catalogs` — Deep dive on catalog sync — this is her biggest operational pain point
 4. `/docs/guides/seller-integration` — What she'd need to build as a seller agent
 5. `/docs/governance/overview` — How content standards work as an "oracle" the platform queries/receives
@@ -304,8 +304,8 @@ Understand whether AdCP is the right standard for her agency to adopt for AI med
 1. `/` — Homepage, looking for "what is this and why should I care"
 2. `/docs/intro` — Orientation, hoping for a clear value prop
 3. `/docs/building/understanding/adcp-vs-openrtb` — Directly answers her "how is this different" question
-4. `/docs/guides/ai-media` — The core guide for her use case (she's the buyer)
-5. `/docs/quickstart` — Wants to see what the workflow looks like, even if she won't code it
+4. `/docs/sponsored-intelligence/overview` — The core guide for her use case (she's the buyer)
+5. `/docs/sponsored-intelligence/workflow` — Wants to see what the workflow looks like, even if she won't code it
 6. `/docs/guides/seller-integration` — Might read this to understand the other side
 7. `/docs/governance/overview` — How brand safety works in this world
 8. `/docs/creative/catalogs` — Understanding the catalog workflow
@@ -382,7 +382,7 @@ Understand what AI advertising is, whether his brand should invest, and what org
 ### Pages he'd likely visit
 1. `/` — Homepage, looking for the big picture
 2. `/docs/intro` — "Explain this to me like I'm a CMO"
-3. `/docs/guides/ai-media` — Core guide, but may bounce if it's too technical
+3. `/docs/sponsored-intelligence/overview` — Core guide, but may bounce if it's too technical
 4. `/docs/building/understanding/adcp-vs-openrtb` — Wants the comparison to what he knows
 5. `/docs/creative/catalogs` — Understanding what data his team needs to provide
 6. `/docs/governance/overview` — Brand safety and content standards (high priority for him)
@@ -458,7 +458,7 @@ Figure out if she can advertise on AI platforms without hiring an agency or an e
 ### Pages she'd likely visit
 1. `/` — Homepage, looking for plain-language explanation
 2. `/docs/intro` — Might bounce if too technical
-3. `/docs/guides/ai-media` — If the buyer section catches her, she'll read it
+3. `/docs/sponsored-intelligence/overview` — If the buyer section catches her, she'll read it
 4. `/docs/creative/catalogs` — Wants to know if her Shopify feed works
 5. `/docs/brand-protocol/brand-json` — Wants to control her brand representation
 6. `/docs/governance/overview` — Wants to prevent AI from making wrong claims about her products

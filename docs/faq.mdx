@@ -7,7 +7,27 @@ description: "Answers to common questions about AdCP — licensing (Apache 2.0, 
 
 ## About agentic advertising
 
-For a practical guide to buying ads on AI platforms, see the [buyer's guide to AI media](/docs/guides/buying-ai-media).
+<AccordionGroup>
+
+<Accordion title="How do ads work in AI assistants?">
+When you ask an AI assistant for a product recommendation, the assistant can surface relevant brands — similar to how a retail platform shows sponsored products when you search. The brand pushes its product catalog, brand identity, and content standards into the platform ahead of time. When a user's question matches, the AI generates a contextually relevant recommendation from that data. This is called Sponsored Intelligence.
+</Accordion>
+
+<Accordion title="Can I advertise on ChatGPT, Perplexity, or other AI platforms?">
+AI platforms are beginning to offer advertising, and the market is growing. AdCP provides a standard protocol so your buyer agent can connect to any AI platform that implements it — without building a custom integration for each one. Your buyer agent discovers available inventory from connected sellers in real time via `get_products`.
+</Accordion>
+
+<Accordion title="How is this different from SEO for AI?">
+SEO for AI (sometimes called GAIO or generative AI optimization) focuses on getting your brand mentioned in organic AI responses by optimizing your public content. Sponsored Intelligence is paid advertising — brands push structured product data, brand identity, and optimization goals into AI platforms through a standard protocol, and the platform generates clearly labeled sponsored content. The two approaches are complementary, not competing.
+</Accordion>
+
+<Accordion title="Do users know it is an ad?">
+Yes. Sponsored Intelligence content is labeled as sponsored, the same way sponsored search results and retail media placements are labeled. Transparency is a core principle — the user always knows when content is paid.
+</Accordion>
+
+</AccordionGroup>
+
+For a practical guide to buying ads on AI platforms, see the [monetizing AI guide](/docs/guides/monetizing-ai). For the technical protocol walkthrough, see the [Sponsored Intelligence overview](/docs/sponsored-intelligence/overview).
 
 ## About AdCP
 
@@ -73,7 +93,7 @@ AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising
 </Accordion>
 
 <Accordion title="Does AdCP support AI platforms and AI ad networks?">
-Yes. AdCP's `sponsored_intelligence` channel covers advertising within AI assistants, AI search engines, and generative AI experiences — including sponsored responses, AI search sponsored results, generative display, and brand experience handoffs via Sponsored Intelligence. AI platforms and AI ad networks implement AdCP the same way any seller does: publish `adagents.json`, implement `get_products` with `channels: ["sponsored_intelligence"]`, and accept media buys. See the [AI media guide](/docs/guides/ai-media) for product modeling, workflows, and measurement.
+Yes. AdCP's `sponsored_intelligence` channel covers advertising within AI assistants, AI search engines, and generative AI experiences — including sponsored responses, AI search sponsored results, generative display, and brand experience handoffs via SI Chat Protocol. AI platforms and ad networks implement AdCP the same way any seller does: publish `adagents.json`, implement `get_products` with `channels: ["sponsored_intelligence"]`, and accept media buys. See the [Sponsored Intelligence protocol](/docs/sponsored-intelligence/overview) for product modeling, workflows, and measurement.
 </Accordion>
 
 <Accordion title="How does AdCP relate to MCP and A2A?">
@@ -98,7 +118,7 @@ A platform that implements AdCP does not need to replace its existing API. AdCP 
 <AccordionGroup>
 
 <Accordion title="How much does it cost to advertise on AI platforms?">
-Pricing varies by platform and format. Most AI media is sold on a CPM basis similar to traditional digital, with premium conversational formats typically commanding higher rates. Your buyer agent discovers pricing from connected sellers through the protocol.
+Pricing varies by platform and format. Common models include CPC (cost per click) for sponsored responses and AI search results, and per-session pricing for conversational brand experiences via SI Chat Protocol. Your buyer agent discovers available pricing from connected sellers through `get_products` — each product lists its pricing options.
 </Accordion>
 
 <Accordion title="Which AI platforms can I reach today?">
@@ -114,12 +134,12 @@ Yes. AdCP is additive to existing agency relationships. Your agency can use buye
 </Accordion>
 
 <Accordion title="How long does it take to get started?">
-If your agency already supports AdCP, you can be live in days. If not, the [buyer's guide](/docs/guides/buying-ai-media) walks through options for brands, agencies, and small businesses — including working with an AdCP-certified partner.
+If your agency already supports AdCP, you can be live in days. If not, the [monetizing AI guide](/docs/guides/monetizing-ai#getting-started-by-role) walks through options for brands, agencies, and small businesses — including working with an AdCP-certified partner.
 </Accordion>
 
 </AccordionGroup>
 
-<Card title="Read the buyer's guide" icon="book-open" href="/docs/guides/buying-ai-media">
+<Card title="Read the buyer's guide" icon="book-open" href="/docs/guides/monetizing-ai">
   What you need, what data to provide, and how to find a partner — whether you're a brand, agency, or small business.
 </Card>
 
