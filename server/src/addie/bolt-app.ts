@@ -1156,8 +1156,21 @@ async function handleUserMessage({
   const channelId = event.channel;
   const threadService = getThreadService();
 
-  // Build external ID for Slack: channel_id:thread_ts
-  const externalId = `${channelId}:${threadTs}`;
+  // Use permanent thread from person_relationships when available so the
+  // addie_threads record stays unified across all DMs with this person.
+  let resolvedThreadTs = threadTs;
+  if (channelType === 'im') {
+    try {
+      const rel = await relationshipDb.getRelationshipBySlackId(userId);
+      if (rel?.slack_dm_channel_id === channelId && rel.slack_dm_thread_ts) {
+        resolvedThreadTs = rel.slack_dm_thread_ts;
+      }
+    } catch (error) {
+      logger.debug({ error, userId }, 'Addie Bolt: Could not look up permanent thread in assistant handler');
+    }
+  }
+
+  const externalId = `${channelId}:${resolvedThreadTs}`;
 
   // Sanitize input
   const inputValidation = sanitizeInput(messageText || '');
@@ -2343,7 +2356,7 @@ async function handleDirectMessage(
   }
 
   const channelId = event.channel;
-  const threadTs = event.thread_ts || event.ts;
+  const slackThreadTs = event.thread_ts || event.ts;
 
   // Extract forwarded message content from attachments
   const forwardedContent = extractForwardedContent(event.attachments);
@@ -2362,7 +2375,21 @@ async function handleDirectMessage(
   const startTime = Date.now();
   const threadService = getThreadService();
 
-  // Build external ID for Slack DMs: channel_id:thread_ts
+  // Look up the permanent thread from person_relationships so all DMs with this
+  // person route to a single addie_threads record — even if the Slack event
+  // arrives as a top-level message without thread_ts.
+  let permThreadTs: string | null = null;
+  let cachedRel: Awaited<ReturnType<typeof relationshipDb.getRelationshipBySlackId>> | null = null;
+  try {
+    cachedRel = await relationshipDb.getRelationshipBySlackId(userId);
+    if (cachedRel?.slack_dm_channel_id === channelId && cachedRel.slack_dm_thread_ts) {
+      permThreadTs = cachedRel.slack_dm_thread_ts;
+    }
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not look up permanent thread');
+  }
+
+  const threadTs = permThreadTs || slackThreadTs;
   const externalId = `${channelId}:${threadTs}`;
 
   // Sanitize input
@@ -2482,18 +2509,30 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in the DM channel
-  // For AI Assistant apps, Slack treats every DM as a thread. We must use thread_ts
-  // to respond in the same thread as the user's message, otherwise our response
-  // appears as a separate notification in a different thread.
+  // Send response in the permanent DM thread when available, so all conversation
+  // stays in one Slack thread. Fall back to replying to the current message.
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
       text: wrapUrlsForSlack(outputValidation.sanitized),
-      thread_ts: event.ts,
+      thread_ts: permThreadTs || event.ts,
     });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send DM response');
+  }
+
+  // If no permanent thread existed, save this conversation as the permanent thread
+  // so the orchestrator will continue in this same thread later.
+  if (!permThreadTs) {
+    try {
+      const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
+      if (rel && !rel.slack_dm_thread_ts) {
+        await relationshipDb.setSlackDmThread(rel.id, channelId, slackThreadTs);
+        logger.info({ userId, channelId, threadTs: slackThreadTs }, 'Addie Bolt: Saved permanent DM thread from inbound conversation');
+      }
+    } catch (error) {
+      logger.debug({ error, userId }, 'Addie Bolt: Could not save permanent thread');
+    }
   }
 
   // Log assistant response to unified thread
