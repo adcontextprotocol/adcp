@@ -166,7 +166,11 @@ class MCPOAuthProvider implements OAuthServerProvider {
 
     // Redirect to AuthKit via WorkOS SDK (reuses existing WORKOS_REDIRECT_URI)
     const { getAuthorizationUrl } = await import('../auth/workos-client.js');
-    const workosState = JSON.stringify({ mcp_pending_id: pendingId });
+    // Include the OAuth state in the WorkOS state for CSRF validation
+    const workosState = JSON.stringify({
+      mcp_pending_id: pendingId,
+      state: params.state,
+    });
     const authUrl = getAuthorizationUrl(workosState);
 
     logger.info(
@@ -260,11 +264,36 @@ export function createOAuthProvider(): MCPOAuthProvider {
 // ---------------------------------------------------------------------------
 
 export async function handleMCPOAuthCallback(
-  _req: Request,
+  req: Request,
   res: Response,
   workosCode: string,
   mcpPendingId: string,
+  callbackState?: string,
 ): Promise<void> {
+  // Parse the WorkOS state to extract and validate the OAuth state
+  let workosState: { mcp_pending_id?: string; state?: string } | undefined;
+  if (callbackState) {
+    try {
+      workosState = JSON.parse(callbackState);
+    } catch {
+      // Not JSON, will handle below
+      workosState = undefined;
+    }
+  }
+
+  // Verify the mcp_pending_id in the callback matches the one we're processing
+  if (!workosState || workosState.mcp_pending_id !== mcpPendingId) {
+    logger.warn(
+      { mcpPendingId, callbackMcpPendingId: workosState?.mcp_pending_id },
+      'MCP OAuth: mcp_pending_id mismatch - possible CSRF attack',
+    );
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'Invalid callback state',
+    });
+    return;
+  }
+
   // Atomic consume: DELETE ... RETURNING prevents double-use race
   const pending = await mcpOAuthStateDb.consumePendingAuth(mcpPendingId);
   if (!pending) {
@@ -272,6 +301,20 @@ export async function handleMCPOAuthCallback(
     res.status(400).json({
       error: 'invalid_request',
       error_description: 'MCP authorization request expired or not found',
+    });
+    return;
+  }
+
+  // Validate that the OAuth state in the callback matches the stored state
+  // This prevents CSRF attacks where an attacker tries to use a different auth state
+  if (workosState.state !== pending.state) {
+    logger.warn(
+      { mcpPendingId, expectedState: pending.state, actualState: workosState.state },
+      'MCP OAuth: State parameter mismatch - possible CSRF attack',
+    );
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'State parameter validation failed',
     });
     return;
   }
