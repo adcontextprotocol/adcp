@@ -614,6 +614,22 @@ export class MCPToolHandler {
 
       case "get_member": {
         const slug = args?.slug as string;
+        // Validate slug: must be non-empty string with only lowercase alphanumeric, hyphens
+        if (typeof slug !== "string" || !slug || !/^[a-z0-9-]+$/.test(slug)) {
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: "members://error",
+                  mimeType: "application/json",
+                  text: JSON.stringify({ error: "Invalid slug: must be a non-empty string containing only lowercase letters, numbers, and hyphens" }),
+                },
+              },
+            ],
+            isError: true,
+          };
+        }
         const member = await this.memberDb.getProfileBySlug(slug);
 
         if (!member || !member.is_public) {
