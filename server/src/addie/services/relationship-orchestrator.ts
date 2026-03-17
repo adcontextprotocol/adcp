@@ -481,9 +481,11 @@ export async function runRelationshipOrchestratorCycle(options: {
       // 4. Load full relationship context
       const context = await loadRelationshipContext(candidate.id, { includeCommunity: true });
 
-      // 4b. Do not proactively message completely cold prospects or silent welcomes
+      // 4b. Do not proactively message people with no observable engagement.
+      // Welcome messages for new prospects are exempt (they just arrived).
+      const isNewProspectWelcome = candidate.stage === 'prospect' && candidate.last_addie_message_at === null;
       if (
-        (candidate.stage === 'prospect' || candidate.stage === 'welcomed')
+        !isNewProspectWelcome
         && candidate.last_person_message_at === null
         && !hasMeaningfulEngagement(context)
       ) {
