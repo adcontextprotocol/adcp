@@ -42,7 +42,7 @@ asyncio.run(list_formats())
 
 ```bash
 uvx adcp \
-  https://test-agent.adcontextprotocol.org/mcp \
+  https://agenticadvertising.org/api/training-agent/mcp \
   list_creative_formats \
   '{}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ

@@ -151,7 +151,7 @@ asyncio.run(create_campaign())
 
 ```bash CLI test=false
 npx adcp \
-  https://test-agent.adcontextprotocol.org/mcp \
+  https://agenticadvertising.org/api/training-agent/mcp \
   create_media_buy \
   '{"buyer_ref":"summer_campaign_2025","brand":{"domain":"acmecorp.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ

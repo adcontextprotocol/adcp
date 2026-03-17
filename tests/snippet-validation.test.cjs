@@ -11,7 +11,7 @@
  * - Example: ```bash testable
  *
  * Test Agent Configuration:
- * - Uses https://test-agent.adcontextprotocol.org for testing
+ * - Uses https://agenticadvertising.org/api/training-agent for testing
  * - MCP token: 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
  * - A2A token: L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8
  *
@@ -34,7 +34,7 @@ const execAsync = promisify(exec);
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const CACHE_FILE = path.join(__dirname, '.tested-files.json');
-const TEST_AGENT_URL = 'https://test-agent.adcontextprotocol.org';
+const TEST_AGENT_URL = 'https://agenticadvertising.org/api/training-agent';
 const MCP_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
 const A2A_TOKEN = 'L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8';
 

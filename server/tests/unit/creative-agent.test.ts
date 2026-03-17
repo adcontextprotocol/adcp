@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildFormats } from '../../src/shared/formats.js';
-import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats } from '../../src/creative-agent/task-handlers.js';
+import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats, createCreativeAgentServer } from '../../src/creative-agent/task-handlers.js';
 import { renderPreview } from '../../src/creative-agent/preview-renderer.js';
 import { storePreview, getPreview, cleanExpiredPreviews } from '../../src/creative-agent/preview-store.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 const TEST_BASE_URL = 'http://localhost:3000';
 const TEST_AGENT_URL = `${TEST_BASE_URL}/api/creative-agent`;
@@ -520,5 +522,51 @@ describe('preview store', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ── MCP server structuredContent ─────────────────────────────────────
+
+describe('MCP server tool responses', () => {
+  let client: Client;
+  let server: ReturnType<typeof createCreativeAgentServer>;
+
+  beforeEach(async () => {
+    server = createCreativeAgentServer(TEST_AGENT_URL);
+    client = new Client({ name: 'test-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  });
+
+  afterEach(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  it('list_creative_formats returns structuredContent', async () => {
+    const result = await client.callTool({
+      name: 'list_creative_formats',
+      arguments: { type: 'display' },
+    });
+    expect(result.structuredContent).toBeDefined();
+    const structured = result.structuredContent as { formats: unknown[] };
+    expect(structured.formats.length).toBeGreaterThan(0);
+    expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual(result.structuredContent);
+  });
+
+  it('preview_creative returns structuredContent', async () => {
+    const result = await client.callTool({
+      name: 'preview_creative',
+      arguments: {
+        creative_manifest: {
+          format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
+          assets: { banner_image: { url: 'https://example.com/ad.jpg' } },
+        },
+        output_format: 'html',
+      },
+    });
+    expect(result.structuredContent).toBeDefined();
+    expect((result.structuredContent as { response_type: string }).response_type).toBe('single');
+    expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual(result.structuredContent);
   });
 });

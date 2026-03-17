@@ -649,10 +649,10 @@ describe('shouldContact', () => {
       expect(result.reason).toContain('monthly pulse');
     });
 
-    it('allows monthly pulse with 5+ unreplied after 30 days', () => {
+    it('allows monthly pulse with 3 unreplied after 30 days', () => {
       const r = makeRelationship({
         stage: 'welcomed',
-        unreplied_outreach_count: 5,
+        unreplied_outreach_count: 3,
         last_addie_message_at: daysAgo(35),
       });
       const result = shouldContact(r);
@@ -662,9 +662,9 @@ describe('shouldContact', () => {
   });
 
   describe('circuit breaker', () => {
-    it('blocks after 6 total unreplied messages', () => {
+    it('blocks after 4 total unreplied messages', () => {
       const r = makeRelationship({
-        unreplied_outreach_count: 6,
+        unreplied_outreach_count: 4,
         last_addie_message_at: daysAgo(60),
       });
       const result = shouldContact(r);
@@ -672,9 +672,9 @@ describe('shouldContact', () => {
       expect(result.reason).toContain('circuit breaker');
     });
 
-    it('allows monthly pulse at 5 unreplied', () => {
+    it('allows monthly pulse at 3 unreplied', () => {
       const r = makeRelationship({
-        unreplied_outreach_count: 5,
+        unreplied_outreach_count: 3,
         last_addie_message_at: daysAgo(35),
       });
       const result = shouldContact(r);
@@ -686,7 +686,7 @@ describe('shouldContact', () => {
   describe('disengaging pulse doubling', () => {
     it('blocks disengaging person within 60 days', () => {
       const r = makeRelationship({
-        unreplied_outreach_count: 4,
+        unreplied_outreach_count: 3,
         sentiment_trend: 'disengaging' as any,
         last_addie_message_at: daysAgo(40), // past 30d but within 60d
       });
@@ -697,7 +697,7 @@ describe('shouldContact', () => {
 
     it('allows disengaging person after 60 days', () => {
       const r = makeRelationship({
-        unreplied_outreach_count: 4,
+        unreplied_outreach_count: 3,
         sentiment_trend: 'disengaging' as any,
         last_addie_message_at: daysAgo(65),
       });
@@ -758,7 +758,7 @@ describe('hasMeaningfulEngagement', () => {
     expect(result).toBe(false);
   });
 
-  it('returns true when the person has linked an account', () => {
+  it('returns false when the person has only linked an account (no activity)', () => {
     const result = hasMeaningfulEngagement({
       relationship: makeRelationship({
         stage: 'prospect',
@@ -780,7 +780,7 @@ describe('hasMeaningfulEngagement', () => {
       certification: null,
     });
 
-    expect(result).toBe(true);
+    expect(result).toBe(false);
   });
 
   it('returns true when there is a prior inbound message', () => {

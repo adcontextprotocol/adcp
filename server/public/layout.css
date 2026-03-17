@@ -22,7 +22,7 @@ body {
 
 .page-header {
   text-align: center;
-  padding: var(--space-16) var(--space-6) var(--space-10);
+  padding: var(--space-8) var(--space-6) var(--space-10);
   background: #fff;
 }
 
@@ -195,7 +195,7 @@ body {
 
 .homepage-hero {
   text-align: center;
-  padding: var(--space-20) var(--space-6) var(--space-12);
+  padding: var(--space-10) var(--space-6) var(--space-12);
   max-width: 800px;
   margin: 0 auto;
 }

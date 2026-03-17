@@ -1,17 +1,43 @@
 ---
 title: Commerce Media
-description: "Commerce media in AdCP: how retail media networks, sponsored product listings, and closed-loop attribution map to AdCP tasks, catalogs, and delivery reporting."
+description: "Commerce media in AdCP: why retail media networks should stand up agentic storefronts instead of building self-service platforms, and how to model sponsored products, in-store digital, and closed-loop attribution."
 "og:title": "AdCP — Commerce Media"
 ---
 
 
-Commerce media — advertising within retail and marketplace environments — lets brands reach shoppers at the point of purchase. AdCP's `retail_media` channel handles the full spectrum: sponsored product listings, on-site display, off-site audience extension, premium placements, and in-store digital.
+Every retail media network that builds a self-service ad platform ends up in the same place: competing for agency attention against the largest grocery, pharmacy, and general merchandise retailers — each asking brands to learn one more interface, manage one more login, reconcile one more set of reports.
 
-What makes commerce media unique is **closed-loop attribution**. Retailers know what people buy. When ads run on retailer platforms, every impression can be tied to actual purchases — online and in-store. AdCP models this through `outcome_measurement`, `conversion_tracking`, and `by_action_source` in delivery reporting.
+There's an alternative. Stand up an agentic storefront: expose your inventory so buyer agents can discover, transact on, and measure it through the same protocol they use for every other seller. When agents handle discovery, the advantage shifts from UI quality to data quality — and data is where most retailers already have a moat.
 
-## Concept Mapping
+## The storefront, not the platform
 
-| Retail Media Concept | AdCP Equivalent | Reference |
+<img src="/images/walkthrough/commerce-media-01-platform-trap.png" alt="Daniel reviews a cluttered platform roadmap on a wall screen — dashboard mockups, audience builders, and reporting UIs pile up while he looks skeptical" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+Daniel runs retail media at ShopGrid, a marketplace with 200M monthly shoppers and deterministic purchase data from its loyalty program. When he was tasked with building ShopGrid's ad business, the roadmap looked familiar: self-service campaign tool, proprietary audience builder, custom reporting dashboard, eventually a DSP.
+
+He got halfway through the build before he realized the problem. The brands ShopGrid wanted to attract — CPG companies, health and beauty brands, consumer electronics — were already managing campaigns across a dozen retail media platforms. Each platform had its own API, its own audience taxonomy, its own reporting format. Asking brands to integrate yet another platform meant competing on UI quality against companies with 100x the engineering budget.
+
+<img src="/images/walkthrough/commerce-media-02-data-moat.png" alt="Daniel walks a retail floor as data streams flow from his tablet to glowing digital screens on end-caps and checkout lanes — the store as a data asset" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+ShopGrid's moat wasn't going to be its dashboard. The moat was the data: deterministic purchase attribution from millions of loyalty members, real-time inventory across thousands of stores, and in-store digital screens at the point of purchase. The question was how to make that data and inventory accessible to the broadest possible set of buyers.
+
+<img src="/images/walkthrough/commerce-media-03-storefront-launch.png" alt="Daniel at his desk as five retail media product cards radiate outward from his monitor — sponsored products, display, video, in-store, and premium placements being published" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+Daniel stood up an AdCP sales agent instead. ShopGrid's entire retail media catalog — sponsored products, on-site display, in-store screens — is exposed as products that any buyer agent can discover via `get_products`. The loyalty data powers closed-loop attribution reported through standard delivery metrics. The store locations are modeled as catalogs with catchment areas for proximity targeting.
+
+<img src="/images/walkthrough/commerce-media-04-buyer-discovers.png" alt="Split scene — Sam runs a brief from his agency desk as search beams connect to Daniel's retail media products floating on the right, discovery in action" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+The result: any buyer agent that speaks AdCP can transact on ShopGrid inventory without a custom integration. Sam at Pinnacle Agency discovered ShopGrid's sponsored products while running a cross-retailer campaign for Summit Foods — through the same protocol and brief he used for other retailers.
+
+What every retail media team actually wants is the control of self-serve, the ease of managed service, and all the data in their own internal tools. A self-service platform gives you control but requires massive engineering investment. Managed service is easy for buyers but doesn't scale. An agentic storefront resolves the tension: the retailer defines the products, pricing, and rules (control); buyer agents handle discovery and execution without a sales rep in the loop (ease); and because the retailer runs the MCP server, every transaction flows through their infrastructure (data stays home).
+
+This doesn't mean ShopGrid abandoned everything else. Brands that aren't using buyer agents still need basic self-service access. But the agentic storefront is the growth layer — it's how ShopGrid reaches buyers who would never have integrated a mid-size retailer's proprietary platform.
+
+The table below maps familiar retail media concepts to their AdCP equivalents.
+
+## Concept mapping
+
+| Retail media concept | AdCP equivalent | Reference |
 |---|---|---|
 | Retailer / retail media network | Sales agent (MCP server) | [`adagents.json`](/docs/media-buy/advanced-topics/accounts-and-security) |
 | Advertiser account with retailer | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
@@ -31,25 +57,25 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 
 Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
 
-## The Product Spectrum
+## The product spectrum
 
-Major retailers like Walmart Connect, Kroger Precision Marketing, Target Roundel, and Carrefour Links offer diverse product types — not just sponsored listings. All share the `retail_media` channel, but differ in format, pricing, and creative requirements.
+Retail media networks offer diverse product types — not just sponsored listings. All share the `retail_media` channel, but differ in format, pricing, and creative requirements. Daniel modeled ShopGrid's full portfolio as separate products so buyer agents can mix and match across the funnel.
 
-### Sponsored Product Listings
+### Sponsored product listings
 
 The simplest commerce media product. The retailer renders the creative from the buyer's product catalog — no custom creative upload needed. Pricing is typically CPC.
 
 ```json
 {
-  "product_id": "grocery_sponsored_products",
+  "product_id": "shopgrid_sponsored_products",
   "name": "Sponsored Products - Search & Browse",
   "description": "Sponsored product listings in search results and category pages. Products are rendered from retailer catalog data.",
   "channels": ["retail_media"],
   "publisher_properties": [
-    { "publisher_domain": "grocery-retailer.com", "selection_type": "all" }
+    { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
   "format_ids": [
-    { "agent_url": "https://retailer-ads.example.com", "id": "sponsored_product_listing" }
+    { "agent_url": "https://ads.shopgrid.example", "id": "sponsored_product_listing" }
   ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
@@ -63,8 +89,8 @@ The simplest commerce media product. The retailer renders the creative from the 
     }
   ],
   "delivery_measurement": {
-    "provider": "Platform Attribution",
-    "notes": "Deterministic purchase attribution via transaction data. 14-day lookback."
+    "provider": "ShopGrid deterministic purchase attribution",
+    "notes": "Deterministic purchase attribution from first-party shopper data. 14-day lookback."
   },
   "outcome_measurement": {
     "type": "attributed_sales",
@@ -78,6 +104,8 @@ The simplest commerce media product. The retailer renders the creative from the 
     "platform_managed": true
   },
   "creative_policy": {
+    "co_branding": "none",
+    "landing_page": "any",
     "templates_available": true
   },
   "catalog_types": ["product"],
@@ -91,6 +119,8 @@ The simplest commerce media product. The retailer renders the creative from the 
 
 The `catalog_types` field declares what catalog types this product supports. The `catalog_match` field tells the buyer which of their catalog items are eligible on this retailer. Buyers use these values as catalog selectors (`gtins`, `ids`) when creating media buys — the same way `publisher_properties` lists available properties for refinement. Sellers can include `matched_gtins`, `matched_ids`, or both.
 
+Sponsored product listings are catalog-rendered — the retailer pulls title, price, image, and rating from its own catalog data matched via GTIN. Enhanced product content (comparison charts, lifestyle galleries, brand story modules) and brand stores are complementary content strategies managed through the retailer's content systems, not through the ad buy.
+
 Key characteristics:
 - **CPC pricing** with auction-based bidding
 - **`platform_managed: true`** — the retailer provides always-on purchase attribution
@@ -98,16 +128,19 @@ Key characteristics:
 - **`templates_available: true`** — the retailer renders creatives from catalog data
 - **`action_sources`** includes `in_store` for omnichannel attribution
 
-### On-Site Display and Video
+### On-site display and video
 
 Display and video ads on retailer properties, targeted using retailer first-party shopper data. Buyers provide standard creatives. Higher minimums and CPMs reflect the value of retailer audience data and guaranteed placement.
 
 ```json
 {
-  "product_id": "grocery_onsite_display",
+  "product_id": "shopgrid_onsite_display",
   "name": "Category Shoppers - On-Site Display & Video",
-  "description": "Display and video ads on retailer website and app, targeting shoppers with relevant purchase history.",
+  "description": "Display and video ads on ShopGrid marketplace and app, targeting shoppers with relevant purchase history.",
   "channels": ["retail_media"],
+  "publisher_properties": [
+    { "publisher_domain": "shopgrid.example", "selection_type": "all" }
+  ],
   "format_ids": [
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
@@ -133,6 +166,11 @@ Display and video ads on retailer properties, targeted using retailer first-part
     "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
   },
+  "conversion_tracking": {
+    "action_sources": ["website", "app"],
+    "supported_targets": ["cost_per", "per_ad_spend"],
+    "platform_managed": true
+  },
   "creative_policy": {
     "co_branding": "required",
     "landing_page": "retailer_site_only",
@@ -143,18 +181,18 @@ Display and video ads on retailer properties, targeted using retailer first-part
 
 Note the creative policy: retailers commonly require co-branding and restrict landing pages to the retailer's own site.
 
-### Off-Site Audience Extension
+### Off-site audience extension
 
 The retailer uses first-party purchase data to target audiences on third-party inventory — extending reach beyond the retailer's own site. The product still belongs to the `retail_media` channel because the buying context is the retailer's data asset.
 
 ```json
 {
-  "product_id": "grocery_offsite_extension",
+  "product_id": "shopgrid_offsite_extension",
   "name": "Shopper Audiences - Off-Site Display & Video",
-  "description": "Reach retailer shoppers across premium display and video inventory using first-party purchase data.",
+  "description": "Reach ShopGrid shoppers across premium display and video inventory using first-party purchase data.",
   "channels": ["retail_media"],
   "publisher_properties": [
-    { "publisher_domain": "grocery-retailer.com", "selection_type": "all" }
+    { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
   "format_ids": [
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
@@ -179,20 +217,28 @@ The retailer uses first-party purchase data to target audiences on third-party i
     "attribution": "deterministic_purchase",
     "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
+  },
+  "conversion_tracking": {
+    "action_sources": ["website", "app", "in_store"],
+    "supported_targets": ["cost_per", "per_ad_spend"],
+    "platform_managed": true
   }
 }
 ```
 
-### Premium Placements
+### Premium placements
 
 Homepage takeovers, category sponsorships, seasonal event placements. These high-visibility positions are sold at fixed rates with guaranteed delivery — often booked well in advance.
 
 ```json
 {
-  "product_id": "grocery_homepage_takeover",
+  "product_id": "shopgrid_homepage_takeover",
   "name": "Homepage Takeover - 24 Hours",
   "description": "Exclusive homepage banner and hero placement for 24 hours.",
   "channels": ["retail_media"],
+  "publisher_properties": [
+    { "publisher_domain": "shopgrid.example", "selection_type": "all" }
+  ],
   "format_ids": [
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250" },
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
@@ -222,6 +268,12 @@ Homepage takeovers, category sponsorships, seasonal event placements. These high
     "provider": "Retailer ad server",
     "notes": "Guaranteed impressions based on homepage traffic projections."
   },
+  "outcome_measurement": {
+    "type": "attributed_sales",
+    "attribution": "deterministic_purchase",
+    "window": { "interval": 14, "unit": "days" },
+    "reporting": "daily_api"
+  },
   "creative_policy": {
     "co_branding": "required",
     "landing_page": "retailer_site_only",
@@ -232,29 +284,56 @@ Homepage takeovers, category sponsorships, seasonal event placements. These high
 
 Premium placements use the `placements` array so buyers can assign different creatives to different positions within the same product.
 
-### In-Store Digital
+### In-store digital
 
-Digital screens in physical retail locations — checkout lanes, end-caps, and entrance displays. These bridge the digital-physical gap, with measurement tied to in-store purchases. When paired with a synced store catalog, in-store digital products can target specific locations and show inventory-aware creative.
+Digital screens in physical retail locations — checkout lanes, end-caps, entrance displays, and waiting areas. These bridge the digital-physical gap, with measurement tied to in-store purchases. When paired with a synced store catalog, in-store digital products can target specific locations and show inventory-aware creative.
+
+In-store is where retail media networks have inventory that no one else can replicate. A retailer with thousands of physical locations has screens at the point of purchase — reaching shoppers while they're browsing aisles, comparing products at the shelf, and waiting in line. Many of these shoppers never see digital ads elsewhere: they shop in-store exclusively, making them unreachable through online channels.
 
 ```json
 {
-  "product_id": "grocery_instore_screens",
-  "name": "In-Store Digital Screens - Checkout & Aisle",
-  "description": "Digital screens at checkout lanes and end-cap displays in 500+ locations.",
+  "product_id": "shopgrid_instore_screens",
+  "name": "In-Store Digital Screens",
+  "description": "Digital screens at checkout lanes, end-cap displays, and pharmacy waiting areas across 2,000+ locations.",
   "channels": ["retail_media"],
   "publisher_properties": [
-    { "publisher_domain": "grocery-retailer.com", "selection_type": "all" }
+    { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
   "format_ids": [
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
+  ],
+  "placements": [
+    {
+      "placement_id": "checkout_screen",
+      "name": "Checkout Lane Screens",
+      "format_ids": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
+      ]
+    },
+    {
+      "placement_id": "endcap_screen",
+      "name": "Aisle End-Cap Displays",
+      "format_ids": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" }
+      ]
+    },
+    {
+      "placement_id": "pharmacy_waiting",
+      "name": "Pharmacy Waiting Area",
+      "format_ids": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
+      ]
+    }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
       "pricing_option_id": "instore_cpm",
       "pricing_model": "cpm",
-      "fixed_price": 8.00,
+      "fixed_price": 12.00,
       "currency": "USD",
       "min_spend_per_package": 5000
     }
@@ -266,11 +345,24 @@ Digital screens in physical retail locations — checkout lanes, end-caps, and e
   "conversion_tracking": {
     "action_sources": ["in_store"],
     "platform_managed": true
+  },
+  "creative_policy": {
+    "co_branding": "none",
+    "landing_page": "any",
+    "templates_available": true
   }
 }
 ```
 
-## End-to-End Workflow
+Different screen placements have different creative requirements. Checkout screens offer 30-90 seconds of captive dwell time with a stationary shopper at close range. End-cap displays catch shoppers walking past with 2-3 seconds of glance time from further away. Pharmacy waiting areas have extended dwell time and a seated audience. Most in-store networks are silent — creative should be designed for sound-off unless the placement specifies otherwise.
+
+In-store products pair with the retailer's store catalog. The catalog exposes store locations with catchment areas (radius, isochrone, or GeoJSON polygons), enabling buyer agents to target specific geographies or store clusters. When combined with the brand's product catalog, in-store screens can show contextually relevant creative — the right product, in the right store, near the right shelf.
+
+### Beyond these examples
+
+Retail media portfolios often extend beyond the five product types above. Sponsored brand ads — a headline, brand logo, and 2-3 featured products — sit between sponsored product listings and display, with a custom headline from the buyer and catalog-rendered product tiles. Digital coupons and cashback offers tie directly to purchase and don't fit neatly into impression-based models — they can be modeled as products with CPA pricing and `conversion_tracking`. Sponsored placements in retailer email newsletters and app push notifications are high-performing, low-funnel products modeled the same way as on-site display with different `format_ids`. Shoppable video — where products are tagged within the video frame and viewers can add items to cart — combines video formats with catalog-rendered product overlays. Keyword-level search sponsorships, sampling programs, and recipe integrations each have distinct economics but follow the same pattern: a product with the right pricing model, format, and measurement declarations.
+
+## End-to-end workflow
 
 <Steps>
 
@@ -280,10 +372,10 @@ The buyer provides a brand reference that includes their product catalog feed. T
 
 ```json
 {
-  "name": "Nova Foods",
-  "url": "https://novafoods.example.com",
+  "name": "Summit Foods",
+  "url": "https://summitfoods.example.com",
   "product_catalog": {
-    "feed_url": "https://novafoods.example.com/products.xml",
+    "feed_url": "https://summitfoods.example.com/products.xml",
     "feed_format": "google_merchant_center",
     "categories": ["food/sauces", "food/condiments", "beverages"],
     "update_frequency": "daily"
@@ -299,13 +391,13 @@ Before creating media buys, sync the brand's data feeds to the retailer's accoun
 
 ```json
 {
-  "account": { "account_id": "acct_novafoods_grocery_001" },
+  "account": { "account_id": "acct_summitfoods_shopgrid_001" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
-      "name": "Nova Foods Product Catalog",
+      "name": "Summit Foods Product Catalog",
       "type": "product",
-      "url": "https://novafoods.example.com/products.xml",
+      "url": "https://summitfoods.example.com/products.xml",
       "feed_format": "google_merchant_center",
       "update_frequency": "daily"
     },
@@ -313,7 +405,7 @@ Before creating media buys, sync the brand's data feeds to the retailer's accoun
       "catalog_id": "inventory-feed",
       "name": "Store-Level Inventory",
       "type": "inventory",
-      "url": "https://feeds.novafoods.example.com/inventory.json",
+      "url": "https://feeds.summitfoods.example.com/inventory.json",
       "feed_format": "custom",
       "update_frequency": "hourly"
     }
@@ -331,7 +423,7 @@ The platform ingests each feed:
 
 Formats that require synced catalogs declare `catalog` asset types in their `assets` array — the buying agent checks these before submitting creatives. A sponsored product carousel might require both a `product` and `inventory` catalog.
 
-### Find Products
+### Find products
 
 Query `get_products` with `channels: ["retail_media"]` to find commerce media products. The brand identity enables the seller to filter by catalog eligibility:
 
@@ -339,7 +431,7 @@ Query `get_products` with `channels: ["retail_media"]` to find commerce media pr
 {
   "brief": "Promote our organic ketchup line across grocery retailers. Focus on high-intent shoppers.",
   "brand": {
-    "domain": "novafoods.example.com"
+    "domain": "summitfoods.example.com"
   },
   "filters": {
     "channels": ["retail_media"]
@@ -353,9 +445,10 @@ For sponsored product listings, sellers include `catalog_match` on each product 
 
 ```json
 {
-  "product_id": "grocery_sponsored_products",
+  "product_id": "shopgrid_sponsored_products",
   "catalog_match": {
     "matched_gtins": ["00013000006408", "00013000006415", "..."],
+    "matched_count": 3,
     "submitted_count": 1200
   }
 }
@@ -367,23 +460,23 @@ This tells the buyer which GTINs are eligible on this retailer and how many of t
 Sellers can also return [proposals](/docs/media-buy/product-discovery/media-products#proposals) with recommended budget allocations across product types — encoding media planning expertise that traditionally required human sales reps.
 </Tip>
 
-### Create Media Buy
+### Create media buy
 
 A single media buy can span multiple product types and retailers. Each package targets a different product:
 
 ```json
 {
-  "buyer_ref": "nova_ketchup_q2",
-  "account": { "account_id": "acct_novafoods_grocery_001" },
+  "buyer_ref": "summit_ketchup_q2",
+  "account": { "account_id": "acct_summitfoods_shopgrid_001" },
   "brand": {
-    "domain": "novafoods.example.com"
+    "domain": "summitfoods.example.com"
   },
   "start_time": "2026-04-01T00:00:00Z",
   "end_time": "2026-04-30T23:59:59Z",
   "packages": [
     {
       "buyer_ref": "sponsored_products",
-      "product_id": "grocery_sponsored_products",
+      "product_id": "shopgrid_sponsored_products",
       "pricing_option_id": "sp_cpc",
       "budget": 15000,
       "bid_price": 1.10,
@@ -391,7 +484,7 @@ A single media buy can span multiple product types and retailers. Each package t
       "optimization_goals": [{
         "kind": "event",
         "event_sources": [
-          { "event_source_id": "grocery_retailer_purchases", "event_type": "purchase", "value_field": "value" }
+          { "event_source_id": "shopgrid_purchases", "event_type": "purchase", "value_field": "value" }
         ],
         "target": { "kind": "per_ad_spend", "value": 3.0 },
         "priority": 1
@@ -399,14 +492,14 @@ A single media buy can span multiple product types and retailers. Each package t
     },
     {
       "buyer_ref": "onsite_display",
-      "product_id": "grocery_onsite_display",
+      "product_id": "shopgrid_onsite_display",
       "pricing_option_id": "onsite_cpm",
       "budget": 25000,
       "pacing": "even"
     },
     {
       "buyer_ref": "homepage_launch",
-      "product_id": "grocery_homepage_takeover",
+      "product_id": "shopgrid_homepage_takeover",
       "pricing_option_id": "takeover_flat",
       "budget": 50000
     }
@@ -416,7 +509,7 @@ A single media buy can span multiple product types and retailers. Each package t
 
 The `account` identifies the brand's billing relationship with this retailer. The sponsored products package uses catalog selectors (`gtins`, `tags`) to specify which items to promote and `optimization_goals` with a `per_ad_spend` target to tell the retailer to optimize for 3x return on purchase value. The display and premium packages use standard creative workflows.
 
-### Delivery Reporting
+### Delivery reporting
 
 Commerce media delivery reports include attribution metrics that traditional media lacks. The `attribution_window` makes the measurement methodology transparent for cross-platform comparison:
 
@@ -434,8 +527,8 @@ Commerce media delivery reports include attribution metrics that traditional med
   },
   "media_buy_deliveries": [
     {
-      "media_buy_id": "mb_grocery_001",
-      "buyer_ref": "nova_ketchup_q2",
+      "media_buy_id": "mb_shopgrid_001",
+      "buyer_ref": "summit_ketchup_q2",
       "status": "active",
       "totals": {
         "impressions": 850000,
@@ -472,11 +565,13 @@ The `by_action_source` breakdown shows where conversions happened — website, a
 
 </Steps>
 
-## Closed-Loop Attribution
+## Closed-loop attribution
 
-Commerce media's defining advantage is deterministic purchase attribution. Retailers match ad exposure to transactions using loyalty card data, login state, and point-of-sale records.
+<img src="/images/walkthrough/commerce-media-05-closed-loop.png" alt="Daniel and Sam view a closed-loop attribution dashboard — impressions flow through clicks, store visits, and purchases in a circular diagram with website, app, and in-store sources" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-### How Products Declare It
+Commerce media's defining advantage is deterministic purchase attribution. Retailers match ad exposure to transactions using loyalty card data, login state, and point-of-sale records. This is the asset that makes retail media fundamentally different from every other media channel — and it's exactly what an agentic storefront exposes to buyer agents through standard delivery reporting.
+
+### How products declare it
 
 Products signal closed-loop capability through two fields:
 
@@ -509,7 +604,7 @@ When `platform_managed` is `true`, the retailer provides always-on measurement. 
 Different retailers use different attribution windows (e.g., 14-day click vs. 7-day click). The `attribution_window` in delivery responses makes this transparent so buyers can normalize ROAS comparisons across retailers.
 </Info>
 
-### Key Delivery Metrics
+### Key delivery metrics
 
 | Metric | Field | Description |
 |---|---|---|
@@ -521,9 +616,11 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 | In-store sales | `by_action_source` | Breakdown by `website`, `app`, `in_store` |
 | By event type | `by_event_type` | Breakdown by `purchase`, `add_to_cart`, etc. |
 
-## Differences from Traditional Media Buying
+<img src="/images/walkthrough/commerce-media-06-ecosystem.png" alt="Daniel by a retail storefront and Priya by a streaming TV shape flank Sam in the center — different sell-side verticals connecting to one buyer through the same protocol" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-| Aspect | Traditional Media | Commerce Media |
+## Differences from traditional media buying
+
+| Aspect | Traditional media | Commerce media |
 |---|---|---|
 | Attribution | Probabilistic, modeled | Deterministic, purchase-based |
 | Targeting data | Third-party, contextual | First-party purchase/loyalty data |
@@ -534,9 +631,24 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 | Landing page | Any destination | Often retailer site only |
 | Pricing models | CPM, CPC, CPCV | CPC (sponsored), CPM (display), flat rate (premium) |
 
-## Best Practices
+## Best practices
 
-### For Brands
+### For retailers: standing up an agentic storefront
+
+The default retail media playbook — build a self-service platform, hire a sales team, grow managed service revenue, eventually build a DSP — works for the largest retailers. For everyone else, it means years of engineering investment competing against platforms with orders-of-magnitude more resources.
+
+An agentic storefront changes the economics. Instead of building a platform that brands must learn, you expose your inventory through a standard protocol that buyer agents already speak. Your engineering investment goes into your actual differentiators — data quality, measurement accuracy, inventory breadth — not into dashboard UX.
+
+1. **Model product types separately** — sponsored products, on-site display, off-site, premium placements, and in-store digital should be distinct products with appropriate pricing and formats. This is how buyer agents comparison-shop across retailers.
+2. **Lead with your data** — declare `outcome_measurement` with `deterministic_purchase` attribution and `conversion_tracking` with `platform_managed: true`. This is what buyer agents optimize against. Retailers with weak measurement lose to retailers with strong measurement, regardless of UI quality.
+3. **Expose your physical footprint** — provide store catalogs with catchment areas so buyer agents can target by geography. In-store digital inventory is something no online-only platform can offer. Make it discoverable.
+4. **Return `catalog_match`** on sponsored product listings so buyers see which GTINs/SKUs are eligible. This is the equivalent of a sales rep saying "we carry 3 of your 1,200 products" — but it happens automatically at query time.
+5. **Include `attribution_window`** in delivery responses — buyers comparing across retailers need to know your lookback windows and model.
+6. **Report `by_action_source`** to show omnichannel impact — website, app, and in-store conversions. The cross-channel view is unique to commerce media and drives budget allocation.
+7. **Use proposals** — return recommended budget allocations across product types with `get_products` responses. This encodes your media planning expertise into the protocol, replacing the sales rep conversation with structured data that buyer agents can evaluate.
+8. **Set `channels: ["retail_media"]`** on all commerce media products so buyers can filter by channel.
+
+### For brands
 
 1. **Set up accounts early** — use `list_accounts` to confirm your billing relationship with each retailer before placing buys
 2. **Sync product and inventory feeds early** — product and inventory catalogs should be synced to the account before creating buys. Inventory feeds update hourly; product feeds daily.
@@ -546,18 +658,7 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 6. **Budget across the funnel** — sponsored products for conversion, on-site display for awareness, off-site for reach extension
 7. **Compare attribution windows** — use `attribution_window` in delivery reports to normalize ROAS across retailers with different lookback windows
 
-### For Retailers
-
-1. **Model product types separately** — sponsored products, on-site display, off-site, and premium placements should be distinct products with appropriate pricing and formats
-2. **Declare `catalog` asset types** on formats that need product or inventory data — buying agents check these before syncing catalogs
-3. **Declare `conversion_tracking`** with `platform_managed: true` and list `supported_targets` so buyers know which target kinds are available on packages
-4. **Include `attribution_window`** in delivery responses — buyers comparing across retailers need to know your lookback windows and model
-5. **Report `by_action_source`** to show omnichannel impact — website, app, and in-store conversions
-6. **Return `catalog_match`** on sponsored product listings so buyers can see which GTINs/SKUs are eligible
-7. **Provide store catalogs with catchment areas** — expose your store locations with pre-computed or isochrone-based catchments so buyers can use proximity targeting. Resolve isochrone boundaries ahead of time so targeting doesn't need runtime lookups
-8. **Set `channels: ["retail_media"]`** on all commerce media products so buyers can filter by channel
-
-## Related Documentation
+## Related documentation
 
 - [Account state](/docs/building/integration/account-state) — How catalogs, event sources, and campaigns build on the account
 - [Accounts & Agents](/docs/building/integration/accounts-and-agents) — Account setup and billing relationships

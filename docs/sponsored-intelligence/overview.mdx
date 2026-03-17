@@ -1,496 +1,242 @@
 ---
 title: Sponsored Intelligence
-description: "Sponsored Intelligence (SI) is the AdCP protocol for conversational brand experiences in AI assistants. Defines session lifecycle, capability negotiation, identity consent, UI components, and ACP commerce handoff."
-"og:title": "AdCP — Sponsored Intelligence"
 sidebarTitle: Overview
+"og:image": /images/walkthrough/si-01-priyas-desk.png
+description: "Monetizing AI surfaces with AdCP — follow a growth marketer as she launches campaigns on an AI platform using the reversed data flow."
+"og:title": "AdCP — Sponsored Intelligence"
 ---
 
-<Warning>
-**Draft Specification** — This protocol is under active development. APIs and schemas may change before the final release. We welcome feedback as we build reference implementations.
-</Warning>
+<img src="/images/walkthrough/si-01-priyas-desk.png" alt="A growth marketer sits at a clean desk with a single screen showing an AI assistant conversation alongside product catalog data flowing into it" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-Consumers are discovering and exploring in AI services. They don't want to leave to find and learn about brands and products. So we need a way to bring the brand to the chat.
+Priya is a growth marketer at Ridgeline Gear, a DTC outdoor brand. Her CEO just saw a competitor's product recommended in ChatGPT and wants to know: *"Why aren't we there?"*
 
-The Sponsored Intelligence Protocol defines how AI assistants invoke and interact with brand agent endpoints—enabling rich brand experiences without breaking the conversational flow.
+Priya knows programmatic. She's run display, social, and CTV campaigns. But AI platforms are different. There's no ad server. No bid request. No creative upload. The AI generates the ad from context — and right now, it has no context about Ridgeline.
 
-## The Trillion Dollar Sentence
+Like VAST defined how video ads are served, Sponsored Intelligence defines how advertising works on AI surfaces. It inverts the traditional model: instead of sending a thin bid request out, buyers push everything in — product catalogs, conversion events, brand identity, content standards, and optimization goals — so the platform's LLM can generate the right ad in the right moment with full information.
 
-When OpenAI announced ads in ChatGPT, they promised "answer independence"—ads won't influence responses. But the real value isn't banner ads at the bottom of chat. It's this:
+## The reversed data flow
 
-> "Based on what you're looking for, Delta has flights to Boston starting at \$199. Want me to connect you with their assistant to explore options?"
+<img src="/images/walkthrough/si-02-reversed-flow.png" alt="Split screen comparison: left side shows traditional programmatic with thin bid request arrows flowing OUT from a platform to remote bidders; right side shows Sponsored Intelligence with rich data — catalogs, events, brand identity — flowing IN to the AI platform where the LLM makes the decision" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-That sentence—where AI recommends a brand and offers to hand off the conversation—is worth trillions. Sponsored Intelligence defines the standard for what happens next.
+In traditional programmatic, the platform sends a bid request **out** — a page URL, device type, maybe a user ID — to a remote decision-maker. The decision-maker doesn't have the context. The context-holder doesn't make the decision.
 
-## What is Sponsored Intelligence?
+AI platforms reverse this. Buyers push everything **in** via AdCP. **The decision-maker is the context-holder.** That's the fundamental shift.
 
-**Sponsored Intelligence (SI)** is an open standard for conversational brand experiences in AI assistants. Like VAST defines video ad serving, SI defines how to serve and interact with brand agent endpoints.
+The data flows in advance. The decision still happens in real time — but the decision-maker now has full context: what the user asked, what the brand sells, what success looks like, and what the brand's voice sounds like.
 
-```
-Ad Serving Standards:
-- VAST → Video (video file + companions + tracking)
-- MRAID → Rich media/interactive display
-- Native → Content-style ads
-- SI → Conversational agents (endpoint + modalities + brand assets)
-```
+<Accordion title="Programmatic language → Sponsored Intelligence terms">
 
-### SI is More Than a Creative Type
+| What Priya knows | What SI calls it |
+|---|---|
+| Upload creatives to ad server | Push catalogs, brand identity, and events into the platform |
+| Bid request (platform sends context out) | Reversed data flow (buyer pushes data in) |
+| DSP selects ad remotely | Platform LLM generates ad with full context |
+| Audience segments and geo targeting | Conversational relevance and keyword intent |
+| Impressions, clicks, CTR | Engagements, clicks, cost per click |
+| Brand safety blocklists | Content standards enforced at generation time |
 
-SI can be used in multiple contexts:
+</Accordion>
 
-| Context | Description | Example |
-|---------|-------------|---------|
-| **Creative** | Served via media buy | Brand syncs SI endpoint, triggered when campaign runs |
-| **Embedded Experience** | User expresses interest | "Tell me more about Delta" → seamless transition to brand agent |
-| **Agentic Landing Page** | Destination for campaigns | The conversational equivalent of a landing page—where brand engagement happens |
+## How it works: Priya's first SI campaign
 
-The key insight: SI isn't a click-through. It's a conversational handoff. Traditional landing pages exist because users leave the discovery context to learn more. With SI, users stay in the conversation while the brand comes to them.
+Priya starts with NovaMind, a major AI assistant that sells its own sponsored placements. NovaMind is a first-party AI platform — explicit accounts, its own ad serving, its own measurement.
 
-### Protocol Scope
+### Step 1: Connect the account
 
-SI is a **conversational engagement protocol**. It defines the session lifecycle, message exchange, and handoff mechanics. Here's what's in and out of scope:
+<img src="/images/walkthrough/si-03-connect-account.png" alt="Priya's buyer agent robot shakes hands with the NovaMind platform robot in front of a glowing portal, establishing a connection while account credentials flow between them" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-| In Scope | Out of Scope |
-|----------|--------------|
-| Session initiation, messaging, termination | Ad selection/ranking algorithms |
-| Capability negotiation between host and brand | Bidding and auction mechanics |
-| Identity and consent handoff | Attribution models and measurement |
-| Commerce handoff to ACP | Billing and compensation between parties |
-| Standard UI components | Inventory forecasting |
+Priya's buyer agent connects to NovaMind and confirms Ridgeline's account — like verifying access with a new publisher:
 
-**Why this scope?** SI focuses on the engagement layer—what happens when a user connects with a brand agent. How offers get surfaced (ad selection), how conversions get credited (attribution), and how money flows (billing) are adjacent concerns that interact with SI but aren't defined by it.
-
-This separation is intentional. Platforms can use their own selection algorithms while speaking the same SI protocol. Attribution systems can consume SI correlation IDs without SI dictating the model. Billing arrangements remain business decisions between parties.
-
-### Attribution Correlation
-
-SI doesn't define attribution semantics, but it provides the correlation IDs that attribution systems need:
-
-| Field | Scope | Purpose |
-|-------|-------|---------|
-| `session_id` | Returned at initiate | Links all messages in a conversation; can serve as click_id equivalent |
-| `media_buy_id` | Passed at initiate | Links to the campaign that triggered the session |
-| `offering_id` | Passed at initiate | Links to the specific offer/product promoted |
-
-The `session_id` flows through to ACP checkout via `context_for_checkout`, enabling close-loop attribution from impression → conversation → transaction.
-
-## How It Works
-
-SI handles the engagement. The [Agentic Commerce Protocol (ACP)](https://github.com/anthropics/acp)—an open standard by OpenAI and Stripe for programmatic commerce—handles the transaction. This separation keeps the user's trusted relationship with the host while enabling seamless checkout.
-
-```mermaid
-flowchart LR
-    A[User Intent] --> B[Host Platform]
-    B -.->|Optional| P[Check Availability]
-    P -.-> C
-    B --> C{Consent?}
-    C -->|Yes + Identity| D[Initiate Session]
-    C -->|Yes, Anonymous| D
-    C -->|No| E[Continue without brand]
-    D --> F[Brand Agent]
-    F <--> G[Conversation Turns]
-    G --> H{User Done?}
-    H -->|Transaction| I[Handoff to ACP]
-    H -->|Complete| J[Return to Host]
-    H -->|Exit| J
-    I --> K[Checkout Flow]
-```
-
-### The Flow
-
-1. **User expresses interest** → Host identifies opportunity
-2. **Get offering details** (optional) → Host retrieves offering info and matching products (`si_get_offering`)
-3. **Consent prompt** → User decides whether to share identity
-4. **Session initiation** → Host invokes brand agent with context + capabilities (`si_initiate_session`)
-5. **Conversational engagement** → Brand agent interacts via text, voice, video, or embedded UI (`si_send_message`)
-6. **Session termination** → Handoff back for transaction (via ACP) or conversation complete (`si_terminate_session`)
-
-## SI Manifest: What Brands Declare
-
-Brands publish an SI manifest declaring their agent's capabilities:
-
-```json
-{
-  "endpoint": {
-    "transports": [
-      { "type": "mcp", "url": "https://delta.com/mcp" },
-      { "type": "a2a", "url": "https://delta.com/.well-known/agent.json" }
-    ],
-    "preferred": "mcp"
-  },
-  "capabilities": {
-    "modalities": {
-      "voice": { "provider": "elevenlabs", "voice_id": "delta_v1" },
-      "video": { "formats": ["mp4", "webm"], "max_duration_seconds": 60 },
-      "avatar": { "provider": "d-id", "avatar_id": "delta_avatar" }
-    },
-    "components": {
-      "standard": ["text", "link", "image", "product_card", "carousel", "action_button"],
-      "extensions": {
-        "chatgpt_apps_sdk": { "app_id": "delta-travel" }
-      }
-    },
-    "commerce": {
-      "acp_checkout": true
-    }
-  },
-  "brand": { "domain": "delta.com" }
-}
-```
-
-> **Note**: All SI agents support conversational (text) modality by default—it's the baseline. The modalities section declares *additional* capabilities like voice, video, and avatar.
-
-### Transport Options
-
-SI supports multiple transport protocols, enabling brands to meet hosts where they are:
-
-| Transport | Description | Best For |
-|-----------|-------------|----------|
-| **MCP** | Model Context Protocol - tool-based interaction | Structured tool calls, IDE integrations |
-| **A2A** | Agent-to-Agent Protocol - message-based interaction | Rich async conversations, agent collaboration |
-
-Brands can declare multiple transports and specify a preference. Hosts select based on their capabilities, enabling graceful negotiation.
-
-## Capability Negotiation
-
-Not every host supports every capability. SI uses capability negotiation—brand says what it CAN do, host responds with what it SUPPORTS, session uses the intersection.
-
-```
-Brand declares:     voice, avatar, standard components, chatgpt_apps_sdk
-Host supports:      voice, standard components, chatgpt_apps_sdk
-Session can use:    voice, standard components, chatgpt_apps_sdk
-```
-
-Standard components work everywhere. Extensions enable richer experiences on platforms that support them. Brands can always fall back to standard components for universal compatibility.
-
-This enables graceful degradation. A brand agent that works beautifully in ChatGPT with a full Apps SDK experience can still function in a simpler host—just with standard product cards and carousels instead.
-
-## Identity & Privacy Consent
-
-When a user engages with a brand agent, the host asks whether to share identity. This is the core value exchange: user gets personalized service, brand gets a lead.
-
-### The Consent Flow
-
-```
-User: "I want to talk to Delta about flights"
-
-Host: "I can connect you with Delta's assistant. Would you like me to
-       share your info so they can personalize your experience?
-
-       [x] Share my name and email with Delta
-       [x] Share my shipping address (for accurate pricing)
-
-       By continuing, you agree to Delta's Privacy Policy [link]"
-
-User: "Yes, share my info"
-```
-
-Shipping address enables brands to calculate accurate taxes and shipping costs during the conversation, leading to faster checkout and better recommendations.
-
-### Why Clear PII (Not Hashed)
-
-This isn't RTB with multiple intermediaries. It's a direct, consented handoff:
-- User explicitly says "yes, tell them who I am"
-- Delta needs actual email to send confirmations
-- Hashing would break the use case
-
-### With Consent
-
-```json
-{
-  "identity": {
-    "consent_granted": true,
-    "consent_timestamp": "2026-01-18T10:30:00Z",
-    "consent_scope": ["name", "email", "shipping_address"],
-    "privacy_policy_acknowledged": {
-      "brand_policy_url": "https://delta.com/privacy",
-      "brand_policy_version": "2026-01"
-    },
-    "user": {
-      "email": "user@example.com",
-      "name": "Jane Smith",
-      "locale": "en-US",
-      "shipping_address": {
-        "street": "123 Main St",
-        "city": "New York",
-        "state": "NY",
-        "postal_code": "10001",
-        "country": "US"
-      }
-    }
+```javascript
+const accounts = await novamind.listAccounts({
+  account: {
+    brand: { domain: "ridgelinegear.com" }
   }
-}
+});
+// Returns Ridgeline's account — ready to sync data and buy inventory
 ```
 
-### Without Consent (Anonymous)
+### Step 2: Push the ingredients
 
-```json
-{
-  "identity": {
-    "consent_granted": false,
-    "anonymous_session_id": "anon_xyz789"
-  }
-}
+<img src="/images/walkthrough/si-04-push-ingredients.png" alt="Product catalog cards, a brand.json document, conversion event streams, and content standards documents flow from Ridgeline's system into NovaMind's platform through a glowing pipeline, assembling into a rich brand context inside the AI" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Here's where SI diverges from everything Priya knows. Instead of uploading creatives, she pushes raw ingredients — and the platform assembles the ad. Priya's buyer agent handles the protocol; here's what happens under the hood:
+
+```javascript
+// Product catalog — a structured feed describing what Ridgeline sells
+// (like a Google Merchant Center feed, but consumed by the AI platform)
+await novamind.syncCatalogs({
+  account: { brand: { domain: "ridgelinegear.com" } },
+  catalogs: [{
+    catalog_id: "ridgeline-products-2026",
+    type: "product",
+    source: { url: "https://ridgelinegear.com/feeds/products.json" }
+  }]
+});
+
+// Conversion events — what success looks like
+await novamind.syncEventSources({
+  account: { brand: { domain: "ridgelinegear.com" } },
+  event_sources: [{
+    event_source_id: "ridgeline-conversions",
+    type: "conversion",
+    source: { url: "https://ridgelinegear.com/events/conversions" }
+  }]
+});
 ```
 
-Brand can still help—just can't personalize or follow up via email.
+Priya also publishes [`brand.json`](/docs/brand-protocol/brand-json) at `ridgelinegear.com/.well-known/brand.json` — voice, colors, visual guidelines that the platform reads when generating ads. And she sets [governance policies](/docs/governance/overview) as content standards the platform enforces at decision time.
 
-## Modalities
+Together, these ingredients **are** the ad. Product catalogs feed creative generation. Conversion events close the optimization loop. Brand identity ensures the output sounds right. Content standards ensure it stays safe.
 
-SI supports multiple interaction modalities. These can be combined—a session might use conversational text with embedded product carousels.
+### Step 3: Discover products
 
-### Conversational
-Pure text exchange via MCP tools or A2A messages. The baseline modality that every SI implementation supports.
+<img src="/images/walkthrough/si-05-discover-products.png" alt="NovaMind presents a catalog of sponsored placement options to Priya's buyer agent: sponsored responses, AI search results, and a premium brand experience handoff — each displayed as glowing product cards" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-### Voice
-Audio-based interaction using brand voice. The host renders audio using the brand's TTS configuration (ElevenLabs, OpenAI, etc.).
+Priya discovers what NovaMind offers — same `get_products` she'd use for CTV or display:
 
-### Video
-Brand video content played within the conversation. This includes product videos, explainer content, and promotional clips that enhance the brand experience without requiring the user to navigate away.
+```javascript
+const products = await novamind.getProducts({
+  buying_mode: "brief",
+  brief: "Outdoor gear brand. Want to reach people asking about hiking, camping, and trail running. Budget $15K/month.",
+  brand: { domain: "ridgelinegear.com" },
+  account: { brand: { domain: "ridgelinegear.com" } }
+});
+```
 
-### Avatar
-Animated video presence with a brand avatar. Providers like D-ID, HeyGen, and Synthesia enable branded video agents that can speak and respond visually. The host renders the avatar using brand-provided configuration.
+NovaMind returns products across the [SI product spectrum](/docs/sponsored-intelligence/product-spectrum):
 
-### Visual Components
+| Product | How it works | Pricing |
+|---|---|---|
+| **Sponsored responses** | NovaMind generates a recommendation from Ridgeline's catalog when users ask about hiking gear | CPC |
+| **AI search results** | Ridgeline appears in keyword-triggered search results for "best hiking boots" | CPC |
+| **Brand experience handoff** | User deep-dives on Ridgeline products via a multi-turn conversation with Ridgeline's brand agent ([SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol)) | Per session |
 
-SI defines a tiered approach to visual experiences—from lightweight components that work everywhere to rich platform-specific apps.
+### Step 4: Create the media buy
 
-#### Standard Components (Works Everywhere)
+<img src="/images/walkthrough/si-06-create-buy.png" alt="Priya's buyer agent sends a create_media_buy request to NovaMind — a glowing contract document materializes between the two agents, with budget amounts, flight dates, and optimization goals visible as floating labels" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-SI defines a small set of **standard components** that all compliant hosts MUST render. Like AMP standardized mobile web components, these ensure brands can participate without building platform-specific code:
+Priya picks two products and creates a media buy:
 
-| Component | Purpose | Data Shape |
-|-----------|---------|------------|
-| `text` | Conversational message | `{ message: string }` |
-| `link` | URL with label | `{ url, label, preview? }` |
-| `image` | Single image | `{ url, alt, caption? }` |
-| `product_card` | Product display | `{ title, price, image_url, description?, cta? }` |
-| `carousel` | Array of cards/images | `{ items: [...], title? }` |
-| `action_button` | CTA that triggers callback | `{ label, action, payload? }` |
-
-Brands provide structured JSON data. Hosts render according to their design system. No framework dependency.
-
-```json
-{
-  "ui_elements": [
+```javascript
+const buy = await novamind.createMediaBuy({
+  buyer_ref: "ridgeline-novamind-q2",
+  account: { brand: { domain: "ridgelinegear.com" } },
+  brand: { domain: "ridgelinegear.com" },
+  start_time: "2026-04-01T00:00:00Z",
+  end_time: "2026-06-30T23:59:59Z",
+  packages: [
     {
-      "type": "product_card",
-      "data": {
-        "title": "Boston Flight - Jan 25",
-        "price": "$199",
-        "image_url": "https://delta.com/images/bos.jpg",
-        "cta": { "label": "Book Now", "action": "checkout" }
+      buyer_ref: "pkg_sponsored_responses",
+      product_id: "novamind_sponsored_outdoor",
+      budget: 10000,
+      pricing_option_id: "cpc_standard",
+      optimization_goals: [
+        { type: "cpa", target: 12.00, event_type: "purchase" }
+      ]
+    },
+    {
+      buyer_ref: "pkg_search_results",
+      product_id: "novamind_search_hiking",
+      budget: 5000,
+      pricing_option_id: "cpc_keyword",
+      targeting_overlay: {
+        keywords: ["hiking boots", "trail running shoes", "camping gear"]
       }
     }
   ]
-}
+});
 ```
 
-#### Platform Extensions
+No creative to upload. No ad tags to traffic. NovaMind already has Ridgeline's product catalog, brand identity, and conversion events. It generates the right ad in the right moment from those ingredients.
 
-Hosts may support richer capabilities beyond the standard set. During session initiation, hosts declare what extensions they support:
+### Step 5: The ad moment
 
-```json
-{
-  "supported_components": {
-    "standard": ["text", "link", "image", "product_card", "carousel", "action_button"],
-    "extensions": {
-      "chatgpt_apps_sdk": "1.0",
-      "maps": true,
-      "forms": true
-    }
-  }
-}
+<img src="/images/walkthrough/si-07-ad-moment.png" alt="An AI assistant conversation on a phone screen — a user asks 'what hiking boots should I get for the Appalachian Trail?' and the AI responds with a contextually relevant Ridgeline Trail Pro recommendation, with product details and a 'talk to Ridgeline' handoff button glowing below" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+This is the payoff. A NovaMind user asks:
+
+> *"What hiking boots should I get for the Appalachian Trail?"*
+
+NovaMind's LLM has Ridgeline's product catalog, knows the Trail Pro 3000 matches this query, and generates a sponsored response:
+
+> *"For the AT, you want a boot that handles rocky terrain and variable weather. The **Ridgeline Trail Pro 3000** ($189) is built for exactly this — Gore-Tex waterproofing, Vibram outsole, and ankle support designed for multi-day hikes. It's rated 4.7/5 by AT thru-hikers."*
+>
+> *Sponsored by Ridgeline Gear* · [Talk to Ridgeline →]
+
+Every detail comes from the catalog Priya synced — the price, the features, the ratings. The voice matches `brand.json`. The content standards Priya set ensure the platform won't make unsupported claims. The user sees a relevant, helpful recommendation, clearly labeled as sponsored.
+
+If the user taps "Talk to Ridgeline," NovaMind hands off to Ridgeline's brand agent via [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) — a multi-turn conversation where the user can ask about sizing, compare models, and start a purchase. All within the AI experience.
+
+### Step 6: Measure results
+
+<img src="/images/walkthrough/si-08-measure.png" alt="A clean dashboard showing SI campaign metrics — engagements, clicks, conversions, and cost per engagement — with a line chart trending upward and a callout showing 'CPA: $9.40, beating $12.00 target'" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Priya monitors the same way she monitors any AdCP campaign:
+
+```javascript
+const delivery = await novamind.getMediaBuyDelivery({
+  account: { brand: { domain: "ridgelinegear.com" } },
+  media_buy_ids: [buy.media_buy_id],
+  include_package_daily_breakdown: true
+});
 ```
 
-Brands can then use extended features when available, falling back to standard components otherwise.
-
-#### App Handoff
-
-For brands who've built full platform-specific apps (ChatGPT Apps, etc.), SI supports direct handoff:
-
-```json
-{
-  "type": "app_handoff",
-  "apps": {
-    "chatgpt": { "app_id": "delta-travel", "deep_link": "flights/boston" },
-    "web": { "url": "https://delta.com/book?dest=BOS" }
-  }
-}
-```
-
-This lets brands leverage existing app investments while still participating in the SI protocol.
-
-#### Commerce Actions
-
-Standard components include `action_button` for commerce triggers. Currently, this initiates ACP checkout:
-
-```json
-{
-  "type": "action_button",
-  "data": {
-    "label": "Add to Cart",
-    "action": "acp_checkout",
-    "payload": { "sku": "DL-BOS-125", "quantity": 1 }
-  }
-}
-```
-
-We expect this to extend to persistent carts, multi-item checkout, and richer commerce flows as the ecosystem matures. The standard component schema is designed to accommodate these extensions.
-
-#### Integration Actions
-
-Brand agents can offer users the option to establish a deeper connection—adding the brand as an MCP tool or establishing an A2A relationship for ongoing agent collaboration:
-
-```json
-{
-  "type": "integration_actions",
-  "data": {
-    "actions": [
-      { "type": "mcp", "label": "Add as MCP Tool", "highlighted": true },
-      { "type": "a2a", "label": "Connect via A2A" }
-    ]
-  }
-}
-```
-
-This enables users to "take the brand with them"—installing the brand's capabilities into their own AI environment for future use without needing to re-discover through ads. It's a powerful conversion path: from sponsored moment to persistent tool.
-
-## Session Lifecycle
-
-SI sessions have explicit lifecycle management.
-
-### Initiate Session
-
-Host → Brand, including context, capabilities, identity (if consented), and any active offer from the media buy:
-
-```json
-{
-  "context": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
-  "identity": {
-    "consent_granted": true,
-    "user": {
-      "email": "jane@example.com",
-      "name": "Jane Smith",
-      "shipping_address": { /* ... */ }
-    }
-  },
-  "media_buy_id": "delta_q1_premium_upgrade",
-  "placement": "chatgpt_search",
-  "offering_id": "delta_chatgpt_3313",
-  "supported_capabilities": { /* what host supports */ }
-}
-```
-
-The `context` is a conversation handoff - the host tells the brand agent what the user needs, and the brand agent responds naturally. The `offering_id` references a campaign promotion (like free upgrades on eligible flights) that the brand knows how to apply.
-
-**Frequent flyer and loyalty data**: The brand looks this up from the user's email - hosts don't store loyalty numbers. Delta recognizes `jane@example.com` and retrieves her SkyMiles status automatically.
-
-### Session Response
-
-Brand returns structured content that host renders. Notice how the brand agent uses the specific intent and applies the offer:
-
-```json
-{
-  "session_id": "sess_abc123",
-  "response": {
-    "message": "Hi Jane! I found DL632 departing at 6:15 AM next Tuesday. Great news—as a SkyMiles Gold member, you qualify for our free Premium Economy upgrade on this flight.",
-    "ui_elements": [
-      {
-        "type": "product_card",
-        "data": {
-          "title": "DL632 to Boston - Tue Jan 27",
-          "subtitle": "6:15 AM → 9:42 AM (3h 27m)",
-          "price": "$199",
-          "badge": "Free Premium Economy Upgrade",
-          "image_url": "https://delta.com/images/premium-economy.jpg",
-          "cta": { "label": "Book with Upgrade", "action": "checkout" }
-        }
-      }
-    ]
-  }
-}
-```
-
-**Key principle**: Brand returns structured content (cards, links, actions). Host decides what to render based on capabilities and policies. The brand agent personalized the response using Jane's email (looked up her SkyMiles status) and applied the campaign offer.
-
-### Terminate Session
-
-Multiple termination reasons:
-
-| Reason | Meaning | What Happens |
-|--------|---------|--------------|
-| `handoff_transaction` | User wants to buy | Host initiates ACP checkout |
-| `handoff_complete` | Conversation done | Return to normal chat |
-| `user_exit` | User ended it | Clean up, maybe save context |
-| `session_timeout` | Inactivity | Auto-cleanup |
-| `host_terminated` | Policy/error | End session |
-
-## ACP Integration
-
-When the termination reason is `handoff_transaction`, the host initiates checkout via the Agentic Commerce Protocol (ACP):
-
-```
-Brand Agent → Host: terminate_session(handoff_transaction)
-Host → ACP: Initiate checkout with Delta
-ACP → User: Complete purchase flow
-```
-
-SI handles the engagement. ACP handles the transaction. The user's trusted relationship with the host is maintained throughout.
-
-## The Value Proposition
-
-### For AI Platforms (Hosts)
-
-- **Monetization**: New ad format that doesn't compromise answer independence
-- **User experience**: Native conversational commerce, not banner ads
-- **Standards-based**: Interoperable with any SI-compliant brand agent
-
-### For Brands
-
-- **Direct engagement**: Talk to users in context, when they're interested
-- **Rich experiences**: Mini-stores, interactive maps, voice/avatar presence
-- **Lead generation**: Consented identity for follow-up
-
-### For Users
-
-- **Personalization**: Share identity, get better service
-- **Control**: Clear consent for what's shared
-- **Convenience**: Shop, book, explore—all within the conversation
-
-## The Open Advertising Layer
-
-Commerce in AI is getting standardized. Google's Universal Commerce Protocol (UCP), developed with Shopify, Walmart, Target, and others, defines open primitives for checkout, payments, and fulfillment. OpenAI and Stripe's Agentic Commerce Protocol (ACP) does similar work. These are good developments—open standards for commerce plumbing benefit everyone.
-
-But there's a gap. While commerce is becoming open, the **advertising layer**—how offers get surfaced, when brands appear, what users see—remains proprietary. Each platform builds its own black box for deciding when and how sponsored content appears.
-
-We think that layer should be open too.
-
-**AdCP and SI are our attempt to define it:**
-
-| Layer | Open Standard | What It Does |
-|-------|---------------|--------------|
-| Commerce | UCP, ACP | Checkout, payments, fulfillment |
-| Advertising | AdCP, SI | Offer discovery, brand engagement, attribution |
-
-The primitives we're working on:
-
-- **Offer declaration** — What brands can promote (offerings, validity windows)
-- **Context signals** — What hosts share about user intent (anonymous, consented)
-- **Selection criteria** — How offers match intent (keywords, categories, availability)
-- **Disclosure** — How sponsored content is labeled
-- **Attribution** — How conversions are measured across surfaces
-
-We don't have all the answers. Questions like "how should competing offers be ranked?" and "what's the right disclosure format?" need industry input. But we believe figuring this out in the open—with brands, platforms, and users at the table—beats each platform building proprietary black boxes.
-
-**Join us in defining the open advertising layer for AI.**
-
-## Next Steps
-
-- **Technical Teams**: Review the protocol components above
-- **Platform Providers**: See implementation considerations for hosts
-- **Brands**: Understand how to build SI-compliant agents
-- **Everyone**: Join the [Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg) to discuss
+The reporting format is the same `get_media_buy_delivery` response Priya uses for CTV and display. One dashboard, all channels. Her existing measurement stack — media mix modeling, multi-touch attribution, incrementality testing — works the same way it always has.
 
 ---
 
-*The Sponsored Intelligence Protocol is part of the broader [AdCP ecosystem](/docs/intro), enabling the next generation of AI-powered advertising.*
+## Scaling up: AI ad networks
+
+Priya's NovaMind campaign is working. Now she wants broader reach across dozens of AI surfaces — not just one platform. She connects to Gravity, an AI ad network.
+
+<img src="/images/walkthrough/si-09-network-topology.png" alt="A hub-and-spoke diagram: Gravity sits at the center as a network node, with spokes radiating out to a dozen different AI platforms — chat assistants, search copilots, coding tools, travel planners — each shown as a small robot at its own surface" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+AI ad networks aggregate inventory across many AI platforms into a single seller interface. Priya syncs her catalogs once to Gravity, and Gravity forwards them to its underlying platforms. One integration, many surfaces.
+
+| | First-party (NovaMind) | Ad network (Gravity) |
+|---|---|---|
+| **Inventory** | One AI platform's own placements | Aggregated across many AI platforms |
+| **Account model** | Explicit — Priya registers directly | Implicit — buyer agent declares brands via `sync_accounts`; the network verifies agent identity |
+| **Products** | NovaMind's own offerings | Products include `publisher_properties` showing which platforms serve them |
+| **Catalog flow** | Synced directly to NovaMind | Synced once to Gravity, forwarded to underlying platforms |
+
+The same protocol tasks work on both paths. Priya calls `get_products`, `create_media_buy`, and `get_media_buy_delivery` on Gravity exactly as she did on NovaMind — and exactly as she already does for her CTV and display campaigns through the [media buy protocol](/docs/media-buy/index). She sees everything in one dashboard.
+
+<Card title="Ad networks deep dive" icon="diagram-project" href="/docs/sponsored-intelligence/networks">
+  Network topology, implicit account chains, catalog forwarding, and SI Chat Protocol routing through intermediaries.
+</Card>
+
+## Protocol architecture
+
+SI uses two protocol layers:
+
+- **Buying** uses the [media buy protocol](/docs/media-buy/index) — `get_products`, `create_media_buy`, `sync_catalogs`, `get_media_buy_delivery`. You buy SI inventory the same way you buy CTV or display. The `channels: ["sponsored_intelligence"]` field on products is what identifies SI inventory.
+- **Serving** uses the SI protocol — `si_initiate_session`, `si_send_message`, `si_terminate_session`. These tasks power the [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) brand experience handoffs.
+
+Most SI products (sponsored responses, AI search results) only involve the buying layer — the platform handles serving internally. SI Chat Protocol handoffs are the product type that spans both layers.
+
+## The full picture
+
+<img src="/images/walkthrough/si-10-full-picture.png" alt="A horizontal flow diagram showing Ridgeline's data flowing into both NovaMind (direct) and Gravity (network), which fans out to many AI platforms — all reporting back through the same unified delivery format to Priya's single dashboard" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Priya's CEO asked *"Why aren't we there?"* — and now Ridgeline is recommended in AI conversations across multiple platforms. Priya didn't learn a dozen different systems. She pushed her ingredients into a standard protocol and let each platform generate the right ad from full context. The same `create_media_buy` that runs her CTV and display campaigns runs her SI campaigns too.
+
+Next quarter, she's adding brand experience handoffs via SI Chat Protocol — so when a user wants to go deep on Ridgeline products, they can have a full conversation with Ridgeline's brand agent without leaving the AI experience.
+
+## Go deeper
+
+<CardGroup cols={2}>
+  <Card title="Product spectrum" icon="layer-group" href="/docs/sponsored-intelligence/product-spectrum">
+    The four SI product types — sponsored responses, AI search, generative display, and brand experience handoffs.
+  </Card>
+  <Card title="End-to-end workflow" icon="arrows-spin" href="/docs/sponsored-intelligence/workflow">
+    Step-by-step from account setup through delivery reporting with code examples.
+  </Card>
+  <Card title="SI Chat Protocol" icon="comments" href="/docs/sponsored-intelligence/si-chat-protocol">
+    The conversational brand experience protocol — session lifecycle, modalities, and commerce handoff.
+  </Card>
+  <Card title="Monetizing AI" icon="bullseye" href="/docs/guides/monetizing-ai">
+    Non-technical guide for brands, agencies, and SMBs getting started.
+  </Card>
+</CardGroup>

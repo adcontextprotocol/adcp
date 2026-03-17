@@ -72,6 +72,7 @@ export interface CertificationAttempt {
   id: string;
   workos_user_id: string;
   track_id: string;
+  module_id: string | null;
   status: 'in_progress' | 'passed' | 'failed';
   started_at: string;
   completed_at: string | null;
@@ -259,13 +260,14 @@ export async function checkPrerequisites(userId: string, moduleId: string): Prom
 export async function createAttempt(
   userId: string,
   trackId: string,
-  addieThreadId?: string
+  addieThreadId: string | undefined,
+  moduleId: string
 ): Promise<CertificationAttempt> {
   const result = await query<CertificationAttempt>(
-    `INSERT INTO certification_attempts (workos_user_id, track_id, addie_thread_id)
-     VALUES ($1, $2, $3)
+    `INSERT INTO certification_attempts (workos_user_id, track_id, addie_thread_id, module_id)
+     VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [userId, trackId, addieThreadId || null]
+    [userId, trackId, addieThreadId || null, moduleId]
   );
   return result.rows[0];
 }
@@ -595,7 +597,7 @@ export async function getOrgCertificationSummary(orgId: string): Promise<OrgCert
     `SELECT om.workos_user_id, u.first_name, u.last_name
      FROM organization_memberships om
      JOIN users u ON u.workos_user_id = om.workos_user_id
-     WHERE om.workos_organization_id = $1 AND om.status = 'active'`,
+     WHERE om.workos_organization_id = $1`,
     [orgId]
   );
 
@@ -707,10 +709,10 @@ export async function saveTeachingCheckpoint(checkpoint: {
       checkpoint.workos_user_id,
       checkpoint.module_id,
       checkpoint.thread_id || null,
-      checkpoint.concepts_covered,
-      checkpoint.concepts_remaining,
-      checkpoint.learner_strengths || [],
-      checkpoint.learner_gaps || [],
+      Array.isArray(checkpoint.concepts_covered) ? checkpoint.concepts_covered : [],
+      Array.isArray(checkpoint.concepts_remaining) ? checkpoint.concepts_remaining : [],
+      Array.isArray(checkpoint.learner_strengths) ? checkpoint.learner_strengths : [],
+      Array.isArray(checkpoint.learner_gaps) ? checkpoint.learner_gaps : [],
       checkpoint.current_phase,
       checkpoint.preliminary_scores ? JSON.stringify(checkpoint.preliminary_scores) : null,
       checkpoint.notes || null,
@@ -745,7 +747,7 @@ export interface AdminOverviewMetrics {
     abandoned: number;
     total_sessions: number;
   };
-  credentials_by_tier: Array<{ tier: number; name: string; count: number }>;
+  credentials_by_tier: Array<{ tier: number; name: string; count: number; badges_issued: number }>;
   module_completion: Array<{
     module_id: string;
     title: string;
@@ -778,8 +780,9 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
   const t = totalsResult.rows[0];
 
   // Credentials by tier
-  const credResult = await query<{ tier: number; name: string; count: string }>(
-    `SELECT cc.tier, cc.name, COUNT(uc.id)::text AS count
+  const credResult = await query<{ tier: number; name: string; count: string; badges_issued: string }>(
+    `SELECT cc.tier, cc.name, COUNT(uc.id)::text AS count,
+            COUNT(CASE WHEN uc.certifier_credential_id IS NOT NULL THEN 1 END)::text AS badges_issued
      FROM certification_credentials cc
      LEFT JOIN user_credentials uc ON uc.credential_id = cc.id
      GROUP BY cc.id, cc.tier, cc.name, cc.sort_order
@@ -837,7 +840,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
       total_sessions: parseInt(t.total_sessions),
     },
     credentials_by_tier: credResult.rows.map(r => ({
-      tier: r.tier, name: r.name, count: parseInt(r.count),
+      tier: r.tier, name: r.name, count: parseInt(r.count), badges_issued: parseInt(r.badges_issued),
     })),
     module_completion: moduleResult.rows.map(r => {
       const started = parseInt(r.started);
@@ -1013,8 +1016,8 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
        ORDER BY m.track_id, m.sort_order`,
       [userId]
     ),
-    query<{ name: string; tier: number; awarded_at: string }>(
-      `SELECT cc.name, cc.tier, uc.awarded_at
+    query<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>(
+      `SELECT cc.name, cc.tier, uc.awarded_at, uc.certifier_credential_id
        FROM user_credentials uc
        JOIN certification_credentials cc ON cc.id = uc.credential_id
        WHERE uc.workos_user_id = $1

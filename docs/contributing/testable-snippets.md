@@ -98,7 +98,7 @@ asyncio.run(example())
 
 Always use the public test agent for examples:
 
-- **Test Agent URL**: `https://test-agent.adcontextprotocol.org`
+- **Test Agent URL**: `https://agenticadvertising.org/api/training-agent`
 - **MCP Token**: `1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ`
 - **A2A Token**: `L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8`
 
@@ -116,7 +116,7 @@ Each testable snippet should:
 import { AdcpClient } from '@adcp/client';
 
 const client = new AdcpClient({
-  agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
+  agentUrl: 'https://agenticadvertising.org/api/training-agent/mcp',
   protocol: 'mcp',
   bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
 });
@@ -176,7 +176,7 @@ Each testable snippet should demonstrate ONE concept:
 import { AdcpClient } from '@adcp/client';
 
 const client = new AdcpClient({
-  agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
+  agentUrl: 'https://agenticadvertising.org/api/training-agent/mcp',
   protocol: 'mcp',
   bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
 });
@@ -301,7 +301,7 @@ When a snippet test fails:
 
 1. **Check the error message** - The test output shows which file and line number failed
 2. **Run the snippet manually** - Copy the code and run it locally
-3. **Verify test agent is accessible** - Check https://test-agent.adcontextprotocol.org
+3. **Verify test agent is accessible** - Check https://agenticadvertising.org/api/training-agent
 4. **Check dependencies** - Ensure all imports are available
 5. **Review the snippet** - Make sure it's self-contained
 

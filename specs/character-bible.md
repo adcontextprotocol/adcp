@@ -31,10 +31,11 @@ Maintain consistency with companies already in use across docs:
 | PodTrail | Podcast ad platform | Sam's seller |
 | Trident Auto Data | Automotive data provider | Kai's signals walkthrough |
 | Meridian Geo | Geolocation data provider | Kai's signals walkthrough |
-| ShopGrid Retail | Retail data provider | Kai's signals walkthrough |
+| ShopGrid | Retail marketplace + media network | Daniel's employer, Kai's signals walkthrough |
 | CommHub | Social platform | Maya's creative walkthrough |
 | Bistro Oranje | Advertiser (restaurant chain, NL) | Carlos's rights licensing walkthrough |
 | Loti Entertainment | Talent agency | Rights licensing walkthrough |
+| Summit Foods | Advertiser (organic food / CPG) | Commerce media walkthrough (brand buying on ShopGrid) |
 | Osei Natural | Small business (natural skincare, Nairobi) | Amara's company, homepage panels |
 | Halfmoon Studios | Creator studio (food/travel, LA, ~15 employees) | Ren's employer, creator economy guide |
 | Juno's Pantry | DTC brand (hot sauce/condiments) | Halfmoon's DTC line, creator economy guide |
@@ -329,7 +330,34 @@ The AAO logo and homepage feature all three. Addie + Sage + the human cast repre
 
 ---
 
-### 11. Amara Osei (secondary)
+### 11. Daniel Park
+
+**Primary domain:** Commerce media / retail media networks
+**Company:** ShopGrid (online marketplace + physical retail, ~3,000 employees)
+**Title:** VP of retail media
+**Certification module:** B1-B4 (Publisher track), commerce media sections
+
+**Who he is:** Daniel runs ShopGrid's retail media business. He came from loyalty marketing — he built ShopGrid's rewards program and understands their shopper data at a granular level. Two years ago he was tasked with monetizing that data through advertising. His first instinct was to build a self-service ad platform (every other RMN was doing it). He got halfway through the build before he realized he was competing for dashboard mindshare with Amazon, Walmart, and Kroger — a fight ShopGrid couldn't win. He pivoted to standing up an agentic storefront instead, making ShopGrid's inventory discoverable to any buyer agent through AdCP.
+
+**Personality:** Analytical, commercially sharp, honest about what didn't work. He talks about the self-service platform he almost built the way a founder talks about a pivot — not with regret, but with clarity about why the first approach was wrong. He thinks in terms of shopper journeys, not ad impressions. Gets animated when he explains how deterministic purchase data changes what's possible.
+
+**Why he anchors commerce media:** Every retail media network faces the same decision Daniel faced: build another platform or build an agentic storefront. Daniel lived both sides and chose the storefront. His story makes the business case concrete — it's not a protocol pitch, it's a strategic decision with real tradeoffs.
+
+**Appears in other walkthroughs:** ShopGrid Shopper Insights appears alongside Kai's Meridian Geo data in the signals walkthrough — they're peer signal providers, not in a supplier-consumer relationship. Sam buys ShopGrid inventory. Priya and Daniel represent opposite sell-side verticals — CTV and retail media — showing how the same protocol serves different business models.
+
+**Visual description:**
+- Man, mid-30s
+- Korean-American, light brown skin, black hair neatly side-parted
+- Thin wire-frame glasses (distinct from Priya's dark rectangular frames)
+- Wears a quarter-zip pullover over a collared shirt — retail corporate casual, not agency or startup
+- Often shown on a retail floor, near store displays, or reviewing shopper data on a tablet
+- Distinguishing feature: the quarter-zip + tablet combo signals "retail executive" immediately; the wire-frame glasses differentiate him at small sizes
+
+**Demographic signals:** Korean-American man
+
+---
+
+### 12. Amara Osei (secondary)
 
 **Primary domain:** Homepage / outcomes narrative
 **Company:** Osei Natural (natural skincare brand, Nairobi, 8 employees)
@@ -403,8 +431,9 @@ Juno is not a full character in the cast — she's the talent that Ren manages. 
 | 8 | Dayo Mensah | Pinnacle (fellow) | Emerging talent | Ad tech fellow | Certification / learning | Messenger bag, notebook, youngest face |
 | 9 | Sage | AdCP | Protocol identity | Protocol guide | AdCP docs | Teal robot, no emblem |
 | 10 | Addie | AgenticAdvertising.org | AI agent | AI agent | All (connective tissue) | Blue robot, org emblem, warm expression |
-| 11 | Amara Osei | Osei Natural | Small business | Founder | Homepage / outcomes | Bright blouse, shipping boxes |
-| 12 | Ren Castillo | Halfmoon Studios | Creator studio | Head of operations | Creator economy | Lanyard + badge, tablet in hand |
+| 11 | Daniel Park | ShopGrid | Retail media network | VP retail media | Commerce media | Quarter-zip, wire-frame glasses, tablet |
+| 12 | Amara Osei | Osei Natural | Small business | Founder | Homepage / outcomes | Bright blouse, shipping boxes |
+| 13 | Ren Castillo | Halfmoon Studios | Creator studio | Head of operations | Creator economy | Lanyard + badge, tablet in hand |
 
 ### Secondary characters (existing, keep as-is)
 
@@ -488,6 +517,25 @@ Juno is not a full character in the cast — she's the talent that Ren manages. 
               │  campaigns)  │
               └──────────────┘
 
+              ┌──────────────────┐
+              │  RETAIL MEDIA    │
+              │                  │
+              │ Daniel Park      │
+              │ ShopGrid         │
+              │ (builds agentic  │
+              │  storefront,     │
+              │  sells to Sam)   │
+              └────────┬─────────┘
+                       │
+              get_products /
+              create_media_buy
+                       │
+              ┌────────┴─────────┐
+              │                  │
+         to Sam (buyer)    peer with Kai
+                           (both provide
+                            signals)
+
    ┌──────────────────────┐    ┌──────────────────────┐
    │      SAGE (teal)     │    │     ADDIE (blue)     │
    │    AdCP Protocol     │    │  AgenticAdvertising  │
@@ -531,6 +579,10 @@ Juno is not a full character in the cast — she's the talent that Ren manages. 
 | Buyer checks Juno's likeness | Sam → Juno (via brand.json) | Brand Protocol (get_rights) | Buyer → Talent |
 | Ren exposes audience data | Ren → Sam | Signals (get_signals) | Creator sell side → Buyer |
 | Juno's Pantry buys media | Ren (as buyer) → Priya | Media buy (create_media_buy) | Creator buy side → Publisher |
+| Daniel exposes ShopGrid inventory | Daniel → Sam | Commerce media (get_products) | Seller → Buyer |
+| Daniel models retail media products | Daniel ↔ Priya | Seller integration (different verticals) | Peer |
+| Sam buys ShopGrid inventory | Sam → Daniel | Media buy (create_media_buy) | Buyer → Seller |
+| Daniel and Kai provide complementary signals | Daniel ↔ Kai | Signals (retail purchase + geolocation, peers) | Peer |
 
 ---
 
@@ -547,6 +599,7 @@ Juno is not a full character in the cast — she's the talent that Ren manages. 
 | S3 (Signals specialist) | Kai + Sam | Signal catalog design (Kai) and activation (Sam) |
 | S4 (Governance specialist) | Jordan + Sam | Governance setup, escalation, audit |
 | S5 (Sponsored Intelligence) | Tomoko | Brand experience in conversational contexts |
+| Commerce media sections | Daniel + Sam | Retail media storefront (Daniel) and buying (Sam) |
 
 ---
 
@@ -567,6 +620,8 @@ These map to simulation fixtures and automated testing.
 | Account provisioning | Sam + Priya | Pinnacle + StreamHaus | sync_accounts, list_accounts |
 | Rights licensing | Carlos | Pinnacle Media (NL) | get_rights, acquire_rights |
 | Certification onboarding | Dayo + Sage (via Addie) | Pinnacle (fellow) | A1-A3 module progression, assessment |
+| Commerce media storefront | Daniel | ShopGrid | get_products, catalog_match, in-store digital |
+| Cross-platform retail buy | Sam + Daniel | Pinnacle + ShopGrid | create_media_buy, delivery reporting with attribution |
 | Partner discovery | Alex + Addie | Pinnacle Agency | Registry search, member connections |
 | Creator economy buy | Sam + Ren | Pinnacle + Halfmoon | get_products brief → creator inventory, create_media_buy |
 | Creator audience data | Sam + Ren | Pinnacle + Halfmoon | get_signals for owned first-party data |
@@ -610,6 +665,7 @@ The cast should be instantly distinguishable in illustrations, even at thumbnail
 | Dayo | Short natural TWA | Dark brown | None | Crew tee + messenger bag | Slim, youngest |
 | Sage | N/A (robot) | Teal/emerald | N/A | No emblem, rounded form | Smaller than humans |
 | Addie | N/A (robot) | Blue/indigo | N/A | Org emblem, rounded form | Smaller than humans |
+| Daniel | Black, side-parted | Light brown | Thin wire-frame | Quarter-zip + tablet | Medium build |
 | Amara | Natural hair puff | Dark brown | None | Bright colorful blouse | Average build |
 | Ren | Thick black, short textured crop | Medium brown | None | Crewneck sweatshirt, lanyard + badge | Lean, slightly short |
 
@@ -626,6 +682,7 @@ Characters should appear in environments that match their company type:
 | Dayo | At Sam's desk (learning), at a cafe with laptop (studying), at events |
 | Sage | AdCP documentation, protocol diagrams, schema references — protocol territory |
 | Addie | Appears in any environment — she's contextual, not location-bound |
+| Daniel | Retail floor with digital screens, ShopGrid office with shopper data dashboards |
 | Amara | Sunlit Nairobi workspace, product boxes, shipping materials — small business energy |
 | Ren | Production studio / backstage area — monitors showing content, shipping boxes for Juno's Pantry visible. Half creative studio, half fulfillment center. |
 
@@ -649,6 +706,7 @@ These changes don't require rewriting narrative -- just updating names, descript
 1. **Seller integration walkthrough** -- Priya's story: building StreamHaus's AdCP sales agent. Anchors the seller-integration guide or a new publisher overview page.
 2. **Brand protocol walkthrough** -- Tomoko's story: publishing Nova Motors' brand.json, setting up authorized operators, managing identity. Replaces or supplements the current brand protocol overview.
 3. **Accounts walkthrough** -- Tomoko + Sam: establishing the commercial relationship between Nova Motors and Pinnacle Agency through a seller.
+4. **Commerce media walkthrough** -- Daniel's story: why ShopGrid chose an agentic storefront over a self-service platform. Anchors the commerce media guide with the business case before the technical content.
 
 ### Phase 3: Update certification and tests
 

@@ -263,6 +263,49 @@ export function trimConversationHistory(
 }
 
 /**
+ * Compact old tool call results in conversation history to reclaim context.
+ *
+ * Replaces tool call results older than `keepRecentTurns` assistant turns
+ * with a short placeholder. Checkpoints capture teaching state, so old
+ * tool results (get_products responses, module content, etc.) are redundant.
+ *
+ * @param messages - Conversation history (newest last)
+ * @param keepRecentTurns - Number of most-recent assistant turns to preserve fully
+ * @returns New array with compacted tool results (does not mutate input)
+ */
+export function compactOldToolResults(
+  messages: MessageTurn[],
+  keepRecentTurns: number = 4,
+): MessageTurn[] {
+  // Count assistant turns from the end to find the cutoff index
+  let assistantTurnsSeen = 0;
+  let cutoffIndex = messages.length;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant' && messages[i].toolCalls?.length) {
+      assistantTurnsSeen++;
+      if (assistantTurnsSeen >= keepRecentTurns) {
+        cutoffIndex = i;
+        break;
+      }
+    }
+  }
+
+  return messages.map((msg, idx) => {
+    if (idx >= cutoffIndex || !msg.toolCalls?.length) return msg;
+
+    const compactedCalls = msg.toolCalls.map(tc => {
+      if (tc.result.length <= 200) return tc;
+      return {
+        ...tc,
+        result: '[Result compacted — see checkpoint for current teaching state]',
+      };
+    });
+
+    return { ...msg, toolCalls: compactedCalls };
+  });
+}
+
+/**
  * Check if a request is likely to exceed context limits.
  *
  * This is a fast local check using estimates. For critical operations,

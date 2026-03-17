@@ -1054,15 +1054,18 @@ export class HTTPServer {
     this.app.use('/api/me/api-keys', createApiKeysRouter());
 
     // Mount training agent (embedded AdCP sales agent for testing and certification)
-    this.app.use('/api/training-agent', createTrainingAgentRouter());
+    const trainingAgentRouter = createTrainingAgentRouter();
+    this.app.use('/api/training-agent', trainingAgentRouter);
 
     // Mount reference creative agent (canonical format definitions and preview rendering)
     const creativeAgentRouter = createCreativeAgentRouter();
     this.app.use('/api/creative-agent', creativeAgentRouter);
 
-    // Host-based routing: creative.adcontextprotocol.org serves the creative agent at root
-    // This preserves backward compatibility with the old standalone agent URL scheme
+    // Host-based routing: serve embedded agents at root for legacy standalone URLs
     this.app.use((req, res, next) => {
+      if (req.hostname === 'test-agent.adcontextprotocol.org') {
+        return trainingAgentRouter(req, res, next);
+      }
       if (req.hostname === 'creative.adcontextprotocol.org') {
         return creativeAgentRouter(req, res, next);
       }

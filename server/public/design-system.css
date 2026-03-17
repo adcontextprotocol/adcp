@@ -900,7 +900,7 @@ body {
 .hero {
   background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
   color: white;
-  padding: var(--space-20) var(--space-8) var(--space-16);
+  padding: var(--space-10) var(--space-8) var(--space-16);
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -958,7 +958,7 @@ body {
 
 /* Smaller hero for article/content pages */
 .hero--article {
-  padding: var(--space-16) var(--space-8) var(--space-12);
+  padding: var(--space-8) var(--space-8) var(--space-12);
 }
 
 .hero--article h1 {
@@ -969,7 +969,7 @@ body {
 .hero--clean {
   background: #fff;
   color: var(--color-text-heading);
-  padding: var(--space-16) var(--space-8) var(--space-10);
+  padding: var(--space-8) var(--space-8) var(--space-10);
 }
 
 .hero--clean::before {
@@ -1499,11 +1499,11 @@ a.btn-success:hover {
    ----------------------------------------------------------------------------- */
 @media (max-width: 768px) {
   .hero {
-    padding: var(--space-12) var(--space-6) var(--space-10);
+    padding: var(--space-8) var(--space-6) var(--space-10);
   }
 
   .hero--article {
-    padding: var(--space-12) var(--space-6) var(--space-8);
+    padding: var(--space-8) var(--space-6) var(--space-8);
   }
 
   .hero--article h1 {

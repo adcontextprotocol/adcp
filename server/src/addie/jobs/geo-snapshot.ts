@@ -124,6 +124,7 @@ export async function runGeoSnapshotJob(): Promise<{
     breakdown: "model",
     sort: "mentions",
     sort_dir: "desc",
+    range: "30",
   });
 
   const models = aggregateModelMetrics(modelSummaryRows);

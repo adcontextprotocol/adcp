@@ -1212,14 +1212,14 @@ paths:
           name: search
           in: query
         - schema:
-            type: string
-            example: "100"
+            type: integer
+            example: 100
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -1269,14 +1269,14 @@ paths:
           name: domain
           in: query
         - schema:
-            type: string
-            example: "20"
+            type: integer
+            example: 20
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -1351,14 +1351,14 @@ paths:
           name: domain
           in: query
         - schema:
-            type: string
-            example: "20"
+            type: integer
+            example: 20
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -1485,14 +1485,14 @@ paths:
           name: search
           in: query
         - schema:
-            type: string
-            example: "100"
+            type: integer
+            example: 100
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -2636,14 +2636,14 @@ paths:
           name: domain
           in: query
         - schema:
-            type: string
+            type: integer
             description: Results per page (default 20, max 1000)
           required: false
           description: Results per page (default 20, max 1000)
           name: limit
           in: query
         - schema:
-            type: string
+            type: integer
             description: Pagination offset (default 0)
           required: false
           description: Pagination offset (default 0)
@@ -2797,14 +2797,14 @@ paths:
           name: policy_id
           in: query
         - schema:
-            type: string
+            type: integer
             description: Results per page (max 100, default 20)
           required: false
           description: Results per page (max 100, default 20)
           name: limit
           in: query
         - schema:
-            type: string
+            type: integer
             description: Pagination offset (default 0)
           required: false
           description: Pagination offset (default 0)

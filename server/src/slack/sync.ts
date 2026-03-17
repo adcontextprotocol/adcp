@@ -893,7 +893,16 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
         logger.info({ orgId, orgName: row.org_name, email: user.email, role }, 'Auto-added domain user as org member');
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
+        const message = (err as { message?: string })?.message || '';
         if (code === 'organization_membership_already_exists') {
+          totalSkipped++;
+        } else if (
+          message.includes('Pending organization memberships cannot be reactivated') ||
+          code === 'entity_not_found' ||
+          message.includes('User not found')
+        ) {
+          // Pending invite or deleted user — skip, not an error
+          logger.debug({ orgId, email: user.email, code, message }, 'Skipping org membership: user ineligible');
           totalSkipped++;
         } else {
           logger.error({ err, orgId, email: user.email }, 'Failed to create org membership for domain user');

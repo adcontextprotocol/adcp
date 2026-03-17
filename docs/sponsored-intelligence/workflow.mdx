@@ -1,0 +1,217 @@
+---
+title: End-to-end workflow
+description: "The complete Sponsored Intelligence workflow — from account setup through catalog sync, product discovery, media buy creation, and delivery reporting."
+"og:title": "AdCP — SI workflow"
+sidebarTitle: Workflow
+---
+
+# End-to-end workflow
+
+<Steps>
+
+## Set up account
+
+Start by checking the seller's capabilities to understand the account model. First-party AI platforms typically require explicit accounts (each advertiser authenticates via OAuth), while [ad networks](/docs/sponsored-intelligence/networks) may use implicit accounts (the agent declares brands via `sync_accounts`).
+
+**Example: first-party AI platform (explicit accounts)**
+
+```json
+{
+  "adcp": { "major_versions": [3] },
+  "supported_protocols": ["media_buy", "creative"],
+  "account": {
+    "require_operator_auth": true,
+    "supported_billing": ["operator"],
+    "authorization_endpoint": "https://ads.ai-platform.example.com/oauth/authorize",
+    "required_for_products": false,
+    "sandbox": true
+  }
+}
+```
+
+Key signals:
+- **`require_operator_auth: true`** — each advertiser authenticates via OAuth
+- **`sandbox: true`** — test accounts available for integration validation
+- **`required_for_products: false`** — buyers can browse products before setting up an account
+
+An ad network that aggregates across multiple platforms would more likely declare `require_operator_auth: false` with `supported_billing: ["operator", "agent"]` — the agent is trusted and declares accounts via `sync_accounts`.
+
+For explicit accounts, after OAuth authentication discover available accounts via `list_accounts`:
+
+```json
+{
+  "accounts": [
+    {
+      "account_id": "acct_novabrand_ai_001",
+      "name": "Nova Brand - AI Platform",
+      "status": "active",
+      "sandbox": false
+    },
+    {
+      "account_id": "acct_novabrand_ai_sandbox",
+      "name": "Nova Brand - Sandbox",
+      "status": "active",
+      "sandbox": true
+    }
+  ]
+}
+```
+
+Use the sandbox account first to validate the full integration before committing real spend.
+
+## Sync catalogs
+
+This is the defining step — pushing your product and offering data into the platform so it has the raw material to generate ads and transact. Product catalogs feed creative generation. Offering catalogs enable promotions and commerce handoffs. The richer the feed, the better the platform can match intent to inventory.
+
+```json
+{
+  "account": { "account_id": "acct_novabrand_ai_001" },
+  "catalogs": [
+    {
+      "catalog_id": "product-feed",
+      "name": "Nova Brand Product Catalog",
+      "type": "product",
+      "url": "https://novabrand.example.com/products.xml",
+      "feed_format": "google_merchant_center",
+      "update_frequency": "daily"
+    },
+    {
+      "catalog_id": "offerings-feed",
+      "name": "Nova Brand Promotions",
+      "type": "offering",
+      "url": "https://novabrand.example.com/offerings.json",
+      "feed_format": "custom",
+      "update_frequency": "weekly"
+    }
+  ]
+}
+```
+
+The platform ingests each feed:
+- **Product catalog** — titles, descriptions, prices, and images feed sponsored response generation
+- **Offering catalog** — promotions, services, and seasonal campaigns for [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) brand experience handoffs
+
+<Tip>
+Improving your ads means improving what you push in — catalogs, conversion events, brand identity, and content standards. Include detailed descriptions, multiple images, and structured attributes in catalogs. Push conversion events so the platform knows what works. The platform generates ads from all of this data — richer input produces better output.
+</Tip>
+
+## Discover products
+
+Query `get_products` with `channels: ["sponsored_intelligence"]` to find Sponsored Intelligence products:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Promote our new wireless headphones to tech-savvy consumers on AI platforms.",
+  "brand": {
+    "domain": "novabrand.example.com"
+  },
+  "filters": {
+    "channels": ["sponsored_intelligence"]
+  }
+}
+```
+
+The seller returns products matching the brief. For catalog-driven products, sellers may include `catalog_match` showing which catalog items are eligible. See the [product spectrum](/docs/sponsored-intelligence/product-spectrum) for the full range of product types.
+
+## Create media buy
+
+A media buy can span multiple Sponsored Intelligence product types:
+
+```json
+{
+  "buyer_ref": "nova_headphones_q2",
+  "account": { "account_id": "acct_novabrand_ai_001" },
+  "brand": {
+    "domain": "novabrand.example.com"
+  },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-04-30T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "sponsored_responses",
+      "product_id": "sponsored_response_assistant",
+      "pricing_option_id": "sr_cpc",
+      "budget": 10000,
+      "bid_price": 2.50,
+      "pacing": "even",
+      "optimization_goals": [{
+        "kind": "metric",
+        "metric": "engagements",
+        "target": { "kind": "cost_per", "value": 3.00 },
+        "priority": 1
+      }]
+    },
+    {
+      "buyer_ref": "ai_search",
+      "product_id": "ai_search_sponsored",
+      "pricing_option_id": "search_cpc",
+      "budget": 5000,
+      "bid_price": 3.00,
+      "pacing": "even",
+      "targeting_overlay": {
+        "keyword_targets": [
+          { "keyword": "wireless headphones", "match_type": "broad" },
+          { "keyword": "noise cancelling", "match_type": "phrase" },
+          { "keyword": "bluetooth earbuds", "match_type": "broad" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The sponsored responses package uses `optimization_goals` with a metric goal to optimize for cost-per-engagement. The AI search package uses `keyword_targets` to reach relevant queries.
+
+## Delivery reporting
+
+Delivery reports include engagement metrics alongside standard delivery data:
+
+```json
+{
+  "reporting_period": {
+    "start": "2026-04-01T00:00:00Z",
+    "end": "2026-04-14T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_ai_001",
+      "buyer_ref": "nova_headphones_q2",
+      "status": "active",
+      "totals": {
+        "impressions": 125000,
+        "spend": 7200
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_sr_001",
+          "buyer_ref": "sponsored_responses",
+          "pricing_model": "cpc",
+          "rate": 2.40,
+          "currency": "USD",
+          "impressions": 85000,
+          "spend": 4800,
+          "clicks": 2000,
+          "delivery_status": "delivering"
+        },
+        {
+          "package_id": "pkg_search_001",
+          "buyer_ref": "ai_search",
+          "pricing_model": "cpc",
+          "rate": 3.00,
+          "currency": "USD",
+          "impressions": 40000,
+          "spend": 2400,
+          "clicks": 800,
+          "delivery_status": "delivering"
+        }
+      ]
+    }
+  ]
+}
+```
+
+See [measurement](/docs/sponsored-intelligence/measurement) for metric definitions and conversion tracking.
+
+</Steps>

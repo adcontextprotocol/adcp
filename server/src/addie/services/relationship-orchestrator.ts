@@ -20,6 +20,7 @@ import {
   computeNextContactDate,
   computeEngagementOpportunities,
   MAX_TOTAL_UNREPLIED,
+  STAGE_COOLDOWNS,
 } from './engagement-planner.js';
 import {
   getEmailBudget,
@@ -481,9 +482,11 @@ export async function runRelationshipOrchestratorCycle(options: {
       // 4. Load full relationship context
       const context = await loadRelationshipContext(candidate.id, { includeCommunity: true });
 
-      // 4b. Do not proactively message completely cold prospects or silent welcomes
+      // 4b. Do not proactively message people with no observable engagement.
+      // Welcome messages for new prospects are exempt (they just arrived).
+      const isNewProspectWelcome = candidate.stage === 'prospect' && candidate.last_addie_message_at === null;
       if (
-        (candidate.stage === 'prospect' || candidate.stage === 'welcomed')
+        !isNewProspectWelcome
         && candidate.last_person_message_at === null
         && !hasMeaningfulEngagement(context)
       ) {
@@ -496,9 +499,10 @@ export async function runRelationshipOrchestratorCycle(options: {
           data: { reason: 'no meaningful engagement signal yet', stage: candidate.stage },
         }).catch(err => logger.warn({ err }, 'Failed to record person event'));
 
+        const recheckDays = STAGE_COOLDOWNS[candidate.stage] ?? 7;
         await relationshipDb.setNextContactAfter(
           candidate.id,
-          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          new Date(Date.now() + recheckDays * 24 * 60 * 60 * 1000)
         );
 
         skipped++;

@@ -282,10 +282,13 @@ export class OrganizationDatabase {
         o.workos_organization_id,
         o.name,
         o.company_type,
-        mp.logo_url,
+        COALESCE(hb.brand_json->'brands'->0->'logos'->0->>'url', hb.brand_json->'logos'->0->>'url') AS logo_url,
         mp.tagline
        FROM organizations o
        LEFT JOIN member_profiles mp ON mp.workos_organization_id = o.workos_organization_id
+       LEFT JOIN LATERAL (
+         SELECT brand_json FROM hosted_brands WHERE brand_domain = mp.primary_brand_domain LIMIT 1
+       ) hb ON true
        WHERE ${conditions.join(' AND ')}
        ORDER BY o.name ASC
        LIMIT $${paramIndex}`,
