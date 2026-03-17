@@ -210,26 +210,25 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         } = { ...context };
 
         if (workosUserId || slackUserId) {
-          // Get goal from unified contacts view
-          const goalQuery = workosUserId
-            ? `SELECT goal_key, goal_name, goal_reasoning as reasoning
-               FROM unified_contacts_with_goals
-               WHERE workos_user_id = $1
-               LIMIT 1`
-            : `SELECT goal_key, goal_name, goal_reasoning as reasoning
-               FROM unified_contacts_with_goals
-               WHERE slack_user_id = $1 AND contact_type = 'slack_only'
-               LIMIT 1`;
-
-          const goalResult = await pool.query(goalQuery, [workosUserId || slackUserId]);
-          if (goalResult.rows.length > 0) {
-            extendedContext.addie_goal = goalResult.rows[0];
-          }
-
-          // Get relationship info from person_relationships + person_events
-          if (slackUserId) {
-            const relationshipQuery = `
-              SELECT
+          // Run independent DB queries in parallel: goal and threads are fully independent.
+          // Relationship is independent but its nested events query depends on it.
+          const [goalResult, relationshipResult, threadsResult] = await Promise.all([
+            // Get goal from unified contacts view
+            pool.query(
+              workosUserId
+                ? `SELECT goal_key, goal_name, goal_reasoning as reasoning
+                   FROM unified_contacts_with_goals
+                   WHERE workos_user_id = $1
+                   LIMIT 1`
+                : `SELECT goal_key, goal_name, goal_reasoning as reasoning
+                   FROM unified_contacts_with_goals
+                   WHERE slack_user_id = $1 AND contact_type = 'slack_only'
+                   LIMIT 1`,
+              [workosUserId || slackUserId]
+            ),
+            // Get relationship info from person_relationships
+            pool.query(
+              `SELECT
                 pr.id as person_id,
                 pr.stage,
                 pr.interaction_count,
@@ -240,39 +239,49 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 pr.last_person_message_at,
                 pr.last_interaction_channel
               FROM person_relationships pr
-              WHERE pr.slack_user_id = $1`;
-            const relationshipResult = await pool.query(relationshipQuery, [slackUserId]);
-            if (relationshipResult.rows.length > 0) {
-              const row = relationshipResult.rows[0];
-              (extendedContext as typeof extendedContext & { relationship?: unknown }).relationship = row;
+              WHERE pr.slack_user_id = $1`,
+              [slackUserId]
+            ),
+            // Get recent conversations (threads) for this user
+            pool.query(
+              workosUserId
+                ? `SELECT thread_id, channel, title, message_count, started_at, last_message_at
+                   FROM addie_threads
+                   WHERE user_type = 'workos' AND user_id = $1
+                   ORDER BY last_message_at DESC
+                   LIMIT 5`
+                : `SELECT thread_id, channel, title, message_count, started_at, last_message_at
+                   FROM addie_threads
+                   WHERE user_type = 'slack' AND user_id = $1
+                   ORDER BY last_message_at DESC
+                   LIMIT 5`,
+              [workosUserId || slackUserId]
+            ),
+          ]);
 
-              // Get recent person_events for timeline
-              const eventsQuery = `
-                SELECT event_type, channel, data, occurred_at
-                FROM person_events
-                WHERE person_id = $1
-                ORDER BY occurred_at DESC
-                LIMIT 10`;
-              const eventsResult = await pool.query(eventsQuery, [row.person_id]);
-              if (eventsResult.rows.length > 0) {
-                (extendedContext as typeof extendedContext & { event_timeline?: unknown }).event_timeline = eventsResult.rows;
-              }
+          if (goalResult.rows.length > 0) {
+            extendedContext.addie_goal = goalResult.rows[0];
+          }
+
+          // Get relationship and events if slack user
+          if (slackUserId && relationshipResult.rows.length > 0) {
+            const row = relationshipResult.rows[0];
+            (extendedContext as typeof extendedContext & { relationship?: unknown }).relationship = row;
+
+            // Get recent person_events for timeline
+            const eventsResult = await pool.query(
+              `SELECT event_type, channel, data, occurred_at
+               FROM person_events
+               WHERE person_id = $1
+               ORDER BY occurred_at DESC
+               LIMIT 10`,
+              [row.person_id]
+            );
+            if (eventsResult.rows.length > 0) {
+              (extendedContext as typeof extendedContext & { event_timeline?: unknown }).event_timeline = eventsResult.rows;
             }
           }
 
-          // Get recent conversations (threads) for this user
-          const threadsQuery = workosUserId
-            ? `SELECT thread_id, channel, title, message_count, started_at, last_message_at
-               FROM addie_threads
-               WHERE user_type = 'workos' AND user_id = $1
-               ORDER BY last_message_at DESC
-               LIMIT 5`
-            : `SELECT thread_id, channel, title, message_count, started_at, last_message_at
-               FROM addie_threads
-               WHERE user_type = 'slack' AND user_id = $1
-               ORDER BY last_message_at DESC
-               LIMIT 5`;
-          const threadsResult = await pool.query(threadsQuery, [workosUserId || slackUserId]);
           if (threadsResult.rows.length > 0) {
             (extendedContext as typeof extendedContext & { recent_conversations?: unknown }).recent_conversations = threadsResult.rows;
           }
