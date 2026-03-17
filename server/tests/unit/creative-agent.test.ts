@@ -525,9 +525,9 @@ describe('preview store', () => {
   });
 });
 
-// ── MCP server structuredContent ─────────────────────────────────────
+// ── MCP tool responses: structuredContent (regression #1519) ────────
 
-describe('MCP server tool responses', () => {
+describe('MCP tool responses include structuredContent', () => {
   let client: Client;
   let server: ReturnType<typeof createCreativeAgentServer>;
 
@@ -543,30 +543,92 @@ describe('MCP server tool responses', () => {
     await server.close();
   });
 
-  it('list_creative_formats returns structuredContent', async () => {
+  it('list_creative_formats returns structuredContent with formats array', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',
-      arguments: { type: 'display' },
+      arguments: { type: 'audio' },
     });
+
+    expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toBeDefined();
     const structured = result.structuredContent as { formats: unknown[] };
-    expect(structured.formats.length).toBeGreaterThan(0);
-    expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual(result.structuredContent);
+    expect(structured.formats).toBeDefined();
+    expect(Array.isArray(structured.formats)).toBe(true);
+    expect(structured.formats.length).toBe(3);
   });
 
-  it('preview_creative returns structuredContent', async () => {
+  it('list_creative_formats structuredContent matches content text', async () => {
+    const result = await client.callTool({
+      name: 'list_creative_formats',
+      arguments: {},
+    });
+
+    const structured = result.structuredContent as Record<string, unknown>;
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content).toHaveLength(1);
+    expect(JSON.parse(content[0].text)).toEqual(structured);
+  });
+
+  it('preview_creative returns structuredContent with previews', async () => {
+    const result = await client.callTool({
+      name: 'preview_creative',
+      arguments: {
+        request_type: 'single',
+        creative_manifest: {
+          format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
+          assets: {
+            banner_image: { url: 'https://example.com/ad.jpg' },
+            click_url: { url: 'https://example.com' },
+          },
+        },
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toBeDefined();
+    const structured = result.structuredContent as { response_type: string; previews: unknown[] };
+    expect(structured.response_type).toBe('single');
+    expect(structured.previews).toBeDefined();
+    expect(structured.previews.length).toBe(1);
+  });
+
+  it('preview_creative structuredContent matches content text', async () => {
     const result = await client.callTool({
       name: 'preview_creative',
       arguments: {
         creative_manifest: {
           format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
-          assets: { banner_image: { url: 'https://example.com/ad.jpg' } },
+          assets: {},
         },
-        output_format: 'html',
       },
     });
+
+    const structured = result.structuredContent as Record<string, unknown>;
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(JSON.parse(content[0].text)).toEqual(structured);
+  });
+
+  it('preview_creative batch mode returns structuredContent', async () => {
+    const result = await client.callTool({
+      name: 'preview_creative',
+      arguments: {
+        request_type: 'batch',
+        requests: [
+          {
+            creative_manifest: {
+              creative_id: 'cr_1',
+              format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
+              assets: {},
+            },
+          },
+        ],
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toBeDefined();
-    expect((result.structuredContent as { response_type: string }).response_type).toBe('single');
-    expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual(result.structuredContent);
+    const structured = result.structuredContent as { response_type: string; results: unknown[] };
+    expect(structured.response_type).toBe('batch');
+    expect(structured.results).toHaveLength(1);
   });
 });
