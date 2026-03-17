@@ -361,7 +361,7 @@ Before any of Sam's campaigns go live, they pass through governance. Jordan, Pin
 }
 ```
 
-If everything passes, the campaign proceeds. If something exceeds the agent's authority — say, the budget is above Jordan's $20K auto-approval threshold — the governance agent escalates to a human. Jordan reviews, adds conditions if needed, and approves. The agent can't skip this step; it's architectural, not procedural.
+If everything passes, the campaign proceeds. If something exceeds the agent's authority — say, the budget is above Jordan's \$20K auto-approval threshold — the governance agent escalates to a human. Jordan reviews, adds conditions if needed, and approves. The agent can't skip this step; it's architectural, not procedural.
 
 After the campaign runs, `get_plan_audit_logs` provides the complete decision trail — who proposed what, who approved it, what conditions were attached, what actually ran. Every decision is recorded and attributable.
 
@@ -563,7 +563,7 @@ These agents communicate over two transport protocols: **MCP** (for AI assistant
 
 Here's what Alex's team does now:
 
-1. **Write a brief**: "Find premium video inventory on sports publishers for Q2 with a $50K budget"
+1. **Write a brief**: "Find premium video inventory on sports publishers for Q2 with a \$50K budget"
 2. **Agents discover options**: `get_products` goes to every connected seller simultaneously
 3. **Compare proposals**: Products come back in a standard format — pricing, forecasts, targeting — all comparable
 4. **Agents build creatives**: `build_creative` adapts assets to each seller's formats

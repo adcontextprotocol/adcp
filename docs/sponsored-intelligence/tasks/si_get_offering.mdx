@@ -18,7 +18,7 @@ si_get_offering → Host shows products → User consents → si_initiate_sessio
 
 Use this when you want to show the user products **before** asking for consent. The `offering_token` bridges pre-session context into the session, so references like "the second one" work.
 
-**Example**: Search results page shows "Nike has 3 running shoes in your size from $89" before the user decides to engage.
+**Example**: Search results page shows "Nike has 3 running shoes in your size from \$89" before the user decides to engage.
 
 ### Flow B: Direct Session
 
@@ -76,7 +76,7 @@ This request must not include any personally identifiable information. The `cont
 | `summary` | string | Brief description |
 | `tagline` | string | Short promotional tagline |
 | `expires_at` | string | When the offering expires |
-| `price_hint` | string | Price indication (e.g., "from $89") |
+| `price_hint` | string | Price indication (e.g., "from \$89") |
 | `image_url` | string | Hero image URL |
 | `landing_url` | string | Landing page URL |
 
@@ -181,7 +181,7 @@ This request must not include any personally identifiable information. The `cont
 
 This enables the host to show:
 
-> "Nike has 12 running shoes in your size starting at $89. Want to explore with their assistant?"
+> "Nike has 12 running shoes in your size starting at \$89. Want to explore with their assistant?"
 
 ### Unavailable Response
 
@@ -281,7 +281,7 @@ When initiating a session after getting offering details, include the token:
 
 2. **Session continuity** - The offering token is the brand's memory of what was shown. When users reference "the first option" or "that blue one", the token lets the brand agent resolve those references.
 
-3. **Product matching** - When `include_products` is true and `context` is provided, brands can return relevant products. This powers pre-session previews like "12 shoes in your size from $89."
+3. **Product matching** - When `include_products` is true and `context` is provided, brands can return relevant products. This powers pre-session previews like "12 shoes in your size from \$89."
 
 4. **Caching** - Hosts may cache responses for up to `ttl_seconds`. This reduces load on brand agents for frequently checked offerings.
 
