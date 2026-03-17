@@ -1,0 +1,84 @@
+---
+title: TMP for CTV
+description: How TMP activates packages for CTV pod composition with creative variant selection.
+---
+
+# TMP for CTV
+
+Connected TV (CTV) and FAST channels compose ad pods — sequences of ads that fill commercial breaks. Pod composition involves activating multiple packages simultaneously while respecting competitive separation, frequency caps per household, and creative duration constraints. TMP handles the package activation; the broadcaster's ad server handles pod assembly.
+
+## How It Works Today
+
+Broadcasters manage CTV deals through their ad server (FreeWheel, Google Ad Manager, SpringServe). Each deal is configured with targeting rules, competitive separation constraints, and creative rotation logic. Pod composition is handled by the ad server's pod optimization engine. There is no standard way for buyer agents to provide real-time input on which packages to activate or which creative variants to prefer for a specific pod.
+
+## Context Match
+
+When a pod break is about to serve, the broadcaster sends a Context Match request:
+
+```json
+{
+  "property_id": "streaming-sports-network",
+  "property_type": "ctv_app",
+  "surface": "mid_roll_pod",
+  "content": {
+    "domain": "stream.sportsnet.com",
+    "content_hash": "c8d3f1",
+    "topic_ids": ["sports.basketball.nba", "entertainment.live"],
+    "language": "en",
+    "content_rating": "TV-PG"
+  },
+  "available_packages": [
+    { "package_id": "pkg-auto-30s", "media_buy_id": "mb-auto-brand", "format_ids": ["video_30s", "video_15s"] },
+    { "package_id": "pkg-beer-15s", "media_buy_id": "mb-beer-brand", "format_ids": ["video_15s"] },
+    { "package_id": "pkg-insurance-30s", "media_buy_id": "mb-insurance", "format_ids": ["video_30s", "video_15s"] }
+  ]
+}
+```
+
+Buyer agents respond with activated packages and creative preferences:
+
+- Auto brand agent: activate pkg-auto-30s, prefer 30-second cutdown during live sports
+- Beer brand agent: activate pkg-beer-15s
+- Insurance agent: no activation (targeting doesn't match sports content)
+
+## Identity Match
+
+The broadcaster sends an Identity Match request with a household token:
+
+```json
+{
+  "user_token": "tok_household_q7w2",
+  "package_ids": ["pkg-auto-30s", "pkg-beer-15s", "pkg-insurance-30s"]
+}
+```
+
+Responses include household-level frequency caps (the auto brand has been shown 3 times this hour) and competitive separation requirements.
+
+## Activation
+
+The broadcaster's ad server composes the pod:
+
+- Slot 1 (30s): Auto brand — under frequency cap, live sports context match, 30s variant preferred
+- Slot 2 (15s): Beer brand — eligible, content rating allows alcohol in TV-PG sports
+- Competitive separation: auto and beer are in different categories, no conflict
+- Insurance skipped: not activated by context match
+
+Total pod: 45 seconds, two packages activated, both eligible.
+
+## Example Flow
+
+```
+Mid-roll break in NBA game
+  → Broadcaster sends Context Match: 3 packages available for sports pod
+  → Auto buyer agent: activate pkg-auto-30s, creative_variant: "live_sports_30s"
+  → Beer buyer agent: activate pkg-beer-15s
+  → Insurance buyer agent: no activation
+
+  → (fuzzed) Broadcaster sends Identity Match: household token
+  → Auto agent: eligible, shown 3x this hour (under 5x cap)
+  → Beer agent: eligible, not capped
+
+  → Broadcaster joins: compose pod with auto (30s) + beer (15s)
+  → Ad server enforces competitive separation and pacing
+  → Pod serves during commercial break
+```

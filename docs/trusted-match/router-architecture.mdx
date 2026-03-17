@@ -1,0 +1,173 @@
+---
+title: The TMP Router
+description: Architecture and operation of the TMP Router, including TEE enclaves, agent discovery, and fan-out.
+---
+
+# The TMP Router
+
+The TMP Router is infrastructure that sits between publishers and buyer agents. It handles agent discovery, request fan-out, response merging, and privacy enforcement. It does not make decisions — it routes requests and aggregates responses.
+
+## What the Router Does
+
+1. **Discovers agents**: Reads the publisher's `adagents.json` to find buyer agents that declare TMP capabilities.
+2. **Fans out requests**: Sends Context Match requests to all authorized agents with `context_match` capability. Sends Identity Match requests to all authorized agents with `identity_match` capability.
+3. **Merges responses**: Combines activated packages, catalog refinements, enrichment signals, and eligibility matrices from multiple agents into unified responses.
+4. **Enforces separation**: Processes context and identity in independent TEE enclaves with no shared state.
+5. **Manages latency**: Applies adaptive timeouts and deprioritizes agents that consistently exceed the latency budget.
+
+## Dual-Enclave Architecture
+
+The router consists of two independent components:
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                         TMP Router                            │
+│                                                               │
+│  ┌─────────────────────────┐   ┌─────────────────────────┐   │
+│  │    Context Router        │   │    Identity Router       │   │
+│  │    (TEE Enclave)         │   │    (TEE Enclave)         │   │
+│  │                          │   │                          │   │
+│  │  Inputs:                 │   │  Inputs:                 │   │
+│  │  • Content signals       │   │  • Opaque user tokens    │   │
+│  │  • Available packages    │   │  • Package IDs           │   │
+│  │                          │   │                          │   │
+│  │  Outputs:                │   │  Outputs:                │   │
+│  │  • Activated packages    │   │  • Eligibility matrices  │   │
+│  │  • Catalog refinements   │   │                          │   │
+│  │  • Enrichment signals    │   │                          │   │
+│  │                          │   │                          │   │
+│  │  Never touches:          │   │  Never touches:          │   │
+│  │  • User tokens           │   │  • URLs                  │   │
+│  │  • Any identity data     │   │  • Content signals       │   │
+│  └─────────────────────────┘   └─────────────────────────┘   │
+│                                                               │
+│  No shared state between enclaves.                            │
+│  Attestable via TEE measurements.                             │
+└───────────────────────────────────────────────────────────────┘
+```
+
+Each enclave is stateless. The Context Router has no database, no cross-request memory, no way to accumulate user profiles even if compromised. The Identity Router has no content store, no URL logs, no way to reconstruct browsing patterns.
+
+## Agent Discovery
+
+The router reads `adagents.json` from the publisher's domain (`https://{domain}/.well-known/adagents.json`) to discover authorized buyer agents and their TMP capabilities.
+
+Buyer agents declare TMP capabilities on their existing AdCP agent endpoint:
+
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://buyer.scope3.com/adcp",
+      "authorized_for": "Media buying and trusted matching",
+      "authorization_type": "property_tags",
+      "property_tags": ["all_web"],
+      "capabilities": {
+        "planning": ["get_products", "create_media_buy"],
+        "tmp": {
+          "context_match": true,
+          "identity_match": true,
+          "catalog_refinement": true,
+          "wire_formats": ["capnp", "json"]
+        }
+      }
+    },
+    {
+      "url": "https://buyer.brandx.com/adcp",
+      "authorized_for": "Sponsored product activation",
+      "authorization_type": "property_ids",
+      "property_ids": ["retail_homepage", "search_results"],
+      "capabilities": {
+        "tmp": {
+          "context_match": true,
+          "catalog_refinement": true,
+          "wire_formats": ["json"]
+        }
+      }
+    }
+  ]
+}
+```
+
+Key points:
+
+- **No separate endpoints.** TMP is a capability of the agent's existing AdCP URL. The request type field distinguishes the operation.
+- **Capabilities are granular.** An agent might support `context_match` but not `identity_match` (e.g., a pure enrichment provider). An agent might support `catalog_refinement` on some properties but not others.
+- **Wire format negotiation.** Agents declare which wire formats they support. The router selects the most efficient shared format (Cap'n Proto preferred, JSON fallback).
+- **Property scoping.** Capabilities are scoped to specific properties or property tags, following adagents.json's existing authorization model.
+
+The router refreshes its view of `adagents.json` periodically (recommended: every 5 minutes) to pick up new agents, changed capabilities, or revoked authorizations.
+
+## Fan-Out and Response Merging
+
+### Context Match fan-out
+
+When the publisher sends a Context Match request:
+
+1. The Context Router identifies all agents authorized for the request's `property_id` that declare `context_match` capability.
+2. It sends the request to all matching agents in parallel over HTTP/2.
+3. It waits for responses up to the latency budget (default: 50ms).
+4. It merges responses:
+   - **Activated packages** are unioned. If two agents activate the same package (uncommon — packages are typically agent-specific), the router includes both and flags the conflict for the publisher.
+   - **Enrichment signals** are concatenated. Segments from all agents are combined into a single list. Targeting key-values from different agents are namespaced to prevent collisions.
+5. It returns the merged response to the publisher.
+
+### Identity Match fan-out
+
+The same pattern applies. The Identity Router fans out to all agents with `identity_match` capability for the relevant properties, merges eligibility matrices, and returns a unified result.
+
+If two agents provide eligibility for the same package (again, uncommon), the router applies conservative merging: if either agent says "frequency-capped," the merged result says "frequency-capped."
+
+### Timeout handling
+
+Agents that respond within the latency budget are included in the merged response. Agents that exceed the budget are skipped — their packages are treated as "not activated" for this request.
+
+The router tracks per-agent latency percentiles (p50, p95, p99) and may deprioritize or preemptively skip agents whose p95 latency consistently exceeds the budget. This is an operational decision, not a protocol requirement.
+
+## Latency Budget
+
+TMP targets sub-50ms end-to-end latency: publisher sends request → router fans out → agents respond → router merges → publisher receives response.
+
+This is achievable because:
+
+- **Binary encoding**: Cap'n Proto wire format eliminates serialization/deserialization overhead. Typical Context Match request: 100-300 bytes.
+- **No price computation**: Packages are pre-negotiated. The buyer evaluates targeting criteria, not auction dynamics.
+- **Parallel fan-out**: All agents are called simultaneously. The total latency is the slowest agent's latency, not the sum.
+- **Stateless enclaves**: No database lookups in the router. The router's only job is forwarding and merging.
+- **Connection reuse**: HTTP/2 multiplexing allows concurrent requests to each agent over a single connection.
+
+For comparison, Prebid Server's typical RTD module latency is 50-200ms with the full OpenRTB BidRequest. TMP's smaller payload and simpler protocol make sub-50ms practical.
+
+## Relationship to Prebid
+
+The TMP Router generalizes what AXE (Agentic eXecution Engine) does today. AXE is Scope3's implementation of real-time package activation, built as a Prebid Server RTD module. It works but is single-vendor, Prebid-specific, and sends the full OpenRTB BidRequest.
+
+The TMP Router replaces this with a multi-buyer, multi-surface, protocol-standard alternative:
+
+| | AXE (today) | TMP Router |
+|---|---|---|
+| Buyer agents | Scope3 only | Any agent declaring TMP capabilities |
+| Discovery | Hardcoded configuration | adagents.json |
+| Surfaces | Web (Prebid Server) | Web, AI, mobile, CTV, retail media |
+| Request format | Full OpenRTB BidRequest (~2-10KB JSON) | TMP ContextMatchRequest (~100-300 bytes) |
+| Privacy | Masking before sending | Structural separation via TEE |
+| Identity handling | User ID in bid request | Separate Identity Match operation |
+
+For existing Prebid Server deployments, the router integrates as a module that replaces vendor-specific RTD modules with a generic TMP client. The publisher's Prebid Server calls the TMP Router with a Context Match request; the router fans out to all authorized agents; the merged response flows back as targeting signals and package activation data.
+
+For surfaces without Prebid Server (AI assistants, mobile apps, CTV), the router provides a direct HTTP/2 API that any platform can call.
+
+## Relationship to CloudX
+
+CloudX's OpenAuction provides TEE-based auction infrastructure: encrypted bids, attestation proofs, and verifiable winner selection. This is complementary to TMP.
+
+When a publisher wants competitive selection among activated packages from multiple buyers:
+
+1. TMP Router collects Context Match responses (which packages each buyer wants to activate).
+2. Publisher submits the activated packages (with their pre-negotiated prices) to a CloudX TEE auction.
+3. CloudX's enclave selects the winner and produces an attestation proof.
+4. Publisher activates the winning package.
+
+TMP handles matching. CloudX handles competition. Publishers choose whether they need competition at all — many surfaces (editorial AI content, CTV pod composition, retail carousels) are better served by publisher-side relevance ranking than by price-based auctions.
+
+CloudX's TEE infrastructure (AWS Nitro Enclaves, attestation, key management) is also directly applicable to the TMP Router's Context and Identity enclaves, making CloudX a natural infrastructure partner for the entire protocol.

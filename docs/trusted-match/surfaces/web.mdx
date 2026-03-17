@@ -1,0 +1,83 @@
+---
+title: TMP for Web Publishers
+description: How TMP activates pre-negotiated packages on web pages with ad servers.
+---
+
+# TMP for Web Publishers
+
+Web publishers typically have an ad server (GAM, Kevel, FreeWheel) that manages line items, targeting rules, and ad selection. TMP integrates with this existing infrastructure — it tells the ad server which deals to activate, it does not replace the ad server.
+
+## How It Works Today
+
+A publisher running Prebid Server with AdCP deals has packages defined through `create_media_buy`. To activate them, the publisher manually creates corresponding line items or PMP deals in their ad server. A vendor-specific RTD module (e.g., AXE for Scope3) injects targeting signals by sending the full OpenRTB BidRequest to the vendor's API.
+
+This works but requires per-vendor integration and sends unnecessary data.
+
+## Context Match
+
+When a page loads, the TMP Router receives a Context Match request from the publisher's Prebid Server module (or a standalone TMP client):
+
+```json
+{
+  "property_id": "news-site-main",
+  "property_type": "website",
+  "surface": "article_page",
+  "content": {
+    "url": "https://news.example.com/2026/03/coffee-trends",
+    "domain": "news.example.com",
+    "content_hash": "f7a2b1",
+    "topic_ids": ["food.beverages.coffee", "lifestyle.trends"],
+    "language": "en",
+    "content_rating": "safe"
+  },
+  "available_packages": [
+    { "package_id": "pkg-display-001", "media_buy_id": "mb-q1", "format_ids": ["display_300x250", "display_728x90"] },
+    { "package_id": "pkg-native-002", "media_buy_id": "mb-q1", "format_ids": ["native_infeed"] }
+  ]
+}
+```
+
+The buyer agent evaluates the content context against package targeting and responds with activated packages plus targeting key-values.
+
+## Identity Match
+
+Separately, the publisher sends an Identity Match request with the user's opaque token:
+
+```json
+{
+  "user_token": "tok_web_8f2a",
+  "package_ids": ["pkg-display-001", "pkg-native-002"]
+}
+```
+
+The buyer responds with frequency cap status, audience match, and intent score for each package.
+
+## Activation
+
+The publisher joins both responses and translates the result into ad server instructions:
+
+- **Activated packages** map to PMP deal IDs or line item targeting keys that the ad server already recognizes.
+- **Targeting key-values** from the enrichment signals (e.g., `category_affinity=beverages`) are set on the ad request, enabling the ad server to match additional line items.
+- **Frequency-capped packages** are excluded from the ad request's eligible deals.
+
+The ad server handles the final selection — it applies its own priority rules, competitive exclusions, and pacing logic across all eligible line items, including both TMP-activated deals and other demand sources.
+
+## Example Flow
+
+```
+Page load
+  → Prebid Server TMP module sends Context Match to router
+  → Router fans out to Buyer Agent A, Buyer Agent B
+  → Agent A: activate pkg-display-001, targeting_kvs: {intent: "high"}
+  → Agent B: activate pkg-native-002, segments: ["auto_intender"]
+  → Router merges, returns to Prebid Server
+
+  → (200ms later) TMP module sends Identity Match to router
+  → Agent A: pkg-display-001 eligible, not capped
+  → Agent B: pkg-native-002 frequency-capped
+  → Router merges, returns to Prebid Server
+
+  → Prebid Server joins: activate pkg-display-001 (eligible), skip pkg-native-002 (capped)
+  → Sets deal_id and targeting KVs on the ad request to GAM
+  → GAM selects and serves the ad
+```

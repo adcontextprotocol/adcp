@@ -1,0 +1,72 @@
+---
+title: TMP for Mobile Apps
+description: How TMP integrates with mobile mediation to activate pre-negotiated AdCP packages.
+---
+
+# TMP for Mobile Apps
+
+Mobile apps use mediation layers (AppLovin MAX, ironSource, Google AdMob) to select which ad network serves each impression. TMP integrates with this model — it provides the mediation layer with AdCP-negotiated packages that compete alongside existing network deals.
+
+## How It Works Today
+
+A mobile app publisher configures their mediation SDK with a list of ad networks, waterfall priorities or in-app bidding rules, and placement definitions. When an ad opportunity arises, the mediator selects the best network based on expected revenue. AdCP packages have no path into this decision — they exist in the AdCP system but are invisible to the mediation layer.
+
+## Context Match
+
+When an ad opportunity arises, the app's TMP client sends a Context Match request:
+
+```json
+{
+  "property_id": "fitness-app-ios",
+  "property_type": "mobile_app",
+  "surface": "interstitial",
+  "content": {
+    "domain": "app.fitnessco.com",
+    "content_hash": "d4e1a7",
+    "topic_ids": ["health.fitness.running", "sports.tracking"],
+    "language": "en",
+    "content_rating": "safe"
+  },
+  "available_packages": [
+    { "package_id": "pkg-sports-interstitial", "media_buy_id": "mb-nike-mobile", "format_ids": ["interstitial_fullscreen"] },
+    { "package_id": "pkg-nutrition-banner", "media_buy_id": "mb-supplement-co", "format_ids": ["banner_320x50"] }
+  ]
+}
+```
+
+The buyer agent activates packages that match the context (fitness content, interstitial placement).
+
+## Identity Match
+
+The app sends an Identity Match request with a publisher-scoped device token (IDFV or custom):
+
+```json
+{
+  "user_token": "tok_idfv_a9c3",
+  "package_ids": ["pkg-sports-interstitial", "pkg-nutrition-banner"]
+}
+```
+
+The buyer returns eligibility: frequency cap status, audience match, and intent signals.
+
+## Activation
+
+The app's TMP client passes activated, eligible packages to the mediation layer as additional demand sources. The mediator evaluates them alongside its existing network waterfall or bidding competition.
+
+If the AdCP package wins (based on pre-negotiated CPM vs. network expected revenue), the mediator activates it. The creative is served through the AdCP creative protocol.
+
+If a network bid wins, the AdCP package is not served — but TMP ensures it was considered.
+
+## Example Flow
+
+```
+Interstitial opportunity
+  → TMP client sends Context Match
+  → Buyer agent: activate pkg-sports-interstitial, creative_variant: "15s_video"
+  → TMP client sends Identity Match (fuzzed timing)
+  → Buyer agent: user eligible, audience match, intent 0.73
+
+  → App joins: pkg-sports-interstitial active + eligible at $8 CPM (pre-negotiated)
+  → Mediation layer compares: AdMob network bid $6.50, AdCP package $8.00
+  → AdCP package wins → serve Nike interstitial
+```

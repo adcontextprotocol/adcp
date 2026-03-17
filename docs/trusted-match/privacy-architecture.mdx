@@ -1,0 +1,128 @@
+---
+title: Privacy by Structural Separation
+description: How TMP makes it architecturally impossible for buyers to correlate user identity with page context.
+---
+
+# Privacy by Structural Separation
+
+TMP's privacy guarantee is architectural, not policy-based. The protocol is designed so that buyers cannot correlate user identity with page context — not because they promise not to, but because the data never travels together and the infrastructure that processes it is provably isolated.
+
+This page explains the separation architecture, what each party can and cannot learn, and how TEE attestation makes the guarantee verifiable.
+
+## The Separation Principle
+
+TMP splits every decision into two independent operations:
+
+| | Context Match | Identity Match |
+|---|---|---|
+| **Contains** | Page URL, content signals, topic IDs, available packages | Opaque user token, package IDs |
+| **Does not contain** | Any user identity | Any page context |
+| **Processed by** | Context Router (TEE enclave) | Identity Router (TEE enclave) |
+| **Shared state** | None | None |
+
+The Context Router and Identity Router are separate infrastructure components. They run in independent TEE enclaves with:
+
+- No shared memory
+- No shared database
+- No communication channel between them
+- No shared logs or telemetry that could enable after-the-fact correlation
+
+The publisher introduces a random time delay between the two requests (recommended: 100-2000ms, uniformly distributed) to prevent timing-based correlation by network observers.
+
+## What Each Party Can Learn
+
+### What the buyer agent learns
+
+**From Context Match requests**, a buyer agent learns:
+- Which publisher pages and content exist (by domain, content hash, topic)
+- What packages are available on those pages
+- Content signals: topics, sentiment, language, brand safety classification
+
+**From Identity Match requests**, a buyer agent learns:
+- Which user tokens exist (opaque, publisher-scoped)
+- Each user's eligibility status for specific packages
+- Frequency cap state, audience membership, and (if the buyer computes it) intent scores
+
+**What the buyer cannot do:**
+- Associate a user token with a page URL or content
+- Determine that a specific user visited a specific page
+- Build a cross-page browsing profile for any user
+- Correlate Context Match and Identity Match requests by timing (due to publisher-controlled fuzzing)
+
+### What the TMP Router learns
+
+Because context and identity are processed in separate TEE enclaves:
+
+- The Context Router sees content signals and package lists. It fans these out to buyer agents and merges responses. It never processes user tokens.
+- The Identity Router sees user tokens and package IDs. It fans these out to buyer agents and merges responses. It never processes content signals.
+- The router operator cannot join the two datasets even if they attempt to, because the enclaves share no state and their isolation is attestable.
+
+### What the publisher retains
+
+The publisher has both context and identity — they are the first party. The user is on their page, using their app, in their conversation. The publisher performs the join on their own infrastructure, where they already have both signals. TMP does not change the publisher's data posture; it prevents buyer agents and intermediaries from obtaining the same combined view.
+
+## TEE Attestation
+
+The separation guarantee is verifiable through TEE (Trusted Execution Environment) attestation. TMP's reference architecture uses AWS Nitro Enclaves, though the protocol is TEE-agnostic.
+
+### How it works
+
+Each enclave produces an **attestation document** — a cryptographically signed statement of what code is running inside it. The attestation includes:
+
+- **PCR0 (Image File Hash)**: A hash of the enclave's code. Any party can verify that the enclave is running the expected TMP Router code, unmodified.
+- **PCR1 (Kernel Hash)**: A hash of the enclave's operating environment.
+- **PCR2 (Application Hash)**: A hash of the application-level code.
+- **PCR3 (IAM Role Hash)**: Confirms the enclave's permissions match expectations (e.g., no access to external databases).
+
+A publisher or auditor can:
+
+1. Obtain the attestation documents from both the Context Router and Identity Router.
+2. Verify the signatures against AWS Nitro's root certificate authority.
+3. Confirm that the two enclaves have different PCR measurements (proving they are separate images).
+4. Confirm that neither enclave's code includes data stores, shared queues, or cross-enclave communication.
+
+This verification can be automated and performed continuously. It is not a one-time audit.
+
+### What attestation proves
+
+- The Context Router enclave processes only context data and has no access to identity data.
+- The Identity Router enclave processes only identity data and has no access to context data.
+- Neither enclave has been modified from the published, auditable source code.
+- No shared state exists between the enclaves.
+
+### What attestation does not prove
+
+- That buyer agents handle the data they receive responsibly. TMP limits what buyers receive; it does not control what they do with it.
+- That the publisher's join logic is correct. The publisher is the first party and is not constrained by TMP's separation model.
+
+## Temporal Decorrelation
+
+Even with separate infrastructure, if Context Match and Identity Match requests arrive at buyer agents at the same instant, a buyer could potentially correlate them by timing. TMP addresses this through temporal decorrelation:
+
+- Publishers SHOULD introduce a random delay between context and identity requests. The recommended range is 100-2000ms, uniformly distributed.
+- Publishers MAY batch Identity Match requests across multiple page views, further obscuring which context each identity request corresponds to.
+- Publishers MAY route context and identity requests through different network paths.
+
+The router enforces separation at the infrastructure level. Temporal decorrelation provides defense in depth at the network level.
+
+## Comparison to OpenRTB
+
+| Signal | OpenRTB | TMP |
+|---|---|---|
+| User ID + page URL | Same request | Separate TEE enclaves, never combined |
+| Device fingerprint | Included in bid request | Never sent |
+| IP address | Included in bid request | Never sent |
+| Raw cookies | Included in bid request | Never sent |
+| GPS coordinates | Included in bid request | Never sent |
+| Browsing history | Constructible via cookie sync | Impossible by design |
+| Separation verification | Trust the exchange operator | TEE attestation |
+
+## Regulatory Posture
+
+TMP's structural separation simplifies compliance with privacy regulations (GDPR, CCPA, ePrivacy) because:
+
+- Buyer agents never receive user identity paired with content context. The data minimization principle is enforced architecturally.
+- The publisher — as the first party with a direct user relationship — controls the join. They can apply consent logic before combining the datasets.
+- TEE attestation provides auditable evidence of data handling that regulators can verify independently.
+
+This is an architectural observation, not legal advice. Publishers and buyer agents should consult their own legal counsel regarding regulatory compliance.

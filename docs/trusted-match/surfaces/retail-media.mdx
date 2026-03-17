@@ -1,0 +1,116 @@
+---
+title: TMP for Retail Media
+description: How TMP activates sponsored product packages with GTIN-level catalog refinement.
+---
+
+# TMP for Retail Media
+
+Retailers manage sponsored product placements across search results, category pages, and carousels. TMP's catalog refinement capabilities make it a natural fit — buyers can specify which products to feature, which promotions to highlight, and which items to suppress, all within the bounds of pre-negotiated packages.
+
+## How It Works Today
+
+Retail media networks (Amazon Sponsored Products, Walmart Connect, Instacart Ads) use internal recommendation engines to decide which sponsored products appear. Buyers set campaign-level targeting (keywords, categories, budgets) but have limited real-time control over which specific products appear in which contexts. Each retailer has its own API and optimization logic.
+
+## Context Match
+
+When a shopper views a search results page or category page, the retailer sends a Context Match request:
+
+```json
+{
+  "property_id": "grocery-retailer-web",
+  "property_type": "website",
+  "surface": "search_results",
+  "content": {
+    "domain": "shop.grocery.com",
+    "content_hash": "e5f2a8",
+    "topic_ids": ["grocery.beverages.coffee", "grocery.beverages.cold"],
+    "language": "en"
+  },
+  "available_packages": [
+    {
+      "package_id": "pkg-coffee-sponsored",
+      "media_buy_id": "mb-coffee-brand-q1",
+      "format_ids": ["sponsored_carousel", "sponsored_search_result"],
+      "catalog_ids": ["gtin-cold-brew-12oz", "gtin-cold-brew-32oz", "gtin-iced-latte-4pk", "gtin-coffee-pods-24ct"]
+    }
+  ]
+}
+```
+
+The buyer responds with GTIN-level preferences:
+
+```json
+{
+  "activate": [
+    {
+      "package_id": "pkg-coffee-sponsored",
+      "preferred_gtins": ["gtin-cold-brew-12oz", "gtin-iced-latte-4pk"],
+      "preferred_tags": ["cold_brew", "iced", "summer"],
+      "exclude_gtins": ["gtin-coffee-pods-24ct"],
+      "eligible_promotions": ["buy-2-get-1-free"]
+    }
+  ]
+}
+```
+
+The buyer prefers the cold brew and iced latte (matching the "cold" search context), excludes coffee pods (not relevant to this search), and flags an active promotion.
+
+## Identity Match
+
+The retailer sends an Identity Match request with the shopper's loyalty token:
+
+```json
+{
+  "user_token": "tok_loyalty_m3p7",
+  "package_ids": ["pkg-coffee-sponsored"]
+}
+```
+
+The buyer responds with catalog-level eligibility:
+
+```json
+{
+  "eligibility": [
+    {
+      "package_id": "pkg-coffee-sponsored",
+      "eligible": true,
+      "frequency_capped": false,
+      "audience_match": true,
+      "intent_score": 0.91,
+      "catalog_eligibility": [
+        { "gtin": "gtin-cold-brew-12oz", "eligible": true },
+        { "gtin": "gtin-cold-brew-32oz", "eligible": false, "reason": "already_purchased" },
+        { "gtin": "gtin-iced-latte-4pk", "eligible": true },
+        { "gtin": "gtin-coffee-pods-24ct", "eligible": false, "reason": "already_purchased" }
+      ]
+    }
+  ]
+}
+```
+
+The shopper already bought the 32oz cold brew and coffee pods. These are filtered from the carousel.
+
+## Activation
+
+The retailer joins both responses:
+
+- Activate the coffee sponsored package
+- Carousel order: cold brew 12oz first (buyer preference + eligible), iced latte 4pk second (eligible)
+- Exclude 32oz cold brew (already purchased) and pods (buyer excluded + already purchased)
+- Display "Buy 2, Get 1 Free" promotion badge
+- The retailer's own recommendation engine integrates these sponsored results alongside organic results
+
+## Example Flow
+
+```
+Shopper searches "cold brew"
+  → Retailer sends Context Match: coffee sponsored package available
+  → Buyer: activate, prefer 12oz cold brew and iced latte, promotion: buy-2-get-1-free
+
+  → (fuzzed) Retailer sends Identity Match: loyalty token
+  → Buyer: eligible, 32oz already purchased, pods already purchased
+
+  → Retailer joins: show 12oz cold brew (slot 1) and iced latte (slot 2)
+  → Apply promotion badge
+  → Render sponsored carousel in search results
+```

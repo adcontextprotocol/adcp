@@ -1,0 +1,125 @@
+---
+title: TMP for AI Assistants
+description: How TMP enables monetization of AI chat and assistant surfaces without traditional ad servers.
+---
+
+# TMP for AI Assistants
+
+AI assistants (ChatGPT, Snap AI, Reddit chat, character.ai, publisher-built chatbots) represent a fundamentally new ad surface. There is no impression in the traditional sense — sponsored content is woven into conversational responses. There is no ad server — the platform's language model generates the response. And there is no standard protocol for asking buyers "what should be sponsored in this conversation?"
+
+TMP provides that protocol.
+
+## How It Works Today
+
+Most AI platforms that monetize conversations either:
+
+- Partner with a single ad network and delegate all monetization decisions
+- Build proprietary sponsorship logic tied to specific advertisers
+- Don't monetize conversations at all
+
+There is no standard way for an AI platform to discover which buyer agents have relevant packages, ask them what to activate for a given conversation context, and incorporate their preferences into the response — all while protecting user privacy.
+
+## Context Match
+
+When a user sends a message in a conversation, the AI platform sends a Context Match request before generating the response:
+
+```json
+{
+  "property_id": "snap-ai-chat",
+  "property_type": "ai_assistant",
+  "surface": "conversation_turn",
+  "content": {
+    "domain": "snap.com",
+    "content_hash": "b3c9e2",
+    "topic_ids": ["shopping.fashion.sneakers", "lifestyle.trends"],
+    "sentiment": 0.7,
+    "language": "en",
+    "content_rating": "safe"
+  },
+  "available_packages": [
+    { "package_id": "pkg-sneaker-reco", "media_buy_id": "mb-nike-q1", "format_ids": ["sponsored_recommendation"], "catalog_ids": ["sku-air-max", "sku-dunk-low", "sku-jordan-1"] },
+    { "package_id": "pkg-fashion-native", "media_buy_id": "mb-nordstrom", "format_ids": ["native_mention"] }
+  ]
+}
+```
+
+The content hash represents the conversation topic without exposing the actual conversation text. Topic IDs are derived from the platform's own content classification. No user identity is present.
+
+The buyer agent responds:
+
+```json
+{
+  "activate": [
+    {
+      "package_id": "pkg-sneaker-reco",
+      "preferred_gtins": ["sku-dunk-low", "sku-air-max"],
+      "eligible_promotions": ["free-shipping-march"],
+      "creative_variant": "conversational"
+    }
+  ],
+  "signals": {
+    "segments": ["sneaker_enthusiast"],
+    "targeting_kvs": { "product_affinity": "sneakers" }
+  }
+}
+```
+
+The buyer has selected the sneaker recommendation package, specified which products to prefer, indicated an active promotion, and requested the "conversational" creative variant (designed for natural integration into chat).
+
+## Identity Match
+
+The platform sends an Identity Match request with a session token:
+
+```json
+{
+  "user_token": "tok_snap_session_k2f8",
+  "package_ids": ["pkg-sneaker-reco", "pkg-fashion-native"]
+}
+```
+
+The buyer responds with eligibility: this user is not frequency-capped on the sneaker package and has high intent (0.89), but the fashion package hit its frequency cap.
+
+## Activation
+
+The AI platform incorporates the TMP result into its response generation:
+
+- The activated package (sneaker recommendation with preferred SKUs and promotion) becomes part of the context available to the language model.
+- The platform's own relevance model decides **how** to integrate the sponsored content — as a direct recommendation, a subtle mention, or a separate sponsored card, depending on conversational flow and editorial policy.
+- Frequency-capped packages are excluded from the generation context.
+- The promotion (free shipping) is included if the platform's policies allow promotional messaging.
+
+TMP tells the platform **what** sponsored content is available and relevant. The platform decides **how** to present it. This is the correct separation of concerns — the buyer knows their campaign; the platform knows their user experience.
+
+## Why This Matters
+
+AI assistants are the fastest-growing ad surface, but they lack the infrastructure that web and mobile have built over decades. TMP provides:
+
+- **Standard buyer integration**: Any buyer agent that speaks TMP can activate packages on any AI platform that supports TMP. No bespoke integrations per platform.
+- **Privacy by default**: The conversation content never leaves the platform as raw text. The buyer sees a content hash and topic IDs. The user's identity is handled in a separate request.
+- **Platform editorial control**: The platform decides how to weave sponsored content into the conversation. TMP provides inputs; the platform controls the experience.
+- **Multi-buyer support**: A platform can have packages from multiple buyer agents active simultaneously. The TMP Router handles fan-out. The platform handles selection.
+
+## Example Flow
+
+```
+User message: "What are the best sneakers for spring?"
+  → Platform classifies: topic=shopping.fashion.sneakers, sentiment=positive
+  → Platform sends Context Match to TMP Router
+  → Router fans out to Nike's buyer agent, Nordstrom's buyer agent
+  → Nike agent: activate pkg-sneaker-reco, prefer Dunk Low, promotion: free shipping
+  → Nordstrom agent: no activation (context doesn't match fashion-native targeting)
+  → Router returns merged response
+
+  → (300ms later) Platform sends Identity Match
+  → Nike agent: user eligible, not capped, intent 0.89
+  → Router returns eligibility
+
+  → Platform joins: pkg-sneaker-reco is active and eligible
+  → Platform includes Dunk Low recommendation + free shipping in generation context
+  → Language model generates response:
+    "Great question! The Nike Dunk Low is trending for spring —
+     clean lines, tons of colorways, and they're offering free
+     shipping right now. The Air Max 90 is also a solid pick
+     if you want more cushion..."
+  → Sponsored content label applied per platform policy
+```

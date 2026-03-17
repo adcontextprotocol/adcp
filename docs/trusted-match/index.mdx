@@ -1,0 +1,114 @@
+---
+title: Trusted Match Protocol
+description: AdCP's real-time execution layer for activating pre-negotiated packages across any surface.
+---
+
+# Trusted Match Protocol
+
+The Trusted Match Protocol (TMP) is how AdCP deals come to life at decision time. When a user visits a page, opens an app, or starts a conversation with an AI assistant, TMP determines which pre-negotiated packages should activate — and how they should be configured.
+
+## The Execution Gap
+
+AdCP defines a complete lifecycle for agent-to-agent media buying:
+
+| Phase | Tool | What Happens |
+|---|---|---|
+| Discovery | `get_products` | Buyer finds available inventory via natural language briefs |
+| Negotiation | `create_media_buy` | Buyer and seller agree on packages, pricing, targeting, budgets |
+| **Execution** | **TMP** | **Packages activate for specific contexts and users** |
+| Reporting | `get_media_buy_delivery` | Both sides measure what delivered |
+
+Before TMP, the execution phase had no protocol-level definition. Deals were negotiated through AdCP, but activating them at serve time required vendor-specific implementations or legacy infrastructure like OpenRTB. This worked for web display but left AI assistants, mobile apps, CTV, and retail media without a standard execution path.
+
+TMP fills this gap.
+
+## Two Operations, One Principle
+
+TMP defines two operations that are structurally separated by design:
+
+**Context Match** answers: "Given this page, conversation, or app screen — which packages should be active, and how should they be configured?"
+
+The publisher sends content signals and a list of available packages. The buyer agent responds with which packages to activate, along with optional refinements: preferred catalog items, creative variants, or eligible promotions.
+
+Context Match carries no user identity.
+
+**Identity Match** answers: "For this user, what is their eligibility status across these packages?"
+
+The publisher sends an opaque user token and a list of package IDs. The buyer agent responds with an eligibility matrix: frequency caps, audience membership, intent signals, and catalog-level eligibility (already purchased, in cart, viewed recently).
+
+Identity Match carries no page context.
+
+The publisher — as the first party who already has both context and identity — joins the results at decision time. Buyers never observe both simultaneously. This separation is not a policy; it is an architectural constraint enforced by independent trusted execution environments. See [Privacy by Structural Separation](/docs/trusted-match/privacy-architecture) for the full design.
+
+## What TMP Does
+
+- **Activates packages**: Buyers tell publishers which pre-negotiated packages to turn on for a given context.
+- **Steers within packages**: Buyers express preferences for catalog items (GTINs), creative variants, and promotions within the bounds of each package.
+- **Provides eligibility signals**: Buyers report per-user eligibility (frequency caps, audience match, intent) that publishers use to refine activation decisions.
+- **Delivers enrichment**: Buyers can return targeting key-values and audience segments that flow into the publisher's ad server alongside package activation.
+
+## What TMP Does Not Do
+
+- **Negotiate prices**: Prices are agreed at planning time via `create_media_buy`. TMP does not bid, auction, or compute prices.
+- **Select winners**: When multiple packages are active, the publisher decides how to resolve them — by priority, by relevance, or by running an auction. TMP provides the inputs; the publisher makes the decision.
+- **Render ads**: TMP tells the publisher what to activate. The publisher's ad server, SDK, or platform handles rendering.
+- **Replace OpenRTB**: For programmatic display auctions between parties without pre-existing deals, OpenRTB remains appropriate. TMP addresses the surfaces and use cases where packages are pre-negotiated.
+
+## How It Fits
+
+```
+Planning Time (AdCP tools)          Execution Time (TMP)         Reporting (AdCP tools)
+┌──────────────┐                   ┌──────────────────┐         ┌─────────────────────┐
+│ get_products  │                   │  Context Match   │         │                     │
+│      ↓        │                   │  (which packages │         │ get_media_buy_      │
+│ create_media_ │  ──► Packages ──► │   to activate)   │ ──►     │   delivery          │
+│   buy         │      exist        │                  │  Ads    │                     │
+│              │                   │  Identity Match  │  serve  │                     │
+│              │                   │  (user eligible?) │         │                     │
+└──────────────┘                   └──────────────────┘         └─────────────────────┘
+```
+
+The planning-time tools create packages with agreed terms. TMP activates those packages against live context. Delivery reporting measures what served. Each phase is protocol-defined; each phase is independently implementable.
+
+## Architecture at a Glance
+
+A **TMP Router** sits between publishers and buyer agents. It consists of two independent components running in separate TEE (Trusted Execution Environment) enclaves:
+
+- **Context Router**: Processes Context Match requests. Sees content signals and package lists. Never sees user identity.
+- **Identity Router**: Processes Identity Match requests. Sees opaque user tokens and package IDs. Never sees page context.
+
+The router reads `adagents.json` to discover which buyer agents support TMP, fans out requests to them in parallel, and merges their responses. The publisher receives a unified result from each operation and joins them at decision time.
+
+```
+Publisher ──► Context Router (TEE) ──► Buyer Agent A, B, C ──► merged context response
+                                                                        │
+Publisher ──► Identity Router (TEE) ──► Buyer Agent A, B, C ──► merged eligibility
+                                                                        │
+Publisher joins both responses and activates packages ◄─────────────────┘
+```
+
+Buyer agents declare TMP as a capability on their existing AdCP agent endpoint. No separate services or endpoints are required.
+
+## Surfaces
+
+TMP is surface-agnostic. The same protocol works across:
+
+- **[Web](/docs/trusted-match/surfaces/web)**: Packages activate as line items or PMPs in the publisher's ad server.
+- **[AI Assistants](/docs/trusted-match/surfaces/ai-assistants)**: Packages activate as sponsored content woven into conversational responses.
+- **[Mobile Apps](/docs/trusted-match/surfaces/mobile)**: Packages activate as network deals in the app's mediation layer.
+- **[Retail Media](/docs/trusted-match/surfaces/retail-media)**: Packages activate as sponsored products in carousels and search results, with GTIN-level refinement.
+- **[CTV](/docs/trusted-match/surfaces/ctv)**: Packages activate as pod slots with creative variant selection.
+
+The `property_type` and `surface` fields from `adagents.json` describe each surface. The protocol is invariant across all of them.
+
+## Where to Go Next
+
+**Understanding the motivation**: [The Execution Gap](/docs/trusted-match/execution-gap) explains why existing protocols fail for real-time execution and why TMP takes a matching approach instead of an auction approach.
+
+**Learning the core mechanics**: [Context Match and Identity Match](/docs/trusted-match/context-and-identity) walks through both operations with concrete examples, including catalog refinement and the publisher-side join.
+
+**Understanding the privacy model**: [Privacy by Structural Separation](/docs/trusted-match/privacy-architecture) covers the TEE architecture, attestation, and what each party can and cannot learn.
+
+**Implementing TMP**: The [Router Architecture](/docs/trusted-match/router-architecture) guide covers deployment and fan-out. The [Buyer Agent](/docs/trusted-match/implementing-buyer-agents) and [Publisher](/docs/trusted-match/implementing-publishers) guides cover integration.
+
+**Formal reference**: The [Specification](/docs/trusted-match/specification) contains authoritative message type definitions, field tables, and conformance requirements.
