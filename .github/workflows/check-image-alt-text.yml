@@ -93,7 +93,7 @@ jobs:
             base64 -w0 "$local_path" > "$IMG_B64_FILE" 2>/dev/null || base64 -i "$local_path" > "$IMG_B64_FILE" 2>/dev/null
 
             # Build the validation request using jq --rawfile to avoid arg length limits
-            VALIDATION_PROMPT="Analyze this image. List ALL text visible in the image verbatim. Flag any misspelled, garbled, or nonsensical text. Also assess whether this image matches the following intended alt text: \"${alt_text}\". Respond ONLY with valid JSON (no markdown fences): { \"visible_text\": [\"text1\"], \"gibberish_found\": true/false, \"gibberish_details\": \"...\", \"matches_description\": true/false, \"match_notes\": \"...\" }"
+            VALIDATION_PROMPT="Analyze this image for quality. List ALL text visible in the image verbatim. Then determine if any text is truly garbled or nonsensical — random characters, AI-hallucinated words, or strings that are not real words in any language. Do NOT flag the following as gibberish: abbreviations (e.g. 'Approved/r'), acronyms, ellipsis (...), technical terms, UI state labels, placeholder text that is clearly intentional (e.g. 'Lorem ipsum'). Also assess whether this image matches the following intended alt text: \"${alt_text}\". Respond ONLY with valid JSON (no markdown fences): { \"visible_text\": [\"text1\"], \"gibberish_found\": true/false, \"gibberish_details\": \"...\", \"matches_description\": true/false, \"match_notes\": \"...\" }"
 
             PAYLOAD_FILE=$(mktemp)
             jq -n \
@@ -127,7 +127,7 @@ jobs:
             VISIBLE_TEXT=$(echo "$RESULT_JSON" | jq -r '.visible_text // [] | join(", ")' 2>/dev/null)
 
             if [ "$GIBBERISH" = "true" ]; then
-              WARNINGS="$WARNINGS\n- \`$img_src\` in \`$mdx_file\`\n  - **Gibberish text detected**: $GIBBERISH_DETAILS\n  - Visible text: $VISIBLE_TEXT"
+              ERRORS="$ERRORS\n- \`$img_src\` in \`$mdx_file\`\n  - **Gibberish text detected**: $GIBBERISH_DETAILS\n  - Visible text: $VISIBLE_TEXT"
             fi
 
             if [ "$MATCHES" = "false" ]; then
@@ -240,5 +240,5 @@ jobs:
       - name: Fail on errors
         if: steps.check.outputs.has_errors == 'true'
         run: |
-          echo "❌ Image check failed: missing image files"
+          echo "❌ Image check failed — see PR comment for details"
           exit 1
