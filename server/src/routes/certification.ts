@@ -298,7 +298,7 @@ export function createCertificationRouters() {
   // =====================================================
 
   const adminRouter = Router();
-  adminRouter.use(requireAdmin);
+  adminRouter.use(requireAuth, requireAdmin);
 
   // POST /api/admin/certification/backfill-badges — retry Certifier for credentials missing data
   adminRouter.post('/backfill-badges', async (_req, res) => {
