@@ -68,34 +68,49 @@ export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router
   );
 
   // POST /api/slack/aaobot/events - Handle Slack Events API for main AAO bot
+  // Order matters: signature verification runs BEFORE body is parsed
   aaobotRouter.post(
     '/events',
-    slackJsonParser(),
+    // First capture raw body, check URL verification, and verify signature
+    // BEFORE any body data is used
+    (req, res, next) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk: Buffer) => { chunks.push(chunk); });
+      req.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        (req as any).rawBody = body;
+
+        // Check for URL verification before signature verification
+        try {
+          const parsed = JSON.parse(body);
+          if (parsed.type === 'url_verification') {
+            logger.info('AAO Bot: Handling URL verification challenge');
+            return res.json({ challenge: parsed.challenge });
+          }
+          // Store parsed body for later use (after verification)
+          (req as any).parsedBody = parsed;
+        } catch (err) {
+          logger.warn({ err }, 'AAO Bot: Invalid JSON in request');
+          return res.status(400).json({ error: 'Invalid JSON' });
+        }
+        next();
+      });
+    },
+    // Verify signature BEFORE parsing JSON body
+    createSlackSignatureVerifier(process.env.SLACK_SIGNING_SECRET, 'AAO Bot'),
     async (req, res) => {
       try {
-        // Handle URL verification challenge (before signature verification)
+        // Handle URL verification (re-check as fallback)
         if (handleUrlVerification(req, res)) {
           return;
         }
 
-        // Verify the request is from Slack
-        if (isSlackSigningConfigured()) {
-          const verifier = createSlackSignatureVerifier(
-            process.env.SLACK_SIGNING_SECRET,
-            'AAO Bot'
-          );
-          // Run verification manually since we already parsed the body
-          const result = await new Promise<boolean>((resolve) => {
-            verifier(req, res, () => resolve(true));
-            // If verifier doesn't call next(), it sent a response
-            setTimeout(() => resolve(false), 0);
-          });
-          if (!result) return;
-        }
+        // Use the pre-parsed body (already verified)
+        const body = (req as any).parsedBody;
 
         // Handle events asynchronously (don't block response)
         // Slack requires response within 3 seconds
-        handleSlackEvent(req.body).catch(err => {
+        handleSlackEvent(body).catch(err => {
           logger.error({ err }, 'Error handling Slack event');
         });
 
