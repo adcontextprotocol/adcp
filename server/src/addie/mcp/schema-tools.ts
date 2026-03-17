@@ -10,7 +10,7 @@
  * and validate user-provided JSON against the spec.
  */
 
-import Ajv from 'ajv';
+import Ajv, { type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
@@ -43,6 +43,28 @@ const COMMON_SCHEMAS = [
 const schemaCache = new Map<string, { schema: unknown; fetchedAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_SIZE = 50;
+
+// Module-level Ajv instance (created once, shared across all validations)
+const ajvInstance = new Ajv({
+  allErrors: true,
+  verbose: true,
+  strict: false,
+  loadSchema: async (uri: string) => {
+    // Resolve relative $refs
+    const resolvedUrl = new URL(uri).toString();
+    try {
+      const schema = await fetchSchema(resolvedUrl);
+      return schema as object;
+    } catch {
+      // If fetch fails, let Ajv handle the error
+      return undefined;
+    }
+  },
+});
+addFormats(ajvInstance);
+
+// Cache for compiled validators (keyed by schema URL)
+const compiledValidatorCache = new Map<string, ValidateFunction>();
 
 /**
  * Fetch a schema from the AdCP schema server
@@ -105,21 +127,13 @@ async function validateAgainstSchema(
   try {
     const schema = await fetchSchema(schemaUrl);
 
-    const ajv = new Ajv({
-      allErrors: true,
-      verbose: true,
-      strict: false,
-      loadSchema: async (uri: string) => {
-        // Resolve relative $refs
-        const resolvedUrl = new URL(uri, schemaUrl).toString();
-        const schema = await fetchSchema(resolvedUrl);
-        return schema as object;
-      },
-    });
-    addFormats(ajv);
+    // Look up compiled validator from cache, or compile lazily on first use
+    let validate = compiledValidatorCache.get(schemaUrl);
+    if (!validate) {
+      validate = await ajvInstance.compileAsync(schema as object);
+      compiledValidatorCache.set(schemaUrl, validate);
+    }
 
-    // Compile the schema (handles $refs)
-    const validate = await ajv.compileAsync(schema as object);
     const valid = validate(json);
 
     if (valid) {
