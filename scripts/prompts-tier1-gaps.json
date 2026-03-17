@@ -1,0 +1,62 @@
+[
+  {
+    "filename": "images/concepts/brand-identity-01-brand-json.png",
+    "prompt": "Sage (a teal-colored robot assistant with a friendly, scholarly demeanor — teal body, round expressive eyes, small antenna) hovers beside a large holographic projection of a structured document. The document has clear sections visible as colored blocks: brand name at the top, a palette of brand colors, a logo placeholder, content standards as a checklist, and approved categories at the bottom. The document glows with teal energy. Sage gestures toward it like a teacher presenting a blueprint. Clean white background. Do not include any text, words, or labels in the image.",
+    "alt_text": "Sage presents a holographic brand.json document showing brand identity structure — name, colors, logo, content standards, and approved categories"
+  },
+  {
+    "filename": "images/concepts/brand-identity-02-validation.png",
+    "prompt": "A teal brand agent robot examines a creative ad mockup under a magnifying glass. The mockup sits on a conveyor belt between two zones: on the left, a 'submitted' zone with a stack of creative variants; on the right, a 'validated' zone where approved creatives have teal checkmarks. The brand agent compares the creative against a small brand.json card it holds in its other hand. One creative on the belt has a red glow indicating a brand safety violation. Clean white background. Do not include any text, words, or labels in the image.",
+    "alt_text": "A brand agent robot validates creative ads against brand.json — approved creatives get teal checkmarks, violations get flagged in red"
+  },
+  {
+    "filename": "images/concepts/brand-identity-03-standards-cascade.png",
+    "prompt": "A cascade diagram showing how brand standards flow from general to specific. At the top, a large teal brand shield represents the master brand identity. Below it, three narrower streams flow down to three different contexts: a campaign governance plan (teal document), a creative manifest (teal blueprint), and a publisher content policy (teal scroll). Each downstream document inherits the brand constraints from above but adds its own specifics. Arrows flow downward showing inheritance. Clean white background. Do not include any text, words, or labels in the image.",
+    "alt_text": "Brand standards cascade from master brand identity down to campaign governance plans, creative manifests, and publisher content policies"
+  },
+  {
+    "filename": "images/concepts/mcp-01-architecture.png",
+    "prompt": "A clean architectural diagram showing the MCP server structure. At the center, a teal server box with three horizontal layers visible inside: transport layer at the bottom (showing HTTP/SSE wave patterns), protocol layer in the middle (showing structured message envelopes), and tools layer at the top (showing six small tool icons — search, create, list, update, validate, discover). On the left, two client robots send requests into the server. On the right, the server connects to a database cylinder and an external API cloud. Sage (teal robot) stands beside the diagram pointing at the layers. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "MCP server architecture with three layers — transport (HTTP/SSE), protocol (messages), and tools — with clients on the left and backends on the right"
+  },
+  {
+    "filename": "images/concepts/mcp-02-tool-registration.png",
+    "prompt": "A workbench scene where Sage (teal robot) assembles MCP tools. Six tool cards are arranged on the bench, each with a distinct icon: a magnifying glass (search), a plus sign (create), a list icon (list), a pencil (update), a checkmark (validate), and a compass (discover). Sage is connecting each tool card to a central hub with glowing teal wires, like wiring a circuit board. The hub represents the MCP server. Each connection lights up when complete. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "Sage assembles MCP tools on a workbench — six tool cards (search, create, list, update, validate, discover) being wired into a central server hub"
+  },
+  {
+    "filename": "images/concepts/mcp-03-transport.png",
+    "prompt": "Two side-by-side panels showing MCP transport options. Left panel: a client robot sends a single request arrow to a server, which sends a single response arrow back — simple request/response over HTTP. Right panel: a client robot opens a persistent channel (shown as a glowing teal tunnel) to a server, and multiple event arrows stream back through the tunnel — server-sent events (SSE) for real-time updates. Both panels share a clean white background. Sage (teal robot) stands between them gesturing to compare. Flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "Two transport modes compared — HTTP request/response on the left, SSE streaming through a persistent channel on the right, with Sage comparing them"
+  },
+  {
+    "filename": "images/concepts/si-01-session-initiation.png",
+    "prompt": "A conversational interface scene. A person sits at their device viewing a content article. Within the article, a teal chat bubble appears — a Sponsored Intelligence invitation. Sage (teal robot) peeks out from the chat bubble, waving in a friendly greeting. A subtle teal glow surrounds the invitation area. The person looks curious and interested. The scene conveys a non-intrusive, opt-in moment. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "A reader encounters a Sponsored Intelligence invitation within content — Sage peeks from a chat bubble offering a conversational experience"
+  },
+  {
+    "filename": "images/concepts/si-02-conversation.png",
+    "prompt": "An active Sponsored Intelligence session shown as a chat interface. The person is engaged in conversation with a brand agent (a smaller teal robot with a brand badge). Between them, product cards float in the conversation — a product image, a comparison chart, and a recommendation. The conversation flows naturally like a helpful consultation. Sage (larger teal robot) observes from the side, ensuring the experience meets standards. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "Active SI session — a person chats with a brand agent while product cards and recommendations float in the conversation, Sage monitoring quality"
+  },
+  {
+    "filename": "images/concepts/si-03-commerce-handoff.png",
+    "prompt": "The conclusion of a Sponsored Intelligence session. The person has made a decision and taps a glowing teal action button. A smooth handoff arrow connects the conversation to a commerce destination — a shopping cart or checkout page. The brand agent (small teal robot with badge) waves goodbye. A consent receipt (small teal document) is generated, floating between the conversation and the commerce destination. Sage (teal robot) gives a thumbs up. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "SI session concludes with a commerce handoff — the person taps an action button, a consent receipt is generated, and the brand agent waves goodbye"
+  },
+  {
+    "filename": "images/concepts/agent-trust-01-adagents.png",
+    "prompt": "A publisher's website is shown as a storefront. Above the entrance, a teal shield-shaped badge displays the publisher's agent trust configuration. Three teal robots approach the storefront — each carries an identity card. The publisher's doorkeeper robot checks each identity against a registry (a teal ledger). One robot is welcomed in (teal checkmark), one is questioned (yellow caution), one is turned away (red X). The scene shows agent authorization at the publisher boundary. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "Publisher storefront with agent trust — a doorkeeper robot checks arriving agents against a registry, admitting trusted ones and blocking unauthorized"
+  },
+  {
+    "filename": "images/concepts/agent-trust-02-discovery.png",
+    "prompt": "A map-like scene showing agent discovery. At the center, a well-known location marker (like a lighthouse) emits teal beams. Multiple buyer agent robots navigate toward it from different directions, following the beams. The lighthouse represents the adagents.json discovery endpoint. When agents arrive, they receive a teal card listing available capabilities. Sage (teal robot) stands atop the lighthouse. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "Agent discovery — buyer agents navigate toward a lighthouse (adagents.json endpoint), receiving capability cards when they arrive, with Sage guiding from atop"
+  },
+  {
+    "filename": "images/concepts/agent-trust-03-authorization-chain.png",
+    "prompt": "A chain of trust diagram. At the top, a publisher robot holds a master key. Below it, three levels of authorization cascade down: the publisher authorizes an operator (middle robot with operator badge), the operator authorizes individual buyer agents (bottom row of three smaller robots). Each authorization is shown as a teal chain link connecting the levels. One path shows a direct authorization (publisher to buyer, shorter chain). The chain links glow teal. Clean white background, flat illustration. Do not include any text, words, or labels in the image.",
+    "alt_text": "Authorization chain — publisher authorizes operators who authorize buyer agents, with teal chain links showing direct and delegated trust paths"
+  }
+]

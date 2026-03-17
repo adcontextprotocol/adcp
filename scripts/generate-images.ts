@@ -6,6 +6,7 @@
  *   npx tsx scripts/generate-images.ts <prompt-file.json> --only panel-03
  *   npx tsx scripts/generate-images.ts <prompt-file.json> --no-validate
  *   npx tsx scripts/generate-images.ts <prompt-file.json> --max-retries 2
+ *   npx tsx scripts/generate-images.ts <prompt-file.json> --style sage
  *
  * Prompt file format: Array of { filename, prompt, alt_text? } objects.
  * Images are saved relative to repo root.
@@ -19,7 +20,10 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as fs from "fs";
 import * as path from "path";
 
-const BASE_STYLE = `Flat illustration, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with teal used only as a minor supporting accent. Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients. Tech-forward but warm. No real brand names or logos. Wide aspect ratio suitable for documentation headers (roughly 16:9). Characters should have simple but expressive faces. Use white/light backgrounds for readability.`;
+const STYLES: Record<string, string> = {
+  addie: `Flat illustration, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with teal used only as a minor supporting accent. Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients. Tech-forward but warm. No real brand names or logos. Wide aspect ratio suitable for documentation headers (roughly 16:9). Characters should have simple but expressive faces. Use white/light backgrounds for readability.`,
+  sage: `Flat illustration, teal-led color palette (#0d9488 primary, #14b8a6 secondary, #5eead4 light accents) with blue used only as a minor supporting accent. Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients. Tech-forward but warm. No real brand names or logos. Wide aspect ratio suitable for documentation headers (roughly 16:9). Characters should have simple but expressive faces. Use white/light backgrounds for readability.`,
+};
 
 interface ImagePrompt {
   filename: string;
@@ -129,9 +133,14 @@ async function generateAndSaveImage(
 async function generateImage(
   genAI: GoogleGenerativeAI,
   entry: ImagePrompt,
-  options: { validate: boolean; maxRetries: number },
+  options: { validate: boolean; maxRetries: number; style: string },
 ): Promise<void> {
-  const fullPrompt = `${BASE_STYLE}\n\n${entry.prompt}`;
+  const baseStyle = STYLES[options.style];
+  if (!baseStyle) {
+    console.error(`Unknown style "${options.style}". Available: ${Object.keys(STYLES).join(", ")}`);
+    process.exit(1);
+  }
+  const fullPrompt = `${baseStyle}\n\n${entry.prompt}`;
   const outputPath = path.resolve(entry.filename);
 
   console.log(`Generating: ${entry.filename}...`);
@@ -155,7 +164,7 @@ async function generateImage(
   while (lastResult.gibberish_found && retriesLeft > 0) {
     console.log(`  Retrying with "no text" directive (attempt ${options.maxRetries - retriesLeft + 1}/${options.maxRetries})...`);
     retriesLeft--;
-    const retryPrompt = `${fullPrompt}\n\nDo not include any text, words, or labels in the image.`;
+    const retryPrompt = `${baseStyle}\n\n${entry.prompt}\n\nDo not include any text, words, or labels in the image.`;
     const retryBuffer = await generateAndSaveImage(genAI, retryPrompt, outputPath);
     if (!retryBuffer) return;
 
@@ -183,7 +192,7 @@ async function main() {
   const promptFile = args[0];
   if (!promptFile) {
     console.error(
-      "Usage: npx tsx scripts/generate-images.ts <prompt-file.json> [--only <pattern>] [--no-validate] [--max-retries <n>]",
+      "Usage: npx tsx scripts/generate-images.ts <prompt-file.json> [--only <pattern>] [--no-validate] [--max-retries <n>] [--style addie|sage]",
     );
     process.exit(1);
   }
@@ -193,20 +202,22 @@ async function main() {
   const validate = !args.includes("--no-validate");
   const retriesIdx = args.indexOf("--max-retries");
   const maxRetries = retriesIdx >= 0 ? (parseInt(args[retriesIdx + 1], 10) || 1) : 1;
+  const styleIdx = args.indexOf("--style");
+  const style = styleIdx >= 0 ? args[styleIdx + 1] : "addie";
 
   const prompts: ImagePrompt[] = JSON.parse(fs.readFileSync(promptFile, "utf-8"));
   const filtered = onlyPattern
     ? prompts.filter((p) => p.filename.includes(onlyPattern))
     : prompts;
 
-  console.log(`Generating ${filtered.length} images (validate: ${validate}, max retries: ${maxRetries})...`);
+  console.log(`Generating ${filtered.length} images (style: ${style}, validate: ${validate}, max retries: ${maxRetries})...`);
 
   const genAI = new GoogleGenerativeAI(apiKey);
 
   // Generate sequentially to avoid rate limits
   for (const entry of filtered) {
     try {
-      await generateImage(genAI, entry, { validate, maxRetries });
+      await generateImage(genAI, entry, { validate, maxRetries, style });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`  Error generating ${entry.filename}: ${message}`);
