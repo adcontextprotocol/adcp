@@ -1,0 +1,32 @@
+[
+  {
+    "filename": "images/walkthrough/commerce-media-01-platform-trap.png",
+    "prompt": "Daniel (Korean-American man, mid-30s, light brown skin, black hair neatly side-parted, thin wire-frame glasses, quarter-zip pullover over a collared shirt) stands in a glass-walled conference room, reviewing a roadmap on a large wall-mounted screen. The screen shows a cluttered grid of dashboard mockups, audience builder wireframes, and reporting UI designs — all slightly faded and overlapping, representing scope creep. Daniel has one hand on his chin, expression skeptical, the other hand holding a tablet at his side. Through the glass wall, a retail floor with shelving is visible in the distance. Do not include any text, words, or labels in the image.",
+    "alt_text": "Daniel reviews a cluttered platform roadmap on a wall screen — dashboard mockups, audience builders, and reporting UIs pile up while he looks skeptical"
+  },
+  {
+    "filename": "images/walkthrough/commerce-media-02-data-moat.png",
+    "prompt": "Daniel (Korean-American man, mid-30s, light brown skin, black hair neatly side-parted, thin wire-frame glasses, quarter-zip pullover over a collared shirt) walks a retail floor with digital screens on end-caps and checkout lanes glowing with abstract product visuals. He holds a tablet showing flowing data visualizations — purchase patterns, loyalty tiers, basket compositions represented as abstract colored streams. The data streams flow from the tablet upward, connecting to the digital screens around the store. The scene conveys that the store itself is a data asset. Warm retail lighting, clean modern store design. Do not include any text, words, or labels in the image.",
+    "alt_text": "Daniel walks a retail floor as data streams flow from his tablet to glowing digital screens on end-caps and checkout lanes — the store as a data asset"
+  },
+  {
+    "filename": "images/walkthrough/commerce-media-03-storefront-launch.png",
+    "prompt": "Daniel (Korean-American man, mid-30s, light brown skin, black hair neatly side-parted, thin wire-frame glasses, quarter-zip pullover over a collared shirt) stands at a standing desk in a bright office, reviewing a clean interface on his monitor. From the monitor, five glowing product cards float outward in an arc — each representing a different retail media product type: a small product listing icon, a display ad rectangle, a video play button, a store location pin, and a homepage banner shape. The cards are teal-accented and organized, radiating outward as if being published to the world. Daniel looks satisfied, one hand on the desk. Do not include any text, words, or labels in the image.",
+    "alt_text": "Daniel at his desk as five retail media product cards radiate outward from his monitor — sponsored products, display, video, in-store, and premium placements being published"
+  },
+  {
+    "filename": "images/walkthrough/commerce-media-04-buyer-discovers.png",
+    "prompt": "Split scene. Left side: Sam (Black man, early 30s, dark skin, close-cropped hair with sharp fade, no glasses, clean-shaven, light blue button-down with rolled sleeves, silver watch) sits at his agency desk, running a brief on his laptop. Teal search beams extend from his screen to the right. Right side: Daniel (Korean-American man, mid-30s, light brown skin, black hair side-parted, thin wire-frame glasses, quarter-zip pullover) appears as a semi-transparent figure behind floating product cards that glow in response to Sam's search. The product cards include a shopping cart icon, a display screen, and a store location pin. The teal beams connect Sam's brief to Daniel's inventory. Do not include any text, words, or labels in the image.",
+    "alt_text": "Split scene — Sam runs a brief from his agency desk as search beams connect to Daniel's retail media products floating on the right, discovery in action"
+  },
+  {
+    "filename": "images/walkthrough/commerce-media-05-closed-loop.png",
+    "prompt": "Daniel (Korean-American man, mid-30s, light brown skin, black hair side-parted, thin wire-frame glasses, quarter-zip pullover) and Sam (Black man, early 30s, dark skin, fade, no glasses, rolled sleeves, silver watch) stand together viewing a large analytics dashboard. The dashboard shows a circular flow diagram: ad impressions at the top flow clockwise through clicks, then store visits (with a small store icon), then purchases (with a receipt icon), and back to attributed revenue at the top — a closed loop glowing teal. Below the circle, three source indicators show website, app, and in-store attribution. Both look engaged, Daniel pointing at the in-store segment. Do not include any text, words, or labels in the image.",
+    "alt_text": "Daniel and Sam view a closed-loop attribution dashboard — impressions flow through clicks, store visits, and purchases in a circular diagram with website, app, and in-store sources"
+  },
+  {
+    "filename": "images/walkthrough/commerce-media-06-ecosystem.png",
+    "prompt": "Wide scene showing Daniel (Korean-American man, mid-30s, light brown skin, black hair side-parted, thin wire-frame glasses, quarter-zip pullover) standing on the left next to a retail storefront shape with digital screens, and Priya (South Indian woman, mid-30s, warm brown skin, asymmetric black bob, dark rectangular glasses, structured burgundy blazer) standing on the right next to a streaming TV shape. Between them, a central hub glows with connecting lines flowing to Sam (Black man, dark skin, fade, rolled sleeves, silver watch) who stands in the center foreground looking at both inventory sources on his tablet. The scene conveys that different sell-side verticals — retail media and CTV — connect to the same buyer through the same protocol. Open, bright environment. Do not include any text, words, or labels in the image.",
+    "alt_text": "Daniel by a retail storefront and Priya by a streaming TV shape flank Sam in the center — different sell-side verticals connecting to one buyer through the same protocol"
+  }
+]

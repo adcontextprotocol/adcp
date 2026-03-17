@@ -320,6 +320,7 @@ Module and exam completion is only available through Addie's tool calls — neve
 | Kai Lindgren | Signals (data provider side) | Meridian Geo | Head of partnerships |
 | Tomoko Hara | Brand protocol + accounts | Nova Motors | Global brand ops manager |
 | Dayo Mensah | Certification / learning | Pinnacle (fellow) | Ad tech fellow |
+| Daniel Park | Commerce media | ShopGrid | VP retail media |
 | Addie | All (connective tissue) | AgenticAdvertising.org | AI agent |
 
 ### Rules

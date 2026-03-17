@@ -56,7 +56,7 @@ sequenceDiagram
     participant Agent as Signal Agent
     participant Auto as Trident Auto Data
     participant Geo as Meridian Geo
-    participant Retail as ShopGrid Retail
+    participant Retail as ShopGrid
 
     Platform->>Agent: get_signals ("in-market EV buyers near dealerships")
 
@@ -76,7 +76,7 @@ Sam sees signals from three providers he didn't have to find or negotiate with i
 
 - **Trident Auto Data** — `purchase_propensity` (numeric, 0-1 score). CPM: \$1.50. `likely_ev_buyers` (binary). CPM: \$2.50.
 - **Meridian Geo** — `competitor_visitors` (binary, people who visited competing dealerships). CPM: \$2.00.
-- **ShopGrid Retail** — `new_to_brand` (binary). CPM: \$3.50. `category_buyer` (categorical: electronics, automotive, home). CPM: \$3.00.
+- **ShopGrid** — `new_to_brand` (binary). CPM: \$3.50. `category_buyer` (categorical: electronics, automotive, home). CPM: \$3.00.
 
 Sam notices that `purchase_propensity` is numeric — his agent can set a threshold (score > 0.7) to focus budget on high-intent prospects rather than a blunt include/exclude. He also sees that `category_buyer` is categorical, so he can target "automotive" specifically without paying for the full ShopGrid audience. The `competitor_visitors` signal catches his eye — it comes from Meridian Geo, a data company founded by Kai Lindstr&#246;m to make location and behavioral data accessible through open protocols. Sam picks three signals: `purchase_propensity` for intent scoring, Meridian Geo's `competitor_visitors` for conquest targeting near rival dealerships, and `new_to_brand` to reach households that haven't bought a Nova before.
 
