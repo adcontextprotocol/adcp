@@ -10,6 +10,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { startSessionCleanup } from './state.js';
@@ -198,6 +199,124 @@ export function createTrainingAgentRouter(): Router {
       id: null,
       error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
     });
+  });
+
+  // --- Legacy SSE transport ---
+  // Some MCP clients (e.g. older SDKs) only support the deprecated SSE transport.
+  // GET /sse establishes the event stream; POST /message delivers JSON-RPC messages.
+  // Rate limiter is shared with /mcp — SSE uses 2 requests per interaction (GET + POST).
+  const sseSessions = new Map<string, SSEServerTransport>();
+  const sseSessionLastSeen = new Map<string, number>();
+  const SSE_MAX_SESSIONS = 200;
+  const SSE_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+  // Sweep stale sessions that didn't trigger a close event (e.g. LB timeout)
+  const sseSweepTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [id, ts] of sseSessionLastSeen) {
+      if (now - ts > SSE_SESSION_TTL_MS) {
+        const transport = sseSessions.get(id);
+        if (transport) transport.close().catch(() => {});
+        sseSessions.delete(id);
+        sseSessionLastSeen.delete(id);
+      }
+    }
+  }, 5 * 60 * 1000);
+  if (sseSweepTimer.unref) sseSweepTimer.unref();
+
+  router.options('/sse', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.status(204).end();
+  });
+
+  router.options('/message', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.status(204).end();
+  });
+
+  router.get('/sse', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
+    setCORSHeaders(res);
+
+    if (sseSessions.size >= SSE_MAX_SESSIONS) {
+      res.status(503).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Too many active SSE sessions. Please try again later.' },
+      });
+      return;
+    }
+
+    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+    try {
+      const ctx: TrainingContext = { mode: 'open' };
+      server = createTrainingAgentServer(ctx);
+
+      // The endpoint path is relative to the router mount point
+      const transport = new SSEServerTransport(`${req.baseUrl}/message`, res);
+      const sessionId = transport.sessionId;
+      sseSessions.set(sessionId, transport);
+      sseSessionLastSeen.set(sessionId, Date.now());
+
+      transport.onclose = () => {
+        sseSessions.delete(sessionId);
+        sseSessionLastSeen.delete(sessionId);
+        server?.close().catch(() => {});
+        logger.debug({ sessionId }, 'SSE session closed');
+      };
+
+      await server.connect(transport);
+
+      logger.debug({ sessionId, ip: req.ip }, 'SSE session established');
+    } catch (error) {
+      logger.error({ error }, 'Training agent: SSE connection error');
+      await server?.close().catch(() => {});
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32603, message: 'Internal server error' },
+        });
+      }
+    }
+  });
+
+  router.post('/message', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
+    setCORSHeaders(res);
+
+    const sessionId = req.query.sessionId as string;
+    if (!sessionId) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32600, message: 'Missing sessionId query parameter' },
+      });
+      return;
+    }
+
+    const transport = sseSessions.get(sessionId);
+    if (!transport) {
+      res.status(404).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'SSE session not found or expired' },
+      });
+      return;
+    }
+
+    sseSessionLastSeen.set(sessionId, Date.now());
+
+    try {
+      await transport.handlePostMessage(req, res, req.body);
+    } catch (error) {
+      logger.error({ error, sessionId }, 'Training agent: SSE message error');
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32603, message: 'Internal server error' },
+        });
+      }
+    }
   });
 
   logger.info('Training agent routes configured');
