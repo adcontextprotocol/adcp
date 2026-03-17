@@ -461,18 +461,22 @@ export function verifyLumaWebhookSignature(
     return false;
   }
 
+  // Validate format first — must be exactly 64 lowercase hex chars (HMAC-SHA256 output).
+  // Using a static regex (not user-constructed) prevents regex injection and ensures
+  // Buffer.from receives only valid hex before the timing-safe comparison.
+  const HEX_SHA256 = /^[0-9a-f]{64}$/;
+  if (!HEX_SHA256.test(signature)) {
+    return false;
+  }
+
   const expectedSignature = crypto
     .createHmac('sha256', LUMA_WEBHOOK_SECRET)
     .update(payload)
     .digest('hex');
 
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
-  } catch {
-    // timingSafeEqual throws if buffers have different lengths
-    return false;
-  }
+  // Both buffers are hex-decoded to equal length — timingSafeEqual never throws.
+  return crypto.timingSafeEqual(
+    Buffer.from(signature, 'hex'),
+    Buffer.from(expectedSignature, 'hex')
+  );
 }

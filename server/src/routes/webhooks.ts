@@ -1061,14 +1061,18 @@ export function createWebhooksRouter(): Router {
         const rawBody = (req as Request & { rawBody: string }).rawBody;
 
         // Verify Luma webhook signature
-        const signature = req.headers['x-luma-signature'] as string | undefined;
+        const signature = req.headers['x-luma-signature'];
+        const sigStr = Array.isArray(signature) ? signature[0] : signature;
 
-        if (!signature) {
-          logger.warn('Luma webhook missing signature header');
-          return res.status(401).json({ error: 'Missing signature' });
+        // Reject early if header is absent or not a valid 64-char hex string.
+        // Static pattern check — not user-constructed — so the guard is not
+        // user-controlled and avoids a regex-injection data flow.
+        if (!sigStr || !/^[0-9a-f]{64}$/.test(sigStr)) {
+          logger.warn('Luma webhook missing or malformed signature header');
+          return res.status(401).json({ error: 'Invalid signature' });
         }
 
-        if (!verifyLumaWebhookSignature(rawBody, signature)) {
+        if (!verifyLumaWebhookSignature(rawBody, sigStr)) {
           logger.warn('Luma webhook signature verification failed');
           return res.status(401).json({ error: 'Invalid signature' });
         }
