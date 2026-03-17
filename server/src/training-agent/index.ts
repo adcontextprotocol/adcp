@@ -86,7 +86,9 @@ export function createTrainingAgentRouter(): Router {
   // adagents.json discovery
   router.get('/.well-known/adagents.json', (req: Request, res: Response) => {
     const baseUrl = getBaseUrl(req);
-    const agentUrl = `${baseUrl}/api/training-agent`;
+    // req.baseUrl is the mount path (e.g. '/api/training-agent') — empty when
+    // served via host-based routing at root
+    const agentUrl = `${baseUrl}${req.baseUrl}`;
 
     res.json({
       $schema: '/schemas/adagents.json',
