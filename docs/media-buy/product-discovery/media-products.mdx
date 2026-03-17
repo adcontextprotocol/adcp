@@ -775,8 +775,8 @@ To execute a proposal, provide the `proposal_id` and `total_budget` in `create_m
 ```
 
 The publisher converts the proposal's allocation percentages into packages:
-- `ch_desktop_de`: 20% × $50,000 = $10,000
-- `ch_desktop_fr`: 30% × $50,000 = $15,000
+- `ch_desktop_de`: 20% × \$50,000 = \$10,000
+- `ch_desktop_fr`: 30% × \$50,000 = \$15,000
 - etc.
 
 This approach simplifies complex multi-line-item campaigns to a single proposal execution.
@@ -867,7 +867,7 @@ Multiple forecast points at ascending budget levels show how metrics scale with 
 }
 ```
 
-The curve reveals diminishing returns — doubling budget from $50K to $100K increases reach by ~56%, not 2x. Buyers can use this to negotiate or reallocate budget across publishers.
+The curve reveals diminishing returns — doubling budget from \$50K to \$100K increases reach by ~56%, not 2x. Buyers can use this to negotiate or reallocate budget across publishers.
 
 #### CTV with GRP Demographics
 
@@ -1115,7 +1115,7 @@ Broadcast and audio publishers can return spot-plan proposals with `daypart_targ
 }
 ```
 
-The `forecast_range_unit: "weekly"` on each forecast tells the buyer that all metrics are per-week values — frequency of 3.2 means 3.2 exposures per week, not 3.2 over the entire campaign. Budget ($75K) is total campaign spend.
+The `forecast_range_unit: "weekly"` on each forecast tells the buyer that all metrics are per-week values — frequency of 3.2 means 3.2 exposures per week, not 3.2 over the entire campaign. Budget (\$75K) is total campaign spend.
 
 The `daypart_targets` on each allocation specify the publisher's recommended time windows. These are the same structure used in `targeting` for hard daypart constraints — here the publisher is prescribing the spot plan rather than the buyer constraining it.
 

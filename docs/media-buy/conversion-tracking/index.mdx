@@ -297,7 +297,7 @@ A `maximize_value` target steers spend toward higher-value conversions without c
 | `event_sources[].value_field` | string | When target is `per_ad_spend` or `maximize_value` | Which field on `custom_data` carries the monetary value. The seller must use this for value extraction and aggregation — it is not passed directly to underlying platform APIs. |
 | `event_sources[].value_factor` | number | No | Multiplier the seller must apply to `value_field` before aggregation (default 1). Use -1 for refunds, 0.01 for cents, 0 to zero out a source's value contribution while still counting it for dedup. |
 | `target.kind` | `"cost_per"` \| `"per_ad_spend"` \| `"maximize_value"` | No | Target type. When omitted, the seller maximizes conversions within budget. |
-| `target.value` | number | Yes (if target set) | Cost per event in buy currency, or return ratio (e.g., 4.0 = $4 per $1 spent) |
+| `target.value` | number | Yes (if target set) | Cost per event in buy currency, or return ratio (e.g., 4.0 = \$4 per \$1 spent) |
 | `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
 | `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
 
@@ -450,7 +450,7 @@ A package can have multiple goals. Priority controls which the seller treats as 
 ]
 ```
 
-The seller focuses on the `priority: 1` goal (installs at $10 cost per, deduplicated across SDK and MMP) and uses clicks as a proxy signal until install data accumulates.
+The seller focuses on the `priority: 1` goal (installs at \$10 cost per, deduplicated across SDK and MMP) and uses clicks as a proxy signal until install data accumulates.
 
 ### Pricing model vs. optimization goal
 
