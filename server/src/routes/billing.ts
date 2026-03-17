@@ -521,7 +521,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   // STRIPE CUSTOMER MANAGEMENT API (mounted at /api/admin)
   // =========================================================================
 
-  // GET /api/admin/stripe-customers - List all Stripe customers with link status and payment totals
+  // GET /api/admin/stripe-customers - List Stripe customers with link status and payment totals
   apiRouter.get("/stripe-customers", requireAuth, requireAdmin, async (req, res) => {
     if (!stripe) {
       return res.status(400).json({ error: "Stripe not configured" });
@@ -540,7 +540,11 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         orgsResult.rows.map((o) => [o.stripe_customer_id, { id: o.workos_organization_id, name: o.name }])
       );
 
-      // Fetch all Stripe customers with their payment totals
+      // Parse limit from query params (default 50, max 100)
+      const queryLimit = req.query.limit !== undefined ? parseInt(req.query.limit as string, 10) : 50;
+      const limit = Math.min(Math.max(queryLimit, 1), 100);
+
+      // Fetch Stripe customers with their payment totals (first page only)
       const customers: Array<{
         id: string;
         name: string | null;
@@ -556,7 +560,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         currency: string | null;
       }> = [];
 
-      for await (const customer of stripe.customers.list({ limit: 100, expand: ["data.subscriptions"] })) {
+      for await (const customer of stripe.customers.list({ limit, expand: ["data.subscriptions"] })) {
         // Get paid invoices for this customer to calculate total paid
         let totalPaid = 0;
         let invoiceCount = 0;
