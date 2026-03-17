@@ -2373,10 +2373,11 @@ async function handleDirectMessage(
   // person route to a single addie_threads record — even if the Slack event
   // arrives as a top-level message without thread_ts.
   let permThreadTs: string | null = null;
+  let cachedRel: Awaited<ReturnType<typeof relationshipDb.getRelationshipBySlackId>> | null = null;
   try {
-    const rel = await relationshipDb.getRelationshipBySlackId(userId);
-    if (rel?.slack_dm_channel_id === channelId && rel.slack_dm_thread_ts) {
-      permThreadTs = rel.slack_dm_thread_ts;
+    cachedRel = await relationshipDb.getRelationshipBySlackId(userId);
+    if (cachedRel?.slack_dm_channel_id === channelId && cachedRel.slack_dm_thread_ts) {
+      permThreadTs = cachedRel.slack_dm_thread_ts;
     }
   } catch (error) {
     logger.debug({ error, userId }, 'Addie Bolt: Could not look up permanent thread');
@@ -2518,7 +2519,7 @@ async function handleDirectMessage(
   // so the orchestrator will continue in this same thread later.
   if (!permThreadTs) {
     try {
-      const rel = await relationshipDb.getRelationshipBySlackId(userId);
+      const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
       if (rel && !rel.slack_dm_thread_ts) {
         await relationshipDb.setSlackDmThread(rel.id, channelId, slackThreadTs);
         logger.info({ userId, channelId, threadTs: slackThreadTs }, 'Addie Bolt: Saved permanent DM thread from inbound conversation');

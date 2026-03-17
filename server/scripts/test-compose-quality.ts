@@ -107,14 +107,6 @@ const checkNoHedge: Check = {
   },
 };
 
-const checkNoCompanyOpen: Check = {
-  name: 'Does not open with company name',
-  test: (text, _skipped, companyName?: string) => {
-    if (!text || !companyName) return true;
-    return !text.trim().startsWith(companyName);
-  },
-};
-
 const checkNoHomeworkQuestion: Check = {
   name: 'No open-ended homework questions',
   test: (text) => {

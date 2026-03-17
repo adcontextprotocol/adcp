@@ -496,6 +496,9 @@ export async function evaluateStageTransitions(personId: string): Promise<void> 
     );
     const slackCount = Number(slackResult.rows[0]?.slack_messages_30d ?? 0);
 
+    if (slackCount > 5) {
+      await updateStage(personId, 'participating');
+    }
     if (slackCount > 20) {
       await updateStage(personId, 'contributing');
     }

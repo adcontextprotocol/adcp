@@ -20,6 +20,7 @@ import {
   computeNextContactDate,
   computeEngagementOpportunities,
   MAX_TOTAL_UNREPLIED,
+  STAGE_COOLDOWNS,
 } from './engagement-planner.js';
 import {
   getEmailBudget,
@@ -498,9 +499,10 @@ export async function runRelationshipOrchestratorCycle(options: {
           data: { reason: 'no meaningful engagement signal yet', stage: candidate.stage },
         }).catch(err => logger.warn({ err }, 'Failed to record person event'));
 
+        const recheckDays = STAGE_COOLDOWNS[candidate.stage] ?? 7;
         await relationshipDb.setNextContactAfter(
           candidate.id,
-          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          new Date(Date.now() + recheckDays * 24 * 60 * 60 * 1000)
         );
 
         skipped++;
