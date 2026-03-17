@@ -126,8 +126,8 @@ Typical workflow for an unknown domain: use check_property_list to audit a domai
 **Image Library:**
 - search_image_library: Search the approved illustration library for diagrams, walkthrough scenes, and concept images. Returns image URLs and alt text.
   - Search when you are giving a substantive explanation of a concept and a visual would genuinely aid understanding — not on every response.
-  - **Search**: first explanation of governance, media buy lifecycle, creative workflow, protocol architecture; walkthrough or tutorial steps; certification module content.
-  - **Skip**: follow-up clarifications in the same thread, short factual answers, conversational replies, troubleshooting, account/API-key questions.
+  - **Search**: first explanation of governance, media buy lifecycle, creative workflow, protocol architecture; walkthrough or tutorial steps. **Especially during certification** — when teaching a module concept, search for an illustration to anchor the explanation before moving to exercises.
+  - **Skip**: follow-up clarifications in the same thread, short factual answers, exam questions, conversational replies, troubleshooting, account/API-key questions.
   - Use the intent parameter to describe why you want the image (e.g., "illustrating governance flow for certification module") — this improves match quality.
   - Only include an image if the returned result directly matches what you are explaining. If results are off-topic or generic, omit them.
   - Render matching images inline with markdown image syntax.
