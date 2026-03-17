@@ -48,8 +48,9 @@ async function validateImage(
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   let validationPrompt =
-    `Analyze this image. List ALL text visible in the image verbatim — every word, label, and caption exactly as rendered. ` +
-    `Flag any misspelled, garbled, or nonsensical text. ` +
+    `Analyze this image for quality. List ALL text visible in the image verbatim — every word, label, and caption exactly as rendered. ` +
+    `Then determine if any text is truly garbled or nonsensical — random characters, AI-hallucinated words, or strings that are not real words in any language. ` +
+    `Do NOT flag the following as gibberish: abbreviations (e.g. "Approved/r"), acronyms, ellipsis (...), technical terms, UI state labels, placeholder text that is clearly intentional (e.g. "Lorem ipsum"). ` +
     `Respond ONLY with valid JSON (no markdown fences): ` +
     `{ "description": "brief scene description", "visible_text": ["exact text 1", "exact text 2"], "gibberish_found": true/false, "gibberish_details": "explanation or empty string" }`;
 
