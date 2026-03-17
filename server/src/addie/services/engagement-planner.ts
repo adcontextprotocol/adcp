@@ -33,6 +33,7 @@ interface CertificationSummary {
   totalModules: number;
   credentialsEarned: string[];
   hasInProgressTrack: boolean;
+  abandonedModuleTitle: string | null;
 }
 
 interface EngagementContext {
@@ -704,13 +705,22 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     condition: (ctx) => !ctx.certification || (ctx.certification.modulesCompleted === 0 && !ctx.certification.hasInProgressTrack),
   },
   {
+    id: 'resume_certification',
+    description: 'Gently re-engage — they started a module but haven\'t been back in a few days',
+    keywords: ['certification', 'resume', 'pick up'],
+    dimension: 'engagement',
+    baseScore: 68,
+    minStage: 'welcomed',
+    condition: (ctx) => !!ctx.certification?.abandonedModuleTitle,
+  },
+  {
     id: 'continue_certification',
     description: 'Continue their in-progress certification track',
     keywords: ['certification', 'continue', 'module'],
     dimension: 'engagement',
     baseScore: 65,
     minStage: 'welcomed',
-    condition: (ctx) => !!ctx.certification && ctx.certification.hasInProgressTrack && ctx.certification.modulesCompleted < ctx.certification.totalModules,
+    condition: (ctx) => !!ctx.certification && ctx.certification.hasInProgressTrack && !ctx.certification.abandonedModuleTitle && ctx.certification.modulesCompleted < ctx.certification.totalModules,
   },
   {
     id: 'advance_certification',
@@ -1038,7 +1048,9 @@ function formatCertificationBlock(cert?: CertificationSummary | null): string {
   if (cert.credentialsEarned.length > 0) {
     lines.push(`  Credentials earned: ${cert.credentialsEarned.join(', ')}`);
   }
-  if (cert.hasInProgressTrack && cert.modulesCompleted < cert.totalModules) {
+  if (cert.abandonedModuleTitle) {
+    lines.push(`  Started "${cert.abandonedModuleTitle}" but hasn't been back in a few days`);
+  } else if (cert.hasInProgressTrack && cert.modulesCompleted < cert.totalModules) {
     lines.push(`  Currently working through a certification track`);
   }
   if (cert.modulesCompleted === 0 && !cert.hasInProgressTrack) {

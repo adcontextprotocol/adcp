@@ -166,6 +166,25 @@ export async function getProgress(userId: string): Promise<LearnerProgress[]> {
   return result.rows;
 }
 
+export async function getAbandonedModule(userId: string): Promise<{ module_id: string; title: string } | null> {
+  const result = await query<{ module_id: string; title: string }>(
+    `SELECT lp.module_id, m.title
+     FROM learner_progress lp
+     JOIN certification_modules m ON m.id = lp.module_id
+     WHERE lp.workos_user_id = $1
+       AND lp.status = 'in_progress'
+       AND COALESCE(
+         (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+          WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+         lp.started_at
+       ) < NOW() - INTERVAL '3 days'
+     ORDER BY lp.started_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
 export async function getModuleProgress(userId: string, moduleId: string): Promise<LearnerProgress | null> {
   const result = await query<LearnerProgress>(
     'SELECT * FROM learner_progress WHERE workos_user_id = $1 AND module_id = $2',
@@ -774,7 +793,12 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
        (SELECT COUNT(*) FROM user_credentials)::text AS credentials_issued,
        (SELECT COUNT(*) FROM learner_progress WHERE status IN ('completed', 'tested_out'))::text AS modules_completed,
        (SELECT COUNT(*) FROM learner_progress)::text AS modules_started,
-       (SELECT COUNT(*) FROM learner_progress WHERE status = 'in_progress' AND started_at < NOW() - INTERVAL '7 days')::text AS abandoned,
+       (SELECT COUNT(*) FROM learner_progress lp WHERE lp.status = 'in_progress'
+          AND COALESCE(
+            (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+             WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+            lp.started_at
+          ) < NOW() - INTERVAL '3 days')::text AS abandoned,
        (SELECT COUNT(DISTINCT thread_id) FROM teaching_checkpoints)::text AS total_sessions`
   );
   const t = totalsResult.rows[0];
@@ -782,10 +806,12 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
   // Credentials by tier
   const credResult = await query<{ tier: number; name: string; count: string; badges_issued: string }>(
     `SELECT cc.tier, cc.name, COUNT(uc.id)::text AS count,
-            COUNT(CASE WHEN uc.certifier_credential_id IS NOT NULL THEN 1 END)::text AS badges_issued
+            CASE WHEN cc.certifier_group_id IS NULL THEN COUNT(uc.id)
+                 ELSE COUNT(CASE WHEN uc.certifier_credential_id IS NOT NULL THEN 1 END)
+            END::text AS badges_issued
      FROM certification_credentials cc
      LEFT JOIN user_credentials uc ON uc.credential_id = cc.id
-     GROUP BY cc.id, cc.tier, cc.name, cc.sort_order
+     GROUP BY cc.id, cc.tier, cc.name, cc.sort_order, cc.certifier_group_id
      ORDER BY cc.sort_order`
   );
 
@@ -803,10 +829,22 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
        ROUND(AVG(CASE WHEN lp.score IS NOT NULL
          THEN (SELECT AVG(v::numeric) FROM jsonb_each_text(lp.score) AS x(k, v))
        END))::text AS avg_score,
-       ROUND(AVG(CASE WHEN lp.completed_at IS NOT NULL AND lp.started_at IS NOT NULL
-         THEN EXTRACT(EPOCH FROM (lp.completed_at - lp.started_at)) / 60
+       ROUND(AVG(CASE WHEN lp.status IN ('completed', 'tested_out') AND lp.started_at IS NOT NULL
+         THEN EXTRACT(EPOCH FROM (
+           COALESCE(
+             (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+              WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+             lp.completed_at
+           ) - lp.started_at
+         )) / 60
        END))::text AS avg_duration_minutes,
-       COUNT(CASE WHEN lp.status = 'in_progress' AND lp.started_at < NOW() - INTERVAL '7 days' THEN 1 END)::text AS abandoned,
+       COUNT(CASE WHEN lp.status = 'in_progress'
+         AND COALESCE(
+           (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+            WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+           lp.started_at
+         ) < NOW() - INTERVAL '3 days' THEN 1
+       END)::text AS abandoned,
        COALESCE((SELECT COUNT(DISTINCT tc.thread_id) FROM teaching_checkpoints tc WHERE tc.module_id = m.id), 0)::text AS sessions
      FROM certification_modules m
      LEFT JOIN learner_progress lp ON lp.module_id = m.id
@@ -984,7 +1022,7 @@ export interface AdminLearnerDetail {
     score: Record<string, number> | null;
     attempts: number;
   }>;
-  credentials: Array<{ name: string; tier: number; awarded_at: string }>;
+  credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
   checkpoints: Array<{
     module_id: string;
     current_phase: string;
