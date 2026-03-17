@@ -96,8 +96,8 @@ function verifyWorkOSWebhook(
   timestamp: string | undefined
 ): boolean {
   if (!WORKOS_WEBHOOK_SECRET) {
-    logger.warn('WORKOS_WEBHOOK_SECRET not configured, skipping signature verification (dev mode)');
-    return true;
+    logger.error('WORKOS_WEBHOOK_SECRET not configured - rejecting webhook (security bypass!)');
+    throw new Error('WORKOS_WEBHOOK_SECRET not configured');
   }
 
   if (!signature || !timestamp) {
@@ -659,7 +659,14 @@ export function createWorkOSWebhooksRouter(): Router {
           extractedTimestamp: timestamp,
         }, 'Received WorkOS webhook');
 
-        if (!verifyWorkOSWebhook(rawBody, signature, timestamp)) {
+        let isValid = false;
+        try {
+          isValid = verifyWorkOSWebhook(rawBody, signature, timestamp);
+        } catch (error) {
+          logger.error({ error }, 'WorkOS webhook signature verification failed');
+          return res.status(500).json({ error: 'Signature verification failed' });
+        }
+        if (!isValid) {
           logger.warn('Rejecting WorkOS webhook: invalid signature');
           return res.status(401).json({ error: 'Invalid signature' });
         }
