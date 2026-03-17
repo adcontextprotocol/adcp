@@ -20,6 +20,7 @@ const MOLTBOOK_ENABLED = process.env.MOLTBOOK_ENABLED !== 'false';
 
 // Track account suspension to avoid repeated failed requests
 let suspendedUntil: number | null = null;
+let dashboardAccessBlocked = false;
 
 // ============== Types ==============
 
@@ -148,8 +149,8 @@ export class MoltbookApiError extends Error {
   }
 
   get isSuspended(): boolean {
-    return (this.status === 401 && this.body.includes('Account suspended')) ||
-           (this.status === 403 && this.body.includes('suspended until'));
+    return ((this.status === 401 || this.status === 403) && /\bsuspend(ed)?\b/i.test(this.body)) ||
+           (this.status === 403 && /dashboard access/i.test(this.body));
   }
 }
 
@@ -166,6 +167,7 @@ export function isMoltbookEnabled(): boolean {
  * Check if the account is currently suspended
  */
 export function isAccountSuspended(): boolean {
+  if (dashboardAccessBlocked) return true;
   if (!suspendedUntil) return false;
   if (Date.now() > suspendedUntil) {
     suspendedUntil = null;
@@ -228,12 +230,17 @@ async function moltbookRequest<T>(
   if (!response.ok) {
     const errorText = await response.text();
 
-    // Detect and cache suspension (not an unexpected error, so skip error logging)
-    if ((response.status === 401 && errorText.includes('Account suspended')) ||
-        (response.status === 403 && errorText.includes('suspended until'))) {
+    // Detect and cache suspension or persistent auth issues (skip error logging)
+    if ((response.status === 401 || response.status === 403) &&
+        /\bsuspend(ed)?\b/i.test(errorText)) {
       handleSuspension(errorText);
+    } else if (response.status === 403 && /dashboard access/i.test(errorText)) {
+      if (!dashboardAccessBlocked) {
+        logger.warn({ endpoint }, 'Moltbook: account owner needs to set up dashboard access');
+        dashboardAccessBlocked = true;
+      }
     } else {
-      logger.error({ status: response.status, endpoint }, 'Moltbook API error');
+      logger.warn({ status: response.status, endpoint }, 'Moltbook API error');
     }
 
     throw new MoltbookApiError(response.status, errorText, endpoint);
