@@ -1,618 +1,355 @@
 ---
 title: Creator Economy
 sidebarTitle: Creator Economy
-description: "How creators grow from YouTube uploaders to media empires — and how AdCP works at every stage. Covers content, commerce, creative convergence, show-level reservation, audience data monetization, and talent licensing."
+description: "Creator studios juggle sponsorships, product placements, talent licensing, audience data, and DTC brands — all at once. One agentic storefront powered by AdCP brings it all together."
 "og:title": "AdCP — Creator Economy"
 ---
 
-You get 100,000 subscribers and YouTube sends you a silver play button. You film yourself unboxing it. A million subscribers and you get a gold one. You film that too. Ten million and you get diamond. You film that, and 50 million people watch you film it.
+You get 100,000 subscribers and YouTube sends you a silver play button. You film yourself unboxing it. A million subscribers and you get a gold one. You film that too. Ten million and you get diamond. You film that, and millions of people watch you film it.
 
 Somewhere along the way, the power dynamic flips. You start as YouTube's product. You end as YouTube's customer. Or competitor.
 
-This is the creator economy progression. And it's why ad tech needs a new model.
+<img src="/docs/images/guides/creator-economy/play-button-progression.png" alt="A creator's journey from filming alone in a bedroom with a silver play button to commanding a media empire with a ruby play button" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-<img src="/docs/images/guides/creator-economy/play-button-progression.png" alt="Four YouTube play button awards on a shelf — silver, gold, diamond, ruby — growing larger left to right, with the creator silhouette behind them shifting from content creator to media executive" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
-
-## The convergence
-
-Traditional ad tech assumes clean separations. Publishers publish. Advertisers advertise. Talent performs. Data companies provide data. Four different companies, four different business models, four different ad tech stacks.
-
-A creator collapses all four into one person.
-
-<img src="/docs/images/guides/creator-economy/convergence.png" alt="A creator stands at the center of four overlapping colored spotlights — publisher, advertiser, talent, data company — all converging into one person in their studio" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
-
-MrBeast is the **publisher** — Beast Games runs on YouTube and Prime Video, producing episodes on a weekly schedule with 300M+ subscribers watching. He is the **advertiser** — Feastables and Beast Burger are DTC brands that buy media on the same platforms where his content runs. He is the **talent** — his face IS the creative; his likeness has commercial value independent of any specific show. And he is the **data company** — 300 million subscribers constitute one of the largest opted-in audience graphs in media.
-
-This isn't unique to MrBeast. The Stokes Twins, Emma Chamberlain, Dude Perfect, Linden Lane Films — the pattern repeats at every scale. Content, commerce, and creative converge in a single entity. The question is how ad tech keeps up.
-
-<img src="/docs/images/guides/creator-economy/content-commerce-creative.png" alt="Overhead view of a creative workspace where content tools, commerce products, and creative materials flow together on one table, converging at a central laptop" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+And then the real challenge starts — not making the content, but running the business.
 
 <Info>
-**New to AdCP?** Start with the [introduction](/docs/intro) for a protocol overview. This guide covers how AdCP models creator economy dynamics at every stage of growth — from first upload to owned distribution.
+**New to AdCP?** Start with the [introduction](/docs/intro) for a protocol overview. This guide shows how one protocol solves the operational complexity of running a creator business.
 </Info>
 
-## Three stages of creator growth
+## Six revenue streams, zero unified view
 
-Creators don't start as media companies. They grow into them. The journey follows a predictable pattern, and at each stage the advertising model — who sells, who buys, who owns the audience — changes fundamentally.
+Meet Ren Castillo. He runs operations at Halfmoon Studios, the 15-person team behind Juno Park — a food and travel creator with about 8 million subscribers across YouTube, TikTok, and a growing CTV presence. Juno makes the content. Ren runs the business.
 
-<img src="/docs/images/guides/creator-economy/three-stages.png" alt="Three connected panels showing a creator's journey: filming alone in a bedroom, producing in a professional studio, commanding a media empire from a glass office" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+Here's Ren's Tuesday:
 
-### Stage 1: Distribution
+- A snack brand wants to sponsor next season of *The Juno Table*. Their agency sent a brief. Ren's negotiating over email.
+- A kitchen appliance company wants a branded integration in this week's *Quick Fire* episode. That's in Juno's DMs, forwarded to Ren at midnight.
+- YouTube is selling pre-roll and mid-roll around all of Juno's content. Ren has no say and no visibility into the pricing.
+- Juno's Pantry — their DTC hot sauce line — is buying ads on Instagram and TikTok, the same platforms where Juno's content runs.
+- A talent agency Ren's never heard of wants to license Juno's likeness for AI-generated display ads.
+- StreamHaus just added *The Juno Table* to three new CTV apps, which changes Halfmoon's available ad inventory overnight.
 
-You create content and put it on other people's platforms. YouTube, TikTok, Spotify. You're a guest in their house. They own the ad sales, the audience relationship, the data. You get a revenue share.
+Six revenue streams. Six different workflows. Six different counterparties. No unified view.
 
-At this stage, the **platform** runs the AdCP sales agent. The creator's content appears as show metadata — a `talent` entry on a show object, referenced by YouTube's products. The creator controls one thing: their [brand.json](/docs/brand-protocol/brand-json), which establishes their identity and — if they choose — declares their likeness as licensable.
+Ren's leaving money on the table because he can't see the table.
 
-```json
-{
-  "talent": [
-    {
-      "role": "host",
-      "name": "Alan Stokes",
-      "brand_url": "https://stokeswins.example.com/.well-known/brand.json"
-    },
-    {
-      "role": "host",
-      "name": "Alex Stokes",
-      "brand_url": "https://stokeswins.example.com/.well-known/brand.json"
-    }
-  ]
-}
-```
-
-The `brand_url` is the seed. Even at Stage 1, it connects the creator's identity to the protocol. A buyer agent evaluating a YouTube product can follow that link to discover the talent behind it — and potentially license their likeness for creative, even if the platform controls the inventory.
-
-**AdCP primitives**: `brand.json` (talent identity). That's it. The platform handles the rest.
-
-### Stage 2: Syndication
-
-The audience follows YOU, not the platform. Your fans find you on YouTube, then TikTok, then your podcast, then your CTV show. You start selling direct — brand deals, sponsorships, branded integrations. The platform still sells programmatic ads around your content, but you control the premium inventory.
-
-At this stage, the **creator runs their own AdCP sales agent** alongside the platform's. They sell guaranteed sponsorships (flat rate, reserved episodes) while the platform sells scatter (non-guaranteed, CPM). The same show, same episodes, different products from different agents.
-
-This is where AdCP's [show and episode model](/docs/media-buy/product-discovery/shows-and-episodes) becomes essential. The creator's agent declares shows with full cross-platform `distribution`, schedules episodes with temporal status (`scheduled`, `tentative`, `published`), and offers products at multiple commitment levels:
-
-| What the creator sells | AdCP model |
-|---|---|
-| Season sponsorship | Guaranteed product, `show_ids`, `flat_rate` |
-| Episode-specific deal | Guaranteed product with `episodes` array |
-| Branded integration | `product_placement` channel with placements |
-| Audience data | First-party signals via `get_signals` |
-| Talent licensing | Rights via `get_rights` / `acquire_rights` |
-
-| What the platform still sells | AdCP model |
-|---|---|
-| Pre-roll / mid-roll | Non-guaranteed product, CPM auction |
-| Programmatic display | Standard ad products |
-
-The creator's `distribution` array is what ties these together — a buyer agent can see that the same show exists on YouTube (where the platform sells scatter) and on the creator's own CTV app (where the creator sells direct).
-
-```json
-{
-  "distribution": [
-    {
-      "publisher_domain": "youtube.com",
-      "identifiers": [{ "type": "youtube_channel_id", "value": "UCX6OQ3DkcsbYNE6H8uQQuVA" }]
-    },
-    {
-      "publisher_domain": "amazon.com",
-      "identifiers": [{ "type": "amazon_title_id", "value": "B0DFBT5GBP" }]
-    },
-    {
-      "publisher_domain": "beastgames.example.com",
-      "identifiers": [{ "type": "domain", "value": "beastgames.example.com" }]
-    }
-  ]
-}
-```
-
-**AdCP primitives**: Shows, episodes, products, signals, rights — the full protocol. The creator is simultaneously a seller (of their own inventory) and a buyer (of ads on other platforms for their DTC brand).
-
-### Stage 3: Owned channel
-
-You ARE the platform. Notre Dame doesn't need a conference. MrBeast doesn't need YouTube — YouTube needs MrBeast. You own the distribution, the audience data, the ad sales, the commerce. Your sales agent is the only one.
-
-At this stage, the creator uses AdCP in both directions:
-
-- **As a seller**: Full sales agent exposing shows, episodes, products, signals, and rights to any buyer agent
-- **As a buyer**: Buyer agent purchasing media on YouTube, TikTok, and other platforms to promote their DTC brands
-- **As a brand**: `brand.json` for product lines (Feastables, Beast Burger) with product catalogs and conversion events
-- **As a signal provider**: Monetizing first-party fan community data as a standalone product
-
-The protocol doesn't care whether you're a media conglomerate or a person with a camera. The primitives are the same. That's the point.
-
-## How content becomes products
-
-A single episode of creator content generates an entire product portfolio. The full episode airs on CTV. A highlight reel goes to YouTube Shorts. A behind-the-scenes clip goes to the secondary channel. A trailer for next week drops on TikTok. And the creator's likeness is licensable for AI-generated creative entirely separate from the show.
-
-<img src="/docs/images/guides/creator-economy/episode-products.png" alt="A director's chair at center stage with five glowing paths radiating outward to different screens — TV, phone, monitor, tablet, and a holographic likeness — one episode becoming five products" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
-
-AdCP models this with three connected concepts:
-
-- **`derivative_of`** — Highlights and clips reference their source episode, inheriting brand safety context
-- **`related_shows`** — Companion content (behind-the-scenes, after-shows) links to the main show
-- **Rights licensing** — The talent's likeness is a separate product, independent of any specific content
-
-### Season sponsorship (upfront reservation)
-
-The flagship deal. A brand locks in an entire season before it airs — guaranteed placement across every episode, with the studio's creative team handling integration. This is the creator equivalent of a television upfront buy.
-
-```json
-{
-  "shows": [
-    {
-      "show_id": "beast_games_s2",
-      "name": "Beast Games Season 2",
-      "description": "Competition reality: 1,000 contestants, elimination challenges, $10M prize",
-      "genre": ["IAB1", "IAB1-6"],
-      "genre_taxonomy": "iab_content_3.0",
-      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
-      "cadence": "weekly",
-      "season": "2",
-      "status": "upcoming",
-      "production_quality": "professional",
-      "talent": [
-        {
-          "role": "host",
-          "name": "Jimmy Donaldson",
-          "brand_url": "https://mrbeast.example.com/.well-known/brand.json"
-        }
-      ],
-      "distribution": [
-        {
-          "publisher_domain": "youtube.com",
-          "identifiers": [{ "type": "youtube_channel_id", "value": "UCX6OQ3DkcsbYNE6H8uQQuVA" }]
-        },
-        {
-          "publisher_domain": "amazon.com",
-          "identifiers": [{ "type": "amazon_title_id", "value": "B0DFBT5GBP" }]
-        }
-      ]
-    }
-  ],
-  "products": [
-    {
-      "product_id": "beast_games_s2_title_sponsor",
-      "name": "Beast Games S2 — Title Sponsorship",
-      "description": "Season-long title sponsorship across all 12 episodes. Includes branded integration in each episode, host mention, and logo placement in intro/outro.",
-      "show_ids": ["beast_games_s2"],
-      "channels": ["product_placement"],
-      "publisher_properties": [
-        { "publisher_domain": "youtube.com", "selection_type": "all" },
-        { "publisher_domain": "amazon.com", "selection_type": "all" }
-      ],
-      "placements": [
-        { "placement_id": "title_card", "name": "Title card (5s)" },
-        { "placement_id": "integration", "name": "In-episode branded integration (60-90s)" },
-        { "placement_id": "outro", "name": "Outro sponsor card (10s)" }
-      ],
-      "delivery_type": "guaranteed",
-      "exclusivity": "category",
-      "pricing_options": [
-        {
-          "pricing_option_id": "season_flat",
-          "pricing_model": "flat_rate",
-          "fixed_price": 5000000,
-          "currency": "USD"
-        }
-      ],
-      "delivery_measurement": {
-        "provider": "YouTube Analytics + Amazon Prime Video Ads",
-        "notes": "Combined viewership across YouTube and Prime Video. Episode-level delivery reports within 48 hours of publish."
-      }
-    }
-  ]
-}
-```
-
-- **`status: "upcoming"`** — the season hasn't started yet. The buyer is reserving inventory before production.
-- **`exclusivity: "category"`** — only one brand per product category can hold the title sponsorship.
-- **Cross-platform distribution** — the same show, same sponsorship, reaches audiences on YouTube and Prime Video.
-
-### Episode-specific sponsorship
-
-Not every brand wants a full season. Episode-specific products let buyers pick individual episodes — a premiere, a finale, or episodes with specific guests.
-
-```json
-{
-  "product_id": "beast_games_s2_premiere",
-  "name": "Beast Games S2 — Premiere Episode Sponsorship",
-  "show_ids": ["beast_games_s2"],
-  "channels": ["product_placement"],
-  "episodes": [
-    {
-      "episode_id": "s2e01_the_drop",
-      "name": "The Drop",
-      "scheduled_at": "2026-09-15T20:00:00Z",
-      "status": "scheduled",
-      "duration_seconds": 5400,
-      "ad_inventory": {
-        "expected_breaks": 3,
-        "total_ad_seconds": 270,
-        "max_ad_duration_seconds": 90,
-        "unplanned_breaks": false,
-        "supported_formats": ["video"]
-      },
-      "guest_talent": [
-        { "role": "guest", "name": "Gordon Ramsay" }
-      ]
-    }
-  ],
-  "placements": [
-    { "placement_id": "integration", "name": "In-episode integration (60-90s)" },
-    { "placement_id": "mid_roll", "name": "Mid-roll (30s)" }
-  ],
-  "delivery_type": "guaranteed",
-  "pricing_options": [
-    {
-      "pricing_option_id": "premiere_flat",
-      "pricing_model": "flat_rate",
-      "fixed_price": 750000,
-      "currency": "USD"
-    }
-  ]
-}
-```
-
-The premiere has confirmed details — date, duration, guest talent. Later episodes might be `tentative`, with `valid_until` dates telling buyer agents when to re-check.
-
-### Run-of-show (scatter)
-
-For brands that want reach without committing to specific episodes — "your ad runs across whatever episodes air during your flight dates."
-
-```json
-{
-  "product_id": "beast_games_s2_scatter",
-  "name": "Beast Games S2 — Run of Show",
-  "show_ids": ["beast_games_s2"],
-  "channels": ["influencer"],
-  "publisher_properties": [
-    { "publisher_domain": "youtube.com", "selection_type": "all" }
-  ],
-  "placements": [
-    { "placement_id": "pre_roll", "name": "Pre-roll (15s)" },
-    { "placement_id": "mid_roll", "name": "Mid-roll (30s)" }
-  ],
-  "delivery_type": "non_guaranteed",
-  "pricing_options": [
-    {
-      "pricing_option_id": "ros_cpm",
-      "pricing_model": "cpm",
-      "floor_price": 35.00,
-      "price_guidance": { "p50": 45.00, "p75": 55.00 },
-      "currency": "USD",
-      "min_spend_per_package": 50000
-    }
-  ]
-}
-```
-
-Non-guaranteed delivery, CPM pricing, lower commitment. The creator equivalent of scatter TV.
-
-### The creator AS the creative
-
-Here's where it gets interesting. A brand doesn't just want to run ads around creator content — they want the creator IN their ads. The Stokes Twins appearing in a Feastables commercial. MrBeast's voice in an AI-generated audio ad. A creator's likeness on a billboard.
-
-This isn't inventory. It's creative. And AdCP models it through [Brand Protocol rights licensing](/docs/brand-protocol/for-rights-holders), not Media Buy.
-
-The creator's `brand.json` declares licensable rights:
-
-```json
-{
-  "name": "Jimmy Donaldson",
-  "url": "https://mrbeast.example.com",
-  "type": "talent",
-  "rights": {
-    "agent_url": "https://rights.mrbeast.example.com",
-    "right_types": ["talent"],
-    "summary": "Licensable likeness and voice for AI-generated advertising creative. Managed by Night Media."
-  }
-}
-```
-
-A buyer agent calls `get_rights`, receives pricing and scope, and calls `acquire_rights` to get generation credentials — scoped keys that authorize specific AI providers to generate content featuring the licensed talent. The creator's agency maintains approval rules, content restrictions, and geographic limits.
-
-<Tip>
-A brand might sponsor Beast Games (media buy through the studio's sales agent) AND license Jimmy's likeness for AI-generated display ads (rights acquisition through Brand Protocol). Two revenue streams, one sales agent, one brief.
-</Tip>
-
-## The audience is the asset
-
-At Stage 1, YouTube owns the audience data. At Stage 3, the creator does. The progression from "YouTube knows who watches my videos" to "I know who my fans are, where they live, what they buy, and which platforms they use" is the real power shift.
-
-Creator studios sit on first-party audience data that most publishers would envy. When fans opt into a community — subscribing, joining a membership tier, buying merch, downloading an app — they provide verified data. Not modeled lookalikes. Not probabilistic segments. Real people with real demographics.
-
-AdCP's [Signals protocol](/docs/signals/overview) lets studios expose this data to buyer agents:
-
-```json
-{
-  "signals": [
-    {
-      "signal_id": "beast_verified_fans_18_34",
-      "name": "Beast Games Verified Fans — 18-34",
-      "description": "Opted-in fan community members aged 18-34 with verified demographics. Cross-platform engagement across YouTube, Prime Video, and Beast mobile app.",
-      "signal_type": "audience",
-      "reach": {
-        "estimated_size": 12000000,
-        "unit": "individuals"
-      },
-      "dimensions": [
-        { "dimension": "age", "values": ["18-24", "25-34"] },
-        { "dimension": "engagement", "values": ["high"] },
-        { "dimension": "platform", "values": ["youtube", "prime_video", "mobile_app"] }
-      ],
-      "data_source": {
-        "type": "first_party",
-        "collection_method": "opt_in",
-        "refresh_frequency": "daily"
-      },
-      "activation": {
-        "pricing_model": "cpm",
-        "price": 8.50,
-        "currency": "USD"
-      }
-    },
-    {
-      "signal_id": "beast_purchasers",
-      "name": "Feastables Purchasers",
-      "description": "Fans who have purchased Feastables products. Deterministic purchase data from e-commerce and retail partners.",
-      "signal_type": "audience",
-      "reach": {
-        "estimated_size": 3500000,
-        "unit": "individuals"
-      },
-      "dimensions": [
-        { "dimension": "purchase_recency", "values": ["30d", "90d", "365d"] },
-        { "dimension": "purchase_channel", "values": ["ecommerce", "retail"] }
-      ],
-      "data_source": {
-        "type": "first_party",
-        "collection_method": "transaction",
-        "refresh_frequency": "daily"
-      },
-      "activation": {
-        "pricing_model": "cpm",
-        "price": 12.00,
-        "currency": "USD"
-      }
-    }
-  ]
-}
-```
-
-This is the creator equivalent of a retailer's first-party shopper data — except instead of purchase history at a store, it's engagement history with content. And because creators build audiences across platforms, the graph spans devices and surfaces in a way single-platform data cannot.
-
-The Feastables purchaser segment is particularly powerful. This is a creator who has closed the loop between content and commerce — they know not just who watches, but who buys. That's deterministic purchase data at scale, available as a signal for any buyer agent.
-
-## Selling content before it exists
-
-Creator studios produce content on a schedule. A weekly YouTube series has a known cadence. A seasonal CTV show has a planned episode count. A live event has a date. This temporal structure is what makes creator inventory reservable.
-
-### The reservation spectrum
-
-| Buying mode | AdCP model | Commitment |
-|---|---|---|
-| **Upfront** (full season) | Guaranteed, `show_ids` only, `flat_rate` | Highest — locked in before production |
-| **Episode reservation** | Guaranteed, specific `episodes` | High — specific dates and content |
-| **Scatter** | Non-guaranteed, `show_ids` only, CPM | Medium — any episode during flight |
-| **Back-catalog** | Non-guaranteed, `status: "published"` | Lowest — already-aired content |
-
-### Tentative inventory
-
-Not all content is confirmed in advance. A creator might plan 12 episodes but only have the first 4 in production:
-
-```json
-{
-  "episode_id": "s2e08",
-  "name": "TBD — Production in progress",
-  "scheduled_at": "2026-11-03T20:00:00Z",
-  "status": "tentative",
-  "valid_until": "2026-10-15T00:00:00Z"
-}
-```
-
-A `tentative` episode with a `valid_until` date tells the buyer agent: this might happen, but check back before committing budget. This is how studios sell against their production pipeline without overpromising.
-
-## Concept mapping
-
-| Creator economy concept | AdCP equivalent | Reference |
-|---|---|---|
-| Creator studio / network | Sales agent (MCP server) | [`adagents.json`](/docs/governance/property/adagents) |
-| Brand deal | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
-| YouTube series, podcast, CTV show | Show with `distribution` | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) |
-| Weekly upload, premiere, finale | Episode with `scheduled_at` + `status` | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) |
-| Branded integration | `product_placement` channel | [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
-| Pre-roll, mid-roll, host read | Placement on product | [Placements](/docs/media-buy/product-discovery/media-products#placements) |
-| Season sponsorship (upfront) | Guaranteed + `flat_rate` | [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) |
-| Run-of-show | `show_ids` without episodes | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes#run-of-show-no-specific-episodes) |
-| Clips, highlights, BTS | `derivative_of` on episodes | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes#related-shows-and-derivative-content) |
-| Fan community data | Signal audience via `get_signals` | [Signals](/docs/signals/overview) |
-| Cross-platform audience graph | Multi-dimensional signals | [Signals](/docs/signals/overview) |
-| Talent licensing | `get_rights` / `acquire_rights` | [For rights holders](/docs/brand-protocol/for-rights-holders) |
-| Creator's brand identity | `brand.json` | [Brand identity](/docs/brand-protocol/brand-json) |
-| DTC product catalog | `sync_catalogs` as buyer | [Catalogs](/docs/creative/catalogs) |
-
-## End-to-end: brand buys into a creator ecosystem
-
-<Steps>
-
-### Discover inventory
-
-A buyer agent queries `get_products` with a brief:
+<img src="/docs/images/guides/creator-economy/convergence.png" alt="A creator stands at the center of four overlapping colored spotlights — publisher, advertiser, talent, data company — all converging into one person" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
+The root cause: a creator studio collapses four ad tech roles into one entity. Halfmoon is the **publisher** (Juno's shows run on YouTube, TikTok, and StreamHaus CTV). They are the **advertiser** (Juno's Pantry buys media on those same platforms). Juno is the **talent** (her likeness has commercial value independent of any specific show). And Halfmoon is the **data company** (200K opted-in fans with verified demographics, plus deterministic purchase data from the DTC business).
+
+Traditional ad tech has a separate stack for each of those roles. Ren needs one stack for all of them.
+
+## The agentic storefront
+
+Ren builds one AdCP sales agent — a single storefront that knows Halfmoon's entire inventory and speaks to any buyer agent that shows up.
+
+The storefront exposes everything Halfmoon sells — shows, episodes, sponsorships, product placements, audience data, talent rights — through one protocol. Buyer agents arrive with campaign briefs. Ren's agent matches them to the right products at the right price, without Ren triple-selling the same premiere episode or underpricing Juno's audience data because he forgot he had it.
+
+Now Ren can focus on what matters — helping Juno make great content and growing the business — while agents handle the mechanics of ads, sponsorships, and product placements.
+
+Here's what that looks like when a buyer shows up.
+
+### A buyer agent sends a brief
+
+Sam Adeyemi at Pinnacle Agency is running a campaign for a snack brand. His buyer agent discovers Halfmoon's sales agent through the [registry](https://agenticadvertising.org/registry) and sends a brief via [`get_products`](/docs/media-buy/task-reference/get_products):
+
+<Accordion title="The brief Sam's agent sends">
 ```json
 {
   "buying_mode": "brief",
-  "brief": "Snack brand targeting Gen Z males. Looking for high-engagement creator content with branded integration opportunities. Q4 2026.",
-  "brand": { "domain": "feastables.example.com" },
+  "brief": "Snack brand targeting Gen Z foodies. Looking for creator content with branded integration and high engagement. Q4 2026.",
+  "brand": { "domain": "snackco.example.com" },
   "filters": {
-    "channels": ["product_placement", "influencer"],
+    "channels": ["product_placement"],
     "start_date": "2026-10-01",
     "end_date": "2026-12-31"
   }
 }
 ```
+</Accordion>
 
-The studio returns shows, episodes, and products at multiple commitment levels — season sponsorship, episode-specific, scatter, highlights.
+Ren's agent evaluates the brief against Halfmoon's catalog and returns only what matches — a season sponsorship on *The Juno Table* and branded integrations on *Quick Fire*. Not a dump of everything in inventory. A curated response to what the buyer actually asked for.
 
-### Validate audience
+The response includes the shows those products reference, so Sam's agent understands the content, the distribution footprint, the talent, and the pricing — all from one call.
 
-Before committing budget, query `get_signals` for verified audience data:
+### Sam's agent validates the audience
 
+Before committing budget, Sam's agent calls [`get_signals`](/docs/signals/tasks/get_signals) to check Halfmoon's first-party audience data:
+
+<Accordion title="The signals conversation">
 ```json
 {
-  "query": "Males 18-34 with high engagement, interested in food and gaming",
-  "signal_types": ["audience"]
+  "signal_spec": "Gen Z foodies with high engagement, interested in cooking and food products"
 }
 ```
 
-The studio returns first-party segments with reach estimates, demographic breakdowns, and activation pricing. Verified data, not follower counts.
-
-### Check talent availability
-
-If the brand wants the creator IN their ads (not just around their content), resolve `brand.json` from the show's `talent` array and call `get_rights`:
+Ren's agent returns two segments:
 
 ```json
 {
-  "brief": "License talent likeness for AI-generated social display ads promoting snack products in the US. 3-month term.",
-  "right_types": ["talent"],
-  "territory": ["US"],
-  "formats": ["display", "social"],
-  "term": { "months": 3 }
-}
-```
-
-Instant response with pricing, restrictions, and exclusivity status — no weeks of email negotiation.
-
-### Create media buy
-
-Combine guaranteed sponsorship with scatter and highlights in a single buy:
-
-```json
-{
-  "buyer_ref": "feastables_beast_q4",
-  "account": { "account_id": "acct_feastables_beast_001" },
-  "brand": { "domain": "feastables.example.com" },
-  "start_time": "2026-10-01T00:00:00Z",
-  "end_time": "2026-12-31T23:59:59Z",
-  "packages": [
+  "message": "Found 2 segments. 'Verified Fans 18-24' has 65% coverage, already activated. 'Juno's Pantry Purchasers' has deterministic purchase data — higher value, 12% coverage.",
+  "signals": [
     {
-      "buyer_ref": "title_sponsor",
-      "product_id": "beast_games_s2_title_sponsor",
-      "pricing_option_id": "season_flat",
-      "budget": 5000000
-    },
-    {
-      "buyer_ref": "scatter_youtube",
-      "product_id": "beast_games_s2_scatter",
-      "pricing_option_id": "ros_cpm",
-      "budget": 200000,
-      "bid_price": 48.00,
-      "pacing": "even"
-    },
-    {
-      "buyer_ref": "highlights",
-      "product_id": "beast_highlights_package",
-      "pricing_option_id": "highlights_cpm",
-      "budget": 75000,
-      "bid_price": 22.00,
-      "pacing": "even"
-    }
-  ]
-}
-```
-
-### Track delivery
-
-Episode-level breakdowns show which content drives the most engagement:
-
-```json
-{
-  "reporting_period": {
-    "start": "2026-10-01T00:00:00Z",
-    "end": "2026-10-14T23:59:59Z"
-  },
-  "currency": "USD",
-  "media_buy_deliveries": [
-    {
-      "media_buy_id": "mb_beast_001",
-      "buyer_ref": "feastables_beast_q4",
-      "status": "active",
-      "totals": { "impressions": 45000000, "spend": 523000 },
-      "by_package": [
+      "signal_agent_segment_id": "verified_fans_18_24",
+      "name": "Verified Fans — 18-24",
+      "description": "Opted-in community members with verified demographics and high content engagement",
+      "signal_type": "owned",
+      "data_provider": "Halfmoon Studios",
+      "coverage_percentage": 65,
+      "deployments": [
         {
-          "package_id": "pkg_title_001",
-          "buyer_ref": "title_sponsor",
-          "pricing_model": "flat_rate",
-          "currency": "USD",
-          "impressions": 38000000,
-          "spend": 416667,
-          "clicks": 1200000,
-          "engagements": 4500000,
-          "delivery_status": "delivering",
-          "by_episode": [
-            { "episode_id": "s2e01_the_drop", "impressions": 22000000, "engagements": 2800000 },
-            { "episode_id": "s2e02", "impressions": 16000000, "engagements": 1700000 }
-          ]
-        },
-        {
-          "package_id": "pkg_scatter_001",
-          "buyer_ref": "scatter_youtube",
-          "pricing_model": "cpm",
-          "rate": 46.50,
-          "currency": "USD",
-          "impressions": 5000000,
-          "spend": 232500,
-          "delivery_status": "delivering"
+          "type": "agent",
+          "agent_url": "https://sales.halfmoonstudios.example.com",
+          "is_live": true,
+          "activation_key": { "type": "segment_id", "segment_id": "hm_fans_18_24" }
         }
+      ],
+      "pricing_options": [
+        { "pricing_option_id": "fans_cpm", "model": "cpm", "cpm": 8.50, "currency": "USD" }
+      ]
+    },
+    {
+      "signal_agent_segment_id": "pantry_purchasers",
+      "name": "Juno's Pantry Purchasers",
+      "description": "Fans who have purchased products through e-commerce. Deterministic purchase data.",
+      "signal_type": "owned",
+      "data_provider": "Halfmoon Studios",
+      "coverage_percentage": 12,
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://sales.halfmoonstudios.example.com",
+          "is_live": true,
+          "activation_key": { "type": "segment_id", "segment_id": "hm_purchasers" }
+        }
+      ],
+      "pricing_options": [
+        { "pricing_option_id": "purchasers_cpm", "model": "cpm", "cpm": 12.00, "currency": "USD" }
       ]
     }
   ]
 }
 ```
+</Accordion>
 
-</Steps>
+The Pantry purchaser segment is what closes the deal. Halfmoon has closed the loop between content and commerce — they know not just who watches Juno, but who buys her products. That's deterministic purchase data, not modeled lookalikes.
 
-## Best practices
+### Sam's agent checks talent rights
 
-### For creator studios (sellers)
+The snack brand wants Juno in their ads, not just ads around her content. Sam's agent follows the `brand_url` from the show's talent array and calls [`get_rights`](/docs/brand-protocol/tasks/get_rights) on Juno's brand agent:
 
-1. **Model shows with full distribution** — include all platforms in `distribution` so buyer agents can evaluate cross-platform reach
-2. **Declare talent with brand.json links** — connect talent to their identity via `brand_url` so buyers can evaluate brand safety and discover licensing in one step
-3. **Offer multiple buying modes** — season sponsorships (guaranteed, flat rate), episode-specific (guaranteed, per-episode), scatter (non-guaranteed, CPM), and highlights for the same show
-4. **Use episode status honestly** — mark episodes `tentative` when production isn't confirmed. Include `valid_until`. Overselling tentative inventory damages trust
-5. **Expose audience data via signals** — your first-party fan community data is a product. Surface it through `get_signals` with clear data source declarations
-6. **Connect derivative content** — link highlights, clips, and BTS to source episodes via `derivative_of`
-7. **Set channels explicitly** — `product_placement` for branded integrations, `influencer` for standard ad placements
+<Accordion title="The rights conversation">
+```json
+{
+  "query": "Creator likeness for AI-generated social ads promoting snack products in the US, 3-month term",
+  "uses": ["likeness"],
+  "buyer_brand": { "domain": "snackco.example.com" },
+  "countries": ["US"]
+}
+```
 
-### For brands (buyers)
+The brand agent checks compatibility, clears against existing contracts, and returns:
 
-1. **Start with the brief** — describe what you need in natural language. The studio's agent matches your brief to shows, episodes, and audience segments
-2. **Validate audience with signals** — query `get_signals` for verified first-party data before committing budget
-3. **Mix buying modes** — guaranteed sponsorship anchors brand presence; scatter fills gaps; highlights extend the tail
-4. **Check talent availability early** — if you want the creator IN your ads, query `get_rights` during planning. Exclusivity windows may affect timing
-5. **Use episode-level delivery data** — `by_episode` breakdowns reveal which content drives engagement
-6. **Evaluate cross-platform distribution** — the same show on YouTube, Prime Video, and TikTok reaches different segments on each surface
+```json
+{
+  "rights": [
+    {
+      "rights_id": "juno_likeness_social",
+      "brand_id": "juno_park",
+      "name": "Juno Park",
+      "description": "Food and travel creator, 8M+ subscribers, host of The Juno Table",
+      "right_type": "talent",
+      "match_score": 0.91,
+      "match_reasons": [
+        "Available for food/snack brands in US",
+        "Within typical budget range",
+        "Brand alignment: food products fit creator's existing partnerships"
+      ],
+      "available_uses": ["likeness", "voice", "name"],
+      "countries": ["US", "CA"],
+      "pricing_options": [
+        {
+          "pricing_option_id": "monthly_likeness",
+          "model": "flat_rate",
+          "price": 4500,
+          "currency": "USD",
+          "period": "monthly",
+          "uses": ["likeness"],
+          "impression_cap": 500000,
+          "overage_cpm": 5.00
+        }
+      ],
+      "content_restrictions": ["approval_required"],
+      "preview_assets": [
+        { "url": "https://cdn.halfmoonstudios.example.com/talent/juno-headshot.jpg", "usage": "preview_only" }
+      ]
+    }
+  ]
+}
+```
+</Accordion>
 
-## Related documentation
+Ren configured the pricing, geographic limits, and approval requirements. The protocol handles discovery and matching. When Sam's agent is ready, it calls [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) with the `pricing_option_id` and gets back generation credentials — scoped keys that authorize specific AI providers to create content featuring Juno.
+
+<Tip>
+A brand can sponsor *The Juno Table* (media buy through Halfmoon's sales agent) AND license Juno's likeness for AI-generated display ads (rights acquisition through Brand Protocol). Two revenue streams, one conversation.
+</Tip>
+
+### Sam's agent books the deal
+
+Everything discovered, validated, and priced. Sam's agent calls [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) combining a season sponsorship with scatter in a single buy.
+
+<Accordion title="The media buy">
+```json
+{
+  "buyer_ref": "snackco_halfmoon_q4",
+  "brand": { "domain": "snackco.example.com" },
+  "start_time": "2026-10-01T00:00:00Z",
+  "end_time": "2026-12-31T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "juno_table_sponsor",
+      "product_id": "jt_s4_title_sponsor",
+      "pricing_option_id": "season_flat",
+      "budget": 180000
+    },
+    {
+      "buyer_ref": "quick_fire_scatter",
+      "product_id": "qf_scatter",
+      "pricing_option_id": "ros_cpm",
+      "budget": 25000,
+      "bid_price": 38.00,
+      "pacing": "even"
+    }
+  ]
+}
+```
+</Accordion>
+
+From brief to booked. Ren didn't touch a spreadsheet. Sam didn't send an email. The agents had a structured conversation, and every response was machine-readable, validated against schemas, and ready to execute.
+
+## What the protocol actually does
+
+That end-to-end flow touched five AdCP capabilities in one conversation:
+
+| What happened | What it solved for Ren |
+|---|---|
+| Buyer discovered Halfmoon's agent | No more cold outreach or missed inbound leads |
+| Agent matched the brief to the right products | No more generic rate cards — curated response to each buyer's needs |
+| Buyer validated the audience before committing | Ren's first-party data becomes a selling point, not an afterthought |
+| Buyer checked talent availability and pricing | No more back-and-forth with Juno's agent — rights are discoverable |
+| Buyer booked a multi-product deal in one call | No more stitching together sponsorship + scatter + rights across email threads |
+
+And this happens with every buyer agent that shows up. Ren set up the storefront once. It handles the next hundred conversations the same way.
+
+## What the storefront sells
+
+<img src="/docs/images/guides/creator-economy/content-commerce-creative.png" alt="Overhead view of a workspace where content tools, commerce products, and creative materials flow together toward a central glowing laptop" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+### Shows, episodes, and sponsorships
+
+Ren's sales agent declares Halfmoon's shows with cross-platform [`distribution`](/docs/media-buy/product-discovery/shows-and-episodes), schedules episodes with temporal status, and offers products at multiple commitment levels:
+
+| What Ren sells | How it works |
+|---|---|
+| Season sponsorship (*The Juno Table* S4) | Guaranteed, `flat_rate`, `exclusivity: "category"` — one snack brand per season |
+| Episode-specific deal (premiere, finale, guest specials) | Guaranteed, specific `episodes` array with `scheduled_at` dates |
+| Branded integration | `product_placement` channel with placements (title card, in-episode, outro) |
+| Run-of-show scatter (*Quick Fire*) | Non-guaranteed, CPM pricing, `show_ids` without specific episodes |
+| Back-catalog | Non-guaranteed against episodes with `status: "published"` |
+
+A `tentative` episode with a `valid_until` date tells buyer agents: this might happen, but check back before committing budget. An `upcoming` show means inventory exists for reservation before production starts.
+
+Meanwhile, [StreamHaus](/docs/intro) (where Priya Nair runs ad products) sells programmatic pre-roll and mid-roll around the same *Juno Table* episodes on CTV. Same content, different agents, different commercial models — the protocol handles both.
+
+<img src="/docs/images/guides/creator-economy/episode-products.png" alt="A director's chair at center with five glowing paths radiating to different screens — one episode becoming five products" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+A single episode generates an entire product portfolio. The full episode airs on CTV. A highlight reel goes to YouTube Shorts. Behind-the-scenes goes to the secondary channel. A trailer drops on TikTok. AdCP's `derivative_of` links clips to their source episode (inheriting brand safety context), and `related_shows` connects companion content to the main show.
+
+### Audience data
+
+Ren's 200K opted-in fans and Juno's Pantry purchase data are products in their own right. The [Signals protocol](/docs/signals/overview) exposes them through `get_signals` with real deployment details, activation keys, and pricing.
+
+The key distinction: this isn't platform analytics. YouTube doesn't share subscriber-level data with creators. The signals Ren exposes are data Halfmoon actually owns — from their community platform, their e-commerce store, their mobile app. Studios that have built this infrastructure sit on some of the most valuable first-party data in media.
+
+### Talent rights
+
+Juno's face, voice, and likeness have commercial value independent of any specific show. The [Brand Protocol](/docs/brand-protocol/for-rights-holders) lets buyer agents discover and license talent through `get_rights` and `acquire_rights`. Ren sets the rules — pricing, geographic limits, content restrictions, approval requirements.
+
+AI-generated creative using licensed talent likeness is an emerging market. The protocol provides the infrastructure so that when a brand wants Juno in their ad, there's a machine-readable path from discovery to generation credentials.
+
+### DTC brand (as a buyer)
+
+Juno's Pantry buys media on Instagram and TikTok using its own buyer agent. Halfmoon is simultaneously a seller (of Juno's shows and audience) and a buyer (of ads for the hot sauce line). One protocol in both directions.
+
+## How the storefront grows with you
+
+<img src="/docs/images/guides/creator-economy/three-stages.png" alt="Three connected panels showing a creator's power shift: dwarfed by a platform shadow, then negotiating as equals, then towering over platforms at the head of a boardroom" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+### Starting out: you are the metadata
+
+You create content on other people's platforms. They own the ad sales. You get a revenue share. At this stage, the **platform** runs the sales agent. Your content appears as a `talent` entry on a show object. You control one thing: your [`brand.json`](/docs/brand-protocol/brand-json), which establishes your identity and declares your likeness as licensable. That `brand_url` is the seed.
+
+### Growing up: you run the storefront
+
+The audience follows you, not the platform. Your manager or MCN runs an AdCP sales agent on your behalf, alongside the platform's. You sell guaranteed sponsorships while the platform sells scatter. Same show, same episodes, different products from different agents. This is where Ren is today.
+
+### At scale: you are the platform
+
+You own the distribution, the audience data, the ad sales, the commerce. Your storefront is the primary sales channel. Buyer agents come to you. The protocol doesn't care whether you're a media conglomerate or a person with a camera. The primitives are the same. That's the point.
+
+## So you launch a storefront. Then what?
+
+The moment Ren's sales agent goes live, Halfmoon's inventory is one prompt away from every media buyer in the world.
+
+An agency strategist asks their planning tool: "Find me food creators with branded integration inventory and first-party purchase data for Q4." Halfmoon shows up — not because Ren pitched them, not because someone forwarded a deck, but because the storefront is discoverable through the [registry](https://agenticadvertising.org/registry) and speaks the same protocol as every buyer agent.
+
+A small DTC brand without an agency asks their AI assistant: "I sell hot sauce and I want to sponsor a cooking show. What's available under $50K?" Ren's agent responds with *Quick Fire* scatter packages — a deal that never would have happened through traditional sales channels, because no one at Halfmoon would have taken that call.
+
+This is the shift. In traditional media sales, your reach is limited by your sales team's rolodex. With an agentic storefront, your reach is limited by the quality of your content.
+
+Agentic marketplaces will emerge to make this even more powerful — matching the right brands with the right creators based on audience fit, brand alignment, and campaign objectives. Some will be built by platforms. Some by agencies. Some by organizations like the [Agentic Advertising Organization](https://agenticadvertising.org). But they all speak AdCP, and they all connect to your storefront.
+
+Ren's job stops being "find buyers and negotiate deals." It becomes: help Juno build an incredible content brand that buyers want to be part of. The agents handle the rest.
+
+## Quick reference
+
+| Creator economy concept | AdCP equivalent | Reference |
+|---|---|---|
+| Creator studio | Sales agent (MCP server) | [`adagents.json`](/docs/governance/property/adagents) |
+| Brand deal | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
+| YouTube series, podcast, CTV show | Show with `distribution` | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) |
+| Weekly upload, premiere, finale | Episode with `scheduled_at` + `status` | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) |
+| Branded integration | `product_placement` channel | [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
+| Pre-roll, mid-roll, host read | Placement on product | [Placements](/docs/media-buy/product-discovery/media-products#placements) |
+| Season sponsorship | Guaranteed + `flat_rate` | [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) |
+| Run-of-show | `show_ids` without episodes | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes#run-of-show-no-specific-episodes) |
+| Clips, highlights, BTS | `derivative_of` on episodes | [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes#related-shows-and-derivative-content) |
+| Fan community data | `get_signals` with `signal_type: "owned"` | [Signals](/docs/signals/overview) |
+| Talent licensing | `get_rights` / `acquire_rights` | [For rights holders](/docs/brand-protocol/for-rights-holders) |
+| Creator's brand identity | `brand.json` | [Brand identity](/docs/brand-protocol/brand-json) |
+| DTC product catalog | `sync_catalogs` as buyer | [Catalogs](/docs/creative/catalogs) |
+
+## Get started
 
 <CardGroup cols={2}>
+  <Card title="Build a sales agent" icon="store" href="/docs/building/integration/accounts-and-agents">
+    Set up the agentic storefront for your studio — accounts, products, shows, and episodes.
+  </Card>
   <Card title="Shows and episodes" icon="tv" href="/docs/media-buy/product-discovery/shows-and-episodes">
-    Full reference for shows, episodes, distribution identifiers, and temporal inventory.
-  </Card>
-  <Card title="Media products" icon="box" href="/docs/media-buy/product-discovery/media-products">
-    Product model — pricing, delivery types, placements, and format references.
-  </Card>
-  <Card title="For rights holders" icon="shield" href="/docs/brand-protocol/for-rights-holders">
-    How talent controls AI-generated likeness use through AdCP.
+    Model your content catalog with cross-platform distribution, temporal scheduling, and derivative content.
   </Card>
   <Card title="Signals" icon="signal" href="/docs/signals/overview">
-    Audience data discovery, activation, and pricing.
+    Expose your first-party audience data as activatable signals for buyer agents.
   </Card>
-  <Card title="Media Channel Taxonomy" icon="layer-group" href="/docs/reference/media-channel-taxonomy">
-    Channel definitions including `influencer` and `product_placement`.
+  <Card title="Talent rights" icon="shield" href="/docs/brand-protocol/for-rights-holders">
+    Control how your talent's likeness is discovered, priced, and licensed through the protocol.
   </Card>
-  <Card title="Pricing models" icon="tag" href="/docs/media-buy/advanced-topics/pricing-models">
-    CPM, flat rate, CPCV, CPA, and time-based pricing.
+  <Card title="adagents.json" icon="file-code" href="/docs/governance/property/adagents">
+    Declare your properties and authorize your sales agent so buyer agents can find you.
+  </Card>
+  <Card title="Member registry" icon="users" href="https://agenticadvertising.org/registry">
+    Browse studios and brands already building on AdCP.
   </Card>
 </CardGroup>

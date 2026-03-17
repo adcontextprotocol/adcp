@@ -36,6 +36,16 @@ Maintain consistency with companies already in use across docs:
 | Bistro Oranje | Advertiser (restaurant chain, NL) | Carlos's rights licensing walkthrough |
 | Loti Entertainment | Talent agency | Rights licensing walkthrough |
 | Osei Natural | Small business (natural skincare, Nairobi) | Amara's company, homepage panels |
+| Halfmoon Studios | Creator studio (food/travel, LA, ~15 employees) | Ren's employer, creator economy guide |
+| Juno's Pantry | DTC brand (hot sauce/condiments) | Halfmoon's DTC line, creator economy guide |
+
+#### Halfmoon Studios content
+
+| Show | Format | Platform | Used in |
+|------|--------|----------|---------|
+| The Juno Table | Food/travel series, 45min, weekly, seasonal (S4) | YouTube + StreamHaus CTV | Creator economy guide (flagship sponsorship inventory) |
+| Quick Fire | Competitive cooking, 15min, twice weekly | YouTube + TikTok | Creator economy guide (scatter inventory, product placement) |
+| Passport Bites | Short-form clips, 60-90s | TikTok + YouTube Shorts | Creator economy guide (derivatives, audience pipeline) |
 
 ---
 
@@ -345,6 +355,40 @@ The AAO logo and homepage feature all three. Addie + Sage + the human cast repre
 
 ---
 
+### 12. Ren Castillo
+
+**Primary domain:** Creator economy / sell side
+**Company:** Halfmoon Studios (creator studio, ~15 employees, Los Angeles)
+**Title:** Head of operations
+**Certification module:** B1-B4 (Publisher track), S1 (Media buy specialist — sell side)
+
+**Who he is:** Ren runs the business side of Halfmoon Studios, the production and monetization operation behind Juno Park, a food and travel creator with about 8 million aggregate subscribers across YouTube, TikTok, and a growing CTV presence. Ren doesn't appear on camera — Juno does. Ren is the person who turned "Juno has a popular cooking channel" into a multi-show, multi-platform business with a DTC hot sauce line and a first-party audience of 200K opted-in fans. Before Halfmoon, Ren spent five years in podcast ad sales, so he understands inventory, yield, and the pain of selling unstructured creator inventory to programmatic buyers who speak a different language.
+
+**Personality:** Organized, commercially sharp, protective of Juno's brand but not precious about it. Thinks in revenue per episode, not vanity metrics. Gets frustrated when agencies treat creator inventory as "influencer" spend instead of premium media. Has a talent for translating what Juno wants ("I don't want to feel like a billboard") into commercial terms a buyer agent can evaluate (`content_restrictions: approval_required`). Moves fast but documents everything — he learned the hard way that handshake deals don't scale.
+
+**Why he anchors creator economy:** The creator economy guide needs someone who runs the storefront, not someone who makes the content. Ren is the person who built Halfmoon's AdCP sales agent, structured the show catalog, priced the sponsorship tiers, and exposed Juno's audience data as activatable signals. When Sam's buyer agent calls `get_products`, Ren designed that response. When Maya's agent checks talent rights for Juno's likeness, Ren set the pricing and restrictions. He fills the "creator sell side" gap the way Priya fills the "publisher sell side" gap — but his inventory is messier, more personal, and more vertically integrated.
+
+**Appears in other walkthroughs:** His sales agent is on the other end of Sam's creator economy buy. Priya knows Ren — StreamHaus distributes *The Juno Table* on CTV, so Priya's agent and Ren's agent both sell against the same content (Priya sells scatter, Ren sells sponsorships). Maya's creative agent syncs assets to Ren's system. Tomoko's Nova Motors is evaluating a sponsorship on one of Juno's shows.
+
+**Visual description:**
+- Man, early 30s
+- Filipino heritage, medium brown skin, thick black hair worn in a short textured crop
+- No glasses
+- Wears a fitted crewneck sweatshirt with a lanyard and badge — looks like he's backstage at a production, not in a corner office
+- Often shown with a tablet, reviewing schedules or deal terms on the move
+- Lean build, slightly shorter than Sam
+- Distinguishing feature: the lanyard and badge signal "production operations" immediately; the tablet-in-hand posture differentiates him from desk-bound characters
+
+**Demographic signals:** Filipino-American man
+
+#### The talent: Juno Park
+
+Food and travel creator. Korean-American, mid-20s. Started with a YouTube cooking channel in college and grew into a multi-format media personality. Her content ranges from street food travel series to competitive cooking to short-form recipe content. She has strong opinions about ingredient sourcing and no patience for scripted brand integrations — everything has to feel like her. She trusts Ren to handle the business so she can focus on making things she's proud of.
+
+Juno is not a full character in the cast — she's the talent that Ren manages. She appears in show metadata (`talent` arrays) and `brand.json`, not in walkthrough narratives.
+
+---
+
 ## Cast summary
 
 | # | Name | Company | Type | Role | Primary domain | Visual anchor |
@@ -359,6 +403,8 @@ The AAO logo and homepage feature all three. Addie + Sage + the human cast repre
 | 8 | Dayo Mensah | Pinnacle (fellow) | Emerging talent | Ad tech fellow | Certification / learning | Messenger bag, notebook, youngest face |
 | 9 | Sage | AdCP | Protocol identity | Protocol guide | AdCP docs | Teal robot, no emblem |
 | 10 | Addie | AgenticAdvertising.org | AI agent | AI agent | All (connective tissue) | Blue robot, org emblem, warm expression |
+| 11 | Amara Osei | Osei Natural | Small business | Founder | Homepage / outcomes | Bright blouse, shipping boxes |
+| 12 | Ren Castillo | Halfmoon Studios | Creator studio | Head of operations | Creator economy | Lanyard + badge, tablet in hand |
 
 ### Secondary characters (existing, keep as-is)
 
@@ -479,6 +525,12 @@ The AAO logo and homepage feature all three. Addie + Sage + the human cast repre
 | Addie connects Dayo to Sage | Addie → Dayo → Sage | Onboarding → certification | Community → protocol |
 | Addie helps Alex discover | Addie → Alex | Partner registry | Agent → member |
 | Addie facilitates Sam's campaign | Addie ↔ Sam | Media buy (first campaign) | Agent → buyer |
+| Sam discovers creator inventory | Sam → Ren | Media buy (get_products) | Buyer → Creator sell side |
+| Ren sells sponsorship, Priya sells scatter | Ren + Priya | Media buy (same show, different agents) | Parallel sell side |
+| Maya syncs creative to Ren's system | Maya → Ren | Creative (sync_creatives) | Buyer → Creator sell side |
+| Buyer checks Juno's likeness | Sam → Juno (via brand.json) | Brand Protocol (get_rights) | Buyer → Talent |
+| Ren exposes audience data | Ren → Sam | Signals (get_signals) | Creator sell side → Buyer |
+| Juno's Pantry buys media | Ren (as buyer) → Priya | Media buy (create_media_buy) | Creator buy side → Publisher |
 
 ---
 
@@ -487,7 +539,7 @@ The AAO logo and homepage feature all three. Addie + Sage + the human cast repre
 | Certification path | Primary character | Their scenario |
 |-------------------|-------------------|----------------|
 | A1-A3 (Basics) | Dayo (with Sage teaching, Addie onboarding) | "I'm new to ad tech — teach me how this industry works with agents" |
-| B1-B4 (Publisher track) | Priya | "How do I expose StreamHaus inventory to buyer agents?" |
+| B1-B4 (Publisher track) | Priya + Ren | "How do I expose inventory to buyer agents?" (Priya: publisher, Ren: creator studio) |
 | C1-C4 (Buyer track) | Sam | "How do I run a cross-platform campaign on AdCP?" |
 | D1-D4 (Platform track) | Kai | "How do I make Meridian Geo's data discoverable?" |
 | S1 (Media buy specialist) | Sam + Priya | Both sides of a media buy transaction |
@@ -516,6 +568,11 @@ These map to simulation fixtures and automated testing.
 | Rights licensing | Carlos | Pinnacle Media (NL) | get_rights, acquire_rights |
 | Certification onboarding | Dayo + Sage (via Addie) | Pinnacle (fellow) | A1-A3 module progression, assessment |
 | Partner discovery | Alex + Addie | Pinnacle Agency | Registry search, member connections |
+| Creator economy buy | Sam + Ren | Pinnacle + Halfmoon | get_products brief → creator inventory, create_media_buy |
+| Creator audience data | Sam + Ren | Pinnacle + Halfmoon | get_signals for owned first-party data |
+| Talent rights licensing | Sam → Juno (via Ren) | Pinnacle + Halfmoon | get_rights, acquire_rights for creator likeness |
+| Parallel sell side | Ren + Priya | Halfmoon + StreamHaus | Same show, different agents, different products |
+| Creator as buyer | Ren | Halfmoon (Juno's Pantry) | create_media_buy as advertiser on other platforms |
 
 ---
 
@@ -554,6 +611,7 @@ The cast should be instantly distinguishable in illustrations, even at thumbnail
 | Sage | N/A (robot) | Teal/emerald | N/A | No emblem, rounded form | Smaller than humans |
 | Addie | N/A (robot) | Blue/indigo | N/A | Org emblem, rounded form | Smaller than humans |
 | Amara | Natural hair puff | Dark brown | None | Bright colorful blouse | Average build |
+| Ren | Thick black, short textured crop | Medium brown | None | Crewneck sweatshirt, lanyard + badge | Lean, slightly short |
 
 ### Environment cues
 
@@ -569,6 +627,7 @@ Characters should appear in environments that match their company type:
 | Sage | AdCP documentation, protocol diagrams, schema references — protocol territory |
 | Addie | Appears in any environment — she's contextual, not location-bound |
 | Amara | Sunlit Nairobi workspace, product boxes, shipping materials — small business energy |
+| Ren | Production studio / backstage area — monitors showing content, shipping boxes for Juno's Pantry visible. Half creative studio, half fulfillment center. |
 
 ---
 
