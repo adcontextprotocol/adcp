@@ -1,7 +1,13 @@
 # fly.toml for AdCP Test Sales Agent
 # Deploy with: fly deploy -c fly.test-agent.toml
 #
-# This deploys the official AdCP test sales agent at test-agent.adcontextprotocol.org
+# DEPRECATED: The public test agent now uses the embedded training agent at
+# agenticadvertising.org/api/training-agent/mcp, which has proper pricing_options
+# on all products. This external deployment can be decommissioned once all
+# references to test-agent.adcontextprotocol.org are updated.
+# See: https://github.com/agenticadvertising/adcp/issues/1525
+#
+# Previously deployed the official AdCP test sales agent at test-agent.adcontextprotocol.org
 # using a published Docker image from the salesagent repository.
 
 app = "adcp-test-agent"

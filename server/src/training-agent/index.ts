@@ -20,6 +20,7 @@ import type { TrainingContext } from './types.js';
 const logger = createLogger('training-agent-routes');
 
 const TRAINING_AGENT_TOKEN = process.env.TRAINING_AGENT_TOKEN;
+const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
 const STARTUP_TIME = new Date().toISOString();
 
 // Permissive CORS: this is a sandbox training agent meant to be
@@ -38,12 +39,12 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 
 function requireToken(req: Request, res: Response, next: NextFunction): void {
-  if (!TRAINING_AGENT_TOKEN) {
-    // No token configured = dev mode, allow all
+  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN) {
+    // No tokens configured = dev mode, allow all
     return next();
   }
   const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ') || !constantTimeEqual(auth.slice(7), TRAINING_AGENT_TOKEN)) {
+  if (!auth || !auth.startsWith('Bearer ')) {
     res.status(401).json({
       jsonrpc: '2.0',
       id: null,
@@ -51,7 +52,17 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
     });
     return;
   }
-  next();
+  const token = auth.slice(7);
+  // Accept primary token or the documented public test agent token
+  if ((TRAINING_AGENT_TOKEN && constantTimeEqual(token, TRAINING_AGENT_TOKEN)) ||
+      (PUBLIC_TEST_AGENT_TOKEN && constantTimeEqual(token, PUBLIC_TEST_AGENT_TOKEN))) {
+    return next();
+  }
+  res.status(401).json({
+    jsonrpc: '2.0',
+    id: null,
+    error: { code: -32000, message: 'Invalid or missing bearer token' },
+  });
 }
 
 function getBaseUrl(req: Request): string {

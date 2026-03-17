@@ -55,11 +55,6 @@ const slackDb = new SlackDatabase();
  * Keys must be lowercase (hostnames are case-insensitive).
  */
 const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name: string }> = {
-  'test-agent.adcontextprotocol.org': {
-    org: 'adcontextprotocol',
-    repo: 'salesagent',
-    name: 'AdCP Reference Sales Agent',
-  },
   'wonderstruck.sales-agent.scope3.com': {
     org: 'adcontextprotocol',
     repo: 'salesagent',
@@ -81,11 +76,13 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
  * but defaults to the documented public token.
  */
 const PUBLIC_TEST_AGENT = {
-  url: 'https://test-agent.adcontextprotocol.org/mcp',
-  // Default token is documented at https://docs.adcontextprotocol.org/docs/quickstart
+  url: process.env.PUBLIC_TEST_AGENT_URL || 'https://agenticadvertising.org/api/training-agent/mcp',
   token: process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
   name: 'AdCP Public Test Agent',
 };
+
+// Legacy URL for backward compatibility — redirect to the training agent
+const LEGACY_TEST_AGENT_URL = 'https://test-agent.adcontextprotocol.org/mcp';
 
 /**
  * Known error patterns that indicate bugs in the @adcp/client testing library
@@ -2088,7 +2085,7 @@ export function createMemberToolHandlers(
   // E2E AGENT TESTING
   // ============================================
   handlers.set('test_adcp_agent', async (input) => {
-    const agentUrl = input.agent_url as string;
+    let agentUrl = input.agent_url as string;
     const scenarios = input.scenarios as TestScenario[] | undefined;
     const brief = input.brief as string | undefined;
     const budget = input.budget as number | undefined;
@@ -2102,6 +2099,7 @@ export function createMemberToolHandlers(
     let usingSavedToken = false;
     let usingSavedOAuthToken = false;
     let usingPublicTestAgent = false;
+    let redirectedFromLegacy = false;
     let savedAuthType: 'bearer' | 'basic' = 'bearer';
     const organizationId = memberContext?.organization?.workos_organization_id;
 
@@ -2152,7 +2150,16 @@ export function createMemberToolHandlers(
 
     // Auto-use public credentials for the public test agent.
     // Comes after saved token lookup so explicit user saves take precedence.
-    if (!authToken && agentUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
+    if (!authToken && (
+      agentUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase() ||
+      agentUrl.toLowerCase() === LEGACY_TEST_AGENT_URL.toLowerCase()
+    )) {
+      // Redirect legacy URL to the training agent
+      if (agentUrl.toLowerCase() === LEGACY_TEST_AGENT_URL.toLowerCase()) {
+        agentUrl = PUBLIC_TEST_AGENT.url;
+        redirectedFromLegacy = true;
+        logger.info({ legacyUrl: LEGACY_TEST_AGENT_URL, newUrl: agentUrl }, 'Redirecting legacy test agent URL to training agent');
+      }
       authToken = PUBLIC_TEST_AGENT.token;
       usingPublicTestAgent = true;
       logger.info({ agentUrl }, 'Using public test agent credentials');
@@ -2243,6 +2250,9 @@ export function createMemberToolHandlers(
       }
 
       let output = formatSuiteResults(suite);
+      if (redirectedFromLegacy) {
+        output = `_Note: \`test-agent.adcontextprotocol.org\` has been replaced by \`${PUBLIC_TEST_AGENT.url}\`. Update your configuration to use the new URL._\n\n` + output;
+      }
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
       } else if (usingSavedOAuthToken) {

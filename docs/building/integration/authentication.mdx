@@ -106,7 +106,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const transport = new StreamableHTTPClientTransport(
-  new URL('https://test-agent.adcontextprotocol.org/mcp'),
+  new URL('https://agenticadvertising.org/api/training-agent/mcp'),
   {
     requestInit: {
       headers: {
@@ -125,7 +125,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 async with streamablehttp_client(
-    "https://test-agent.adcontextprotocol.org/mcp",
+    "https://agenticadvertising.org/api/training-agent/mcp",
     headers={"Authorization": "Bearer YOUR_TOKEN_HERE"}
 ) as (read, write):
     async with ClientSession(read, write) as session:
@@ -243,7 +243,7 @@ Use the public test agent to validate your authentication setup:
 
 ```json
 {
-  "agent_uri": "https://test-agent.adcontextprotocol.org/mcp",
+  "agent_uri": "https://agenticadvertising.org/api/training-agent/mcp",
   "protocol": "mcp",
   "auth": {
     "type": "bearer",
