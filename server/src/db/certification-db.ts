@@ -72,6 +72,7 @@ export interface CertificationAttempt {
   id: string;
   workos_user_id: string;
   track_id: string;
+  module_id: string | null;
   status: 'in_progress' | 'passed' | 'failed';
   started_at: string;
   completed_at: string | null;
@@ -259,13 +260,14 @@ export async function checkPrerequisites(userId: string, moduleId: string): Prom
 export async function createAttempt(
   userId: string,
   trackId: string,
-  addieThreadId?: string
+  addieThreadId: string | undefined,
+  moduleId: string
 ): Promise<CertificationAttempt> {
   const result = await query<CertificationAttempt>(
-    `INSERT INTO certification_attempts (workos_user_id, track_id, addie_thread_id)
-     VALUES ($1, $2, $3)
+    `INSERT INTO certification_attempts (workos_user_id, track_id, addie_thread_id, module_id)
+     VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [userId, trackId, addieThreadId || null]
+    [userId, trackId, addieThreadId || null, moduleId]
   );
   return result.rows[0];
 }
