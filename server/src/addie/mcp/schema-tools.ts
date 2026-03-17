@@ -56,8 +56,7 @@ const ajvInstance = new Ajv({
       const schema = await fetchSchema(resolvedUrl);
       return schema as object;
     } catch {
-      // If fetch fails, let Ajv handle the error
-      return undefined;
+      throw new Error(`Failed to load schema: ${uri}`);
     }
   },
 });

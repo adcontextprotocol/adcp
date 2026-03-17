@@ -16,6 +16,7 @@ import { getMemberCapabilities } from "../db/outbound-db.js";
 import { canEngageSlackUser } from "../addie/services/relationship-orchestrator.js";
 import { computeEngagementOpportunities } from "../addie/services/engagement-planner.js";
 import type { MemberCapabilities } from "../addie/types.js";
+import type { PersonRelationship } from "../db/relationship-db.js";
 import * as relationshipDb from "../db/relationship-db.js";
 import { loadRelationshipContext } from "../addie/services/relationship-context.js";
 
@@ -307,29 +308,23 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               ).catch((err) => {
                 logger.warn({ err, slackUserId }, 'getRelationshipBySlackId timed out or failed');
                 return null;
-              }) as { stage: string; unreplied_outreach_count: number } | null;
+              }) as { person_id: string; stage: string; unreplied_outreach_count: number } | null;
 
               if (relationship) {
                 const relCtx = await withTimeout(
-                  loadRelationshipContext(relationship.id, { includeCommunity: true }),
+                  loadRelationshipContext(relationship.person_id, { includeCommunity: true }),
                   5000
                 ).catch((err) => {
-                  logger.warn({ err, relationshipId: relationship.id }, 'loadRelationshipContext timed out or failed');
+                  logger.warn({ err, relationshipId: relationship.person_id }, 'loadRelationshipContext timed out or failed');
                   return { profile: { capabilities: {}, company: null }, recentMessages: [], certification: null };
-                }) as { profile: { capabilities: {}; company: unknown }; recentMessages: unknown[]; certification: unknown };
-                const opportunities = await withTimeout(
-                  computeEngagementOpportunities({
-                    relationship,
+                }) as Awaited<ReturnType<typeof loadRelationshipContext>>;
+                const opportunities = computeEngagementOpportunities({
+                    relationship: relationship as unknown as PersonRelationship,
                     capabilities: relCtx.profile.capabilities,
                     company: relCtx.profile.company,
                     recentMessages: relCtx.recentMessages,
                     certification: relCtx.certification,
-                  }),
-                  5000
-                ).catch((err) => {
-                  logger.warn({ err, relationshipId: relationship.id }, 'computeEngagementOpportunities timed out or failed');
-                  return [];
-                }) as Array<{ id: string; description: string; dimension: string; relevance: number }>;
+                  });
 
                 (extendedContext as unknown as Record<string, unknown>).engagement = {
                   opportunities: opportunities.map(o => ({

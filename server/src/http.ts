@@ -5225,7 +5225,7 @@ Disallow: /api/admin/
 
         if (typeof parsedState?.mcp_pending_id === 'string') {
           const { handleMCPOAuthCallback } = await import('./mcp/oauth-provider.js');
-          return handleMCPOAuthCallback(req, res, code, parsedState.mcp_pending_id, callbackState);
+          return handleMCPOAuthCallback(req, res, code, parsedState.mcp_pending_id, state);
         }
       }
 
