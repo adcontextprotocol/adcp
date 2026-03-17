@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agreement - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
+  <style>
+    .agreement-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: var(--space-10) var(--space-5);
+    }
+    .agreement-meta {
+      color: var(--color-text-secondary, #666);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-8);
+      padding-bottom: var(--space-5);
+      border-bottom: 2px solid var(--color-border, #e0e0e0);
+    }
+    .agreement-content h1 { margin-top: var(--space-8); margin-bottom: var(--space-4); font-size: var(--text-2xl); }
+    .agreement-content h2 { margin-top: var(--space-8); margin-bottom: var(--space-4); font-size: var(--text-xl); }
+    .agreement-content h3 { margin-top: var(--space-6); margin-bottom: var(--space-3); font-size: var(--text-lg); }
+    .agreement-content p { margin-bottom: var(--space-4); line-height: 1.7; }
+    .agreement-content ul, .agreement-content ol { margin-bottom: var(--space-4); padding-left: var(--space-8); }
+    .agreement-content li { margin-bottom: var(--space-2); }
+    .agreement-error {
+      text-align: center;
+      padding: var(--space-16) var(--space-5);
+      color: var(--color-text-secondary, #666);
+    }
+    .agreement-loading {
+      text-align: center;
+      padding: var(--space-16) var(--space-5);
+      color: var(--color-text-secondary, #666);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <div class="agreement-container">
+    <div class="agreement-loading" id="loading">Loading...</div>
+    <div id="agreement" style="display:none">
+      <h1 id="agreement-title"></h1>
+      <div class="agreement-meta" id="agreement-meta"></div>
+      <div class="agreement-content" id="agreement-content"></div>
+    </div>
+    <div class="agreement-error" id="error" style="display:none">
+      <h2>Agreement not found</h2>
+      <p>The requested agreement could not be loaded.</p>
+    </div>
+  </div>
+
+  <script>
+    (async function() {
+      const params = new URLSearchParams(window.location.search);
+      const type = params.get('type');
+      const version = params.get('version');
+
+      if (!type) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        return;
+      }
+
+      const typeLabels = {
+        terms_of_service: 'Terms of Use',
+        privacy_policy: 'Privacy Policy',
+        membership: 'Membership Agreement',
+        bylaws: 'Bylaws',
+        ip_policy: 'IP Policy'
+      };
+
+      const qs = version ? `type=${type}&version=${version}&format=json` : `type=${type}&format=json`;
+
+      try {
+        const res = await fetch(`/api/agreement?${qs}`);
+        if (!res.ok) throw new Error('Not found');
+        const data = await res.json();
+
+        const label = typeLabels[type] || type;
+        document.title = `${label} - AgenticAdvertising.org`;
+        document.getElementById('agreement-title').textContent = label;
+        document.getElementById('agreement-meta').textContent =
+          `Version ${data.version} \u2022 Effective Date: ${new Date(data.effective_date).toLocaleDateString()}`;
+        document.getElementById('agreement-content').innerHTML = data.html || '';
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('agreement').style.display = 'block';
+      } catch {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+      }
+    })();
+  </script>
+</body>
+</html>
