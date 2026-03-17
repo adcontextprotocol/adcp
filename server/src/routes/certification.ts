@@ -175,7 +175,7 @@ export function createCertificationRouters() {
         });
       }
 
-      const progress = await certDb.startModule(userId, moduleId, req.body.addie_thread_id);
+      const progress = await certDb.startModule(userId, moduleId, req.body?.addie_thread_id);
       res.json(progress);
     } catch (error) {
       logger.error({ error, moduleId: req.params.id }, 'Failed to start module');

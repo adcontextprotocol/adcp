@@ -2224,7 +2224,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       return res.json({ name: agentName, description: agentInfo.description, protocols, type: agentType, stats });
     } catch (error) {
-      logger.error({ err: error, url }, "Public agent discovery error");
+      logger.warn({ err: error, url }, "Public agent discovery error");
 
       if (error instanceof Error && error.name === "TimeoutError") {
         return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within 10 seconds" });

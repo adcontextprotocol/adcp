@@ -19,7 +19,7 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    max: config.maxPoolSize || 20,
+    max: config.maxPoolSize || 10,
     idleTimeoutMillis: config.idleTimeoutMillis || 30000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 5000,
   });

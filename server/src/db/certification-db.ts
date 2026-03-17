@@ -595,7 +595,7 @@ export async function getOrgCertificationSummary(orgId: string): Promise<OrgCert
     `SELECT om.workos_user_id, u.first_name, u.last_name
      FROM organization_memberships om
      JOIN users u ON u.workos_user_id = om.workos_user_id
-     WHERE om.workos_organization_id = $1 AND om.status = 'active'`,
+     WHERE om.workos_organization_id = $1`,
     [orgId]
   );
 
@@ -707,10 +707,10 @@ export async function saveTeachingCheckpoint(checkpoint: {
       checkpoint.workos_user_id,
       checkpoint.module_id,
       checkpoint.thread_id || null,
-      checkpoint.concepts_covered,
-      checkpoint.concepts_remaining,
-      checkpoint.learner_strengths || [],
-      checkpoint.learner_gaps || [],
+      Array.isArray(checkpoint.concepts_covered) ? checkpoint.concepts_covered : [],
+      Array.isArray(checkpoint.concepts_remaining) ? checkpoint.concepts_remaining : [],
+      Array.isArray(checkpoint.learner_strengths) ? checkpoint.learner_strengths : [],
+      Array.isArray(checkpoint.learner_gaps) ? checkpoint.learner_gaps : [],
       checkpoint.current_phase,
       checkpoint.preliminary_scores ? JSON.stringify(checkpoint.preliminary_scores) : null,
       checkpoint.notes || null,
