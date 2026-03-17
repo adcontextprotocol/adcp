@@ -331,6 +331,17 @@
       min-height: 300px;
       font-family: var(--font-mono);
     }
+    .article-content h2 { font-size: 1.5rem; font-weight: 700; color: var(--color-text-heading); margin-top: 2rem; margin-bottom: 1rem; }
+    .article-content h3 { font-size: 1.25rem; font-weight: 600; color: var(--color-text-heading); margin-top: 1.5rem; margin-bottom: 0.75rem; }
+    .article-content p { font-size: 1.1rem; line-height: 1.8; color: var(--color-text-heading); margin-bottom: 1rem; }
+    .article-content ul, .article-content ol { margin: 1rem 0 1.5rem 1.5rem; color: var(--color-text-heading); }
+    .article-content li { margin-bottom: 0.5rem; font-size: 1.05rem; line-height: 1.7; }
+    .article-content strong { font-weight: 600; color: var(--color-text-heading); }
+    .article-content a { color: var(--color-brand); text-decoration: none; }
+    .article-content a:hover { text-decoration: underline; }
+    .article-content blockquote { border-left: 4px solid var(--color-brand); margin: 1.5rem 0; padding: 1rem 1.5rem; background: var(--color-bg-subtle); border-radius: 0 8px 8px 0; }
+    .article-content blockquote p { margin: 0; font-style: italic; }
+    .article-content hr { border: none; border-top: 1px solid var(--color-border); margin: 2rem 0; }
     .preview-pane {
       border: var(--border-1) solid var(--color-gray-200);
       border-radius: var(--radius-md);
@@ -619,12 +630,13 @@
 
   <!-- Review Modal -->
   <div id="reviewModal" class="modal-overlay">
-    <div class="modal" style="max-width: 600px;">
+    <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
       <h2>Review Content</h2>
       <div id="reviewContent">
         <h3 id="reviewTitle"></h3>
-        <p id="reviewExcerpt" style="color: var(--color-text-secondary); margin: var(--space-4) 0;"></p>
+        <p id="reviewExcerpt" style="color: var(--color-text-secondary); margin: var(--space-4) 0; font-style: italic;"></p>
         <div id="reviewDetails" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></div>
+        <div id="reviewArticleContent" class="article-content" style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--color-border);"></div>
       </div>
 
       <div class="form-group" style="margin-top: var(--space-5);">
@@ -1138,12 +1150,20 @@
       reviewingContent = item;
       document.getElementById('reviewTitle').textContent = item.title;
       document.getElementById('reviewExcerpt').textContent = item.excerpt || '';
-      document.getElementById('reviewDetails').innerHTML = `
+      document.getElementById('reviewDetails').innerHTML = DOMPurify.sanitize(`
         <p><strong>Type:</strong> ${item.content_type}</p>
         <p><strong>Collection:</strong> ${item.collection?.committee_name || 'Personal'}</p>
         <p><strong>Proposed by:</strong> ${item.proposer?.name || 'Unknown'}</p>
         <p><strong>Proposed:</strong> ${formatDate(item.proposed_at)}</p>
-      `;
+      `);
+      const articleContentEl = document.getElementById('reviewArticleContent');
+      if (item.content) {
+        articleContentEl.innerHTML = DOMPurify.sanitize(marked.parse(item.content, { async: false }));
+        articleContentEl.style.display = '';
+      } else {
+        articleContentEl.innerHTML = '';
+        articleContentEl.style.display = 'none';
+      }
       document.getElementById('rejectionReason').value = '';
       document.getElementById('reviewModal').style.display = 'flex';
     }
