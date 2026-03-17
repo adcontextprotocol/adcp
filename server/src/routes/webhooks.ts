@@ -24,6 +24,7 @@ import {
 } from '../db/industry-feeds-db.js';
 import {
   parseWebhookPayload as parseLumaWebhook,
+  verifyLumaWebhookSignature,
   type LumaWebhookPayload,
 } from '../luma/client.js';
 import { eventsDb } from '../db/events-db.js';
@@ -1031,56 +1032,94 @@ export function createWebhooksRouter(): Router {
   // Luma Webhooks
   // =========================================================================
 
-  router.post('/luma', async (req: Request, res: Response) => {
-    const requestStartTime = Date.now();
+  router.post(
+    '/luma',
+    // Custom middleware to capture raw body for signature verification
+    (req: Request, res: Response, next) => {
+      let rawBody = '';
+      req.setEncoding('utf8');
 
-    try {
-      logger.info({ body: req.body }, 'Received Luma webhook');
+      req.on('data', (chunk: string) => {
+        rawBody += chunk;
+      });
 
-      const payload = parseLumaWebhook(req.body);
-      if (!payload) {
-        logger.warn({ body: req.body }, 'Invalid Luma webhook payload');
-        return res.status(400).json({ error: 'Invalid payload' });
+      req.on('end', () => {
+        (req as Request & { rawBody: string }).rawBody = rawBody;
+        try {
+          req.body = JSON.parse(rawBody);
+          next();
+        } catch {
+          logger.warn({ rawBodyLength: rawBody.length }, 'Invalid JSON in Luma webhook request');
+          res.status(400).json({ error: 'Invalid JSON' });
+        }
+      });
+    },
+    async (req: Request, res: Response) => {
+      const requestStartTime = Date.now();
+
+      try {
+        const rawBody = (req as Request & { rawBody: string }).rawBody;
+
+        // Verify Luma webhook signature
+        const signature = req.headers['x-luma-signature'] as string | undefined;
+
+        if (!signature) {
+          logger.warn('Luma webhook missing signature header');
+          return res.status(401).json({ error: 'Missing signature' });
+        }
+
+        if (!verifyLumaWebhookSignature(rawBody, signature)) {
+          logger.warn('Luma webhook signature verification failed');
+          return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        logger.info({ bodyLength: rawBody.length }, 'Received Luma webhook');
+
+        const payload = parseLumaWebhook(req.body);
+        if (!payload) {
+          logger.warn({ body: req.body }, 'Invalid Luma webhook payload');
+          return res.status(400).json({ error: 'Invalid payload' });
+        }
+
+        logger.info({
+          action: payload.action,
+          apiId: payload.data.api_id,
+        }, 'Processing Luma webhook');
+
+        switch (payload.action) {
+          case 'guest.created':
+            await handleLumaGuestCreated(payload);
+            break;
+          case 'guest.updated':
+            await handleLumaGuestUpdated(payload);
+            break;
+          case 'event.updated':
+            await handleLumaEventUpdated(payload);
+            break;
+          case 'event.created':
+            // Events created via Luma directly are logged but not auto-synced
+            // (we create events from AAO, not vice versa)
+            logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.created webhook (not synced)');
+            break;
+          case 'event.deleted':
+            // Log but don't auto-delete our events
+            logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.deleted webhook (not synced)');
+            break;
+          default:
+            logger.warn({ action: payload.action }, 'Unknown Luma webhook action');
+        }
+
+        const totalDurationMs = Date.now() - requestStartTime;
+        logger.info({ action: payload.action, totalDurationMs }, 'Processed Luma webhook');
+
+        return res.status(200).json({ ok: true });
+      } catch (error) {
+        const totalDurationMs = Date.now() - requestStartTime;
+        logger.error({ error, totalDurationMs }, 'Error processing Luma webhook');
+        return res.status(500).json({ error: 'Internal error' });
       }
-
-      logger.info({
-        action: payload.action,
-        apiId: payload.data.api_id,
-      }, 'Processing Luma webhook');
-
-      switch (payload.action) {
-        case 'guest.created':
-          await handleLumaGuestCreated(payload);
-          break;
-        case 'guest.updated':
-          await handleLumaGuestUpdated(payload);
-          break;
-        case 'event.updated':
-          await handleLumaEventUpdated(payload);
-          break;
-        case 'event.created':
-          // Events created via Luma directly are logged but not auto-synced
-          // (we create events from AAO, not vice versa)
-          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.created webhook (not synced)');
-          break;
-        case 'event.deleted':
-          // Log but don't auto-delete our events
-          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.deleted webhook (not synced)');
-          break;
-        default:
-          logger.warn({ action: payload.action }, 'Unknown Luma webhook action');
-      }
-
-      const totalDurationMs = Date.now() - requestStartTime;
-      logger.info({ action: payload.action, totalDurationMs }, 'Processed Luma webhook');
-
-      return res.status(200).json({ ok: true });
-    } catch (error) {
-      const totalDurationMs = Date.now() - requestStartTime;
-      logger.error({ error, totalDurationMs }, 'Error processing Luma webhook');
-      return res.status(500).json({ error: 'Internal error' });
     }
-  });
+  );
 
   // =========================================================================
   // Resend Webhooks

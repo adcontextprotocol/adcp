@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('luma-client');
@@ -410,8 +411,8 @@ export interface LumaWebhookPayload {
 
 /**
  * Parse and validate a Luma webhook payload
- * Note: Luma webhooks don't have signature verification by default
- * Consider validating the payload structure
+ * Note: Luma webhooks require signature verification via x-luma-signature header
+ * See: verifyLumaWebhookSignature
  */
 export function parseWebhookPayload(body: unknown): LumaWebhookPayload | null {
   if (!body || typeof body !== 'object') {
@@ -438,4 +439,40 @@ export function parseWebhookPayload(body: unknown): LumaWebhookPayload | null {
   }
 
   return payload as unknown as LumaWebhookPayload;
+}
+
+// ============================================================================
+// Webhook Verification
+// ============================================================================
+
+const LUMA_WEBHOOK_SECRET = process.env.LUMA_WEBHOOK_SECRET;
+
+/**
+ * Verify Luma webhook signature using HMAC-SHA256
+ * Luma webhooks use x-luma-signature header with HMAC-SHA256 of the raw body
+ */
+export function verifyLumaWebhookSignature(
+  payload: string,
+  signature: string
+): boolean {
+  // If LUMA_WEBHOOK_SECRET is not set, reject the request (do NOT silently pass through)
+  if (!LUMA_WEBHOOK_SECRET) {
+    logger.error('LUMA_WEBHOOK_SECRET not configured - rejecting webhook');
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', LUMA_WEBHOOK_SECRET)
+    .update(payload)
+    .digest('hex');
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch {
+    // timingSafeEqual throws if buffers have different lengths
+    return false;
+  }
 }
