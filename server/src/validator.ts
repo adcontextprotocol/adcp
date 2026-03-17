@@ -1,6 +1,66 @@
 import type { AdAgentsJson, AuthorizationResult } from "./types.js";
 import { Cache } from "./cache.js";
 
+/**
+ * Validates that a URL is safe to fetch.
+ * Blocks:
+ * - Non-HTTPS URLs
+ * - Private IP ranges (10.x, 172.16-31.x, 192.168.x)
+ * - Loopback addresses (127.x, ::1)
+ * - Link-local addresses (169.254.x)
+ * - Private hostnames (localhost, localhost.)
+ */
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+
+    // Must use HTTPS
+    if (parsed.protocol !== "https:") {
+      return false;
+    }
+
+    // Check for private/loopback hostnames
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+      return false;
+    }
+
+    // Parse IP address and check ranges
+    // Node.js URL parser returns the hostname as-is for domain names,
+    // so we need to detect IP addresses first
+    const ips = hostname.split(".");
+
+    // IPv4 check
+    if (ips.length === 4) {
+      const [a, b, c, d] = ips.map((n) => parseInt(n, 10));
+      if (
+        // 10.x.x.x
+        a === 10 ||
+        // 172.16-31.x.x
+        (a === 172 && b >= 16 && b <= 31) ||
+        // 192.168.x.x
+        (a === 192 && b === 168) ||
+        // 127.x.x.x (loopback)
+        a === 127 ||
+        // 169.254.x.x (link-local)
+        (a === 169 && b === 254)
+      ) {
+        return false;
+      }
+    }
+
+    // Check for IPv6 loopback (::1)
+    if (hostname === "::1" || hostname === "localhost") {
+      return false;
+    }
+
+    return true;
+  } catch {
+    // Invalid URL
+    return false;
+  }
+}
+
 export class AgentValidator {
   private cache: Cache<AuthorizationResult>;
 
@@ -26,6 +86,17 @@ export class AgentValidator {
   ): Promise<AuthorizationResult> {
     const normalizedDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const adagentsUrl = `https://${normalizedDomain}/.well-known/adagents.json`;
+
+    // Validate URL is safe before fetching (prevent SSRF)
+    if (!isSafeUrl(adagentsUrl)) {
+      return {
+        authorized: false,
+        domain: normalizedDomain,
+        agent_url: agentUrl,
+        checked_at: new Date().toISOString(),
+        error: "Invalid or restricted URL (SSRF protection)",
+      };
+    }
 
     try {
       const response = await fetch(adagentsUrl, {
