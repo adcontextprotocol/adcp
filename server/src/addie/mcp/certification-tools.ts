@@ -1612,7 +1612,7 @@ export function createCertificationToolHandlers(
 
       // Start the module and create an attempt
       await certDb.startModule(userId, moduleId);
-      const attempt = await certDb.createAttempt(userId, mod.track_id);
+      const attempt = await certDb.createAttempt(userId, mod.track_id, undefined, moduleId);
 
       const criteria = mod.assessment_criteria as certDb.AssessmentCriteria | null;
       const lessonPlan = mod.lesson_plan as certDb.LessonPlan | null;
@@ -1728,8 +1728,16 @@ export function createCertificationToolHandlers(
       if (attempt.status !== 'in_progress') return 'This exam attempt is already completed.';
 
       // Get capstone module for assessment criteria
-      const trackModules = await certDb.getModulesForTrack(attempt.track_id);
-      const capstoneMod = trackModules.find(m => m.format === 'capstone');
+      // Use attempt.module_id when available; fall back to track lookup for old attempts
+      let capstoneMod: certDb.CertificationModule | null = null;
+      if (attempt.module_id) {
+        capstoneMod = await certDb.getModule(attempt.module_id);
+      }
+      if (!capstoneMod) {
+        logger.warn({ attemptId, trackId: attempt.track_id }, 'Attempt missing module_id, falling back to track lookup');
+        const trackModules = await certDb.getModulesForTrack(attempt.track_id);
+        capstoneMod = trackModules.find(m => m.format === 'capstone') || null;
+      }
       const examAc = capstoneMod?.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)

@@ -244,7 +244,12 @@ export function createCertificationRouters() {
         });
       }
 
-      const attempt = await certDb.createAttempt(userId, track_id, addie_thread_id);
+      const capstoneMod = modules.find(m => m.format === 'capstone' || m.format === 'exam');
+      if (!capstoneMod) {
+        return res.status(400).json({ error: 'No capstone module found for this track' });
+      }
+
+      const attempt = await certDb.createAttempt(userId, track_id, addie_thread_id, capstoneMod.id);
       res.json(attempt);
     } catch (error) {
       logger.error({ error }, 'Failed to start certification exam');
