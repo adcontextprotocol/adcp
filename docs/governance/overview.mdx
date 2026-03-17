@@ -8,7 +8,7 @@ description: "AdCP governance ensures human oversight of autonomous AI advertisi
 
 <img src="/images/walkthrough/governance-01-no-oversight.png" alt="A robot arm reaches for a glowing red BUY button marked $50,000 — no human is present, warning lights blink in the dim room, and unchecked documents pile up nearby" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-An AI agent is about to spend $50,000 on advertising. No human reviewed the plan. No system checked the budget. No policy filtered the inventory. The agent has credentials, a brief, and a BUY button.
+An AI agent is about to spend \$50,000 on advertising. No human reviewed the plan. No system checked the budget. No policy filtered the inventory. The agent has credentials, a brief, and a BUY button.
 
 Jordan is a campaign operations manager at Pinnacle Agency. This is her nightmare. Not because the technology failed — because nobody was accountable. Responsibility cannot be delegated to software.
 
@@ -16,7 +16,7 @@ She doesn't want to slow agents down — they're faster and more thorough than h
 
 AdCP's governance system is built on a principle: [human judgment must be embedded in system design](/docs/governance/embedded-human-judgment), not bolted on afterward. Oversight is architectural — the system cannot operate without it.
 
-This walkthrough follows Jordan as she sets up governance for Sam's $50K campaign and watches it work.
+This walkthrough follows Jordan as she sets up governance for Sam's \$50K campaign and watches it work.
 
 ## The three-party model
 
@@ -96,8 +96,8 @@ The governance agent evaluates the proposed action against every applicable poli
 
 | Check | Status | Detail |
 |---|---|---|
-| Budget within plan limit | Passed | $25K of $50K available |
-| Budget within agent authority | **Warning** | Agent authorized up to $20K per transaction |
+| Budget within plan limit | Passed | \$25K of \$50K available |
+| Budget within agent authority | **Warning** | Agent authorized up to \$20K per transaction |
 | Brand safety | Passed | StreamHaus on approved list |
 | Regulatory compliance | Passed | Targeting meets US/CA requirements |
 | Creative provenance | Passed | All creatives carry required metadata |
@@ -108,12 +108,12 @@ The response isn't pass/fail — it returns structured findings with severity le
 
 <img src="/images/walkthrough/governance-04-escalation.png" alt="The governance robot raises an amber flag and routes the campaign plan along a glowing path to a human reviewer — a woman with dark hair sitting at a glass desk, who examines the flagged document thoughtfully" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-The $25,000 transaction exceeds the agent's $20,000 authority limit. The governance agent flags it with `must` severity — the orchestrator cannot proceed without resolution.
+The \$25,000 transaction exceeds the agent's \$20,000 authority limit. The governance agent flags it with `must` severity — the orchestrator cannot proceed without resolution.
 
 This is not a failure — it is the system working as designed. The agent doesn't need to remember to check; the architecture requires it. Oversight is structural, not procedural.
 
 Two options:
-1. **Reduce the transaction** to $20,000 or less
+1. **Reduce the transaction** to \$20,000 or less
 2. **Escalate to a human** for approval
 
 The orchestrator escalates. Jordan receives the flagged plan with full context — what the agent wants to buy, why it was flagged, and which policy triggered it.
@@ -201,13 +201,13 @@ await governance.reportPlanOutcome({
 });
 ```
 
-The $25,000 buy committed budget, and actual delivery came in at $24,850. The governance agent updates the ledger — $25,150 remains of the $50K plan budget for the next buy.
+The \$25,000 buy committed budget, and actual delivery came in at \$24,850. The governance agent updates the ledger — \$25,150 remains of the \$50K plan budget for the next buy.
 
 ## Step 6: The audit trail
 
 <img src="/images/walkthrough/governance-07-audit-trail.png" alt="A horizontal timeline ribbon showing decision nodes — plan created, check flagged, human reviewed, approved, launched, delivered — with the governance robot presenting a detailed log book to a team of three humans" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Six months later, Acme Outdoor's procurement team asks: "Who approved that $25,000 CTV buy?" Jordan pulls the complete decision history:
+Six months later, Acme Outdoor's procurement team asks: "Who approved that \$25,000 CTV buy?" Jordan pulls the complete decision history:
 
 ```javascript
 const audit = await governance.getPlanAuditLogs({
@@ -218,12 +218,12 @@ const audit = await governance.getPlanAuditLogs({
 
 Every event, in sequence:
 
-1. **Plan registered** — orchestrator synced plan with $50K budget
-2. **Governance check** — $25K buy flagged for exceeding agent authority
+1. **Plan registered** — orchestrator synced plan with \$50K budget
+2. **Governance check** — \$25K buy flagged for exceeding agent authority
 3. **Escalation** — Jordan reviewed, approved with weekly reporting condition
 4. **Buy executed** — StreamHaus media buy created
-5. **Delivery reported** — $24,850 actual spend, 887K impressions
-6. **Budget updated** — $25,150 remaining
+5. **Delivery reported** — \$24,850 actual spend, 887K impressions
+6. **Budget updated** — \$25,150 remaining
 
 Every decision, every approval, every outcome — structured, timestamped, attributable. Accountability requires legibility. This isn't a log file buried in a server — it's a first-class audit record designed to answer the question "who decided this and why?" at any point in the future.
 
@@ -249,7 +249,7 @@ Budget tracking has three phases:
 2. **Execute**: The seller runs the campaign. The governance agent tracks the authorized amount as reserved, but actual spend may differ.
 3. **Committed**: `report_plan_outcome` records the actual amount. The governance agent updates the ledger with real numbers.
 
-A $25,000 buy might deliver $24,850. Governance tracks the difference and frees the remaining $150.
+A \$25,000 buy might deliver \$24,850. Governance tracks the difference and frees the remaining \$150.
 
 </Accordion>
 
