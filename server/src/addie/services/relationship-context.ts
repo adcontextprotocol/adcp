@@ -187,10 +187,11 @@ async function loadCompanyInfo(
 
 async function loadCertificationSummary(workosUserId: string): Promise<CertificationSummary | null> {
   try {
-    const [progress, credentials, modules] = await Promise.all([
+    const [progress, credentials, modules, abandoned] = await Promise.all([
       certDb.getProgress(workosUserId),
       certDb.getUserCredentials(workosUserId),
       certDb.getModules(),
+      certDb.getAbandonedModule(workosUserId),
     ]);
 
     return {
@@ -198,6 +199,7 @@ async function loadCertificationSummary(workosUserId: string): Promise<Certifica
       totalModules: modules.length,
       credentialsEarned: credentials.map(c => c.credential_id),
       hasInProgressTrack: progress.some(p => p.status === 'in_progress'),
+      abandonedModuleTitle: abandoned?.title ?? null,
     };
   } catch {
     return null;

@@ -306,7 +306,12 @@ export function createCertificationRouters() {
   adminRouter.use(requireAuth, requireAdmin);
 
   // POST /api/admin/certification/backfill-badges — retry Certifier for credentials missing data
+  let backfillInProgress = false;
   adminRouter.post('/backfill-badges', async (_req, res) => {
+    if (backfillInProgress) {
+      return res.status(409).json({ error: 'Backfill already in progress' });
+    }
+    backfillInProgress = true;
     try {
       const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl } =
         await import('../services/certifier-client.js');
@@ -315,7 +320,22 @@ export function createCertificationRouters() {
         return res.status(503).json({ error: 'Certifier not configured' });
       }
 
-      // Find credentials needing backfill (limit to avoid timeout)
+      // First: award any missing credentials for eligible learners
+      const eligibleUsers = await query<{ workos_user_id: string }>(
+        `SELECT DISTINCT workos_user_id FROM learner_progress
+         WHERE status IN ('completed', 'tested_out')`
+      );
+      let credentialsAwarded = 0;
+      for (const { workos_user_id } of eligibleUsers.rows) {
+        try {
+          const awarded = await certDb.checkAndAwardCredentials(workos_user_id);
+          credentialsAwarded += awarded.length;
+        } catch (err) {
+          logger.error({ error: err, workos_user_id }, 'Failed to check/award credentials for user');
+        }
+      }
+
+      // Then: backfill badges for credentials missing them
       const needsBadgeUrl = await query<{
         id: string; workos_user_id: string; credential_id: string;
         certifier_credential_id: string | null; certifier_public_id: string | null;
@@ -385,10 +405,12 @@ export function createCertificationRouters() {
         }
       }
 
-      res.json({ total: needsBadgeUrl.rows.length, updated, errors });
+      res.json({ total: needsBadgeUrl.rows.length, updated, errors, credentialsAwarded });
     } catch (error) {
       logger.error({ error }, 'Failed to backfill badges');
       res.status(500).json({ error: 'Internal server error' });
+    } finally {
+      backfillInProgress = false;
     }
   });
 
