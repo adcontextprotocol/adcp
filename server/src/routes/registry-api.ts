@@ -217,8 +217,8 @@ registry.registerPath({
   request: {
     query: z.object({
       search: z.string().optional(),
-      limit: z.string().optional().openapi({ example: "100" }),
-      offset: z.string().optional().openapi({ example: "0" }),
+      limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
+      offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
     }),
   },
   responses: {
@@ -251,8 +251,8 @@ registry.registerPath({
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "acmecorp.com" }),
-      limit: z.string().optional().openapi({ example: "20" }),
-      offset: z.string().optional().openapi({ example: "0" }),
+      limit: z.string().optional().openapi({ type: 'integer', example: 20 }),
+      offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
     }),
   },
   responses: {
@@ -286,8 +286,8 @@ registry.registerPath({
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "examplepub.com" }),
-      limit: z.string().optional().openapi({ example: "20" }),
-      offset: z.string().optional().openapi({ example: "0" }),
+      limit: z.string().optional().openapi({ type: 'integer', example: 20 }),
+      offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
     }),
   },
   responses: {
@@ -340,8 +340,8 @@ registry.registerPath({
   request: {
     query: z.object({
       search: z.string().optional(),
-      limit: z.string().optional().openapi({ example: "100" }),
-      offset: z.string().optional().openapi({ example: "0" }),
+      limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
+      offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
     }),
   },
   responses: {
@@ -819,8 +819,8 @@ registry.registerPath({
       jurisdiction: z.string().optional().openapi({ example: "EU", description: "Filter by jurisdiction (includes region alias matching)" }),
       vertical: z.string().optional().openapi({ example: "finance" }),
       domain: z.string().optional().openapi({ example: "campaign", description: "Filter by governance domain" }),
-      limit: z.string().optional().openapi({ description: "Results per page (default 20, max 1000)" }),
-      offset: z.string().optional().openapi({ description: "Pagination offset (default 0)" }),
+      limit: z.string().optional().openapi({ type: 'integer', description: "Results per page (default 20, max 1000)" }),
+      offset: z.string().optional().openapi({ type: 'integer', description: "Pagination offset (default 0)" }),
     }),
   },
   responses: {
@@ -892,8 +892,8 @@ registry.registerPath({
   request: {
     query: z.object({
       policy_id: z.string().openapi({ example: "gdpr_consent" }),
-      limit: z.string().optional().openapi({ description: "Results per page (max 100, default 20)" }),
-      offset: z.string().optional().openapi({ description: "Pagination offset (default 0)" }),
+      limit: z.string().optional().openapi({ type: 'integer', description: "Results per page (max 100, default 20)" }),
+      offset: z.string().optional().openapi({ type: 'integer', description: "Pagination offset (default 0)" }),
     }),
   },
   responses: {
