@@ -745,7 +745,7 @@ export interface AdminOverviewMetrics {
     abandoned: number;
     total_sessions: number;
   };
-  credentials_by_tier: Array<{ tier: number; name: string; count: number }>;
+  credentials_by_tier: Array<{ tier: number; name: string; count: number; badges_issued: number }>;
   module_completion: Array<{
     module_id: string;
     title: string;
@@ -778,8 +778,9 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
   const t = totalsResult.rows[0];
 
   // Credentials by tier
-  const credResult = await query<{ tier: number; name: string; count: string }>(
-    `SELECT cc.tier, cc.name, COUNT(uc.id)::text AS count
+  const credResult = await query<{ tier: number; name: string; count: string; badges_issued: string }>(
+    `SELECT cc.tier, cc.name, COUNT(uc.id)::text AS count,
+            COUNT(CASE WHEN uc.certifier_credential_id IS NOT NULL THEN 1 END)::text AS badges_issued
      FROM certification_credentials cc
      LEFT JOIN user_credentials uc ON uc.credential_id = cc.id
      GROUP BY cc.id, cc.tier, cc.name, cc.sort_order
@@ -837,7 +838,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
       total_sessions: parseInt(t.total_sessions),
     },
     credentials_by_tier: credResult.rows.map(r => ({
-      tier: r.tier, name: r.name, count: parseInt(r.count),
+      tier: r.tier, name: r.name, count: parseInt(r.count), badges_issued: parseInt(r.badges_issued),
     })),
     module_completion: moduleResult.rows.map(r => {
       const started = parseInt(r.started);
@@ -1013,8 +1014,8 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
        ORDER BY m.track_id, m.sort_order`,
       [userId]
     ),
-    query<{ name: string; tier: number; awarded_at: string }>(
-      `SELECT cc.name, cc.tier, uc.awarded_at
+    query<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>(
+      `SELECT cc.name, cc.tier, uc.awarded_at, uc.certifier_credential_id
        FROM user_credentials uc
        JOIN certification_credentials cc ON cc.id = uc.credential_id
        WHERE uc.workos_user_id = $1

@@ -25,7 +25,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Disclosure matching** | Position-only disclosure handling | Position + persistence-aware disclosure matching (`continuous`, `initial`, `flexible`) |
 | **Shows and episodes** | No content programming model | `shows` on products with distribution IDs, episode lifecycle, break-based inventory |
 | **Planning ergonomics** | No `time_budget`, `preferred_delivery_types`, `exclusivity`, or per-package flights | `time_budget` + `incomplete`, `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time` |
-| **Channel model** | 9 channels | 20 planning-oriented channels (including `ai_media`) |
+| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
 | **Sandbox discovery** | Mixed capability locations | `require_operator_auth` for auth model, `account.sandbox` for sandbox support, sandbox in natural account references |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
@@ -212,7 +212,7 @@ Campaign governance extends this with plan-level policy and budget enforcement v
 
 Conversational brand experiences in AI assistants. SI defines how AI assistants invoke brand agents for rich engagement (text, voice, UI components) without breaking the conversational flow. Sessions follow a consent-first model: user expresses interest, grants consent, then the brand agent engages conversationally with optional transaction handoff.
 
-<Card title="Sponsored Intelligence" icon="arrow-right" href="/docs/sponsored-intelligence/overview">
+<Card title="SI Chat Protocol" icon="arrow-right" href="/docs/sponsored-intelligence/si-chat-protocol">
   Full specification including session lifecycle, implementing agents, and implementing hosts.
 </Card>
 
@@ -278,7 +278,7 @@ All code that reads or writes channel values must be updated.
 | `dooh` | `dooh` | Unchanged |
 | `retail` | `retail_media` | Renamed for clarity |
 
-New channels in v3 (no v2 equivalent): `search`, `linear_tv`, `radio`, `streaming_audio`, `ooh`, `print`, `cinema`, `email`, `gaming`, `retail_media`, `influencer`, `affiliate`, `product_placement`, `ai_media`.
+New channels in v3 (no v2 equivalent): `search`, `linear_tv`, `radio`, `streaming_audio`, `ooh`, `print`, `cinema`, `email`, `gaming`, `retail_media`, `influencer`, `affiliate`, `product_placement`, `sponsored_intelligence`.
 
 <Note>
 The `gaming` channel covers intrinsic in-game ads, rewarded video, and playable ads. Rewarded video in gaming apps could also be classified as `olv` — use `gaming` when the inventory comes from a gaming budget.
@@ -744,7 +744,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
   </Accordion>
 
   <Accordion title="Sponsored Intelligence agents (new in v3)">
-    Implement conversational brand experiences. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
+    Implement conversational brand experiences. See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol).
 
     - [ ] Implement SI session tasks (`si_initiate_session`, `si_send_message`, `si_terminate_session`)
     - [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols`

@@ -9,6 +9,7 @@ import { SLACK_INVITE_URL } from '../notifications/email.js';
 import {
   trimConversationHistory,
   getConversationTokenLimit,
+  compactOldToolResults,
   estimateTokens,
   type MessageTurn,
 } from '../utils/token-limiter.js';
@@ -440,6 +441,8 @@ export interface BuildMessageTurnsOptions {
   model?: string;
   /** Number of tools being used (for more accurate token budget calculation) */
   toolCount?: number;
+  /** Compact old tool results to reclaim context (certification sessions) */
+  compactToolResults?: boolean;
 }
 
 /**
@@ -550,6 +553,12 @@ export function buildMessageTurnsWithMetadata(
     messages[messages.length - 1].content += '\n\n' + userMessage;
   } else {
     messages.push({ role: 'user', content: userMessage });
+  }
+
+  // Compact old tool results for certification sessions to reclaim context.
+  // Checkpoints capture teaching state, so old tool results are redundant.
+  if (options?.compactToolResults) {
+    messages = compactOldToolResults(messages);
   }
 
   // Second pass: apply token limit trimming

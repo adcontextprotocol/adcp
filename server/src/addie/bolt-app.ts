@@ -29,7 +29,7 @@ import type {
 import type { Router } from 'express';
 import { logger } from '../logger.js';
 import { captureEvent } from '../utils/posthog.js';
-import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { getPool } from '../db/client.js';
 import {
@@ -997,7 +997,9 @@ async function selectRoutedToolsForSlackResponse(
     ? [...plan.tool_sets]
     : isDirectInteraction ? ['knowledge'] : [];
 
-  if (options?.hasCertificationContext && !selectedSets.includes('certification')) {
+  // Certification sessions use ONLY certification tools — replace whatever the router selected
+  if (options?.hasCertificationContext) {
+    selectedSets.length = 0;
     selectedSets.push('certification');
   }
 
@@ -1295,10 +1297,14 @@ async function handleUserMessage({
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit; certification sessions get more conversation history
+  // Admin users get higher iteration limit; certification sessions get more iterations and conversation history
+  const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
+    ? CERTIFICATION_MAX_ITERATIONS
+    : undefined;
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+    ...(certIterations && { maxIterations: certIterations }),
     ...(routedTools.requiresPrecision && { modelOverride: ModelConfig.precision }),
     ...(hasCertificationContext && { maxMessages: 50 }),
   };

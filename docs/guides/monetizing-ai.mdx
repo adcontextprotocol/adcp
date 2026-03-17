@@ -1,0 +1,121 @@
+---
+title: Monetizing AI surfaces
+sidebarTitle: Monetizing AI
+description: "A practical guide for brands, agencies, and small businesses who want to advertise on AI assistants, AI search engines, and other AI platforms."
+"og:title": "AdCP — Monetizing AI surfaces"
+---
+
+# Monetizing AI surfaces
+
+You have probably noticed AI assistants recommending products, AI search engines surfacing brand results, and conversational agents helping users make purchase decisions. This is a new advertising channel — and it is growing fast.
+
+If you have run Amazon Ads or Walmart Connect, you already understand the basic model: you push a product feed into a platform, and the platform merchandises your products to the right people. AI platforms work the same way, but they can do more with your data — generating custom responses, making contextual recommendations, and even handing off to your own brand agent for a full product consultation.
+
+This is Sponsored Intelligence. It works differently from display, social, or CTV. There is no creative to upload. No audience segment to target. You give the AI platform everything it needs to represent your brand well — your products, your brand voice, your rules — and the platform generates the right message in the right moment.
+
+This guide is for anyone on the buy side: agency trading desks evaluating a new channel, brand leaders rethinking their media approach, and small businesses looking to reach customers where they are increasingly spending time. For the technical protocol details, see the [Sponsored Intelligence protocol](/docs/sponsored-intelligence/overview).
+
+## Why existing approaches fall short
+
+**Insertion orders** assume you are trafficking finished creative into predetermined placements. AI platforms generate creative on the fly from your data — there is nothing to traffic.
+
+**Programmatic buying** sends a thin signal (a page URL, a device type, maybe a user ID) to a remote decision-maker. That decision-maker lacks the conversation context that makes AI advertising work. The platform closest to the user has the context. Sending bid requests away from that context is the wrong direction.
+
+**Direct deals** can work for a single platform, but every AI platform has its own API, its own data requirements, its own reporting format. Building custom integrations with each one is the same fragmentation problem the industry spent a decade solving in programmatic.
+
+AdCP exists because there is no legacy approach that works here. It is a standard protocol for pushing your data into AI platforms so they can generate effective ads on your behalf.
+
+## The shift: from campaigns to ingredients
+
+In traditional advertising, the buyer's job is to set up campaigns and build creative. In Sponsored Intelligence, the buyer's job is to **provide ingredients and define goals**.
+
+Think about who has the most information. The AI platform is the one in conversation with the user. It knows what the person asked, what they care about, what they have already discussed. You know your brand, your products, your goals. The protocol connects these two sides: you push your ingredients in, and the platform assembles the best possible outcome.
+
+Sponsored Intelligence extends this pattern to conversational and generative experiences across every AI platform.
+
+The better your ingredients, the better the results.
+
+## What you provide
+
+Everything you push into an AI platform is a building block the platform uses to create, target, and optimize ads.
+
+| If you are... | You push... | The platform can... |
+|---|---|---|
+| An e-commerce brand | Products with titles, descriptions, prices, images | Recommend specific products when users ask about your category |
+| A travel company | Flights, hotels, packages with dates and pricing | Suggest relevant trips based on the conversation |
+| An employer | Job listings with roles, locations, requirements | Surface open positions to qualified candidates |
+| A retailer | Store locations and local inventory | Direct users to nearby stores with in-stock items |
+| A services company | Service offerings and promotions | Match capabilities to what the user is looking for |
+
+Beyond catalogs, you also provide:
+- **Brand identity** — voice, visual guidelines, and positioning so the platform sounds like your brand
+- **Content standards** — suitability rules enforced at generation time, before the ad is created
+- **Conversion events** — real business outcomes so the platform optimizes toward what matters
+- **Optimization goals** — target cost per engagement, cost per conversion, or ROAS
+
+## Your measurement stack does not change
+
+Your existing measurement stack — media mix modeling, MMPs, multi-touch attribution, incrementality testing — works the same way it always has. Sponsored Intelligence is a new channel in your media plan, not a new measurement paradigm. The protocol does make one thing easier: because you push conversion events into platforms, they can optimize toward real business outcomes instead of proxy metrics. But how you evaluate whether that spend was worth it uses the same tools and frameworks you use today. See [measurement](/docs/sponsored-intelligence/measurement) for details.
+
+## Getting started by role
+
+### Brands with agencies
+
+Your primary job is **data quality**. The effectiveness of your campaigns depends directly on what you push in.
+
+<Steps>
+
+### Own your catalogs
+
+Make sure your product data is rich, accurate, and current. Detailed descriptions, high-quality images, structured attributes (size, color, category), and accurate pricing. If your catalog is thin, your ads will be thin.
+
+### Define your brand identity
+
+Provide your voice, visual guidelines, and positioning. This is not a nice-to-have — it is the difference between sponsored content that sounds like your brand and content that sounds generic.
+
+### Set your content standards
+
+Define where your brand can and cannot appear. Be specific. AI platforms enforce these rules during ad generation, which gives you stronger control than you have in any other channel.
+
+### Brief your agency — or experiment yourself
+
+Your agency manages campaigns through buyer agents that speak AdCP. The protocol gives agencies more leverage to automate and serve you better. You can also experiment with your own brand agents alongside agency relationships, the same way some brands run Amazon Ads in-house while agencies handle everything else.
+
+</Steps>
+
+### Agencies and trading desks
+
+A buyer agent fills the same role that a DSP fills in programmatic — but it is not limited to programmatic. It sits alongside your DSP. Your existing programmatic stack, measurement, and reporting do not go away. You add a buyer agent that can reach AI platforms, and over time, it can reach any channel where sellers implement the protocol.
+
+A buyer agent connects to any AI platform that implements the protocol. It pushes client data in (catalogs, brand identity, content standards, conversion events), discovers available products, executes campaigns, and pulls delivery reports — across every platform, through one interface. What you build once works everywhere.
+
+Build on the [AdCP SDKs](/docs/building/integration). The first agencies with working buyer agents will capture client demand faster than those negotiating direct deals platform by platform.
+
+### Small and mid-size businesses
+
+Work through a partner — an ad network, a platform integration, or a tool built into the commerce platform you already use — and the partner handles the protocol plumbing.
+
+Your job is straightforward:
+- **Provide a good product feed.** If you sell on Shopify, Etsy, or any e-commerce platform, you already have one.
+- **Set up your brand basics.** Your name, logo, voice, and any rules about where your brand should or should not appear.
+- **Define what success looks like.** Sales? Store visits? Sign-ups? Your partner needs to know what to optimize toward.
+
+To find a partner, [ask Addie](https://agenticadvertising.org/chat) — she can help match you with the right option. You can also [browse the member directory](https://agenticadvertising.org/members) directly.
+
+## What's next
+
+<Card title="Start the certification" icon="play" href="https://agenticadvertising.org/chat">
+  Tell Addie "I want to get certified." The free Basics track (A1–A3, about 50 minutes) teaches the protocol fundamentals. The Buyer track (C1–C4) teaches you to build a working buyer agent — no programming experience required.
+</Card>
+
+<AccordionGroup>
+<Accordion title="Reference: protocol and specifications">
+
+- [Sponsored Intelligence protocol](/docs/sponsored-intelligence/overview) — Full technical protocol with product spectrum, ad networks, workflows, and measurement
+- [Catalogs](/docs/creative/catalogs) — How product, offering, store, and inventory catalogs work
+- [Brand identity](/docs/brand-protocol/brand-json) — The `brand.json` specification for voice, visual guidelines, and positioning
+- [Content standards](/docs/governance/overview) — How brand suitability rules are defined, shared, and enforced
+- [SDKs and integration](/docs/building/integration) — JavaScript and Python SDKs for building buyer agents
+
+</Accordion>
+</AccordionGroup>

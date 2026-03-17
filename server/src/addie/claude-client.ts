@@ -190,6 +190,9 @@ function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[])
 /** Default max tool iterations for regular users */
 export const DEFAULT_MAX_ITERATIONS = 10;
 
+/** Elevated max tool iterations for certification sessions (teaching + assessment + exercises + completion + credentials) */
+export const CERTIFICATION_MAX_ITERATIONS = 20;
+
 /** Elevated max tool iterations for admin users doing bulk operations */
 export const ADMIN_MAX_ITERATIONS = 25;
 
@@ -583,11 +586,13 @@ export class AddieClaudeClient {
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
     // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Pass tool count for more accurate token budget calculation
+    // Certification sessions compact old tool results to reclaim context
+    const isCertSession = (options?.maxMessages ?? 0) > 20;
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: effectiveModel,
       toolCount,
       maxMessages: options?.maxMessages,
+      compactToolResults: isCertSession,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -1093,11 +1098,13 @@ export class AddieClaudeClient {
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
     // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Pass tool count for more accurate token budget calculation
+    // Certification sessions compact old tool results to reclaim context
+    const isCertSession = (options?.maxMessages ?? 0) > 20;
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: effectiveModel,
       toolCount,
       maxMessages: options?.maxMessages,
+      compactToolResults: isCertSession,
     });
 
     if (messageTurnsResult.wasTrimmed) {

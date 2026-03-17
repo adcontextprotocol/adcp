@@ -141,11 +141,11 @@ Your platform processes the buy according to your normal workflow — whether th
 
 ## Industry-specific guidance
 
-The core integration steps above apply to all sellers. If you're an **ad network aggregating across multiple platforms**, see the [network aggregation pattern](/docs/guides/ai-media#ad-networks-the-aggregation-pattern) in the AI media guide for product modeling, account chains, catalog forwarding, and `adagents.json` for networks.
+The core integration steps above apply to all sellers. If you're an **ad network aggregating across multiple platforms**, see the [ad networks deep dive](/docs/sponsored-intelligence/networks) for product modeling, account chains, catalog forwarding, and `adagents.json` for networks.
 
 For vertical-specific product modeling, pricing patterns, and measurement:
 
-- **AI platforms and AI ad networks**: See the [AI media guide](/docs/guides/ai-media) for sponsored responses, AI search products, generative creative from catalogs, and Sponsored Intelligence handoffs.
+- **AI platforms and AI ad networks**: See the [Sponsored Intelligence guide](/docs/sponsored-intelligence/overview) for sponsored responses, AI search products, generative creative from catalogs, and SI Chat Protocol handoffs.
 - **Retail media networks**: See the [commerce media guide](/docs/guides/commerce-media) for sponsored product listings, closed-loop attribution, and in-store measurement.
 
 ## Accounts and sandbox
@@ -201,9 +201,9 @@ Buyer agents may require creative evaluation before delivery — security scanni
 
 See the [creative governance overview](/docs/governance/creative/index) for the feature-based evaluation model and multi-agent collaboration pattern.
 
-### For AI media sellers: generation-time enforcement
+### For Sponsored Intelligence sellers: generation-time enforcement
 
-Traditional sellers apply governance as a post-delivery filter — classify content, then block what fails. AI media platforms generate creative at serve time, which means governance rules can be enforced during generation rather than after the fact. When a buyer pushes content standards, apply them as constraints on your generation pipeline so unsuitable content is never produced. This gives brands a fundamentally stronger guarantee: suitability is built into the output, not bolted on as a check afterward. See the [AI media guide](/docs/guides/ai-media) for how content standards integrate with catalog-driven creative generation.
+Traditional sellers apply governance as a post-delivery filter — classify content, then block what fails. Sponsored Intelligence platforms generate creative at serve time, which means governance rules can be enforced during generation rather than after the fact. When a buyer pushes content standards, apply them as constraints on your generation pipeline so unsuitable content is never produced. This gives brands a fundamentally stronger guarantee: suitability is built into the output, not bolted on as a check afterward. See the [Sponsored Intelligence guide](/docs/sponsored-intelligence/overview) for how content standards integrate with catalog-driven creative generation.
 
 ## How it connects to your existing stack
 
@@ -231,8 +231,8 @@ AdCP sits alongside your existing APIs and dashboards. It doesn't replace your s
   <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">
     Ask questions about implementing AdCP for your platform — no code required.
   </Card>
-  <Card title="AI media guide" icon="microchip" href="/docs/guides/ai-media">
-    Product modeling and workflows for AI platforms and AI ad networks.
+  <Card title="Sponsored Intelligence guide" icon="microchip" href="/docs/sponsored-intelligence/overview">
+    Product modeling and workflows for AI platforms and ad networks.
   </Card>
   <Card title="Commerce media guide" icon="cart-shopping" href="/docs/guides/commerce-media">
     Product modeling and workflows for retail media networks.

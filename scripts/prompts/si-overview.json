@@ -1,0 +1,52 @@
+[
+  {
+    "filename": "images/walkthrough/si-01-priyas-desk.png",
+    "prompt": "A South Asian woman growth marketer sits at a clean modern desk with a single widescreen monitor. The screen shows an AI assistant chat conversation on the left side and structured product catalog data flowing into it on the right side. She looks determined and focused. The desk is minimal — laptop, coffee, phone. Warm office lighting. No text or labels in the image.",
+    "alt_text": "A growth marketer sits at a clean desk with a single screen showing an AI assistant conversation alongside product catalog data flowing into it"
+  },
+  {
+    "filename": "images/walkthrough/si-02-reversed-flow.png",
+    "prompt": "Split screen comparison diagram. LEFT SIDE: Traditional programmatic — a glowing platform box sends thin arrow lines OUT to three remote bidder boxes, each bidder looks confused with question marks, the arrows carry minimal data dots. RIGHT SIDE: Sponsored Intelligence — rich streams of data (catalog cards, brand documents, event streams, standard badges) flow IN to a central AI platform box that glows brightly with context. The AI platform has a confident expression. A bold dividing line separates the two sides. No text or labels in the image.",
+    "alt_text": "Split screen comparison: left side shows traditional programmatic with thin bid request arrows flowing OUT from a platform to remote bidders; right side shows Sponsored Intelligence with rich data flowing IN to the AI platform where the LLM makes the decision"
+  },
+  {
+    "filename": "images/walkthrough/si-03-connect-account.png",
+    "prompt": "Two friendly robot agents face each other in front of a glowing portal doorway. The left robot (buyer agent, smaller, with a briefcase) extends a hand to shake with the right robot (platform agent, larger, with a building behind it). Credential tokens and authentication keys float between them in a secure golden stream. The mood is welcoming and professional. No text or labels in the image.",
+    "alt_text": "Priya's buyer agent robot shakes hands with the NovaMind platform robot in front of a glowing portal, establishing a connection while account credentials flow between them"
+  },
+  {
+    "filename": "images/walkthrough/si-04-push-ingredients.png",
+    "prompt": "A pipeline visualization showing data flowing from left to right. On the left: floating cards representing a product catalog (shoes, jackets with prices), a brand identity document (color swatches, logo placeholder), conversion event streams (sparkle dots), and a shield representing content standards. These all flow through a glowing pipeline tube into a large AI brain/platform on the right side, where they assemble into a rich glowing constellation of brand context. The feeling is of ingredients coming together. No text or labels in the image.",
+    "alt_text": "Product catalog cards, a brand.json document, conversion event streams, and content standards documents flow from Ridgeline's system into NovaMind's platform through a glowing pipeline, assembling into a rich brand context inside the AI"
+  },
+  {
+    "filename": "images/walkthrough/si-05-discover-products.png",
+    "prompt": "A platform agent presents three glowing product cards to a smaller buyer agent. The three cards show different ad format types: one shows a conversational chat bubble (sponsored response), one shows a search results list (AI search), and one shows two agents talking to each other (brand experience handoff). Each card has a subtle price tag. The buyer agent examines them with interest. Clean presentation layout. No text or labels in the image.",
+    "alt_text": "NovaMind presents a catalog of sponsored placement options to Priya's buyer agent: sponsored responses, AI search results, and a premium brand experience handoff — each displayed as glowing product cards"
+  },
+  {
+    "filename": "images/walkthrough/si-06-create-buy.png",
+    "prompt": "A buyer agent robot and a platform agent robot face each other with a glowing contract document materializing between them. The contract shows floating holographic labels: a calendar icon for flight dates, a money icon for budget, and a target icon for optimization goals. Golden light radiates from the document as both agents reach toward it. The mood is decisive and professional. No text or labels in the image.",
+    "alt_text": "Priya's buyer agent sends a create_media_buy request to NovaMind — a glowing contract document materializes between the two agents, with budget amounts, flight dates, and optimization goals visible as floating labels"
+  },
+  {
+    "filename": "images/walkthrough/si-07-ad-moment.png",
+    "prompt": "A smartphone screen showing an AI assistant conversation. The user's message appears as a chat bubble at top. Below it, the AI's response shows a product recommendation with a hiking boot image, feature bullet points, a star rating, and a price. Below the response is a prominent call-to-action button with a chat icon suggesting a brand handoff. A subtle 'sponsored' label appears near the recommendation. The phone is held by a hand against a blurred outdoor background. This is the hero image — make it feel like the payoff moment. No gibberish text — any visible text should be minimal icons or symbols only.",
+    "alt_text": "An AI assistant conversation on a phone screen — a user asks about hiking boots and the AI responds with a contextually relevant product recommendation, with product details and a handoff button glowing below"
+  },
+  {
+    "filename": "images/walkthrough/si-08-measure.png",
+    "prompt": "A clean analytics dashboard on a widescreen monitor. The dashboard shows performance charts: a line graph trending upward, bar charts comparing metrics, and a prominent callout card showing a key metric beating its target (shown with a green checkmark and downward arrow indicating cost below target). The color palette is clean with blue primary and green for positive indicators. The overall mood is success and clarity. No text or labels — use abstract chart shapes and icons only.",
+    "alt_text": "A clean dashboard showing SI campaign metrics with a line chart trending upward and a callout showing CPA beating its target"
+  },
+  {
+    "filename": "images/walkthrough/si-09-network-topology.png",
+    "prompt": "A hub-and-spoke network diagram. A central hub node (the ad network) glows prominently in the center. From it, spoke lines radiate outward to 8-10 smaller nodes arranged in a circle. Each smaller node represents a different AI platform — visually differentiated with subtle icons: a chat bubble, a search magnifying glass, a code bracket, a travel suitcase, a health cross, a shopping cart, etc. Data flows from the center outward along the spokes. The layout is clean and symmetrical. No text or labels in the image.",
+    "alt_text": "A hub-and-spoke diagram: Gravity sits at the center as a network node, with spokes radiating out to a dozen different AI platforms — chat assistants, search copilots, coding tools, travel planners"
+  },
+  {
+    "filename": "images/walkthrough/si-10-full-picture.png",
+    "prompt": "A horizontal flow diagram showing the complete Sponsored Intelligence architecture. On the far left, a brand's data sources (catalog, brand identity, events) flow into two paths: one direct arrow goes to a single large platform node (first-party), and another arrow goes to a network hub that fans out to many smaller platform nodes. All platform nodes have small arrows flowing back to the right side, where a unified dashboard screen shows combined reporting. The feeling is of a complete, elegant system. Wide aspect ratio. No text or labels in the image.",
+    "alt_text": "A horizontal flow diagram showing Ridgeline's data flowing into both NovaMind (direct) and Gravity (network), which fans out to many AI platforms — all reporting back through the same unified delivery format to Priya's single dashboard"
+  }
+]

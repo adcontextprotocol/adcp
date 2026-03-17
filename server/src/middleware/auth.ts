@@ -537,7 +537,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       const reason = !result.authenticated ? 'not_authenticated'
         : !('user' in result) ? 'no_user_field'
         : 'user_null';
-      logger.info({ path: req.path, reason }, 'Session JWT expired, attempting refresh');
+      logger.debug({ path: req.path, reason }, 'Session JWT expired, attempting refresh');
 
       let refreshFailed = false;
 
@@ -547,7 +547,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         });
 
         if (refreshResult.authenticated && refreshResult.sealedSession) {
-          logger.info({ path: req.path }, 'Session refresh succeeded');
+          logger.debug({ path: req.path }, 'Session refresh succeeded');
           newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
 
@@ -572,10 +572,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         refreshFailed = true;
       }
 
-      // If refresh failed (likely consumed by another machine), check DB for a shared refresh
+      // If refresh failed (likely consumed by another machine), check DB for a shared refresh.
+      // Retry once after a short delay to handle the race where the other machine
+      // hasn't written its refreshed session to the DB yet.
       if (refreshFailed) {
         try {
-          const sharedSession = await getRefreshedSession(cacheKey);
+          let sharedSession = await getRefreshedSession(cacheKey);
+          if (!sharedSession) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            sharedSession = await getRefreshedSession(cacheKey);
+          }
           if (sharedSession) {
             logger.info({ path: req.path }, 'Found shared refreshed session from another machine');
 
