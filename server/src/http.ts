@@ -6525,6 +6525,12 @@ Disallow: /api/admin/
         const version = req.query.version as string;
         const format = req.query.format as string; // 'json' or 'html' (default: html)
 
+        // Serve the page shell for non-JSON requests; it fetches content client-side
+        if (format !== 'json') {
+          return await this.serveHtmlWithConfig(req, res, 'agreement.html');
+        }
+
+        // JSON API: validate params and return agreement data
         if (!type) {
           return res.status(400).json({
             error: 'Missing parameters',
@@ -6539,7 +6545,6 @@ Disallow: /api/admin/
           });
         }
 
-        // If version is provided, get that specific version, otherwise get current
         const agreement = version
           ? await orgDb.getAgreementByTypeAndVersion(type, version)
           : await orgDb.getCurrentAgreementByType(type);
@@ -6553,95 +6558,16 @@ Disallow: /api/admin/
           });
         }
 
-        // Return JSON if explicitly requested
-        if (format === 'json') {
-          return res.json({
-            version: agreement.version,
-            type: type,
-            text: agreement.text,
-            effective_date: agreement.effective_date,
-          });
-        }
-
-        // Otherwise render as HTML
         const { marked } = await import('marked');
         const htmlContent = await marked(agreement.text);
 
-        const typeLabels: Record<string, string> = {
-          terms_of_service: 'Terms of Use',
-          privacy_policy: 'Privacy Policy',
-          membership: 'Membership Agreement'
-        };
-
-        const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${typeLabels[type]} - AdCP Registry</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f5f5;
-      padding: 40px 20px;
-      line-height: 1.6;
-      color: #333;
-    }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: white;
-      padding: 40px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    h1 {
-      color: #2d3748;
-      margin-bottom: 10px;
-    }
-    .meta {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #e0e0e0;
-    }
-    .content h1 { margin-top: 30px; margin-bottom: 15px; font-size: 24px; }
-    .content h2 { margin-top: 30px; margin-bottom: 15px; font-size: 20px; }
-    .content h3 { margin-top: 25px; margin-bottom: 10px; font-size: 18px; }
-    .content p { margin-bottom: 15px; }
-    .content ul, .content ol { margin-bottom: 15px; padding-left: 30px; }
-    .content li { margin-bottom: 8px; }
-    .back-link {
-      display: inline-block;
-      margin-top: 30px;
-      color: #667eea;
-      text-decoration: none;
-    }
-    .back-link:hover {
-      text-decoration: underline;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>${typeLabels[type]}</h1>
-    <div class="meta">
-      Version ${agreement.version} • Effective Date: ${new Date(agreement.effective_date).toLocaleDateString()}
-    </div>
-    <div class="content">
-      ${htmlContent}
-    </div>
-    <a href="javascript:window.close()" class="back-link">← Close</a>
-  </div>
-</body>
-</html>
-        `;
-
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
+        return res.json({
+          version: agreement.version,
+          type: type,
+          text: agreement.text,
+          html: htmlContent,
+          effective_date: agreement.effective_date,
+        });
       } catch (error) {
         logger.error({ err: error }, 'Get agreement error:');
         res.status(500).json({
