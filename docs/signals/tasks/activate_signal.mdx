@@ -480,15 +480,16 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 
 ## Error Handling Philosophy
 
-### Status vs Errors
-- **Task Status**: Indicates overall activation outcome (`deployed`, `failed`, etc.)
-- **Errors Array**: Contains specific issues, warnings, and remediation steps
-- **Partial Success**: Signal can be `deployed` while still having warnings in `errors` array
+### Discriminated Union
+
+`deployments` and `errors` are mutually exclusive in the response:
+
+- **`deployments` present** → activation succeeded. Any warnings or suboptimal-configuration notes are conveyed in the `message` field only.
+- **`errors` present** → activation failed. The `deployments` array is absent.
 
 ### Error Types
-- **Fatal Errors**: Prevent activation (status = `failed`)
-- **Warnings**: Signal activates successfully but with caveats (status = `deployed` + errors)
-- **Configuration Issues**: Non-blocking problems that affect performance
+- **Fatal Errors**: Prevent activation — response contains `errors` only
+- **Warnings / Configuration Issues**: Non-blocking; activation succeeds — response contains `deployments` only, with details in `message`
 
 ## Usage Notes
 
