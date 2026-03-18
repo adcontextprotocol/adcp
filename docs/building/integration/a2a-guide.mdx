@@ -406,7 +406,7 @@ During execution, interim status updates can include optional data in `status.me
 }
 ```
 
-**All status payloads use AdCP schemas**: Both final statuses (completed/failed) and interim statuses (working, input-required, submitted) have corresponding AdCP schemas referenced in [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json). Note that interim status schemas are evolving and may change in future versions, so implementors may choose to handle them more loosely.
+**All status payloads use AdCP schemas**: Both final statuses (completed/failed) and interim statuses (working, input-required, submitted) have corresponding AdCP schemas referenced in [`async-response-data.json`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json). Note that interim status schemas are evolving and may change in future versions, so implementors may choose to handle them more loosely.
 
 ### A2A Webhook Payload Types
 
@@ -451,7 +451,7 @@ The `status.message.parts[].data` field in A2A webhooks uses status-specific sch
 | `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
 | `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
 
-Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json)
 
 ### Webhook Handler Example
 

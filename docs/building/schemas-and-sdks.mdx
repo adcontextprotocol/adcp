@@ -12,7 +12,7 @@ AdCP schemas are available from two sources:
 
 | Source | URL | Best For |
 |--------|-----|----------|
-| Website | `https://adcontextprotocol.org/schemas/v2/` | Runtime fetching, version aliases |
+| Website | `https://adcontextprotocol.org/schemas/v3/` | Runtime fetching, version aliases |
 | GitHub | `https://github.com/adcontextprotocol/adcp/tree/main/dist/schemas` | Offline access, CI/CD pipelines |
 
 Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
@@ -21,8 +21,8 @@ Both sources contain identical schemas. The GitHub repository includes all relea
 
 | Schema | URL |
 |--------|-----|
-| Product | `https://adcontextprotocol.org/schemas/v2/core/product.json` |
-| Media Buy | `https://adcontextprotocol.org/schemas/v2/core/media-buy.json` |
+| Product | `https://adcontextprotocol.org/schemas/v3/core/product.json` |
+| Media Buy | `https://adcontextprotocol.org/schemas/v3/core/media-buy.json` |
 | Creative Format | `https://adcontextprotocol.org/schemas/v3/core/format.json` |
 | Schema Registry | `https://adcontextprotocol.org/schemas/v3/index.json` |
 
@@ -113,7 +113,7 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 | Path | Example | Best For |
 |------|---------|----------|
 | Exact version | `/schemas/2.5.3/` | Production, SDK generation |
-| Major version | `/schemas/v2/` | Development, documentation |
+| Major version | `/schemas/v3/` | Development, documentation |
 | Minor version | `/schemas/v2.5/` | Stable development (patch updates only) |
 
 ### Production (Recommended)
@@ -133,7 +133,7 @@ Use the major version alias to stay current with backward-compatible updates:
 
 ```javascript
 const schema = await fetch(
-  'https://adcontextprotocol.org/schemas/v2/core/product.json'
+  'https://adcontextprotocol.org/schemas/v3/core/product.json'
 );
 ```
 
@@ -207,13 +207,13 @@ All request/response task schemas are bundled:
 | `bundled/protocol/` | get-adcp-capabilities |
 | `bundled/core/` | tasks-get, tasks-list |
 
-See the [schema registry](https://adcontextprotocol.org/schemas/v2/index.json) for all available schemas.
+See the [schema registry](https://adcontextprotocol.org/schemas/v3/index.json) for all available schemas.
 
 ## Version Discovery
 
 ```bash
 # Get current version
-curl https://adcontextprotocol.org/schemas/v2/index.json | jq '.adcp_version'
+curl https://adcontextprotocol.org/schemas/v3/index.json | jq '.adcp_version'
 ```
 
 Check [Release Notes](/docs/reference/release-notes) for version history and migration guides.

@@ -94,7 +94,7 @@ The Media Buy Protocol defines the following tasks. See task reference pages for
 
 ### get_products
 
-**Schema**: [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json) / [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
+**Schema**: [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json) / [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
 **Reference**: [`get_products` task](/docs/media-buy/task-reference/get_products)
 
@@ -128,7 +128,7 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 
 ### list_creative_formats
 
-**Schema**: [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) / [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json)
+**Schema**: [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) / [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json)
 
 **Reference**: [`list_creative_formats` task](/docs/creative/task-reference/list_creative_formats)
 
@@ -141,7 +141,7 @@ Discover creative format requirements and specifications.
 
 ### create_media_buy
 
-**Schema**: [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-request.json) / [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json)
+**Schema**: [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json) / [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json)
 
 **Reference**: [`create_media_buy` task](/docs/media-buy/task-reference/create_media_buy)
 
@@ -157,7 +157,7 @@ Create a media buy from selected packages or execute a proposal.
 
 ### update_media_buy
 
-**Schema**: [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json) / [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json)
+**Schema**: [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json) / [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json)
 
 **Reference**: [`update_media_buy` task](/docs/media-buy/task-reference/update_media_buy)
 
@@ -218,7 +218,7 @@ Retrieve operational media buy state, including package status, creative approva
 
 ### get_media_buy_delivery
 
-**Schema**: [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json) / [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json)
+**Schema**: [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json) / [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
 
 **Reference**: [`get_media_buy_delivery` task](/docs/media-buy/task-reference/get_media_buy_delivery)
 
@@ -232,7 +232,7 @@ Track performance metrics and campaign delivery.
 
 ### provide_performance_feedback
 
-**Schema**: [`media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json) / [`media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json)
+**Schema**: [`media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json) / [`media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json)
 
 **Reference**: [`provide_performance_feedback` task](/docs/media-buy/task-reference/provide_performance_feedback)
 
@@ -388,19 +388,19 @@ Sales agents MAY require human approval for any operation. When approval is requ
 
 | Schema | Description |
 |--------|-------------|
-| [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json) | get_products request |
-| [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json) | get_products response |
-| [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-request.json) | create_media_buy request |
-| [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json) | create_media_buy response |
-| [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json) | update_media_buy request |
-| [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json) | update_media_buy response |
-| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) | list_creative_formats request |
-| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json) | get_products request |
+| [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json) | get_products response |
+| [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json) | create_media_buy request |
+| [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json) | create_media_buy response |
+| [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json) | update_media_buy request |
+| [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json) | update_media_buy response |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | list_creative_formats request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | list_creative_formats response |
 | [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) | list_creatives request (Creative Protocol) |
 | [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json) | list_creatives response (Creative Protocol) |
 | [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) | sync_creatives request (Creative Protocol) |
 | [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json) | sync_creatives response (Creative Protocol) |
-| [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json) | get_media_buy_delivery request |
-| [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json) | get_media_buy_delivery response |
-| [`media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json) | provide_performance_feedback request |
-| [`media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json) | provide_performance_feedback response |
+| [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json) | get_media_buy_delivery request |
+| [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) | get_media_buy_delivery response |
+| [`media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json) | provide_performance_feedback request |
+| [`media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json) | provide_performance_feedback response |
