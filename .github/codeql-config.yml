@@ -16,10 +16,3 @@ query-filters:
   # Rate limiting is handled at the infrastructure level (Fly.io proxy).
   - exclude:
       id: js/missing-rate-limiting
-
-  # "Missing CSRF middleware" flags cookieParser serving state-changing routes.
-  # Auth is handled via WorkOS session cookies validated server-side on every
-  # request. State-changing endpoints require requireAuth + requireAdmin with
-  # server-side session verification, not client-supplied tokens.
-  - exclude:
-      id: js/missing-token-validation
