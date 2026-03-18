@@ -1617,6 +1617,12 @@ export function createCertificationToolHandlers(
         return prereqLines.join('\n');
       }
 
+      // Prevent restarting completed modules
+      const existingMod = await certDb.getModuleProgress(userId, moduleId);
+      if (existingMod && (existingMod.status === 'completed' || existingMod.status === 'tested_out')) {
+        return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
+      }
+
       // Check for existing active attempt
       const active = await certDb.getActiveAttempt(userId, mod.track_id);
       if (active) {
