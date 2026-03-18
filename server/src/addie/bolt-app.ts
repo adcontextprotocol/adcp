@@ -2992,6 +2992,13 @@ async function handleChannelMessage({
       ts: 'ts' in event ? event.ts : undefined,
     }, 'Addie Bolt: Received DM in handleChannelMessage');
 
+    // DMs with thread_ts are handled by the Assistant framework (handleUserMessage).
+    // Only handle first DMs (no thread_ts) here to avoid sending duplicate responses.
+    if (hasThreadTs) {
+      logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Skipping threaded DM - handled by Assistant framework');
+      return;
+    }
+
     if (!hasText && !hasAttachments && !hasFiles) {
       logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Ignoring DM without content');
       return;
