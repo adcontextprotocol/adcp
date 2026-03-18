@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import { csrfProtection } from "./middleware/csrf.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
@@ -323,7 +324,10 @@ function getAppConfigScript(user?: { id?: string; email: string; firstName?: str
     ? `<script src="/posthog-init.js" defer></script>`
     : '';
 
-  return `${configScript}\n${posthogScript}`;
+  // csrf.js patches fetch() to include the X-CSRF-Token header on POSTs
+  const csrfScript = `<script src="/csrf.js"></script>`;
+
+  return `${configScript}\n${csrfScript}\n${posthogScript}`;
 }
 
 /**
@@ -478,6 +482,7 @@ export class HTTPServer {
       }
     });
     this.app.use(cookieParser());
+    this.app.use(csrfProtection);
 
     // Serve JSON schemas at /schemas/* from dist/schemas (built schemas)
     // In dev: __dirname is server/src, dist is at ../../dist
