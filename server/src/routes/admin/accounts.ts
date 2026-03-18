@@ -13,7 +13,7 @@
 import { Router, Request, Response } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
 import {
@@ -54,7 +54,7 @@ export function setupAccountRoutes(
 
   // Redirect to manage accounts page
   pageRouter.get("/accounts", requireAuth, (req, res) => {
-    res.redirect(301, "/manage/accounts");
+    res.redirect(301, "/admin/accounts");
   });
 
   // Page route for domain discovery tool
@@ -88,7 +88,7 @@ export function setupAccountRoutes(
     "/accounts/:orgId",
     requireAuth,
     (req, res) => {
-      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
+      res.redirect(301, `/admin/accounts/${req.params.orgId}`);
     }
   );
 
@@ -97,7 +97,7 @@ export function setupAccountRoutes(
     "/organizations/:orgId",
     requireAuth,
     (req, res) => {
-      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
+      res.redirect(301, `/admin/accounts/${req.params.orgId}`);
     }
   );
 
@@ -106,7 +106,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/view-counts",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const pool = getPool();
@@ -310,7 +310,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/:orgId",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const { orgId } = req.params;
@@ -801,7 +801,7 @@ export function setupAccountRoutes(
   );
 
   // GET /api/admin/accounts - List all accounts with action-based views
-  apiRouter.get("/accounts", requireAuth, requireManage, async (req, res) => {
+  apiRouter.get("/accounts", requireAuth, requireAdmin, async (req, res) => {
     try {
       const pool = getPool();
       const { view, owner, search, limit: limitParam, offset: offsetParam } = req.query;
@@ -1366,7 +1366,7 @@ export function setupAccountRoutes(
   apiRouter.post(
     "/accounts/:orgId/activities/:activityId/complete",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const { orgId, activityId } = req.params;
@@ -2161,7 +2161,7 @@ export function setupAccountRoutes(
   // =========================================================================
 
   // POST /api/admin/accounts - Create a new prospect/account
-  apiRouter.post("/accounts", requireAuth, requireManage, async (req, res) => {
+  apiRouter.post("/accounts", requireAuth, requireAdmin, async (req, res) => {
     try {
       const {
         name,
@@ -2464,7 +2464,7 @@ export function setupAccountRoutes(
   );
 
   // GET /api/admin/team - Admin team members for assignment dropdowns
-  apiRouter.get("/team", requireAuth, requireManage, async (req, res) => {
+  apiRouter.get("/team", requireAuth, requireAdmin, async (req, res) => {
     try {
       const pool = getPool();
 

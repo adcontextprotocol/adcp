@@ -85,7 +85,6 @@
       if (user) {
         // User is logged in - show account dropdown
         const displayName = user.firstName || user.email.split('@')[0];
-        const manageLink = user.isManage ? `<a href="${authBaseUrl}/manage" class="navbar__dropdown-item">Manage AAO</a>` : '';
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
           <button class="navbar__notif-btn" id="notifBell" aria-label="Notifications">
@@ -112,7 +111,6 @@
             <div class="navbar__dropdown" id="accountDropdown">
               <div class="navbar__dropdown-header">${escapeHtml(user.email)}</div>
               <a href="${authBaseUrl}/dashboard" class="navbar__dropdown-item">Dashboard</a>
-              ${manageLink}
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>

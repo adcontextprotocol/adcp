@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import { csrfProtection } from "./middleware/csrf.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
@@ -34,8 +35,7 @@ import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, requireManage, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { isWebUserAAOCouncil } from "./addie/mcp/admin-tools.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -288,7 +288,7 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null) {
   let isAdmin = false;
   if (user) {
     const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
@@ -303,7 +303,6 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       firstName: user.firstName,
       lastName: user.lastName,
       isAdmin,
-      isManage: isManage || isAdmin,
       isMember: !!user.isMember,
     } : null,
     posthog: POSTHOG_API_KEY ? {
@@ -316,8 +315,8 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
 /**
  * Generate the script tags to inject app config and PostHog into HTML.
  */
-function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false): string {
-  const config = buildAppConfig(user, isManage);
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null): string {
+  const config = buildAppConfig(user);
   const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 
   // Add PostHog script if API key is configured
@@ -325,7 +324,10 @@ function getAppConfigScript(user?: { id?: string; email: string; firstName?: str
     ? `<script src="/posthog-init.js" defer></script>`
     : '';
 
-  return `${configScript}\n${posthogScript}`;
+  // csrf.js patches fetch() to include the X-CSRF-Token header on POSTs
+  const csrfScript = `<script src="/csrf.js"></script>`;
+
+  return `${configScript}\n${csrfScript}\n${posthogScript}`;
 }
 
 /**
@@ -480,6 +482,7 @@ export class HTTPServer {
       }
     });
     this.app.use(cookieParser());
+    this.app.use(csrfProtection);
 
     // Serve JSON schemas at /schemas/* from dist/schemas (built schemas)
     // In dev: __dirname is server/src, dist is at ../../dist
@@ -701,10 +704,8 @@ export class HTTPServer {
         return res.redirect(302, 'https://docs.adcontextprotocol.org/');
       }
 
-      // Skip paths that have their own route handlers which manage auth and config injection
-      // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
-      // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
+      // Skip paths that have their own route handlers which handle auth and config injection
+      if (urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
         return next();
       }
 
@@ -814,20 +815,9 @@ export class HTTPServer {
       const user = await getUserFromRequest(req, res);
       await enrichUserWithMembership(user);
 
-      // Determine manage-tier access for nav rendering
-      let isManage = false;
-      if (user) {
-        if (isDevModeEnabled()) {
-          const devUser = getDevUser(req);
-          isManage = devUser?.isManage ?? false;
-        } else if (user.id) {
-          isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
-        }
-      }
-
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
-      const configScript = getAppConfigScript(user, isManage);
+      const configScript = getAppConfigScript(user);
 
       // Inject before </head>
       if (html.includes('</head>')) {
@@ -1500,17 +1490,7 @@ export class HTTPServer {
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
 
-        let isManage = false;
-        if (user) {
-          if (isDevModeEnabled()) {
-            const devUser = getDevUser(req);
-            isManage = devUser?.isManage ?? false;
-          } else if (user.id) {
-            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
-          }
-        }
-
-        const configScript = getAppConfigScript(user, isManage);
+        const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -1549,17 +1529,7 @@ export class HTTPServer {
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
 
-        let isManage = false;
-        if (user) {
-          if (isDevModeEnabled()) {
-            const devUser = getDevUser(req);
-            isManage = devUser?.isManage ?? false;
-          } else if (user.id) {
-            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
-          }
-        }
-
-        const configScript = getAppConfigScript(user, isManage);
+        const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -4067,25 +4037,34 @@ export class HTTPServer {
       }
     });
 
-    // Manage routes — kitchen cabinet + admin
-    this.app.get('/manage', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage.html'));
-    this.app.get('/manage/referrals', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-referrals.html'));
-    this.app.get('/manage/prospects', requireAuth, (req, res) => res.redirect(301, '/manage/accounts'));
-    this.app.get('/manage/accounts', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-accounts.html'));
-    this.app.get('/manage/accounts/:orgId', requireAuth, requireManage, (req, res) =>
+    // Admin sub-pages (accounts, referrals, analytics, geo)
+    this.app.get('/admin/referrals', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-referrals.html'));
+    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/admin/accounts'));
+    this.app.get('/admin/accounts', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-accounts.html'));
+    this.app.get('/admin/accounts/:orgId', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
-    this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
-    this.app.get('/manage/geo', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-geo.html'));
+    this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-analytics.html'));
+    this.app.get('/admin/geo', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
 
-    // Redirect moved admin pages to their new /manage paths
-    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/accounts'));
-    this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
-    this.app.get('/admin/geo', (req, res) => res.redirect(301, '/manage/geo'));
+    // Redirects from old /manage paths (preserve query strings)
+    const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
+      const qs = req.originalUrl.split('?')[1];
+      res.redirect(301, target + (qs ? '?' + qs : ''));
+    };
+    this.app.get('/manage', manageRedirect('/admin'));
+    this.app.get('/manage/referrals', manageRedirect('/admin/referrals'));
+    this.app.get('/manage/prospects', manageRedirect('/admin/accounts'));
+    this.app.get('/manage/accounts/:orgId', (req, res) => {
+      const qs = req.originalUrl.split('?')[1];
+      res.redirect(301, `/admin/accounts/${req.params.orgId}` + (qs ? '?' + qs : ''));
+    });
+    this.app.get('/manage/accounts', manageRedirect('/admin/accounts'));
+    this.app.get('/manage/analytics', manageRedirect('/admin/analytics'));
+    this.app.get('/manage/geo', manageRedirect('/admin/geo'));
 
     // Admin routes
     // GET /admin - Admin landing page
@@ -4349,7 +4328,7 @@ export class HTTPServer {
     });
 
     // GET /api/admin/analytics-data - Get simple analytics data from views
-    this.app.get('/api/admin/analytics-data', requireAuth, requireManage, async (req, res) => {
+    this.app.get('/api/admin/analytics-data', requireAuth, requireAdmin, async (req, res) => {
       try {
         const pool = getPool();
         // Query all analytics views
@@ -4460,8 +4439,8 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/admin/referrals - Aggregate referral activity for manage tier
-    this.app.get('/api/admin/referrals', requireAuth, requireManage, async (_req, res) => {
+    // GET /api/admin/referrals - Aggregate referral activity
+    this.app.get('/api/admin/referrals', requireAuth, requireAdmin, async (_req, res) => {
       try {
         const rows = await listAllReferralCodes();
         res.json(rows);
@@ -5756,7 +5735,6 @@ Disallow: /api/admin/
               first_name: user.firstName,
               last_name: user.lastName,
               isAdmin: devUser.isAdmin,
-              isManage: devUser.isManage || devUser.isAdmin,
             },
             organizations,
             // Include dev mode info for debugging
@@ -5797,8 +5775,6 @@ Disallow: /api/admin/
         // Check if user is admin
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
-        const isManage = isAdmin || await isWebUserAAOCouncil(user.id);
-
         // Check Slack sync status
         let isLinkedToSlack = false;
         try {
@@ -5817,7 +5793,6 @@ Disallow: /api/admin/
             first_name: user.firstName,
             last_name: user.lastName,
             isAdmin,
-            isManage,
             isLinkedToSlack,
           },
           organizations,
