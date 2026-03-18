@@ -1,0 +1,20 @@
+---
+title: transition_deal_state
+testable: true
+---
+
+Move a deal through its lifecycle. Typical transitions: PROPOSED → ACCEPTED, ACCEPTED → SCHEDULED, SCHEDULED → LIVE, LIVE → PAUSED/LIVE/COMPLETED, PROPOSED → REJECTED, any → CANCELLED.
+
+**Request schema**: `/schemas/latest/deals/transition-deal-state-request.json`  
+**Response schema**: `/schemas/latest/deals/transition-deal-state-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_id | string | Yes | Deal to transition |
+| state | enum | Yes | Target state (e.g. ACCEPTED, LIVE, COMPLETED) |
+
+## Response
+
+Returns `deal` in the new state and optional `errors`.

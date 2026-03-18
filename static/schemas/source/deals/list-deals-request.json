@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/list-deals-request.json",
+  "title": "List Deals Request",
+  "description": "Request parameters for listing and filtering deals. Use deal_ids for single-deal fetch (get_deal equivalent). Supports pagination and updated_since for sync patterns.",
+  "type": "object",
+  "properties": {
+    "deal_ids": {
+      "type": "array",
+      "description": "Specific deal IDs to fetch. When provided, returns only these deals (e.g. single deal when length 1).",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "buyer_seat_id": {
+      "type": "string",
+      "description": "Filter by buyer seat (or account)"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Filter by product"
+    },
+    "transaction_type": {
+      "$ref": "/schemas/enums/transaction-type.json",
+      "description": "Filter by deal type (PMP, PG, AP)"
+    },
+    "state": {
+      "oneOf": [
+        { "$ref": "/schemas/enums/deal-state.json" },
+        {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/deal-state.json" },
+          "minItems": 1
+        }
+      ],
+      "description": "Filter by deal state(s)"
+    },
+    "visibility": {
+      "$ref": "/schemas/enums/deal-visibility.json",
+      "description": "Filter by visibility (e.g. PUBLIC for marketplace shelf)"
+    },
+    "updated_since": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Return only deals updated after this timestamp (ISO 8601)"
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

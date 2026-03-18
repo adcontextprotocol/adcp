@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deal-activation-status-request.json",
+  "title": "Get Deal Activation Status Request",
+  "description": "Request for asynchronous activation status per destination. Optionally scope to a single deployment_id.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "Deal to check"
+    },
+    "deployment_id": {
+      "type": "string",
+      "description": "Optional: limit to this deployment"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id"],
+  "additionalProperties": true
+}

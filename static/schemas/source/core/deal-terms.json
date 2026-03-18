@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal-terms.json",
+  "title": "Deal Terms",
+  "description": "Versioned negotiated terms for a deal. Structure varies by transaction_type (PMP: floor/bid cap; PG: commitment/makegood; AP: package/auction rules). Used in create_deal, update_deal_terms, and returned on the deal object.",
+  "type": "object",
+  "properties": {
+    "transaction_type": {
+      "$ref": "/schemas/enums/transaction-type.json",
+      "description": "Deal transaction type (PMP, PG, AP)"
+    },
+    "floor": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Price floor (e.g. CPM). Relevant for PMP."
+    },
+    "bid_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Maximum bid. Only present when seller supports bid caps (PMP)."
+    },
+    "commitment_units": {
+      "type": "object",
+      "description": "Commitment for PG: impressions or spend",
+      "properties": {
+        "impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Committed impression volume"
+        },
+        "spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Committed spend amount"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Currency for spend"
+        }
+      },
+      "additionalProperties": true
+    },
+    "makegood_rules": {
+      "type": "string",
+      "description": "Human-readable or structured makegood policy for PG. Optional."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight start (ISO 8601)"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end (ISO 8601)"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

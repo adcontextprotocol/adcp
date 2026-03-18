@@ -1,0 +1,26 @@
+---
+title: list_deals
+testable: true
+---
+
+List or filter deals. To fetch a single deal, use `deal_ids: ["<deal_id>"]`. Supports pagination and `updated_since` for sync patterns.
+
+**Request schema**: `/schemas/latest/deals/list-deals-request.json`  
+**Response schema**: `/schemas/latest/deals/list-deals-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_ids | array of string | No | Specific deal IDs (use for single-deal fetch) |
+| buyer_seat_id | string | No | Filter by buyer seat |
+| product_id | string | No | Filter by product |
+| transaction_type | enum | No | PMP, PG, or AP |
+| state | enum or array | No | Filter by deal state(s) |
+| visibility | enum | No | PRIVATE, INVITE_ONLY, PUBLIC |
+| updated_since | date-time | No | Only deals updated after this time |
+| pagination | object | No | Cursor-based pagination |
+
+## Response
+
+Returns `deals` (array of deal objects), optional `pagination`, and optional `errors`.

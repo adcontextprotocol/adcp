@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/update-deal-terms-response.json",
+  "title": "Update Deal Terms Response",
+  "description": "Response payload for update_deal_terms task",
+  "type": "object",
+  "properties": {
+    "deal": {
+      "$ref": "/schemas/core/deal.json",
+      "description": "Deal with incremented version and new terms"
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal"],
+  "additionalProperties": true
+}

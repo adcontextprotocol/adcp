@@ -1,0 +1,23 @@
+---
+title: get_deal_metrics
+testable: true
+---
+
+Canonical reporting for a logical deal: impressions, spend, CPM, win/fill, reject reasons. Optional per-destination breakdown.
+
+**Request schema**: `/schemas/latest/deals/get-deal-metrics-request.json`  
+**Response schema**: `/schemas/latest/deals/get-deal-metrics-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_id | string | Yes | Deal to report on |
+| time_range | object | No | Start and end time |
+| granularity | enum | No | hour, day, week, month |
+| dimensions | array | No | Breakdown dimensions (geo, device, channel, publisher) |
+| by_destination | boolean | No | Include per-destination breakdown |
+
+## Response
+
+Returns `deal_id`, `metrics` (normalized metrics), optional `by_destination`, and optional `errors`.

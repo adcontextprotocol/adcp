@@ -1,0 +1,63 @@
+---
+title: Deals Protocol
+description: AdCP Deals Protocol - PMP, PG, and AP deal lifecycle, activation, and diagnostics.
+keywords: [deals protocol, PMP, programmatic guaranteed, auction package, deal activation, deal diagnostics]
+---
+
+Products are the discovery surface; deals are the negotiated transaction wrapper. The Deals protocol lets AI agents create, negotiate, activate, and monitor deals (PMP, Programmatic Guaranteed, Auction Package) with sales agents.
+
+## Protocol Access
+
+Deals tasks are accessible through the same transports as Media Buy:
+
+- **[MCP (Model Context Protocol)](/docs/building/integration/mcp-guide)**: Tool-based interaction
+- **[A2A (Agent-to-Agent)](/docs/building/integration/a2a-guide)**: Message-based interaction
+
+Sales agents that support deals declare `deals` in `get_adcp_capabilities` → `supported_protocols` and expose the deals tasks.
+
+## Discovery
+
+- **Product discovery**: Use **`get_products`** (Media Buy) with `filters.transaction_type` set to `PMP`, `PG`, or `AP` to find products that can be turned into deals. Products may include `supported_transaction_types`, `transaction_terms_by_type`, and `deal_capabilities`.
+- **Single product**: Call `get_products` with filters that target one product (e.g. by product_id in filters or selection) to get full product detail for deal creation.
+
+## Deal Lifecycle
+
+| Task | Purpose |
+|------|---------|
+| **`create_deal`** | Create a logical deal (starts in PROPOSED or DRAFT) |
+| **`list_deals`** | Browse/filter deals; use `deal_ids` for single-deal fetch |
+| **`update_deal_terms`** | Negotiate or counter-offer (versioned terms) |
+| **`transition_deal_state`** | Move deal through states (e.g. PROPOSED → ACCEPTED → SCHEDULED → LIVE → COMPLETED) |
+
+## Activation
+
+A deal is not transact-able until it is activated on decisioning platforms (DSP/SSP).
+
+| Task | Purpose |
+|------|---------|
+| **`activate_deal`** | Push or bind the deal to one or more DSP/SSP destinations |
+| **`get_deal_activation_status`** | Check per-destination activation status (async) |
+| **`list_deal_mappings`** | Get logical deal_id → physical platform_deal_id mappings |
+
+## Monitoring and Troubleshooting
+
+| Task | Purpose |
+|------|---------|
+| **`get_deal_metrics`** | Canonical reporting (impressions, spend, CPM, win/fill, reject reasons) |
+| **`get_deal_diagnostics`** | Health score, top issues, root causes, recommendations |
+
+## Key Design Principles
+
+1. **Product-first discovery**: Deals are created from products discovered via `get_products`. No separate get_product task; use `get_products` with filters for single-product detail.
+2. **Single-deal fetch**: Use **`list_deals`** with `deal_ids: [id]` instead of a separate get_deal task.
+3. **Versioned terms**: Negotiation happens in PROPOSED via `update_deal_terms`; each update increments the version. ACCEPTED state locks an `accepted_version`.
+4. **Activation required**: A deal becomes transact-able only after successful activation on the relevant DSP/SSP destinations.
+5. **Per-destination status**: Deal state (e.g. LIVE) is logical; `deployments[]` tracks activation status per platform (PENDING, ACTIVE, FAILED, DISABLED).
+
+## Specification
+
+See [Deals Specification](/docs/deals/specification) for state definitions, transitions, and normative behavior.
+
+## Task Reference
+
+See [Deals Task Reference](/docs/deals/task-reference) for request/response schemas and usage.

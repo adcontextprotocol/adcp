@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/create-deal-request.json",
+  "title": "Create Deal Request",
+  "description": "Request parameters for creating a logical deal. Deal starts in PROPOSED or DRAFT. Buyer and seller negotiate via update_deal_terms; state moves via transition_deal_state; activation via activate_deal.",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Product this deal is based on (from get_products)"
+    },
+    "transaction_type": {
+      "$ref": "/schemas/enums/transaction-type.json",
+      "description": "Deal type: PMP, PG, or AP"
+    },
+    "buyer_seat_id": {
+      "type": "string",
+      "description": "Buyer seat (or account) for this deal. Omit for marketplace shelf deals (visibility PUBLIC)."
+    },
+    "advertiser_id": {
+      "type": "string",
+      "description": "Optional advertiser or brand identifier"
+    },
+    "terms": {
+      "$ref": "/schemas/core/deal-terms.json",
+      "description": "Initial negotiated terms; may be defaults from product"
+    },
+    "visibility": {
+      "$ref": "/schemas/enums/deal-visibility.json",
+      "description": "Who can see this deal when listing. Defaults to PRIVATE when buyer_seat_id is set, else seller-defined."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["product_id", "transaction_type", "terms"],
+  "additionalProperties": true
+}

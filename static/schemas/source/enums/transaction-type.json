@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/transaction-type.json",
+  "title": "Transaction Type",
+  "description": "Deal transaction type: PMP (Private Marketplace), PG (Programmatic Guaranteed), or AP (Auction Package)",
+  "type": "string",
+  "enum": ["PMP", "PG", "AP"]
+}

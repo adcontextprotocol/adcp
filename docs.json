@@ -725,6 +725,30 @@
                 ]
               },
               {
+                "group": "Deals",
+                "expanded": false,
+                "pages": [
+                  "docs/deals/index",
+                  "docs/deals/specification",
+                  {
+                    "group": "Reference",
+                    "expanded": false,
+                    "pages": [
+                      "docs/deals/task-reference/index",
+                      "docs/deals/task-reference/create_deal",
+                      "docs/deals/task-reference/list_deals",
+                      "docs/deals/task-reference/update_deal_terms",
+                      "docs/deals/task-reference/transition_deal_state",
+                      "docs/deals/task-reference/activate_deal",
+                      "docs/deals/task-reference/get_deal_activation_status",
+                      "docs/deals/task-reference/list_deal_mappings",
+                      "docs/deals/task-reference/get_deal_metrics",
+                      "docs/deals/task-reference/get_deal_diagnostics"
+                    ]
+                  }
+                ]
+              },
+              {
                 "group": "Creative",
                 "expanded": false,
                 "pages": [

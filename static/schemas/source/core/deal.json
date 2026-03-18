@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal.json",
+  "title": "Deal",
+  "description": "Logical deal wrapping a product with negotiated terms, lifecycle state, and per-destination activation. Products are discovered via get_products; deals are created, updated, and activated via the Deals protocol.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "Unique identifier for the deal (seller-assigned)"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Product this deal is based on"
+    },
+    "transaction_type": {
+      "$ref": "/schemas/enums/transaction-type.json"
+    },
+    "buyer_seat_id": {
+      "type": "string",
+      "description": "Buyer seat (or account) this deal is for. Null for marketplace shelf deals (visibility PUBLIC)."
+    },
+    "advertiser_id": {
+      "type": "string",
+      "description": "Optional advertiser or brand identifier"
+    },
+    "state": {
+      "$ref": "/schemas/enums/deal-state.json"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Current terms version; increments on each update_deal_terms"
+    },
+    "accepted_version": {
+      "type": "integer",
+      "description": "Terms version that was accepted when state moved to ACCEPTED. Omitted when state is not ACCEPTED or later."
+    },
+    "terms": {
+      "$ref": "/schemas/core/deal-terms.json",
+      "description": "Current negotiated terms (at current version)"
+    },
+    "deployments": {
+      "type": "array",
+      "description": "Per-destination activation status. Deal may be LIVE while only a subset of destinations are ACTIVE.",
+      "items": {
+        "$ref": "/schemas/core/deal-deployment.json"
+      }
+    },
+    "visibility": {
+      "$ref": "/schemas/enums/deal-visibility.json",
+      "description": "Who can see this deal when listing (PRIVATE, INVITE_ONLY, PUBLIC)"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Creation timestamp (ISO 8601)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last update timestamp (ISO 8601)"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id", "product_id", "transaction_type", "state", "version", "terms"],
+  "additionalProperties": true
+}

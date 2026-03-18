@@ -81,6 +81,7 @@
         "enum": [
           "media_buy",
           "signals",
+          "deals",
           "governance",
           "sponsored_intelligence",
           "creative",
@@ -560,6 +561,51 @@
           }
         }
       }
+    },
+    "deals": {
+      "type": "object",
+      "description": "Deals protocol capabilities. Only present if deals is in supported_protocols. Sales agents that support PMP, PG, or AP deals declare supported transaction types and optional features here.",
+      "properties": {
+        "supported_transaction_types": {
+          "type": "array",
+          "description": "Deal transaction types this seller supports (PMP, PG, AP)",
+          "items": {
+            "type": "string",
+            "enum": ["PMP", "PG", "AP"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "features": {
+          "type": "object",
+          "description": "Optional deal features supported across the seller's product portfolio",
+          "properties": {
+            "supports_bid_cap": {
+              "type": "boolean",
+              "description": "Products may support bid cap for PMP"
+            },
+            "supports_reject_over_under": {
+              "type": "boolean",
+              "description": "Supports reject over/under semantics"
+            },
+            "supports_deal_level_reporting": {
+              "type": "boolean",
+              "description": "Deal-level reporting available"
+            },
+            "supports_reason_codes": {
+              "type": "boolean",
+              "description": "Reject/fill reason codes available"
+            },
+            "supports_multi_destination_activation": {
+              "type": "boolean",
+              "description": "Activation to multiple DSP/SSP destinations"
+            }
+          },
+          "additionalProperties": { "type": "boolean" }
+        }
+      },
+      "required": ["supported_transaction_types"],
+      "additionalProperties": true
     },
     "governance": {
       "type": "object",

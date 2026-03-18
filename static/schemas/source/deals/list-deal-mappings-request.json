@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/list-deal-mappings-request.json",
+  "title": "List Deal Mappings Request",
+  "description": "Request for logical deal to physical platform ID mappings. Used for reporting and troubleshooting across platforms.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "Deal to list mappings for"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id"],
+  "additionalProperties": true
+}

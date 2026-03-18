@@ -374,6 +374,10 @@
         "additionalProperties": false
       },
       "minItems": 1
+    },
+    "transaction_type": {
+      "$ref": "/schemas/enums/transaction-type.json",
+      "description": "Filter to products that support this deal transaction type (PMP, PG, or AP). When provided, only products with supported_transaction_types including this value are returned."
     }
   },
   "additionalProperties": true

@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deal-metrics-request.json",
+  "title": "Get Deal Metrics Request",
+  "description": "Request for canonical reporting for a logical deal: time range, granularity, dimensions. Optional by_destination for per-platform breakdown.",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "Deal to report on"
+    },
+    "time_range": {
+      "$ref": "/schemas/core/datetime-range.json",
+      "description": "Start and end time for metrics"
+    },
+    "granularity": {
+      "type": "string",
+      "enum": ["hour", "day", "week", "month"],
+      "description": "Reporting granularity"
+    },
+    "dimensions": {
+      "type": "array",
+      "description": "Optional breakdown dimensions (e.g. geo, device, channel, publisher)",
+      "items": { "type": "string" }
+    },
+    "by_destination": {
+      "type": "boolean",
+      "description": "When true, include per-destination (platform) breakdown",
+      "default": false
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id"],
+  "additionalProperties": true
+}

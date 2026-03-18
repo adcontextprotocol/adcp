@@ -686,6 +686,8 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
   const bundlePatterns = [
     /media-buy\/.*-request\.json$/,
     /media-buy\/.*-response\.json$/,
+    /deals\/.*-request\.json$/,
+    /deals\/.*-response\.json$/,
     /signals\/.*-request\.json$/,
     /signals\/.*-response\.json$/,
     /creative\/.*-request\.json$/,
@@ -807,6 +809,7 @@ function generateSkillSchemas(versionDir, version) {
     { protocol: 'media-buy', skillName: 'adcp-media-buy' },
     { protocol: 'creative', skillName: 'adcp-creative' },
     { protocol: 'signals', skillName: 'adcp-signals' },
+    { protocol: 'deals', skillName: 'adcp-deals' },
   ];
 
   let totalCount = 0;

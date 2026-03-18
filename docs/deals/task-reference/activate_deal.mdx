@@ -1,0 +1,20 @@
+---
+title: activate_deal
+testable: true
+---
+
+Activate a deal on one or more decisioning platforms (DSP/SSP) so it becomes transact-able. Required before the deal can be used for bidding.
+
+**Request schema**: `/schemas/latest/deals/activate-deal-request.json`  
+**Response schema**: `/schemas/latest/deals/activate-deal-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_id | string | Yes | Deal to activate |
+| destinations | array | Yes | Each: platform_type (DSP/SSP), platform_name, account_id, mode (CREATE_AND_SYNC or BIND_EXISTING) |
+
+## Response
+
+Returns `deal_id`, `deployments` (per-destination platform_deal_id, deployment_status, error details), and optional `errors`. Activation may be asynchronous; use `get_deal_activation_status` to poll.

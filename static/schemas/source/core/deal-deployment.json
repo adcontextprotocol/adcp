@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal-deployment.json",
+  "title": "Deal Deployment",
+  "description": "One activation of a logical deal on a decisioning platform. Tracks platform_deal_id and per-destination status.",
+  "type": "object",
+  "properties": {
+    "deployment_id": {
+      "type": "string",
+      "description": "Unique identifier for this deployment (seller-assigned)"
+    },
+    "platform_type": {
+      "type": "string",
+      "enum": ["DSP", "SSP"],
+      "description": "Decisioning platform type"
+    },
+    "platform_name": {
+      "type": "string",
+      "description": "Platform identifier"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Account or seat ID on the platform"
+    },
+    "platform_deal_id": {
+      "type": "string",
+      "description": "Physical deal ID (or line item / targeting ID) on the platform"
+    },
+    "deployment_status": {
+      "$ref": "/schemas/enums/deal-deployment-status.json"
+    },
+    "error": {
+      "type": "object",
+      "description": "Last error details when deployment_status is FAILED",
+      "properties": {
+        "message": { "type": "string" },
+        "code": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last status update (ISO 8601)"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["platform_type", "deployment_status"],
+  "additionalProperties": true
+}

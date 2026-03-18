@@ -1,0 +1,21 @@
+---
+title: update_deal_terms
+testable: true
+---
+
+Update deal terms (negotiation/counter-offer). Increments the deal version. Deal must be in PROPOSED (or DRAFT if seller allows). Used by both buyer and seller.
+
+**Request schema**: `/schemas/latest/deals/update-deal-terms-request.json`  
+**Response schema**: `/schemas/latest/deals/update-deal-terms-response.json`
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deal_id | string | Yes | Deal to update |
+| terms | object | Yes | New proposed terms (replaces current version) |
+| change_summary | string | No | Human-readable summary of changes |
+
+## Response
+
+Returns `deal` with incremented version and new terms, and optional `errors`.

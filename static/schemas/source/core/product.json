@@ -440,6 +440,39 @@
       "minProperties": 1,
       "additionalProperties": true
     },
+    "supported_transaction_types": {
+      "type": "array",
+      "description": "Deal transaction types supported for this product (PMP, PG, AP). When present, the product can be used to create deals of these types. Omitted when the product is not sold as deals.",
+      "items": {
+        "$ref": "/schemas/enums/transaction-type.json"
+      },
+      "uniqueItems": true
+    },
+    "transaction_terms_by_type": {
+      "type": "object",
+      "description": "High-level default or allowed ranges per transaction type (PMP/PG/AP). Keys are transaction_type values; structure is product-specific (e.g. floor range, commitment units). Used for deal discovery and create_deal defaults.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "requires_channel_split": {
+      "type": "boolean",
+      "description": "When true, supply may require separate deals per channel. Used for deal discovery.",
+      "default": false
+    },
+    "deal_capabilities": {
+      "type": "object",
+      "description": "Deal-related capabilities for this product. Only present when supported_transaction_types is non-empty.",
+      "properties": {
+        "supports_bid_cap": { "type": "boolean", "description": "Product supports bid cap for PMP" },
+        "supports_reject_over_under": { "type": "boolean", "description": "Supports reject over/under semantics" },
+        "supports_deal_level_reporting": { "type": "boolean", "description": "Deal-level reporting available" },
+        "supports_reason_codes": { "type": "boolean", "description": "Reject/fill reason codes available" },
+        "supports_multi_destination_activation": { "type": "boolean", "description": "Activation to multiple DSP/SSP destinations" }
+      },
+      "additionalProperties": true
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
