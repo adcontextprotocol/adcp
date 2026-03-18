@@ -1227,8 +1227,7 @@ export function createCertificationToolHandlers(
       }
 
       // Prevent resetting completed or tested-out modules
-      const existingProgress = await certDb.getProgress(userId);
-      const existingMod = existingProgress.find(p => p.module_id === moduleId);
+      const existingMod = await certDb.getModuleProgress(userId, moduleId);
       if (existingMod && (existingMod.status === 'completed' || existingMod.status === 'tested_out')) {
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
@@ -1615,6 +1614,12 @@ export function createCertificationToolHandlers(
           `"${mod.id} covers [2-3 mechanisms from key concepts above, using task names like check_governance, sync_plans]. [One sentence connecting to their stated goal]. The path there goes through ${prereqs.missing.join(' → ')}, but placement assessments can fast-track based on what you already know. [Socratic question about their domain experience]."`,
         ];
         return prereqLines.join('\n');
+      }
+
+      // Prevent restarting completed modules
+      const existingMod = await certDb.getModuleProgress(userId, moduleId);
+      if (existingMod && (existingMod.status === 'completed' || existingMod.status === 'tested_out')) {
+        return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
       // Check for existing active attempt

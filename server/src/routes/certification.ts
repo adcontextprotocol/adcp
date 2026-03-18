@@ -175,6 +175,16 @@ export function createCertificationRouters() {
         });
       }
 
+      // Prevent restarting completed or tested-out modules
+      const existing = await certDb.getModuleProgress(userId, moduleId);
+      if (existing && (existing.status === 'completed' || existing.status === 'tested_out')) {
+        return res.status(409).json({
+          error: 'Module already completed',
+          message: `Module ${moduleId} is already ${existing.status.replace('_', ' ')}.`,
+          status: existing.status,
+        });
+      }
+
       const progress = await certDb.startModule(userId, moduleId, req.body?.addie_thread_id);
       res.json(progress);
     } catch (error) {
