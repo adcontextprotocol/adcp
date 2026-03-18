@@ -1227,8 +1227,7 @@ export function createCertificationToolHandlers(
       }
 
       // Prevent resetting completed or tested-out modules
-      const existingProgress = await certDb.getProgress(userId);
-      const existingMod = existingProgress.find(p => p.module_id === moduleId);
+      const existingMod = await certDb.getModuleProgress(userId, moduleId);
       if (existingMod && (existingMod.status === 'completed' || existingMod.status === 'tested_out')) {
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
