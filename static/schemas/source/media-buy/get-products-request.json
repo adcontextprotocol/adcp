@@ -152,12 +152,14 @@
           "data_provider_signals",
           "max_optimization_goals",
           "catalog_match",
-          "show_ids",
+          "shows",
+          "show_targeting_allowed",
           "episodes",
           "brief_relevance",
           "expires_at",
           "product_card",
-          "product_card_detailed"
+          "product_card_detailed",
+          "enforced_policies"
         ]
       }
     },

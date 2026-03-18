@@ -37,7 +37,7 @@ Properties remain the technical advertising surface — the thing with an adagen
 
 2. **Episodes are installments of a show.** They have specific dates, guests, ratings, and brand safety characteristics that may differ from the show's baseline. Many episodes won't be known in advance.
 
-3. **Shows work like properties.** They're reusable objects that products can optionally reference — not inline blobs repeated on every product. A seller declares their shows once, and multiple products can reference the same show by `show_id`. Shows and episodes are returned alongside products in `get_products` responses, not hosted at external URLs.
+3. **Shows work like properties.** Publishers declare shows in their `adagents.json`, and products reference them via `shows` selectors — the same pattern as `publisher_properties`. Buyers resolve full show objects from the publisher's `adagents.json`.
 
 4. **Properties carry shows.** Many-to-many. A show can be on multiple properties (syndication). A property carries many shows. The property controls the ad inventory; the show is what makes that inventory valuable.
 
@@ -47,7 +47,7 @@ Properties remain the technical advertising surface — the thing with an adagen
 
 ## The Show Object
 
-A show represents a persistent content program that produces episodes over time. Shows work like properties — they're reusable objects that products reference by ID. The seller declares shows in `get_products` responses, and multiple products can reference the same show.
+A show represents a persistent content program that produces episodes over time. Shows work like properties — publishers declare them in `adagents.json`, and products reference them via `shows` selectors with `publisher_domain` and `show_ids`.
 
 ```json
 {
@@ -94,7 +94,7 @@ A show represents a persistent content program that produces episodes over time.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `show_id` | string | Seller-assigned identifier for the show. Unique within a single get_products response but not globally — use distribution identifiers for cross-seller matching. |
+| `show_id` | string | Publisher-assigned identifier. Declared in the publisher's `adagents.json` shows array. Products reference shows via `shows` selectors. Use distribution identifiers for cross-seller matching. |
 | `name` | string | Human-readable show name |
 | `description` | string | What the show is about |
 | `genre` | string[] | Genre tags. When `genre_taxonomy` is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0). Otherwise free-form. |
@@ -247,7 +247,7 @@ An episode is a specific installment of a show. Not all episodes will be known i
 | Field | Type | Description |
 |-------|------|-------------|
 | `episode_id` | string | Unique identifier within the show |
-| `show_id` | string | Parent show reference. Required when the product spans multiple shows (has multiple entries in `show_ids`). |
+| `show_id` | string | Parent show reference. Required when the product spans multiple shows (has multiple entries across `shows`). |
 | `name` | string | Episode title |
 | `season` / `episode_number` | string | Season and episode identifiers |
 | `scheduled_at` | datetime | When the episode airs/publishes |
@@ -290,38 +290,12 @@ This matters for forecasting accuracy and creative readiness.
 
 ## How Shows Connect to Products
 
-Shows work like properties — products reference them by ID. The `get_products` response includes a top-level `shows` array with full show objects, and products reference shows via `show_ids` (an array, since a product can span multiple shows — e.g., a network bundle). Episodes are listed per-product since different products may scope to different episodes of the same show.
-
-The response's `shows` array MUST only include shows referenced by the returned products. Under pagination, each page includes all show objects needed for that page's products.
+Products reference shows via `shows` — an array of `{publisher_domain, show_ids}` selectors that point to shows declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`. Buyers resolve full show objects from the publisher's `adagents.json`. Episodes are listed per-product since different products may scope to different episodes of the same show.
 
 ### get_products Response Structure
 
 ```json
 {
-  "shows": [
-    {
-      "show_id": "pinnacle_games",
-      "name": "Pinnacle Games",
-      "genre": ["entertainment", "competition"],
-      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
-      "cadence": "weekly",
-      "status": "active",
-      "talent": [
-        { "role": "host", "name": "Rex Valor", "brand_url": "https://rexvalor.example.com/brand.json" }
-      ],
-      "distribution": [
-        {
-          "publisher_domain": "youtube.com",
-          "identifiers": [{ "type": "youtube_channel_id", "value": "UCX6OQ3DkcsbYNE6H8uQQuVA" }]
-        },
-        {
-          "publisher_domain": "titanstreaming.example.com",
-          "identifiers": [{ "type": "amazon_title_id", "value": "B0DFBT5GBP" }]
-        }
-      ]
-    }
-  ],
-
   "products": [
     {
       "product_id": "pinnacle_games_april_bundle",
@@ -332,7 +306,10 @@ The response's `shows` array MUST only include shows referenced by the returned 
         "property_ids": ["titan_streaming"]
       }],
 
-      "show_ids": ["pinnacle_games"],
+      "shows": [{
+        "publisher_domain": "titanstreaming.example.com",
+        "show_ids": ["pinnacle_games"]
+      }],
       "episodes": [
         {
           "episode_id": "s1e03",
@@ -367,7 +344,7 @@ The response's `shows` array MUST only include shows referenced by the returned 
 }
 ```
 
-The show is defined once in `shows` and referenced by `show_ids` on the product. If multiple products reference the same show (e.g., a bundle product and individual episode products), the show object isn't duplicated. `show_ids` is an array because a single product can span multiple shows — for example, a podcast network selling "all our tech podcasts in April."
+The buyer resolves the full show object (name, genre, talent, distribution, etc.) from `titanstreaming.example.com`'s `adagents.json`. If multiple products reference the same show from the same publisher, the buyer resolves it once. `shows` supports multiple entries because a product can span shows from different publishers — for example, a podcast network selling "all our tech podcasts in April" across multiple publisher domains.
 
 Episode S1E04 is tentative and doesn't have a name yet. That's fine — episodes get filled in as production progresses.
 
@@ -379,7 +356,7 @@ A product can reference a show without listing specific episodes. This means "in
 {
   "product_id": "pinnacle_games_run_of_show",
   "name": "Pinnacle Games Run of Show",
-  "show_ids": ["pinnacle_games"],
+  "shows": [{ "publisher_domain": "titanstreaming.example.com", "show_ids": ["pinnacle_games"] }],
   "placements": [
     { "placement_id": "pre_roll", "name": "Pre-roll" }
   ],
@@ -398,7 +375,7 @@ For premium/guaranteed buys, the seller can scope to specific episodes:
 {
   "product_id": "pinnacle_games_finale_sponsorship",
   "name": "Pinnacle Games Season Finale Exclusive Sponsorship",
-  "show_ids": ["pinnacle_games"],
+  "shows": [{ "publisher_domain": "titanstreaming.example.com", "show_ids": ["pinnacle_games"] }],
   "episodes": [
     {
       "episode_id": "s1e10_finale",
@@ -419,22 +396,21 @@ For premium/guaranteed buys, the seller can scope to specific episodes:
 }
 ```
 
+### Show Targeting
+
+Products with multiple shows default to bundles. Sellers set `show_targeting_allowed: true` to let buyers target a subset — the same pattern as `property_targeting_allowed`.
+
 ### Multi-Show Bundle
 
 A podcast network or YouTube MCN can sell a bundle product spanning multiple shows. Each episode references its parent show via `show_id`:
 
 ```json
 {
-  "shows": [
-    { "show_id": "tech_weekly", "name": "Tech Weekly", "genre": ["IAB19"], "status": "active" },
-    { "show_id": "startup_hour", "name": "The Startup Hour", "genre": ["IAB3"], "status": "active" }
-  ],
-
   "products": [
     {
       "product_id": "technet_april_bundle",
       "name": "TechNet Podcast Bundle - April",
-      "show_ids": ["tech_weekly", "startup_hour"],
+      "shows": [{ "publisher_domain": "technet.example.com", "show_ids": ["tech_weekly", "startup_hour"] }],
       "episodes": [
         { "episode_id": "tw_ep12", "show_id": "tech_weekly", "scheduled_at": "2026-04-07T10:00:00Z", "status": "scheduled" },
         { "episode_id": "tw_ep13", "show_id": "tech_weekly", "scheduled_at": "2026-04-14T10:00:00Z", "status": "tentative" },
@@ -479,7 +455,7 @@ Buyers already use `get_products` to discover inventory. Show-aware products app
 }
 ```
 
-The seller returns products referencing shows from the top-level `shows` array. The buyer agent can evaluate the show's genre, rating, talent, and upcoming episodes without additional lookups.
+The seller returns products with `shows` selectors. The buyer resolves full show objects from each publisher's `adagents.json` to evaluate genre, rating, talent, and distribution.
 
 ### Podcast Example
 
@@ -487,53 +463,17 @@ A podcast network like Wonderstruck distributes across Spotify, Apple Podcasts, 
 
 ```json
 {
-  "shows": [
-    {
-      "show_id": "signal_noise",
-      "name": "Signal & Noise",
-      "genre": ["technology", "business"],
-      "content_rating": { "system": "podcast", "rating": "explicit" },
-      "cadence": "weekly",
-      "status": "active",
-      "talent": [
-        { "role": "host", "name": "Maren Solberg", "brand_url": "https://marensolberg.example.com/brand.json" }
-      ],
-      "distribution": [
-        {
-          "publisher_domain": "spotify.com",
-          "identifiers": [{ "type": "spotify_show_id", "value": "4rOoJ6Egrf8K2IrywzwOMk" }]
-        },
-        {
-          "publisher_domain": "apple.com",
-          "identifiers": [{ "type": "apple_podcast_id", "value": "1234567890" }]
-        },
-        {
-          "publisher_domain": "youtube.com",
-          "identifiers": [{ "type": "youtube_channel_id", "value": "UC_example" }]
-        },
-        {
-          "publisher_domain": "signalnoise.com",
-          "identifiers": [{ "type": "domain", "value": "signalnoise.com" }]
-        },
-        {
-          "publisher_domain": "substack.com",
-          "identifiers": [{ "type": "substack_id", "value": "signalnoise" }]
-        }
-      ]
-    }
-  ],
-
   "products": [
     {
       "product_id": "signalnoise_april",
       "name": "Signal & Noise Podcast - April Episodes",
       "publisher_properties": [{
-        "publisher_domain": "spotify.com",
+        "publisher_domain": "wonderstruck.example.com",
         "selection_type": "by_id",
         "property_ids": ["signalnoise_feed"]
       }],
 
-      "show_ids": ["signal_noise"],
+      "shows": [{ "publisher_domain": "wonderstruck.example.com", "show_ids": ["signal_noise"] }],
       "episodes": [
         {
           "episode_id": "ep47",
@@ -664,7 +604,7 @@ Without shows/episodes, there's no structured way to reference which piece of co
 
 ## Resolved Questions
 
-- **Cross-seller show identity**: Solved by distribution identifiers. Buyer agents match shows across sellers via shared platform identifiers (same youtube_channel_id = same show). Platform-independent identifiers like `imdb_id` and `gracenote_id` help for TV/film content.
-- **Where do shows live?**: Top-level objects in `get_products` responses, referenced by `show_id` on products. Same pattern as properties — declared by the seller, no external hosting.
+- **Cross-seller show identity**: Show identity is `{publisher_domain, show_id}`. When the show creator publishes their own `adagents.json`, their domain is the canonical registry — any seller can reference the creator's shows via `shows`, giving buyers a stable identity across sellers and platforms. When no canonical publisher exists, distribution identifiers (`imdb_id`, `gracenote_id`, platform-specific IDs) handle cross-seller matching.
+- **Where do shows live?**: Declared in the publisher's `adagents.json` alongside properties. Products reference them via `shows` selectors with `publisher_domain` and `show_ids`. Buyers resolve full show objects from `adagents.json`. The `publisher_domain` in a selector can point to any publisher — not just the seller's own domain — enabling creators to serve as canonical sources.
 - **Naming**: "Show" — universally understood across media types, not overloaded in tech.
 - **Distribution identifier types**: Open enum covering podcast platforms (apple_podcast_id, spotify_show_id, podcast_guid, rss_url, amazon_music_id, iheart_id, podcast_index_id), video/CTV (youtube_channel_id, youtube_playlist_id, amazon_title_id, roku_channel_id, peacock_id, pluto_channel_id, tubi_id, tiktok_id, twitch_channel), and cross-platform references (imdb_id, gracenote_id, eidr_id, domain, substack_id). New types added as distribution channels emerge. Shows SHOULD include at least one platform-independent identifier.

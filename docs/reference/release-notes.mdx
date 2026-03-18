@@ -19,7 +19,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 2. **Visual Guidelines on Brand Manifest** — Structured `visual_guidelines` field on `brand.json`: photography, graphic style, shapes, iconography, composition, motion, logo placement, colorways, type scale, asset libraries, and restrictions. Enables generative creative systems to produce on-brand assets.
 
-3. **Shows and Episodes** — Content dimension for products representing persistent programs (podcasts, TV series, YouTube channels). `show_ids` on products, `shows` array in `get_products` responses. Distribution identifiers for cross-seller matching, episode lifecycle states, break-based ad inventory, talent linking, show relationships, international content ratings.
+3. **Shows and Episodes** — Content dimension for products representing persistent programs (podcasts, TV series, YouTube channels). `shows` on products references shows declared in an `adagents.json` by domain and show ID — show creators can serve as canonical sources regardless of distribution. `show_targeting_allowed` controls whether buyers can select a subset or get the bundle. Distribution identifiers for cross-seller matching, episode lifecycle states, break-based ad inventory, talent linking, show relationships, international content ratings.
 
 4. **Sponsored Intelligence Channel** — `sponsored_intelligence` added to the media channel taxonomy for AI platform advertising (AI assistants, AI search, generative AI experiences).
 

@@ -100,7 +100,7 @@ Structured `visual_guidelines` on `brand.json` complement rights by giving gener
 
 ### Shows and episodes
 
-Products can now reference persistent content programs — podcasts, TV series, YouTube channels — via `show_ids`. `get_products` responses include a top-level `shows` array with distribution identifiers for cross-seller matching, episode lifecycle states (scheduled, tentative, live, postponed, cancelled, aired, published), break-based ad inventory configuration, talent linking to `brand.json`, and international content rating systems.
+Products can now reference persistent content programs — podcasts, TV series, YouTube channels — via `shows`, which follows the same publisher-scoped selector pattern as `publisher_properties`. Shows are declared in the publisher's `adagents.json` and products reference them by publisher domain and show ID. Buyers resolve full show objects from `adagents.json`. Shows include distribution identifiers for cross-seller matching, episode lifecycle states (scheduled, tentative, live, postponed, cancelled, aired, published), break-based ad inventory configuration, talent linking to `brand.json`, and international content rating systems.
 
 Shows support relationships (spinoff, companion, sequel, prequel, crossover) and derivative content (clips, highlights, recaps) for comprehensive content modeling.
 
