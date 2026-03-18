@@ -5,7 +5,7 @@
  * combinations. Products reference formats from formats.ts via format_id.
  */
 
-import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition } from './types.js';
+import type { PublisherProfile, PricingTemplate, CatalogProduct } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
@@ -332,10 +332,17 @@ function buildProduct(
       s.channels.some(c => template.channels.includes(c)),
     );
     if (matchingShows.length > 0) {
-      product.show_ids = matchingShows.map(s => s.showId);
+      product.shows = [{
+        publisher_domain: pub.domain,
+        show_ids: matchingShows.map(s => s.showId),
+      }];
       // Guaranteed products with shows get exclusivity
       if (template.deliveryType === 'guaranteed') {
         product.exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
+      }
+      // Multi-show non-guaranteed products allow show targeting
+      if (matchingShows.length > 1 && template.deliveryType === 'non_guaranteed') {
+        product.show_targeting_allowed = true;
       }
       // Flatten episodes from matching shows
       const episodes: Record<string, unknown>[] = [];
@@ -348,7 +355,15 @@ function buildProduct(
             status: ep.status,
           };
           if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
-          if (ep.duration) episode.duration_seconds = ep.duration;
+          if (ep.duration) {
+            const match = ep.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+            if (match) {
+              const hours = parseInt(match[1] || '0', 10);
+              const minutes = parseInt(match[2] || '0', 10);
+              const seconds = parseInt(match[3] || '0', 10);
+              episode.duration_seconds = hours * 3600 + minutes * 60 + seconds;
+            }
+          }
           episodes.push(episode);
         }
       }
@@ -364,59 +379,6 @@ function buildProduct(
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
   };
-}
-
-function buildShowObject(show: ShowDefinition): Record<string, unknown> {
-  const obj: Record<string, unknown> = {
-    show_id: show.showId,
-    name: show.name,
-    genre: show.genre,
-    cadence: show.cadence,
-    status: show.status,
-  };
-  if (show.description) obj.description = show.description;
-  if (show.contentRatings?.length) {
-    obj.content_rating = show.contentRatings.map(r => ({
-      system: r.system,
-      rating: r.rating,
-    }));
-  }
-  if (show.talent?.length) {
-    obj.talent = show.talent.map(t => ({
-      name: t.name,
-      role: t.role,
-    }));
-  }
-  if (show.distribution?.length) {
-    obj.distribution = show.distribution.map(d => ({
-      publisher_domain: d.publisherDomain,
-      identifiers: d.identifiers.map(id => ({ type: id.type, value: id.value })),
-    }));
-  }
-  return obj;
-}
-
-/**
- * Build the top-level shows array for a get_products response,
- * scoped to only shows referenced by the given products.
- */
-export function buildShowsForProducts(products: Record<string, unknown>[]): Record<string, unknown>[] {
-  const referencedIds = new Set<string>();
-  for (const p of products) {
-    const ids = p.show_ids as string[] | undefined;
-    if (ids) ids.forEach(id => referencedIds.add(id));
-  }
-  if (referencedIds.size === 0) return [];
-
-  const shows: Record<string, unknown>[] = [];
-  for (const pub of PUBLISHERS) {
-    for (const show of pub.shows || []) {
-      if (referencedIds.has(show.showId)) {
-        shows.push(buildShowObject(show));
-      }
-    }
-  }
-  return shows;
 }
 
 /**

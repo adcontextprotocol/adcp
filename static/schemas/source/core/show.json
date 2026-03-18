@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/show.json",
   "title": "Show",
-  "description": "A persistent content program that produces episodes over time. Shows are reusable objects that products reference by show_id. The show_id is seller-scoped — use distribution identifiers for cross-seller matching.",
+  "description": "A persistent content program that produces episodes over time. Declared in the publisher's adagents.json and referenced by products via shows selectors. Use distribution identifiers for cross-seller matching.",
   "type": "object",
   "properties": {
     "show_id": {
       "type": "string",
-      "description": "Seller-assigned identifier for this show. Unique within a single get_products response but not globally unique across sellers. Use distribution identifiers for cross-seller matching."
+      "description": "Publisher-assigned identifier for this show. Declared in the publisher's adagents.json shows array. Products reference shows via shows selectors with publisher_domain and show_ids. Use distribution identifiers for cross-seller matching across publishers."
     },
     "name": {
       "type": "string",
@@ -68,7 +68,7 @@
     },
     "related_shows": {
       "type": "array",
-      "description": "Relationships to other shows (spin-offs, companion shows, etc.). Each entry references another show by show_id within the same response.",
+      "description": "Relationships to other shows (spin-offs, companion shows, etc.). Each entry references another show by show_id within the same publisher's adagents.json.",
       "items": {
         "type": "object",
         "properties": {

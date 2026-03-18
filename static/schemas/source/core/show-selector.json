@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/show-selector.json",
+  "title": "Show Selector",
+  "description": "References shows declared in an adagents.json. Buyers resolve full show objects by fetching the adagents.json at the given domain and matching show_ids against its shows array.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the adagents.json declaring these shows is hosted (e.g., 'mrbeast.com'). The shows array in that file contains the authoritative show definitions.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "show_ids": {
+      "type": "array",
+      "description": "Show IDs from the adagents.json shows array. Each ID must match a show_id declared in that file.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "publisher_domain",
+    "show_ids"
+  ],
+  "additionalProperties": true
+}

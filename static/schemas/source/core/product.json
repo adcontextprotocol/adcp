@@ -282,16 +282,22 @@
       ],
       "additionalProperties": true
     },
-    "show_ids": {
+    "shows": {
       "type": "array",
-      "description": "References to shows in the response's top-level shows array. When present, the product covers inventory associated with these shows. A product can span multiple shows (e.g., a podcast network bundle).",
+      "description": "Shows available in this product. Each entry references shows declared in an adagents.json by domain and show ID. Buyers resolve full show objects from the referenced adagents.json.",
       "items": {
-        "type": "string"
-      }
+        "$ref": "/schemas/core/show-selector.json"
+      },
+      "minItems": 1
+    },
+    "show_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether buyers can target a subset of this product's shows. When false (default), the product is a bundle — buyers get all listed shows. When true, buyers can select specific shows in the media buy."
     },
     "episodes": {
       "type": "array",
-      "description": "Specific episodes included in this product. Each episode references its parent show via show_id when the product spans multiple shows. When absent with show_ids present, the product covers the shows broadly (run-of-show).",
+      "description": "Specific episodes included in this product. Each episode references its parent show via show_id when the product spans multiple shows. When absent with shows present, the product covers the shows broadly (run-of-show).",
       "items": {
         "$ref": "/schemas/core/episode.json"
       }
