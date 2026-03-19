@@ -262,6 +262,15 @@ describe('buildCatalog', () => {
       }
     });
 
+    it('every pricing option has model alias matching pricing_model', () => {
+      for (const cp of catalog) {
+        const opts = cp.product.pricing_options as Array<Record<string, unknown>>;
+        for (const opt of opts) {
+          expect(opt.model).toBe(opt.pricing_model);
+        }
+      }
+    });
+
     it('fixed_price is a non-negative number when present', () => {
       for (const cp of catalog) {
         const opts = cp.product.pricing_options as Array<Record<string, unknown>>;
