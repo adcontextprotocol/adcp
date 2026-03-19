@@ -1139,8 +1139,8 @@
         .filter(m => m.modules_completed > 0 || (m.credentials && m.credentials.length > 0))
         .map(m => `
           <tr>
-            <td data-label="Name">${escapeHtml(m.name)}</td>
-            <td data-label="Credentials">${(m.credentials || []).map(c => `<span class="group-rec-badge">${escapeHtml(c)}</span>`).join(' ') || '<span style="color:var(--color-text-muted);">None</span>'}</td>
+            <td data-label="Name">${escapeHtml(((m.first_name || '') + ' ' + (m.last_name || '')).trim() || 'Unknown')}</td>
+            <td data-label="Credentials">${(m.credentials || []).map(c => `<span class="group-rec-badge">${escapeHtml(typeof c === 'string' ? c : c.name)}</span>`).join(' ') || '<span style="color:var(--color-text-muted);">None</span>'}</td>
             <td data-label="Progress">${m.modules_completed} completed${m.modules_in_progress > 0 ? `, ${m.modules_in_progress} in progress` : ''}</td>
           </tr>
         `).join('');

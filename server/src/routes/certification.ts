@@ -301,7 +301,12 @@ export function createCertificationRouters() {
       }
 
       const summary = await certDb.getOrgCertificationSummary(orgId);
-      res.json(summary);
+      // Strip internal user IDs from client response
+      const { members, ...rest } = summary;
+      res.json({
+        ...rest,
+        members: members.map(({ user_id, ...m }) => m),
+      });
     } catch (error) {
       logger.error({ error, orgId: req.params.orgId }, 'Failed to get org certification summary');
       res.status(500).json({ error: 'Internal server error' });

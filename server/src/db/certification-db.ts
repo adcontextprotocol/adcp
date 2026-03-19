@@ -599,11 +599,17 @@ export async function getOrgMemberCredentials(workosOrgId: string): Promise<Publ
 // ORGANIZATION CERTIFICATION SUMMARY
 // =====================================================
 
+export interface OrgMemberCredential {
+  id: string;
+  name: string;
+  tier: number;
+}
+
 export interface OrgMemberCertification {
   user_id: string;
   first_name: string;
   last_name: string;
-  credentials: string[];
+  credentials: OrgMemberCredential[];
   modules_completed: number;
   modules_in_progress: number;
 }
@@ -652,10 +658,10 @@ export async function getOrgCertificationSummary(orgId: string): Promise<OrgCert
   );
 
   // Build per-member data
-  const credsByUser = new Map<string, string[]>();
+  const credsByUser = new Map<string, OrgMemberCredential[]>();
   for (const row of credsResult.rows) {
     const list = credsByUser.get(row.workos_user_id) || [];
-    list.push(row.credential_id);
+    list.push({ id: row.credential_id, name: row.credential_name, tier: row.tier });
     credsByUser.set(row.workos_user_id, list);
   }
 
