@@ -147,7 +147,7 @@ asyncio.run(create_and_pause_campaign())
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
-*Either `media_buy_id` OR `buyer_ref` is required (not both)
+*Exactly one required — `media_buy_id` xor `buyer_ref`. Requests with both or neither are rejected.
 
 ### Reporting Webhook Object
 
@@ -186,7 +186,7 @@ Configure automated delivery reporting for this media buy:
 | `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
 
-*Either `package_id` OR `buyer_ref` is required for each package update
+*Exactly one required — `package_id` xor `buyer_ref`. Entries with both or neither are rejected.
 
 ## Response
 
