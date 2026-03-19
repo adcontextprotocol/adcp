@@ -237,18 +237,14 @@ function validateAgentUrl(agentUrl: string): string | null {
 /**
  * Build auth options for the SDK from resolved auth.
  */
-function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | undefined {
+function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
   if (!resolved.authToken) return undefined;
 
   if (resolved.authType === 'basic') {
-    // For basic auth, the SDK expects bearer — but the evaluate_agent_quality handler
-    // decodes and re-encodes. For comply(), we pass it through as-is since
-    // the SDK's HTTP layer handles the Authorization header.
     const decoded = Buffer.from(resolved.authToken, 'base64').toString();
     const colonIndex = decoded.indexOf(':');
     if (colonIndex >= 0) {
-      // Return as a bearer-typed object but the comply engine builds its own client
-      return { type: 'bearer', token: resolved.authToken };
+      return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
     }
   }
 
@@ -2429,9 +2425,7 @@ export function createMemberToolHandlers(
         has_audience_targeting: boolean;
         error?: string;
       }
-      const briefResults: BriefResult[] = [];
-
-      for (const brief of briefsToRun) {
+      const briefResults: BriefResult[] = await Promise.all(briefsToRun.map(async (brief): Promise<BriefResult> => {
         try {
           const result = await client.executeTask('get_products', {
             buying_mode: 'brief',
@@ -2440,13 +2434,12 @@ export function createMemberToolHandlers(
           });
 
           if (!result.success) {
-            briefResults.push({
+            return {
               name: brief.name, vertical: brief.vertical, products_count: 0,
               channels_found: [], formats_found: [], pricing_models_found: [],
               has_audience_targeting: false,
               error: typeof result.error === 'string' ? result.error : JSON.stringify(result.error),
-            });
-            continue;
+            };
           }
 
           const products = (result.data as { products?: unknown[] })?.products ?? [];
@@ -2477,21 +2470,21 @@ export function createMemberToolHandlers(
             if (p.audience || p.targeting || p.audiences) hasAudienceTargeting = true;
           }
 
-          briefResults.push({
+          return {
             name: brief.name, vertical: brief.vertical, products_count: products.length,
             channels_found: Array.from(channelsFound), formats_found: Array.from(formatsFound),
             pricing_models_found: Array.from(pricingModelsFound),
             has_audience_targeting: hasAudienceTargeting,
-          });
+          };
         } catch (error) {
-          briefResults.push({
+          return {
             name: brief.name, vertical: brief.vertical, products_count: 0,
             channels_found: [], formats_found: [], pricing_models_found: [],
             has_audience_targeting: false,
             error: error instanceof Error ? error.message : 'Unknown error',
-          });
+          };
         }
-      }
+      }));
 
       // Aggregate across all briefs
       const allChannelsFound = new Set<string>();
