@@ -27,7 +27,7 @@ const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";
 const TOKEN_BYTES = 32;
 
-/** Paths that receive POSTs from external services (not browsers). */
+/** Path prefixes that receive POSTs from external services (not browsers). */
 const EXEMPT_PREFIXES = [
   "/api/webhooks/",      // Resend inbound, WorkOS webhooks
   "/api/slack/",         // Slack Bolt events, commands, interactions
@@ -37,12 +37,20 @@ const EXEMPT_PREFIXES = [
   "/api/training-agent/", // Training agent MCP
   "/api/creative-agent/", // Creative agent MCP
   "/api/addie/v1/",      // LLM-compatible chat completions
+];
+
+/** Exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */
+const EXEMPT_EXACT = [
+  "/mcp",                // MCP Streamable HTTP (Bearer-token auth)
   "/stripe-webhook",     // Stripe webhook (raw body route)
   "/auth/bridge-callback", // Cross-domain session bridge (origin-validated)
+  "/token",              // OAuth token endpoint (mcpAuthRouter)
+  "/register",           // OAuth dynamic client registration (mcpAuthRouter)
 ];
 
 function isExemptPath(path: string): boolean {
-  return EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
+  return EXEMPT_EXACT.includes(path) ||
+    EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 /**
