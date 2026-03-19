@@ -99,7 +99,10 @@ export function injectConfigIntoHtml(html: string, user?: AppUser | null): strin
     ? `${EARLY_ERROR_BUFFER_SCRIPT}\n<script src="/posthog-init.js" defer></script>`
     : '';
 
-  const injectedScripts = `${configScript}\n${posthogScripts}`;
+  // csrf.js patches fetch() to include X-CSRF-Token on state-changing requests
+  const csrfScript = `<script src="/csrf.js"></script>`;
+
+  const injectedScripts = `${configScript}\n${csrfScript}\n${posthogScripts}`;
 
   if (html.includes("</head>")) {
     return html.replace("</head>", `${injectedScripts}\n</head>`);

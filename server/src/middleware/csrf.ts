@@ -32,6 +32,7 @@ const EXEMPT_PREFIXES = [
   "/api/webhooks/",      // Resend inbound, WorkOS webhooks
   "/api/slack/",         // Slack Bolt events, commands, interactions
   "/api/mcp/",           // MCP protocol endpoints
+  "/mcp",                // MCP Streamable HTTP (Bearer-token auth)
   "/api/oauth/",         // OAuth callback flows
   "/api/si/",            // Sponsored Intelligence (agent-to-agent)
   "/api/training-agent/", // Training agent MCP
@@ -39,6 +40,8 @@ const EXEMPT_PREFIXES = [
   "/api/addie/v1/",      // LLM-compatible chat completions
   "/stripe-webhook",     // Stripe webhook (raw body route)
   "/auth/bridge-callback", // Cross-domain session bridge (origin-validated)
+  "/token",              // OAuth token endpoint (mcpAuthRouter)
+  "/register",           // OAuth dynamic client registration (mcpAuthRouter)
 ];
 
 function isExemptPath(path: string): boolean {
