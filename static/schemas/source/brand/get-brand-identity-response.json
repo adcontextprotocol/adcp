@@ -30,7 +30,7 @@
         },
         "names": {
           "type": "array",
-          "description": "Localized brand names",
+          "description": "Localized brand names with BCP 47 locale code keys (e.g., 'en_US', 'fr_CA'). Bare language codes ('en') are accepted as wildcards for backwards compatibility.",
           "items": {
             "type": "object",
             "minProperties": 1,
@@ -145,23 +145,24 @@
           "oneOf": [
             {
               "type": "string",
-              "description": "Brand tagline or slogan (unlocalized, for backwards compatibility)"
+              "description": "Plain tagline string for backwards compatibility"
             },
             {
               "type": "array",
-              "description": "Localized brand taglines keyed by BCP 47 locale codes",
+              "description": "Localized taglines with BCP 47 locale codes",
               "items": {
                 "type": "object",
                 "minProperties": 1,
                 "maxProperties": 1,
                 "additionalProperties": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "minItems": 1
             }
           ],
-          "description": "Brand tagline or slogan. Accepts a plain string for backwards compatibility, or a localized array keyed by BCP 47 locale tags."
+          "description": "Brand tagline or slogan. Accepts a plain string or a localized array matching the names pattern."
         },
         "voice_synthesis": {
           "type": "object",

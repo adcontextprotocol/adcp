@@ -13,7 +13,32 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState } from './types.js';
+import type {
+  Product,
+  FormatID,
+  PricingOption,
+  GetProductsResponse,
+  CreateMediaBuySuccess,
+  UpdateMediaBuySuccess,
+  SyncCreativesSuccess,
+  Package,
+  Episode,
+  MediaChannel,
+  Format,
+  GetProductsRequest,
+  CreateMediaBuyRequest,
+  UpdateMediaBuyRequest,
+  SyncCreativesRequest,
+  GetMediaBuyDeliveryRequest,
+  GetSignalsRequest,
+  ActivateSignalRequest,
+  ListCreativeFormatsRequest,
+  ListCreativesRequest,
+  GetAdCPCapabilitiesRequest,
+  GetMediaBuysRequest,
+  GetCreativeDeliveryRequest,
+} from '@adcp/client';
+import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, AccountRef, BrandRef } from './types.js';
 import { buildCatalog } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
@@ -27,6 +52,104 @@ import {
   handleGetPlanAuditLogs,
 } from './governance-handlers.js';
 import { PUBLISHERS } from './publishers.js';
+
+/** Wire-format error shared by all training agent responses. */
+interface TaskError {
+  code: string;
+  message: string;
+  field?: string;
+  suggestion?: string;
+}
+
+/** Signal deployment entry in get_signals response. */
+interface SignalDeployment {
+  type: 'agent' | 'platform';
+  agent_url?: string;
+  platform?: string;
+  account?: string;
+  is_live: boolean;
+  activation_key?: { type: string; key: string; value: string };
+  deployed_at?: string;
+  estimated_activation_duration_minutes?: number;
+}
+
+/** Signal entry in get_signals response. */
+interface SignalResponse {
+  signal_agent_segment_id: string;
+  signal_id: { source: string; data_provider_domain: string; id: string };
+  name: string;
+  description: string;
+  value_type: string;
+  signal_type: string;
+  data_provider: string;
+  coverage_percentage?: number;
+  deployments: SignalDeployment[];
+  pricing_options: SignalPricingOption[];
+  categories?: string[];
+  range?: { min: number; max: number };
+}
+
+/** Signal pricing option in get_signals response. */
+interface SignalPricingOption {
+  pricing_option_id: string;
+  model: string;
+  currency: string;
+  cpm?: number;
+  percent?: number;
+  max_cpm?: number;
+  amount?: number;
+  period?: string;
+}
+
+/** Package delivery metrics in get_media_buy_delivery response. */
+interface PackageDeliveryMetrics {
+  package_id: string;
+  buyer_ref: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  pricing_model: string;
+  model: string;
+  rate: number;
+  currency: string;
+  paused: boolean;
+  delivery_status: 'delivering' | 'completed';
+}
+
+/** Creative variant in get_creative_delivery response. */
+interface CreativeVariant {
+  variant_id: string;
+  generation_context: { context_type: string; topic: string; device_class: string };
+  manifest: { format_id: FormatID; assets: Record<string, unknown> };
+  impressions: number;
+  spend: number;
+  clicks: number;
+  ctr: number;
+}
+
+/** Creative delivery entry in get_creative_delivery response. */
+interface CreativeDeliveryEntry {
+  creative_id: string;
+  media_buy_id?: string;
+  format_id: FormatID;
+  totals: { impressions: number; spend: number; clicks: number; ctr: number };
+  variant_count: number;
+  variants: CreativeVariant[];
+}
+
+/** Sync creative result entry. */
+interface SyncCreativeResult {
+  creative_id: string;
+  action: 'created' | 'updated';
+}
+
+/** Creative assignment result. */
+interface AssignmentResult {
+  creative_id: string;
+  package_id: string;
+  status: 'assigned' | 'error';
+  message?: string;
+}
 
 
 const logger = createLogger('training-agent');
@@ -91,16 +214,16 @@ function deriveStatus(mb: MediaBuyState): string {
 
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
-let cachedFormats: Record<string, unknown>[] | null = null;
+let cachedFormats: Partial<Format>[] | null = null;
 
 function getCatalog(): CatalogProduct[] {
   if (!cachedCatalog) cachedCatalog = buildCatalog();
   return cachedCatalog;
 }
 
-function getFormats(): Record<string, unknown>[] {
+function getFormats(): Partial<Format>[] {
   if (!cachedFormats) {
-    cachedFormats = buildFormats(getAgentUrl());
+    cachedFormats = buildFormats(getAgentUrl()) as Partial<Format>[];
   }
   return cachedFormats;
 }
@@ -334,24 +457,24 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext): { products: Partial<Product>[]; sandbox: boolean } {
+  const request = args as unknown as Partial<GetProductsRequest>;
   const buyingMode = args.buying_mode as string || 'brief';
   const brief = args.brief as string | undefined;
-  const filters = args.filters as Record<string, unknown> | undefined;
+  const filters = args.filters as { channels?: string[]; delivery_type?: string } | undefined;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let products = getCatalog().map(cp => ({ ...cp.product }));
+  let products: Partial<Product>[] = getCatalog().map(cp => ({ ...cp.product }));
 
   // Apply filters
   if (filters) {
-    const channelFilter = filters.channels as string[] | undefined;
+    const channelFilter = filters.channels;
     if (channelFilter?.length) {
       products = products.filter(p => {
-        const pChannels = p.channels as string[];
-        return pChannels?.some(c => channelFilter.includes(c));
+        return p.channels?.some(c => channelFilter.includes(c));
       });
     }
-    const deliveryTypeFilter = filters.delivery_type as string | undefined;
+    const deliveryTypeFilter = filters.delivery_type;
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
     }
@@ -362,7 +485,7 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     const terms = brief.toLowerCase().split(/\s+/);
     const scored = products
       .map(p => {
-        const text = `${p.name} ${p.description} ${(p.channels as string[])?.join(' ')}`.toLowerCase();
+        const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
         const matchCount = terms.filter(t => text.includes(t)).length;
         return matchCount > 0 ? { product: p, matchCount } : null;
       })
@@ -387,25 +510,24 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
 
   // Refine mode: apply include/omit/more_like_this
   if (buyingMode === 'refine' && args.refine) {
-    const refineOps = args.refine as Array<Record<string, unknown>>;
+    const refineOps = args.refine as Array<{ scope?: string; action?: string; id?: string }>;
     const previousProducts = session.lastGetProductsContext?.products || products;
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
 
     for (const op of refineOps) {
       if (op.scope === 'product') {
-        if (op.action === 'omit') omitIds.add(op.id as string);
-        else if (op.action === 'include') includeIds.add(op.id as string);
+        if (op.action === 'omit' && op.id) omitIds.add(op.id);
+        else if (op.action === 'include' && op.id) includeIds.add(op.id);
         // more_like_this: include the product plus similar channel products
-        else if (op.action === 'more_like_this') {
-          includeIds.add(op.id as string);
+        else if (op.action === 'more_like_this' && op.id) {
+          includeIds.add(op.id);
           const source = previousProducts.find(p => p.product_id === op.id);
           if (source) {
-            const sourceChannels = source.channels as string[];
+            const sourceChannels = source.channels;
             for (const p of getCatalog()) {
-              const pc = p.product.channels as string[];
-              if (pc?.some(c => sourceChannels?.includes(c))) {
-                includeIds.add(p.product.product_id as string);
+              if (p.product.channels?.some(c => sourceChannels?.includes(c))) {
+                if (p.product.product_id) includeIds.add(p.product.product_id);
               }
             }
           }
@@ -416,11 +538,11 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     // Apply includes first (expand), then omits (filter)
     if (includeIds.size > 0) {
       products = getCatalog()
-        .filter(cp => includeIds.has(cp.product.product_id as string))
+        .filter(cp => cp.product.product_id && includeIds.has(cp.product.product_id))
         .map(cp => ({ ...cp.product }));
     }
     if (omitIds.size > 0) {
-      products = products.filter(p => !omitIds.has(p.product_id as string));
+      products = products.filter(p => !p.product_id || !omitIds.has(p.product_id));
     }
   }
 
@@ -430,7 +552,8 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   return { products, sandbox: true };
 }
 
-function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
+function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): { formats: Partial<Format>[]; sandbox: boolean } {
+  const request = args as unknown as Partial<ListCreativeFormatsRequest>;
   let formats = getFormats();
 
   // Filter by channels
@@ -442,42 +565,51 @@ function handleListCreativeFormats(args: Record<string, unknown>, _ctx: Training
         validIds.add(fmtId);
       }
     }
-    formats = formats.filter(f => {
-      const fid = f.format_id as { id: string };
-      return validIds.has(fid.id);
-    });
+    formats = formats.filter(f => f.format_id?.id && validIds.has(f.format_id.id));
   }
 
   // Filter by format_ids
-  const formatIdFilter = args.format_ids as Array<Record<string, unknown>> | undefined;
+  const formatIdFilter = args.format_ids as Array<{ id: string }> | undefined;
   if (formatIdFilter?.length) {
-    const requestedIds = new Set(formatIdFilter.map(f => f.id as string));
-    formats = formats.filter(f => {
-      const fid = f.format_id as { id: string };
-      return requestedIds.has(fid.id);
-    });
+    const requestedIds = new Set(formatIdFilter.map(f => f.id));
+    formats = formats.filter(f => f.format_id?.id && requestedIds.has(f.format_id.id));
   }
 
   return { formats, sandbox: true };
 }
 
-function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+/** Input shape for a package in create_media_buy. */
+interface PackageInput {
+  product_id: string;
+  pricing_option_id: string;
+  budget: number;
+  buyer_ref?: string;
+  bid_price?: number;
+  impressions?: number;
+  paused?: boolean;
+  start_time?: string;
+  end_time?: string;
+  format_ids?: FormatID[];
+}
+
+function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; status: string; packages: unknown[]; sandbox: boolean; buyer_campaign_ref?: string } | { errors: TaskError[] } {
+  const request = args as unknown as Partial<CreateMediaBuyRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
-  const productMap = new Map(catalog.map(cp => [cp.product.product_id as string, cp.product]));
+  const productMap = new Map(catalog.map(cp => [cp.product.product_id!, cp.product]));
 
   const buyerRef = args.buyer_ref as string;
-  const packages = args.packages as Array<Record<string, unknown>> | undefined;
+  const packages = args.packages as PackageInput[] | undefined;
 
   if (!packages?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'packages array is required and must have at least one item' }],
+      errors: [{ code: 'validation_error', message: 'packages array is required and must have at least one item' }] as TaskError[],
     };
   }
 
   if (session.mediaBuys.size >= MAX_MEDIA_BUYS_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }],
+      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
     };
   }
 
@@ -485,31 +617,31 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const buyStart = args.start_time as string;
   const buyEnd = args.end_time as string;
   if (buyStart !== 'asap' && isNaN(new Date(buyStart).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] };
+    return { errors: [{ code: 'validation_error', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
   }
   if (isNaN(new Date(buyEnd).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] };
+    return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
   }
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
-    return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] };
+    return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] as TaskError[] };
   }
 
   // Validate all packages and collect errors before returning
-  const errors: Array<{ code: string; message: string }> = [];
+  const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
   for (let i = 0; i < packages.length; i++) {
     const pkg = packages[i];
     const pkgLabel = pkg.buyer_ref ? `Package "${pkg.buyer_ref}"` : `Package ${i}`;
 
-    const productId = pkg.product_id as string;
+    const productId = pkg.product_id;
     const product = productMap.get(productId);
     if (!product) {
       errors.push({ code: 'validation_error', message: `${pkgLabel}: Product not found: ${productId}` });
       continue;
     }
 
-    const pricingOptionId = pkg.pricing_option_id as string;
-    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const pricingOptionId = pkg.pricing_option_id;
+    const pricingOptions = product.pricing_options as Array<{ pricing_option_id: string; floor_price?: number; min_spend_per_package?: number }> | undefined;
     const pricing = pricingOptions?.find(po => po.pricing_option_id === pricingOptionId);
     if (!pricing) {
       errors.push({
@@ -519,7 +651,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       continue;
     }
 
-    const budget = pkg.budget as number;
+    const budget = pkg.budget;
 
     // Check negative budget
     if (budget < 0) {
@@ -527,8 +659,8 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     }
 
     // Check bid vs floor price
-    const floorPrice = pricing.floor_price as number | undefined;
-    const bidPrice = pkg.bid_price as number | undefined;
+    const floorPrice = pricing.floor_price;
+    const bidPrice = pkg.bid_price;
     if (floorPrice !== undefined && bidPrice !== undefined && bidPrice < floorPrice) {
       errors.push({
         code: 'validation_error',
@@ -537,7 +669,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     }
 
     // Check min spend
-    const minSpend = pricing.min_spend_per_package as number | undefined;
+    const minSpend = pricing.min_spend_per_package;
     if (minSpend && budget < minSpend) {
       errors.push({
         code: 'validation_error',
@@ -563,16 +695,16 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     createdPackages.push({
       packageId: `pkg_${randomUUID().slice(0, 8)}`,
-      buyerRef: pkg.buyer_ref as string,
+      buyerRef: pkg.buyer_ref || '',
       productId,
       budget,
       pricingOptionId,
-      bidPrice: pkg.bid_price as number | undefined,
-      impressions: pkg.impressions as number | undefined,
-      paused: (pkg.paused as boolean) || false,
+      bidPrice: pkg.bid_price,
+      impressions: pkg.impressions,
+      paused: pkg.paused || false,
       startTime: resolvedStart,
       endTime,
-      formatIds: pkg.format_ids as Record<string, unknown>[] | undefined,
+      formatIds: pkg.format_ids,
       creativeAssignments: [],
     });
   }
@@ -589,8 +721,8 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     mediaBuyId,
     buyerRef,
     buyerCampaignRef: args.buyer_campaign_ref as string | undefined,
-    accountRef: args.account as Record<string, unknown>,
-    brandRef: args.brand as Record<string, unknown> | undefined,
+    accountRef: args.account as AccountRef,
+    brandRef: args.brand as BrandRef | undefined,
     status: 'active',
     currency: 'USD',
     packages: createdPackages,
@@ -625,7 +757,8 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   };
 }
 
-function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext): { media_buys: unknown[]; sandbox: boolean } {
+  const request = args as unknown as Partial<GetMediaBuysRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = args.media_buy_ids as string[] | undefined;
 
@@ -664,10 +797,11 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
   };
 }
 
-function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingContext): { reporting_period: { start: string; end: string }; currency: string; media_buy_deliveries: unknown[]; sandbox: boolean } | { errors: TaskError[] } {
+  const request = args as unknown as Partial<GetMediaBuyDeliveryRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
-  const productMap = new Map(catalog.map(cp => [cp.product.product_id as string, cp.product]));
+  const productMap = new Map(catalog.map(cp => [cp.product.product_id!, cp.product]));
   const mediaBuyId = (args.media_buy_id || args.buyer_ref) as string;
   const mb = session.mediaBuys.get(mediaBuyId) ||
     Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
@@ -717,7 +851,7 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
 
     // Channel-appropriate CTR
     const product = productMap.get(pkg.productId);
-    const channels = product?.channels as string[] | undefined;
+    const channels = product?.channels;
     let ctr: number;
     if (channels?.some(c => ['social', 'influencer'].includes(c))) ctr = 0.012;
     else if (channels?.some(c => ['search'].includes(c))) ctr = 0.035;
@@ -770,39 +904,48 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   };
 }
 
-function derivePricing(pkg: PackageState, productMap: Map<string, Record<string, unknown>>): { model: string; rate: number } {
+function derivePricing(pkg: PackageState, productMap: Map<string, Partial<Product>>): { model: string; rate: number } {
   const product = productMap.get(pkg.productId);
-  const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
+  const pricingOptions = product?.pricing_options as Array<{ pricing_option_id: string; pricing_model: string; fixed_price?: number; floor_price?: number }> | undefined;
   const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
   return {
-    model: (pricing?.pricing_model as string) || 'cpm',
-    rate: (pricing?.fixed_price as number) || (pricing?.floor_price as number) || 10,
+    model: pricing?.pricing_model || 'cpm',
+    rate: pricing?.fixed_price || pricing?.floor_price || 10,
   };
 }
 
-function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+/** Input shape for a creative in sync_creatives. */
+interface CreativeInput {
+  creative_id?: string;
+  format_id: FormatID;
+  name?: string;
+  manifest?: { format_id: FormatID; assets: Record<string, unknown> };
+}
+
+function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext): { creatives: SyncCreativeResult[]; assignments?: AssignmentResult[]; sandbox: boolean } | { errors: TaskError[] } {
+  const request = args as unknown as Partial<SyncCreativesRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const creatives = args.creatives as Array<Record<string, unknown>>;
+  const creatives = args.creatives as CreativeInput[];
 
   if (!creatives?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'creatives array is required' }],
+      errors: [{ code: 'validation_error', message: 'creatives array is required' }] as TaskError[],
     };
   }
 
   if (session.creatives.size + creatives.length > MAX_CREATIVES_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }],
+      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
   }
 
   // Build a set of valid format IDs for validation
-  const validFormatIds = new Set(getFormats().map(f => (f.format_id as { id: string }).id));
+  const validFormatIds = new Set(getFormats().map(f => f.format_id?.id).filter(Boolean));
 
-  const results: Record<string, unknown>[] = [];
+  const results: SyncCreativeResult[] = [];
   for (const creative of creatives) {
-    const creativeId = (creative.creative_id as string) || `cr_${randomUUID().slice(0, 8)}`;
-    const formatId = creative.format_id as { agent_url: string; id: string };
+    const creativeId = creative.creative_id || `cr_${randomUUID().slice(0, 8)}`;
+    const formatId = creative.format_id;
 
     // Validate format_id
     if (formatId?.id && !validFormatIds.has(formatId.id)) {
@@ -810,7 +953,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
         errors: [{
           code: 'validation_error',
           message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
-        }],
+        }] as TaskError[],
       };
     }
 
@@ -819,10 +962,10 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     session.creatives.set(creativeId, {
       creativeId,
       formatId,
-      name: creative.name as string | undefined,
+      name: creative.name,
       status: 'approved',
       syncedAt: new Date().toISOString(),
-      manifest: creative.manifest as Record<string, unknown> | undefined,
+      manifest: creative.manifest,
     });
 
     results.push({
@@ -832,13 +975,13 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
   }
 
   // Process creative assignments
-  const assignments = args.assignments as Array<Record<string, unknown>> | undefined;
-  const assignmentResults: Record<string, unknown>[] = [];
+  const assignments = args.assignments as Array<{ media_buy_id: string; package_id: string; creative_id: string }> | undefined;
+  const assignmentResults: AssignmentResult[] = [];
   if (assignments?.length) {
     for (const assignment of assignments) {
-      const mediaBuyId = assignment.media_buy_id as string;
-      const packageId = assignment.package_id as string;
-      const creativeId = assignment.creative_id as string;
+      const mediaBuyId = assignment.media_buy_id;
+      const packageId = assignment.package_id;
+      const creativeId = assignment.creative_id;
 
       const mb = session.mediaBuys.get(mediaBuyId);
       if (!mb) {
@@ -868,7 +1011,8 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
   };
 }
 
-function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext): { creatives: unknown[]; sandbox: boolean } {
+  const request = args as unknown as Partial<ListCreativesRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = args.creative_ids as string[] | undefined;
 
@@ -889,7 +1033,17 @@ function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext
   };
 }
 
-function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+/** Input shape for a package update in update_media_buy. */
+interface PackageUpdate {
+  package_id?: string;
+  buyer_ref?: string;
+  budget?: number;
+  paused?: boolean;
+  end_time?: string;
+}
+
+function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } | { errors: TaskError[] } {
+  const request = args as unknown as Partial<UpdateMediaBuyRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = (args.media_buy_id || args.buyer_ref) as string;
   const mb = session.mediaBuys.get(mediaBuyId) ||
@@ -911,7 +1065,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   }
 
   // Update packages
-  const packageUpdates = args.packages as Array<Record<string, unknown>> | undefined;
+  const packageUpdates = args.packages as PackageUpdate[] | undefined;
   const warnings: string[] = [];
   if (packageUpdates?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
@@ -923,19 +1077,17 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         continue;
       }
       if (update.budget !== undefined) {
-        const newBudget = update.budget as number;
-        if (newBudget < 0) {
-          return { errors: [{ code: 'validation_error', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
+        if (update.budget < 0) {
+          return { errors: [{ code: 'validation_error', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] as TaskError[] };
         }
-        pkg.budget = newBudget;
+        pkg.budget = update.budget;
       }
-      if (update.paused !== undefined) pkg.paused = update.paused as boolean;
+      if (update.paused !== undefined) pkg.paused = update.paused;
       if (update.end_time) {
-        const pkgEnd = update.end_time as string;
-        if (isNaN(new Date(pkgEnd).getTime())) {
-          warnings.push(`Invalid end_time for package ${pkgId}: "${pkgEnd}". Skipped.`);
+        if (isNaN(new Date(update.end_time).getTime())) {
+          warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
         } else {
-          pkg.endTime = pkgEnd;
+          pkg.endTime = update.end_time;
         }
       }
     }
@@ -943,7 +1095,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   mb.updatedAt = new Date().toISOString();
 
-  const result: Record<string, unknown> = {
+  const result: { media_buy_id: string; buyer_ref: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } = {
     media_buy_id: mb.mediaBuyId,
     buyer_ref: mb.buyerRef,
     packages: mb.packages.map(pkg => ({
@@ -962,7 +1114,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
+function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
@@ -991,13 +1143,21 @@ function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: Trainin
 
 const MAX_SIGNAL_RESULTS = 10;
 
-function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+/** Filters for get_signals. */
+interface SignalFilters {
+  max_cpm?: number;
+  data_providers?: string[];
+  catalog_types?: string[];
+}
+
+function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): { signals: SignalResponse[]; sandbox: boolean; note?: string } | { errors: TaskError[] } {
+  const request = args as unknown as Partial<GetSignalsRequest>;
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const signalSpec = (args.signal_spec || args.brief) as string | undefined;
-  const signalIds = args.signal_ids as Array<Record<string, unknown>> | undefined;
-  const filters = args.filters as Record<string, unknown> | undefined;
+  const signalIds = args.signal_ids as Array<{ id: string }> | undefined;
+  const filters = args.filters as SignalFilters | undefined;
   const maxResults = Math.min(Math.max((args.max_results as number) || MAX_SIGNAL_RESULTS, 1), 50);
-  const destinations = args.destinations as Array<Record<string, unknown>> | undefined;
+  const destinations = args.destinations as Array<{ type?: string; agent_url?: string }> | undefined;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!signalSpec && !signalIds?.length) {
@@ -1011,7 +1171,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
 
   // Exact lookup by signal_ids
   if (signalIds?.length) {
-    const idSet = new Set(signalIds.map(sid => sid.id as string));
+    const idSet = new Set(signalIds.map(sid => sid.id));
     results = results.filter(s => idSet.has(s.signalAgentSegmentId));
   }
 
@@ -1040,19 +1200,18 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
 
   // Apply filters
   if (filters) {
-    const maxCpm = filters.max_cpm as number | undefined;
-    if (maxCpm !== undefined) {
+    if (filters.max_cpm !== undefined) {
+      const maxCpm = filters.max_cpm;
       results = results.filter(s =>
         s.pricingOptions.some(po => po.model === 'cpm' && po.cpm !== undefined && po.cpm <= maxCpm),
       );
     }
-    const dataProviders = filters.data_providers as string[] | undefined;
-    if (dataProviders?.length) {
-      const providerSet = new Set(dataProviders.map(d => d.toLowerCase()));
+    if (filters.data_providers?.length) {
+      const providerSet = new Set(filters.data_providers.map(d => d.toLowerCase()));
       results = results.filter(s => providerSet.has(s.providerName.toLowerCase()));
     }
-    const catalogTypes = filters.catalog_types as string[] | undefined;
-    if (catalogTypes?.length) {
+    if (filters.catalog_types?.length) {
+      const catalogTypes = filters.catalog_types;
       results = results.filter(s => catalogTypes.includes(s.signalType));
     }
   }
@@ -1064,13 +1223,13 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   const agentUrl = getAgentUrl();
 
   // Build response signals with deployments
-  const signals = results.map(s => {
+  const signals: SignalResponse[] = results.map(s => {
     // Check if this signal has been activated in this session
     const activationKey = `${s.signalAgentSegmentId}:${agentUrl}`;
     const activation = session.signalActivations.get(activationKey);
     const isLive = activation?.isLive ?? false;
 
-    const deployment: Record<string, unknown> = {
+    const deployment: SignalDeployment = {
       type: 'agent',
       agent_url: agentUrl,
       is_live: isLive,
@@ -1088,7 +1247,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
       deployment.estimated_activation_duration_minutes = 0; // sandbox: instant
     }
 
-    const signal: Record<string, unknown> = {
+    const signal: SignalResponse = {
       signal_agent_segment_id: s.signalAgentSegmentId,
       signal_id: {
         source: 'catalog',
@@ -1103,7 +1262,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
       coverage_percentage: s.coveragePercentage,
       deployments: [deployment],
       pricing_options: s.pricingOptions.map(po => {
-        const option: Record<string, unknown> = {
+        const option: SignalPricingOption = {
           pricing_option_id: po.pricingOptionId,
           model: po.model,
           currency: po.currency,
@@ -1135,7 +1294,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   // Scope boundary note for identity resolution queries
   const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
   const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
-  const response: Record<string, unknown> = { signals, sandbox: true };
+  const response: { signals: SignalResponse[]; sandbox: boolean; note?: string } = { signals, sandbox: true };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
     response.note = isCreditQuery
@@ -1145,14 +1304,24 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   return response;
 }
 
-function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+/** Destination shape for activate_signal. */
+interface ActivationDestination {
+  type?: 'platform' | 'agent';
+  platform?: string;
+  account?: string;
+  account_id?: string;
+  agent_url?: string;
+}
+
+function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContext): { deployments: SignalDeployment[]; sandbox: boolean } | { errors: TaskError[] } {
+  const request = args as unknown as Partial<ActivateSignalRequest>;
   // Accept both signal_agent_segment_id (protocol) and signal_id (SDK test tool)
   const segmentId = (args.signal_agent_segment_id || args.signal_id) as string;
   const action = (args.action as string) || 'activate';
   // Accept both destinations (array, protocol) and destination (singular, SDK test tool)
-  let destinations = args.destinations as Array<Record<string, unknown>> | undefined;
+  let destinations = args.destinations as ActivationDestination[] | undefined;
   if (!destinations?.length && args.destination) {
-    const dest = args.destination as Record<string, unknown>;
+    const dest = args.destination as ActivationDestination;
     // SDK sends platform + account_id; normalize to protocol format
     destinations = [{
       type: dest.type || 'platform',
@@ -1202,15 +1371,15 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   if (action === 'deactivate') {
     // Remove activations for this signal
     for (const dest of destinations) {
-      const destId = (dest.agent_url as string) || (dest.platform as string) || agentUrl;
+      const destId = dest.agent_url || dest.platform || agentUrl;
       const activationKey = `${segmentId}:${destId}`;
       session.signalActivations.delete(activationKey);
     }
 
     return {
       deployments: destinations.map(dest => {
-        const d: Record<string, unknown> = {
-          type: dest.type || 'agent',
+        const d: SignalDeployment = {
+          type: (dest.type as 'agent' | 'platform') || 'agent',
           is_live: false,
           deployed_at: now,
         };
@@ -1224,23 +1393,23 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   }
 
   // Activate: store activation state and return deployment info
-  const deployments = destinations.map(dest => {
-    const destId = (dest.agent_url as string) || (dest.platform as string) || agentUrl;
+  const deployments: SignalDeployment[] = destinations.map(dest => {
+    const destId = dest.agent_url || dest.platform || agentUrl;
     const activationKey = `${segmentId}:${destId}`;
 
     const activationState: SignalActivationState = {
       signalAgentSegmentId: segmentId,
-      destinationType: (dest.type as 'platform' | 'agent') || 'agent',
+      destinationType: dest.type || 'agent',
       destinationId: destId,
-      account: dest.account as string | undefined,
+      account: dest.account,
       pricingOptionId,
       isLive: true,
       activatedAt: now,
     };
     session.signalActivations.set(activationKey, activationState);
 
-    const d: Record<string, unknown> = {
-      type: dest.type || 'agent',
+    const d: SignalDeployment = {
+      type: (dest.type as 'agent' | 'platform') || 'agent',
       is_live: true,
       activation_key: {
         type: 'key_value',
@@ -1258,7 +1427,8 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   return { deployments, sandbox: true };
 }
 
-function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingContext): { reporting_period: { start: string; end: string; timezone: string }; currency: string; creatives: CreativeDeliveryEntry[]; sandbox: boolean } | { errors: TaskError[] } {
+  const request = args as unknown as Partial<GetCreativeDeliveryRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
 
@@ -1310,7 +1480,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
   }
 
   const now = new Date();
-  const creatives: Record<string, unknown>[] = [];
+  const creatives: CreativeDeliveryEntry[] = [];
 
   for (const cid of relevantCreativeIds) {
     const creative = session.creatives.get(cid);
@@ -1322,7 +1492,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
     const totalImpressions = 50000 + Math.abs(idHash % 100000);
     const totalSpend = Math.round(totalImpressions * 0.05 * 100) / 100;
     const totalClicks = Math.round(totalImpressions * 0.03);
-    const variants: Record<string, unknown>[] = [];
+    const variants: CreativeVariant[] = [];
 
     const topics = ['technology', 'lifestyle', 'finance', 'health', 'sports'];
     const devices = ['mobile', 'desktop', 'tablet'];
