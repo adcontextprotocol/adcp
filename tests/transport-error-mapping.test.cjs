@@ -30,8 +30,8 @@ function validateAdcpError(error) {
  * Client libraries should produce identical results.
  */
 function extractAdcpError(response) {
-  // 1. MCP structuredContent (tool-level)
-  if (response.structuredContent?.adcp_error) {
+  // 1. MCP structuredContent (tool-level, requires isError)
+  if (response.isError && response.structuredContent?.adcp_error) {
     return validateAdcpError(response.structuredContent.adcp_error);
   }
 
@@ -214,11 +214,11 @@ describe('Transport error mapping test vectors', () => {
       v => v.expected_error === null && v.expected_action === 'generic_error'
     );
     // Should have: legacy MCP text, legacy A2A, structuredContent without adcp_error,
-    // JSON without adcp_error key, JSON-RPC error without adcp_error data,
-    // -32029 without adcp_error data, success with adcp_error JSON,
-    // invalid code type, missing code field, empty code
-    assert.ok(nonAdcpVectors.length >= 10,
-      `must have at least 10 null-extraction vectors, got ${nonAdcpVectors.length}`);
+    // structuredContent without isError, JSON without adcp_error key,
+    // JSON-RPC error without adcp_error data, -32029 without adcp_error data,
+    // success with adcp_error JSON, invalid code type, missing code field, empty code
+    assert.ok(nonAdcpVectors.length >= 11,
+      `must have at least 11 null-extraction vectors, got ${nonAdcpVectors.length}`);
   });
 });
 
@@ -351,6 +351,27 @@ describe('Validation and safety', () => {
       isError: true
     });
     assert.equal(result, null, 'array parse result must not extract');
+  });
+
+  it('should not extract from structuredContent without isError', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: 'Some result.' }],
+      structuredContent: {
+        adcp_error: { code: 'RATE_LIMITED', message: 'Rate limited', recovery: 'transient' }
+      }
+    });
+    assert.equal(result, null, 'must not extract from structuredContent when isError is absent');
+  });
+
+  it('should not extract from structuredContent when isError is false', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: 'Some result.' }],
+      isError: false,
+      structuredContent: {
+        adcp_error: { code: 'RATE_LIMITED', message: 'Rate limited', recovery: 'transient' }
+      }
+    });
+    assert.equal(result, null, 'must not extract from structuredContent when isError is false');
   });
 
   it('should reject non-object adcp_error values', () => {

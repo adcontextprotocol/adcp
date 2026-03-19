@@ -338,6 +338,24 @@
       "expected_action": "generic_error"
     },
     {
+      "id": "mcp-structured-content-no-iserror",
+      "description": "MCP structuredContent with adcp_error but isError absent — MUST NOT extract (could be success data)",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Some result."}],
+        "structuredContent": {
+          "adcp_error": {
+            "code": "RATE_LIMITED",
+            "message": "Request rate exceeded",
+            "recovery": "transient"
+          }
+        }
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
       "id": "mcp-missing-recovery-transient-code",
       "description": "Missing recovery field with standard transient code — should infer transient via code-based fallback",
       "transport": "mcp",

@@ -201,7 +201,7 @@ Clients MUST NOT require the MIME type. The `adcp_error` key is the authoritativ
 
 Clients MUST check for AdCP errors in this order:
 
-1. **`structuredContent.adcp_error`** — MCP tool-level error
+1. **`structuredContent.adcp_error`** (with `isError: true`) — MCP tool-level error
 2. **`artifacts[].parts[].data.adcp_error`** — A2A task-level error (artifacts)
 3. **`status.message.parts[].data.adcp_error`** — A2A task-level error (status message)
 4. **`error.data.adcp_error`** — JSON-RPC transport-level error
@@ -210,18 +210,22 @@ Clients MUST check for AdCP errors in this order:
 
 Clients MUST validate that extracted errors have a `code` field of type `string`. If validation fails, treat as no structured error found.
 
+**Extraction vs. action.** The detection order above is the *extraction* layer — it returns the raw `adcp_error` object with field values preserved as-is (including out-of-range `retry_after`). Clamping, retry logic, and other behavioral requirements apply at the *action* layer (see [Recovery Behavior](#recovery-behavior)).
+
 In practice, implementations branch on transport type first and only check the relevant paths:
 
 <CodeGroup>
 ```javascript MCP Client
 function extractAdcpErrorFromMcp(response) {
+  if (!response.isError) return null;
+
   // 1. structuredContent (preferred)
   if (response.structuredContent?.adcp_error) {
     return validate(response.structuredContent.adcp_error);
   }
 
-  // 2. Text fallback: only on isError responses
-  if (response.isError && response.content) {
+  // 2. Text fallback
+  if (response.content) {
     for (const item of response.content) {
       if (item.type === 'text' && item.text) {
         try {
