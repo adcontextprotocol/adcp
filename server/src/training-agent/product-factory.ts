@@ -5,17 +5,47 @@
  * combinations. Products reference formats from formats.ts via format_id.
  */
 
-import type { Product, FormatID, Format } from '@adcp/client';
-import type {
-  Episode,
-  ShowSelector,
-  ReportingCapabilities,
-  ReportingFrequency,
-  AvailableMetric,
-  MediaChannel,
-  ForecastPoint,
-  PublisherPropertySelector,
-} from '@adcp/client/dist/lib/types/core.generated';
+import type { Product, FormatID } from '@adcp/client';
+
+/** Types re-declared locally — not exported from @adcp/client's public API. */
+type MediaChannel = string;
+type ReportingFrequency = string;
+type AvailableMetric = string;
+
+interface Episode {
+  episode_id: string;
+  show_id: string;
+  name: string;
+  status: string;
+  scheduled_at?: string;
+  duration_seconds?: number;
+}
+
+interface ShowSelector {
+  publisher_domain: string;
+  show_ids: string[];
+}
+
+interface ReportingCapabilities {
+  available_reporting_frequencies: ReportingFrequency[];
+  expected_delay_minutes: number;
+  timezone: string;
+  supports_webhooks: boolean;
+  available_metrics?: AvailableMetric[];
+  date_range_support: string;
+  supports_creative_breakdown: boolean;
+}
+
+interface ForecastPoint {
+  budget: number;
+  metrics: Record<string, { low: number; mid: number; high: number }>;
+}
+
+interface PublisherPropertySelector {
+  publisher_domain: string;
+  selection_type: 'all' | 'by_id';
+  property_ids?: string[];
+}
 import type { PublisherProfile, PricingTemplate, CatalogProduct } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
@@ -271,11 +301,11 @@ function buildProduct(
   // Fall back to all pricing if filter yields nothing
   const effectivePricing = pricingTemplates.length > 0 ? pricingTemplates : pub.pricingTemplates;
 
-  const product: Partial<Product> & { pricing_options: TrainingPricingOption[] } = {
+  const product: Partial<Product> = {
     product_id: productId,
     name: template.name,
     description: template.description,
-    publisher_properties: publisherPropertySelectors(pub, template.channels),
+    publisher_properties: publisherPropertySelectors(pub, template.channels) as Product['publisher_properties'],
     channels: template.channels as Product['channels'],
     format_ids: formatIdsForChannels(template.channels, agentUrl),
     delivery_type: template.deliveryType,
@@ -283,7 +313,7 @@ function buildProduct(
       provider: pub.measurementProvider,
       notes: pub.measurementNotes,
     },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)),
+    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)) as unknown as Product['pricing_options'],
   };
 
   if (pub.reportingFrequencies || pub.reportingMetrics) {
@@ -295,7 +325,7 @@ function buildProduct(
       ...(pub.reportingMetrics && { available_metrics: pub.reportingMetrics as AvailableMetric[] }),
       date_range_support: 'date_range' as const,
       supports_creative_breakdown: true,
-    } as ReportingCapabilities;
+    } as Product['reporting_capabilities'];
   }
 
   if (pub.catalogTypes?.length) {
@@ -401,7 +431,7 @@ function buildProduct(
         }
       }
       if (episodes.length > 0) {
-        product.episodes = episodes as Episode[];
+        product.episodes = episodes as Product['episodes'];
       }
     }
   }
