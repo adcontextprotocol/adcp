@@ -60,6 +60,11 @@ export function getSession(key: string): SessionState {
 
 export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION };
 
+/** Read-only access to all sessions (for cross-session lookups). */
+export function getAllSessions(): ReadonlyMap<string, SessionState> {
+  return sessions;
+}
+
 /**
  * Derive a session key from the request context.
  *

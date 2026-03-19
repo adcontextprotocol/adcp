@@ -38,7 +38,7 @@ type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 import { buildCatalog, buildShowsForProducts } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
-import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
+import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -233,6 +233,7 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
+        include_snapshot: { type: 'boolean', description: 'Include full media buy snapshot in response' },
       },
     },
   },
@@ -245,6 +246,7 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
+        media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Plural form (SDK)' },
         buyer_ref: { type: 'string' },
       },
       required: ['media_buy_id'] as const,
@@ -316,6 +318,7 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         signal_spec: { type: 'string', description: 'Natural language description of desired signals' },
+        brief: { type: 'string', description: 'Alias for signal_spec (SDK compatibility)' },
         signal_ids: { type: 'array', items: { type: 'object' }, description: 'Specific signals to look up by ID' },
         account: ACCOUNT_REF_SCHEMA,
         destinations: { type: 'array', items: { type: 'object' }, description: 'Filter to specific deployment targets' },
@@ -333,12 +336,15 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         signal_agent_segment_id: { type: 'string' },
+        signal_id: { type: 'string', description: 'Alias for signal_agent_segment_id (SDK compatibility)' },
         action: { type: 'string', enum: ['activate', 'deactivate'] },
         destinations: { type: 'array', items: { type: 'object' } },
+        destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
+        options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
         account: ACCOUNT_REF_SCHEMA,
       },
-      required: ['signal_agent_segment_id', 'destinations'] as const,
+      required: [] as const,
     },
   },
   ...GOVERNANCE_TOOLS,
@@ -532,6 +538,16 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     // Check bid vs floor price (floor_price exists on all pricing models except CPA)
     const floorPrice = pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined;
+    const isAuction = pricing.pricing_model !== 'cpa'
+      && !('fixed_price' in pricing && (pricing as unknown as Record<string, unknown>).fixed_price !== undefined);
+
+    if (isAuction && pkg.bid_price === undefined) {
+      errors.push({
+        code: 'validation_error',
+        message: `${pkgLabel}: bid_price is required for auction pricing (${pricing.pricing_model}, option ${pkg.pricing_option_id})`,
+      });
+    }
+
     if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice) {
       errors.push({
         code: 'validation_error',
@@ -636,33 +652,58 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
   let buys = Array.from(session.mediaBuys.values());
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
+    // If explicit IDs requested but not found in this session, search all sessions.
+    // Mirrors real seller behavior where media_buy_ids is a global lookup.
+    if (buys.length < filterIds.length) {
+      const foundIds = new Set(buys.map(b => b.mediaBuyId));
+      const missing = filterIds.filter(id => !foundIds.has(id));
+      for (const [, s] of getAllSessions()) {
+        if (s === session) continue;
+        for (const mb of s.mediaBuys.values()) {
+          if (missing.includes(mb.mediaBuyId)) {
+            buys.push(mb);
+            missing.splice(missing.indexOf(mb.mediaBuyId), 1);
+          }
+        }
+        if (missing.length === 0) break;
+      }
+    }
   }
+
+  const includeSnapshot = (args as Record<string, unknown>).include_snapshot === true;
 
   return {
     media_buys: buys.map(mb => {
-      return {
-      media_buy_id: mb.mediaBuyId,
-      buyer_ref: mb.buyerRef,
-      buyer_campaign_ref: mb.buyerCampaignRef,
-      status: deriveStatus(mb),
-      currency: mb.currency,
-      start_time: mb.startTime,
-      end_time: mb.endTime,
-      packages: mb.packages.map(pkg => ({
-        package_id: pkg.packageId,
-        buyer_ref: pkg.buyerRef,
-        product_id: pkg.productId,
-        budget: pkg.budget,
-        pricing_option_id: pkg.pricingOptionId,
-        paused: pkg.paused,
-        start_time: pkg.startTime,
-        end_time: pkg.endTime,
-        creative_approvals: pkg.creativeAssignments.map(cid => ({
-          creative_id: cid,
-          approval_status: 'approved',
-        })),
-      })),
-    };
+      const buy: Record<string, unknown> = {
+        media_buy_id: mb.mediaBuyId,
+        buyer_ref: mb.buyerRef,
+        buyer_campaign_ref: mb.buyerCampaignRef,
+        status: deriveStatus(mb),
+        currency: mb.currency,
+        start_time: mb.startTime,
+        end_time: mb.endTime,
+        packages: mb.packages.map(pkg => {
+          const pkgData: Record<string, unknown> = {
+            package_id: pkg.packageId,
+            buyer_ref: pkg.buyerRef,
+            product_id: pkg.productId,
+            budget: pkg.budget,
+            pricing_option_id: pkg.pricingOptionId,
+            paused: pkg.paused,
+            start_time: pkg.startTime,
+            end_time: pkg.endTime,
+            creative_approvals: pkg.creativeAssignments.map(cid => ({
+              creative_id: cid,
+              approval_status: 'approved',
+            })),
+          };
+          if (includeSnapshot) {
+            pkgData.snapshot_unavailable_reason = 'Sandbox training agent does not track real delivery';
+          }
+          return pkgData;
+        }),
+      };
+      return buy;
     }),
     sandbox: true,
   };
@@ -675,8 +716,18 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   // Accept singular media_buy_id/buyer_ref (backward compat) or plural from SDK
   const mediaBuyId = req.media_buy_id || req.buyer_ref || req.media_buy_ids?.[0] || '';
-  const mb = session.mediaBuys.get(mediaBuyId) ||
+  let mb = session.mediaBuys.get(mediaBuyId) ||
     Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+
+  // Cross-session fallback for explicit ID lookup
+  if (!mb) {
+    for (const [, s] of getAllSessions()) {
+      if (s === session) continue;
+      mb = s.mediaBuys.get(mediaBuyId) ||
+        Array.from(s.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+      if (mb) break;
+    }
+  }
 
   if (!mb) {
     return {
@@ -808,7 +859,15 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
 
   const results: Record<string, unknown>[] = [];
   for (const creative of req.creatives) {
-    const creativeId = creative.creative_id || `cr_${randomUUID().slice(0, 8)}`;
+    if (!creative.creative_id) {
+      return {
+        errors: [{
+          code: 'validation_error',
+          message: 'creative_id is required on each creative. The buyer assigns creative IDs.',
+        }],
+      };
+    }
+    const creativeId = creative.creative_id;
     const formatId = creative.format_id as FormatID;
 
     // Validate format_id
@@ -974,7 +1033,7 @@ function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: Trainin
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'governance'],
+    supported_protocols: ['media_buy', 'governance', 'signals'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
