@@ -455,7 +455,13 @@
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
                   "docs/reference/glossary",
-                  "docs/community/working-group"
+                  "docs/community/working-group",
+                  {
+                    "group": "Proposals",
+                    "pages": [
+                      "docs/proposals/transport-error-mapping"
+                    ]
+                  }
                 ]
               },
               {
