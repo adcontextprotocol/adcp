@@ -598,7 +598,23 @@ describe('session state', () => {
 
     it('uses open prefix with brand domain when available', () => {
       const key = sessionKeyFromArgs(
-        { account: { brand: { domain: 'acme.example' } } },
+        { account: { brand: { domain: 'acme.example' }, operator: 'acme.example' } },
+        'open',
+      );
+      expect(key).toBe('open:acme.example');
+    });
+
+    it('uses account_id when account has account_id form', () => {
+      const key = sessionKeyFromArgs(
+        { account: { account_id: 'acc_acme_001' } },
+        'open',
+      );
+      expect(key).toBe('open:acc_acme_001');
+    });
+
+    it('uses top-level brand domain when account is absent', () => {
+      const key = sessionKeyFromArgs(
+        { brand: { domain: 'acme.example' } },
         'open',
       );
       expect(key).toBe('open:acme.example');
@@ -611,7 +627,7 @@ describe('session state', () => {
 
     it('falls back to open mode when training mode has no userId', () => {
       const key = sessionKeyFromArgs(
-        { account: { brand: { domain: 'test.example' } } },
+        { account: { brand: { domain: 'test.example' }, operator: 'test.example' } },
         'training',
       );
       expect(key).toBe('open:test.example');
@@ -865,7 +881,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-001',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -898,7 +914,7 @@ describe('create_media_buy handler', () => {
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: past } = await simulateCallTool(server1, 'create_media_buy', {
       buyer_ref: 'status-past',
-      account: { brand: { domain: 'status.example' } },
+      account: { brand: { domain: 'status.example' }, operator: 'status.example' },
       brand: { domain: 'status.example' },
       start_time: '2020-01-01T00:00:00Z',
       end_time: '2020-01-31T23:59:59Z',
@@ -913,7 +929,7 @@ describe('create_media_buy handler', () => {
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: active } = await simulateCallTool(server2, 'create_media_buy', {
       buyer_ref: 'status-active',
-      account: { brand: { domain: 'status.example' } },
+      account: { brand: { domain: 'status.example' }, operator: 'status.example' },
       brand: { domain: 'status.example' },
       start_time: start,
       end_time: end,
@@ -927,7 +943,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-002',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -954,7 +970,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-003',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -972,7 +988,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-004',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -993,7 +1009,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-005',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1033,7 +1049,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-006',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1055,7 +1071,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-asap',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: 'asap',
       end_time: '2027-07-01T00:00:00Z',
@@ -1081,7 +1097,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-bad-dates',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-08-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1116,7 +1132,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-low-bid',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1137,7 +1153,7 @@ describe('create_media_buy handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'test-buyer-status',
-      account: { brand: { domain: 'test.example' } },
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1168,7 +1184,6 @@ describe('sync_creatives handler', () => {
   it('creates creatives and returns per-item results', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
-      account: { brand: { domain: 'test.example' } },
       creatives: [
         {
           creative_id: 'cr_test_001',
@@ -1190,7 +1205,6 @@ describe('sync_creatives handler', () => {
   it('returns "updated" action for existing creative', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const args = {
-      account: { brand: { domain: 'test.example' } },
       creatives: [
         {
           creative_id: 'cr_test_002',
@@ -1212,7 +1226,6 @@ describe('sync_creatives handler', () => {
   it('generates creative_id when not provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
-      account: { brand: { domain: 'test.example' } },
       creatives: [
         {
           format_id: { agent_url: TEST_AGENT_URL, id: 'video_preroll' },
@@ -1228,7 +1241,6 @@ describe('sync_creatives handler', () => {
   it('returns error for empty creatives array', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
-      account: { brand: { domain: 'test.example' } },
       creatives: [],
     });
 
@@ -1240,7 +1252,6 @@ describe('sync_creatives handler', () => {
   it('handles multiple creatives in a single sync', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
-      account: { brand: { domain: 'test.example' } },
       creatives: [
         { creative_id: 'cr_a', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' } },
         { creative_id: 'cr_b', format_id: { agent_url: TEST_AGENT_URL, id: 'video_preroll' } },
@@ -1256,7 +1267,6 @@ describe('sync_creatives handler', () => {
   it('returns error for invalid format_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
-      account: { brand: { domain: 'test.example' } },
       creatives: [{
         creative_id: 'cr_bad_format',
         format_id: { agent_url: TEST_AGENT_URL, id: 'nonexistent_format' },
@@ -1275,7 +1285,7 @@ describe('sync_creatives handler', () => {
     // Create a media buy first
     const { result: buyResult } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'buyer-assign',
-      account: { brand: { domain: 'assign.example' } },
+      account: { brand: { domain: 'assign.example' }, operator: 'assign.example' },
       brand: { domain: 'assign.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1292,7 +1302,7 @@ describe('sync_creatives handler', () => {
     // Sync creative with assignment
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'sync_creatives', {
-      account: { brand: { domain: 'assign.example' } },
+      account: { brand: { domain: 'assign.example' }, operator: 'assign.example' },
       creatives: [{
         creative_id: 'cr_to_assign',
         format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
@@ -1325,9 +1335,7 @@ describe('get_media_buys handler', () => {
 
   it('returns empty array when no media buys exist', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'get_media_buys', {
-      account: { brand: { domain: 'test.example' } },
-    });
+    const { result } = await simulateCallTool(server, 'get_media_buys', {});
 
     expect(Array.isArray(result.media_buys)).toBe(true);
     expect((result.media_buys as unknown[]).length).toBe(0);
@@ -1337,14 +1345,12 @@ describe('get_media_buys handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'getbuys.example' } };
-
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
     // Create a media buy first
     await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'buyer-for-get',
-      account,
+      account: { brand: { domain: 'getbuys.example' }, operator: 'getbuys.example' },
       brand: { domain: 'getbuys.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1358,7 +1364,9 @@ describe('get_media_buys handler', () => {
 
     // Retrieve
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server2, 'get_media_buys', { account });
+    const { result } = await simulateCallTool(server2, 'get_media_buys', {
+      account: { brand: { domain: 'getbuys.example' }, operator: 'getbuys.example' },
+    });
 
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys.length).toBe(1);
@@ -1381,7 +1389,7 @@ describe('list_creatives handler', () => {
   });
 
   it('returns synced creatives', async () => {
-    const account = { brand: { domain: 'listcreatives.example' } };
+    const account = { brand: { domain: 'listcreatives.example' }, operator: 'listcreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
     await simulateCallTool(server, 'sync_creatives', {
@@ -1419,7 +1427,7 @@ describe('update_media_buy handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'update.example' } };
+    const account = { brand: { domain: 'update.example' }, operator: 'update.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
@@ -1453,7 +1461,6 @@ describe('update_media_buy handler', () => {
   it('returns error for nonexistent media buy', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'update_media_buy', {
-      account: { brand: { domain: 'update.example' } },
       media_buy_id: 'nonexistent',
     });
 
@@ -1464,12 +1471,10 @@ describe('update_media_buy handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'update-warn.example' } };
-
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       buyer_ref: 'buyer-warn',
-      account,
+      account: { brand: { domain: 'update-warn.example' }, operator: 'update-warn.example' },
       brand: { domain: 'update-warn.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
@@ -1484,7 +1489,7 @@ describe('update_media_buy handler', () => {
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'update_media_buy', {
-      account,
+      account: { brand: { domain: 'update-warn.example' }, operator: 'update-warn.example' },
       media_buy_id: mediaBuyId,
       packages: [{ package_id: 'nonexistent_pkg', budget: 5000 }],
     });
@@ -1508,7 +1513,7 @@ describe('update_media_buy end_time validation', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'endtime.example' } };
+    const account = { brand: { domain: 'endtime.example' }, operator: 'endtime.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
@@ -1555,7 +1560,7 @@ describe('create_media_buy package-level date validation', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'pkgdate.example' } };
+    const account = { brand: { domain: 'pkgdate.example' }, operator: 'pkgdate.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
@@ -1581,7 +1586,7 @@ describe('create_media_buy package-level date validation', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'pkgdate2.example' } };
+    const account = { brand: { domain: 'pkgdate2.example' }, operator: 'pkgdate2.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
@@ -1620,7 +1625,7 @@ describe('paused package delivery', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'paused.example' } };
+    const account = { brand: { domain: 'paused.example' }, operator: 'paused.example' };
 
     // Create a buy with asap start so it has elapsed time
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -1687,7 +1692,7 @@ describe('delivery response schema compliance', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'schema.example' } };
+    const account = { brand: { domain: 'schema.example' }, operator: 'schema.example' };
 
     // Create an active buy
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -1899,7 +1904,7 @@ describe('get_products refine mode', () => {
 
   it('omits products by id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'refine.example' } };
+    const account = { brand: { domain: 'refine.example' }, operator: 'refine.example' };
 
     // First call to populate session context
     const { result: initial } = await simulateCallTool(server, 'get_products', {
@@ -1924,7 +1929,7 @@ describe('get_products refine mode', () => {
 
   it('finds similar products with more_like_this', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'morelike.example' } };
+    const account = { brand: { domain: 'morelike.example' }, operator: 'morelike.example' };
 
     // Get wholesale catalog first to populate session context
     const { result: initial } = await simulateCallTool(server, 'get_products', {
@@ -1977,7 +1982,6 @@ describe('get_media_buy_delivery handler', () => {
   it('returns not_found for nonexistent media buy', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
-      account: { brand: { domain: 'delivery404.example' } },
       media_buy_id: 'mb_nonexistent',
     });
 
@@ -1989,7 +1993,7 @@ describe('get_media_buy_delivery handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'deliveryref.example' } };
+    const account = { brand: { domain: 'deliveryref.example' }, operator: 'deliveryref.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     await simulateCallTool(server, 'create_media_buy', {
@@ -2021,7 +2025,7 @@ describe('get_media_buy_delivery handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'deliverymulti.example' } };
+    const account = { brand: { domain: 'deliverymulti.example' }, operator: 'deliverymulti.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
@@ -2071,7 +2075,7 @@ describe('get_media_buy_delivery handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'deliveryfuture.example' } };
+    const account = { brand: { domain: 'deliveryfuture.example' }, operator: 'deliveryfuture.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
@@ -2120,7 +2124,7 @@ describe('session limits', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'limit-mb.example' } };
+    const account = { brand: { domain: 'limit-mb.example' }, operator: 'limit-mb.example' };
 
     // Fill the session to the limit by directly manipulating state
     const sessionKey = sessionKeyFromArgs({ account }, 'open');
@@ -2160,7 +2164,7 @@ describe('session limits', () => {
   });
 
   it('rejects sync_creatives when session creative limit reached', async () => {
-    const account = { brand: { domain: 'limit-cr.example' } };
+    const account = { brand: { domain: 'limit-cr.example' }, operator: 'limit-cr.example' };
 
     // Fill creatives to the limit
     const sessionKey = sessionKeyFromArgs({ account }, 'open');
@@ -2200,7 +2204,7 @@ describe('update_media_buy pause/resume', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'pauseresume.example' } };
+    const account = { brand: { domain: 'pauseresume.example' }, operator: 'pauseresume.example' };
 
     // Create a media buy
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -2269,7 +2273,7 @@ describe('create_media_buy multi-error collection', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'multierr.example' } };
+    const account = { brand: { domain: 'multierr.example' }, operator: 'multierr.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
@@ -2314,7 +2318,7 @@ describe('create_media_buy multi-error collection', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'negbudget.example' } };
+    const account = { brand: { domain: 'negbudget.example' }, operator: 'negbudget.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {
@@ -2353,7 +2357,7 @@ describe('update_media_buy budget validation', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'negupdate.example' } };
+    const account = { brand: { domain: 'negupdate.example' }, operator: 'negupdate.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
@@ -2473,7 +2477,7 @@ describe('SIGNAL_PROVIDERS', () => {
 // ── get_signals handler tests ─────────────────────────────────────
 
 describe('get_signals handler', () => {
-  const account = { brand: { domain: 'signal-test.example' } };
+  const account = { brand: { domain: 'signal-test.example' }, operator: 'signal-test.example' };
 
   beforeEach(() => {
     clearSessions();
@@ -2768,7 +2772,7 @@ describe('get_signals handler', () => {
 // ── activate_signal handler tests ─────────────────────────────────
 
 describe('activate_signal handler', () => {
-  const account = { brand: { domain: 'signal-test.example' } };
+  const account = { brand: { domain: 'signal-test.example' }, operator: 'signal-test.example' };
 
   beforeEach(() => {
     clearSessions();
@@ -2951,7 +2955,7 @@ describe('get_creative_delivery handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'creativedel.example' } };
+    const account = { brand: { domain: 'creativedel.example' }, operator: 'creativedel.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -3028,7 +3032,7 @@ describe('get_creative_delivery handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'deterministic.example' } };
+    const account = { brand: { domain: 'deterministic.example' }, operator: 'deterministic.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -3087,7 +3091,7 @@ describe('get_creative_delivery handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
-    const account = { brand: { domain: 'buyerref.example' } };
+    const account = { brand: { domain: 'buyerref.example' }, operator: 'buyerref.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
 

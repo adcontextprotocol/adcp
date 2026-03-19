@@ -46,7 +46,7 @@
     "check:images": "bash scripts/check-image-quality.sh"
   },
   "dependencies": {
-    "@adcp/client": "^4.10.0",
+    "@adcp/client": "^4.11.0",
     "@anthropic-ai/sdk": "^0.78.0",
     "@asteasolutions/zod-to-openapi": "^8.4.3",
     "@google/generative-ai": "^0.24.1",
