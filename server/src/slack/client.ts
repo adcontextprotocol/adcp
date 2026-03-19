@@ -40,6 +40,9 @@ const SLACK_API_BASE = 'https://slack.com/api';
 // Rate limiting: Slack's tier 2 methods allow ~20 requests per minute
 const RATE_LIMIT_DELAY_MS = 100; // Small delay between requests
 
+// Errors where retrying won't help — throw immediately
+const SLACK_PERMANENT_ERRORS = ['not_in_channel', 'channel_not_found', 'not_authed', 'invalid_auth', 'account_inactive', 'missing_scope'];
+
 // =====================================================
 // CHANNEL INFO CACHE
 // Channel names/purposes rarely change, so cache for 30 minutes
@@ -102,7 +105,13 @@ async function slackRequest<T>(
 
       return data;
     } catch (error) {
-      logger.error({ error, method, attempt, retries }, 'Slack API request failed');
+      // Don't retry permanent Slack API errors
+      if (error instanceof Error && SLACK_PERMANENT_ERRORS.some(e => error.message.includes(e))) {
+        logger.warn({ error: error.message, method }, 'Slack API permanent error');
+        throw error;
+      }
+
+      logger.warn({ error, method, attempt, retries }, 'Slack API request failed');
 
       if (attempt === retries) {
         throw error;
@@ -158,7 +167,13 @@ async function slackPostRequest<T>(
 
       return data;
     } catch (error) {
-      logger.error({ error, method, attempt, retries }, 'Slack POST request failed');
+      // Don't retry permanent Slack API errors
+      if (error instanceof Error && SLACK_PERMANENT_ERRORS.some(e => error.message.includes(e))) {
+        logger.warn({ error: error.message, method }, 'Slack API permanent error');
+        throw error;
+      }
+
+      logger.warn({ error, method, attempt, retries }, 'Slack POST request failed');
 
       if (attempt === retries) {
         throw error;

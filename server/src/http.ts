@@ -49,7 +49,6 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
-import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
@@ -868,10 +867,6 @@ export class HTTPServer {
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
 
-    // Mount Moltbook admin routes
-    const { pageRouter: moltbookPageRouter, apiRouter: moltbookApiRouter } = createMoltbookAdminRouter();
-    this.app.use('/admin/moltbook', moltbookPageRouter);    // Page routes: /admin/moltbook
-    this.app.use('/api/admin/moltbook', moltbookApiRouter); // API routes: /api/admin/moltbook/*
 
     // Mount Addie chat routes (public chat interface)
     const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
@@ -7312,10 +7307,6 @@ Disallow: /api/admin/
     jobScheduler.startAll();
 
     // Stop jobs that require missing env vars
-    if (!process.env.MOLTBOOK_API_KEY) {
-      jobScheduler.stop(JOB_NAMES.MOLTBOOK_POSTER);
-      jobScheduler.stop(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
-    }
     if (!process.env.LLMPULSE_API_KEY) {
       jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
       jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);

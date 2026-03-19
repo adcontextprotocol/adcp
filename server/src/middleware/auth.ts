@@ -500,14 +500,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         setSessionCookie(res, cached.newSealedSession);
       }
 
-      // Check platform ban for cached session user
-      const cachedUserBan = await checkPlatformBan(
-        `user:${cached.user.id}`,
-        () => bansDb.checkPlatformBan(cached.user.id)
-      );
-      if (cachedUserBan) {
-        logger.info({ userId: cached.user.id, banId: cachedUserBan.id }, 'User request blocked by platform ban');
-        return sendBanResponse(res, cachedUserBan);
+      // Check platform ban for cached session user (fail-open: DB timeout should not log users out)
+      try {
+        const cachedUserBan = await checkPlatformBan(
+          `user:${cached.user.id}`,
+          () => bansDb.checkPlatformBan(cached.user.id)
+        );
+        if (cachedUserBan) {
+          logger.info({ userId: cached.user.id, banId: cachedUserBan.id }, 'User request blocked by platform ban');
+          return sendBanResponse(res, cachedUserBan);
+        }
+      } catch (banError) {
+        logger.warn({ err: banError, userId: cached.user.id, path: req.path }, 'Ban check failed — allowing request through');
       }
 
       return next();
@@ -671,14 +675,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.user = user;
     req.accessToken = result.accessToken;
 
-    // Check platform ban for cookie-authenticated user
-    const userBan = await checkPlatformBan(
-      `user:${user.id}`,
-      () => bansDb.checkPlatformBan(user.id)
-    );
-    if (userBan) {
-      logger.info({ userId: user.id, banId: userBan.id }, 'User request blocked by platform ban');
-      return sendBanResponse(res, userBan);
+    // Check platform ban for cookie-authenticated user (fail-open: DB timeout should not log users out)
+    try {
+      const userBan = await checkPlatformBan(
+        `user:${user.id}`,
+        () => bansDb.checkPlatformBan(user.id)
+      );
+      if (userBan) {
+        logger.info({ userId: user.id, banId: userBan.id }, 'User request blocked by platform ban');
+        return sendBanResponse(res, userBan);
+      }
+    } catch (banError) {
+      logger.warn({ err: banError, userId: user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
     next();
