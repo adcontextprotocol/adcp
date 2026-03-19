@@ -483,6 +483,22 @@
       "expected_action": "generic_error"
     },
     {
+      "id": "mcp-jsonrpc-rate-limit-no-adcp-data",
+      "description": "JSON-RPC -32029 rate limit without data.adcp_error — should not extract",
+      "transport": "mcp",
+      "path": "jsonrpc_error",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "req-1000",
+        "error": {
+          "code": -32029,
+          "message": "Rate limit exceeded"
+        }
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
       "id": "mcp-transient-no-retry-after",
       "description": "Transient error without retry_after — client should use exponential backoff",
       "transport": "mcp",

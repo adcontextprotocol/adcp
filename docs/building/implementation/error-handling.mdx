@@ -110,7 +110,7 @@ AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextpro
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
 | `INVALID_REQUEST` | correctable | Request is malformed or violates schema constraints | Check request parameters and fix |
-| `UNSUPPORTED_FEATURE` | terminal | Requested feature not supported by this seller | Check `get_adcp_capabilities` and remove unsupported fields |
+| `UNSUPPORTED_FEATURE` | correctable | Requested feature not supported by this seller | Check `get_adcp_capabilities` and remove unsupported fields |
 | `POLICY_VIOLATION` | correctable | Request violates content or advertising policies | Review policy requirements in the error details |
 | `COMPLIANCE_UNSATISFIED` | correctable | Required disclosure cannot be satisfied by the target format | Choose a format that supports the required disclosure capabilities |
 

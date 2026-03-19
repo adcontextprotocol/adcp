@@ -190,8 +190,9 @@ describe('Transport error mapping test vectors', () => {
       v => v.expected_error === null && v.expected_action === 'generic_error'
     );
     // Should have: legacy MCP text, legacy A2A, structuredContent without adcp_error,
-    // JSON without adcp_error key, JSON-RPC error without adcp_error data
-    assert.ok(nonAdcpVectors.length >= 5,
-      `must have at least 5 null-extraction vectors, got ${nonAdcpVectors.length}`);
+    // JSON without adcp_error key, JSON-RPC error without adcp_error data,
+    // -32029 without adcp_error data
+    assert.ok(nonAdcpVectors.length >= 6,
+      `must have at least 6 null-extraction vectors, got ${nonAdcpVectors.length}`);
   });
 });

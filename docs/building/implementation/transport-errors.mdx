@@ -108,10 +108,10 @@ function adcpErrorResponse(error) {
     code: error.code,
     message: error.message,
     recovery: error.recovery,
-    ...(error.retry_after && { retry_after: error.retry_after }),
-    ...(error.field && { field: error.field }),
-    ...(error.suggestion && { suggestion: error.suggestion }),
-    ...(error.details && { details: error.details }),
+    ...(error.retry_after != null && { retry_after: error.retry_after }),
+    ...(error.field != null && { field: error.field }),
+    ...(error.suggestion != null && { suggestion: error.suggestion }),
+    ...(error.details != null && { details: error.details }),
   };
   return {
     content: [{ type: "text", text: JSON.stringify({ adcp_error: adcpError }) }],
@@ -445,7 +445,7 @@ The `details` field is an open object. To prevent interoperability divergence, s
 
 ### Size Guidance
 
-Sellers SHOULD keep `details` compact. Error responses flow through LLM context windows where every token has a cost — and transient errors that trigger retries can accumulate multiple error responses in a single conversation. As a guideline, keep `details` under 500 bytes serialized.
+Sellers SHOULD keep `details` compact. Error responses flow through LLM context windows where every token has a cost — and transient errors that trigger retries can accumulate multiple error responses in a single conversation. As a guideline, keep `details` under 500 serialized JSON bytes (use `JSON.stringify(details).length` in UTF-8 — this matters for non-ASCII content).
 
 ### `details` Schemas
 
