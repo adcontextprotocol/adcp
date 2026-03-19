@@ -247,12 +247,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'add_committee_co_leader',
       'remove_committee_co_leader',
       'list_committee_co_leaders',
+      'list_working_groups',
     ],
   },
 
   admin: {
     name: 'admin',
-    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, member insights and engagement analytics, community-wide engagement ranking (admin only)',
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, member insights and engagement analytics, community-wide engagement ranking (admin only)',
     tools: [
       'list_pending_invoices',
       'get_account',
@@ -274,6 +275,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'list_chapters',
       'create_industry_gathering',
       'list_industry_gatherings',
+      'list_working_groups',
+      'get_working_group',
       'add_committee_leader',
       'remove_committee_leader',
       'list_committee_leaders',
