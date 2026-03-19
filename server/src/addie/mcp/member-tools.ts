@@ -2930,7 +2930,10 @@ export function createMemberToolHandlers(
 
     const optOutProvided = input.opt_out !== undefined;
     const optOut = input.opt_out === true;
-    const cadence = input.cadence as 'default' | 'monthly' | 'quarterly' | undefined;
+    const validCadences = ['default', 'monthly', 'quarterly'] as const;
+    const cadence = validCadences.includes(input.cadence as any)
+      ? (input.cadence as (typeof validCadences)[number])
+      : undefined;
 
     // Require at least one parameter — calling with empty params should not silently change state
     if (!optOutProvided && !cadence) {
