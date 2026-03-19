@@ -13,7 +13,7 @@ import { createMemberToolHandlers } from '../../src/addie/mcp/member-tools.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:55020';
-const TEST_AGENT_URL = `${BASE_URL}/api/training-agent/mcp`;
+const TEST_AGENT_URL = process.env.TEST_AGENT_URL || `${BASE_URL}/api/training-agent/mcp`;
 
 // Minimal member context — the tools only need this for auth resolution
 const mockMemberContext: MemberContext = {
@@ -99,12 +99,12 @@ function truncate(s: string, max = 2000): string {
 async function main() {
   console.log(`Test agent: ${TEST_AGENT_URL}`);
 
-  // Health check
+  // Health check — accept both main server ({status: 'ok'}) and standalone ({status: 'healthy'})
   try {
     const res = await fetch(`${BASE_URL}/health`);
     const data = await res.json() as { status: string };
-    if (data.status !== 'ok') throw new Error('unhealthy');
-    console.log('Server healthy ✓\n');
+    if (data.status !== 'ok' && data.status !== 'healthy') throw new Error('unhealthy');
+    console.log(`Server healthy ✓ (${data.status})\n`);
   } catch {
     console.error(`Cannot reach server at ${BASE_URL}. Is it running?`);
     process.exit(1);

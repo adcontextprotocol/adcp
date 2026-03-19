@@ -2,7 +2,7 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/client.
  */
-import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaBuyRequest } from '@adcp/client';
+import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
@@ -85,7 +85,7 @@ export interface PricingTemplate {
     estimated_impressions?: number;
   };
   /** For CPA: the event type that triggers billing */
-  eventType?: string;
+  eventType?: EventType;
   /** For CPP: demographic targeting parameters */
   cppParameters?: { demographic: string };
   /** For CPV: view threshold parameters */

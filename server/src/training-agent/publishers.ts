@@ -500,7 +500,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     pricingTemplates: [
       { model: 'cpm', currency: 'USD', floorPrice: 18, priceGuidance: { suggested: 30, range: { min: 18, max: 50 } } },
       { model: 'cpc', currency: 'USD', floorPrice: 2, priceGuidance: { suggested: 4, range: { min: 2, max: 8 } } },
-      { model: 'cpa', currency: 'USD', fixedPrice: 8, eventType: 'agent_session' },
+      { model: 'cpa', currency: 'USD', fixedPrice: 8, eventType: 'custom' },
       { model: 'cpm', currency: 'USD', fixedPrice: 35, minSpendPerPackage: 10000 },
       { model: 'flat_rate', currency: 'USD', fixedPrice: 50000, minSpendPerPackage: 50000 },
     ],

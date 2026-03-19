@@ -129,7 +129,7 @@ function buildPricingOption(
         pricing_model: 'cpa',
         currency: template.currency,
         fixed_price: template.fixedPrice ?? 0,
-        event_type: (template.eventType ?? 'purchase') as CPAPricingOption['event_type'],
+        event_type: template.eventType ?? 'purchase',
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
     case 'flat_rate':
