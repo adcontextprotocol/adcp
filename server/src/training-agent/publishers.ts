@@ -197,7 +197,7 @@ export const PUBLISHERS: PublisherProfile[] = [
         doohParameters: { type: 'dooh', sov_percentage: 12.5, loop_duration_seconds: 480, min_plays_per_hour: 8 },
       },
       { model: 'cpm', currency: 'USD', fixedPrice: 8, minSpendPerPackage: 1000 },
-      { model: 'time', currency: 'USD', fixedPrice: 800, timeParameters: { unit: 'week', min_duration: 1, max_duration: 52 } },
+      { model: 'time', currency: 'USD', fixedPrice: 800, timeParameters: { time_unit: 'week', min_duration: 1, max_duration: 52 } },
       {
         model: 'flat_rate', currency: 'GBP', fixedPrice: 2000, minSpendPerPackage: 2000,
         doohParameters: { type: 'dooh', sov_percentage: 12.5, loop_duration_seconds: 480, min_plays_per_hour: 8 },
@@ -401,7 +401,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     pricingTemplates: [
       { model: 'cpc', currency: 'USD', floorPrice: 0.50, priceGuidance: { suggested: 1.20, range: { min: 0.50, max: 3.00 } } },
       { model: 'cpm', currency: 'USD', floorPrice: 5, priceGuidance: { suggested: 9, range: { min: 5, max: 15 } } },
-      { model: 'cpv', currency: 'USD', floorPrice: 0.01, priceGuidance: { suggested: 0.03, range: { min: 0.01, max: 0.08 } }, cpvParameters: { view_threshold: { type: 'duration', value: 2, unit: 'seconds' } } },
+      { model: 'cpv', currency: 'USD', floorPrice: 0.01, priceGuidance: { suggested: 0.03, range: { min: 0.01, max: 0.08 } }, cpvParameters: { view_threshold: { duration_seconds: 2 } } },
     ],
     measurementProvider: 'Sparq first-party analytics with DoubleVerify',
     measurementNotes: 'First-party engagement and conversion tracking. DoubleVerify brand safety and viewability. Cross-device identity graph for reach/frequency.',
@@ -598,7 +598,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     pricingTemplates: [
       { model: 'flat_rate', currency: 'USD', fixedPrice: 35000, minSpendPerPackage: 15000 },
       { model: 'cpm', currency: 'USD', fixedPrice: 22, minSpendPerPackage: 5000 },
-      { model: 'time', currency: 'USD', fixedPrice: 12000, timeParameters: { unit: 'month', min_duration: 1, max_duration: 12 } },
+      { model: 'time', currency: 'USD', fixedPrice: 12000, timeParameters: { time_unit: 'month', min_duration: 1, max_duration: 12 } },
     ],
     measurementProvider: 'Alliance for Audited Media (AAM) with comScore digital',
     measurementNotes: 'AAM-audited print circulation. comScore digital measurement. Print ad recall studies available quarterly. Digital viewability via IAS.',

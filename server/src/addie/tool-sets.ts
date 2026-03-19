@@ -127,6 +127,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'probe_adcp_agent',
       'check_publisher_authorization',
       'test_adcp_agent',
+      'evaluate_agent_quality',
+      'compare_media_kit',
       'validate_agent',
       'resolve_property',
       'save_property',

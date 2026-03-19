@@ -15,13 +15,15 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
-  testAllScenarios,
-  formatSuiteResults,
   setAgentTesterLogger,
-  SCENARIO_REQUIREMENTS,
-  type OrchestratorOptions,
-  type SuiteResult,
-  type TestScenario,
+  comply,
+  getBriefsByVertical,
+  SAMPLE_BRIEFS,
+  getAllPlatformTypes,
+  getPlatformProfile,
+  type ComplyOptions,
+  type ComplianceTrack,
+  type PlatformType,
 } from '@adcp/client/testing';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import {
@@ -156,6 +158,102 @@ setAgentTesterLogger({
   warn: (ctx, msg) => logger.warn(ctx, msg),
   debug: (ctx, msg) => logger.debug(ctx, msg),
 });
+
+interface ResolvedAgentAuth {
+  authToken?: string;
+  authType: 'bearer' | 'basic';
+  source: 'explicit' | 'saved' | 'oauth' | 'public' | 'none';
+  resolvedUrl: string;
+}
+
+/**
+ * Resolve auth credentials for an agent URL.
+ * Checks: explicit token > saved token > OAuth token > public test agent.
+ * Also handles legacy URL redirect.
+ */
+async function resolveAgentAuth(
+  agentUrl: string,
+  organizationId: string | undefined,
+  explicitToken?: string,
+): Promise<ResolvedAgentAuth> {
+  let resolvedUrl = agentUrl;
+
+  // Redirect legacy URL
+  if (resolvedUrl.toLowerCase() === LEGACY_TEST_AGENT_URL.toLowerCase()) {
+    resolvedUrl = PUBLIC_TEST_AGENT.url;
+  }
+
+  if (explicitToken) {
+    return { authToken: explicitToken, authType: 'bearer', source: 'explicit', resolvedUrl };
+  }
+
+  if (organizationId) {
+    // Check saved auth token
+    try {
+      const savedInfo = await agentContextDb.getAuthInfoByOrgAndUrl(organizationId, resolvedUrl);
+      if (savedInfo) {
+        return { authToken: savedInfo.token, authType: savedInfo.authType, source: 'saved', resolvedUrl };
+      }
+    } catch (error) {
+      logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup saved auth token');
+    }
+
+    // Check OAuth tokens
+    try {
+      const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, resolvedUrl);
+      if (oauthTokens?.access_token) {
+        const isExpired = oauthTokens.expires_at &&
+          new Date(oauthTokens.expires_at).getTime() - Date.now() < 5 * 60 * 1000;
+        if (!isExpired) {
+          return { authToken: oauthTokens.access_token, authType: 'bearer', source: 'oauth', resolvedUrl };
+        }
+      }
+    } catch (error) {
+      logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup OAuth token');
+    }
+  }
+
+  // Public test agent auto-detection
+  if (resolvedUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
+    return { authToken: PUBLIC_TEST_AGENT.token, authType: 'bearer', source: 'public', resolvedUrl };
+  }
+
+  return { authType: 'bearer', source: 'none', resolvedUrl };
+}
+
+/**
+ * Validate an agent URL is well-formed.
+ * Returns an error message if invalid, null if valid.
+ */
+function validateAgentUrl(agentUrl: string): string | null {
+  try {
+    new URL(agentUrl);
+    return null;
+  } catch {
+    return 'Invalid agent URL format.';
+  }
+}
+
+/**
+ * Build auth options for the SDK from resolved auth.
+ */
+function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | undefined {
+  if (!resolved.authToken) return undefined;
+
+  if (resolved.authType === 'basic') {
+    // For basic auth, the SDK expects bearer — but the evaluate_agent_quality handler
+    // decodes and re-encodes. For comply(), we pass it through as-is since
+    // the SDK's HTTP layer handles the Authorization header.
+    const decoded = Buffer.from(resolved.authToken, 'base64').toString();
+    const colonIndex = decoded.indexOf(':');
+    if (colonIndex >= 0) {
+      // Return as a bearer-typed object but the comply engine builds its own client
+      return { type: 'bearer', token: resolved.authToken };
+    }
+  }
+
+  return { type: 'bearer', token: resolved.authToken };
+}
 
 /**
  * Extract AdCP version from an agent card's extensions array.
@@ -514,8 +612,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'probe_adcp_agent',
     description:
-      'Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use test_adcp_agent to verify actual protocol compliance.',
-    usage_hints: 'use for "is this agent online?", "check connectivity", "what tools does this agent advertise?". For compliance testing, use test_adcp_agent instead.',
+      'Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use evaluate_agent_quality to verify actual protocol compliance.',
+    usage_hints: 'use for "is this agent online?", "check connectivity", "what tools does this agent advertise?". For compliance testing, use evaluate_agent_quality instead.',
     input_schema: {
       type: 'object',
       properties: {
@@ -541,25 +639,48 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'test_adcp_agent',
     description:
-      'Run end-to-end tests against an AdCP agent to verify it works correctly. Automatically discovers the agent\'s capabilities and runs all applicable scenarios (discovery, media buy creation, creative sync, signals, governance, etc.). By default runs in dry-run mode - set dry_run=false for real testing. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.',
-    usage_hints: 'use for "test my agent", "run the full test suite", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models", "try the API". The public test agent works immediately for any logged-in user — no organization or setup_test_agent needed.',
+      'Deprecated — use evaluate_agent_quality instead. Runs evaluate_agent_quality and returns the same results.',
+    usage_hints: 'DEPRECATED: prefer evaluate_agent_quality for all agent testing. This tool exists for backward compatibility.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
-        scenarios: { type: 'array', items: { type: 'string', enum: Object.keys(SCENARIO_REQUIREMENTS) as TestScenario[] }, description: 'Scenarios to run (defaults to all applicable scenarios based on agent capabilities)' },
-        brief: { type: 'string', description: 'Custom brief' },
-        budget: { type: 'number', description: 'Budget in dollars (default: 1000)' },
-        dry_run: { type: 'boolean', description: 'Dry-run mode (default: true)' },
-        channels: { type: 'array', items: { type: 'string' }, description: 'Channels to test' },
-        pricing_models: { type: 'array', items: { type: 'string' }, description: 'Pricing models to test' },
-        brand_manifest: {
-          type: 'object', description: 'Brand manifest',
-          properties: { name: { type: 'string', description: 'Brand name' }, url: { type: 'string', format: 'uri', description: 'Brand URL' }, tagline: { type: 'string', description: 'Tagline' } },
-          required: ['name'],
-        },
       },
       required: ['agent_url'],
+    },
+  },
+  {
+    name: 'evaluate_agent_quality',
+    description:
+      'Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.',
+    usage_hints: 'use for "test my agent", "run the full test suite", "how good is my agent?", "evaluate my agent quality", "what should I improve?", "coaching on my agent", "verify my sales agent works", "test against test-agent", "try the API". The public test agent works immediately for any logged-in user.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'Agent URL to evaluate' },
+        tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable)' },
+        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Declare the platform type for coherence checking — verifies the agent supports the tracks and tools expected for its platform category' },
+      },
+      required: ['agent_url'],
+    },
+  },
+  {
+    name: 'compare_media_kit',
+    description:
+      'Compare a publisher\'s stated inventory (from their media kit or sample IO) against what their agent actually returns. Constructs briefs based on the publisher\'s verticals and channels, calls get_products, and identifies gaps — products, channels, formats, or buying modes the publisher sells but the agent doesn\'t expose. Extract the media_kit_summary from a PDF or description shared in conversation before calling this tool.',
+    usage_hints: 'use when publisher shares a media kit, rate card, or sample IO and wants to see how their agent compares. Parse the document first, then call this tool with the structured summary.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'Agent URL to test against' },
+        media_kit_summary: { type: 'string', description: 'Structured description of what the publisher sells (channels, formats, verticals, pricing tiers, audience capabilities)' },
+        verticals: { type: 'array', items: { type: 'string' }, description: 'Verticals the publisher serves (e.g., automotive, healthcare, tech)' },
+        channels: { type: 'array', items: { type: 'string' }, description: 'Channels from the media kit (e.g., display, video, podcast, audio, newsletter, dooh, ctv)' },
+        formats: { type: 'array', items: { type: 'string' }, description: 'Specific format types offered' },
+        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Platform type for expected channel/tool context' },
+        sample_io: { type: 'string', description: 'Text of a sample IO or RFP response for additional comparison' },
+      },
+      required: ['agent_url', 'media_kit_summary'],
     },
   },
   // ============================================
@@ -609,8 +730,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'setup_test_agent',
     description:
-      'Save the public AdCP test agent credentials for the user\'s organization so teammates can use them. Any logged-in user can already use the public test agent directly via test_adcp_agent without this step — no organization required. This is only needed for teams that want credentials stored.',
-    usage_hints: 'use for "set up test agent for my team", "save test agent credentials". For "I want to try AdCP" or "test the API", prefer test_adcp_agent directly — it works immediately for any logged-in user. No organization or member profile required to try the test agent.',
+      'Save the public AdCP test agent credentials for the user\'s organization so teammates can use them. Any logged-in user can already use the public test agent directly via evaluate_agent_quality without this step — no organization required. This is only needed for teams that want credentials stored.',
+    usage_hints: 'use for "set up test agent for my team", "save test agent credentials". For "I want to try AdCP" or "test the API", prefer evaluate_agent_quality directly — it works immediately for any logged-in user. No organization or member profile required to try the test agent.',
     input_schema: {
       type: 'object',
       properties: {},
@@ -2024,9 +2145,9 @@ export function createMemberToolHandlers(
     // Summary
     response += `\n---\n`;
     if (isHealthy && (agent?.capabilities?.tools?.length ?? 0) > 0) {
-      response += `✅ Agent is **online** and responding. Run \`test_adcp_agent\` to verify protocol compliance.`;
+      response += `✅ Agent is **online** and responding. Run \`evaluate_agent_quality\` to verify protocol compliance.`;
     } else if (isHealthy) {
-      response += `✅ Agent is **online** but not in the registry. Try calling it with \`get_products\` or run \`test_adcp_agent\` to verify it works correctly.`;
+      response += `✅ Agent is **online** but not in the registry. Try calling it with \`get_products\` or run \`evaluate_agent_quality\` to verify it works correctly.`;
     } else {
       response += `❌ Agent is **not responding**. Check the URL and ensure the agent is running.`;
     }
@@ -2084,216 +2205,396 @@ export function createMemberToolHandlers(
   // ============================================
   // E2E AGENT TESTING
   // ============================================
+  // test_adcp_agent delegates to evaluate_agent_quality
   handlers.set('test_adcp_agent', async (input) => {
-    let agentUrl = input.agent_url as string;
-    const scenarios = input.scenarios as TestScenario[] | undefined;
-    const brief = input.brief as string | undefined;
-    const budget = input.budget as number | undefined;
-    const dryRun = input.dry_run as boolean | undefined;
-    const channels = input.channels as string[] | undefined;
-    const pricingModels = input.pricing_models as string[] | undefined;
-    const brandManifest = input.brand_manifest as OrchestratorOptions['brand_manifest'];
-    let authToken = input.auth_token as string | undefined;
+    const evaluateHandler = handlers.get('evaluate_agent_quality')!;
+    return evaluateHandler(input);
+  });
 
-    // Look up saved token for organization
-    let usingSavedToken = false;
-    let usingSavedOAuthToken = false;
-    let usingPublicTestAgent = false;
-    let redirectedFromLegacy = false;
-    let savedAuthType: 'bearer' | 'basic' = 'bearer';
+  // ============================================
+  // AGENT QUALITY COACHING
+  // ============================================
+
+  handlers.set('evaluate_agent_quality', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const tracks = input.tracks as ComplianceTrack[] | undefined;
+    const platformType = input.platform_type as PlatformType | undefined;
+
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
+
     const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
-    if (!authToken && organizationId) {
-      // First, try to get a saved auth token (bearer or basic)
-      try {
-        const savedInfo = await agentContextDb.getAuthInfoByOrgAndUrl(
-          organizationId,
-          agentUrl
-        );
-        if (savedInfo) {
-          authToken = savedInfo.token;
-          savedAuthType = savedInfo.authType;
-          usingSavedToken = true;
-          logger.info({ agentUrl, authType: savedInfo.authType }, 'Using saved auth token for agent test');
-        }
-      } catch (error) {
-        // Non-fatal - continue without saved token
-        logger.debug({ error, agentUrl }, 'Could not lookup saved auth token');
-      }
-
-      // If no bearer token, try OAuth tokens
-      if (!authToken) {
-        try {
-          const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(
-            organizationId,
-            agentUrl
-          );
-          if (oauthTokens?.access_token) {
-            // Check if token is expired (with 5-minute buffer to match hasValidOAuthTokens)
-            const isExpired = oauthTokens.expires_at &&
-              new Date(oauthTokens.expires_at).getTime() - Date.now() < 5 * 60 * 1000;
-            if (isExpired) {
-              logger.warn({ agentUrl }, 'OAuth token expired for agent test');
-              // TODO: Could attempt refresh here if refresh_token is available
-            } else {
-              authToken = oauthTokens.access_token;
-              usingSavedOAuthToken = true;
-              logger.info({ agentUrl }, 'Using saved OAuth token for agent test');
-            }
-          }
-        } catch (error) {
-          // Non-fatal - continue without OAuth token
-          logger.debug({ error, agentUrl }, 'Could not lookup saved OAuth token');
-        }
-      }
-    }
-
-    // Auto-use public credentials for the public test agent.
-    // Comes after saved token lookup so explicit user saves take precedence.
-    if (!authToken && (
-      agentUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase() ||
-      agentUrl.toLowerCase() === LEGACY_TEST_AGENT_URL.toLowerCase()
-    )) {
-      // Redirect legacy URL to the training agent
-      if (agentUrl.toLowerCase() === LEGACY_TEST_AGENT_URL.toLowerCase()) {
-        agentUrl = PUBLIC_TEST_AGENT.url;
-        redirectedFromLegacy = true;
-        logger.info({ legacyUrl: LEGACY_TEST_AGENT_URL, newUrl: agentUrl }, 'Redirecting legacy test agent URL to training agent');
-      }
-      authToken = PUBLIC_TEST_AGENT.token;
-      usingPublicTestAgent = true;
-      logger.info({ agentUrl }, 'Using public test agent credentials');
-    }
-
-    // Use a realistic default brand manifest that real sales agents will accept
-    const defaultBrandManifest = {
-      name: 'Nike',
-      url: 'https://nike.com',
+    const complyOptions: ComplyOptions = {
+      test_session_id: `quality-eval-${Date.now()}`,
+      dry_run: true,
+      auth: buildAuthOption(resolved),
     };
-
-    const options: OrchestratorOptions = {
-      test_session_id: `addie-test-${Date.now()}`,
-      dry_run: dryRun, // undefined means default to true
-      brand_manifest: brandManifest || defaultBrandManifest,
-    };
-    if (brief) options.brief = brief;
-    if (budget) options.budget = budget;
-    if (channels) options.channels = channels;
-    if (pricingModels) options.pricing_models = pricingModels;
-    if (authToken) {
-      if (usingSavedToken && savedAuthType === 'basic') {
-        // Decode stored base64 credential back to username:password for the SDK
-        const decoded = Buffer.from(authToken, 'base64').toString();
-        const colonIndex = decoded.indexOf(':');
-        if (colonIndex >= 0) {
-          options.auth = {
-            type: 'basic',
-            username: decoded.substring(0, colonIndex),
-            password: decoded.substring(colonIndex + 1),
-          } as unknown as typeof options.auth;
-        } else {
-          logger.warn({ agentUrl }, 'Basic auth credential missing colon separator, falling back to Bearer');
-          options.auth = { type: 'bearer', token: authToken };
-        }
-      } else {
-        options.auth = { type: 'bearer', token: authToken };
-      }
-    }
-    if (scenarios) options.scenarios = scenarios;
+    if (tracks) complyOptions.tracks = tracks;
+    if (platformType) complyOptions.platform_type = platformType;
 
     try {
-      const suite: SuiteResult = await testAllScenarios(agentUrl, options);
+      const result = await comply(resolved.resolvedUrl, complyOptions);
 
-      // If user is authenticated, update the saved context
+      // Record result if the user has an org with this agent saved
       if (organizationId) {
         try {
-          const context = await agentContextDb.getByOrgAndUrl(
-            organizationId,
-            agentUrl
-          );
+          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
           if (context) {
-            const tools = suite.agent_profile.tools || [];
-
-            // Record one history entry per scenario (each call also stomps last_test_* fields)
-            for (const result of suite.results) {
-              await agentContextDb.recordTest({
-                agent_context_id: context.id,
-                scenario: result.scenario,
-                overall_passed: result.overall_passed,
-                steps_passed: (result.steps || []).filter((s) => s.passed).length,
-                steps_failed: (result.steps || []).filter((s) => !s.passed).length,
-                total_duration_ms: result.total_duration_ms,
-                summary: result.summary,
-                dry_run: options.dry_run !== false,
-                brief: options.brief,
-                triggered_by: 'user',
-                user_id: memberContext?.workos_user?.workos_user_id,
-                steps_json: result.steps,
-                agent_profile_json: result.agent_profile,
-              });
-            }
-
-            // Overwrite with suite-level summary after the loop
-            // (recordTest updates last_test_* per-scenario; this restores the aggregate)
-            await agentContextDb.update(context.id, {
-              tools_discovered: tools,
-              agent_type: agentContextDb.inferAgentType(tools),
-              last_test_scenario: suite.scenarios_run.join(','),
-              last_test_passed: suite.overall_passed,
-              last_test_summary: `${suite.passed_count}/${suite.results.length} scenarios passed`,
+            await agentContextDb.recordTest({
+              agent_context_id: context.id,
+              scenario: 'quality_evaluation',
+              overall_passed: result.summary.tracks_failed === 0,
+              steps_passed: result.summary.tracks_passed,
+              steps_failed: result.summary.tracks_failed,
+              total_duration_ms: result.total_duration_ms,
+              summary: result.summary.headline,
+              dry_run: true,
+              triggered_by: 'user',
+              user_id: memberContext?.workos_user?.workos_user_id,
+              agent_profile_json: result.agent_profile,
             });
           }
         } catch (error) {
-          // Non-fatal - test still ran
-          logger.debug({ error }, 'Could not update agent context after test');
+          logger.debug({ error }, 'Could not record quality evaluation result');
         }
       }
 
-      let output = formatSuiteResults(suite);
-      if (redirectedFromLegacy) {
-        output = `_Note: \`test-agent.adcontextprotocol.org\` has been replaced by \`${PUBLIC_TEST_AGENT.url}\`. Update your configuration to use the new URL._\n\n` + output;
-      }
-      if (usingSavedToken) {
-        output = `_Using saved credentials for this agent._\n\n` + output;
-      } else if (usingSavedOAuthToken) {
-        output = `_Using saved OAuth credentials for this agent._\n\n` + output;
-      } else if (usingPublicTestAgent) {
-        output = `_Using public test agent credentials._\n\n` + output;
-      }
+      // Build structured output for Addie to interpret
+      let output = '';
+      if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+      else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
+      else if (resolved.source === 'public') output += '_Using public test agent credentials._\n\n';
 
-      // If tests failed, offer to help file a GitHub issue
-      const failedSteps = suite.results.flatMap((r) => (r.steps || []).filter((s) => !s.passed));
-      if (failedSteps.length > 0) {
-        // First, check if this looks like a bug in the @adcp/client testing library itself
-        const clientLibraryBug = detectClientLibraryBug(failedSteps);
-        if (clientLibraryBug) {
-          logger.info(
-            { agentUrl, repo: clientLibraryBug.repo, matchedError: clientLibraryBug.matchedError },
-            'Detected known client library bug in test results'
-          );
-          output += `\n---\n\n`;
-          output += `⚠️ **This looks like a bug in the testing library** (not the agent)\n\n`;
-          output += `The error pattern suggests an issue in \`@adcp/client\`:\n`;
-          output += `> ${clientLibraryBug.description}\n\n`;
-          output += `Would you like me to draft a GitHub issue for \`adcontextprotocol/${clientLibraryBug.repo}\`?\n\n`;
-          output += `Just say "yes, file an issue" and I'll create a pre-filled GitHub link for you.`;
+      output += `## Quality Evaluation: ${result.agent_profile.name || resolved.resolvedUrl}\n\n`;
+      output += `**Agent:** ${resolved.resolvedUrl}\n`;
+      output += `**Tools:** ${result.agent_profile.tools.length} (${result.agent_profile.tools.join(', ')})\n`;
+      output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
+
+      output += `### Capability Tracks\n\n`;
+      output += `**Summary:** ${result.summary.headline}\n\n`;
+
+      const statusLabel: Record<string, string> = { pass: 'PASS', fail: 'FAIL', partial: 'PARTIAL', skip: 'SKIP', expected: 'EXPECTED' };
+      for (const track of result.tracks) {
+        const status = statusLabel[track.status] ?? track.status.toUpperCase();
+        const scenarioCount = track.scenarios.length;
+        const passedCount = track.scenarios.filter(s => s.overall_passed).length;
+
+        if (track.status === 'skip') {
+          output += `- **${track.label}** [${status}] — not applicable\n`;
+        } else if (track.status === 'expected') {
+          output += `- **${track.label}** [${status}] — expected for this platform type but not yet implemented\n`;
         } else {
-          // Check if this is a known open-source agent
-          const openSourceInfo = getOpenSourceAgentInfo(agentUrl);
-          if (openSourceInfo) {
-            output += `\n---\n\n`;
-            output += `💡 **This is an open-source agent** (${openSourceInfo.name})\n\n`;
-            output += `Since ${failedSteps.length} test step(s) failed, would you like me to help you report this issue?\n`;
-            output += `I can draft a GitHub issue for the \`${openSourceInfo.org}/${openSourceInfo.repo}\` repository with all the relevant details.\n\n`;
-            output += `Just say "yes, file an issue" or "help me report this bug" and I'll create a pre-filled GitHub link for you.`;
+          output += `- **${track.label}** [${status}] — ${passedCount}/${scenarioCount} scenarios pass (${(track.duration_ms / 1000).toFixed(1)}s)\n`;
+          for (const scenario of track.scenarios) {
+            if (!scenario.overall_passed) {
+              output += `  - FAILED: ${scenario.scenario}\n`;
+              const failedSteps = (scenario.steps ?? []).filter(s => !s.passed);
+              for (const step of failedSteps.slice(0, 3)) {
+                output += `    - ${step.step}${step.error ? `: ${step.error}` : ''}\n`;
+              }
+              if (failedSteps.length > 3) {
+                output += `    - ... and ${failedSteps.length - 3} more\n`;
+              }
+            }
           }
         }
       }
 
+      // Platform coherence section (only when platform_type was provided)
+      if (result.platform_coherence) {
+        const pc = result.platform_coherence;
+        output += `\n### Platform Coherence: ${pc.label}\n\n`;
+        output += `**Coherent:** ${pc.coherent ? 'yes' : 'no'}\n`;
+        output += `**Expected tracks:** ${pc.expected_tracks.join(', ')}\n`;
+        if (pc.missing_tracks.length > 0) {
+          output += `**Missing tracks:** ${pc.missing_tracks.join(', ')}\n`;
+        }
+        if (pc.findings.length > 0) {
+          output += `\n**Findings:**\n`;
+          for (const finding of pc.findings) {
+            const sev = finding.severity.toUpperCase();
+            output += `- [${sev}] Expected: ${finding.expected} | Actual: ${finding.actual}\n`;
+            output += `  → ${finding.guidance}\n`;
+          }
+        }
+        output += '\n';
+      }
+
+      if (result.observations.length > 0) {
+        output += `\n### Advisory Observations\n\n`;
+        for (const obs of result.observations) {
+          const severity = obs.severity === 'error' ? 'ERROR' : obs.severity === 'warning' ? 'WARNING' : obs.severity === 'suggestion' ? 'SUGGESTION' : 'INFO';
+          output += `- [${severity}] (${obs.category}) ${obs.message}\n`;
+          if (obs.evidence) {
+            output += `  Evidence: ${JSON.stringify(obs.evidence).slice(0, 500)}\n`;
+          }
+        }
+      }
+
+      output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.${platformType ? ` Consider the platform coherence findings — missing tracks or capabilities that are expected for a ${platformType} are high-priority gaps.` : ''}`;
+
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl, scenarios }, 'Addie: test_adcp_agent failed');
-      return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+      return `Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`;
+    }
+  });
+
+  handlers.set('compare_media_kit', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const mediaKitSummary = (input.media_kit_summary as string).slice(0, 5000);
+    const verticals = input.verticals as string[] | undefined;
+    const channels = (input.channels as string[] | undefined)?.slice(0, 20);
+    const formats = (input.formats as string[] | undefined)?.slice(0, 20);
+    const platformType = input.platform_type as PlatformType | undefined;
+    const sampleIo = input.sample_io as string | undefined;
+
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
+
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+
+    // Build briefs: prefer curated sample briefs from the library, fall back to generated
+    const effectiveVerticals = verticals?.length ? verticals : ['general'];
+    const effectiveChannels = channels?.length ? channels : [];
+    const briefsToRun: Array<{ name: string; brief: string; vertical: string }> = [];
+
+    for (const vertical of effectiveVerticals.slice(0, 5)) {
+      // Try to find a curated sample brief for this vertical
+      const sampleBriefs = getBriefsByVertical(vertical);
+      if (sampleBriefs.length > 0) {
+        // Use the first matching sample brief — it has realistic budget context and evaluation hints
+        const sample = sampleBriefs[0];
+        briefsToRun.push({ name: sample.name, brief: sample.brief, vertical });
+      } else {
+        // No curated brief for this vertical — construct one from media kit context
+        let briefText = `Brand looking for advertising opportunities in the ${vertical} vertical.`;
+        if (effectiveChannels.length > 0) {
+          briefText += ` Interested in: ${effectiveChannels.join(', ')}.`;
+        }
+        if (formats?.length) {
+          briefText += ` Preferred formats: ${formats.join(', ')}.`;
+        }
+        briefText += ` Budget: $100,000 over 4 weeks.`;
+        briefsToRun.push({ name: `${vertical} brief`, brief: briefText, vertical });
+      }
+    }
+
+    if (sampleIo) {
+      briefsToRun.push({
+        name: 'Sample IO comparison',
+        brief: `Based on this previous IO/RFP response, find matching products:\n\n<user_provided_io>\n${sampleIo.slice(0, 2000)}\n</user_provided_io>`,
+        vertical: 'io_comparison',
+      });
+    }
+
+    if (briefsToRun.length === 0) {
+      return 'No briefs could be constructed from the media kit summary. Provide at least one vertical or channel.';
+    }
+
+    // Get platform profile for expected channels/tools context
+    const platformProfile = platformType ? getPlatformProfile(platformType) : undefined;
+
+    try {
+      const { AdCPClient } = await import('@adcp/client');
+
+      const agentConfig = {
+        id: 'target',
+        name: 'target',
+        agent_uri: resolved.resolvedUrl,
+        protocol: 'mcp' as const,
+        ...(resolved.authToken && resolved.authType === 'basic'
+          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
+          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+      };
+
+      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const client = multiClient.agent('target');
+
+      // Run each brief and collect results
+      interface BriefResult {
+        name: string;
+        vertical: string;
+        products_count: number;
+        channels_found: string[];
+        formats_found: string[];
+        pricing_models_found: string[];
+        has_audience_targeting: boolean;
+        error?: string;
+      }
+      const briefResults: BriefResult[] = [];
+
+      for (const brief of briefsToRun) {
+        try {
+          const result = await client.executeTask('get_products', {
+            buying_mode: 'brief',
+            brief: brief.brief,
+            brand: { name: 'Test Brand', url: 'https://example.com' },
+          });
+
+          if (!result.success) {
+            briefResults.push({
+              name: brief.name, vertical: brief.vertical, products_count: 0,
+              channels_found: [], formats_found: [], pricing_models_found: [],
+              has_audience_targeting: false,
+              error: typeof result.error === 'string' ? result.error : JSON.stringify(result.error),
+            });
+            continue;
+          }
+
+          const products = (result.data as { products?: unknown[] })?.products ?? [];
+          const channelsFound = new Set<string>();
+          const formatsFound = new Set<string>();
+          const pricingModelsFound = new Set<string>();
+          let hasAudienceTargeting = false;
+
+          for (const product of products) {
+            const p = product as Record<string, unknown>;
+            if (Array.isArray(p.channels)) {
+              for (const ch of p.channels) if (typeof ch === 'string') channelsFound.add(ch);
+            }
+            if (Array.isArray(p.format_ids)) {
+              for (const fid of p.format_ids) {
+                const f = fid as Record<string, unknown>;
+                if (typeof f.id === 'string') formatsFound.add(f.id);
+              }
+            }
+            if (Array.isArray(p.pricing_options)) {
+              for (const po of p.pricing_options) {
+                const pricing = po as Record<string, unknown>;
+                if (pricing.pricing_model && typeof pricing.pricing_model === 'string') {
+                  pricingModelsFound.add(pricing.pricing_model);
+                }
+              }
+            }
+            if (p.audience || p.targeting || p.audiences) hasAudienceTargeting = true;
+          }
+
+          briefResults.push({
+            name: brief.name, vertical: brief.vertical, products_count: products.length,
+            channels_found: Array.from(channelsFound), formats_found: Array.from(formatsFound),
+            pricing_models_found: Array.from(pricingModelsFound),
+            has_audience_targeting: hasAudienceTargeting,
+          });
+        } catch (error) {
+          briefResults.push({
+            name: brief.name, vertical: brief.vertical, products_count: 0,
+            channels_found: [], formats_found: [], pricing_models_found: [],
+            has_audience_targeting: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
+      // Aggregate across all briefs
+      const allChannelsFound = new Set<string>();
+      const allFormatsFound = new Set<string>();
+      const allPricingModels = new Set<string>();
+      let totalProducts = 0;
+      let briefsWithProducts = 0;
+      let hasAnyAudienceTargeting = false;
+
+      for (const br of briefResults) {
+        for (const ch of br.channels_found) allChannelsFound.add(ch);
+        for (const f of br.formats_found) allFormatsFound.add(f);
+        for (const pm of br.pricing_models_found) allPricingModels.add(pm);
+        totalProducts += br.products_count;
+        if (br.products_count > 0) briefsWithProducts++;
+        if (br.has_audience_targeting) hasAnyAudienceTargeting = true;
+      }
+
+      // Build gap analysis output
+      let output = `## Media Kit Comparison: ${resolved.resolvedUrl}\n\n`;
+
+      output += `### What the media kit states\n\n`;
+      output += `<user_provided_data>\n${mediaKitSummary}\n</user_provided_data>\n\n`;
+      if (effectiveChannels.length > 0) output += `**Stated channels:** ${effectiveChannels.join(', ')}\n`;
+      if (formats?.length) output += `**Stated formats:** ${formats.join(', ')}\n`;
+      if (effectiveVerticals[0] !== 'general') output += `**Stated verticals:** ${effectiveVerticals.join(', ')}\n`;
+      output += '\n';
+
+      output += `### What the agent returns\n\n`;
+      output += `**Briefs sent:** ${briefsToRun.length}\n`;
+      output += `**Briefs with products:** ${briefsWithProducts}/${briefsToRun.length}\n`;
+      output += `**Total products returned:** ${totalProducts}\n`;
+      output += `**Channels found:** ${allChannelsFound.size > 0 ? Array.from(allChannelsFound).join(', ') : 'none'}\n`;
+      output += `**Formats found:** ${allFormatsFound.size > 0 ? Array.from(allFormatsFound).join(', ') : 'none'}\n`;
+      output += `**Pricing models:** ${allPricingModels.size > 0 ? Array.from(allPricingModels).join(', ') : 'none'}\n`;
+      output += `**Audience targeting:** ${hasAnyAudienceTargeting ? 'yes' : 'not detected'}\n\n`;
+
+      // Channel gap analysis — exact match then normalized comparison
+      if (effectiveChannels.length > 0) {
+        const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
+        const foundSet = Array.from(allChannelsFound);
+        const missingChannels = effectiveChannels.filter(ch =>
+          !foundSet.some(found => normalize(found) === normalize(ch))
+        );
+        const foundChannels = effectiveChannels.filter(ch =>
+          foundSet.some(found => normalize(found) === normalize(ch))
+        );
+
+        output += `### Channel coverage\n\n`;
+        output += `**Found:** ${foundChannels.length > 0 ? foundChannels.join(', ') : 'none'}\n`;
+        output += `**Missing:** ${missingChannels.length > 0 ? missingChannels.join(', ') : 'none — all channels covered'}\n`;
+        output += `**Coverage:** ${foundChannels.length}/${effectiveChannels.length} stated channels\n\n`;
+      }
+
+      // Platform profile context (when platform_type provided)
+      if (platformProfile) {
+        const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
+        const foundChannelSet = Array.from(allChannelsFound);
+        output += `### Platform expectations: ${platformProfile.label}\n\n`;
+        if (platformProfile.expected_channels?.length) {
+          const missingPlatformChannels = platformProfile.expected_channels.filter(ch =>
+            !foundChannelSet.some(found => normalize(found) === normalize(ch))
+          );
+          if (missingPlatformChannels.length > 0) {
+            output += `**Expected channels not found:** ${missingPlatformChannels.join(', ')}\n`;
+          } else {
+            output += `**All expected channels present**\n`;
+          }
+        }
+        output += `**Expected tracks:** ${platformProfile.expected_tracks.join(', ')}\n`;
+        output += `**Expected tools:** ${platformProfile.expected_tools.join(', ')}\n\n`;
+      }
+
+      // Per-brief results
+      output += `### Per-brief results\n\n`;
+      for (const br of briefResults) {
+        if (br.error) {
+          output += `- **${br.name}:** ERROR — ${br.error}\n`;
+        } else {
+          output += `- **${br.name}:** ${br.products_count} products`;
+          if (br.channels_found.length > 0) output += ` | channels: ${br.channels_found.join(', ')}`;
+          if (br.pricing_models_found.length > 0) output += ` | pricing: ${br.pricing_models_found.join(', ')}`;
+          output += '\n';
+        }
+      }
+
+      // Available sample briefs for context
+      const availableVerticals = [...new Set(SAMPLE_BRIEFS.map(b => b.vertical))];
+      output += `\n_Curated sample briefs available for: ${availableVerticals.join(', ')}_\n`;
+      if (platformType) {
+        output += `_Platform type: ${platformProfile?.label ?? platformType}_\n`;
+      }
+
+      output += `\nInterpret these results for the publisher. Highlight specific gaps between their media kit and what the agent returns. For missing channels or formats, explain what buyers would expect and suggest how to add them.${platformProfile ? ` Factor in the platform expectations — a ${platformProfile.label} should support ${platformProfile.expected_tracks.join(', ')} tracks.` : ''}`;
+
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: compare_media_kit failed');
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+      return `Failed to compare media kit for ${resolved.resolvedUrl}: ${msg}`;
     }
   });
 
@@ -2368,7 +2669,7 @@ export function createMemberToolHandlers(
 
     const saveOrgId = memberContext.organization?.workos_organization_id;
     if (!saveOrgId) {
-      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `test_adcp_agent` without an organization.';
+      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
     const agentUrl = input.agent_url as string;
@@ -2442,7 +2743,7 @@ export function createMemberToolHandlers(
 
     const listOrgId = memberContext.organization?.workos_organization_id;
     if (!listOrgId) {
-      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `test_adcp_agent` without an organization.';
+      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
     try {
@@ -2498,7 +2799,7 @@ export function createMemberToolHandlers(
 
     const removeOrgId = memberContext.organization?.workos_organization_id;
     if (!removeOrgId) {
-      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `test_adcp_agent` without an organization.';
+      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
     const agentUrl = input.agent_url as string;
@@ -2546,7 +2847,7 @@ export function createMemberToolHandlers(
         let context = await agentContextDb.getByOrgAndUrl(setupOrgId, PUBLIC_TEST_AGENT.url);
 
         if (context && context.has_auth_token) {
-          return `The test agent is already set up for your organization!\n\n**Agent:** ${PUBLIC_TEST_AGENT.name}\n**URL:** ${PUBLIC_TEST_AGENT.url}\n\nYou can now:\n- Run \`test_adcp_agent\` to run the full test suite\n- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\``;
+          return `The test agent is already set up for your organization!\n\n**Agent:** ${PUBLIC_TEST_AGENT.name}\n**URL:** ${PUBLIC_TEST_AGENT.url}\n\nYou can now:\n- Run \`evaluate_agent_quality\` to run the full compliance evaluation\n- Get coaching on what to improve next`;
         }
 
         if (context) {
@@ -2567,14 +2868,14 @@ export function createMemberToolHandlers(
       }
     }
 
-    // The public test agent works for any logged-in user — test_adcp_agent
+    // The public test agent works for any logged-in user — evaluate_agent_quality
     // auto-injects public credentials when it detects the test agent URL.
     let response = `**Test agent is ready!**\n\n`;
     response += `**Agent:** ${PUBLIC_TEST_AGENT.name}\n`;
     response += `**URL:** ${PUBLIC_TEST_AGENT.url}\n\n`;
     response += `You can now:\n`;
-    response += `- Run \`test_adcp_agent\` to run the full test suite\n`;
-    response += `- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\`\n\n`;
+    response += `- Run \`evaluate_agent_quality\` to run the full compliance evaluation\n`;
+    response += `- Get coaching on what to improve next\n\n`;
     if (credentialsSaved) {
       response += `Credentials are saved for your organization so your teammates can use them too.\n\n`;
     }

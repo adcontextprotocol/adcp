@@ -187,7 +187,7 @@ export function handleSyncPlans(args: Record<string, unknown>, ctx: TrainingCont
       planId,
       version,
       status: 'active',
-      brand: plan.brand as Record<string, unknown>,
+      brand: plan.brand as import('@adcp/client').BrandReference,
       objectives: plan.objectives as string,
       budget: {
         total: budget.total as number,

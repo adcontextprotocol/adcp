@@ -5,43 +5,160 @@
  * combinations. Products reference formats from formats.ts via format_id.
  */
 
-import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition } from './types.js';
+import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition, ShowResponse } from './types.js';
+import type {
+  Product,
+  FormatID,
+  CPAPricingOption,
+  CatalogType,
+} from '@adcp/client';
+// Derive structural types from Product's own fields — these types are defined in
+// core.generated but not re-exported from @adcp/client's main entry.
+type PricingOption = Product['pricing_options'][number];
+type PriceGuidance = NonNullable<Extract<PricingOption, { pricing_model: 'cpm' }>['price_guidance']>;
+type Episode = NonNullable<Product['episodes']>[number];
+type ShowSelector = NonNullable<Product['shows']>[number];
+type MediaChannel = NonNullable<Product['channels']>[number];
+type DeliveryType = Product['delivery_type'];
+type Exclusivity = NonNullable<Product['exclusivity']>;
+type PublisherPropertySelector = Product['publisher_properties'][number];
+type EpisodeStatus = NonNullable<Episode['status']>;
+type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
+type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
+
+/**
+ * Parse ISO 8601 duration (e.g. "PT60M", "PT180M", "PT1H30M") to seconds.
+ */
+function parseDurationToSeconds(iso: string): number | null {
+  const match = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!match) return null;
+  const hours = parseInt(match[1] || '0', 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const seconds = parseInt(match[3] || '0', 10);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function buildPriceGuidance(template: PricingTemplate): PriceGuidance | undefined {
+  if (!template.priceGuidance) return undefined;
+  const { suggested, range } = template.priceGuidance;
+  return {
+    p25: range.min,
+    p50: suggested,
+    p75: Math.round((suggested + range.max) / 2 * 100) / 100,
+    p90: range.max,
+  };
+}
 
 function buildPricingOption(
   template: PricingTemplate,
   productId: string,
   index: number,
-): Record<string, unknown> {
-  const option: Record<string, unknown> = {
-    pricing_option_id: `${productId}_pricing_${index}`,
-    pricing_model: template.model,
-    currency: template.currency,
-  };
-  if (template.fixedPrice !== undefined) option.fixed_price = template.fixedPrice;
-  if (template.floorPrice !== undefined) option.floor_price = template.floorPrice;
-  if (template.priceGuidance) {
-    const { suggested, range } = template.priceGuidance;
-    option.price_guidance = {
-      p25: range.min,
-      p50: suggested,
-      p75: Math.round((suggested + range.max) / 2 * 100) / 100,
-      p90: range.max,
-    };
+): PricingOption {
+  const id = `${productId}_pricing_${index}`;
+  const priceGuidance = buildPriceGuidance(template);
+
+  switch (template.model) {
+    case 'cpm':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'cpm',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'vcpm':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'vcpm',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'cpc':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'cpc',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'cpcv':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'cpcv',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'cpv':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'cpv',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        parameters: template.cpvParameters ?? { view_threshold: { duration_seconds: 30 } },
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'cpp':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'cpp',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        parameters: template.cppParameters ?? { demographic: 'P18-49' },
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'cpa':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'cpa',
+        currency: template.currency,
+        fixed_price: template.fixedPrice ?? 0,
+        event_type: (template.eventType ?? 'purchase') as CPAPricingOption['event_type'],
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'flat_rate':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'flat_rate',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.doohParameters && { parameters: template.doohParameters as FlatRatePricingOption['parameters'] }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+    case 'time':
+      return {
+        pricing_option_id: id,
+        pricing_model: 'time',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        parameters: template.timeParameters ?? { time_unit: 'day', min_duration: 1, max_duration: 30 },
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
   }
-  if (template.minSpendPerPackage !== undefined) option.min_spend_per_package = template.minSpendPerPackage;
-  if (template.doohParameters) option.parameters = template.doohParameters;
-  if (template.eventType) option.event_type = template.eventType;
-  if (template.cppParameters) option.parameters = template.cppParameters;
-  if (template.cpvParameters) option.parameters = template.cpvParameters;
-  if (template.timeParameters) option.parameters = template.timeParameters;
-  return option;
 }
 
-function formatIdsForChannels(channels: string[], agentUrl: string): Record<string, unknown>[] {
-  const ids: Record<string, unknown>[] = [];
+function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] {
+  const ids: FormatID[] = [];
   const seen = new Set<string>();
   for (const channel of channels) {
     for (const [formatId, formatChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
@@ -54,7 +171,7 @@ function formatIdsForChannels(channels: string[], agentUrl: string): Record<stri
   return ids;
 }
 
-function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): Record<string, unknown>[] {
+function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): PublisherPropertySelector[] {
   if (!channels) {
     return [{ publisher_domain: pub.domain, selection_type: 'all' as const }];
   }
@@ -242,40 +359,11 @@ function buildProduct(
   // Fall back to all pricing if filter yields nothing
   const effectivePricing = pricingTemplates.length > 0 ? pricingTemplates : pub.pricingTemplates;
 
-  const product: Record<string, unknown> = {
-    product_id: productId,
-    name: template.name,
-    description: template.description,
-    publisher_properties: publisherPropertySelectors(pub, template.channels),
-    channels: template.channels,
-    format_ids: formatIdsForChannels(template.channels, agentUrl),
-    delivery_type: template.deliveryType,
-    delivery_measurement: {
-      provider: pub.measurementProvider,
-      notes: pub.measurementNotes,
-    },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)),
-  };
-
-  if (pub.reportingFrequencies || pub.reportingMetrics) {
-    product.reporting_capabilities = {
-      available_reporting_frequencies: pub.reportingFrequencies || ['daily'],
-      expected_delay_minutes: 240,
-      timezone: 'UTC',
-      supports_webhooks: false,
-      ...(pub.reportingMetrics && { available_metrics: pub.reportingMetrics }),
-      date_range_support: 'date_range',
-      supports_creative_breakdown: true,
-    };
-  }
-
-  if (pub.catalogTypes?.length) {
-    product.catalog_types = pub.catalogTypes;
-  }
-
-  // Add metric optimization for non-guaranteed products with appropriate channels
+  // Build metric optimization for non-guaranteed products
+  type SupportedMetric = NonNullable<Product['metric_optimization']>['supported_metrics'][number];
+  let metricOptimization: Product['metric_optimization'];
   if (template.deliveryType === 'non_guaranteed') {
-    const metrics: string[] = ['clicks'];
+    const metrics: SupportedMetric[] = ['clicks'];
     if (template.channels.some(c => ['olv', 'ctv', 'social', 'gaming'].includes(c))) {
       metrics.push('views', 'completed_views');
     }
@@ -283,19 +371,20 @@ function buildProduct(
       metrics.push('engagements', 'reach');
     }
     if (metrics.length > 0) {
-      product.metric_optimization = {
+      metricOptimization = {
         supported_metrics: metrics,
         supported_targets: ['cost_per'],
       };
     }
   }
 
-  // Add forecast for non-guaranteed products
+  // Build forecast for non-guaranteed products
+  let forecast: Product['forecast'];
   if (template.deliveryType === 'non_guaranteed') {
     const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
     const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
 
-    product.forecast = {
+    forecast = {
       points: [
         {
           budget: 5000,
@@ -317,46 +406,86 @@ function buildProduct(
     };
   }
 
-  // Add conversion tracking for retail/social
+  // Build conversion tracking for retail/social
+  let conversionTracking: Product['conversion_tracking'];
   if (pub.catalogTypes?.includes('product') || template.channels.includes('social')) {
-    product.conversion_tracking = {
+    conversionTracking = {
       action_sources: ['website'],
       supported_targets: ['cost_per'],
       ...(pub.catalogTypes?.includes('product') && { platform_managed: true }),
     };
   }
 
-  // Attach shows whose channels overlap with this product's channels
+  // Build show/episode associations
+  let showSelectors: ShowSelector[] | undefined;
+  let exclusivity: Exclusivity | undefined;
+  let episodes: Episode[] | undefined;
   if (pub.shows?.length) {
     const matchingShows = pub.shows.filter(s =>
       s.channels.some(c => template.channels.includes(c)),
     );
     if (matchingShows.length > 0) {
-      product.show_ids = matchingShows.map(s => s.showId);
-      // Guaranteed products with shows get exclusivity
+      showSelectors = [{
+        publisher_domain: pub.domain,
+        show_ids: matchingShows.map(s => s.showId),
+      }];
       if (template.deliveryType === 'guaranteed') {
-        product.exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
+        exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
       }
-      // Flatten episodes from matching shows
-      const episodes: Record<string, unknown>[] = [];
+      const builtEpisodes: Episode[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const episode: Record<string, unknown> = {
+          const episode: Episode = {
             episode_id: ep.episodeId,
             show_id: show.showId,
             name: ep.title,
-            status: ep.status,
+            status: ep.status as EpisodeStatus,
+            ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
+            ...(ep.duration && parseDurationToSeconds(ep.duration) !== null && {
+              duration_seconds: parseDurationToSeconds(ep.duration)!,
+            }),
           };
-          if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
-          if (ep.duration) episode.duration_seconds = ep.duration;
-          episodes.push(episode);
+          builtEpisodes.push(episode);
         }
       }
-      if (episodes.length > 0) {
-        product.episodes = episodes;
+      if (builtEpisodes.length > 0) {
+        episodes = builtEpisodes;
       }
     }
   }
+
+  const product: Product = {
+    product_id: productId,
+    name: template.name,
+    description: template.description,
+    publisher_properties: publisherPropertySelectors(pub, template.channels),
+    channels: template.channels as MediaChannel[],
+    format_ids: formatIdsForChannels(template.channels, agentUrl),
+    delivery_type: template.deliveryType as DeliveryType,
+    delivery_measurement: {
+      provider: pub.measurementProvider,
+      notes: pub.measurementNotes,
+    },
+    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)),
+    ...((pub.reportingFrequencies || pub.reportingMetrics) && {
+      reporting_capabilities: {
+        available_reporting_frequencies: (pub.reportingFrequencies || ['daily']) as NonNullable<Product['reporting_capabilities']>['available_reporting_frequencies'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: (pub.reportingMetrics || []) as NonNullable<Product['reporting_capabilities']>['available_metrics'],
+        date_range_support: 'date_range' as const,
+        supports_creative_breakdown: true,
+      },
+    }),
+    ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
+    ...(metricOptimization && { metric_optimization: metricOptimization }),
+    ...(forecast && { forecast }),
+    ...(conversionTracking && { conversion_tracking: conversionTracking }),
+    ...(showSelectors && { shows: showSelectors }),
+    ...(exclusivity && { exclusivity }),
+    ...(episodes && { episodes }),
+  };
 
   return {
     product,
@@ -366,49 +495,51 @@ function buildProduct(
   };
 }
 
-function buildShowObject(show: ShowDefinition): Record<string, unknown> {
-  const obj: Record<string, unknown> = {
+function buildShowObject(show: ShowDefinition): ShowResponse {
+  return {
     show_id: show.showId,
     name: show.name,
     genre: show.genre,
     cadence: show.cadence,
     status: show.status,
+    ...(show.description && { description: show.description }),
+    ...(show.contentRatings?.length && {
+      content_rating: show.contentRatings.map(r => ({
+        system: r.system,
+        rating: r.rating,
+      })),
+    }),
+    ...(show.talent?.length && {
+      talent: show.talent.map(t => ({
+        name: t.name,
+        role: t.role,
+      })),
+    }),
+    ...(show.distribution?.length && {
+      distribution: show.distribution.map(d => ({
+        publisher_domain: d.publisherDomain,
+        identifiers: d.identifiers.map(id => ({ type: id.type, value: id.value })),
+      })),
+    }),
   };
-  if (show.description) obj.description = show.description;
-  if (show.contentRatings?.length) {
-    obj.content_rating = show.contentRatings.map(r => ({
-      system: r.system,
-      rating: r.rating,
-    }));
-  }
-  if (show.talent?.length) {
-    obj.talent = show.talent.map(t => ({
-      name: t.name,
-      role: t.role,
-    }));
-  }
-  if (show.distribution?.length) {
-    obj.distribution = show.distribution.map(d => ({
-      publisher_domain: d.publisherDomain,
-      identifiers: d.identifiers.map(id => ({ type: id.type, value: id.value })),
-    }));
-  }
-  return obj;
 }
 
 /**
  * Build the top-level shows array for a get_products response,
  * scoped to only shows referenced by the given products.
  */
-export function buildShowsForProducts(products: Record<string, unknown>[]): Record<string, unknown>[] {
+export function buildShowsForProducts(products: Product[]): ShowResponse[] {
   const referencedIds = new Set<string>();
   for (const p of products) {
-    const ids = p.show_ids as string[] | undefined;
-    if (ids) ids.forEach(id => referencedIds.add(id));
+    if (p.shows) {
+      for (const selector of p.shows) {
+        selector.show_ids.forEach(id => referencedIds.add(id));
+      }
+    }
   }
   if (referencedIds.size === 0) return [];
 
-  const shows: Record<string, unknown>[] = [];
+  const shows: ShowResponse[] = [];
   for (const pub of PUBLISHERS) {
     for (const show of pub.shows || []) {
       if (referencedIds.has(show.showId)) {
