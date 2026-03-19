@@ -2928,11 +2928,12 @@ export function createMemberToolHandlers(
       return '❌ Unable to identify your Slack user. This tool is only available in Slack.';
     }
 
+    const optOutProvided = input.opt_out !== undefined;
     const optOut = input.opt_out === true;
     const cadence = input.cadence as 'default' | 'monthly' | 'quarterly' | undefined;
 
     // Require at least one parameter — calling with empty params should not silently change state
-    if (!optOut && !cadence) {
+    if (!optOutProvided && !cadence) {
       return 'Please specify what you\'d like to change: opt out of messages (`opt_out: true`), or set a cadence (`monthly` or `quarterly`). You can also set cadence to `default` to return to normal frequency.';
     }
 
