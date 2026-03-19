@@ -1,3 +1,9 @@
+---
+title: "Transport Error Mapping for MCP and A2A"
+description: "Proposal for carrying AdCP structured errors (error codes, recovery classifications, retry_after) over MCP and A2A transports."
+"og:title": "AdCP — Transport Error Mapping Proposal"
+---
+
 # Proposal: Transport Error Mapping for MCP and A2A
 
 **Status**: Draft
