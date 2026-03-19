@@ -183,44 +183,6 @@
     }
   },
   "required": ["buying_mode"],
-  "oneOf": [
-    {
-      "properties": {
-        "buying_mode": {
-          "const": "brief"
-        },
-        "refine": false
-      },
-      "required": [
-        "buying_mode",
-        "brief"
-      ]
-    },
-    {
-      "properties": {
-        "buying_mode": {
-          "const": "wholesale"
-        },
-        "brief": false,
-        "refine": false
-      },
-      "required": [
-        "buying_mode"
-      ]
-    },
-    {
-      "properties": {
-        "buying_mode": {
-          "const": "refine"
-        },
-        "brief": false
-      },
-      "required": [
-        "buying_mode",
-        "refine"
-      ]
-    }
-  ],
   "dependencies": {
     "catalog": ["brand"]
   },

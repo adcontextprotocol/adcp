@@ -25,22 +25,33 @@ describe('Webhook HMAC-SHA256 test vectors', () => {
   });
 
   for (const vector of data.vectors) {
-    it(`should produce correct signature: ${vector.description}`, () => {
-      assert.equal(typeof vector.timestamp, 'number', 'timestamp must be a number (Unix seconds)');
-      assert.equal(typeof vector.raw_body, 'string', 'raw_body must be a string');
-      assert.ok(vector.expected_signature.startsWith('sha256='), 'signature must start with sha256=');
+    if (vector.expect_mismatch) {
+      it(`should reject tampered body: ${vector.description}`, () => {
+        const message = `${vector.timestamp}.${vector.raw_body}`;
+        const hex = crypto.createHmac('sha256', data.secret).update(message, 'utf8').digest('hex');
+        const computed = `sha256=${hex}`;
 
-      const message = `${vector.timestamp}.${vector.raw_body}`;
-      const hex = crypto.createHmac('sha256', data.secret).update(message, 'utf8').digest('hex');
-      const computed = `sha256=${hex}`;
+        assert.notEqual(computed, vector.expected_signature,
+          `Signature should NOT match for tampered vector "${vector.description}"`);
+      });
+    } else {
+      it(`should produce correct signature: ${vector.description}`, () => {
+        assert.equal(typeof vector.timestamp, 'number', 'timestamp must be a number (Unix seconds)');
+        assert.equal(typeof vector.raw_body, 'string', 'raw_body must be a string');
+        assert.ok(vector.expected_signature.startsWith('sha256='), 'signature must start with sha256=');
 
-      assert.equal(computed, vector.expected_signature,
-        `Signature mismatch for "${vector.description}"\n` +
-        `  message: ${message.substring(0, 80)}...\n` +
-        `  expected: ${vector.expected_signature}\n` +
-        `  computed: ${computed}`
-      );
-    });
+        const message = `${vector.timestamp}.${vector.raw_body}`;
+        const hex = crypto.createHmac('sha256', data.secret).update(message, 'utf8').digest('hex');
+        const computed = `sha256=${hex}`;
+
+        assert.equal(computed, vector.expected_signature,
+          `Signature mismatch for "${vector.description}"\n` +
+          `  message: ${message.substring(0, 80)}...\n` +
+          `  expected: ${vector.expected_signature}\n` +
+          `  computed: ${computed}`
+        );
+      });
+    }
   }
 
   it('should produce different signatures for compact vs spaced JSON', () => {
