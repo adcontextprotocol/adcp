@@ -1,0 +1,323 @@
+{
+  "version": 1,
+  "description": "Test vectors for AdCP transport error mapping. Each vector contains a transport-specific response and the expected extracted AdCP error.",
+  "vectors": [
+    {
+      "id": "mcp-structured-content",
+      "description": "MCP tool-level error with structuredContent (preferred path)",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Rate limit exceeded. Retry in 5 seconds."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "RATE_LIMITED",
+            "message": "Request rate exceeded",
+            "retry_after": 5,
+            "recovery": "transient"
+          }
+        }
+      },
+      "expected_error": {
+        "code": "RATE_LIMITED",
+        "message": "Request rate exceeded",
+        "retry_after": 5,
+        "recovery": "transient"
+      },
+      "expected_action": "retry"
+    },
+    {
+      "id": "mcp-structured-content-correctable",
+      "description": "MCP tool-level correctable error with field and suggestion",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Budget is below the seller's minimum."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "BUDGET_TOO_LOW",
+            "message": "Budget is below the seller's minimum",
+            "recovery": "correctable",
+            "field": "budget.total",
+            "suggestion": "Increase budget to at least 500 USD",
+            "details": {
+              "minimum_budget": 500,
+              "currency": "USD"
+            }
+          }
+        }
+      },
+      "expected_error": {
+        "code": "BUDGET_TOO_LOW",
+        "message": "Budget is below the seller's minimum",
+        "recovery": "correctable",
+        "field": "budget.total",
+        "suggestion": "Increase budget to at least 500 USD",
+        "details": {
+          "minimum_budget": 500,
+          "currency": "USD"
+        }
+      },
+      "expected_action": "surface_to_caller"
+    },
+    {
+      "id": "mcp-structured-content-terminal",
+      "description": "MCP tool-level terminal error",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Account has been suspended."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "ACCOUNT_SUSPENDED",
+            "message": "Account has been suspended",
+            "recovery": "terminal"
+          }
+        }
+      },
+      "expected_error": {
+        "code": "ACCOUNT_SUSPENDED",
+        "message": "Account has been suspended",
+        "recovery": "terminal"
+      },
+      "expected_action": "escalate_to_human"
+    },
+    {
+      "id": "mcp-jsonrpc-rate-limit",
+      "description": "MCP transport-level rate limit via JSON-RPC error -32029",
+      "transport": "mcp",
+      "path": "jsonrpc_error",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "req-123",
+        "error": {
+          "code": -32029,
+          "message": "Rate limit exceeded",
+          "data": {
+            "adcp_error": {
+              "code": "RATE_LIMITED",
+              "retry_after": 10,
+              "recovery": "transient"
+            }
+          }
+        }
+      },
+      "expected_error": {
+        "code": "RATE_LIMITED",
+        "retry_after": 10,
+        "recovery": "transient"
+      },
+      "expected_action": "retry"
+    },
+    {
+      "id": "mcp-jsonrpc-auth-required",
+      "description": "MCP transport-level auth error via JSON-RPC error -32028",
+      "transport": "mcp",
+      "path": "jsonrpc_error",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "req-456",
+        "error": {
+          "code": -32028,
+          "message": "Authentication required",
+          "data": {
+            "adcp_error": {
+              "code": "AUTH_REQUIRED",
+              "message": "Authentication is required to access this resource",
+              "recovery": "correctable"
+            }
+          }
+        }
+      },
+      "expected_error": {
+        "code": "AUTH_REQUIRED",
+        "message": "Authentication is required to access this resource",
+        "recovery": "correctable"
+      },
+      "expected_action": "surface_to_caller"
+    },
+    {
+      "id": "mcp-jsonrpc-service-unavailable",
+      "description": "MCP transport-level service unavailable via JSON-RPC error -32027",
+      "transport": "mcp",
+      "path": "jsonrpc_error",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "req-789",
+        "error": {
+          "code": -32027,
+          "message": "Service unavailable",
+          "data": {
+            "adcp_error": {
+              "code": "SERVICE_UNAVAILABLE",
+              "message": "Seller service is temporarily unavailable",
+              "recovery": "transient",
+              "retry_after": 30
+            }
+          }
+        }
+      },
+      "expected_error": {
+        "code": "SERVICE_UNAVAILABLE",
+        "message": "Seller service is temporarily unavailable",
+        "recovery": "transient",
+        "retry_after": 30
+      },
+      "expected_action": "retry"
+    },
+    {
+      "id": "mcp-text-fallback",
+      "description": "MCP text-only fallback for servers without structuredContent support",
+      "transport": "mcp",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "{\"adcp_error\":{\"code\":\"RATE_LIMITED\",\"message\":\"Request rate exceeded\",\"retry_after\":5,\"recovery\":\"transient\"}}"}],
+        "isError": true
+      },
+      "expected_error": {
+        "code": "RATE_LIMITED",
+        "message": "Request rate exceeded",
+        "retry_after": 5,
+        "recovery": "transient"
+      },
+      "expected_action": "retry"
+    },
+    {
+      "id": "mcp-text-fallback-no-structure",
+      "description": "MCP text-only error with no AdCP structure (legacy server)",
+      "transport": "mcp",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "Rate limit exceeded. Please try again later."}],
+        "isError": true
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
+      "id": "a2a-failed-task",
+      "description": "A2A failed task with adcp_error in artifact DataPart",
+      "transport": "a2a",
+      "path": "artifact",
+      "response": {
+        "id": "task_456",
+        "status": {
+          "state": "failed",
+          "timestamp": "2025-01-22T10:30:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "error-result",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Rate limit exceeded. Retry in 5 seconds."
+            },
+            {
+              "kind": "data",
+              "data": {
+                "adcp_error": {
+                  "code": "RATE_LIMITED",
+                  "message": "Request rate exceeded",
+                  "retry_after": 5,
+                  "recovery": "transient"
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_error": {
+        "code": "RATE_LIMITED",
+        "message": "Request rate exceeded",
+        "retry_after": 5,
+        "recovery": "transient"
+      },
+      "expected_action": "retry"
+    },
+    {
+      "id": "a2a-failed-task-terminal",
+      "description": "A2A failed task with terminal error",
+      "transport": "a2a",
+      "path": "artifact",
+      "response": {
+        "id": "task_789",
+        "status": {
+          "state": "failed",
+          "timestamp": "2025-01-22T11:00:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "error-result",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Account has been suspended. Contact seller to resolve."
+            },
+            {
+              "kind": "data",
+              "data": {
+                "adcp_error": {
+                  "code": "ACCOUNT_SUSPENDED",
+                  "message": "Account has been suspended",
+                  "recovery": "terminal"
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_error": {
+        "code": "ACCOUNT_SUSPENDED",
+        "message": "Account has been suspended",
+        "recovery": "terminal"
+      },
+      "expected_action": "escalate_to_human"
+    },
+    {
+      "id": "a2a-failed-task-no-structure",
+      "description": "A2A failed task without adcp_error (legacy server)",
+      "transport": "a2a",
+      "path": "artifact",
+      "response": {
+        "id": "task_101",
+        "status": {
+          "state": "failed",
+          "timestamp": "2025-01-22T12:00:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Authentication failed: Invalid API token"}
+            ]
+          }
+        }
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
+      "id": "unknown-recovery-value",
+      "description": "Unknown recovery value should be treated as terminal",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Unknown error state."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "X_VENDOR_CUSTOM",
+            "message": "Custom vendor error",
+            "recovery": "deferred"
+          }
+        }
+      },
+      "expected_error": {
+        "code": "X_VENDOR_CUSTOM",
+        "message": "Custom vendor error",
+        "recovery": "deferred"
+      },
+      "expected_action": "escalate_to_human"
+    }
+  ]
+}

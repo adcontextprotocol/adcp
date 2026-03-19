@@ -1,0 +1,427 @@
+---
+title: Transport Error Mapping
+description: "How AdCP structured errors travel over MCP and A2A transports: extraction paths, JSON-RPC codes, recovery behavior, and client implementation requirements."
+"og:title": "AdCP — Transport Error Mapping"
+---
+
+AdCP errors are **application-layer** errors. They belong in the tool/task response, not in the transport error channel. This page defines how the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema maps to MCP and A2A response envelopes.
+
+For the error schema itself, standard codes, and recovery strategies, see [Error Handling](/docs/building/implementation/error-handling).
+
+## Layer Separation
+
+| Layer | Examples | Channel |
+|---|---|---|
+| Transport | Connection refused, malformed JSON-RPC, internal crash | JSON-RPC `error` / A2A protocol error |
+| Application | `RATE_LIMITED`, `BUDGET_TOO_LOW`, `CREATIVE_REJECTED` | Tool/task response body |
+
+Transport errors are handled by protocol libraries. Application errors are handled by business logic. Mixing them loses the structured recovery data that makes AdCP errors useful.
+
+## MCP Binding
+
+### Tool-Level Errors
+
+The standard path for all AdCP error codes. The tool executed, understood the request, and is returning a structured error.
+
+Return `isError: true` with the AdCP error in `structuredContent`:
+
+```json
+{
+  "content": [{"type": "text", "text": "Rate limit exceeded. Retry in 5 seconds."}],
+  "isError": true,
+  "structuredContent": {
+    "adcp_error": {
+      "code": "RATE_LIMITED",
+      "message": "Request rate exceeded",
+      "retry_after": 5,
+      "recovery": "transient"
+    }
+  }
+}
+```
+
+**`content` text** is for LLMs and human readers. **`structuredContent.adcp_error`** is for programmatic clients.
+
+**`adcp_error` key**: Namespacing avoids collisions with success data that may also appear in `structuredContent` (e.g., `products`). A single key simplifies detection.
+
+**MCP version**: `structuredContent` requires MCP 2025-03-26 or later. Servers on older versions SHOULD serialize the AdCP error as JSON in `content[0].text` alongside `isError: true`. Clients parse this via the text-fallback path (see [Client Detection Order](#client-detection-order)).
+
+### Transport-Level Errors
+
+When infrastructure rejects a request *before* tool dispatch (API gateway, rate-limit middleware), the tool never executes. Use a reserved JSON-RPC error code with the AdCP error in `data`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req-123",
+  "error": {
+    "code": -32029,
+    "message": "Rate limit exceeded",
+    "data": {
+      "adcp_error": {
+        "code": "RATE_LIMITED",
+        "retry_after": 5,
+        "recovery": "transient"
+      }
+    }
+  }
+}
+```
+
+### Reserved JSON-RPC Codes
+
+| Code | AdCP Error Code | When |
+|---|---|---|
+| `-32029` | `RATE_LIMITED` | Infrastructure rate limit before tool dispatch |
+| `-32028` | `AUTH_REQUIRED` | Auth rejected by middleware before tool dispatch |
+| `-32027` | `SERVICE_UNAVAILABLE` | Infra health check fails, upstream down |
+
+These codes are in the JSON-RPC server-defined range (`-32000` to `-32099`). All other AdCP error codes use the tool-level path exclusively.
+
+<Note>
+**MCP server SDK note:** Throwing `McpError(-32029, ...)` from inside a tool handler will be caught by the SDK's tool dispatch and converted to an `isError: true` response. The `-32029` path is only reachable from middleware or a custom request handler that runs before tool dispatch. This is correct — infrastructure rate limiting fires before the tool runs.
+</Note>
+
+### MCP Server Implementation
+
+```javascript
+server.tool(
+  "get_products",
+  "Search product catalog",
+  { query: z.string() },
+  async ({ query }) => {
+    try {
+      const products = await searchProducts(query);
+      return {
+        content: [{ type: "text", text: `Found ${products.length} products` }],
+        structuredContent: { products },
+      };
+    } catch (err) {
+      if (err.code === "RATE_LIMITED") {
+        return {
+          content: [{ type: "text", text: `Rate limited. Retry in ${err.retry_after}s.` }],
+          isError: true,
+          structuredContent: {
+            adcp_error: {
+              code: err.code,
+              message: err.message,
+              retry_after: err.retry_after,
+              recovery: "transient",
+            },
+          },
+        };
+      }
+      throw err;
+    }
+  }
+);
+```
+
+## A2A Binding
+
+### Failed Tasks
+
+Use `status: "failed"` with the AdCP error in an artifact `DataPart`, plus a `TextPart` for human/LLM consumption:
+
+```json
+{
+  "id": "task_456",
+  "status": {
+    "state": "failed",
+    "timestamp": "2025-01-22T10:30:00Z"
+  },
+  "artifacts": [{
+    "artifactId": "error-result",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Rate limit exceeded. Retry in 5 seconds."
+      },
+      {
+        "kind": "data",
+        "data": {
+          "adcp_error": {
+            "code": "RATE_LIMITED",
+            "message": "Request rate exceeded",
+            "retry_after": 5,
+            "recovery": "transient"
+          }
+        }
+      }
+    ]
+  }]
+}
+```
+
+This follows the [A2A Response Format](/docs/building/integration/a2a-response-format) conventions: final states use `.artifacts` for data.
+
+**Relationship to the "no wrappers" rule.** The `adcp_error` key is an intentional exception for failed tasks. Unlike success responses where `DataPart` contains task-specific data (e.g., `products`), a failed task's `DataPart` contains only the error. The key acts as a type discriminator so clients can distinguish error from success payloads without relying solely on status.
+
+### Error MIME Type (Optional)
+
+A2A agents MAY set `metadata.mimeType` on the error `DataPart`:
+
+```json
+{
+  "kind": "data",
+  "data": { "adcp_error": { "code": "RATE_LIMITED", "recovery": "transient" } },
+  "metadata": { "mimeType": "application/vnd.adcp.error+json" }
+}
+```
+
+Clients MUST NOT require the MIME type. The `adcp_error` key is the authoritative signal.
+
+## Client Detection Order
+
+Clients MUST check for AdCP errors in this order:
+
+1. **`structuredContent.adcp_error`** — MCP tool-level error
+2. **`artifacts[].parts[].data.adcp_error`** — A2A task-level error
+3. **`error.data.adcp_error`** — JSON-RPC transport-level error
+4. **JSON-parsed `content[0].text` with `adcp_error` key** — Text fallback for older MCP servers
+5. **No structured error found** — fall back to generic error handling
+
+In practice, implementations branch on transport type first and only check the relevant paths:
+
+<CodeGroup>
+```javascript MCP Client
+function extractAdcpErrorFromMcp(response) {
+  // 1. structuredContent (preferred)
+  if (response.structuredContent?.adcp_error) {
+    return response.structuredContent.adcp_error;
+  }
+
+  // 2. Text fallback: try JSON.parse on text content
+  if (response.isError && response.content) {
+    for (const item of response.content) {
+      if (item.type === 'text' && item.text) {
+        try {
+          const parsed = JSON.parse(item.text);
+          if (parsed.adcp_error) return parsed.adcp_error;
+        } catch { /* not JSON */ }
+      }
+    }
+  }
+
+  return null;
+}
+
+// For JSON-RPC errors (caught as McpError)
+function extractAdcpErrorFromMcpError(error) {
+  return error.data?.adcp_error || null;
+}
+```
+
+```javascript A2A Client
+function extractAdcpErrorFromA2a(task) {
+  if (!task.artifacts) return null;
+
+  for (const artifact of task.artifacts) {
+    const dataParts = (artifact.parts || []).filter(p => p.kind === 'data');
+    for (const part of dataParts) {
+      if (part.data?.adcp_error) {
+        return part.data.adcp_error;
+      }
+    }
+  }
+
+  return null;
+}
+```
+</CodeGroup>
+
+## Recovery Behavior
+
+Once extracted, apply recovery based on the `recovery` field:
+
+| Recovery | Client Behavior |
+|---|---|
+| `transient` | Retry after `retry_after` seconds (or exponential backoff if absent) |
+| `correctable` | Surface `suggestion` and `field` to caller, do not auto-retry |
+| `terminal` | Surface error to human operator, do not retry |
+
+For unknown `recovery` values (forward compatibility), treat as `terminal`.
+
+```javascript
+function handleAdcpError(adcpError) {
+  switch (adcpError.recovery) {
+    case 'transient':
+      const delay = adcpError.retry_after || 5;
+      return { action: 'retry', delaySeconds: delay };
+
+    case 'correctable':
+      return {
+        action: 'fix_request',
+        field: adcpError.field,
+        suggestion: adcpError.suggestion,
+      };
+
+    case 'terminal':
+      return { action: 'escalate', message: adcpError.message };
+
+    default:
+      // Unknown recovery value: treat as terminal
+      return { action: 'escalate', message: adcpError.message };
+  }
+}
+```
+
+## Recommended `details` Shapes
+
+The `details` field is an open object. To prevent interoperability divergence, sellers SHOULD use these standard keys when populating `details` for common error codes:
+
+### `RATE_LIMITED`
+
+```json
+{
+  "code": "RATE_LIMITED",
+  "retry_after": 5,
+  "recovery": "transient",
+  "details": {
+    "limit": 100,
+    "remaining": 0,
+    "window_seconds": 60,
+    "scope": "account"
+  }
+}
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `limit` | number | Maximum requests allowed in the window |
+| `remaining` | number | Requests remaining in the current window |
+| `window_seconds` | number | Duration of the rate-limit window |
+| `scope` | string | What the limit applies to: `account`, `tool`, or `global` |
+
+### `BUDGET_TOO_LOW`
+
+```json
+{
+  "code": "BUDGET_TOO_LOW",
+  "recovery": "correctable",
+  "details": {
+    "minimum_budget": 500,
+    "currency": "USD"
+  }
+}
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `minimum_budget` | number | Seller's minimum budget for this product |
+| `currency` | string | ISO 4217 currency code |
+
+### `AUDIENCE_TOO_SMALL`
+
+```json
+{
+  "code": "AUDIENCE_TOO_SMALL",
+  "recovery": "correctable",
+  "details": {
+    "minimum_size": 10000,
+    "current_size": 2500
+  }
+}
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `minimum_size` | number | Minimum audience size required |
+| `current_size` | number | Current audience size |
+
+### `ACCOUNT_SETUP_REQUIRED`
+
+```json
+{
+  "code": "ACCOUNT_SETUP_REQUIRED",
+  "recovery": "correctable",
+  "details": {
+    "setup_url": "https://seller.example.com/setup/acct_123",
+    "setup_steps": ["Accept terms of service", "Add payment method"]
+  }
+}
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `setup_url` | string | URL where account setup can be completed |
+| `setup_steps` | string[] | Steps remaining before the account is ready |
+
+These shapes are recommended, not required. Sellers that omit `details` entirely are conformant. Agents MUST NOT require specific `details` keys — fall back to `code`, `message`, and `recovery` when `details` is absent or has unexpected shape.
+
+## Seller-Specific Error Codes
+
+Sellers MAY use error codes not in the [standard vocabulary](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). To distinguish seller-specific codes from standard codes and avoid collisions between sellers:
+
+- Seller-specific codes SHOULD use a vendor prefix: `X_{VENDOR}_{CODE}` (e.g., `X_STREAMHAUS_FLOOR_NOT_MET`)
+- Agents MUST handle unknown codes by falling back to the `recovery` classification
+- If `recovery` is absent on an unknown code, treat as `terminal`
+
+```javascript
+function handleError(error) {
+  if (isStandardErrorCode(error.code)) {
+    // Handle per standard code semantics
+    return handleStandardError(error);
+  }
+
+  // Unknown/vendor code: fall back to recovery classification
+  return handleByRecovery(error);
+}
+```
+
+## Client Library Requirements
+
+Client libraries (like `@adcp/client`) that implement this spec MUST:
+
+1. **Extract structured errors automatically.** Consumers should receive a typed error object with `code`, `recovery`, `retryAfter`, `field`, `suggestion`, and `details` — not a generic error with a message string.
+
+2. **Implement the detection order.** Check all paths in order: `structuredContent`, artifacts, `error.data`, text fallback.
+
+3. **Preserve recovery metadata.** The extracted error MUST carry `recovery` and `retry_after` so callers can implement retry logic without re-parsing.
+
+4. **Handle unknown recovery values.** Treat unknown `recovery` values as `terminal`.
+
+5. **Support text fallback.** Attempt `JSON.parse` on `content[0].text` for MCP `isError` responses without `structuredContent`. This will be the primary extraction path until `structuredContent` adoption is widespread.
+
+Client libraries MAY additionally:
+
+- Auto-retry `transient` errors with exponential backoff when `retry_after` is present
+- Expose a `retryPolicy` option for consumers to configure retry behavior
+- Map standard error codes to typed error subclasses using the `STANDARD_ERROR_CODES` table
+
+## Test Vectors
+
+Machine-readable test vectors are available at [`/static/test-vectors/transport-error-mapping.json`](https://adcontextprotocol.org/test-vectors/transport-error-mapping.json). Each vector contains:
+
+- `transport`: `mcp` or `a2a`
+- `path`: extraction path (`structuredContent`, `jsonrpc_error`, `text_fallback`, `artifact`)
+- `response`: the transport-specific response envelope
+- `expected_error`: the AdCP error that should be extracted (or `null` for legacy servers)
+- `expected_action`: `retry`, `surface_to_caller`, `escalate_to_human`, or `generic_error`
+
+Client libraries SHOULD validate their extraction logic against these vectors.
+
+## Security Considerations
+
+Error responses flow through LLM context. Every field is client-facing.
+
+**Implementations MUST NOT include:**
+- Internal service names, hostnames, or IP addresses
+- Database error text, SQL fragments, or query plans
+- Stack traces or file paths
+- Upstream API responses from internal services
+- Credentials, tokens, or session identifiers
+
+**`suggestion` boundaries:** Provide generic correction guidance (e.g., "Increase budget to meet minimum") rather than revealing specific thresholds, valid identifiers, or resource existence.
+
+**`retry_after` consistency:** Return consistent values reflecting the caller's rate-limit state, not the target resource's properties, to avoid timing side channels.
+
+**Transport-level code granularity:** The reserved JSON-RPC codes (`-32029`, `-32028`, `-32027`) enable infrastructure error classification. Implementations that prefer to minimize endpoint fingerprinting MAY collapse these into a single code.
+
+## See Also
+
+- [Error Handling](/docs/building/implementation/error-handling) — error schema, standard codes, recovery strategies
+- [MCP Guide](/docs/building/integration/mcp-guide) — MCP transport integration
+- [A2A Guide](/docs/building/integration/a2a-guide) — A2A transport integration
+- [A2A Response Format](/docs/building/integration/a2a-response-format) — canonical A2A response structure
+- [Proposal](/docs/proposals/transport-error-mapping) — original proposal with design rationale and open questions

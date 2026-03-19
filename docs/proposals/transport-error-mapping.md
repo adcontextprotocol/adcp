@@ -6,8 +6,9 @@ description: "Proposal for carrying AdCP structured errors (error codes, recover
 
 # Proposal: Transport Error Mapping for MCP and A2A
 
-**Status**: Draft
+**Status**: Accepted
 **Issue**: [#1560](https://github.com/adcontextprotocol/adcp/issues/1560)
+**Normative spec**: [Transport Error Mapping](/docs/building/implementation/transport-errors)
 
 ## Problem
 
