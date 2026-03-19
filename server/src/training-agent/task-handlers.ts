@@ -702,6 +702,7 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
         impressions: 0,
         clicks: 0,
         pricing_model: model,
+        model, // #1525: alias for @adcp/client < 4.11.0
         rate,
         currency: mb.currency,
         paused: true,
@@ -740,6 +741,7 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
       impressions,
       clicks,
       pricing_model: pricingModel,
+      model: pricingModel, // #1525: alias for @adcp/client < 4.11.0
       rate,
       currency: mb.currency,
       paused: false,

@@ -18,7 +18,7 @@ function buildPricingOption(
   const option: Record<string, unknown> = {
     pricing_option_id: `${productId}_pricing_${index}`,
     pricing_model: template.model,
-    model: template.model, // alias for @adcp/client compatibility
+    model: template.model, // #1525: alias for @adcp/client < 4.11.0
     currency: template.currency,
   };
   if (template.fixedPrice !== undefined) option.fixed_price = template.fixedPrice;
