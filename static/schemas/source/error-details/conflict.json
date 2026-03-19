@@ -10,12 +10,12 @@
       "description": "Identifier of the conflicting resource"
     },
     "expected_version": {
-      "type": "number",
-      "description": "Version the client was operating against"
+      "type": ["number", "string"],
+      "description": "Version or ETag the client was operating against"
     },
     "current_version": {
-      "type": "number",
-      "description": "Current version on the server"
+      "type": ["number", "string"],
+      "description": "Current version or ETag on the server"
     }
   },
   "additionalProperties": true

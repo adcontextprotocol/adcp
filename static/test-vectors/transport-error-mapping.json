@@ -547,6 +547,25 @@
       "expected_action": "generic_error"
     },
     {
+      "id": "mcp-empty-code",
+      "description": "adcp_error with empty string code — should fail validation and not extract",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Error."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "",
+            "message": "Empty code",
+            "recovery": "transient"
+          }
+        }
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
       "id": "mcp-extreme-retry-after",
       "description": "Transient error with extreme retry_after value (86400s) — clients should clamp to 3600",
       "transport": "mcp",

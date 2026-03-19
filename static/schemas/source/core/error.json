@@ -23,8 +23,9 @@
     },
     "retry_after": {
       "type": "number",
-      "description": "Seconds to wait before retrying the operation",
-      "minimum": 0
+      "description": "Seconds to wait before retrying the operation. Sellers MUST return values between 1 and 3600. Clients MUST clamp values outside this range.",
+      "minimum": 1,
+      "maximum": 3600
     },
     "details": {
       "type": "object",

@@ -18,7 +18,10 @@ const data = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
  * Returns the error if valid, null if not.
  */
 function validateAdcpError(error) {
-  if (!error || typeof error.code !== 'string') return null;
+  if (!error || typeof error !== 'object') return null;
+  if (typeof error.code !== 'string') return null;
+  if (error.code.length === 0 || error.code.length > 64) return null;
+  if (JSON.stringify(error).length > 4096) return null;
   return error;
 }
 
@@ -65,7 +68,8 @@ function extractAdcpError(response) {
       if (item.type === 'text' && item.text) {
         try {
           const parsed = JSON.parse(item.text);
-          if (parsed.adcp_error) {
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+              && parsed.adcp_error) {
             return validateAdcpError(parsed.adcp_error);
           }
         } catch {
@@ -212,9 +216,9 @@ describe('Transport error mapping test vectors', () => {
     // Should have: legacy MCP text, legacy A2A, structuredContent without adcp_error,
     // JSON without adcp_error key, JSON-RPC error without adcp_error data,
     // -32029 without adcp_error data, success with adcp_error JSON,
-    // invalid code type, missing code field
-    assert.ok(nonAdcpVectors.length >= 9,
-      `must have at least 9 null-extraction vectors, got ${nonAdcpVectors.length}`);
+    // invalid code type, missing code field, empty code
+    assert.ok(nonAdcpVectors.length >= 10,
+      `must have at least 10 null-extraction vectors, got ${nonAdcpVectors.length}`);
   });
 });
 
@@ -289,6 +293,73 @@ describe('Validation and safety', () => {
     const raw = -5;
     const clamped = Math.max(1, Math.min(3600, raw));
     assert.equal(clamped, 1, 'negative retry_after must clamp to 1');
+  });
+
+  it('should reject adcp_error with empty string code', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: 'Error' }],
+      isError: true,
+      structuredContent: {
+        adcp_error: { code: '', message: 'Empty code', recovery: 'transient' }
+      }
+    });
+    assert.equal(result, null, 'empty string code must be rejected');
+  });
+
+  it('should reject adcp_error with oversized code', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: 'Error' }],
+      isError: true,
+      structuredContent: {
+        adcp_error: { code: 'A'.repeat(65), message: 'Long code', recovery: 'transient' }
+      }
+    });
+    assert.equal(result, null, 'code longer than 64 chars must be rejected');
+  });
+
+  it('should reject oversized adcp_error payloads', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: 'Error' }],
+      isError: true,
+      structuredContent: {
+        adcp_error: {
+          code: 'RATE_LIMITED',
+          message: 'Rate limited',
+          recovery: 'transient',
+          details: { padding: 'x'.repeat(5000) }
+        }
+      }
+    });
+    assert.equal(result, null, 'payload exceeding 4096 bytes must be rejected');
+  });
+
+  it('should handle NaN retry_after with Number.isFinite guard', () => {
+    const raw = NaN;
+    const delay = Number.isFinite(raw) ? Math.max(1, Math.min(3600, raw)) : null;
+    assert.equal(delay, null, 'NaN retry_after must be treated as absent');
+  });
+
+  it('should handle Infinity retry_after with Number.isFinite guard', () => {
+    const raw = Infinity;
+    const delay = Number.isFinite(raw) ? Math.max(1, Math.min(3600, raw)) : null;
+    assert.equal(delay, null, 'Infinity retry_after must be treated as absent');
+  });
+
+  it('should not extract when text parses to array', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: '[{"adcp_error":{"code":"RATE_LIMITED"}}]' }],
+      isError: true
+    });
+    assert.equal(result, null, 'array parse result must not extract');
+  });
+
+  it('should reject non-object adcp_error values', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: 'Error' }],
+      isError: true,
+      structuredContent: { adcp_error: 'RATE_LIMITED' }
+    });
+    assert.equal(result, null, 'string adcp_error must be rejected');
   });
 
   it('should handle prompt injection in message field without crashing', () => {
