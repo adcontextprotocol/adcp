@@ -960,8 +960,18 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const req = args as unknown as UpdateMediaBuyRequest;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || req.buyer_ref || '';
-  const mb = session.mediaBuys.get(mediaBuyId) ||
+  let mb = session.mediaBuys.get(mediaBuyId) ||
     Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+
+  // Cross-session fallback for explicit ID lookup
+  if (!mb) {
+    for (const [, s] of getAllSessions()) {
+      if (s === session) continue;
+      mb = s.mediaBuys.get(mediaBuyId) ||
+        Array.from(s.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+      if (mb) break;
+    }
+  }
 
   if (!mb) {
     return {
