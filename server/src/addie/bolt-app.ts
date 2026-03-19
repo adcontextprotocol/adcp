@@ -95,7 +95,6 @@ import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
-import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers } from './mcp/brand-sandbox-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
@@ -791,15 +790,6 @@ async function createUserScopedTools(
     logger.debug('Addie Bolt: Meeting tools enabled for this user');
   }
 
-  // Add Moltbook tools (for all users - Addie's social network presence)
-  if (process.env.MOLTBOOK_API_KEY) {
-    const moltbookHandlers = createMoltbookToolHandlers();
-    allTools.push(...MOLTBOOK_TOOLS);
-    for (const [name, handler] of Object.entries(moltbookHandlers)) {
-      allHandlers.set(name, handler);
-    }
-    logger.debug('Addie Bolt: Moltbook tools enabled');
-  }
 
   // Add brand tools (brand research and registry management)
   const brandHandlers = createBrandToolHandlers();

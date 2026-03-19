@@ -10,8 +10,6 @@ import { runDocumentIndexerJob } from './committee-document-indexer.js';
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
 import { runRelationshipOrchestratorCycle } from '../services/relationship-orchestrator.js';
 import { enrichMissingOrganizations } from '../../services/enrichment.js';
-import { runMoltbookPosterJob } from './moltbook-poster.js';
-import { runMoltbookEngagementJob } from './moltbook-engagement.js';
 import { runTaskReminderJob } from './task-reminder.js';
 // engagement-scoring job removed — old scoring replaced by person_relationships/person_events
 import {
@@ -131,27 +129,6 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.enriched > 0 || r.failed > 0,
   });
 
-  // Moltbook poster - posts articles to Moltbook
-  jobScheduler.register({
-    name: 'moltbook-poster',
-    description: 'Moltbook poster',
-    interval: { value: 2, unit: 'hours' },
-    initialDelay: { value: 10, unit: 'minutes' },
-    runner: runMoltbookPosterJob,
-    options: { limit: 1 },
-    shouldLogResult: (r) => r.postsCreated > 0,
-  });
-
-  // Moltbook engagement - engages with Moltbook discussions and checks DMs
-  jobScheduler.register({
-    name: 'moltbook-engagement',
-    description: 'Moltbook engagement',
-    interval: { value: 4, unit: 'hours' },
-    initialDelay: { value: 10, unit: 'minutes' },
-    runner: runMoltbookEngagementJob,
-    options: { limit: 5 },
-    shouldLogResult: (r) => r.commentsCreated > 0 || r.interestingThreads > 0 || r.dmsHandled > 0,
-  });
 
   // Content curator - processes external content for knowledge base
   jobScheduler.register({
@@ -375,8 +352,6 @@ export const JOB_NAMES = {
   SUMMARY_GENERATOR: 'summary-generator',
   RELATIONSHIP_ORCHESTRATOR: 'relationship-orchestrator',
   ACCOUNT_ENRICHMENT: 'account-enrichment',
-  MOLTBOOK_POSTER: 'moltbook-poster',
-  MOLTBOOK_ENGAGEMENT: 'moltbook-engagement',
   CONTENT_CURATOR: 'content-curator',
   FEED_FETCHER: 'feed-fetcher',
   ALERT_PROCESSOR: 'alert-processor',
