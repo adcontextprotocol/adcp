@@ -60,11 +60,47 @@ function extractAdcpError(response) {
 }
 
 /**
+ * Standard code → recovery mapping for when recovery field is absent.
+ * Matches the CODE_RECOVERY table in the spec.
+ */
+const CODE_RECOVERY = {
+  RATE_LIMITED: 'transient',
+  SERVICE_UNAVAILABLE: 'transient',
+  CONFLICT: 'transient',
+  INVALID_REQUEST: 'correctable',
+  AUTH_REQUIRED: 'correctable',
+  POLICY_VIOLATION: 'correctable',
+  PRODUCT_NOT_FOUND: 'correctable',
+  PRODUCT_UNAVAILABLE: 'correctable',
+  PROPOSAL_EXPIRED: 'correctable',
+  BUDGET_TOO_LOW: 'correctable',
+  CREATIVE_REJECTED: 'correctable',
+  UNSUPPORTED_FEATURE: 'correctable',
+  AUDIENCE_TOO_SMALL: 'correctable',
+  ACCOUNT_SETUP_REQUIRED: 'correctable',
+  ACCOUNT_AMBIGUOUS: 'correctable',
+  COMPLIANCE_UNSATISFIED: 'correctable',
+  ACCOUNT_NOT_FOUND: 'terminal',
+  ACCOUNT_PAYMENT_REQUIRED: 'terminal',
+  ACCOUNT_SUSPENDED: 'terminal',
+  BUDGET_EXHAUSTED: 'terminal',
+};
+
+/**
+ * Get effective recovery classification, falling back to code-based
+ * mapping when recovery field is absent.
+ */
+function getRecovery(error) {
+  if (error.recovery) return error.recovery;
+  return CODE_RECOVERY[error.code] || 'terminal';
+}
+
+/**
  * Determine expected action from recovery classification.
  */
 function getExpectedAction(error) {
   if (!error) return 'generic_error';
-  switch (error.recovery) {
+  switch (getRecovery(error)) {
     case 'transient': return 'retry';
     case 'correctable': return 'surface_to_caller';
     case 'terminal': return 'escalate_to_human';
@@ -122,7 +158,7 @@ describe('Transport error mapping test vectors', () => {
   it('should cover all recovery classifications', () => {
     const recoveries = new Set(
       data.vectors
-        .filter(v => v.expected_error)
+        .filter(v => v.expected_error && v.expected_error.recovery)
         .map(v => v.expected_error.recovery)
     );
     assert.ok(recoveries.has('transient'), 'must have transient recovery vector');
@@ -136,5 +172,26 @@ describe('Transport error mapping test vectors', () => {
     const transports = new Set(nullVectors.map(v => v.transport));
     assert.ok(transports.has('mcp'), 'must have MCP null-extraction vector');
     assert.ok(transports.has('a2a'), 'must have A2A null-extraction vector');
+  });
+
+  it('should have vectors testing missing recovery field', () => {
+    const missingRecoveryVectors = data.vectors.filter(
+      v => v.expected_error && !v.expected_error.recovery
+    );
+    assert.ok(missingRecoveryVectors.length >= 2,
+      'must have at least 2 vectors with missing recovery field');
+    const actions = new Set(missingRecoveryVectors.map(v => v.expected_action));
+    assert.ok(actions.has('retry'), 'must have missing-recovery vector that infers transient');
+    assert.ok(actions.has('escalate_to_human'), 'must have missing-recovery vector that defaults to terminal');
+  });
+
+  it('should have vectors testing null extraction from non-AdCP responses', () => {
+    const nonAdcpVectors = data.vectors.filter(
+      v => v.expected_error === null && v.expected_action === 'generic_error'
+    );
+    // Should have: legacy MCP text, legacy A2A, structuredContent without adcp_error,
+    // JSON without adcp_error key, JSON-RPC error without adcp_error data
+    assert.ok(nonAdcpVectors.length >= 5,
+      `must have at least 5 null-extraction vectors, got ${nonAdcpVectors.length}`);
   });
 });

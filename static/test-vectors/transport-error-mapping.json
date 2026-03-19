@@ -318,6 +318,192 @@
         "recovery": "deferred"
       },
       "expected_action": "escalate_to_human"
+    },
+    {
+      "id": "mcp-structured-content-no-adcp-error",
+      "description": "MCP structuredContent present but without adcp_error key should not extract",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Something went wrong."}],
+        "isError": true,
+        "structuredContent": {
+          "error_info": {
+            "type": "internal",
+            "message": "Non-AdCP structured error"
+          }
+        }
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
+      "id": "mcp-missing-recovery-transient-code",
+      "description": "Missing recovery field with standard transient code — should infer transient via code-based fallback",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Rate limited."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "RATE_LIMITED",
+            "message": "Request rate exceeded",
+            "retry_after": 5
+          }
+        }
+      },
+      "expected_error": {
+        "code": "RATE_LIMITED",
+        "message": "Request rate exceeded",
+        "retry_after": 5
+      },
+      "expected_action": "retry"
+    },
+    {
+      "id": "mcp-missing-recovery-correctable-code",
+      "description": "Missing recovery field with standard correctable code — should infer correctable via code-based fallback",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Budget too low."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "BUDGET_TOO_LOW",
+            "message": "Budget is below the seller's minimum",
+            "field": "budget.total",
+            "suggestion": "Increase budget to at least 500 USD"
+          }
+        }
+      },
+      "expected_error": {
+        "code": "BUDGET_TOO_LOW",
+        "message": "Budget is below the seller's minimum",
+        "field": "budget.total",
+        "suggestion": "Increase budget to at least 500 USD"
+      },
+      "expected_action": "surface_to_caller"
+    },
+    {
+      "id": "mcp-missing-recovery-unknown-code",
+      "description": "Missing recovery field with unknown vendor code — should default to terminal",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Custom vendor error."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "X_VENDOR_UNKNOWN",
+            "message": "Vendor-specific failure"
+          }
+        }
+      },
+      "expected_error": {
+        "code": "X_VENDOR_UNKNOWN",
+        "message": "Vendor-specific failure"
+      },
+      "expected_action": "escalate_to_human"
+    },
+    {
+      "id": "a2a-failed-task-correctable",
+      "description": "A2A failed task with correctable error including field and suggestion",
+      "transport": "a2a",
+      "path": "artifact",
+      "response": {
+        "id": "task_202",
+        "status": {
+          "state": "failed",
+          "timestamp": "2025-01-22T13:00:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "error-result",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Creative rejected: violates alcohol advertising policy."
+            },
+            {
+              "kind": "data",
+              "data": {
+                "adcp_error": {
+                  "code": "CREATIVE_REJECTED",
+                  "message": "Creative failed content policy review",
+                  "recovery": "correctable",
+                  "suggestion": "Revise creative to comply with alcohol advertising policy",
+                  "details": {
+                    "policy_id": "alcohol-advertising-v2",
+                    "reasons": ["Contains health claims not permitted for alcohol products"]
+                  }
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_error": {
+        "code": "CREATIVE_REJECTED",
+        "message": "Creative failed content policy review",
+        "recovery": "correctable",
+        "suggestion": "Revise creative to comply with alcohol advertising policy",
+        "details": {
+          "policy_id": "alcohol-advertising-v2",
+          "reasons": ["Contains health claims not permitted for alcohol products"]
+        }
+      },
+      "expected_action": "surface_to_caller"
+    },
+    {
+      "id": "mcp-text-fallback-json-no-adcp-error",
+      "description": "MCP text content is valid JSON but has no adcp_error key — should not extract",
+      "transport": "mcp",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "{\"error\": \"something went wrong\", \"code\": 500}"}],
+        "isError": true
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
+      "id": "mcp-jsonrpc-error-no-adcp-data",
+      "description": "Plain JSON-RPC error without adcp_error in data — should not extract",
+      "transport": "mcp",
+      "path": "jsonrpc_error",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "req-999",
+        "error": {
+          "code": -32600,
+          "message": "Invalid Request"
+        }
+      },
+      "expected_error": null,
+      "expected_action": "generic_error"
+    },
+    {
+      "id": "mcp-transient-no-retry-after",
+      "description": "Transient error without retry_after — client should use exponential backoff",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Service temporarily unavailable."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "SERVICE_UNAVAILABLE",
+            "message": "Seller service is temporarily unavailable",
+            "recovery": "transient"
+          }
+        }
+      },
+      "expected_error": {
+        "code": "SERVICE_UNAVAILABLE",
+        "message": "Seller service is temporarily unavailable",
+        "recovery": "transient"
+      },
+      "expected_action": "retry"
     }
   ]
 }

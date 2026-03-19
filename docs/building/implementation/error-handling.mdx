@@ -6,6 +6,18 @@ description: "AdCP error handling: protocol errors, task failures, and validatio
 
 AdCP uses a consistent error handling approach across all operations. Understanding error categories and implementing proper recovery strategies is essential for building robust integrations.
 
+## Compliance Levels
+
+Sellers can adopt error handling incrementally. Each level builds on the previous:
+
+| Level | What to implement | What agents can do |
+|-------|-------------------|-------------------|
+| **Level 1** | Return `code` + `message` on every error | Agents match on error code to classify failures |
+| **Level 2** | Add `recovery`, `retry_after`, `field`, and `suggestion` | Agents auto-retry transient errors and self-correct correctable ones |
+| **Level 3** | Use [transport bindings](/docs/building/implementation/transport-errors) to put errors in `structuredContent` (MCP) or artifact `DataPart` (A2A) | Programmatic clients get typed errors without parsing text |
+
+**Level 1** is the minimum for a conformant implementation. **Level 2** is where agent-driven recovery becomes possible — without `recovery`, agents must guess from the error code. **Level 3** is where client libraries like `@adcp/client` can provide fully typed error objects.
+
 ## Error Categories
 
 ### 1. Protocol Errors
