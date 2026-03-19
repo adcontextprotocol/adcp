@@ -156,10 +156,10 @@ const TOOLS = [
         buyer_campaign_ref: { type: 'string' },
         account: {
           type: 'object',
-          properties: {
-            brand: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
-          },
-          required: ['brand'],
+          oneOf: [
+            { properties: { account_id: { type: 'string' } }, required: ['account_id'] },
+            { properties: { brand: { type: 'object' }, operator: { type: 'string' } }, required: ['brand', 'operator'] },
+          ],
         },
         brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
         packages: {
@@ -306,7 +306,7 @@ const TOOLS = [
         pricing_option_id: { type: 'string' },
         account: { type: 'object' },
       },
-      required: ['signal_agent_segment_id', 'destinations', 'account'] as const,
+      required: ['signal_agent_segment_id', 'destinations'] as const,
     },
   },
   ...GOVERNANCE_TOOLS,
