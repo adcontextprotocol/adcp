@@ -18,7 +18,7 @@ const data = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
  * Returns the error if valid, null if not.
  */
 function validateAdcpError(error) {
-  if (!error || typeof error !== 'object') return null;
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return null;
   if (typeof error.code !== 'string') return null;
   if (error.code.length === 0 || error.code.length > 64) return null;
   if (JSON.stringify(error).length > 4096) return null;
@@ -381,6 +381,25 @@ describe('Validation and safety', () => {
       structuredContent: { adcp_error: 'RATE_LIMITED' }
     });
     assert.equal(result, null, 'string adcp_error must be rejected');
+  });
+
+  it('should not allow prototype pollution via __proto__ key', () => {
+    const result = extractAdcpError({
+      content: [{ type: 'text', text: 'Error' }],
+      isError: true,
+      structuredContent: {
+        adcp_error: {
+          code: 'RATE_LIMITED',
+          message: 'Rate limited',
+          recovery: 'transient',
+          __proto__: { isAdmin: true }
+        }
+      }
+    });
+    assert.ok(result !== null, 'extraction should succeed');
+    assert.equal(result.code, 'RATE_LIMITED');
+    // Verify __proto__ does not pollute Object prototype
+    assert.equal(({}).isAdmin, undefined, '__proto__ must not pollute Object prototype');
   });
 
   it('should handle prompt injection in message field without crashing', () => {

@@ -244,7 +244,7 @@ function extractAdcpErrorFromMcp(response) {
 
 // Reject malformed or oversized payloads
 function validate(error) {
-  if (!error || typeof error !== 'object') return null;
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return null;
   if (typeof error.code !== 'string') return null;
   if (error.code.length === 0 || error.code.length > 64) return null;
   if (JSON.stringify(error).length > 4096) return null;
@@ -651,6 +651,7 @@ Buyer agents MUST:
 - **Strip non-printable characters** from all string fields: control characters (U+0000–U+001F), zero-width characters (U+200B–U+200F), and bidirectional override characters (U+202A–U+202E).
 - **Enforce a maximum payload size.** Clients MUST discard extracted `adcp_error` objects where `JSON.stringify(error).length` exceeds 4096 bytes. This prevents context window exhaustion from oversized `details` objects.
 - **Never use `field` as a dynamic property path** in object mutation operations (e.g., `lodash.set`, bracket notation chains). The `field` value is for display and field-level UI highlighting only.
+- **Never merge extracted error objects into application state** via `Object.assign`, spread operators, or shallow copy without filtering keys. Seller-controlled keys like `__proto__` or `constructor` can trigger prototype pollution in some runtimes.
 - **Never include raw `details` objects** in system prompts or tool descriptions.
 
 **URL validation.** `details.setup_url` (in `ACCOUNT_SETUP_REQUIRED` errors) is a seller-provided URL that users or agents may follow to complete account setup. Clients MUST validate that `setup_url` uses the `https` scheme, contains no userinfo component (e.g., `https://user:pass@evil.com`), and that the domain matches the seller's known domain. Clients MUST reject URLs that fail any of these checks.
