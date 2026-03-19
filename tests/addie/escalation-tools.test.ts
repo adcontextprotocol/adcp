@@ -2,7 +2,7 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
 // Mock escalation-db
-const mockListEscalationsForUser = jest.fn();
+const mockListEscalationsForUser = jest.fn<any>();
 jest.mock('../../server/src/db/escalation-db.js', () => ({
   createEscalation: jest.fn(),
   markNotificationSent: jest.fn(),
@@ -11,12 +11,12 @@ jest.mock('../../server/src/db/escalation-db.js', () => ({
 
 // Mock slack client
 jest.mock('../../server/src/slack/client.js', () => ({
-  sendChannelMessage: jest.fn().mockResolvedValue({ ok: true }),
+  sendChannelMessage: jest.fn<any>().mockResolvedValue({ ok: true }),
 }));
 
 // Mock system settings
 jest.mock('../../server/src/db/system-settings-db.js', () => ({
-  getEscalationChannel: jest.fn().mockResolvedValue({ channel_id: 'C_ESCALATION' }),
+  getEscalationChannel: jest.fn<any>().mockResolvedValue({ channel_id: 'C_ESCALATION' }),
 }));
 
 // Mock thread service
@@ -37,6 +37,7 @@ jest.mock('../../server/src/db/addie-db.js', () => ({
 const mockMemberContext: MemberContext = {
   is_mapped: true,
   is_member: true,
+  slack_linked: false,
   workos_user: {
     workos_user_id: 'user_test123',
     email: 'test@example.com',

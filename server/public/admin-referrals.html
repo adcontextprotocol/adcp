@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <title>Referrals - Manage - AgenticAdvertising.org</title>
+  <title>Referrals - Admin - AgenticAdvertising.org</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
-  <script src="/manage-sidebar.js"></script>
+  <script src="/admin-sidebar.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -568,7 +568,7 @@
     async function loadMyCodes() {
       if (!currentOrgId) return;
       try {
-        const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`);
+        const res = await AdminSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`);
         if (res.ok) {
           const data = await res.json();
           renderMyCodes(data.referral_codes || []);
@@ -583,7 +583,7 @@
 
     async function loadAllActivity() {
       try {
-        const res = await ManageSidebar.fetch('/api/admin/referrals');
+        const res = await AdminSidebar.fetch('/api/admin/referrals');
         if (res.ok) {
           renderAllActivity(await res.json());
         } else {
@@ -606,7 +606,7 @@
       if (selectedProspectId) body.target_org_id = selectedProspectId;
 
       try {
-        const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`, {
+        const res = await AdminSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -633,7 +633,7 @@
     async function revokeCode(codeId) {
       if (!confirm('Revoke this referral code? Existing referrals are not affected.')) return;
       try {
-        const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes/${codeId}`, {
+        const res = await AdminSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes/${codeId}`, {
           method: 'DELETE',
         });
         if (res.ok) {
@@ -712,7 +712,7 @@
     async function searchProspects(q) {
       const dropdown = document.getElementById('companyDropdown');
       try {
-        const res = await ManageSidebar.fetch('/api/admin/prospects/typeahead?q=' + encodeURIComponent(q));
+        const res = await AdminSidebar.fetch('/api/admin/prospects/typeahead?q=' + encodeURIComponent(q));
         const prospects = res.ok ? await res.json() : [];
 
         let html = '';
@@ -772,7 +772,7 @@
       dropdown.classList.add('open');
 
       try {
-        const res = await ManageSidebar.fetch('/api/admin/prospecting/search', {
+        const res = await AdminSidebar.fetch('/api/admin/prospecting/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keywords: [q], pageSize: 8 }),
@@ -832,7 +832,7 @@
       dropdown.innerHTML = '<div class="company-search__empty">Importing…</div>';
 
       try {
-        const res = await ManageSidebar.fetch('/api/admin/prospecting/import', {
+        const res = await AdminSidebar.fetch('/api/admin/prospecting/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ company }),
@@ -867,7 +867,7 @@
       errorEl.textContent = 'Looking up…';
 
       try {
-        const res = await ManageSidebar.fetch('/api/admin/enrichment/domain/' + encodeURIComponent(domain), {
+        const res = await AdminSidebar.fetch('/api/admin/enrichment/domain/' + encodeURIComponent(domain), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
@@ -942,7 +942,7 @@
 
       btn.disabled = true;
       try {
-        const res = await ManageSidebar.fetch('/api/admin/prospects', {
+        const res = await AdminSidebar.fetch('/api/admin/prospects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, domain, prospect_source: 'referral' }),
@@ -991,7 +991,7 @@
         currentOrgId = org.id;
         document.getElementById('orgName').textContent = org.name;
 
-        const statusRes = await ManageSidebar.fetch('/api/admin/enrichment/status').catch(() => null);
+        const statusRes = await AdminSidebar.fetch('/api/admin/enrichment/status').catch(() => null);
         if (statusRes && statusRes.ok) {
           const statusData = await statusRes.json();
           lushaConfigured = statusData.configured === true;

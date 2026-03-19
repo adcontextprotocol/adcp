@@ -202,10 +202,18 @@ export async function startModule(
     `INSERT INTO learner_progress (workos_user_id, module_id, status, started_at, addie_thread_id)
      VALUES ($1, $2, 'in_progress', NOW(), $3)
      ON CONFLICT (workos_user_id, module_id) DO UPDATE
-       SET status = 'in_progress',
+       SET status = CASE
+             WHEN learner_progress.status IN ('completed', 'tested_out')
+               THEN learner_progress.status
+             ELSE 'in_progress'
+           END,
            started_at = COALESCE(learner_progress.started_at, NOW()),
            addie_thread_id = COALESCE($3, learner_progress.addie_thread_id),
-           attempts = learner_progress.attempts + 1,
+           attempts = CASE
+             WHEN learner_progress.status IN ('completed', 'tested_out')
+               THEN learner_progress.attempts
+             ELSE learner_progress.attempts + 1
+           END,
            updated_at = NOW()
      RETURNING *`,
     [userId, moduleId, addieThreadId || null]

@@ -10,11 +10,11 @@
 
 // User Journey Simulation
 export {
-  UserPersona,
-  ActivityEvent,
-  UserJourney,
-  JourneyScenario,
-  JourneyAnalysis,
+  type UserPersona,
+  type ActivityEvent,
+  type UserJourney,
+  type JourneyScenario,
+  type JourneyAnalysis,
   TEST_PERSONAS,
   generateJourney,
   analyzeJourney,
@@ -27,8 +27,8 @@ export {
   CURRENT_VARIANTS,
   IMPROVED_VARIANTS,
   RED_TEAM_SCENARIOS,
-  RedTeamScenario,
-  ScenarioTestResult,
+  type RedTeamScenario,
+  type ScenarioTestResult,
   runRedTeamTests,
   testVariantAgainstPersonas,
   compareAllVariants,
@@ -46,7 +46,7 @@ export {
 // Sensitive Topic Detection Testing
 export {
   SENSITIVE_TOPIC_SCENARIOS,
-  SensitiveTopicScenario,
+  type SensitiveTopicScenario,
   runSensitiveTopicTests,
   generateSensitiveTopicReport,
 } from './sensitive-topic-tests.js';

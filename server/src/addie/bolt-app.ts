@@ -1333,42 +1333,55 @@ async function handleUserMessage({
     const teamId = context.teamId || slackThreadContext.team_id;
 
     // Check if streaming is available (requires teamId and userId)
-    const canStream = teamId && userId && threadTs && 'chatStream' in client;
+    const canStream = teamId && userId && threadTs;
 
     if (canStream) {
       // Use streaming for real-time response
       logger.debug('Addie Bolt: Using streaming response');
 
-      // Initialize the stream
-      // Note: threadTs (line 416) falls back to event.ts for external ID tracking,
-      // but for the API call we only pass thread_ts when continuing an existing thread.
-      // This prevents creating unwanted sub-threads on new DM conversations.
-      const existingThreadTs = 'thread_ts' in event && event.thread_ts ? event.thread_ts : undefined;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const streamer = (client as any).chatStream({
+      // Initialize the stream in the assistant thread
+      const streamer = client.chatStream({
         channel: channelId,
+        thread_ts: threadTs,
         recipient_team_id: teamId,
         recipient_user_id: userId,
-        ...(existingThreadTs && { thread_ts: existingThreadTs }),
       });
 
       // Process Claude response stream (pass conversation history for context)
+      // Track tool invocations for unique task_update IDs (same tool can run multiple times)
+      let toolInvocationCount = 0;
+      const activeToolTaskIds: string[] = [];
+
       for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
         if (event.type === 'text') {
           fullText += event.text;
           // Append text chunk to Slack stream
+          // Note: don't apply wrapUrlsForSlack() per-chunk — URLs can span chunk
+          // boundaries. Slack auto-links bare https:// URLs in streamed messages.
           try {
             await streamer.append({ markdown_text: event.text });
           } catch (streamError) {
-            logger.warn({ streamError }, 'Addie Bolt: Stream append failed, falling back to full response');
+            logger.warn({ streamError }, 'Addie Bolt: Stream append failed for chunk, continuing');
           }
         } else if (event.type === 'tool_start') {
           toolsUsed.push(event.tool_name);
-          // Optionally update status during tool execution
+          toolInvocationCount++;
+          const taskId = `${event.tool_name}_${toolInvocationCount}`;
+          activeToolTaskIds.push(taskId);
+          // Show tool execution as an in-progress task in the streamed message
           try {
-            await setStatus(`Using ${event.tool_name}...`);
+            // chunks is a Slack streaming API feature not yet in the SDK types
+            await streamer.append({
+              chunks: [{
+                type: 'task_update',
+                id: taskId,
+                title: event.tool_name.replace(/_/g, ' '),
+                status: 'in_progress',
+              }],
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any);
           } catch {
-            // Ignore status update errors
+            // Ignore stream errors for status updates
           }
         } else if (event.type === 'tool_end') {
           toolExecutions.push({
@@ -1376,6 +1389,22 @@ async function handleUserMessage({
             parameters: {},
             result: event.result,
           });
+          // Mark tool execution as complete in the streamed message
+          const taskId = activeToolTaskIds.pop() || event.tool_name;
+          try {
+            // chunks is a Slack streaming API feature not yet in the SDK types
+            await streamer.append({
+              chunks: [{
+                type: 'task_update',
+                id: taskId,
+                title: event.tool_name.replace(/_/g, ' '),
+                status: event.is_error ? 'error' : 'complete',
+              }],
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any);
+          } catch {
+            // Ignore stream errors for status updates
+          }
         } else if (event.type === 'retry') {
           // Show retry status to user
           try {
@@ -1391,25 +1420,45 @@ async function handleUserMessage({
       }
 
       // Stop the stream with feedback buttons and any inline images.
-      // The streamed text may contain raw ![alt](url) syntax — we extract
-      // images and replace the message text with a cleaned version.
       try {
-        const { text: cleanedStreamText, images: streamImages } = extractMarkdownImages(fullText);
+        // Extract image URLs from streamed text for Slack Block Kit image blocks
+        const { images: streamImages } = extractMarkdownImages(fullText);
         const MAX_SLACK_IMAGES = 3;
         const imageBlocks = streamImages.slice(0, MAX_SLACK_IMAGES).map(img => ({
           type: 'image' as const,
           image_url: img.url,
           alt_text: img.alt,
         }));
+        // Don't pass markdown_text — the SDK buffer already has all text from
+        // append() calls. Passing it again would duplicate the message.
         await streamer.stop({
-          markdown_text: wrapUrlsForSlack(cleanedStreamText),
           blocks: [
             ...imageBlocks,
             buildFeedbackBlock(),
           ],
         });
       } catch (stopError) {
-        logger.warn({ stopError }, 'Addie Bolt: Stream stop failed');
+        logger.warn({ stopError }, 'Addie Bolt: Stream stop failed, falling back to say()');
+        // Fallback: send via say() so the user isn't left without a response
+        try {
+          const fallbackValidation = validateOutput(fullText);
+          const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
+          const slackText = wrapUrlsForSlack(fallbackText);
+          await say({
+            text: slackText,
+            blocks: [
+              { type: 'section', text: { type: 'mrkdwn', text: slackText } },
+              ...fallbackImages.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        } catch (sayError) {
+          logger.error({ sayError }, 'Addie Bolt: Fallback say() also failed');
+        }
       }
     } else {
       // Fall back to non-streaming for compatibility
@@ -2991,6 +3040,13 @@ async function handleChannelMessage({
       threadTs: 'thread_ts' in event ? event.thread_ts : undefined,
       ts: 'ts' in event ? event.ts : undefined,
     }, 'Addie Bolt: Received DM in handleChannelMessage');
+
+    // DMs with thread_ts are handled by the Assistant framework (handleUserMessage).
+    // Only handle first DMs (no thread_ts) here to avoid sending duplicate responses.
+    if (hasThreadTs) {
+      logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Skipping threaded DM - handled by Assistant framework');
+      return;
+    }
 
     if (!hasText && !hasAttachments && !hasFiles) {
       logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Ignoring DM without content');

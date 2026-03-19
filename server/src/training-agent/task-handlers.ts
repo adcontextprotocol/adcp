@@ -132,6 +132,23 @@ export function invalidateCache(): void {
   cachedFormats = null;
 }
 
+// ── Shared schema fragments ──────────────────────────────────────
+
+const ACCOUNT_REF_SCHEMA = {
+  type: 'object',
+  oneOf: [
+    { properties: { account_id: { type: 'string' } }, required: ['account_id'] },
+    {
+      properties: {
+        brand: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+        operator: { type: 'string' },
+        sandbox: { type: 'boolean' },
+      },
+      required: ['brand', 'operator'],
+    },
+  ],
+} as const;
+
 // ── Tool definitions ──────────────────────────────────────────────
 
 const TOOLS = [
@@ -145,7 +162,7 @@ const TOOLS = [
         buying_mode: { type: 'string', enum: ['brief', 'wholesale', 'refine'] },
         brief: { type: 'string' },
         refine: { type: 'array' },
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         brand: { type: 'object' },
         filters: { type: 'object' },
         fields: { type: 'array', items: { type: 'string' } },
@@ -175,13 +192,7 @@ const TOOLS = [
       properties: {
         buyer_ref: { type: 'string' },
         buyer_campaign_ref: { type: 'string' },
-        account: {
-          type: 'object',
-          properties: {
-            brand: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
-          },
-          required: ['brand'],
-        },
+        account: ACCOUNT_REF_SCHEMA,
         brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
         packages: {
           type: 'array',
@@ -220,7 +231,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
       },
     },
@@ -232,7 +243,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
         buyer_ref: { type: 'string' },
       },
@@ -246,7 +257,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         creatives: { type: 'array' },
         assignments: { type: 'array' },
       },
@@ -260,7 +271,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         creative_ids: { type: 'array', items: { type: 'string' } },
         media_buy_id: { type: 'string' },
       },
@@ -273,7 +284,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
         media_buy_buyer_refs: { type: 'array', items: { type: 'string' } },
         creative_ids: { type: 'array', items: { type: 'string' } },
@@ -288,7 +299,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
         buyer_ref: { type: 'string' },
         packages: { type: 'array' },
@@ -306,7 +317,7 @@ const TOOLS = [
       properties: {
         signal_spec: { type: 'string', description: 'Natural language description of desired signals' },
         signal_ids: { type: 'array', items: { type: 'object' }, description: 'Specific signals to look up by ID' },
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
         destinations: { type: 'array', items: { type: 'object' }, description: 'Filter to specific deployment targets' },
         countries: { type: 'array', items: { type: 'string' } },
         filters: { type: 'object' },
@@ -325,9 +336,9 @@ const TOOLS = [
         action: { type: 'string', enum: ['activate', 'deactivate'] },
         destinations: { type: 'array', items: { type: 'object' } },
         pricing_option_id: { type: 'string' },
-        account: { type: 'object' },
+        account: ACCOUNT_REF_SCHEMA,
       },
-      required: ['signal_agent_segment_id', 'destinations', 'account'] as const,
+      required: ['signal_agent_segment_id', 'destinations'] as const,
     },
   },
   ...GOVERNANCE_TOOLS,
@@ -433,10 +444,7 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   // Store context for refine
   session.lastGetProductsContext = { products };
 
-  const shows = buildShowsForProducts(products);
-  const response: Record<string, unknown> = { products, sandbox: true };
-  if (shows.length > 0) response.shows = shows;
-  return response;
+  return { products, sandbox: true };
 }
 
 function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
@@ -700,6 +708,7 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
         impressions: 0,
         clicks: 0,
         pricing_model: model,
+        model, // #1525: alias for @adcp/client < 4.11.0
         rate,
         currency: mb.currency,
         paused: true,
@@ -738,6 +747,7 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
       impressions,
       clicks,
       pricing_model: pricingModel,
+      model: pricingModel, // #1525: alias for @adcp/client < 4.11.0
       rate,
       currency: mb.currency,
       paused: false,

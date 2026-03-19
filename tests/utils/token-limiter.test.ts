@@ -25,10 +25,8 @@ describe('estimateTokens', () => {
   });
 
   it('should return 0 for undefined/null', () => {
-    // @ts-expect-error - testing edge case
-    expect(estimateTokens(undefined)).toBe(0);
-    // @ts-expect-error - testing edge case
-    expect(estimateTokens(null)).toBe(0);
+    expect(estimateTokens(undefined as any)).toBe(0);
+    expect(estimateTokens(null as any)).toBe(0);
   });
 
   it('should estimate tokens for short text', () => {

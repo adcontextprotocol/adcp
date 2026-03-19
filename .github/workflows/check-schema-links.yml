@@ -17,6 +17,33 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Check for stale schema version references
+        id: stale-check
+        run: |
+          # Get current major version from package.json (e.g., 3.0.0-rc.2 -> 3)
+          CURRENT_MAJOR=$(node -p "require('./package.json').version.split('.')[0]")
+          echo "Current major version: $CURRENT_MAJOR"
+
+          STALE_FOUND=""
+          for v in $(seq 1 $((CURRENT_MAJOR - 1))); do
+            # Search docs/ for /schemas/v{old}/ references, excluding release-notes
+            MATCHES=$(grep -rn "schemas/v${v}/" docs/ --include='*.md' --include='*.mdx' | grep -v 'docs/reference/release-notes' || true)
+            if [ -n "$MATCHES" ]; then
+              STALE_FOUND="$STALE_FOUND\n$MATCHES"
+            fi
+          done
+
+          if [ -n "$STALE_FOUND" ]; then
+            echo "❌ Found stale schema version references in docs/ (current major version is v${CURRENT_MAJOR}):"
+            echo -e "$STALE_FOUND"
+            echo ""
+            echo "These should be updated to schemas/v${CURRENT_MAJOR}/"
+            echo "If these are intentional historical references, move them to docs/reference/release-notes.mdx"
+            exit 1
+          else
+            echo "✅ No stale schema version references found"
+          fi
+
       - name: Check schema links
         id: check
         env:

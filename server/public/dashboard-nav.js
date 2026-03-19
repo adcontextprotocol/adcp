@@ -539,7 +539,6 @@
     const appConfig = window.__APP_CONFIG__;
     const {
       showAdmin = false,
-      showManage = !!(appConfig?.user?.isManage || appConfig?.user?.isAdmin),
       showOrgSwitcher = false,
       currentOrgName = 'Organization',
       isPersonal = false,
@@ -626,12 +625,6 @@
       </div>
     ` : '';
 
-    const manageLinkHTML = (showManage || showAdmin) ? `
-      <a href="/manage" class="dashboard-admin-link">
-        <span>⚡</span> Manage AAO
-      </a>
-    ` : '';
-
     const adminLinkHTML = showAdmin ? `
       <a href="/admin" class="dashboard-admin-link">
         <span>🔒</span> Admin panel
@@ -659,7 +652,7 @@
         <nav class="dashboard-sidebar-nav">
           ${sectionsHTML}
         </nav>
-        ${(manageLinkHTML || adminLinkHTML) ? `<div class="dashboard-sidebar-footer">${manageLinkHTML}${adminLinkHTML}</div>` : ''}
+        ${adminLinkHTML ? `<div class="dashboard-sidebar-footer">${adminLinkHTML}</div>` : ''}
       </aside>
     `;
   }

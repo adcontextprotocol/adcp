@@ -56,13 +56,14 @@ function buildPricingOption(
   template: PricingTemplate,
   productId: string,
   index: number,
-): PricingOption {
+): PricingOption & { model: string } {
   const id = `${productId}_pricing_${index}`;
   const priceGuidance = buildPriceGuidance(template);
 
+  let option: PricingOption;
   switch (template.model) {
     case 'cpm':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'cpm',
         currency: template.currency,
@@ -71,8 +72,9 @@ function buildPricingOption(
         ...(priceGuidance && { price_guidance: priceGuidance }),
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'vcpm':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'vcpm',
         currency: template.currency,
@@ -81,8 +83,9 @@ function buildPricingOption(
         ...(priceGuidance && { price_guidance: priceGuidance }),
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'cpc':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'cpc',
         currency: template.currency,
@@ -91,8 +94,9 @@ function buildPricingOption(
         ...(priceGuidance && { price_guidance: priceGuidance }),
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'cpcv':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'cpcv',
         currency: template.currency,
@@ -101,8 +105,9 @@ function buildPricingOption(
         ...(priceGuidance && { price_guidance: priceGuidance }),
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'cpv':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'cpv',
         currency: template.currency,
@@ -112,8 +117,9 @@ function buildPricingOption(
         parameters: template.cpvParameters ?? { view_threshold: { duration_seconds: 30 } },
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'cpp':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'cpp',
         currency: template.currency,
@@ -123,8 +129,9 @@ function buildPricingOption(
         parameters: template.cppParameters ?? { demographic: 'P18-49' },
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'cpa':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'cpa',
         currency: template.currency,
@@ -132,8 +139,9 @@ function buildPricingOption(
         event_type: template.eventType ?? 'purchase',
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'flat_rate':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'flat_rate',
         currency: template.currency,
@@ -143,8 +151,9 @@ function buildPricingOption(
         ...(template.doohParameters && { parameters: template.doohParameters as FlatRatePricingOption['parameters'] }),
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
     case 'time':
-      return {
+      option = {
         pricing_option_id: id,
         pricing_model: 'time',
         currency: template.currency,
@@ -154,7 +163,9 @@ function buildPricingOption(
         parameters: template.timeParameters ?? { time_unit: 'day', min_duration: 1, max_duration: 30 },
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
+      break;
   }
+  return { ...option, model: template.model };
 }
 
 function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] {
@@ -420,6 +431,7 @@ function buildProduct(
   let showSelectors: ShowSelector[] | undefined;
   let exclusivity: Exclusivity | undefined;
   let episodes: Episode[] | undefined;
+  let showTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
     const matchingShows = pub.shows.filter(s =>
       s.channels.some(c => template.channels.includes(c)),
@@ -431,6 +443,9 @@ function buildProduct(
       }];
       if (template.deliveryType === 'guaranteed') {
         exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
+      }
+      if (matchingShows.length > 1 && template.deliveryType === 'non_guaranteed') {
+        showTargetingAllowed = true;
       }
       const builtEpisodes: Episode[] = [];
       for (const show of matchingShows) {
@@ -485,6 +500,7 @@ function buildProduct(
     ...(showSelectors && { shows: showSelectors }),
     ...(exclusivity && { exclusivity }),
     ...(episodes && { episodes }),
+    ...(showTargetingAllowed && { show_targeting_allowed: showTargetingAllowed }),
   };
 
   return {

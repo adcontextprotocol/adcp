@@ -4,7 +4,7 @@ import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
 import { createLogger } from '../logger.js';
-import { isWebUserAAOAdmin, isWebUserAAOCouncil } from '../addie/mcp/admin-tools.js';
+import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
@@ -205,7 +205,6 @@ export interface DevUserConfig {
   firstName: string;
   lastName: string;
   isAdmin: boolean;
-  isManage: boolean; // Has kitchen cabinet / manage tier access
   isMember: boolean; // Has an organization membership
   description: string;
 }
@@ -218,7 +217,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Admin',
     lastName: 'Tester',
     isAdmin: true,
-    isManage: true,
     isMember: true,
     description: 'Test admin with full access',
   },
@@ -229,7 +227,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Member',
     lastName: 'User',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Regular member with organization access',
   },
@@ -240,20 +237,18 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Visitor',
     lastName: 'User',
     isAdmin: false,
-    isManage: false,
     isMember: false,
     description: 'User without any organization membership',
   },
-  // Committee leader (kitchen cabinet member — manage tier access, not platform admin)
+  // Committee leader (not a platform admin)
   leader: {
     id: 'user_dev_leader_001',
     email: 'leader@test.local',
     firstName: 'Committee',
     lastName: 'Leader',
     isAdmin: false,
-    isManage: true,
     isMember: true,
-    description: 'Kitchen cabinet member with manage-tier access',
+    description: 'Committee leader without admin access',
   },
   // Learner personas for certification testing (isolated user IDs prevent cross-contamination)
   learner1: {
@@ -262,7 +257,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Learner',
     lastName: 'One',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Certification test persona 1',
   },
@@ -272,7 +266,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Learner',
     lastName: 'Two',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Certification test persona 2',
   },
@@ -282,7 +275,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Learner',
     lastName: 'Three',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Certification test persona 3',
   },
@@ -1008,124 +1000,6 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   next();
 }
 
-/**
- * Middleware that requires kitchen cabinet (manage tier) or admin access.
- * Must be used after requireAuth.
- * Kitchen cabinet members can access /manage pages; admins pass automatically.
- */
-export async function requireManage(req: Request, res: Response, next: NextFunction) {
-  const isHtmlRequest = req.accepts('html') && !req.originalUrl.startsWith('/api/');
-
-  // Static admin API key has manage access even in dev mode.
-  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
-    logger.debug({ path: req.path, method: req.method }, 'Manage access via static admin API key');
-    return next();
-  }
-
-  // Dev mode: check isManage or isAdmin flag
-  if (DEV_MODE_ENABLED) {
-    const devUser = getDevUser(req);
-    if (!devUser) {
-      if (isHtmlRequest) {
-        return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
-      }
-      return res.status(401).json({ error: 'Authentication required', login_url: '/auth/login' });
-    }
-
-    if (!req.user) {
-      const mockUser = createDevUser(req);
-      if (mockUser) {
-        req.user = mockUser;
-        req.accessToken = 'dev-mode-token';
-      }
-    }
-
-    if (!devUser.isManage && !devUser.isAdmin) {
-      if (isHtmlRequest) {
-        return res.status(403).send(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Access Denied</title>
-            <link rel="stylesheet" href="/design-system.css">
-            <style>
-              body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: var(--color-bg-page, #f5f5f5); }
-              .container { background: var(--color-bg-card, white); padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
-              h1 { color: var(--color-error-600, #c33); margin-bottom: 10px; }
-              p { color: var(--color-text-secondary, #666); margin-bottom: 20px; }
-              a { color: var(--color-brand, #667eea); text-decoration: none; }
-              .dev-hint { margin-top: 20px; padding: 15px; background: var(--color-bg-subtle, #f9fafb); border-radius: 6px; font-size: 13px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <h1>Access Denied</h1>
-              <p>This resource is only accessible to kitchen cabinet members.</p>
-              <p>Current user: <strong>${devUser.email}</strong></p>
-              <div class="dev-hint">
-                <strong>Dev Mode Tip:</strong><br>
-                <a href="/auth/logout">Log out</a> and log in as leader or admin
-              </div>
-              <p><a href="/">← Back to Home</a></p>
-            </div>
-          </body>
-          </html>
-        `);
-      }
-      return res.status(403).json({
-        error: 'Manage access required',
-        message: 'This resource is only accessible to kitchen cabinet members',
-        current_user: devUser.email,
-      });
-    }
-    return next();
-  }
-
-  if (!req.user) {
-    if (isHtmlRequest) {
-      return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
-    }
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const isCouncil = await isWebUserAAOCouncil(req.user.id);
-  const isAdmin = await isWebUserAAOAdmin(req.user.id);
-
-  if (!isCouncil && !isAdmin) {
-    logger.warn({ userId: req.user.id, email: req.user.email }, 'User attempted to access manage endpoint without access');
-    if (isHtmlRequest) {
-      return res.status(403).send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Access Denied</title>
-          <style>
-            body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
-            .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
-            h1 { color: #c33; margin-bottom: 10px; }
-            p { color: #666; margin-bottom: 20px; }
-            a { color: #667eea; text-decoration: none; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>Access Denied</h1>
-            <p>This resource is only accessible to kitchen cabinet members.</p>
-            <a href="/dashboard">← Back to Dashboard</a>
-          </div>
-        </body>
-        </html>
-      `);
-    }
-    return res.status(403).json({
-      error: 'Manage access required',
-      message: 'This resource is only accessible to kitchen cabinet members',
-    });
-  }
-
-  logger.debug({ userId: req.user.id, email: req.user.email }, 'Manage access granted');
-  next();
-}
 
 /**
  * Factory function to create middleware that requires working group leader access

@@ -21,7 +21,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `format_ids` (list[FormatID], required): Structured format ID references. See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
-- `show_ids` (list[string], optional): Show IDs available within this product. When provided, buyers can target specific shows. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes).
+- `shows` (list[ShowSelector], optional): Shows covered by this product, grouped by publisher. Each entry has `publisher_domain` and `show_ids` referencing shows in the publisher's `adagents.json`. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes).
 - `episodes` (list[Episode], optional): Specific episodes available within this product. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `exclusivity` (string, optional): Whether this product offers exclusive access. `"none"` (default when absent) — multiple advertisers can buy simultaneously. `"category"` — one advertiser per industry category. `"exclusive"` — sole sponsorship. Most relevant for guaranteed products tied to specific shows or placements.
@@ -32,6 +32,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
 - `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
+- `show_targeting_allowed` (bool, optional, default: false): Whether buyers can target a subset of this product's `shows`. When `false` (default), the product is a bundle — buyers get all listed shows. When `true`, buyers can select specific shows in the media buy.
 - `catalog_types` (list[string], optional): Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares `["product"]`, a job board declares `["job", "offering"]`. Buyers match synced catalogs to products via this field. See [Catalogs](/docs/creative/catalogs).
 - `catalog_match` (object, optional): When the buyer provides a `catalog` on `get_products`, indicates which catalog items are eligible for this product. Contains `matched_gtins` (cross-retailer GTIN matches), `matched_ids` (generic item ID matches), `matched_count`, and `submitted_count`.
 - `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
@@ -168,7 +169,7 @@ For products that include outcome measurement (common in retail media):
 Defines creative requirements and restrictions:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/creative-policy.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-policy.json",
   "co_branding": "required",
   "landing_page": "retailer_site_only",
   "templates_available": true
@@ -187,7 +188,7 @@ Products can optionally declare specific ad placements within their inventory. W
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/placement.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/placement.json",
   "placement_id": "homepage_banner",
   "name": "Homepage Banner",
   "description": "Above-the-fold banner on the homepage",
@@ -252,7 +253,7 @@ See [Creative Assignment and Placement Targeting](/docs/media-buy/media-buys/ind
 
 ### Shows and episodes
 
-Shows are a third product dimension alongside formats and placements. While placements describe *where* an ad appears and formats describe *what* the ad looks like, shows describe the *content context* — the programming a viewer is watching. Products can declare `show_ids` and `episodes` so buyers can target specific shows or episodes when purchasing inventory.
+Shows are a third product dimension alongside formats and placements. While placements describe *where* an ad appears and formats describe *what* the ad looks like, shows describe the *content context* — the programming a viewer is watching. Products can declare `shows` and `episodes` so buyers can target specific shows or episodes when purchasing inventory.
 
 See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) for the full model, examples, and targeting details.
 
@@ -274,11 +275,11 @@ Exclusivity is most relevant for guaranteed products tied to specific shows or p
 - **`category`**: Podcast or CTV sponsorships where competitive separation matters. One auto brand per show, one fintech brand per episode — but multiple non-competing advertisers can buy simultaneously.
 - **`exclusive`**: Sole sponsorship of a single show or event. The advertiser is the only brand associated with the content.
 
-Publishers SHOULD include `exclusivity` on guaranteed products with `show_ids`. The implicit default of `"none"` is ambiguous for show-level inventory — buyers cannot tell whether the publisher intends shared inventory or simply omitted the field.
+Publishers SHOULD include `exclusivity` on guaranteed products with `shows`. The implicit default of `"none"` is ambiguous for show-level inventory — buyers cannot tell whether the publisher intends shared inventory or simply omitted the field.
 
 #### Content sponsorship pattern
 
-A product combining `delivery_type: "guaranteed"`, `exclusivity: "exclusive"`, and `show_ids` represents a content sponsorship — the advertiser becomes the sole sponsor of specific content. This is the standard pattern for podcast title sponsorships, CTV show sponsorships, and event-based takeovers.
+A product combining `delivery_type: "guaranteed"`, `exclusivity: "exclusive"`, and `shows` represents a content sponsorship — the advertiser becomes the sole sponsor of specific content. This is the standard pattern for podcast title sponsorships, CTV show sponsorships, and event-based takeovers.
 
 ```json
 {
@@ -292,7 +293,7 @@ A product combining `delivery_type: "guaranteed"`, `exclusivity: "exclusive"`, a
     { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
     { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
   ],
-  "show_ids": ["signal_noise"],
+  "shows": [{ "publisher_domain": "crestnetwork.example", "show_ids": ["signal_noise"] }],
   "delivery_type": "guaranteed",
   "exclusivity": "exclusive",
   "pricing_options": [
@@ -320,7 +321,7 @@ Category exclusivity works for multi-show bundles where the publisher separates 
     { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
     { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
   ],
-  "show_ids": ["signal_noise", "market_beat", "founder_stories"],
+  "shows": [{ "publisher_domain": "crestnetwork.example", "show_ids": ["signal_noise", "market_beat", "founder_stories"] }],
   "delivery_type": "guaranteed",
   "exclusivity": "category",
   "pricing_options": [

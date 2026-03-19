@@ -11,7 +11,11 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    "paths": {
+      "@adcp/client/testing": ["./node_modules/@adcp/client/dist/lib/testing/index.d.ts"],
+      "@adcp/client/auth": ["./node_modules/@adcp/client/dist/lib/auth/index.d.ts"]
+    }
   },
   "include": ["tests/**/*", "server/src/**/*"],
   "exclude": ["node_modules", "dist", "docs"]

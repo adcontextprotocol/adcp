@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="/js/company-types.js"></script>
   <script src="/nav.js"></script>
-  <script src="/manage-sidebar.js"></script>
+  <script src="/admin-sidebar.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -648,7 +648,7 @@
   <div id="content" style="display: none;">
     <div class="container">
       <div class="breadcrumb">
-        <a href="/manage/accounts">Accounts</a> / <span id="breadcrumbName">Account</span>
+        <a href="/admin/accounts">Accounts</a> / <span id="breadcrumbName">Account</span>
       </div>
 
       <!-- Header Card -->
@@ -1478,7 +1478,7 @@
       const inheritedNotice = document.getElementById('inheritedMembershipNotice');
       if (a.effective_membership?.is_inherited && inheritedNotice) {
         inheritedNotice.style.display = '';
-        inheritedNotice.innerHTML = `Covered by <a href="/manage/accounts/${a.effective_membership.paying_org_id}">${escapeHtml(a.effective_membership.paying_org_name)}</a> membership` +
+        inheritedNotice.innerHTML = `Covered by <a href="/admin/accounts/${a.effective_membership.paying_org_id}">${escapeHtml(a.effective_membership.paying_org_name)}</a> membership` +
           (a.effective_membership.hierarchy_chain?.length > 1
             ? ` <span style="color: var(--color-text-secondary); font-size: var(--text-xs);">(${a.effective_membership.hierarchy_chain.join(' → ')})</span>`
             : '');
@@ -1797,7 +1797,7 @@
                 <li style="padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
                   <span style="font-weight: 500;">${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</span>
                   <span style="color: var(--color-text-muted); font-size: var(--text-sm);"> (${escapeHtml(u.email)})</span>
-                  <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">Currently in: <a href="/manage/accounts/${encodeURIComponent(u.current_org_id)}">${escapeHtml(u.current_org_name)}</a></span>
+                  <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">Currently in: <a href="/admin/accounts/${encodeURIComponent(u.current_org_id)}">${escapeHtml(u.current_org_name)}</a></span>
                 </li>
               `).join('')}
               ${inOtherOrgs.length > 5 ? `<li style="padding: var(--space-2) 0; color: var(--color-text-muted); font-size: var(--text-sm);">...and ${inOtherOrgs.length - 5} more</li>` : ''}
@@ -1820,7 +1820,7 @@
               ${similar_orgs.map(o => `
                 <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
                   <span>
-                    <a href="/manage/accounts/${encodeURIComponent(o.org_id)}" style="font-weight: 500;">${escapeHtml(o.name)}</a>
+                    <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" style="font-weight: 500;">${escapeHtml(o.name)}</a>
                     <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}" style="margin-left: var(--space-2); font-size: var(--text-xs);">
                       ${escapeHtml(o.subscription_status || 'prospect')}
                     </span>
@@ -1875,7 +1875,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin();
+            window.AdminSidebar?.redirectToLogin();
             return;
           }
           const errorData = await response.json().catch(() => ({}));
@@ -1909,7 +1909,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin();
+            window.AdminSidebar?.redirectToLogin();
             return;
           }
           const errorData = await response.json().catch(() => ({}));
@@ -2400,7 +2400,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -2432,7 +2432,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -2464,7 +2464,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -3337,7 +3337,7 @@
       }
 
       try {
-        const response = await ManageSidebar.fetch(`/api/admin/accounts/${accountId}/members/${userId}/role`, {
+        const response = await AdminSidebar.fetch(`/api/admin/accounts/${accountId}/members/${userId}/role`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: newRole })

@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="/js/company-types.js"></script>
   <script src="/nav.js"></script>
-  <script src="/manage-sidebar.js"></script>
+  <script src="/admin-sidebar.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -1103,7 +1103,7 @@
   </div>
 
   <script>
-    const manageFetch = window.ManageSidebar ? ManageSidebar.fetch : fetch;
+    const manageFetch = window.AdminSidebar ? AdminSidebar.fetch : fetch;
 
     let accounts = [];
     let teamMembers = [];
@@ -1338,7 +1338,7 @@
         html += `<tr>
           <td><input type="checkbox" class="row-checkbox" value="${escapeHtml(account.id)}" onchange="updateBulkSelection()"></td>
           <td>
-            <a href="/manage/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>${addieHtml}
+            <a href="/admin/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>${addieHtml}
             ${account.domain ? `<div class="account-domain">${escapeHtml(account.domain)}</div>` : ''}
           </td>
           <td><span class="status-badge status-${statusClass}">${statusLabel}</span></td>
@@ -1423,7 +1423,7 @@
             const statusClass = account.is_disqualified ? 'disqualified' : account.member_status;
             const fires = account.engagement_fires > 0 ? '🔥'.repeat(account.engagement_fires) : '';
             html += `
-              <a href="/manage/accounts/${account.id}" class="search-result-item">
+              <a href="/admin/accounts/${account.id}" class="search-result-item">
                 <div>
                   <div class="search-result-name">${escapeHtml(account.name)}</div>
                   ${account.domain ? `<div class="search-result-domain">${escapeHtml(account.domain)}</div>` : ''}
@@ -1581,7 +1581,7 @@
 
         let orgHtml = '';
         if (activity.org_id) {
-          orgHtml = `<a href="/manage/accounts/${activity.org_id}" class="activity-org">${escapeHtml(activity.org_name || 'Unknown')}</a>`;
+          orgHtml = `<a href="/admin/accounts/${activity.org_id}" class="activity-org">${escapeHtml(activity.org_name || 'Unknown')}</a>`;
         } else if (activity.org_name) {
           orgHtml = `<span class="activity-org" style="color: var(--color-text-secondary);">${escapeHtml(activity.org_name)}</span>`;
         }
