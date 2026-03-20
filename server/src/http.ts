@@ -4035,7 +4035,7 @@ export class HTTPServer {
     // Admin sub-pages (accounts, referrals, analytics, geo)
     this.app.get('/admin/referrals', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-referrals.html'));
-    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/admin/accounts'));
+    this.app.get('/admin/prospects', requireAuth, requireAdmin, (req, res) => res.redirect(301, '/admin/accounts'));
     this.app.get('/admin/accounts', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-accounts.html'));
     this.app.get('/admin/accounts/:orgId', requireAuth, requireAdmin, (req, res) =>
