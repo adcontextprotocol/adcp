@@ -672,17 +672,44 @@ export function createWorkOSWebhooksRouter(): Router {
             await upsertMembership(membership);
             // Try to auto-link to Slack account by email (in case user.created didn't catch it)
             if (membership.status === 'active') {
+              let workosUser: any;
               try {
-                const workosUser = await workos.userManagement.getUser(membership.user_id);
-                const linkResult = await tryAutoLinkWebsiteUserToSlack(membership.user_id, workosUser.email);
-                if (linkResult.linked) {
-                  logger.info(
-                    { userId: membership.user_id, email: workosUser.email, slackUserId: linkResult.slack_user_id },
-                    'Auto-linked website user to Slack account on membership creation'
-                  );
-                }
+                workosUser = await workos.userManagement.getUser(membership.user_id);
               } catch (error) {
                 logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
+              }
+
+              if (workosUser) {
+                // Slack auto-link
+                try {
+                  const linkResult = await tryAutoLinkWebsiteUserToSlack(membership.user_id, workosUser.email);
+                  if (linkResult.linked) {
+                    logger.info(
+                      { userId: membership.user_id, email: workosUser.email, slackUserId: linkResult.slack_user_id },
+                      'Auto-linked website user to Slack account on membership creation'
+                    );
+                  }
+                } catch (slackErr) {
+                  logger.debug({ error: slackErr, userId: membership.user_id }, 'Could not auto-link Slack on membership');
+                }
+
+                // Match pending certification expectations by email
+                try {
+                  const { matchExpectationToUser } = await import('../db/certification-db.js');
+                  const matched = await matchExpectationToUser(
+                    membership.organization_id,
+                    workosUser.email,
+                    membership.user_id
+                  );
+                  if (matched) {
+                    logger.info(
+                      { userId: membership.user_id, email: workosUser.email, orgId: membership.organization_id },
+                      'Matched certification expectation to new org member'
+                    );
+                  }
+                } catch (certErr) {
+                  logger.warn({ error: certErr, userId: membership.user_id }, 'Could not match cert expectation on membership');
+                }
               }
             }
             invalidateUnifiedUsersCache();

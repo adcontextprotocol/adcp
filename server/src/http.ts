@@ -7227,12 +7227,17 @@ Disallow: /api/admin/
   }
 
   async start(port: number = 3000): Promise<void> {
+
     // Initialize OpenTelemetry logging for PostHog (all log levels)
+
     const { initOtelLogs, emitLog } = await import('./utils/otel-logs.js');
+
     const { setLogHook } = await import('./logger.js');
+
     if (initOtelLogs()) {
       setLogHook(emitLog);
     }
+
 
     // Initialize PostHog error tracking (captures all logger.error() calls as exceptions)
     const { initPostHogErrorTracking } = await import('./utils/posthog.js');
@@ -7248,7 +7253,9 @@ Disallow: /api/admin/
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+
     await runMigrations();
+
 
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)
     if (AUTH_ENABLED && workos) {
@@ -7282,6 +7289,7 @@ Disallow: /api/admin/
       }
     }
 
+
     // Pre-warm caches for all agents in background
     const allAgents = await this.agentService.listAgents();
     logger.debug({ agentCount: allAgents.length }, 'Pre-warming caches');
@@ -7312,6 +7320,7 @@ Disallow: /api/admin/
       jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);
       jobScheduler.stop(JOB_NAMES.GEO_CONTENT_PLANNER);
     }
+
 
     this.server = this.app.listen(port, () => {
       logger.info({
