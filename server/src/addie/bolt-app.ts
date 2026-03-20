@@ -116,6 +116,7 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { getDigestByReviewMessage, approveDigest } from '../db/digest-db.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import * as personEvents from '../db/person-events-db.js';
+import { notifyAdminsOfNewQueueItem } from '../notifications/approval-queue-alerts.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -3294,7 +3295,7 @@ async function handleChannelMessage({
     if (plan.action === 'clarify') {
       // Queue clarifying question for approval
       try {
-        await addieDb.queueForApproval({
+        const queuedItem = await addieDb.queueForApproval({
           action_type: 'reply',
           target_channel_id: channelId,
           target_thread_ts: threadTs,
@@ -3311,6 +3312,7 @@ async function handleChannelMessage({
           },
           expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
         });
+        notifyAdminsOfNewQueueItem(queuedItem);
         logger.info({ channelId, userId }, 'Addie Bolt: Clarifying question queued for approval');
       } catch (error) {
         logger.error({ error, channelId }, 'Addie Bolt: Failed to queue clarifying question for approval');
@@ -3392,7 +3394,7 @@ async function handleChannelMessage({
 
     // Queue the response for admin approval
     try {
-      await addieDb.queueForApproval({
+      const queuedResponse = await addieDb.queueForApproval({
         action_type: 'reply',
         target_channel_id: channelId,
         target_thread_ts: threadTs,
@@ -3413,6 +3415,7 @@ async function handleChannelMessage({
         },
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
       });
+      notifyAdminsOfNewQueueItem(queuedResponse);
       logger.info({ channelId, userId }, 'Addie Bolt: Proposed response queued for approval');
     } catch (error) {
       logger.error({ error, channelId }, 'Addie Bolt: Failed to queue response for approval');
