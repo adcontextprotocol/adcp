@@ -34,7 +34,6 @@ import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from 
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
-import { runApprovalQueueDigestJob } from '../../notifications/approval-queue-alerts.js';
 import { logger } from '../../logger.js';
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
@@ -302,17 +301,6 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.briefsCreated > 0,
   });
 
-  // Approval queue digest - reminds admins about pending items
-  jobScheduler.register({
-    name: 'approval-queue-digest',
-    description: 'Approval queue digest',
-    interval: { value: 2, unit: 'hours' },
-    initialDelay: { value: 5, unit: 'minutes' },
-    runner: runApprovalQueueDigestJob,
-    businessHours: { startHour: 9, endHour: 18, skipWeekends: true },
-    shouldLogResult: (r) => r.alertsSent > 0,
-  });
-
   // Event reminder - sends notifications ~24h before events start
   jobScheduler.register({
     name: 'event-reminder',
@@ -382,5 +370,4 @@ export const JOB_NAMES = {
   GEO_MONITOR: 'geo-monitor',
   GEO_SNAPSHOT: 'geo-snapshot',
   GEO_CONTENT_PLANNER: 'geo-content-planner',
-  APPROVAL_QUEUE_DIGEST: 'approval-queue-digest',
 } as const;

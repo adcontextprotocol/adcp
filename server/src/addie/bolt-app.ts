@@ -116,7 +116,6 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { getDigestByReviewMessage, approveDigest } from '../db/digest-db.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import * as personEvents from '../db/person-events-db.js';
-import { notifyAdminsOfNewQueueItem } from '../notifications/approval-queue-alerts.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -3293,29 +3292,30 @@ async function handleChannelMessage({
     }
 
     if (plan.action === 'clarify') {
-      // Queue clarifying question for approval
+      const questionValidation = validateOutput(plan.question);
+      if (questionValidation.flagged) {
+        logger.warn({ channelId, reason: questionValidation.reason }, 'Addie Bolt: Clarifying question flagged');
+        return;
+      }
+
+      // Log clarifying question to unified thread
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: questionValidation.sanitized,
+        router_decision: buildRouterDecision(plan),
+      });
+
+      // Post clarifying question directly to the channel thread
       try {
-        const queuedItem = await addieDb.queueForApproval({
-          action_type: 'reply',
-          target_channel_id: channelId,
-          target_thread_ts: threadTs,
-          proposed_content: plan.question,
-          trigger_type: 'channel_message',
-          trigger_context: {
-            original_message: messageText.substring(0, 1000),
-            user_id: userId,
-            user_display_name: memberContext?.slack_user?.display_name || undefined,
-            is_clarifying_question: true,
-            router_reason: plan.reason,
-            router_decision_method: plan.decision_method,
-            router_latency_ms: plan.latency_ms,
-          },
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        await boltApp?.client.chat.postMessage({
+          channel: channelId,
+          text: wrapUrlsForSlack(questionValidation.sanitized),
+          thread_ts: threadTs,
         });
-        notifyAdminsOfNewQueueItem(queuedItem);
-        logger.info({ channelId, userId }, 'Addie Bolt: Clarifying question queued for approval');
+        logger.info({ channelId, userId }, 'Addie Bolt: Posted clarifying question to channel');
       } catch (error) {
-        logger.error({ error, channelId }, 'Addie Bolt: Failed to queue clarifying question for approval');
+        logger.error({ error, channelId }, 'Addie Bolt: Failed to post clarifying question');
       }
       return;
     }
@@ -3362,7 +3362,7 @@ async function handleChannelMessage({
       return;
     }
 
-    // Log assistant response to unified thread (even though it's pending approval)
+    // Log assistant response to unified thread
     await threadService.addMessage({
       thread_id: thread.thread_id,
       role: 'assistant',
@@ -3392,33 +3392,16 @@ async function handleChannelMessage({
       router_decision: buildRouterDecision(plan),
     });
 
-    // Queue the response for admin approval
+    // Post the response directly to the channel thread
     try {
-      const queuedResponse = await addieDb.queueForApproval({
-        action_type: 'reply',
-        target_channel_id: channelId,
-        target_thread_ts: threadTs,
-        proposed_content: outputValidation.sanitized,
-        trigger_type: 'channel_message',
-        trigger_context: {
-          original_message: messageText.substring(0, 1000),
-          user_id: userId,
-          user_display_name: memberContext?.slack_user?.display_name || undefined,
-          tools_used: response.tools_used,
-          router_tool_sets: plan.tool_sets,
-          router_reason: plan.reason,
-          router_decision_method: plan.decision_method,
-          router_latency_ms: plan.latency_ms,
-          router_tokens_input: plan.tokens_input,
-          router_tokens_output: plan.tokens_output,
-          router_model: plan.model,
-        },
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      await boltApp?.client.chat.postMessage({
+        channel: channelId,
+        text: wrapUrlsForSlack(outputValidation.sanitized),
+        thread_ts: threadTs,
       });
-      notifyAdminsOfNewQueueItem(queuedResponse);
-      logger.info({ channelId, userId }, 'Addie Bolt: Proposed response queued for approval');
+      logger.info({ channelId, userId }, 'Addie Bolt: Posted response to channel');
     } catch (error) {
-      logger.error({ error, channelId }, 'Addie Bolt: Failed to queue response for approval');
+      logger.error({ error, channelId }, 'Addie Bolt: Failed to post response to channel');
     }
 
   } catch (error) {
