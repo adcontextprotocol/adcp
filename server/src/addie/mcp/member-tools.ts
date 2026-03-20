@@ -2928,8 +2928,17 @@ export function createMemberToolHandlers(
       return '❌ Unable to identify your Slack user. This tool is only available in Slack.';
     }
 
+    const optOutProvided = input.opt_out !== undefined;
     const optOut = input.opt_out === true;
-    const cadence = input.cadence as 'default' | 'monthly' | 'quarterly' | undefined;
+    const validCadences = ['default', 'monthly', 'quarterly'] as const;
+    const cadence = validCadences.includes(input.cadence as any)
+      ? (input.cadence as (typeof validCadences)[number])
+      : undefined;
+
+    // Require at least one parameter — calling with empty params should not silently change state
+    if (!optOutProvided && !cadence) {
+      return 'Please specify what you\'d like to change: opt out of messages (`opt_out: true`), or set a cadence (`monthly` or `quarterly`). You can also set cadence to `default` to return to normal frequency.';
+    }
 
     // Guard: calling with no parameters should not change state
     if (input.opt_out === undefined && !cadence) {
@@ -2958,7 +2967,9 @@ export function createMemberToolHandlers(
         const nextContact = new Date();
         nextContact.setDate(nextContact.getDate() + cadenceDays);
 
-        await relationshipDb.setCadence(relationship.id, false, nextContact);
+        // Clear opted_out — setting a cadence implies opting back in
+        await relationshipDb.setOptedOut(relationship.id, false);
+        await relationshipDb.setNextContactAfter(relationship.id, nextContact);
         await personEvents.recordEvent(relationship.id, 'preference_changed', {
           channel: 'slack',
           data: { cadence, nextContactAfter: nextContact.toISOString() },
@@ -2967,7 +2978,8 @@ export function createMemberToolHandlers(
       }
 
       // Default: opt back in with normal cadence
-      await relationshipDb.setCadence(relationship.id, false, null);
+      await relationshipDb.setOptedOut(relationship.id, false);
+      await relationshipDb.setNextContactAfter(relationship.id, null);
       await personEvents.recordEvent(relationship.id, 'preference_changed', {
         channel: 'slack',
         data: { preference: 'opted_in', cadence: 'default' },
