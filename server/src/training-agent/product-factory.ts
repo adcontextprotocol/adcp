@@ -19,6 +19,12 @@ interface Episode {
   status: string;
   scheduled_at?: string;
   duration_seconds?: number;
+  special?: {
+    name: string;
+    category?: string;
+    starts?: string;
+    ends?: string;
+  };
 }
 
 interface ShowSelector {
@@ -420,11 +426,12 @@ function buildProduct(
           if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
           if (ep.durationSeconds) episode.duration_seconds = ep.durationSeconds;
           if (ep.special) {
-            const special: Record<string, unknown> = { name: ep.special.name };
-            if (ep.special.category) special.category = ep.special.category;
-            if (ep.special.starts) special.starts = ep.special.starts;
-            if (ep.special.ends) special.ends = ep.special.ends;
-            episode.special = special;
+            episode.special = {
+              name: ep.special.name,
+              ...(ep.special.category && { category: ep.special.category }),
+              ...(ep.special.starts && { starts: ep.special.starts }),
+              ...(ep.special.ends && { ends: ep.special.ends }),
+            };
           }
           episodes.push(episode);
         }
