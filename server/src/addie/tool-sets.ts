@@ -292,6 +292,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'suggest_prospects',
       'set_reminder',
       'my_upcoming_tasks',
+      'complete_task',
       'log_conversation',
       'get_insight_summary',
       'get_member_search_analytics',
