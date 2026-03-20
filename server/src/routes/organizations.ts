@@ -1017,6 +1017,20 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain } = req.body;
 
+      // Limit how many organizations a single user can own
+      const pool = getPool();
+      const orgCountResult = await pool.query(
+        `SELECT COUNT(*) AS count FROM organization_memberships WHERE workos_user_id = $1`,
+        [user.id],
+      );
+      const orgCount = parseInt(orgCountResult.rows[0].count, 10);
+      if (orgCount >= 10) {
+        return res.status(400).json({
+          error: 'Organization limit reached',
+          message: 'You have reached the maximum number of organizations. Please contact support if you need more.',
+        });
+      }
+
       // Validate required fields
       if (!organization_name) {
         return res.status(400).json({
@@ -1112,7 +1126,6 @@ export function createOrganizationsRouter(): Router {
 
       // Check if an org with this domain already exists BEFORE creating
       if (verifiedDomain) {
-        const pool = getPool();
         const existingOrgResult = await pool.query(
           `SELECT o.workos_organization_id, o.name
            FROM organization_domains od
@@ -1180,8 +1193,6 @@ export function createOrganizationsRouter(): Router {
 
       // Create verified domain record for non-personal organizations
       if (verifiedDomain) {
-        const pool = getPool();
-
         // Check if domain is already claimed by another organization
         const existingDomainResult = await pool.query(
           `SELECT workos_organization_id FROM organization_domains WHERE domain = $1`,
