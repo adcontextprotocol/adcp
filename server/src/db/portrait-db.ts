@@ -5,7 +5,7 @@
  * and rate-limit tracking.
  */
 
-import { query } from './client.js';
+import { query, getPool } from './client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('portrait-db');
@@ -99,18 +99,25 @@ export async function createPortrait(data: {
 
 /** Approve a portrait and set it as the profile's active portrait */
 export async function approvePortrait(portraitId: string, profileId: string): Promise<PortraitMetadata | null> {
-  // Update portrait status
-  await query(
-    `UPDATE member_portraits SET status = 'approved', approved_at = NOW(), updated_at = NOW()
-     WHERE id = $1 AND member_profile_id = $2`,
-    [portraitId, profileId]
-  );
-
-  // Point member_profiles.portrait_id at this portrait
-  await query(
-    `UPDATE member_profiles SET portrait_id = $1, updated_at = NOW() WHERE id = $2`,
-    [portraitId, profileId]
-  );
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE member_portraits SET status = 'approved', approved_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND member_profile_id = $2`,
+      [portraitId, profileId]
+    );
+    await client.query(
+      `UPDATE member_profiles SET portrait_id = $1, updated_at = NOW() WHERE id = $2`,
+      [portraitId, profileId]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
   return getPortraitById(portraitId);
 }

@@ -136,6 +136,12 @@ export function createIllustrationToolHandlers(
         return JSON.stringify({ error: 'Perspective not found with that slug.' });
       }
 
+      // Verify the user is an author of this perspective
+      const isAuthor = await illustrationDb.isAuthorOfPerspective(perspective.id, userId);
+      if (!isAuthor) {
+        return JSON.stringify({ error: 'Only authors can generate illustrations for their own articles.' });
+      }
+
       // Generate
       const { imageBuffer, promptUsed } = await generateIllustration({
         title: perspective.title,

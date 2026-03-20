@@ -5,7 +5,7 @@
  * creation, approval, serving, and rate-limit tracking.
  */
 
-import { query } from './client.js';
+import { query, getPool } from './client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('illustration-db');
@@ -93,16 +93,25 @@ export async function createIllustration(data: {
 
 /** Approve an illustration and set it as the perspective's active illustration */
 export async function approveIllustration(illustrationId: string, perspectiveId: string): Promise<IllustrationMetadata | null> {
-  await query(
-    `UPDATE perspective_illustrations SET status = 'approved', approved_at = NOW(), updated_at = NOW()
-     WHERE id = $1 AND perspective_id = $2`,
-    [illustrationId, perspectiveId]
-  );
-
-  await query(
-    `UPDATE perspectives SET illustration_id = $1, updated_at = NOW() WHERE id = $2`,
-    [illustrationId, perspectiveId]
-  );
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE perspective_illustrations SET status = 'approved', approved_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND perspective_id = $2`,
+      [illustrationId, perspectiveId]
+    );
+    await client.query(
+      `UPDATE perspectives SET illustration_id = $1, updated_at = NOW() WHERE id = $2`,
+      [illustrationId, perspectiveId]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
   return getIllustrationById(illustrationId);
 }
@@ -118,15 +127,23 @@ export async function rejectIllustration(id: string): Promise<boolean> {
 
 /** Count generations for a user in the current month (for rate limiting) */
 export async function countMonthlyGenerations(userId: string): Promise<number> {
-  // Count via content_authors — the user is identified by their workos_user_id
   const result = await query<{ count: string }>(
     `SELECT COUNT(*) as count FROM perspective_illustrations pi
      JOIN content_authors ca ON ca.perspective_id = pi.perspective_id
-     WHERE ca.workos_user_id = $1
+     WHERE ca.user_id = $1
        AND pi.created_at >= date_trunc('month', NOW())`,
     [userId]
   );
   return parseInt(result.rows[0].count, 10);
+}
+
+/** Check if a user is an author of a perspective */
+export async function isAuthorOfPerspective(perspectiveId: string, userId: string): Promise<boolean> {
+  const result = await query(
+    `SELECT 1 FROM content_authors WHERE perspective_id = $1 AND user_id = $2`,
+    [perspectiveId, userId]
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 /** Get perspective + illustration info by slug (for card.png endpoint) */

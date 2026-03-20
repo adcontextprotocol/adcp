@@ -77,57 +77,6 @@ function wrapText(text: string, maxCharsPerLine: number): string[] {
 }
 
 /**
- * Build an SVG text overlay for the bottom portion of a card.
- * Used by both the typographic fallback and the AI composite.
- */
-function buildTextOverlaySvg(options: {
-  title: string;
-  category?: string;
-  authorName?: string;
-  authorTitle?: string;
-  hasPortrait?: boolean;
-}): string {
-  const { title, category, authorName, authorTitle, hasPortrait } = options;
-
-  const titleLines = wrapText(title, 30);
-  const titleFontSize = titleLines.length <= 2 ? 48 : 40;
-  const titleLineHeight = titleFontSize * 1.25;
-
-  // Position title in lower portion of card
-  const titleBaseY = 440;
-  const titleStartY = titleBaseY - (titleLines.length - 1) * titleLineHeight;
-
-  // If portrait present, shift title right to make room
-  const titleX = hasPortrait ? 180 : 60;
-
-  const titleTexts = titleLines.map((line, i) =>
-    `<text x="${titleX}" y="${titleStartY + i * titleLineHeight}" font-family="Georgia, 'Times New Roman', serif" font-size="${titleFontSize}" font-weight="700" fill="white">${escapeXml(line)}</text>`
-  ).join('\n    ');
-
-  const categoryY = titleStartY - 30;
-  const categoryText = category
-    ? `<text x="${titleX}" y="${categoryY}" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="white" opacity="0.7" letter-spacing="2.5">${escapeXml(category.toUpperCase())}</text>`
-    : '';
-
-  let authorText = '';
-  if (authorName) {
-    const authorX = hasPortrait ? 180 : 60;
-    const authorY = titleStartY + titleLines.length * titleLineHeight + 24;
-    authorText = `<text x="${authorX}" y="${authorY}" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="600" fill="white" opacity="0.8">${escapeXml(authorName)}</text>`;
-    if (authorTitle) {
-      authorText += `\n    <text x="${authorX}" y="${authorY + 22}" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="white" opacity="0.5">${escapeXml(authorTitle)}</text>`;
-    }
-  }
-
-  const aaoMark = `<text x="1140" y="40" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="white" opacity="0.4" text-anchor="end" letter-spacing="1">AGENTICADVERTISING.ORG</text>`;
-
-  return `${aaoMark}
-    ${categoryText}
-    ${titleTexts}
-    ${authorText}`;
-}
-
-/**
  * Typographic fallback card — amber gradient + title text.
  * Used when no AI illustration is available.
  */

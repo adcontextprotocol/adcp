@@ -15,8 +15,8 @@ const logger = createLogger('illustrations');
 export function createIllustrationRouter(): Router {
   const router = Router();
 
-  // GET /api/illustrations/:id/image - Serve illustration image as PNG
-  router.get('/:id/image', async (req: Request, res: Response) => {
+  // GET /api/illustrations/:id/image.png - Serve illustration image as PNG
+  router.get('/:id/image.png', async (req: Request, res: Response) => {
     try {
       const data = await illustrationDb.getIllustrationData(req.params.id);
       if (!data) {
@@ -50,6 +50,12 @@ export function createIllustrationRouter(): Router {
       const perspective = await illustrationDb.getPerspectiveWithIllustration(perspectiveSlug);
       if (!perspective) {
         return res.status(404).json({ error: 'Perspective not found' });
+      }
+
+      // Verify user is an author of this perspective
+      const isAuthor = await illustrationDb.isAuthorOfPerspective(perspective.id, user.id);
+      if (!isAuthor) {
+        return res.status(403).json({ error: 'Only the article author can generate illustrations' });
       }
 
       // Check rate limit

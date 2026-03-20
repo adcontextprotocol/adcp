@@ -78,7 +78,7 @@ import { createContentRouter, createMyContentRouter } from "./routes/content.js"
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
 import { createPortraitRouter, createPublicPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
-// Illustration router loaded inline — no top-level import needed
+import { createIllustrationRouter } from "./routes/illustrations.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
@@ -1046,7 +1046,8 @@ export class HTTPServer {
     this.app.use('/api/portraits', createPublicPortraitRouter());
     this.app.use('/api/admin/portraits', createAdminPortraitRouter());
 
-    // Illustration routes are served via card.png endpoint — no separate router needed
+    // Mount illustration routes
+    this.app.use('/api/illustrations', createIllustrationRouter());
 
     // Mount community routes
     const communityDb = new CommunityDatabase();
