@@ -351,11 +351,10 @@ export function createCertificationRouters() {
     }
   });
 
-  // POST /api/me/certification/expectation/snooze — snooze cert nudges for 7 days
+  // POST /api/me/certification/expectation/snooze — progressive snooze (7d → 30d → auto-decline)
   userRouter.post('/certification/expectation/snooze', async (req, res) => {
     try {
       const userId = req.user!.id;
-      const days = Math.min(Math.max(parseInt(req.body?.days) || 7, 1), 30);
 
       const orgResult = await query<{ workos_organization_id: string }>(
         `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
@@ -364,6 +363,22 @@ export function createCertificationRouters() {
       const orgId = orgResult.rows[0]?.workos_organization_id;
       if (!orgId) return res.status(404).json({ error: 'No organization found' });
 
+      // Check current expectation to determine snooze progression
+      const existing = await certDb.getCertExpectationForUser(orgId, userId);
+      if (!existing || existing.status === 'completed' || existing.status === 'declined') {
+        return res.status(404).json({ error: 'No active expectation found' });
+      }
+
+      // Progressive backoff: first snooze = 7 days, second = 30 days, third = auto-decline
+      const previouslySnooozed = existing.snooze_until !== null;
+      if (previouslySnooozed && existing.snooze_until && new Date(existing.snooze_until) < new Date()) {
+        // They've snoozed before and it expired — this is the second+ snooze
+        // Auto-decline instead of snoozeing indefinitely
+        await certDb.declineCertExpectation(orgId, userId);
+        return res.json({ status: 'declined', message: 'No worries — certification is always available if you change your mind.' });
+      }
+
+      const days = previouslySnooozed ? 30 : 7;
       const result = await certDb.snoozeCertExpectation(orgId, userId, days);
       if (!result) return res.status(404).json({ error: 'No active expectation found' });
 
@@ -409,6 +424,7 @@ export function createCertificationRouters() {
       const { members, ...rest } = summary;
 
       const pendingExpectations = expectations
+        .filter(e => e.status !== 'declined') // Respect opt-out privacy
         .filter(e => !e.workos_user_id || !members.some(m => m.user_id === e.workos_user_id))
         .map(e => ({
           id: e.id,
@@ -543,9 +559,16 @@ export function createCertificationRouters() {
         return res.status(400).json({ error: 'Invalid invitation ID' });
       }
 
-      // Verify caller is a member of this org
-      if (!await isOrgMember(userId, orgId)) {
+      // Verify caller is an admin of this org
+      const resendMembership = await query<{ role: string }>(
+        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [userId, orgId]
+      );
+      if (!resendMembership.rows[0]) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
+      }
+      if (resendMembership.rows[0].role !== 'admin') {
+        return res.status(403).json({ error: 'Only organization admins can resend certification invitations' });
       }
 
       const updated = await certDb.resendCertExpectation(id, orgId);

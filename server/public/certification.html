@@ -981,7 +981,7 @@
           if (declineLink) {
             declineLink.addEventListener('click', function(ev) {
               ev.preventDefault();
-              if (!confirm('Got it. You can always come back to certification later if things change.')) return;
+              if (!confirm('Are you sure? You can always come back later if things change.')) return;
               fetch('/api/me/certification/expectation/decline', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
