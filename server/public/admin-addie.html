@@ -420,27 +420,6 @@
       margin-bottom: var(--space-2);
     }
 
-    /* Queue items */
-    .queue-item {
-      border: var(--border-1) solid var(--color-gray-200);
-      border-radius: var(--radius-md);
-      padding: var(--space-4);
-      margin-bottom: var(--space-3);
-    }
-    .queue-item-content {
-      background: var(--color-bg-subtle);
-      padding: var(--space-3);
-      border-radius: var(--radius-sm);
-      margin: var(--space-3) 0;
-      font-size: var(--text-sm);
-      white-space: pre-wrap;
-    }
-    .queue-item-actions {
-      display: flex;
-      gap: var(--space-2);
-      margin-top: var(--space-3);
-    }
-
     /* Rules list */
     .rules-list {
       display: grid;
@@ -1274,10 +1253,6 @@
         <div class="stat-value" id="stat-flagged">-</div>
         <div class="stat-label">Flagged</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value" id="stat-pending">-</div>
-        <div class="stat-label">Pending Approval</div>
-      </div>
     </div>
 
     <!-- Tabs -->
@@ -1289,7 +1264,6 @@
       <button class="tab" data-tab="threads">Threads</button>
       <button class="tab" data-tab="evaluation">Evaluation</button>
       <button class="tab" data-tab="performance">Performance</button>
-      <button class="tab" data-tab="queue">Approval Queue</button>
       <button class="tab" data-tab="images">Images</button>
     </div>
 
@@ -1970,17 +1944,6 @@
       </div>
     </div>
 
-    <!-- Approval Queue Tab -->
-    <div class="tab-content" id="tab-queue">
-      <div class="card">
-        <div id="queue-list">
-          <div class="empty-state">
-            <h3>Loading...</h3>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Images Tab -->
     <div class="tab-content" id="tab-images">
       <div class="card">
@@ -2184,7 +2147,6 @@
           if (tabName === 'threads') loadThreads();
           if (tabName === 'evaluation') loadEvaluationData();
           if (tabName === 'knowledge') loadKnowledge();
-          if (tabName === 'queue') loadQueue();
           if (tabName === 'suggestions') loadSuggestions();
           if (tabName === 'images') loadImagesTab();
         }
@@ -2194,16 +2156,14 @@
     // Load stats
     async function loadStats() {
       try {
-        const [knowledgeRes, threadsRes, queueRes, configRes] = await Promise.all([
+        const [knowledgeRes, threadsRes, configRes] = await Promise.all([
           fetch('/api/admin/addie/knowledge/categories'),
           fetch('/api/admin/addie/threads/stats'),
-          fetch('/api/admin/addie/queue/stats'),
           fetch('/api/admin/addie/config/current')
         ]);
 
         const knowledge = await knowledgeRes.json();
         const threads = await threadsRes.json();
-        const queue = await queueRes.json();
         const config = await configRes.json();
 
         const totalKnowledge = knowledge.categories?.reduce((sum, c) => sum + c.count, 0) || 0;
@@ -2211,7 +2171,6 @@
         document.getElementById('stat-threads').textContent = threads.threads_30d || 0;
         document.getElementById('stat-messages').textContent = threads.messages_30d || 0;
         document.getElementById('stat-flagged').textContent = threads.flagged_threads || 0;
-        document.getElementById('stat-pending').textContent = queue.pending || 0;
 
         // Update config version banner
         if (config.config_version) {
@@ -2844,40 +2803,6 @@
       }
     }
 
-    // Load approval queue
-    async function loadQueue() {
-      try {
-        const response = await fetch('/api/admin/addie/queue');
-        const data = await response.json();
-
-        const list = document.getElementById('queue-list');
-        if (!data.items || data.items.length === 0) {
-          list.innerHTML = '<div class="empty-state"><h3>No pending approvals</h3><p>Addie will queue proactive actions here for your review.</p></div>';
-          return;
-        }
-
-        list.innerHTML = data.items.map(item => `
-          <div class="queue-item">
-            <div class="interaction-meta">
-              <span class="badge badge-pending">${item.action_type}</span>
-              <span>${item.trigger_type}</span>
-              <span>${new Date(item.created_at).toLocaleString()}</span>
-              ${item.expires_at ? `<span>Expires: ${new Date(item.expires_at).toLocaleString()}</span>` : ''}
-            </div>
-            <div class="queue-item-content">${escapeHtml(item.proposed_content)}</div>
-            <div class="queue-item-actions">
-              <button class="btn btn-small btn-primary" onclick="approveItem(${item.id})">Approve</button>
-              <button class="btn btn-small btn-danger" onclick="rejectItem(${item.id})">Reject</button>
-            </div>
-          </div>
-        `).join('');
-      } catch (error) {
-        console.error('Error loading queue:', error);
-        document.getElementById('queue-list').innerHTML =
-          '<div class="empty-state"><h3>Error loading queue</h3></div>';
-      }
-    }
-
     // Knowledge modal functions
     function openKnowledgeModal(doc = null) {
       document.getElementById('knowledge-modal-title').textContent = doc ? 'Edit Knowledge' : 'Add Knowledge';
@@ -3030,42 +2955,6 @@
       } catch (error) {
         console.error('Error unflagging thread:', error);
         alert('Error unflagging thread: ' + error.message);
-      }
-    }
-
-    // Approve/reject queue items
-    async function approveItem(id) {
-      try {
-        const response = await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
-        loadQueue();
-        loadStats();
-      } catch (error) {
-        console.error('Error approving item:', error);
-        alert('Error approving item: ' + error.message);
-      }
-    }
-
-    async function rejectItem(id) {
-      const reason = prompt('Reason for rejection (optional):');
-      try {
-        const response = await fetch(`/api/admin/addie/queue/${id}/reject`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason })
-        });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
-        loadQueue();
-        loadStats();
-      } catch (error) {
-        console.error('Error rejecting item:', error);
-        alert('Error rejecting item: ' + error.message);
       }
     }
 
@@ -5132,7 +5021,6 @@
     loadKnowledge();
     loadThreadsTools();
     loadThreads();
-    loadQueue();
 
     // Check for thread parameter in URL and open that thread
     const urlParams = new URLSearchParams(window.location.search);
