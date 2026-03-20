@@ -7248,6 +7248,7 @@ Disallow: /api/admin/
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+
     await runMigrations();
 
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)
