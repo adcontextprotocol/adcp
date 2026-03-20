@@ -55,6 +55,13 @@ interface LatestArticle {
   created_at: string;
 }
 
+// Author type for content_authors join
+interface ContentAuthor {
+  display_name: string;
+  display_title: string | null;
+  portrait_id: string | null;
+}
+
 // Perspective type for research section
 interface PerspectiveArticle {
   id: string;
@@ -63,6 +70,7 @@ interface PerspectiveArticle {
   summary: string | null;
   author_name: string | null;
   author_title: string | null;
+  authors: ContentAuthor[];
   feed_name: string | null;
   published_at: string | null;
   created_at: string;
@@ -253,6 +261,20 @@ export function createLatestRouter(): {
              p.excerpt as summary,
              p.author_name,
              p.author_title,
+             p.featured_image_url,
+             COALESCE(
+               (SELECT json_agg(json_build_object(
+                 'display_name', ca.display_name,
+                 'display_title', ca.display_title,
+                 'portrait_id', mp.portrait_id::text
+               ) ORDER BY ca.display_order)
+               FROM content_authors ca
+               LEFT JOIN organization_memberships om ON om.workos_user_id = ca.user_id
+               LEFT JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
+                 AND mp.portrait_id IS NOT NULL
+               WHERE ca.perspective_id = p.id),
+               '[]'::json
+             ) AS authors,
              p.external_site_name as feed_name,
              p.published_at,
              p.created_at,
@@ -281,6 +303,8 @@ export function createLatestRouter(): {
           feed_name: p.feed_name,
           author_name: p.author_name,
           author_title: p.author_title,
+          authors: p.authors || [],
+          featured_image_url: (p as any).featured_image_url || null,
           published_at: p.published_at,
           created_at: p.created_at,
         }));

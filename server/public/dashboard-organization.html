@@ -1101,14 +1101,14 @@
       const hdr = `
         <div class="hub-card-header">
           <span class="hub-card-title">Team certification</span>
-          <a href="/certification" class="hub-card-link">View portal →</a>
+          <a href="/academy" class="hub-card-link">View portal →</a>
         </div>`;
 
       if (members_with_credentials === 0 && members.every(m => m.modules_completed === 0)) {
         return `${hdr}
           <div class="hub-empty">
             <p>No team members have started certification yet.</p>
-            <a href="/certification">Explore AdCP Academy →</a>
+            <a href="/academy">Explore AdCP Academy →</a>
           </div>`;
       }
 

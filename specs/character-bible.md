@@ -219,9 +219,9 @@ Maintain consistency with companies already in use across docs:
 
 ### 7. Tomoko Hara
 
-**Primary domain:** Brand protocol + accounts
+**Primary domain:** Brand protocol + accounts + buy-side strategy
 **Company:** Nova Motors (electric vehicle manufacturer, large enterprise)
-**Title:** Global brand operations manager
+**Title:** Head of media & brand operations
 **Certification module:** Brand protocol sections, accounts walkthrough
 
 **Who she is:** Tomoko manages brand identity and operations at Nova Motors. She's the person who published Nova's brand.json, defined the authorized operators, and set the rules that AI agents must follow when generating Nova content. She works at the intersection of brand, legal, and technology -- she translated the brand guidelines PDF into machine-readable rules.

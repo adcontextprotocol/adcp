@@ -1,0 +1,22 @@
+[
+  {
+    "filename": "server/public/images/stories/cover-the-storefront.png",
+    "prompt": "A dramatic graphic novel cover composition. A young woman (Juno Park, a food creator) stands confidently in the foreground, slightly off-center left, wearing an apron over streetwear, holding a chef's knife like a sword. Behind her and to the right, a man (Ren Castillo, her operations manager) sits at a command center of holographic screens showing streaming metrics, deal flows, and audience graphs. Between them, a glowing teal storefront icon floats — a simple shop awning shape made of light. The background splits: the left side shows a warm kitchen set with cameras and lights, the right side shows a digital matrix of buyer agent connections radiating outward like a constellation. The overall mood is cinematic and aspirational — two people running an empire. Dramatic rim lighting, teal and warm amber color palette. Graphic novel aesthetic with bold compositions and strong silhouettes. Do not include any text, words, or labels in the image.",
+    "alt_text": "Graphic novel cover: a food creator with a chef's knife and her operations manager at a holographic command center, a glowing storefront icon between them"
+  },
+  {
+    "filename": "server/public/images/stories/ren-tuesday.png",
+    "prompt": "A young man (Ren Castillo, late 20s, creative professional) sits at a cluttered desk in a modern office. He has multiple monitors showing different things — one has an email thread, another has a spreadsheet, a phone shows unread DMs, a tablet shows YouTube analytics. Post-it notes everywhere. He has one hand on his forehead and the other reaching for his phone which is buzzing. The desk has coffee cups, a branded hot sauce bottle (Juno's Pantry), and stacked papers. Through a glass wall behind him, you can see a studio space where lights and cameras are set up. The mood is overwhelmed but competent — this is someone holding it all together but barely. Warm office lighting with cool screen glow on his face. Do not include any text, words, or labels in the image.",
+    "alt_text": "Ren Castillo overwhelmed at his desk — multiple screens showing emails, spreadsheets, DMs, and analytics, a studio visible through the glass wall behind him"
+  },
+  {
+    "filename": "server/public/images/stories/juno-creating.png",
+    "prompt": "A young woman (Juno Park, early 30s, Korean-American, food and travel creator) films herself cooking in a professional kitchen studio. She's mid-action — tossing ingredients in a wok with flames leaping up — while a camera on a robotic arm captures the shot. The kitchen is beautiful and designed for content: great lighting, colorful ingredients arranged on the counter, multiple camera angles visible. She's completely in flow, confident and joyful. On the counter nearby, bottles of her own hot sauce brand (Juno's Pantry) are casually visible. The mood is creative energy and mastery — this person loves what they do. Warm kitchen lighting with dramatic flame highlights. Do not include any text, words, or labels in the image.",
+    "alt_text": "Juno Park in her element — filming herself cooking with flames and a robotic camera arm, her hot sauce bottles visible on the counter"
+  },
+  {
+    "filename": "server/public/images/stories/storefront-live.png",
+    "prompt": "An abstract visualization of an agentic storefront going live. At the center, a glowing teal shop-front icon pulses with light. From it, dozens of thin luminous lines radiate outward in all directions, each connecting to a small glowing node — representing buyer agents discovering the storefront. Some nodes are close (big agencies), some are far (small DTC brands). The lines pulse with small dots of light flowing back and forth, representing conversations. The background is dark with a subtle grid, like a network visualization. A few of the nearest nodes show tiny holographic briefs or campaign cards floating next to them. The mood is the electric moment of connection — one storefront suddenly visible to everyone. Teal and white on dark background. Do not include any text, words, or labels in the image.",
+    "alt_text": "An agentic storefront going live — glowing teal icon at center with dozens of luminous connection lines radiating to buyer agent nodes, conversations flowing"
+  }
+]

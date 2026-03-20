@@ -25,12 +25,18 @@
   <meta name="twitter:image" id="twitterImage" content="https://agenticadvertising.org/AAo-social.png">
 
   <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/perspectives/utils.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
+
+    /* Compact hero for articles */
+    .hero--article.hero--clean {
+      padding: var(--space-6) var(--space-8) var(--space-4);
+    }
 
     /* Page-specific: narrower container for article content */
     .container { max-width: 900px; }
@@ -102,37 +108,70 @@
       margin: 2rem 0;
     }
 
-    .author-info {
-      margin-top: 2rem;
-      padding-top: 1.5rem;
-      border-top: 1px solid var(--color-border);
-      color: var(--color-text-muted);
-      font-size: 0.95rem;
+    .article-hero-image {
+      max-width: 720px;
+      margin: 0 auto var(--space-6);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
     }
-    .author-info strong {
-      color: var(--color-text-heading);
+    .article-hero-image img {
+      width: 100%;
+      aspect-ratio: 1200 / 630;
+      object-fit: cover;
+      display: block;
     }
 
-    .back-link {
-      display: inline-flex;
+    /* Author byline — sits in the hero, right under title */
+    .hero-byline {
+      display: flex;
       align-items: center;
-      gap: 0.5rem;
-      color: var(--color-brand);
-      text-decoration: none;
-      font-weight: 500;
-      margin-bottom: 2rem;
+      gap: 0.75rem;
+      justify-content: center;
+      margin-top: var(--space-4);
     }
-    .back-link:hover {
-      text-decoration: underline;
+    .hero-byline-name {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .hero-byline-name strong {
+      color: var(--color-text-heading);
+      font-weight: 600;
+    }
+    .author-portrait-ring {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      padding: 2px;
+      background: linear-gradient(135deg, #b45309, #d97706, #f59e0b);
+      flex-shrink: 0;
+    }
+    .author-portrait-ring img {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--color-gray-100);
+    }
+    .author-portrait-placeholder {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #92400e;
+      background: #fef3c7;
     }
 
-    /* Article actions bar */
+    /* Article meta bar (date + tags + like + share — one compact line) */
     .article-actions {
       display: flex;
       align-items: center;
-      gap: 1rem;
-      padding: 1rem 0;
-      margin-bottom: 2rem;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      margin-bottom: 1.5rem;
       border-bottom: 1px solid var(--color-border);
       flex-wrap: wrap;
     }
@@ -227,19 +266,18 @@
       color: white;
     }
 
-    /* Tags display */
+    /* Tags (inline in actions bar) */
     .article-tags {
       display: flex;
-      gap: 0.5rem;
+      gap: 0.375rem;
       flex-wrap: wrap;
-      margin-bottom: 1.5rem;
     }
 
     .article-tag {
-      font-size: 0.8rem;
+      font-size: 0.7rem;
       background: var(--color-gray-100);
-      color: var(--color-text-heading);
-      padding: 0.25rem 0.75rem;
+      color: var(--color-text-secondary);
+      padding: 0.15rem 0.5rem;
       border-radius: 4px;
     }
 
@@ -294,13 +332,17 @@
   <script src="/nav.js"></script>
 
   <!-- Dynamic Hero Section -->
-  <section class="hero hero--article" id="heroSection" style="display: none;">
+  <section class="hero hero--clean hero--article" id="heroSection" style="display: none;">
     <div class="hero-container">
       <div class="hero-breadcrumb">
-        <a href="/perspectives">Perspectives</a> / <span id="heroCategory">Article</span>
+        <a href="/stories">Stories</a> / <a href="/stories" id="heroCategoryLink">Perspectives</a>
       </div>
       <h1 id="heroTitle">Loading...</h1>
       <p class="hero-subtitle" id="heroSubtitle"></p>
+      <div id="authorInfo" class="hero-byline" style="display: none;">
+        <div id="authorPortraits" style="display:flex;align-items:center;"></div>
+        <span class="hero-byline-name"><strong id="authorName"></strong><span id="authorTitle"></span></span>
+      </div>
     </div>
   </section>
 
@@ -311,19 +353,10 @@
 
   <!-- Main Content -->
   <div class="container" id="mainContent" style="display: none;">
-    <a href="/perspectives" class="back-link">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      Back to Perspectives
-    </a>
-
-    <!-- Tags -->
-    <div id="articleTags" class="article-tags" style="display: none;"></div>
-
-    <!-- Actions Bar -->
+    <!-- Meta bar: date, tags, like, share -->
     <div class="article-actions">
       <span id="articleDate" class="article-date-published"></span>
+      <div id="articleTags" class="article-tags" style="display: none;"></div>
       <div class="action-divider"></div>
       <button id="likeButton" class="like-button" onclick="toggleLike()">
         <svg id="likeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -357,13 +390,11 @@
       </div>
     </div>
 
+    <div id="articleHeroImage" class="article-hero-image" style="display: none;"></div>
+
     <section class="article-section">
       <div id="articleContent" class="article-content">
         <!-- Markdown content will be rendered here -->
-      </div>
-
-      <div id="authorInfo" class="author-info" style="display: none;">
-        <p><strong id="authorName"></strong><span id="authorTitle"></span></p>
       </div>
     </section>
   </div>
@@ -373,23 +404,11 @@
     <div class="loading-state">
       <h2 style="color: var(--color-error-600); margin-bottom: 1rem;">Article Not Found</h2>
       <p>The article you're looking for doesn't exist or has been removed.</p>
-      <p><a href="/perspectives" style="color: var(--color-brand);">Return to Perspectives</a></p>
+      <p><a href="/stories" style="color: var(--color-brand);">Return to Stories</a></p>
     </div>
   </div>
 
-  <!-- Footer -->
-  <footer class="footer footer--centered">
-    <div class="footer-links">
-      <a href="/">Home</a>
-      <a href="/perspectives">Perspectives</a>
-      <a href="https://docs.adcontextprotocol.org">AdCP Documentation</a>
-      <a href="/members">Members</a>
-      <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
-    </div>
-    <div class="footer-copyright">
-      &copy; 2025 AgenticAdvertising.org
-    </div>
-  </footer>
+  <div id="adcp-footer"></div>
 
   <script>
     // Note: userFingerprint, checkUserLike, saveUserLike, escapeHtml, formatDate
@@ -565,7 +584,23 @@
           document.getElementById('heroSubtitle').style.display = 'block';
         }
         if (article.category) {
-          document.getElementById('heroCategory').textContent = article.category;
+          var catLink = document.getElementById('heroCategoryLink');
+          catLink.textContent = article.category;
+          // Link category to filtered stories page using first tag or category slug
+          var topicSlug = (article.tags && article.tags[0]) || article.category.toLowerCase().replace(/\s+/g, '-');
+          catLink.href = '/stories?topic=' + encodeURIComponent(topicSlug);
+        }
+
+        // Show hero image (illustration or featured image)
+        var heroImageUrl = article.featured_image_url
+          || (article.illustration_id ? '/api/perspectives/' + slug + '/card.png' : null);
+        if (heroImageUrl) {
+          var heroImgContainer = document.getElementById('articleHeroImage');
+          var heroImg = document.createElement('img');
+          heroImg.src = heroImageUrl;
+          heroImg.alt = '';
+          heroImgContainer.appendChild(heroImg);
+          heroImgContainer.style.display = 'block';
         }
 
         // Display tags
@@ -598,13 +633,34 @@
           document.getElementById('articleContent').innerHTML = DOMPurify.sanitize(renderedHtml);
         }
 
-        // Show author info if available
-        if (article.author_name) {
-          document.getElementById('authorName').textContent = article.author_name;
-          if (article.author_title) {
-            document.getElementById('authorTitle').textContent = `, ${article.author_title}`;
+        // Show author info with portraits
+        var authors = (article.authors && article.authors.length > 0)
+          ? article.authors
+          : (article.author_name ? [{ display_name: article.author_name.trim(), display_title: article.author_title, portrait_id: null }] : []);
+
+        if (authors.length > 0) {
+          var displayName = authors.map(function(a) { return a.display_name; }).join(' & ');
+          var displayTitle = authors[0].display_title || '';
+          document.getElementById('authorName').textContent = displayName;
+          if (displayTitle) {
+            document.getElementById('authorTitle').textContent = ', ' + displayTitle;
           }
-          document.getElementById('authorInfo').style.display = 'block';
+          var portraitsEl = document.getElementById('authorPortraits');
+          authors.forEach(function(a, i) {
+            var ring = document.createElement('div');
+            ring.className = 'author-portrait-ring';
+            if (i > 0) ring.style.marginLeft = '-12px';
+            ring.style.position = 'relative';
+            ring.style.zIndex = String(authors.length - i);
+            if (a.portrait_id) {
+              ring.innerHTML = '<img src="/api/portraits/' + escapeHtml(a.portrait_id) + '.png" alt="' + escapeHtml(a.display_name) + '">';
+            } else {
+              ring.innerHTML = '<div style="width:36px;height:36px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;font-size:0.875rem;font-weight:700;color:#92400e;">' + escapeHtml(a.display_name[0]) + '</div>';
+            }
+            ring.style.display = 'block';
+            portraitsEl.appendChild(ring);
+          });
+          document.getElementById('authorInfo').style.display = 'flex';
         }
 
         // Show content

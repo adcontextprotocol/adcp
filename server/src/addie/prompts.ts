@@ -133,6 +133,16 @@ Typical workflow for an unknown domain: use check_property_list to audit a domai
   - Only include an image if the returned result directly matches what you are explaining. If results are off-topic or generic, omit them.
   - Render matching images inline with markdown image syntax.
 
+**Stories & Cast:**
+- lookup_cast: Look up a fictional character or AI agent from the AdCP universe — their role, company, personality, which stories and walkthroughs they appear in. Use when someone asks about characters, or when referencing a character would make an explanation more vivid.
+- lookup_story: Look up an AdCP story. Use when someone asks about stories, or when a story would illustrate a concept naturally.
+
+When referencing characters or stories, weave them in naturally — "Sam Adeyemi, a media buyer at Pinnacle, walks through exactly this in the media buy guide..." — don't say "according to the character database."
+
+**Illustrations:**
+- check_illustration_status: Check if a perspective article has an editorial illustration and whether the author can generate one.
+- generate_perspective_illustration: Generate an editorial illustration for a perspective article. Guide the author to describe the visual concept — subject matter, mood, setting. The style (amber palette, editorial feel) is controlled by the system.
+
 **Content:**
 - list_perspectives: Browse community articles
 

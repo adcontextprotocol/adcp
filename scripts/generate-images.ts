@@ -23,6 +23,7 @@ import * as path from "path";
 const STYLES: Record<string, string> = {
   addie: `Flat illustration, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with teal used only as a minor supporting accent. Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients. Tech-forward but warm. No real brand names or logos. Wide aspect ratio suitable for documentation headers (roughly 16:9). Characters should have simple but expressive faces. Use white/light backgrounds for readability.`,
   sage: `Flat illustration, teal-led color palette (#0d9488 primary, #14b8a6 secondary, #5eead4 light accents) with blue used only as a minor supporting accent. Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients. Tech-forward but warm. No real brand names or logos. Wide aspect ratio suitable for documentation headers (roughly 16:9). Characters should have simple but expressive faces. Use white/light backgrounds for readability.`,
+  none: ``,
 };
 
 interface ImagePrompt {
@@ -137,11 +138,11 @@ async function generateImage(
   options: { validate: boolean; maxRetries: number; style: string },
 ): Promise<void> {
   const baseStyle = STYLES[options.style];
-  if (!baseStyle) {
+  if (baseStyle === undefined) {
     console.error(`Unknown style "${options.style}". Available: ${Object.keys(STYLES).join(", ")}`);
     process.exit(1);
   }
-  const fullPrompt = `${baseStyle}\n\n${entry.prompt}`;
+  const fullPrompt = baseStyle ? `${baseStyle}\n\n${entry.prompt}` : entry.prompt;
   const outputPath = path.resolve(entry.filename);
 
   console.log(`Generating: ${entry.filename}...`);

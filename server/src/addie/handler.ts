@@ -55,6 +55,10 @@ import {
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
 import {
+  PORTRAIT_TOOLS,
+  createPortraitToolHandlers,
+} from './mcp/portrait-tools.js';
+import {
   COLLABORATION_TOOLS,
   createCollaborationToolHandlers,
 } from './mcp/collaboration-tools.js';
@@ -87,6 +91,14 @@ import {
   IMAGE_TOOLS,
   createImageToolHandlers,
 } from './mcp/image-tools.js';
+import {
+  STORY_TOOLS,
+  createStoryToolHandlers,
+} from './mcp/story-tools.js';
+import {
+  ILLUSTRATION_TOOLS,
+  createIllustrationToolHandlers,
+} from './mcp/illustration-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -324,12 +336,33 @@ async function createUserScopedTools(
     for (const [name, handler] of socialDraftHandlers) {
       allHandlers.set(name, handler);
     }
+
+    // Add portrait tools (check status, offer generation)
+    const portraitHandlers = createPortraitToolHandlers(memberContext);
+    allTools.push(...PORTRAIT_TOOLS);
+    for (const [name, handler] of portraitHandlers) {
+      allHandlers.set(name, handler);
+    }
   }
 
   // Add image library tools (search approved illustrations, log requests)
   const imageHandlers = createImageToolHandlers(slackUserId, threadId);
   allTools.push(...IMAGE_TOOLS);
   for (const [name, handler] of imageHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add story & cast tools (in-memory lookup for characters and stories)
+  const storyHandlers = createStoryToolHandlers();
+  allTools.push(...STORY_TOOLS);
+  for (const [name, handler] of storyHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add illustration tools (generate editorial images for perspectives)
+  const illustrationHandlers = createIllustrationToolHandlers(memberContext);
+  allTools.push(...ILLUSTRATION_TOOLS);
+  for (const [name, handler] of illustrationHandlers) {
     allHandlers.set(name, handler);
   }
 

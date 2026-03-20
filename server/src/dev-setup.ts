@@ -71,8 +71,33 @@ async function seedDevUsers(): Promise<void> {
           devUser.isMember ? 'org_dev_company_001' : null,
         ]
       );
+
+      // Seed organization membership for member users
+      if (devUser.isMember) {
+        const orgId = key === 'nonmember' ? null : 'org_dev_company_001';
+        if (orgId) {
+          await pool.query(
+            `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, first_name, last_name)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT DO NOTHING`,
+            [devUser.id, orgId, devUser.email, devUser.firstName, devUser.lastName]
+          );
+        }
+      }
     } catch (error) {
       logger.debug({ userId: devUser.id, key }, 'Dev user seed skipped');
     }
+  }
+
+  // Seed a member profile for the dev member user so portrait features work
+  try {
+    await pool.query(
+      `INSERT INTO member_profiles (workos_organization_id, display_name, slug, tagline, is_public)
+       VALUES ('org_dev_company_001', 'Dev Company', 'dev-company', 'Development test member', true)
+       ON CONFLICT (workos_organization_id) DO NOTHING`
+    );
+    logger.debug('Dev member profile seeded');
+  } catch (error) {
+    logger.debug('Dev member profile seed skipped (already exists)');
   }
 }

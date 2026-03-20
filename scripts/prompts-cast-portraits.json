@@ -1,0 +1,52 @@
+[
+  {
+    "filename": "server/public/images/cast/brian-okelley.png",
+    "prompt": "Illustrated portrait of a man in his mid-40s with light skin, light brown hair with grey streaks slightly disheveled, green eyes, and a slight thoughtful smile. He wears a light blue button-down shirt open at the collar. No glasses. He is seated at a desk with a monitor behind him showing lines of code, and a whiteboard partially visible with protocol flow diagrams. His expression is direct and engaged — someone who builds things. Flat illustration style, warm amber/gold monochrome color palette (#b45309 primary, #d97706 secondary, #f59e0b light accents, #92400e dark accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Brian O'Kelley, AAO founder, at a desk with code on screen and protocol diagrams on a whiteboard"
+  },
+  {
+    "filename": "server/public/images/cast/randall-rothenberg.png",
+    "prompt": "Illustrated portrait of a distinguished man in his late 60s, bald on top with grey hair on the sides, wearing brown tortoiseshell rectangular glasses. He is dressed in a grey suit jacket over a striped dress shirt with a pocket square. His expression is animated and commanding — mid-gesture as if making a point during a speech. He stands at a podium or in front of a boardroom backdrop with soft stage lighting. His posture projects authority and energy. Flat illustration style, warm amber/gold monochrome color palette (#b45309 primary, #d97706 secondary, #f59e0b light accents, #92400e dark accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Randall Rothenberg, AAO chairman, animated and gesturing while speaking at a podium"
+  },
+  {
+    "filename": "server/public/images/cast/matt-egol.png",
+    "prompt": "Illustrated portrait of a man in his late 30s to early 40s with light skin, curly light brown hair, and rectangular glasses. He wears a dark blazer over a blue striped shirt. His expression is friendly and animated — gesturing with one hand as if explaining a strategy. Behind him, a conference room setting is suggested with a whiteboard showing simple diagrams. He has an approachable, energetic quality. Flat illustration style, warm amber/gold monochrome color palette (#b45309 primary, #d97706 secondary, #f59e0b light accents, #92400e dark accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Matthew Egol, AAO president, gesturing animatedly in a conference room with strategy whiteboard"
+  },
+  {
+    "filename": "server/public/images/cast/ben-masse.png",
+    "prompt": "Illustrated portrait of a man in his mid-30s with light skin, short dark hair, and a focused technical expression. He wears a simple crew-neck t-shirt — CTO energy, not corporate. Behind him, a workstation with a terminal showing architecture diagrams is suggested. His demeanor is calm and technical — someone who builds infrastructure. Flat illustration style, warm amber/gold monochrome color palette (#b45309 primary, #d97706 secondary, #f59e0b light accents, #92400e dark accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Ben Masse, AAO CTO, at a workstation reviewing architecture diagrams"
+  },
+  {
+    "filename": "server/public/images/cast/ren-castillo.png",
+    "prompt": "Illustrated portrait of a Filipino-American man in his early 30s with medium brown skin, thick black hair in a short textured crop, no glasses. He wears a fitted crewneck sweatshirt with a lanyard and ID badge around his neck. Lean build. He holds a tablet in one hand, angled casually at his side. Behind him, a production studio is suggested — soft lighting rigs and camera equipment out of focus. His expression is calm and capable, a slight confident half-smile. Flat illustration style, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Ren Castillo, Head of Ops at Halfmoon Studios, holding a tablet in a production studio"
+  },
+  {
+    "filename": "server/public/images/cast/daniel-park.png",
+    "prompt": "Illustrated portrait of a Korean-American man in his mid-30s with light brown skin, black hair neatly side-parted, and thin wire-frame glasses. He wears a quarter-zip pullover. He holds a tablet in one hand. Behind him, a retail environment is softly suggested — shelving and product displays slightly out of focus. His expression is composed and analytical, with a slight professional smile. Flat illustration style, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Daniel Park, VP Retail Media at ShopGrid, with a tablet on a retail floor"
+  },
+  {
+    "filename": "server/public/images/cast/sam-adeyemi.png",
+    "prompt": "Illustrated portrait of a Nigerian-British man in his early 30s with dark skin, close-cropped hair with a sharp fade, completely clean-shaven with no beard or stubble. He wears a button-down shirt with the sleeves rolled up to the forearms, and a silver watch is visible on his left wrist. Behind him, a desk setup with multiple monitors is suggested, showing campaign dashboards and media plans. His expression is sharp and focused, with quiet intensity. Flat illustration style, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Sam Adeyemi, Senior Media Buyer at Pinnacle Agency, at a desk with multiple campaign screens"
+  },
+  {
+    "filename": "server/public/images/cast/priya-nair.png",
+    "prompt": "Illustrated portrait of an Indian-American woman in her late 30s with dark brown skin, black hair in a short asymmetric bob, and rectangular dark-framed glasses. She wears a solid crew-neck top under a light jacket. Behind her, a tech office environment is suggested with large screens showing streaming content interfaces and viewer analytics. Her expression is sharp and confident — someone who runs ad products for a streaming platform. Flat illustration style, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Priya Nair, Director of Ad Products at StreamHaus, in a tech office with streaming screens"
+  },
+  {
+    "filename": "server/public/images/cast/tomoko-hara.png",
+    "prompt": "Illustrated portrait of a Japanese woman in her late 40s with light brown skin, straight black hair in a chin-length cut, and small stud earrings. She wears a tailored navy jacket. Behind her, a clean minimal desk is suggested with brand guideline documents and organized materials. Her expression is composed and precise — poised and professional with understated authority. Flat illustration style, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Tomoko Hara, Global Brand Ops at Nova Motors, at a clean desk with brand guidelines"
+  },
+  {
+    "filename": "server/public/images/cast/maya-johal.png",
+    "prompt": "Illustrated portrait of a British-Indian woman in her late 20s with brown skin, long dark hair in a loose braid draped over one shoulder, a colorful scarf or wrap around her neck, and chunky rings on her fingers. Behind her, a large display screen showing creative mockups and ad layouts is suggested. Her expression is warm and creative — bright eyes, an easy smile, someone who lives in the visual world. Flat illustration style, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents). Graphic novel aesthetic with clean minimal linework and subtle gradients. Centered composition, head and shoulders framing suitable for circular crop. White/light background. Tech-forward but warm. Do not include any text, words, labels, or logos in the image.",
+    "alt_text": "Illustrated portrait of Maya Johal, Creative Strategist at Pinnacle Agency, reviewing mockups on a large display"
+  }
+]

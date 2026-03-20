@@ -1002,6 +1002,7 @@
     let searchTimeout = null;
     let slackConfigured = false;
     let currentStatusFilter = '';
+    let portraitMap = {}; // workos_user_id -> portrait_id
     let actionItems = [];
     let myAccounts = [];
     let currentTab = 'all-users';
@@ -1542,6 +1543,11 @@
         const data = await response.json();
         allUsers = data.users || [];
 
+        // Load portrait map (fire-and-forget on first load, re-render when ready)
+        if (Object.keys(portraitMap).length === 0) {
+          loadPortraitMap().then(renderUsers);
+        }
+
         renderUsers();
         updateStats(data.stats);
       } catch (error) {
@@ -1618,10 +1624,16 @@
           ? `<a href="#" class="user-name-link" onclick="showUserContext('${escapeJs(contextUserId)}', '${contextType}', '${escapeJs(displayName)}', event); return false;">${escapeHtml(displayName)}</a>`
           : escapeHtml(displayName);
 
+        // Portrait thumbnail if available
+        const portraitId = portraitMap[user.workos_user_id];
+        const portraitHtml = portraitId
+          ? `<img src="/api/portraits/${portraitId}.png" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #d97706;vertical-align:middle;margin-right:6px;">`
+          : '';
+
         return `
           <tr>
             <td>
-              <div class="user-name">${nameHtml} ${sourceIcon} ${aaoIcon}</div>
+              <div class="user-name">${portraitHtml}${nameHtml} ${sourceIcon} ${aaoIcon}</div>
               <div class="user-email">${escapeHtml(displayEmail)}</div>
             </td>
             <td>
@@ -1759,6 +1771,13 @@
       document.getElementById('groupFilter').value = '';
       currentStatusFilter = '';
       loadUsers();
+    }
+
+    async function loadPortraitMap() {
+      try {
+        const res = await fetch('/api/admin/portraits/map');
+        if (res.ok) portraitMap = await res.json();
+      } catch (e) { /* ignore */ }
     }
 
     function escapeHtml(text) {

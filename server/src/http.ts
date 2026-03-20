@@ -16,6 +16,7 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase, getPool } from "./db/client.js";
+import { generatePerspectiveCard } from "./services/perspective-cards.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
@@ -76,6 +77,8 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createPortraitRouter, createPublicPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
+// Illustration router loaded inline — no top-level import needed
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
@@ -681,6 +684,16 @@ export class HTTPServer {
       res.redirect('/dashboard' + queryString);
     });
 
+    // Redirect old /certification URL to /academy before static middleware serves certification.html
+    this.app.get('/certification', (req, res) => {
+      res.redirect(301, '/academy');
+    });
+
+    // /get-started → /membership
+    this.app.get('/get-started', (req, res) => {
+      res.redirect(301, '/membership');
+    });
+
     // Serve homepage and public assets at root
     // In prod: __dirname is dist, public is at ../server/public
     // In dev: __dirname is server/src, public is at ../public
@@ -704,7 +717,7 @@ export class HTTPServer {
       // Skip paths that have their own route handlers which manage auth and config injection
       // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
       // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath.startsWith('/stories') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
         return next();
       }
 
@@ -1027,6 +1040,14 @@ export class HTTPServer {
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
 
+    // Mount portrait routes
+    const portraitConfig = { memberDb, orgDb, invalidateMemberContextCache };
+    this.app.use('/api/me/portrait', createPortraitRouter(portraitConfig));
+    this.app.use('/api/portraits', createPublicPortraitRouter());
+    this.app.use('/api/admin/portraits', createAdminPortraitRouter());
+
+    // Illustration routes are served via card.png endpoint — no separate router needed
+
     // Mount community routes
     const communityDb = new CommunityDatabase();
     const communitySlackDb = new SlackDatabase();
@@ -1078,9 +1099,14 @@ export class HTTPServer {
     this.app.use('/api/admin/events', eventsAdminApiRouter); // Admin API: /api/admin/events/*
     this.app.use('/api/events', eventsPublicApiRouter);      // Public API: /api/events/*
 
-    // Mount latest content routes (The Latest section)
+    // Redirect main latest page routes to stories hub
+    this.app.get("/latest", (req, res) => { res.redirect(301, '/stories'); });
+    this.app.get("/latest/perspectives", (req, res) => { res.redirect(301, '/stories'); });
+    this.app.get("/latest/announcements", (req, res) => { res.redirect(301, '/stories'); });
+
+    // Mount latest routes (redirects above catch the main pages; API routes still needed for data)
     const { pageRouter: latestPageRouter, apiRouter: latestApiRouter } = createLatestRouter();
-    this.app.use('/', latestPageRouter);                    // Page routes: /latest, /latest/:slug
+    this.app.use('/', latestPageRouter);                    // Remaining /latest/:slug pages
     this.app.use('/api', latestApiRouter);                  // API routes: /api/latest/*
 
     // Mount weekly digest routes (public web view)
@@ -1953,6 +1979,29 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'join.html');
     });
 
+    // Academy - certification and learning
+    this.app.get("/academy", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'certification.html');
+    });
+
+    // Stories - unified content hub (stories + perspectives + news)
+    this.app.get("/stories", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'stories/index.html');
+    });
+
+    // Legacy /explore route redirects to /stories
+    this.app.get("/explore", (req, res) => {
+      res.redirect(301, '/stories');
+    });
+
+    this.app.get("/stories/:slug", async (req, res) => {
+      const { slug } = req.params;
+      if (!/^[a-z0-9-]+$/.test(slug)) {
+        return res.status(404).send('Not found');
+      }
+      await this.serveHtmlWithConfig(req, res, `stories/${slug}.html`);
+    });
+
     // About AAO page - serve about.html at /about
     this.app.get("/about", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'about.html');
@@ -1968,9 +2017,9 @@ export class HTTPServer {
       res.redirect(301, '/about#leadership');
     });
 
-    // Perspectives index redirects to perspectives section
+    // Perspectives index redirects to stories hub
     this.app.get("/perspectives", (req, res) => {
-      res.redirect(301, "/latest/perspectives");
+      res.redirect(301, '/stories');
     });
 
     // Perspectives detail page - serves article content with SSR meta tags for social sharing
@@ -1983,6 +2032,7 @@ export class HTTPServer {
         excerpt?: string;
         subtitle?: string;
         featured_image_url?: string;
+        illustration_id?: string;
         author_name?: string;
         published_at?: string;
         updated_at?: string;
@@ -1991,7 +2041,7 @@ export class HTTPServer {
       try {
         const pool = getPool();
         const result = await pool.query(
-          `SELECT title, excerpt, subtitle, featured_image_url, author_name, published_at, updated_at
+          `SELECT title, excerpt, subtitle, featured_image_url, illustration_id, author_name, published_at, updated_at
            FROM perspectives
            WHERE slug = $1 AND status = 'published'`,
           [slug]
@@ -2007,7 +2057,9 @@ export class HTTPServer {
       await serveHtmlWithMetaTags(req, res, 'perspectives/article.html', article ? {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,
-        image: article.featured_image_url || 'https://agenticadvertising.org/AAo-social.png',
+        image: article.featured_image_url
+          || (article.illustration_id ? `https://agenticadvertising.org/api/perspectives/${slug}/card.png` : null)
+          || 'https://agenticadvertising.org/AAo-social.png',
         url: `https://agenticadvertising.org/perspectives/${slug}`,
         type: 'article',
         author: article.author_name,
@@ -4758,7 +4810,7 @@ export class HTTPServer {
         // Static pages with their priorities and change frequencies
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
-          { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/stories', priority: '0.9', changefreq: 'daily' },
           { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
@@ -4829,13 +4881,28 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT
-            id, slug, content_type, title, subtitle, category, excerpt,
-            external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            published_at, display_order, tags, like_count
-          FROM perspectives
-          WHERE status = 'published' AND working_group_id IS NULL
-          ORDER BY published_at DESC NULLS LAST`
+            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
+            p.external_url, p.external_site_name,
+            p.author_name, p.author_title, p.featured_image_url,
+            p.illustration_id,
+            p.published_at, p.display_order, p.tags, p.like_count,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                'display_name', ca.display_name,
+                'display_title', ca.display_title,
+                'portrait_id', mp.portrait_id::text
+              ) ORDER BY ca.display_order)
+              FROM content_authors ca
+              LEFT JOIN organization_memberships om ON om.workos_user_id = ca.user_id
+              LEFT JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
+                AND mp.portrait_id IS NOT NULL
+              WHERE ca.perspective_id = p.id),
+              '[]'::json
+            ) AS authors
+          FROM perspectives p
+          WHERE p.status = 'published' AND p.working_group_id IS NULL
+            ${req.query.authored === 'true' ? 'AND EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id)' : ''}
+          ORDER BY p.published_at DESC NULLS LAST`
         );
 
         res.json(result.rows);
@@ -4854,12 +4921,26 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT
-            id, slug, content_type, title, subtitle, category, excerpt,
-            content, external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            published_at, tags, metadata, like_count, updated_at
-          FROM perspectives
-          WHERE slug = $1 AND status = 'published'`,
+            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
+            p.content, p.external_url, p.external_site_name,
+            p.author_name, p.author_title, p.featured_image_url,
+            p.illustration_id,
+            p.published_at, p.tags, p.metadata, p.like_count, p.updated_at,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                'display_name', ca.display_name,
+                'display_title', ca.display_title,
+                'portrait_id', mp.portrait_id::text
+              ) ORDER BY ca.display_order)
+              FROM content_authors ca
+              LEFT JOIN organization_memberships om ON om.workos_user_id = ca.user_id
+              LEFT JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
+                AND mp.portrait_id IS NOT NULL
+              WHERE ca.perspective_id = p.id),
+              '[]'::json
+            ) AS authors
+          FROM perspectives p
+          WHERE p.slug = $1 AND p.status = 'published'`,
           [slug]
         );
 
@@ -4876,6 +4957,88 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get perspective',
         });
+      }
+    });
+
+    // GET /api/perspectives/:slug/card.png - Generate editorial title card image
+    // Priority: 1) featured_image_url redirect, 2) AI illustration composite, 3) typographic fallback
+    this.app.get('/api/perspectives/:slug/card.png', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { getPerspectiveWithIllustration, getIllustrationData } = await import("./db/illustration-db.js");
+        const { compositePerspectiveCard } = await import("./services/perspective-cards.js");
+
+        const p = await getPerspectiveWithIllustration(slug);
+        if (!p) {
+          return res.status(404).send('Not found');
+        }
+
+        // If featured image exists, redirect to it (only https URLs)
+        if (p.featured_image_url) {
+          try {
+            const imgUrl = new URL(p.featured_image_url);
+            if (imgUrl.protocol === 'https:') {
+              return res.redirect(p.featured_image_url);
+            }
+          } catch {
+            // Invalid URL — fall through to generation
+          }
+        }
+
+        // If AI illustration exists, composite it with portrait + text
+        if (p.illustration_id) {
+          const illustrationData = await getIllustrationData(p.illustration_id);
+          if (illustrationData) {
+            // Try to load author portrait
+            let authorPortraitBuffer: Buffer | undefined;
+            try {
+              const pool = getPool();
+              const authorResult = await pool.query(
+                `SELECT mp.portrait_id FROM content_authors ca
+                 JOIN organization_memberships om ON om.workos_user_id = ca.user_id
+                 JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
+                 WHERE ca.perspective_id = $1 AND mp.portrait_id IS NOT NULL
+                 LIMIT 1`,
+                [p.id]
+              );
+              if (authorResult.rows[0]?.portrait_id) {
+                const { getPortraitData } = await import("./db/portrait-db.js");
+                const portraitData = await getPortraitData(authorResult.rows[0].portrait_id);
+                if (portraitData?.portrait_data) {
+                  authorPortraitBuffer = portraitData.portrait_data;
+                }
+              }
+            } catch { /* portrait is optional */ }
+
+            const buffer = await compositePerspectiveCard({
+              illustrationBuffer: illustrationData,
+              authorPortraitBuffer,
+              title: p.title,
+              category: p.category || undefined,
+              authorName: p.author_name || undefined,
+              authorTitle: p.author_title || undefined,
+            });
+
+            res.set('Content-Type', 'image/png');
+            res.set('Cache-Control', 'public, max-age=3600, must-revalidate');
+            return res.send(buffer);
+          }
+        }
+
+        // Typographic fallback
+        const buffer = await generatePerspectiveCard({
+          title: p.title,
+          category: p.category || undefined,
+          authorName: p.author_name || undefined,
+          authorTitle: p.author_title || undefined,
+        });
+
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.send(buffer);
+      } catch (error) {
+        logger.error({ err: error }, 'Generate perspective card error:');
+        res.status(500).send('Failed to generate card');
       }
     });
 

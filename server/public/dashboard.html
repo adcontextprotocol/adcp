@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - AdCP Registry</title>
+  <title>Dashboard - AgenticAdvertising.org</title>
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
@@ -830,6 +830,122 @@
 
       <!-- ========== PROMO BANNER ========== -->
       <div id="promoBanner" style="display: none;"></div>
+
+      <!-- ========== WHAT'S NEW ========== -->
+      <section id="whats-new" class="dashboard-section">
+        <div class="section-header">
+          <h2>What's new</h2>
+          <p>Recent activity across the organization</p>
+        </div>
+        <div id="whats-new-content" class="whats-new-grid"></div>
+      </section>
+      <style>
+        .whats-new-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 12px;
+        }
+        .whats-new-item {
+          background: var(--color-bg-card);
+          border: 1px solid var(--color-border);
+          border-radius: 8px;
+          padding: 16px;
+          text-decoration: none;
+          color: inherit;
+          transition: box-shadow 0.15s ease;
+        }
+        .whats-new-item:hover {
+          box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .whats-new-label {
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-bottom: 4px;
+        }
+        .whats-new-label--perspective { color: #92400e; }
+        .whats-new-label--member { color: var(--color-primary-600); }
+        .whats-new-label--news { color: #047857; }
+        .whats-new-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--color-text-heading);
+          line-height: 1.4;
+          margin: 0;
+        }
+        .whats-new-meta {
+          font-size: 12px;
+          color: var(--color-text-muted);
+          margin-top: 4px;
+        }
+      </style>
+      <script>
+        (function() {
+          var container = document.getElementById('whats-new-content');
+          if (!container) return;
+
+          var items = [];
+
+          // Fetch perspectives
+          var pReq = fetch('/api/perspectives').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; });
+          // Fetch news
+          var nReq = fetch('/api/latest/featured').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; });
+
+          Promise.all([pReq, nReq]).then(function(results) {
+            var perspectives = Array.isArray(results[0]) ? results[0] : (results[0].perspectives || results[0].items || []);
+            var news = Array.isArray(results[1]) ? results[1] : (results[1].articles || results[1].items || []);
+
+            perspectives.slice(0, 3).forEach(function(p) {
+              items.push({
+                type: 'perspective',
+                title: p.title,
+                meta: p.author_name || p.category || '',
+                url: p.external_url || ('/perspectives/' + p.slug),
+                external: !!p.external_url,
+                date: p.published_at || p.created_at
+              });
+            });
+
+            news.slice(0, 3).forEach(function(n) {
+              items.push({
+                type: 'news',
+                title: n.title,
+                meta: n.feed_name || '',
+                url: n.source_url || '#',
+                external: true,
+                date: n.published_at || n.created_at
+              });
+            });
+
+            if (items.length === 0) {
+              document.getElementById('whats-new').style.display = 'none';
+              return;
+            }
+
+            // Sort by date descending
+            items.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+            container.innerHTML = items.slice(0, 6).map(function(item) {
+              var labelClass = item.type === 'perspective' ? 'whats-new-label--perspective' : 'whats-new-label--news';
+              var label = item.type === 'perspective' ? 'Perspective' : 'Industry News';
+              var target = item.external ? ' target="_blank" rel="noopener"' : '';
+              var d = document.createElement('div');
+              d.textContent = item.title;
+              var safeTitle = d.innerHTML;
+              d.textContent = item.meta;
+              var safeMeta = d.innerHTML;
+              d.textContent = item.url;
+              var safeUrl = d.innerHTML;
+              return '<a href="' + safeUrl + '" class="whats-new-item"' + target + '>' +
+                '<div class="whats-new-label ' + labelClass + '">' + label + '</div>' +
+                '<h3 class="whats-new-title">' + safeTitle + '</h3>' +
+                (safeMeta ? '<div class="whats-new-meta">' + safeMeta + '</div>' : '') +
+                '</a>';
+            }).join('');
+          });
+        })();
+      </script>
 
       <!-- ========== PROFILE SECTION ========== -->
       <section id="profile" class="dashboard-section">
@@ -2833,7 +2949,7 @@
           <div style="flex: 1;">
             <h3 style="margin: 0 0 4px 0; font-size: var(--text-base); color: var(--color-text-heading);">Get AdCP certified</h3>
             <p class="cert-subtitle">Learn agentic advertising fundamentals and earn industry credentials.</p>
-            <a href="/certification" class="cert-cta">Start learning</a>
+            <a href="/academy" class="cert-cta">Start learning</a>
           </div>
         </div>
       `;
@@ -2899,7 +3015,7 @@
               ${credBadgesHtml}
               ${progressHtml}
               ${!hasActivity && earnedCredentials.length === 0 ? '<p class="cert-subtitle">Learn agentic advertising fundamentals and earn industry credentials.</p>' : ''}
-              <a href="/certification" class="cert-cta">${hasActivity ? 'Continue learning' : 'Start learning'}</a>
+              <a href="/academy" class="cert-cta">${hasActivity ? 'Continue learning' : 'Start learning'}</a>
             </div>
           </div>
         `;
