@@ -418,14 +418,13 @@ function buildProduct(
             status: ep.status as Episode['status'],
           };
           if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
-          if (ep.duration) {
-            const match = ep.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-            if (match) {
-              const hours = parseInt(match[1] || '0', 10);
-              const minutes = parseInt(match[2] || '0', 10);
-              const seconds = parseInt(match[3] || '0', 10);
-              episode.duration_seconds = hours * 3600 + minutes * 60 + seconds;
-            }
+          if (ep.durationSeconds) episode.duration_seconds = ep.durationSeconds;
+          if (ep.special) {
+            const special: Record<string, unknown> = { name: ep.special.name };
+            if (ep.special.category) special.category = ep.special.category;
+            if (ep.special.starts) special.starts = ep.special.starts;
+            if (ep.special.ends) special.ends = ep.special.ends;
+            episode.special = special;
           }
           episodes.push(episode);
         }

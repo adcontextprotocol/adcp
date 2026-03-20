@@ -59,6 +59,10 @@
         "type": "string"
       }
     },
+    "special": {
+      "$ref": "/schemas/core/special.json",
+      "description": "Episode-specific event context. When present, this episode is anchored to a real-world event. Overrides the show-level special when present."
+    },
     "guest_talent": {
       "type": "array",
       "description": "Episode-specific guests and talent. Additive to the show's recurring talent.",

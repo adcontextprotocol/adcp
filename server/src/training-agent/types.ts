@@ -13,6 +13,19 @@ export interface TrainingContext {
   learnerLevel?: 'basics' | 'practitioner' | 'specialist';
 }
 
+export interface ShowSpecial {
+  name: string;
+  category?: string;
+  starts?: string;
+  ends?: string;
+}
+
+export interface ShowLimitedSeries {
+  totalEpisodes?: number;
+  starts?: string;
+  ends?: string;
+}
+
 export interface ShowDefinition {
   showId: string;
   name: string;
@@ -23,6 +36,8 @@ export interface ShowDefinition {
   talent?: Array<{ name: string; role: string }>;
   distribution?: Array<{ publisherDomain: string; identifiers: Array<{ type: string; value: string }> }>;
   description?: string;
+  special?: ShowSpecial;
+  limitedSeries?: ShowLimitedSeries;
   /** Channels this show's products should appear on */
   channels: string[];
   /** Episode templates to generate for this show */
@@ -31,7 +46,8 @@ export interface ShowDefinition {
     title: string;
     status: string;
     scheduledAt?: string;
-    duration?: string;
+    durationSeconds?: number;
+    special?: ShowSpecial;
   }>;
 }
 
