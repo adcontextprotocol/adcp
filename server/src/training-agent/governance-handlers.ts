@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   TrainingContext,
+  BrandRef,
   GovernancePlanState,
   GovernanceDelegation,
   GovernanceCheckState,
@@ -187,7 +188,7 @@ export function handleSyncPlans(args: Record<string, unknown>, ctx: TrainingCont
       planId,
       version,
       status: 'active',
-      brand: plan.brand as Record<string, unknown>,
+      brand: plan.brand as BrandRef,
       objectives: plan.objectives as string,
       budget: {
         total: budget.total as number,
@@ -580,9 +581,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
     conditions: conditions.length > 0 ? conditions : undefined,
     escalation: shouldEscalate ? {
       reason: `Budget commitment exceeds 50% of plan total and authority_level is human_required.`,
-      severity: 'high',
-      requires_human: true,
-      approval_tier: 'manager',
+      action: 'require_human_approval',
     } : undefined,
     explanation,
     mode,

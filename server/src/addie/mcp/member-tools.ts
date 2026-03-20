@@ -2940,6 +2940,11 @@ export function createMemberToolHandlers(
       return 'Please specify what you\'d like to change: opt out of messages (`opt_out: true`), or set a cadence (`monthly` or `quarterly`). You can also set cadence to `default` to return to normal frequency.';
     }
 
+    // Guard: calling with no parameters should not change state
+    if (input.opt_out === undefined && !cadence) {
+      return 'Please specify opt_out (true/false) or a cadence (monthly, quarterly, default).';
+    }
+
     try {
       // Find the person relationship
       const relationship = await relationshipDb.getRelationshipBySlackId(slackUserId);
@@ -2948,7 +2953,7 @@ export function createMemberToolHandlers(
       }
 
       if (optOut) {
-        await relationshipDb.setOptedOut(relationship.id, true);
+        await relationshipDb.setCadence(relationship.id, true, null);
         await personEvents.recordEvent(relationship.id, 'preference_changed', {
           channel: 'slack',
           data: { preference: 'opted_out' },
