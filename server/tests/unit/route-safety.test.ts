@@ -64,8 +64,6 @@ function findSubRouterRedirects(filePath: string, content: string) {
     line: number;
   }[] = [];
 
-  const lines = content.split('\n');
-
   // Find route definitions: routerVar.method("path", ...)
   const routeDefs: { routerVar: string; method: string; routePath: string; lineIdx: number }[] = [];
   const routeRe = /(\w+)\.(get|post|put|delete|patch)\(\s*["']([^"']+)["']/g;
