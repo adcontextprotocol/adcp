@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-criterion.json",
+  "title": "Audience Criterion",
+  "description": "A single audience targeting criterion. Either references a specific signal from a catalog or agent, or describes a desired audience in natural language. Uses 'type' as discriminator.",
+  "discriminator": {
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "description": "Signal-based criterion — references a specific signal with its targeting expression. The governance agent can resolve catalog signals to their full definition for structured validation. Depends on signal-targeting.json permitting additional properties (the 'type' discriminator field is not defined in signal-targeting.json).",
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signal",
+              "description": "Discriminator for signal-based criteria"
+            }
+          },
+          "required": ["type"]
+        },
+        {
+          "$ref": "/schemas/core/signal-targeting.json"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "description": "Description-based criterion — natural language audience description. Used when the caller doesn't have a specific signal ID (e.g., buyer setting plan-level goals, or seller using proprietary segments without public catalog entries).",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "description",
+          "description": "Discriminator for description-based criteria"
+        },
+        "description": {
+          "type": "string",
+          "description": "Natural language description of the audience (e.g., 'likely EV buyers', 'high net worth individuals', 'vulnerable communities')",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "category": {
+          "type": "string",
+          "description": "Optional grouping hint for the governance agent (e.g., 'demographic', 'behavioral', 'contextual', 'financial')"
+        }
+      },
+      "required": ["type", "description"],
+      "additionalProperties": true
+    }
+  ]
+}

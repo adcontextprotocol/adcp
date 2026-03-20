@@ -45,6 +45,14 @@
       "type": "string",
       "description": "Human-readable summary of the audience the seller will target."
     },
+    "audience_targeting": {
+      "type": "array",
+      "description": "Structured audience targeting the seller will activate. Each entry is either a signal reference or a descriptive criterion. When present, governance agents use this for bias/fairness validation instead of parsing audience_summary. The audience_summary field should be treated as a human-readable rendering of this array when both are present, not an independent declaration.",
+      "items": {
+        "$ref": "/schemas/core/audience-criterion.json"
+      },
+      "minItems": 1
+    },
     "total_budget": {
       "type": "number",
       "description": "Total budget the seller will deliver against.",

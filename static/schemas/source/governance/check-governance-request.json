@@ -109,6 +109,39 @@
           "type": "string",
           "enum": ["ahead", "on_track", "behind"],
           "description": "Whether delivery is ahead of, on track with, or behind the planned pace."
+        },
+        "audience_distribution": {
+          "type": "object",
+          "description": "Actual audience composition during the reporting period. Enables mid-flight drift detection when actual delivery skews from planned audience targeting.",
+          "properties": {
+            "baseline": {
+              "type": "string",
+              "enum": ["census", "platform", "custom"],
+              "description": "Population baseline used for index calculation. 'census': national census or equivalent population data. 'platform': the seller's active user base. 'custom': a custom baseline defined by the seller (describe in baseline_description)."
+            },
+            "baseline_description": {
+              "type": "string",
+              "description": "Description of the baseline when baseline is 'custom' (e.g., 'US adults 18+ with broadband access')."
+            },
+            "indices": {
+              "type": "object",
+              "description": "Audience index values for the current reporting period. Keys are signal ID strings in the format 'catalog:{domain}:{id}' for catalog signals or 'agent:{agent_url}:{id}' for agent signals. For description-based criteria, use 'desc:{sha256_hex_16}' where the hash is the first 16 hex characters of the SHA-256 of the description text. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "cumulative_indices": {
+              "type": "object",
+              "description": "Cumulative audience index values since the media buy started. Same key format as indices. Use for detecting sustained bias drift that may not appear in a single reporting period.",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "required": ["baseline", "indices"],
+          "additionalProperties": false
         }
       },
       "required": ["reporting_period"],

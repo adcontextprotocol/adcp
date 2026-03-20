@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/restricted-attribute.json",
+  "title": "Restricted Attribute",
+  "description": "Personal data categories that may be restricted from use in audience targeting. Based on GDPR Article 9 special categories of personal data, which are also referenced by EU DSA Article 26 for advertising restrictions.",
+  "type": "string",
+  "enum": [
+    "racial_ethnic_origin",
+    "political_opinions",
+    "religious_beliefs",
+    "trade_union_membership",
+    "health_data",
+    "sex_life_sexual_orientation",
+    "genetic_data",
+    "biometric_data"
+  ],
+  "enumDescriptions": {
+    "racial_ethnic_origin": "Race or ethnic origin. GDPR Article 9(1), US FHA/ECOA/EEOC protected class.",
+    "political_opinions": "Political opinions or affiliations. GDPR Article 9(1). EU DSA Article 26 prohibits targeting on this category.",
+    "religious_beliefs": "Religious or philosophical beliefs. GDPR Article 9(1), US FHA/EEOC protected class.",
+    "trade_union_membership": "Trade union membership. GDPR Article 9(1).",
+    "health_data": "Health status, medical conditions, disability. GDPR Article 9(1), US ADA protected class. Includes inferred health data from behavioral signals.",
+    "sex_life_sexual_orientation": "Sex life or sexual orientation. GDPR Article 9(1).",
+    "genetic_data": "Genetic data. GDPR Article 9(1), US GINA.",
+    "biometric_data": "Biometric data used for identification. GDPR Article 9(1)."
+  }
+}
