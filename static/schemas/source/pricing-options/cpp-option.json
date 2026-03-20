@@ -59,6 +59,10 @@
       "type": "number",
       "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
       "minimum": 0
+    },
+    "price_breakdown": {
+      "description": "Breakdown of how fixed_price was derived from the list (rate card) price. Only meaningful when fixed_price is present.",
+      "$ref": "/schemas/pricing-options/price-breakdown.json"
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency", "parameters"],

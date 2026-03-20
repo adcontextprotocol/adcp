@@ -426,6 +426,96 @@ For flat_rate DOOH inventory, publishers may include a `parameters` object with 
 
 ---
 
+## Price Breakdown
+
+When buyer and seller have negotiated discounts and commissions, the `price_breakdown` object discloses how `fixed_price` was derived from the rate card. This is optional — sellers who don't need breakdowns omit it entirely, with zero overhead to existing implementations.
+
+### Structure
+
+```json
+{
+  "pricing_option_id": "cpm_eur_premium",
+  "pricing_model": "cpm",
+  "fixed_price": 11.90,
+  "currency": "EUR",
+  "price_breakdown": {
+    "list_price": 14.00,
+    "adjustments": [
+      { "kind": "discount", "name": "volume", "rate": 0.15, "description": "12x frequency discount" },
+      { "kind": "commission", "name": "agency", "rate": 0.15, "description": "Agency commission" },
+      { "kind": "settlement", "name": "cash_discount", "rate": 0.02, "description": "2% discount for payment within 10 days" }
+    ]
+  }
+}
+```
+
+- `list_price` — the rate card (gross) starting point
+- `adjustments` — ordered list of adjustments, each categorized by `kind`
+- `fixed_price` — the result of applying all `discount` adjustments to `list_price`
+
+### Adjustment Kinds
+
+Adjustments fall into three kinds based on their economic effect:
+
+| Kind | Effect on buyer price | Effect on publisher revenue | When applied |
+|------|----------------------|----------------------------|--------------|
+| `discount` | Reduces it | Reduces it | Before quoting — walks `list_price` to `fixed_price` |
+| `commission` | None — budget includes it | Reduces it (revenue split) | Revenue allocation between intermediary and publisher |
+| `settlement` | None — post-invoice | Reduces actual payment | At invoicing or payment time |
+
+**Discounts** change what the buyer pays. Volume discounts, negotiated rates, and early booking discounts all reduce both the buyer's cost and the publisher's revenue.
+
+**Commissions** are revenue splits. The buyer's price and budget don't change — commission determines how the payment is divided between the intermediary (e.g., agency) and the publisher. Budgets are always managed inclusive of commissions.
+
+**Settlement adjustments** are applied at invoicing or payment time (e.g., a cash discount for early payment). They don't affect the committed price or budget.
+
+### Invariant
+
+The invariant is: `list_price` with all `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency.
+
+Multiple discounts compound in array order. For example, two discounts of 10% and 5% apply as: `list_price × 0.90 × 0.95` (not `list_price × 0.85`).
+
+For the example above, only the volume discount (kind `discount`) applies: 14.00 × (1 − 0.15) = 11.90 ✓
+
+### Rate vs. Amount
+
+Each adjustment uses either `rate` (a decimal proportion, e.g., 0.15 for 15%) or `amount` (a fixed monetary value in the pricing option's currency). These are mutually exclusive.
+
+```json
+{ "kind": "discount", "name": "volume", "rate": 0.15 }
+{ "kind": "discount", "name": "negotiated", "amount": 2.00, "description": "Flat rate reduction" }
+```
+
+### Budgets and Commission
+
+Budgets are always denominated at the `fixed_price` level, inclusive of commissions. If a buyer commits €10,000 at an €11.90 CPM, that €10,000 is the buyer's cost. The agency takes their commission from that amount; the publisher receives the remainder.
+
+This means a buyer agent comparing rates across sellers can use `fixed_price` directly — it's the actual cost per unit, regardless of the underlying commission structure.
+
+### On Confirmed Packages
+
+The `price_breakdown` field also appears on the package response (confirmed line item). For fixed-price packages, this echoes the pricing option's breakdown. For auction-based packages, `list_price` represents the clearing price before any commission or settlement adjustments — discount adjustments typically don't apply since the clearing price is the price.
+
+```json
+{
+  "package_id": "pkg_12345",
+  "product_id": "premium_display",
+  "pricing_option_id": "cpm_eur_premium",
+  "budget": 10000,
+  "bid_price": 11.90,
+  "price_breakdown": {
+    "list_price": 14.00,
+    "adjustments": [
+      { "kind": "discount", "name": "volume", "rate": 0.15, "description": "12x frequency discount" },
+      { "kind": "commission", "name": "agency", "rate": 0.15, "description": "Agency commission" },
+      { "kind": "settlement", "name": "cash_discount", "rate": 0.02, "description": "2% for payment within 10 days" }
+    ]
+  }
+}
+```
+
+---
+
 ## Multi-Currency Support
 
 Publishers can offer the same product in multiple currencies:

@@ -30,6 +30,10 @@
       "description": "Bid price for auction-based pricing. This is the exact bid/price to honor unless the selected pricing option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
       "minimum": 0
     },
+    "price_breakdown": {
+      "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",
+      "$ref": "/schemas/pricing-options/price-breakdown.json"
+    },
     "impressions": {
       "type": "number",
       "description": "Impression goal for this package",
