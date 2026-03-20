@@ -19,7 +19,6 @@
  */
 
 import { Router, Request, Response } from 'express';
-import crypto from 'crypto';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { workos } from '../auth/workos-client.js';
@@ -31,16 +30,6 @@ import { researchDomain } from '../services/brand-enrichment.js';
 const logger = createLogger('workos-webhooks');
 
 const WORKOS_WEBHOOK_SECRET = process.env.WORKOS_WEBHOOK_SECRET;
-
-/**
- * WorkOS webhook event types
- */
-interface WorkOSWebhookEvent {
-  id: string;
-  event: string;
-  data: Record<string, unknown>;
-  created_at: string;
-}
 
 interface OrganizationMembershipData {
   id: string;
@@ -84,76 +73,6 @@ interface OrganizationData {
   domains: OrganizationDomainData[];
   created_at: string;
   updated_at: string;
-}
-
-/**
- * Verify WorkOS webhook signature
- * WorkOS uses HMAC SHA256 with the webhook secret
- */
-function verifyWorkOSWebhook(
-  payload: string,
-  signature: string | undefined,
-  timestamp: string | undefined
-): boolean {
-  if (!WORKOS_WEBHOOK_SECRET) {
-    logger.warn('WORKOS_WEBHOOK_SECRET not configured, skipping signature verification (dev mode)');
-    return true;
-  }
-
-  if (!signature || !timestamp) {
-    logger.warn({ hasSignature: !!signature, hasTimestamp: !!timestamp }, 'Missing WorkOS webhook headers');
-    return false;
-  }
-
-  try {
-    // Validate timestamp is recent (within 5 minutes) to prevent replay attacks
-    // WorkOS sends timestamp in milliseconds, so convert to seconds
-    const nowSeconds = Date.now() / 1000;
-    const parsedTimestampMs = parseInt(timestamp, 10);
-    const parsedTimestampSeconds = parsedTimestampMs / 1000;
-    const timestampAge = Math.abs(nowSeconds - parsedTimestampSeconds);
-
-    logger.debug({
-      nowSeconds,
-      parsedTimestampMs,
-      parsedTimestampSeconds,
-      timestampAge,
-      rawTimestamp: timestamp,
-    }, 'WorkOS timestamp validation');
-
-    if (timestampAge > 300) {
-      logger.warn({ timestampAge, nowSeconds, parsedTimestampSeconds }, 'WorkOS webhook timestamp too old (potential replay attack)');
-      return false;
-    }
-
-    // WorkOS signature format: t=timestamp,v1=signature
-    const expectedSignature = crypto
-      .createHmac('sha256', WORKOS_WEBHOOK_SECRET)
-      .update(`${timestamp}.${payload}`)
-      .digest('hex');
-
-    // Extract the v1 signature from the header
-    const signatureMatch = signature.match(/v1=([a-f0-9]+)/);
-    if (!signatureMatch) {
-      logger.warn({ signature }, 'Invalid WorkOS signature format');
-      return false;
-    }
-
-    const providedSignature = signatureMatch[1];
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(expectedSignature, 'hex'),
-      Buffer.from(providedSignature, 'hex')
-    );
-
-    if (!isValid) {
-      logger.warn('WorkOS webhook signature mismatch');
-    }
-
-    return isValid;
-  } catch (error) {
-    logger.error({ error }, 'Error verifying WorkOS webhook signature');
-    return false;
-  }
 }
 
 /**
@@ -624,17 +543,12 @@ export function createWorkOSWebhooksRouter(): Router {
 
   router.post(
     '/workos',
-    // Custom middleware to capture raw body for signature verification
+    // Parse JSON body manually since the global JSON parser is skipped for this route
     (req: Request, res: Response, next) => {
       let rawBody = '';
       req.setEncoding('utf8');
-
-      req.on('data', (chunk: string) => {
-        rawBody += chunk;
-      });
-
+      req.on('data', (chunk: string) => { rawBody += chunk; });
       req.on('end', () => {
-        (req as Request & { rawBody: string }).rawBody = rawBody;
         try {
           req.body = JSON.parse(rawBody);
           next();
@@ -648,23 +562,36 @@ export function createWorkOSWebhooksRouter(): Router {
       const startTime = Date.now();
 
       try {
-        const rawBody = (req as Request & { rawBody: string }).rawBody;
-        const signature = req.headers['workos-signature'] as string | undefined;
-        const timestamp = signature?.match(/t=(\d+)/)?.[1];
+        const rawSigHeader = req.headers['workos-signature'];
+        const sigHeader = Array.isArray(rawSigHeader) ? rawSigHeader[0] : rawSigHeader;
 
         logger.info({
-          bodyLength: rawBody.length,
           event: req.body?.event,
-          signature: signature?.substring(0, 50), // Log first 50 chars of signature
-          extractedTimestamp: timestamp,
+          hasSigHeader: !!sigHeader,
         }, 'Received WorkOS webhook');
 
-        if (!verifyWorkOSWebhook(rawBody, signature, timestamp)) {
-          logger.warn('Rejecting WorkOS webhook: invalid signature');
+        if (!WORKOS_WEBHOOK_SECRET) {
+          logger.error('WORKOS_WEBHOOK_SECRET not configured — rejecting webhook');
+          return res.status(500).json({ error: 'Webhook secret not configured' });
+        }
+
+        if (!sigHeader) {
+          logger.warn('Missing WorkOS-Signature header');
+          return res.status(401).json({ error: 'Missing signature' });
+        }
+
+        try {
+          await workos.webhooks.constructEvent({
+            payload: req.body,
+            sigHeader,
+            secret: WORKOS_WEBHOOK_SECRET,
+          });
+        } catch (err) {
+          logger.warn({ err }, 'WorkOS webhook signature verification failed');
           return res.status(401).json({ error: 'Invalid signature' });
         }
 
-        const event = req.body as WorkOSWebhookEvent;
+        const event = req.body as { id: string; event: string; data: Record<string, unknown>; created_at: string };
 
         switch (event.event) {
           case 'organization_membership.created': {

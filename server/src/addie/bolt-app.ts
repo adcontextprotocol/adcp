@@ -84,7 +84,7 @@ import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser } from './thread-utils.js';
-import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
+import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import {
   getToolsForSets,
@@ -1683,74 +1683,92 @@ async function handleAppMention({
   // Fetch channel info for context
   const mentionChannelContext = await buildChannelContext(channelId) as ThreadContext;
 
-  // Fetch thread context if this mention is in a thread
-  const MAX_THREAD_CONTEXT_MESSAGES = 25;
+  // Fetch surrounding conversation context for the mention.
+  // For threaded mentions: fetch thread replies.
+  // For top-level mentions: fetch recent channel messages so Addie understands
+  // the conversation she's being mentioned in.
+  const MAX_CONTEXT_MESSAGES = 25;
   let threadContext = '';
-  if (isInThread && event.thread_ts) {
-    try {
+  try {
+    let rawMessages: Array<{ user?: string; text?: string; ts: string }> = [];
+    let contextLabel = '';
+
+    if (isInThread && event.thread_ts) {
       const threadMessages = await getThreadReplies(channelId, event.thread_ts);
-      if (threadMessages.length > 0) {
-        // Include all messages (including Addie's) for full context
-        const filteredMessages = threadMessages
-          .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
-          .filter(msg => (msg.text || '').trim().length > 0) // Filter out empty messages
-          .slice(-MAX_THREAD_CONTEXT_MESSAGES);
+      rawMessages = threadMessages;
+      contextLabel = 'Thread';
+    } else {
+      // Fetch recent channel messages before this mention.
+      // conversations.history returns newest-first; reverse to chronological order.
+      const { messages: channelMessages } = await getChannelHistory(channelId, {
+        latest: event.ts,
+        limit: MAX_CONTEXT_MESSAGES + 1, // +1 because the current message may be included
+      });
+      rawMessages = channelMessages.reverse();
+      contextLabel = 'Conversation';
+    }
 
-        // Collect all unique user IDs in the thread (senders and @mentions)
-        const mentionedUserIds = new Set<string>();
-        for (const msg of filteredMessages) {
-          if (msg.user && msg.user !== context.botUserId) {
-            mentionedUserIds.add(msg.user);
-          }
-          const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
-          for (const match of mentions) {
-            if (match[1] !== context.botUserId) {
-              mentionedUserIds.add(match[1]);
-            }
-          }
+    if (rawMessages.length > 0) {
+      const filteredMessages = rawMessages
+        .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
+        .filter(msg => (msg.text || '').trim().length > 0)
+        .slice(-MAX_CONTEXT_MESSAGES);
+
+      // Collect all unique user IDs (senders and @mentions)
+      const mentionedUserIds = new Set<string>();
+      for (const msg of filteredMessages) {
+        if (msg.user && msg.user !== context.botUserId) {
+          mentionedUserIds.add(msg.user);
         }
-
-        // Look up display names for mentioned users (in parallel)
-        const userNameMap = new Map<string, string>();
-        if (mentionedUserIds.size > 0) {
-          const lookups = await Promise.all(
-            Array.from(mentionedUserIds).map(async (uid) => {
-              const user = await getSlackUser(uid);
-              return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
-            })
-          );
-          for (const { uid, name } of lookups) {
-            if (name) {
-              userNameMap.set(uid, name);
-            }
+        const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
+        for (const match of mentions) {
+          if (match[1] !== context.botUserId) {
+            mentionedUserIds.add(match[1]);
           }
-        }
-
-        // Format messages with speaker identification
-        const contextMessages = filteredMessages.map(msg => {
-          let text = msg.text || '';
-          const isAddie = msg.user === context.botUserId;
-          const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
-          // Strip Addie's mentions entirely (they're noise)
-          if (context.botUserId) {
-            text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
-          }
-          // Replace user mentions with display names or fallback to [someone]
-          text = text.replace(/<@(U[A-Z0-9]+)>/gi, (match, uid) => {
-            const name = userNameMap.get(uid);
-            return name ? `@${name}` : '[someone]';
-          });
-          return `- ${speaker}: ${text}`;
-        });
-
-        if (contextMessages.length > 0) {
-          threadContext = `\n\n## Thread Context\nThe user is replying in a Slack thread. Here are the previous messages in this thread for context:\n${contextMessages.join('\n')}\n\n---\n`;
-          logger.debug({ messageCount: contextMessages.length, resolvedUsers: userNameMap.size }, 'Addie Bolt: Fetched thread context for mention');
         }
       }
-    } catch (error) {
-      logger.warn({ error, channelId, threadTs: event.thread_ts }, 'Addie Bolt: Failed to fetch thread context');
+
+      // Look up display names for mentioned users (in parallel)
+      const userNameMap = new Map<string, string>();
+      if (mentionedUserIds.size > 0) {
+        const lookups = await Promise.all(
+          Array.from(mentionedUserIds).map(async (uid) => {
+            const user = await getSlackUser(uid);
+            return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
+          })
+        );
+        for (const { uid, name } of lookups) {
+          if (name) {
+            userNameMap.set(uid, name);
+          }
+        }
+      }
+
+      // Format messages with speaker identification
+      const contextMessages = filteredMessages.map(msg => {
+        let text = msg.text || '';
+        const isAddie = msg.user === context.botUserId;
+        const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
+        if (context.botUserId) {
+          text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
+        }
+        text = text.replace(/<@(U[A-Z0-9]+)>/gi, (_match, uid) => {
+          const name = userNameMap.get(uid);
+          return name ? `@${name}` : '[someone]';
+        });
+        return `- ${speaker}: ${text}`;
+      });
+
+      if (contextMessages.length > 0) {
+        const header = isInThread
+          ? 'The user is replying in a Slack thread. Here are the previous messages in this thread for context:'
+          : 'The user mentioned you in a conversation. Here are the recent messages leading up to the mention:';
+        threadContext = `\n\n## ${contextLabel} Context\n${header}\n${contextMessages.join('\n')}\n\n---\n`;
+        logger.debug({ messageCount: contextMessages.length, resolvedUsers: userNameMap.size }, `Addie Bolt: Fetched ${contextLabel.toLowerCase()} context for mention`);
+      }
     }
+  } catch (error) {
+    logger.warn({ error, channelId, threadTs: event.thread_ts }, 'Addie Bolt: Failed to fetch conversation context');
   }
 
   // Fetch member context early so we can store display name on the thread
@@ -2545,19 +2563,22 @@ async function handleDirectMessage(
   const outputValidation = validateOutput(response.text);
 
   // Send response in the permanent DM thread when available, so all conversation
-  // stays in one Slack thread. Fall back to replying to the current message.
+  // stays in one Slack thread. When no permanent thread exists, post as a
+  // top-level message so the response is visible (not hidden in a collapsed thread).
+  let responseTs: string | undefined;
   try {
-    await boltApp.client.chat.postMessage({
+    const postResult = await boltApp.client.chat.postMessage({
       channel: channelId,
       text: wrapUrlsForSlack(outputValidation.sanitized),
-      thread_ts: permThreadTs || event.ts,
+      ...(permThreadTs ? { thread_ts: permThreadTs } : {}),
     });
+    responseTs = postResult.ts;
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send DM response');
   }
 
-  // If no permanent thread existed, save this conversation as the permanent thread
-  // so the orchestrator will continue in this same thread later.
+  // If no permanent thread existed, save the user's message ts as the permanent
+  // thread so the orchestrator will continue in this same thread later.
   if (!permThreadTs) {
     try {
       const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
@@ -3271,28 +3292,30 @@ async function handleChannelMessage({
     }
 
     if (plan.action === 'clarify') {
-      // Queue clarifying question for approval
+      const questionValidation = validateOutput(plan.question);
+      if (questionValidation.flagged) {
+        logger.warn({ channelId, reason: questionValidation.reason }, 'Addie Bolt: Clarifying question flagged');
+        return;
+      }
+
+      // Log clarifying question to unified thread
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: questionValidation.sanitized,
+        router_decision: buildRouterDecision(plan),
+      });
+
+      // Post clarifying question directly to the channel thread
       try {
-        await addieDb.queueForApproval({
-          action_type: 'reply',
-          target_channel_id: channelId,
-          target_thread_ts: threadTs,
-          proposed_content: plan.question,
-          trigger_type: 'channel_message',
-          trigger_context: {
-            original_message: messageText.substring(0, 1000),
-            user_id: userId,
-            user_display_name: memberContext?.slack_user?.display_name || undefined,
-            is_clarifying_question: true,
-            router_reason: plan.reason,
-            router_decision_method: plan.decision_method,
-            router_latency_ms: plan.latency_ms,
-          },
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        await boltApp?.client.chat.postMessage({
+          channel: channelId,
+          text: wrapUrlsForSlack(questionValidation.sanitized),
+          thread_ts: threadTs,
         });
-        logger.info({ channelId, userId }, 'Addie Bolt: Clarifying question queued for approval');
+        logger.info({ channelId, userId }, 'Addie Bolt: Posted clarifying question to channel');
       } catch (error) {
-        logger.error({ error, channelId }, 'Addie Bolt: Failed to queue clarifying question for approval');
+        logger.error({ error, channelId }, 'Addie Bolt: Failed to post clarifying question');
       }
       return;
     }
@@ -3339,7 +3362,7 @@ async function handleChannelMessage({
       return;
     }
 
-    // Log assistant response to unified thread (even though it's pending approval)
+    // Log assistant response to unified thread
     await threadService.addMessage({
       thread_id: thread.thread_id,
       role: 'assistant',
@@ -3369,32 +3392,16 @@ async function handleChannelMessage({
       router_decision: buildRouterDecision(plan),
     });
 
-    // Queue the response for admin approval
+    // Post the response directly to the channel thread
     try {
-      await addieDb.queueForApproval({
-        action_type: 'reply',
-        target_channel_id: channelId,
-        target_thread_ts: threadTs,
-        proposed_content: outputValidation.sanitized,
-        trigger_type: 'channel_message',
-        trigger_context: {
-          original_message: messageText.substring(0, 1000),
-          user_id: userId,
-          user_display_name: memberContext?.slack_user?.display_name || undefined,
-          tools_used: response.tools_used,
-          router_tool_sets: plan.tool_sets,
-          router_reason: plan.reason,
-          router_decision_method: plan.decision_method,
-          router_latency_ms: plan.latency_ms,
-          router_tokens_input: plan.tokens_input,
-          router_tokens_output: plan.tokens_output,
-          router_model: plan.model,
-        },
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      await boltApp?.client.chat.postMessage({
+        channel: channelId,
+        text: wrapUrlsForSlack(outputValidation.sanitized),
+        thread_ts: threadTs,
       });
-      logger.info({ channelId, userId }, 'Addie Bolt: Proposed response queued for approval');
+      logger.info({ channelId, userId }, 'Addie Bolt: Posted response to channel');
     } catch (error) {
-      logger.error({ error, channelId }, 'Addie Bolt: Failed to queue response for approval');
+      logger.error({ error, channelId }, 'Addie Bolt: Failed to post response to channel');
     }
 
   } catch (error) {

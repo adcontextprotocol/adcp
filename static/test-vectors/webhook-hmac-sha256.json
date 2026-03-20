@@ -64,6 +64,36 @@
       "timestamp": 2208988800,
       "raw_body": "{\"event\":\"test\"}",
       "expected_signature": "sha256=a0fdee5e93b2ac2efdf8d3d22b7a03ae8e6df157b493d0140f7902ef32f6be60"
+    },
+    {
+      "description": "adversarial: body modified after signing (single char change)",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"creative.status_changed\",\"creative_id\":\"creative_124\",\"status\":\"approved\"}",
+      "expected_signature": "sha256=c4faf82609efe07621706df0d28c801de2b5145f427e129f243a3839df891a4e",
+      "expect_mismatch": true,
+      "notes": "Same signature as compact JSON vector but creative_id ends with 4 instead of 3. Verifiers MUST reject."
+    },
+    {
+      "description": "adversarial: unicode null character in body (U+0000)",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\",\"data\":\"before\u0000after\"}",
+      "expected_signature": "sha256=89c5a0653a1e0c36f03a2429b2b5dcf2e872130309bbc2afd66fb5a4d2cdcc73",
+      "notes": "Body contains a Unicode null character (U+0000) between 'before' and 'after'. Implementations must sign the exact bytes without truncating at the null."
+    },
+    {
+      "description": "adversarial: timestamp modified after signing",
+      "timestamp": 1700000001,
+      "raw_body": "{\"event\":\"test\"}",
+      "expected_signature": "sha256=446cc9dbe11ee98af9445a27dfcf9d52530c874583e5750d295bad336a406c3c",
+      "expect_mismatch": true,
+      "notes": "Same signature as the timestamp-zero vector but timestamp changed to 1700000001. Verifiers MUST reject because the timestamp is part of the signed message."
+    },
+    {
+      "description": "adversarial: trailing whitespace in body",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\"} ",
+      "expected_signature": "sha256=e65dfcbf4bb60cfaa14df7f89689cc7c2a1c0b169ed151672805d1039757b0f5",
+      "notes": "Trailing space changes the signature. Signing raw bytes means whitespace matters."
     }
   ]
 }

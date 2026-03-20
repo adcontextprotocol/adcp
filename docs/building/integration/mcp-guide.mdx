@@ -700,15 +700,31 @@ const toolSchema = await mcp.getToolSchema('get_products');
 ```
 
 ### Error Handling
+
+AdCP errors are returned as tool-level responses with `isError: true` and the error in `structuredContent.adcp_error`. For the full extraction logic and JSON-RPC transport codes, see [Transport Error Mapping](/docs/building/implementation/transport-errors).
+
 ```javascript
 try {
   const response = await session.call('get_products', params);
+
+  // Check for AdCP application errors (isError: true with structured data)
+  if (response.isError) {
+    const adcpError = response.structuredContent?.adcp_error;
+    if (adcpError) {
+      // Structured error with code, recovery, retry_after, etc.
+      console.log('AdCP error:', adcpError.code, adcpError.recovery);
+    }
+  }
 } catch (mcpError) {
   // MCP transport errors (connection, auth, etc.)
-  console.error('MCP Error:', mcpError);
-} 
-
-// AdCP task errors come in response.status === 'failed'
+  // Check for AdCP-structured transport errors
+  const adcpError = mcpError.data?.adcp_error;
+  if (adcpError) {
+    console.log('Transport error:', adcpError.code);
+  } else {
+    console.error('MCP Error:', mcpError);
+  }
+}
 ```
 
 ## Best Practices

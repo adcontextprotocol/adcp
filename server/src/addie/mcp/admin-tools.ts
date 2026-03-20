@@ -768,12 +768,12 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'add_committee_leader',
     description: 'Add a user as leader of a committee. Leaders can manage posts, events, and members.',
-    usage_hints: 'Get user_id from Slack mapping or org details.',
+    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: { type: 'string', description: 'Committee slug' },
-        user_id: { type: 'string', description: 'WorkOS user ID' },
+        committee_slug: { type: 'string', description: 'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.' },
+        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
         user_email: { type: 'string', description: 'User email (optional)' },
       },
       required: ['committee_slug', 'user_id'],
@@ -782,11 +782,12 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'remove_committee_leader',
     description: 'Remove a user from committee leadership. User remains a regular member.',
+    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
     input_schema: {
       type: 'object',
       properties: {
         committee_slug: { type: 'string', description: 'Committee slug' },
-        user_id: { type: 'string', description: 'WorkOS user ID' },
+        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
       },
       required: ['committee_slug', 'user_id'],
     },
@@ -4461,7 +4462,7 @@ export function createAdminToolHandlers(
     }
 
     if (!userId) {
-      return '❌ Please provide a user_id (WorkOS user ID).';
+      return '❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).';
     }
 
     try {
@@ -4543,6 +4544,8 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
         if (slackMapping?.workos_user_id) {
           logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
           userId = slackMapping.workos_user_id;
+        } else {
+          return '❌ Could not resolve Slack user <@' + userId + '> to a linked account. They may not have linked their Slack to AgenticAdvertising.org.';
         }
       }
 

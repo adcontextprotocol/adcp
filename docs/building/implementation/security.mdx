@@ -57,63 +57,37 @@ These operations are publicly accessible:
 
 ## Webhook Security
 
-### Signature Verification
+The normative specification for webhook HMAC-SHA256 signing and verification is in [Push Notifications](/docs/building/implementation/webhooks). This section summarizes the key security requirements.
 
-Always verify webhook authenticity:
+### Verification order
 
-```javascript
-function verifyWebhookSignature(payload, signature, secret) {
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
-    .digest('hex');
+Receivers MUST process incoming webhooks in this order to minimize computation for invalid requests:
 
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(`sha256=${expectedSignature}`)
-  );
-}
+1. Reject if `X-ADCP-Signature` or `X-ADCP-Timestamp` header is missing
+2. Reject if timestamp is non-numeric
+3. Reject if timestamp is outside 5-minute window (`|now - timestamp| > 300`)
+4. Compute HMAC-SHA256 and compare using constant-time comparison
 
-app.post('/webhooks/adcp', (req, res) => {
-  const signature = req.headers['x-adcp-signature'];
-  const payload = JSON.stringify(req.body);
+### Key requirements
 
-  if (!verifyWebhookSignature(payload, signature, process.env.WEBHOOK_SECRET)) {
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
+- **Algorithm**: HMAC-SHA256 only
+- **Signed message**: `{unix_timestamp}.{raw_body}` — raw HTTP body bytes, never re-serialized JSON
+- **Timing-safe comparison**: MUST use constant-time comparison (e.g., `crypto.timingSafeEqual`). Buffer lengths MUST match before comparing.
+- **Minimum secret length**: 32 bytes
 
-  // Process webhook...
-});
-```
+### Secret rotation
 
-### Replay Attack Prevention
+- Receivers MUST accept signatures from both current and previous secret during rotation
+- Rotation window SHOULD NOT exceed the replay window (5 minutes)
+- Publishers begin signing with the new secret immediately upon rotation
 
-Use timestamps and event IDs to prevent replay attacks:
+### Webhook URL validation (SSRF prevention)
 
-```javascript
-async function isReplayAttack(timestamp, eventId) {
-  const eventTime = new Date(timestamp);
-  const now = new Date();
-  const fiveMinutes = 5 * 60 * 1000;
+Buyer-provided `push_notification_config.url` is an SSRF vector. Publishers MUST:
 
-  // Reject events older than 5 minutes
-  if (now - eventTime > fiveMinutes) {
-    console.warn(`Rejecting old webhook event ${eventId}`);
-    return true;
-  }
-
-  // Check if we've seen this event ID before
-  const seen = await db.hasSeenWebhookEvent(eventId);
-  if (seen) {
-    console.warn(`Rejecting duplicate webhook event ${eventId}`);
-    return true;
-  }
-
-  // Record this event ID
-  await db.recordWebhookEvent(eventId, timestamp);
-  return false;
-}
-```
+- Reject non-HTTPS URLs
+- Reject URLs targeting private/reserved IP ranges (RFC 1918, RFC 6598, link-local)
+- Resolve DNS and validate the resolved IP is not private before connecting
 
 ## Authentication Best Practices
 

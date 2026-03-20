@@ -142,8 +142,26 @@
           "additionalProperties": true
         },
         "tagline": {
-          "type": "string",
-          "description": "Brand tagline or slogan"
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Brand tagline or slogan (unlocalized, for backwards compatibility)"
+            },
+            {
+              "type": "array",
+              "description": "Localized brand taglines keyed by BCP 47 locale codes",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 1,
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "minItems": 1
+            }
+          ],
+          "description": "Brand tagline or slogan. Accepts a plain string for backwards compatibility, or a localized array keyed by BCP 47 locale tags."
         },
         "voice_synthesis": {
           "type": "object",

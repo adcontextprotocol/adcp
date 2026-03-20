@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ask Addie - AgenticAdvertising.org</title>
-  <link rel="icon" type="image/svg+xml" href="/AAo.svg">
+  <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -4038,7 +4038,7 @@
           try {
             const notification = new Notification(title, {
               body: body.slice(0, 100) + (body.length > 100 ? '...' : ''),
-              icon: '/AAo.svg',
+              icon: '/addie-icon.svg',
               tag: tabId // Prevents duplicate notifications
             });
             notification.onclick = () => {
