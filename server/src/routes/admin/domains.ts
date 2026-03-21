@@ -2249,6 +2249,7 @@ export function setupDomainRoutes(
             do {
               const memberships = await config.workos!.userManagement.listOrganizationMemberships({
                 organizationId: orgId,
+                statuses: ['active', 'inactive', 'pending'],
                 limit: 100,
                 after,
               });
@@ -2400,6 +2401,7 @@ export function setupDomainRoutes(
             do {
               const memberships = await config.workos!.userManagement.listOrganizationMemberships({
                 organizationId: orgId,
+                statuses: ['active', 'inactive', 'pending'],
                 limit: 100,
                 after,
               });
