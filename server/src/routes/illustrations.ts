@@ -42,11 +42,17 @@ export function createIllustrationRouter(): Router {
       }
 
       const { perspectiveSlug, authorDescription } = req.body;
-      if (!perspectiveSlug) {
+      if (!perspectiveSlug || typeof perspectiveSlug !== 'string') {
         return res.status(400).json({ error: 'perspectiveSlug is required' });
       }
 
-      // Look up perspective
+      // Validate slug format to prevent injection
+      if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(perspectiveSlug) || perspectiveSlug.length > 200) {
+        return res.status(400).json({ error: 'Invalid slug format' });
+      }
+
+      // Look up perspective — the slug is user-provided but authorization
+      // is enforced below via isAuthorOfPerspective (not bypassed by slug choice)
       const perspective = await illustrationDb.getPerspectiveWithIllustration(perspectiveSlug);
       if (!perspective) {
         return res.status(404).json({ error: 'Perspective not found' });
