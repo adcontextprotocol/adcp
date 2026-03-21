@@ -37,8 +37,12 @@
     },
     "billing": {
       "type": "string",
-      "enum": ["operator", "agent"],
-      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing."
+      "enum": ["operator", "agent", "advertiser"],
+      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. See billing_entity for the invoiced party's business details."
+    },
+    "billing_entity": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Business entity details for the party responsible for payment. Contains the legal name, tax IDs, address, and bank details needed for formal B2B invoicing. Corresponds to whoever billing points to (operator, agent, or advertiser). When this account appears in a response, bank details MUST be omitted (write-only)."
     },
     "rate_card": {
       "type": "string",
@@ -213,6 +217,34 @@
         "operator": "pinnacle-media.com",
         "billing": "operator",
         "account_scope": "brand"
+      }
+    },
+    {
+      "description": "Agency operates but advertiser is billed directly with structured billing entity",
+      "data": {
+        "account_id": "acc_acme_direct_bill",
+        "name": "Acme (billed direct)",
+        "advertiser": "Acme Corp",
+        "brand": { "domain": "acme-corp.com" },
+        "operator": "pinnacle-media.com",
+        "status": "active",
+        "billing": "advertiser",
+        "billing_entity": {
+          "legal_name": "Acme Corporation GmbH",
+          "vat_id": "DE987654321",
+          "address": {
+            "street": "Hauptstrasse 42",
+            "city": "Munich",
+            "postal_code": "80331",
+            "country": "DE"
+          },
+          "contact": {
+            "name": "AP Department",
+            "email": "billing@acme-corp.com"
+          }
+        },
+        "account_scope": "operator_brand",
+        "payment_terms": "net_30"
       }
     }
   ]

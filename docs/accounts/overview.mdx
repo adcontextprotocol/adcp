@@ -16,7 +16,7 @@ Six questions underlie every AdCP transaction:
 | Who is the advertiser? | Brand registry | `brand.domain` resolves to `brand.json` |
 | Who operates on the brand's behalf? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
 | How does the operator authenticate? | Seller capabilities | `require_operator_auth` determines the account model: `true` means explicit accounts (operator credentials required, discover via `list_accounts`), `false` means implicit accounts (agent trusted, declare via `sync_accounts`) |
-| Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator` or `agent`. Seller accepts or rejects. |
+| Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator`, `agent`, or `advertiser`. Seller accepts or rejects. |
 | What was consumed? | Usage reporting | `report_usage` informs vendor agents how their services were used after delivery |
 
 The seller declares the account model in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) via `require_operator_auth`. When `true` (**explicit accounts**), operators authenticate independently and the buyer discovers accounts via [`list_accounts`](/docs/accounts/tasks/list_accounts). When `false` (**implicit accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) to provision accounts.
@@ -57,7 +57,7 @@ The account reference may be a seller-assigned `account_id` (explicit accounts, 
    Explicit (require_operator_auth: true):
      list_accounts() → find existing account_id for this brand/operator
    Implicit (require_operator_auth: false):
-     sync_accounts({ accounts: [{ brand, operator, billing }] }) → status, billing terms
+     sync_accounts({ accounts: [{ brand, operator, billing, billing_entity? }] }) → status, billing terms
 
 6. Execute
    Protocol tasks use the account reference to apply correct rates and terms

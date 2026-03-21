@@ -230,6 +230,18 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           },
           required: ['domain'],
         },
+        invoice_recipient: {
+          type: 'object',
+          description: 'Override the account default billing entity for this buy. When provided, the seller invoices this entity instead.',
+          properties: {
+            legal_name: { type: 'string', description: 'Registered legal name of the business entity' },
+            vat_id: { type: 'string', description: 'VAT identification number' },
+            tax_id: { type: 'string', description: 'Tax identification number (non-VAT jurisdictions)' },
+            address: { type: 'object', description: 'Postal address for invoicing' },
+            contact: { type: 'object', description: 'Primary billing contact' },
+          },
+          required: ['legal_name'],
+        },
         po_number: {
           type: 'string',
           description: 'Purchase order number for tracking.',
@@ -755,6 +767,18 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
               },
             },
           },
+        },
+        invoice_recipient: {
+          type: 'object',
+          description: 'Update who receives the invoice for this buy. Overrides the account default billing entity.',
+          properties: {
+            legal_name: { type: 'string', description: 'Registered legal name of the business entity' },
+            vat_id: { type: 'string', description: 'VAT identification number' },
+            tax_id: { type: 'string', description: 'Tax identification number (non-VAT jurisdictions)' },
+            address: { type: 'object', description: 'Postal address for invoicing' },
+            contact: { type: 'object', description: 'Primary billing contact' },
+          },
+          required: ['legal_name'],
         },
         reporting_webhook: {
           type: 'object',

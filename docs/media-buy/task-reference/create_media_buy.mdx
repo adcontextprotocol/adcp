@@ -172,6 +172,7 @@ npx adcp \
 | `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/docs/brand-protocol/brand-json) |
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
+| `invoice_recipient` | [BusinessEntity](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
 | `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
 

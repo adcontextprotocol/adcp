@@ -35,6 +35,7 @@ The buyer must pass one of these values as `billing` in every `sync_accounts` en
 |---------|----------------|----------|
 | `operator` | Operator (agency or brand buying direct) | Operator buying on their own terms |
 | `agent` | Agent | Agent consolidates billing across brands |
+| `advertiser` | Advertiser directly | Operator places orders but advertiser pays (common on social platforms and in DACH B2B workflows) |
 
 **2. Do you require operator-level auth?** (`require_operator_auth`)
 
@@ -59,7 +60,18 @@ Sellers can also declare `account_financials: true` to expose account-level fina
 }
 ```
 
-These two fields combine into three common patterns.
+Sellers that support `advertiser` billing declare it explicitly:
+
+```json
+{
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["operator", "agent", "advertiser"]
+  }
+}
+```
+
+These fields combine into common patterns.
 
 ## Seller patterns
 
@@ -354,11 +366,18 @@ The agent manages the buying relationship. It calls `sync_accounts` to tell the 
 |------|-------------------------|
 | `brand` (`domain` + optional `brand_id`) | Which brand is advertising |
 | `operator` | Who operates on the brand's behalf (agency, trading desk, or the brand itself) |
-| `billing` | Who gets the invoice — `operator` or `agent` |
+| `billing` | Who gets the invoice — `operator`, `agent`, or `advertiser` |
+| `billing_entity` | Structured business entity details for the party responsible for payment — legal name, VAT ID, tax ID, address, contact, and bank details. Used for formal B2B invoicing. Bank details are write-only (never echoed in responses). |
 | `payment_terms` | Payment terms for this account (`net_15`, `net_30`, `net_45`, `net_60`, `net_90`, `prepay`). The seller must accept these terms or reject the account — terms are never silently remapped. |
 | `sandbox` | Whether this is a sandbox (test) account — no real spend. Only used with implicit accounts; explicit sandbox accounts are pre-existing. |
 
 Every combination of flags that might require the seller to do something different — bill a different entity, set up a different rate card, create a sandbox — is a distinct declaration.
+
+### Billing entity and invoice recipient
+
+For markets that require structured invoicing data (e.g., EU B2B transactions requiring VAT IDs), the `billing_entity` on an account provides the default business entity details for whoever `billing` points to. This includes legal name, tax identifiers, postal address, billing contact, and bank details.
+
+On individual media buys, an `invoice_recipient` can override the account default — useful when a specific campaign should be billed to a different party. When `invoice_recipient` differs from the account default and the account has `governance_agents`, the seller MUST include it in the `check_governance` request so the governance agent can approve or reject the billing redirect.
 
 **Workflow:**
 
@@ -374,7 +393,7 @@ Every combination of flags that might require the seller to do something differe
    - **Sandbox (explicit)**: pass `{ "account_id": "test_acc_001" }` (pre-existing test account, discovered via `list_accounts`)
 4. When anything changes (billing model, new brand, new operator), call `sync_accounts` again
 
-The agent may be involved in billing (when `billing` is `"agent"` or `"operator"`). The seller may require human approval before activating accounts.
+The agent may be directly responsible for billing when `billing` is `"agent"`. When `billing` is `"operator"` or `"advertiser"`, the agent facilitates but is not the invoiced party. The seller may require human approval before activating accounts.
 
 ### Natural key semantics
 

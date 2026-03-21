@@ -26,6 +26,10 @@
           "format": "date-time",
           "description": "ISO 8601 timestamp when changes take effect (null if pending approval)"
         },
+        "invoice_recipient": {
+          "$ref": "/schemas/core/business-entity.json",
+          "description": "Updated invoice recipient, echoed from the request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only)."
+        },
         "affected_packages": {
           "type": "array",
           "description": "Array of packages that were modified with complete state information",

@@ -40,6 +40,10 @@
         "$ref": "/schemas/core/package.json"
       }
     },
+    "invoice_recipient": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Per-buy override for who receives the invoice. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
     "creative_deadline": {
       "type": "string",
       "format": "date-time",

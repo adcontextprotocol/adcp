@@ -25,9 +25,14 @@
             "type": "string",
             "enum": [
               "operator",
-              "agent"
+              "agent",
+              "advertiser"
             ],
-            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. The seller must either accept this billing model or reject the request."
+            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The seller must either accept this billing model or reject the request."
+          },
+          "billing_entity": {
+            "$ref": "/schemas/core/business-entity.json",
+            "description": "Business entity details for the party responsible for payment. The agent provides this so the seller has the legal name, tax IDs, address, and bank details needed for formal B2B invoicing."
           },
           "payment_terms": {
             "type": "string",
@@ -167,6 +172,39 @@
             "operator": "pinnacle-media.com",
             "billing": "agent",
             "payment_terms": "net_60"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Advertiser billed directly with structured billing entity (DACH B2B)",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "pinnacle-media.com",
+            "billing": "advertiser",
+            "billing_entity": {
+              "legal_name": "Acme Corporation GmbH",
+              "vat_id": "DE987654321",
+              "registration_number": "HRB 67890",
+              "address": {
+                "street": "Hauptstrasse 42",
+                "city": "Munich",
+                "postal_code": "80331",
+                "country": "DE"
+              },
+              "contact": {
+                "name": "AP Department",
+                "email": "billing@acme-corp.com"
+              },
+              "bank": {
+                "account_holder": "Acme Corporation GmbH",
+                "iban": "DE75512108001245126199",
+                "bic": "SOLADEST600"
+              }
+            },
+            "payment_terms": "net_30"
           }
         ]
       }

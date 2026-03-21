@@ -26,6 +26,10 @@
           "$ref": "/schemas/core/account.json",
           "description": "Account billed for this media buy. Includes advertiser, billing proxy (if any), and rate card applied."
         },
+        "invoice_recipient": {
+          "$ref": "/schemas/core/business-entity.json",
+          "description": "Per-buy invoice recipient, echoed from the request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only)."
+        },
         "creative_deadline": {
           "type": "string",
           "format": "date-time",

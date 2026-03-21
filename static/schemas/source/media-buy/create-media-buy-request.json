@@ -57,6 +57,10 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for this media buy. Resolved to full brand identity at execution time from brand.json or the registry."
     },
+    "invoice_recipient": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
     "po_number": {
       "type": "string",
       "description": "Purchase order number for tracking"

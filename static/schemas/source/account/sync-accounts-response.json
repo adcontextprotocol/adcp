@@ -58,9 +58,14 @@
                 "type": "string",
                 "enum": [
                   "operator",
-                  "agent"
+                  "agent",
+                  "advertiser"
                 ],
                 "description": "Who is invoiced on this account. Matches the requested billing model."
+              },
+              "billing_entity": {
+                "$ref": "/schemas/core/business-entity.json",
+                "description": "Business entity details for the party responsible for payment, echoed from the request. Sellers MAY add fields the agent omitted (e.g., filling in registration_number from a credit check), but MUST NOT return data from a different entity. Bank details are omitted (write-only)."
               },
               "account_scope": {
                 "type": "string",
@@ -271,6 +276,38 @@
                 "message": "Operator billing is not supported. This seller only accepts agent billing."
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Advertiser billed directly with billing entity (bank details omitted in response)",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "pinnacle-media.com",
+            "name": "Acme Corp (billed direct)",
+            "action": "created",
+            "status": "active",
+            "billing": "advertiser",
+            "billing_entity": {
+              "legal_name": "Acme Corporation GmbH",
+              "vat_id": "DE987654321",
+              "registration_number": "HRB 67890",
+              "address": {
+                "street": "Hauptstrasse 42",
+                "city": "Munich",
+                "postal_code": "80331",
+                "country": "DE"
+              },
+              "contact": {
+                "name": "AP Department",
+                "email": "billing@acme-corp.com"
+              }
+            },
+            "account_scope": "operator_brand",
+            "payment_terms": "net_30"
           }
         ]
       }
