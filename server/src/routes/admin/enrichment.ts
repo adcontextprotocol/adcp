@@ -6,7 +6,7 @@
 import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import {
   getLushaClient,
   isLushaConfigured,
@@ -28,7 +28,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/enrichment/status",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (_req, res) => {
       res.json({
         configured: isLushaConfigured(),
@@ -41,7 +41,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/enrichment/stats",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (_req, res) => {
       try {
         const stats = await getEnrichmentStats();
@@ -107,7 +107,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/enrichment/domain/:domain",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const { domain } = req.params;
@@ -458,7 +458,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/prospecting/search",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const lusha = getLushaClient();
@@ -567,7 +567,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/prospecting/import",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const { company, autoAssignOwner } = req.body;

@@ -33,6 +33,12 @@ interface CertificationSummary {
   totalModules: number;
   credentialsEarned: string[];
   hasInProgressTrack: boolean;
+  abandonedModuleTitle: string | null;
+  expectationStatus?: 'invited' | 'joined' | 'started' | 'completed' | 'declined';
+  teamCertProgress?: { certified: number; total: number };
+  completionCelebrated?: boolean;
+  snoozedUntil?: string | null;
+  globalCertifiedCount?: number;
 }
 
 interface EngagementContext {
@@ -124,9 +130,20 @@ export const MAX_TOTAL_UNREPLIED = 4;
 /** Disengaging sentiment extends pulse interval to this many days. */
 export const DISENGAGING_PULSE_DAYS = 60;
 
-export const COMPOSE_SYSTEM_PROMPT = `You are Addie, community manager at AgenticAdvertising.org. You're knowledgeable about ad tech but never talk down. You're genuinely curious about what people are building. You keep things brief because you respect people's time.
+export const COMPOSE_SYSTEM_PROMPT = `You are Addie, community manager at AgenticAdvertising.org. You're knowledgeable about ad tech but never talk down. You keep things brief because you respect people's time.
 
 You are composing a proactive message to continue your conversation with this person. This is NOT a cold outreach — you know this person and have context about your relationship.
+
+## Critical rules (most common violations)
+These rules are violated most often. Read them carefully.
+
+1. **No "worth" softeners.** Never use "worth" to soften a recommendation: "worth a look", "worth 2 minutes", "worth filling out", "worth a browse", "worth jumping in", "worth doing", "worth finishing up". If something is useful, say what it does — don't tell them it's "worth" their time. BAD: "Your org profile is worth filling out." GOOD: "Fill out your org profile — it's how other members find you."
+2. **No "curious" as a question opener.** Never start a question with "curious" — it's a verbal tic. BAD: "Curious what brought you here." GOOD: "What brought you here?" or better, a yes/no question.
+3. **Short-answer questions only.** Every question must be answerable in one line. Yes/no or short-answer. NEVER: "What's pulling your attention?", "What are you building?", "What are you focused on?", "What's drawing you to...", "...or something else entirely?" INSTEAD: "Want an intro to [name]?" "Have you tried the cert?" "Are you on the buy side or sell side?"
+4. **No hedge language.** Never: "might be worth", "if you get a chance", "if you haven't already", "when you get a chance". If it's worth doing, say so directly.
+5. **Profile = once, ever.** If ANY prior assistant message in the conversation history mentions "profile", "fill out", or "fill in", do NOT mention profiles again. Never weave a profile nudge into another message.
+6. **Slack: no sign-off.** Do not sign Slack messages. No "— Addie", no sign-off line. The bot name already shows.
+7. **Output only the message.** Never include reasoning, strategy notes, chain-of-thought, or separators (---) in your output. Return ONLY the JSON response.
 
 ## The #1 rule: specific or skip
 Only send a message if you can reference something SPECIFIC this person did, said, asked about, or is working on. "Specific" means:
@@ -151,10 +168,11 @@ Do NOT send messages based only on their company name or job category. "Your com
 - Never open with the person's company name — it feels like a mail merge.
 - One purpose per message. Don't combine a profile nudge with a working group suggestion with a company compliment. Pick the single most relevant thing and say only that.
 - Keep it short. 1-3 sentences for Slack. 2-3 short paragraphs for email. If Slack is the channel, stay under 280 characters.
-- Questions must be answerable in one sentence. Yes/no or short-answer only. Never ask open-ended questions that require introspection ("What's pulling your attention?" "What are you hoping to get out of it?"). Instead: "Want an intro to [name]?" "Want me to add you to the measurement WG?"
-- No hedge language. Never say "might be worth a look", "if you get a chance", "worth a few minutes". If it's worth doing, say so directly.
+- Short-answer questions only (see critical rules #3).
+- No "worth" softeners, no hedge language (see critical rules #1, #4).
+- No "curious" as a question opener (see critical rules #2).
 - No marketing language. No exclamation marks in subject lines.
-- Sign as "Addie" with no last name.
+- Slack: no sign-off (see critical rules #6). Email: sign as just "— Addie".
 
 ## Tone by unreplied count
 - 0 unreplied: Normal, conversational.
@@ -166,9 +184,9 @@ Do NOT send messages based only on their company name or job category. "Your com
 - Email: Slightly more polished, but still personal. Not formal — no "Dear" or "Sincerely." Establish context faster — they're reading this in a crowded inbox. End with just "Addie" or "— Addie."
 - Email subject lines: Specific and conversational. Reference something they'd recognize (their company, a topic, something they said). Under 50 characters. No clickbait, no questions, no "Quick question" or "Checking in."
 
-## Profile completion
-- Only suggest completing a profile ONCE per person, ever. If your prior messages already mentioned it, do not bring it up again.
-- Never weave a profile nudge into a message about something else. Profile completion is its own message or nothing.
+## Profile completion (see also critical rules #5)
+- ONCE per person, ever. Check conversation history for "profile", "fill out", "fill in" — if found, do NOT mention it.
+- Never combine a profile nudge with another topic. Profile is its own message or nothing.
 - If the person hasn't replied to anything yet, do NOT lead with a hygiene ask. Lead with value.
 
 ## Discovery rules
@@ -195,7 +213,7 @@ When the contact reason is "monthly pulse":
 ## Skip rules
 - If you cannot reference anything specific — no conversation history, no observable activity in "What they've done", no community context — respond with skip. Silence is better than a generic message.
 - If your last 2 messages covered similar ground and the person hasn't responded, skip.
-- Welcome messages for new prospects may be sent without prior conversation context.
+- Welcome messages for new prospects may be sent without prior conversation context. For email-channel prospects with company data, use their company type, industry, and persona to craft a relevant introduction — e.g. reference how other agencies/brands/publishers are engaging with the protocol, or mention a working group that fits their space. Company context IS enough for a first welcome email. Do not skip welcome emails just because you lack conversation history.
 - Monthly pulses should only be skipped if you truly have nothing to share.
 - Having working group membership, Slack messages, certification progress, or event attendance IS specific enough to send a message about — you don't need prior conversation to reference observable activity.
 
@@ -338,11 +356,12 @@ export function hasMeaningfulEngagement(
     if (capabilities.community_profile_completeness >= 40) return true;
   }
 
-  // Working on certification
+  // Working on certification or invited to certify
   if (certification) {
     if (certification.modulesCompleted > 0) return true;
     if (certification.hasInProgressTrack) return true;
     if (certification.credentialsEarned.length > 0) return true;
+    if (certification.expectationStatus) return true;
   }
 
   // Having a workos_user_id or account_linked alone is not enough —
@@ -455,14 +474,23 @@ function stripCodeFences(text: string): string {
 }
 
 const REASONING_PREFIX_PATTERNS = [
-  /^thinking about this one:/i,
-  /^thinking through this one:/i,
+  /^thinking about this one/i,
+  /^thinking through this one/i,
   /^with \d+ unreplied/i,
-  /^given the \d+ unreplied/i,
-  /^since i have no conversation context/i,
-  /^since there's no conversation/i,
+  /^given (\d+|the \d+) unreplied/i,
+  /^lighter touch/i,
+  /^since (i have|there's|this person|they)/i,
+  /^the engagement opportunities/i,
   /^i should\b/i,
   /^i'll\b/i,
+  /^i need to\b/i,
+  /^for this (person|one)/i,
+  /^they (haven't|have not|are|were)\b/i,
+  /^no conversation (history|context)/i,
+  /^lead(ing)? with/i,
+  /^let me (think|focus|consider|compose|craft|write)\b/i,
+  /^looking at (their|the|this)\b/i,
+  /^based on (their|the|this)\b/i,
 ];
 
 function looksLikeReasoningParagraph(paragraph: string): boolean {
@@ -495,6 +523,16 @@ export function extractUserFacingMessage(rawText: string, channel: 'slack' | 'em
 
   if (channel === 'slack' && looksLikeReasoningParagraph(cleaned)) {
     return null;
+  }
+
+  // Strip sign-off from Slack messages (bot name already shows sender).
+  // Require a dash for same-line; bare "Addie" only on its own line (to avoid
+  // stripping inline content like "just ask Addie").
+  if (channel === 'slack') {
+    return cleaned
+      .replace(/\s*[-—–]{1,2}\s*Addie\s*$/, '')   // "— Addie" / "- Addie" (same-line or own line)
+      .replace(/\n\s*Addie\s*$/, '')                // bare "Addie" on its own line only
+      .trim();
   }
 
   return cleaned;
@@ -551,7 +589,14 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     dimension: 'hygiene',
     baseScore: 60,
     minStage: 'welcomed',
-    condition: (ctx) => !!ctx.capabilities && !ctx.capabilities.profile_complete,
+    condition: (ctx) => {
+      if (!ctx.capabilities || ctx.capabilities.profile_complete) return false;
+      // Enforce "once per person, ever" at the code level — don't rely on Sonnet.
+      const alreadyNudged = ctx.recentMessages
+        .filter(m => m.role === 'assistant')
+        .some(m => /\bprofile\b/i.test(m.content));
+      return !alreadyNudged;
+    },
   },
   {
     id: 'set_offerings',
@@ -613,7 +658,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
   },
   {
     id: 'discover_building',
-    description: 'Find out what they\'re working on right now — ask naturally, e.g. "what are you building?" or reference something relevant to their company',
+    description: 'Find out what they\'re working on — reference something specific to their company and ask a yes/no follow-up, e.g. "Are you building on the buy side or sell side?"',
     keywords: ['building', 'working on', 'project'],
     dimension: 'discovery',
     baseScore: 55,
@@ -622,7 +667,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
   },
   {
     id: 'discover_interest',
-    description: 'Surface their interests by sharing something relevant to their company type — mention a topic or trend and see if it sparks a response',
+    description: 'Surface their interests by sharing something relevant to their company type — mention a specific topic and ask if that\'s on their radar',
     keywords: ['interest', 'topics', 'curious about'],
     dimension: 'discovery',
     baseScore: 50,
@@ -631,7 +676,7 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
   },
   {
     id: 'discover_goals',
-    description: 'Understand what drew them to AgenticAdvertising.org — mention something specific to their space and ask what they\'re hoping to get out of it',
+    description: 'Understand what drew them here — mention a specific resource or WG relevant to their space and ask if it matches what they\'re looking for',
     keywords: ['goals', 'hoping', 'looking for'],
     dimension: 'discovery',
     baseScore: 45,
@@ -704,13 +749,37 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     condition: (ctx) => !ctx.certification || (ctx.certification.modulesCompleted === 0 && !ctx.certification.hasInProgressTrack),
   },
   {
+    id: 'resume_certification',
+    description: 'Gently re-engage — they started a module but haven\'t been back in a few days',
+    keywords: ['certification', 'resume', 'pick up'],
+    dimension: 'engagement',
+    baseScore: 68,
+    minStage: 'welcomed',
+    condition: (ctx) => !!ctx.certification?.abandonedModuleTitle,
+  },
+  {
+    id: 'cert_invite_nudge',
+    description: 'Their team is working on AdCP certification and they haven\'t started yet. Mention ~90 minutes for basics, link to /certification. Don\'t mention who invited them. If team cert progress is available, use it as social proof. If you know how many professionals are certified across the industry, mention it briefly.',
+    keywords: ['certification', 'team', 'get started'],
+    dimension: 'engagement',
+    baseScore: 66,
+    minStage: 'prospect',
+    condition: (ctx) => {
+      if (!ctx.certification) return false;
+      if (ctx.certification.snoozedUntil && new Date(ctx.certification.snoozedUntil) > new Date()) return false;
+      const status = ctx.certification.expectationStatus;
+      return status === 'invited' ||
+        (status === 'joined' && ctx.certification.modulesCompleted === 0 && !ctx.certification.hasInProgressTrack);
+    },
+  },
+  {
     id: 'continue_certification',
     description: 'Continue their in-progress certification track',
     keywords: ['certification', 'continue', 'module'],
     dimension: 'engagement',
     baseScore: 65,
     minStage: 'welcomed',
-    condition: (ctx) => !!ctx.certification && ctx.certification.hasInProgressTrack && ctx.certification.modulesCompleted < ctx.certification.totalModules,
+    condition: (ctx) => !!ctx.certification && ctx.certification.hasInProgressTrack && !ctx.certification.abandonedModuleTitle && ctx.certification.modulesCompleted < ctx.certification.totalModules,
   },
   {
     id: 'advance_certification',
@@ -815,6 +884,18 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     minStage: 'welcomed',
     condition: (ctx) => !!ctx.certification && ctx.certification.credentialsEarned.length > 0,
   },
+  {
+    id: 'cert_completion_congrats',
+    description: 'Congratulate them on earning their credential. Lead with the achievement — the credential they earned is the story. If there is a next tier, you may briefly note it exists but frame it as "whenever you\'re ready." If their team is close to 100% certified, that is a stronger closing note than the next tier.',
+    keywords: ['congratulations', 'credential', 'certified', 'team'],
+    dimension: 'recognition',
+    baseScore: 72,
+    minStage: 'welcomed',
+    condition: (ctx) => {
+      if (!ctx.certification) return false;
+      return ctx.certification.expectationStatus === 'completed' && !ctx.certification.completionCelebrated;
+    },
+  },
 ];
 
 // Per-company-type multipliers for each dimension
@@ -880,8 +961,16 @@ export function computeEngagementOpportunities(ctx: EngagementContext, contactRe
     const recentAssistantMsgs = ctx.recentMessages
       .filter(m => m.role === 'assistant')
       .slice(-3);
-    if (recentAssistantMsgs.length > 0 && entry.keywords.length > 0) {
-      const recentText = recentAssistantMsgs.map(m => m.content.toLowerCase()).join(' ');
+    const recentText = recentAssistantMsgs.length > 0
+      ? recentAssistantMsgs.map(m => m.content.toLowerCase()).join(' ')
+      : '';
+
+    // 8. WG fatigue — replaces normal recency for WG-related entries.
+    // Applied instead of (not in addition to) the generic penalty to avoid stacking.
+    const isWgEntry = entry.id === 'join_working_group' || entry.id === 'share_perspective';
+    if (isWgEntry && recentText.includes('working group')) {
+      score *= 0.2;
+    } else if (recentText && entry.keywords.length > 0) {
       const matchingKeywords = entry.keywords.filter(k => recentText.includes(k.toLowerCase()));
       if (matchingKeywords.length >= 1) {
         score *= 0.5;
@@ -1038,10 +1127,25 @@ function formatCertificationBlock(cert?: CertificationSummary | null): string {
   if (cert.credentialsEarned.length > 0) {
     lines.push(`  Credentials earned: ${cert.credentialsEarned.join(', ')}`);
   }
-  if (cert.hasInProgressTrack && cert.modulesCompleted < cert.totalModules) {
+  if (cert.abandonedModuleTitle) {
+    lines.push(`  Started "${cert.abandonedModuleTitle}" but hasn't been back in a few days`);
+  } else if (cert.hasInProgressTrack && cert.modulesCompleted < cert.totalModules) {
     lines.push(`  Currently working through a certification track`);
   }
-  if (cert.modulesCompleted === 0 && !cert.hasInProgressTrack) {
+  if (cert.expectationStatus) {
+    lines.push(`  Team certification expectation: ${cert.expectationStatus}`);
+  }
+  if (cert.teamCertProgress) {
+    const pct = cert.teamCertProgress.total > 0 ? cert.teamCertProgress.certified / cert.teamCertProgress.total : 0;
+    if (pct >= 0.25 || cert.teamCertProgress.certified >= 3) {
+      lines.push(`  Their team has ${cert.teamCertProgress.certified} of ${cert.teamCertProgress.total} members certified.`);
+      lines.push(`  You may mention this as encouragement if it feels natural, but don't make it the focus.`);
+    }
+  }
+  if (cert.globalCertifiedCount && cert.globalCertifiedCount >= 10) {
+    lines.push(`  ${cert.globalCertifiedCount} professionals across the industry have earned AdCP certification.`);
+  }
+  if (cert.modulesCompleted === 0 && !cert.hasInProgressTrack && !cert.expectationStatus) {
     return ''; // No certification activity — don't clutter the prompt
   }
   return lines.join('\n') + '\n';

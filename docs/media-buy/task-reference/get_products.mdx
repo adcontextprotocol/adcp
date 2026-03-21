@@ -11,8 +11,8 @@ Discover available advertising products based on campaign requirements using nat
 
 **Response Time**: ~60 seconds (AI inference with back-end systems)
 
-**Request Schema**: [`/schemas/v2/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json)
-**Response Schema**: [`/schemas/v2/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
 ## Quick Start
 
@@ -227,7 +227,7 @@ Products in the response include `catalog_types` (what catalog types they suppor
 
 ## Response
 
-Returns an array of `products` and optionally `proposals` and `shows`.
+Returns an array of `products` and optionally `proposals`.
 
 ### Products Array
 
@@ -241,22 +241,9 @@ Returns an array of `products` and optionally `proposals` and `shows`.
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
 | `delivery_measurement` | DeliveryMeasurement | (Optional) How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
+| `shows` | ShowSelector[] | (Optional) Shows available in this product. Each entry has `publisher_domain` and `show_ids`. Buyers resolve full show objects from the referenced `adagents.json`. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes). |
+| `show_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
-
-### Shows Array (Optional)
-
-When products reference shows via `show_ids`, the response includes a top-level `shows` array with full show objects. Only shows referenced by the returned products are included. Under pagination, each page includes all shows needed for that page's products.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `show_id` | string | Seller-scoped identifier for the show |
-| `name` | string | Human-readable show name |
-| `genre` | string[] | Genre tags (IAB Content Taxonomy 3.0 IDs when `genre_taxonomy` is present) |
-| `content_rating` | ContentRating | Baseline content rating (system + rating value) |
-| `talent` | Talent[] | Hosts, recurring cast, creators with optional `brand_url` links |
-| `distribution` | ShowDistribution[] | Where the show is distributed, with platform-specific identifiers |
-
-See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes) for full documentation.
 
 ### Proposals Array (Optional)
 
@@ -308,7 +295,7 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
 | `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
-**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
+**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
 ## Common Scenarios
 

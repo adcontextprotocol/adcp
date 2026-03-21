@@ -85,7 +85,6 @@
       if (user) {
         // User is logged in - show account dropdown
         const displayName = user.firstName || user.email.split('@')[0];
-        const manageLink = user.isManage ? `<a href="${authBaseUrl}/manage" class="navbar__dropdown-item">Manage AAO</a>` : '';
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
           <button class="navbar__notif-btn" id="notifBell" aria-label="Notifications">
@@ -104,7 +103,6 @@
           </div>
           <div class="navbar__account">
             <button class="navbar__account-btn" id="accountMenuBtn">
-              <span class="navbar__account-avatar" id="accountAvatar">${escapeHtml((user.firstName || '')[0] || user.email[0]).toUpperCase()}</span>
               <span class="navbar__account-name">${escapeHtml(displayName)}</span>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                 <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
@@ -114,7 +112,6 @@
               <div class="navbar__dropdown-header">${escapeHtml(user.email)}</div>
               <a href="${authBaseUrl}/dashboard" class="navbar__dropdown-item">Dashboard</a>
               <a href="${authBaseUrl}/community/profile/edit" class="navbar__dropdown-item">Edit profile</a>
-              ${manageLink}
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>
@@ -129,8 +126,7 @@
       }
     }
 
-    const isStoriesActive = currentPath.startsWith('/stories') || currentPath.startsWith('/explore') || currentPath.startsWith('/perspectives') || currentPath.startsWith('/latest');
-    const isCertificationActive = currentPath.startsWith('/academy') || currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
+    const isCertificationActive = currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
     const isCommunityActive = currentPath.startsWith('/community') || currentPath.startsWith('/events') || currentPath.startsWith('/committees') || currentPath.startsWith('/meetings');
     const isRegistryActive = currentPath === '/registry'
       || currentPath.startsWith('/registry/')
@@ -153,20 +149,8 @@
     // AAO logo is white, needs invert on light background
     const logoNeedsInvert = true;
 
-    // Founding member banner — show for anonymous users only, dismissible
-    const foundingBanner = !user ? `
-      <div class="founding-banner" id="foundingBanner">
-        <div class="founding-banner__inner">
-          <span class="founding-banner__text"><strong>Founding member window closes March 31.</strong> Lock in permanent rates and shape the standards from day one.</span>
-          <a href="${membershipUrl}" class="founding-banner__cta">Learn more &rarr;</a>
-          <button class="founding-banner__close" id="foundingBannerClose" aria-label="Dismiss">&times;</button>
-        </div>
-      </div>
-    ` : '';
-
     return `
-      ${foundingBanner}
-      <nav class="navbar" ${!user ? 'style="top: var(--founding-banner-height, 0px)"' : ''}>
+      <nav class="navbar">
         <div class="navbar__inner">
           <div class="navbar__items">
             <a class="navbar__brand" href="${homeUrl}">
@@ -175,17 +159,16 @@
               </div>
             </a>
             <div class="navbar__links-desktop">
-              <a href="/stories" class="navbar__link ${isStoriesActive ? 'active' : ''}">Stories</a>
-              <a href="/academy" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
+              <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
               <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
               <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
+              <a href="/registry" class="navbar__link ${isRegistryActive ? 'active' : ''}">Registry</a>
               <a href="${ctaUrl}" class="navbar__btn--cta">${ctaText}</a>
             </div>
           </div>
           <div class="navbar__items navbar__items--right">
             <div class="navbar__links-desktop">
               <div class="navbar__divider"></div>
-              <a href="/registry" class="navbar__link ${isRegistryActive ? 'active' : ''}">Registry</a>
               <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
             </div>
             ${authSection}
@@ -198,12 +181,11 @@
         </div>
         <div class="navbar__backdrop" id="mobileBackdrop" aria-hidden="true" role="presentation"></div>
         <div class="navbar__mobile-menu" id="mobileMenu" role="navigation" aria-label="Mobile navigation">
-          <a href="/stories" class="navbar__link ${isStoriesActive ? 'active' : ''}">Stories</a>
-          <a href="/academy" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
+          <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
           <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
           <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
-          <a href="${ctaUrl}" class="navbar__link ${currentPath === '/membership' || currentPath === '/dashboard' ? 'active' : ''}">${ctaText}</a>
           <a href="/registry" class="navbar__link ${isRegistryActive ? 'active' : ''}">Registry</a>
+          <a href="${ctaUrl}" class="navbar__link ${currentPath === '/membership' || currentPath === '/dashboard' ? 'active' : ''}">${ctaText}</a>
           <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
         </div>
       </nav>
@@ -213,59 +195,6 @@
   // Navigation CSS
   const navCSS = `
     <style>
-      /* Founding member banner */
-      :root {
-        --founding-banner-height: 0px;
-      }
-      .founding-banner {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 1001;
-        background: linear-gradient(90deg, #1a36b4 0%, #2d4eb4 100%);
-        color: #fff;
-        font-size: 0.8125rem;
-        line-height: 1.4;
-      }
-      .founding-banner__inner {
-        max-width: 1140px;
-        margin: 0 auto;
-        padding: 0.5rem 1rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.75rem;
-      }
-      .founding-banner__text {
-        text-align: center;
-      }
-      .founding-banner__text strong {
-        font-weight: 700;
-      }
-      .founding-banner__cta {
-        color: #fff;
-        text-decoration: none;
-        font-weight: 600;
-        white-space: nowrap;
-        opacity: 0.9;
-      }
-      .founding-banner__cta:hover { opacity: 1; text-decoration: underline; }
-      .founding-banner__close {
-        background: none;
-        border: none;
-        color: rgba(255,255,255,0.6);
-        font-size: 1.25rem;
-        cursor: pointer;
-        padding: 0 0.25rem;
-        line-height: 1;
-      }
-      .founding-banner__close:hover { color: #fff; }
-      .founding-banner--hidden { display: none; }
-      @media (max-width: 600px) {
-        .founding-banner__inner { flex-wrap: wrap; font-size: 0.75rem; padding: 0.375rem 0.75rem; }
-      }
-
       /* Add padding to body to prevent navbar overlap */
       body {
         padding-top: 60px;
@@ -505,35 +434,14 @@
         position: relative;
       }
 
-      .navbar__account-avatar {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #b45309, #d97706);
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.75rem;
-        font-weight: 600;
-        flex-shrink: 0;
-        overflow: hidden;
-      }
-      .navbar__account-avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 50%;
-      }
-
       .navbar__account-btn {
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        padding: 0.35rem 0.75rem 0.35rem 0.35rem;
+        padding: 0.5rem 0.75rem;
         background: transparent;
         border: 1px solid #e5e7eb;
-        border-radius: 9999px;
+        border-radius: 0.375rem;
         cursor: pointer;
         font-size: 0.875rem;
         font-weight: 500;
@@ -955,7 +863,7 @@
             <div class="aao-footer__column">
               <div class="aao-footer__title">Resources</div>
               <ul class="aao-footer__list">
-                <li><a href="/academy">Academy</a></li>
+                <li><a href="/certification">Academy</a></li>
                 <li><a href="/chat">Ask Addie</a></li>
                 <li><a href="${docsUrl}">AdCP Docs</a></li>
                 <li><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer">GitHub</a></li>
@@ -966,8 +874,8 @@
               <ul class="aao-footer__list">
                 <li><a href="${eventsUrl}">Events</a></li>
                 <li><a href="${committeesUrl}">Committees</a></li>
-                <li><a href="/stories">Perspectives</a></li>
-                <li><a href="/stories">Announcements</a></li>
+                <li><a href="${latestBaseUrl}/perspectives">Perspectives</a></li>
+                <li><a href="${latestBaseUrl}/announcements">Announcements</a></li>
               </ul>
             </div>
           </div>
@@ -1346,71 +1254,6 @@
 
     // Setup dropdown toggle
     setupDropdown();
-
-    // Load avatar image asynchronously
-    loadNavAvatar();
-
-    // Founding member banner — adjust body padding and handle dismiss
-    setupFoundingBanner();
-  }
-
-  function setupFoundingBanner() {
-    const banner = document.getElementById('foundingBanner');
-    if (!banner) return;
-
-    // Check if previously dismissed
-    if (localStorage.getItem('founding-banner-dismissed')) {
-      banner.remove();
-      return;
-    }
-
-    // Measure and set CSS variable for body padding offset
-    function updateBannerHeight() {
-      const h = banner.offsetHeight;
-      document.documentElement.style.setProperty('--founding-banner-height', h + 'px');
-      document.body.style.paddingTop = (60 + h) + 'px';
-    }
-    updateBannerHeight();
-    window.addEventListener('resize', updateBannerHeight);
-
-    // Dismiss
-    const closeBtn = document.getElementById('foundingBannerClose');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        banner.classList.add('founding-banner--hidden');
-        document.body.style.paddingTop = '60px';
-        document.querySelector('.navbar').style.top = '0';
-        document.documentElement.style.setProperty('--founding-banner-height', '0px');
-        localStorage.setItem('founding-banner-dismissed', '1');
-      });
-    }
-  }
-
-  function loadNavAvatar() {
-    var el = document.getElementById('accountAvatar');
-    if (!el) return;
-
-    // Try portrait first, fall back to community profile avatar
-    fetch(apiBaseUrl + '/api/me/portrait', { credentials: 'include' })
-      .then(function(res) { return res.ok ? res.json() : null; })
-      .then(function(data) {
-        if (data && data.portrait) {
-          el.innerHTML = '<img src="' + escapeHtml(data.portrait.image_url) + '" alt="">';
-          return;
-        }
-        // No portrait — try community profile avatar
-        return fetch(apiBaseUrl + '/api/me/community/hub', { credentials: 'include' })
-          .then(function(res) { return res.ok ? res.json() : null; })
-          .then(function(hubData) {
-            if (!hubData) return;
-            var url = hubData.profile?.avatar_url;
-            if (url) {
-              el.innerHTML = '<img src="' + escapeHtml(url) + '" alt="">';
-            }
-          });
-      })
-      .catch(function() {});
   }
 
   // Run when DOM is ready

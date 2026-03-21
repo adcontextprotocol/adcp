@@ -19,7 +19,7 @@ import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
-import { createChannel, setChannelPurpose } from "../slack/client.js";
+import { createChannel, setChannelPurpose, sendChannelMessage, isSlackConfigured } from "../slack/client.js";
 import { CommunityDatabase } from "../db/community-db.js";
 
 const logger = createLogger("committee-routes");
@@ -1655,6 +1655,48 @@ export function createCommitteeRouters(): {
       });
 
       logger.info({ documentId: document.id, groupSlug: slug, userId: user.id }, 'Committee document created');
+
+      // Notify the working group's Slack channel
+      if (group.slack_channel_id && isSlackConfigured()) {
+        const docTypeLabel = document_type === 'spreadsheet' ? 'Spreadsheet' : document_type === 'presentation' ? 'Presentation' : 'Document';
+        const userName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email || 'A working group leader';
+        const appUrl = process.env.APP_URL || 'https://agenticadvertising.org';
+        const groupUrl = `${appUrl}/working-groups/${slug}`;
+        // Sanitize for Slack mrkdwn link syntax (pipe breaks <url|label>)
+        const safeTitle = title.replace(/[|<>]/g, '-');
+
+        sendChannelMessage(group.slack_channel_id, {
+          text: `📄 New ${docTypeLabel} added to ${group.name}: ${title}`,
+          blocks: [
+            {
+              type: 'header',
+              text: {
+                type: 'plain_text' as const,
+                text: `📄 New ${docTypeLabel} Added`,
+                emoji: true,
+              },
+            },
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn' as const,
+                text: `*<${document_url}|${safeTitle}>*${description ? `\n${description}` : ''}`,
+              },
+            },
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn' as const,
+                text: `Added by ${userName} · <${groupUrl}|View all ${group.name} resources>`,
+              },
+            },
+          ],
+        }).catch(err => {
+          logger.warn({ err, groupSlug: slug, documentId: document.id }, 'Failed to send Slack notification for new committee document');
+        });
+      }
 
       res.status(201).json({ document });
     } catch (error) {

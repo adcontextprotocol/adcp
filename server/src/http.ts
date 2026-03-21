@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import { csrfProtection } from "./middleware/csrf.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
@@ -16,7 +17,6 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase, getPool } from "./db/client.js";
-import { generatePerspectiveCard } from "./services/perspective-cards.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
@@ -35,8 +35,7 @@ import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, requireManage, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { isWebUserAAOCouncil } from "./addie/mcp/admin-tools.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -50,7 +49,6 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
-import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
@@ -77,8 +75,6 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
-import { createPortraitRouter, createPublicPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
-import { createIllustrationRouter } from "./routes/illustrations.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
@@ -291,7 +287,7 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null) {
   let isAdmin = false;
   if (user) {
     const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
@@ -306,7 +302,6 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       firstName: user.firstName,
       lastName: user.lastName,
       isAdmin,
-      isManage: isManage || isAdmin,
       isMember: !!user.isMember,
     } : null,
     posthog: POSTHOG_API_KEY ? {
@@ -319,8 +314,8 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
 /**
  * Generate the script tags to inject app config and PostHog into HTML.
  */
-function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false): string {
-  const config = buildAppConfig(user, isManage);
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null): string {
+  const config = buildAppConfig(user);
   const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 
   // Add PostHog script if API key is configured
@@ -328,7 +323,10 @@ function getAppConfigScript(user?: { id?: string; email: string; firstName?: str
     ? `<script src="/posthog-init.js" defer></script>`
     : '';
 
-  return `${configScript}\n${posthogScript}`;
+  // csrf.js patches fetch() to include the X-CSRF-Token header on POSTs
+  const csrfScript = `<script src="/csrf.js"></script>`;
+
+  return `${configScript}\n${csrfScript}\n${posthogScript}`;
 }
 
 /**
@@ -483,6 +481,7 @@ export class HTTPServer {
       }
     });
     this.app.use(cookieParser());
+    this.app.use(csrfProtection);
 
     // Serve JSON schemas at /schemas/* from dist/schemas (built schemas)
     // In dev: __dirname is server/src, dist is at ../../dist
@@ -684,16 +683,6 @@ export class HTTPServer {
       res.redirect('/dashboard' + queryString);
     });
 
-    // Redirect old /certification URL to /academy before static middleware serves certification.html
-    this.app.get('/certification', (req, res) => {
-      res.redirect(301, '/academy');
-    });
-
-    // /get-started → /membership
-    this.app.get('/get-started', (req, res) => {
-      res.redirect(301, '/membership');
-    });
-
     // Serve homepage and public assets at root
     // In prod: __dirname is dist, public is at ../server/public
     // In dev: __dirname is server/src, public is at ../public
@@ -714,10 +703,8 @@ export class HTTPServer {
         return res.redirect(302, 'https://docs.adcontextprotocol.org/');
       }
 
-      // Skip paths that have their own route handlers which manage auth and config injection
-      // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
-      // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath.startsWith('/stories') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
+      // Skip paths that have their own route handlers which handle auth and config injection
+      if (urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
         return next();
       }
 
@@ -827,20 +814,9 @@ export class HTTPServer {
       const user = await getUserFromRequest(req, res);
       await enrichUserWithMembership(user);
 
-      // Determine manage-tier access for nav rendering
-      let isManage = false;
-      if (user) {
-        if (isDevModeEnabled()) {
-          const devUser = getDevUser(req);
-          isManage = devUser?.isManage ?? false;
-        } else if (user.id) {
-          isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
-        }
-      }
-
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
-      const configScript = getAppConfigScript(user, isManage);
+      const configScript = getAppConfigScript(user);
 
       // Inject before </head>
       if (html.includes('</head>')) {
@@ -891,10 +867,6 @@ export class HTTPServer {
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
 
-    // Mount Moltbook admin routes
-    const { pageRouter: moltbookPageRouter, apiRouter: moltbookApiRouter } = createMoltbookAdminRouter();
-    this.app.use('/admin/moltbook', moltbookPageRouter);    // Page routes: /admin/moltbook
-    this.app.use('/api/admin/moltbook', moltbookApiRouter); // API routes: /api/admin/moltbook/*
 
     // Mount Addie chat routes (public chat interface)
     const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
@@ -1040,15 +1012,6 @@ export class HTTPServer {
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
 
-    // Mount portrait routes
-    const portraitConfig = { memberDb, orgDb, invalidateMemberContextCache };
-    this.app.use('/api/me/portrait', createPortraitRouter(portraitConfig));
-    this.app.use('/api/portraits', createPublicPortraitRouter());
-    this.app.use('/api/admin/portraits', createAdminPortraitRouter());
-
-    // Mount illustration routes
-    this.app.use('/api/illustrations', createIllustrationRouter());
-
     // Mount community routes
     const communityDb = new CommunityDatabase();
     const communitySlackDb = new SlackDatabase();
@@ -1100,14 +1063,9 @@ export class HTTPServer {
     this.app.use('/api/admin/events', eventsAdminApiRouter); // Admin API: /api/admin/events/*
     this.app.use('/api/events', eventsPublicApiRouter);      // Public API: /api/events/*
 
-    // Redirect main latest page routes to stories hub
-    this.app.get("/latest", (req, res) => { res.redirect(301, '/stories'); });
-    this.app.get("/latest/perspectives", (req, res) => { res.redirect(301, '/stories'); });
-    this.app.get("/latest/announcements", (req, res) => { res.redirect(301, '/stories'); });
-
-    // Mount latest routes (redirects above catch the main pages; API routes still needed for data)
+    // Mount latest content routes (The Latest section)
     const { pageRouter: latestPageRouter, apiRouter: latestApiRouter } = createLatestRouter();
-    this.app.use('/', latestPageRouter);                    // Remaining /latest/:slug pages
+    this.app.use('/', latestPageRouter);                    // Page routes: /latest, /latest/:slug
     this.app.use('/api', latestApiRouter);                  // API routes: /api/latest/*
 
     // Mount weekly digest routes (public web view)
@@ -1527,17 +1485,7 @@ export class HTTPServer {
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
 
-        let isManage = false;
-        if (user) {
-          if (isDevModeEnabled()) {
-            const devUser = getDevUser(req);
-            isManage = devUser?.isManage ?? false;
-          } else if (user.id) {
-            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
-          }
-        }
-
-        const configScript = getAppConfigScript(user, isManage);
+        const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -1576,17 +1524,7 @@ export class HTTPServer {
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
 
-        let isManage = false;
-        if (user) {
-          if (isDevModeEnabled()) {
-            const devUser = getDevUser(req);
-            isManage = devUser?.isManage ?? false;
-          } else if (user.id) {
-            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
-          }
-        }
-
-        const configScript = getAppConfigScript(user, isManage);
+        const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -1980,29 +1918,6 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'join.html');
     });
 
-    // Academy - certification and learning
-    this.app.get("/academy", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'certification.html');
-    });
-
-    // Stories - unified content hub (stories + perspectives + news)
-    this.app.get("/stories", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'stories/index.html');
-    });
-
-    // Legacy /explore route redirects to /stories
-    this.app.get("/explore", (req, res) => {
-      res.redirect(301, '/stories');
-    });
-
-    this.app.get("/stories/:slug", async (req, res) => {
-      const { slug } = req.params;
-      if (!/^[a-z0-9-]+$/.test(slug)) {
-        return res.status(404).send('Not found');
-      }
-      await this.serveHtmlWithConfig(req, res, `stories/${slug}.html`);
-    });
-
     // About AAO page - serve about.html at /about
     this.app.get("/about", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'about.html');
@@ -2018,9 +1933,9 @@ export class HTTPServer {
       res.redirect(301, '/about#leadership');
     });
 
-    // Perspectives index redirects to stories hub
+    // Perspectives index redirects to perspectives section
     this.app.get("/perspectives", (req, res) => {
-      res.redirect(301, '/stories');
+      res.redirect(301, "/latest/perspectives");
     });
 
     // Perspectives detail page - serves article content with SSR meta tags for social sharing
@@ -2033,7 +1948,6 @@ export class HTTPServer {
         excerpt?: string;
         subtitle?: string;
         featured_image_url?: string;
-        illustration_id?: string;
         author_name?: string;
         published_at?: string;
         updated_at?: string;
@@ -2042,7 +1956,7 @@ export class HTTPServer {
       try {
         const pool = getPool();
         const result = await pool.query(
-          `SELECT title, excerpt, subtitle, featured_image_url, illustration_id, author_name, published_at, updated_at
+          `SELECT title, excerpt, subtitle, featured_image_url, author_name, published_at, updated_at
            FROM perspectives
            WHERE slug = $1 AND status = 'published'`,
           [slug]
@@ -2058,9 +1972,7 @@ export class HTTPServer {
       await serveHtmlWithMetaTags(req, res, 'perspectives/article.html', article ? {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,
-        image: article.featured_image_url
-          || (article.illustration_id ? `https://agenticadvertising.org/api/perspectives/${slug}/card.png` : null)
-          || 'https://agenticadvertising.org/AAo-social.png',
+        image: article.featured_image_url || 'https://agenticadvertising.org/AAo-social.png',
         url: `https://agenticadvertising.org/perspectives/${slug}`,
         type: 'article',
         author: article.author_name,
@@ -4093,10 +4005,10 @@ export class HTTPServer {
               // Ensure the Stripe customer has org metadata so that subsequent
               // subscription and invoice webhooks can find the org.
               try {
-                const customer = await stripe.customers.retrieve(customerId);
-                if ('deleted' in customer && customer.deleted) {
+                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
+                if ('deleted' in customerRaw && customerRaw.deleted) {
                   logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
-                } else if (!customer.metadata?.workos_organization_id) {
+                } else if (!(customerRaw as Stripe.Customer).metadata?.workos_organization_id) {
                   await stripe.customers.update(customerId, {
                     metadata: { workos_organization_id: workosOrgId },
                   });
@@ -4120,25 +4032,34 @@ export class HTTPServer {
       }
     });
 
-    // Manage routes — kitchen cabinet + admin
-    this.app.get('/manage', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage.html'));
-    this.app.get('/manage/referrals', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-referrals.html'));
-    this.app.get('/manage/prospects', requireAuth, (req, res) => res.redirect(301, '/manage/accounts'));
-    this.app.get('/manage/accounts', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-accounts.html'));
-    this.app.get('/manage/accounts/:orgId', requireAuth, requireManage, (req, res) =>
+    // Admin sub-pages (accounts, referrals, analytics, geo)
+    this.app.get('/admin/referrals', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-referrals.html'));
+    this.app.get('/admin/prospects', requireAuth, requireAdmin, (req, res) => res.redirect(301, '/admin/accounts'));
+    this.app.get('/admin/accounts', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-accounts.html'));
+    this.app.get('/admin/accounts/:orgId', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
-    this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
-    this.app.get('/manage/geo', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-geo.html'));
+    this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-analytics.html'));
+    this.app.get('/admin/geo', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
 
-    // Redirect moved admin pages to their new /manage paths
-    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/accounts'));
-    this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
-    this.app.get('/admin/geo', (req, res) => res.redirect(301, '/manage/geo'));
+    // Redirects from old /manage paths (preserve query strings)
+    const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
+      const qs = req.originalUrl.split('?')[1];
+      res.redirect(301, target + (qs ? '?' + qs : ''));
+    };
+    this.app.get('/manage', manageRedirect('/admin'));
+    this.app.get('/manage/referrals', manageRedirect('/admin/referrals'));
+    this.app.get('/manage/prospects', manageRedirect('/admin/accounts'));
+    this.app.get('/manage/accounts/:orgId', (req, res) => {
+      const qs = req.originalUrl.split('?')[1];
+      res.redirect(301, `/admin/accounts/${req.params.orgId}` + (qs ? '?' + qs : ''));
+    });
+    this.app.get('/manage/accounts', manageRedirect('/admin/accounts'));
+    this.app.get('/manage/analytics', manageRedirect('/admin/analytics'));
+    this.app.get('/manage/geo', manageRedirect('/admin/geo'));
 
     // Admin routes
     // GET /admin - Admin landing page
@@ -4402,7 +4323,7 @@ export class HTTPServer {
     });
 
     // GET /api/admin/analytics-data - Get simple analytics data from views
-    this.app.get('/api/admin/analytics-data', requireAuth, requireManage, async (req, res) => {
+    this.app.get('/api/admin/analytics-data', requireAuth, requireAdmin, async (req, res) => {
       try {
         const pool = getPool();
         // Query all analytics views
@@ -4513,8 +4434,8 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/admin/referrals - Aggregate referral activity for manage tier
-    this.app.get('/api/admin/referrals', requireAuth, requireManage, async (_req, res) => {
+    // GET /api/admin/referrals - Aggregate referral activity
+    this.app.get('/api/admin/referrals', requireAuth, requireAdmin, async (_req, res) => {
       try {
         const rows = await listAllReferralCodes();
         res.json(rows);
@@ -4811,7 +4732,7 @@ export class HTTPServer {
         // Static pages with their priorities and change frequencies
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
-          { path: '/stories', priority: '0.9', changefreq: 'daily' },
+          { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
           { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
@@ -4882,28 +4803,13 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT
-            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
-            p.external_url, p.external_site_name,
-            p.author_name, p.author_title, p.featured_image_url,
-            p.illustration_id,
-            p.published_at, p.display_order, p.tags, p.like_count,
-            COALESCE(
-              (SELECT json_agg(json_build_object(
-                'display_name', ca.display_name,
-                'display_title', ca.display_title,
-                'portrait_id', mp.portrait_id::text
-              ) ORDER BY ca.display_order)
-              FROM content_authors ca
-              LEFT JOIN organization_memberships om ON om.workos_user_id = ca.user_id
-              LEFT JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
-                AND mp.portrait_id IS NOT NULL
-              WHERE ca.perspective_id = p.id),
-              '[]'::json
-            ) AS authors
-          FROM perspectives p
-          WHERE p.status = 'published' AND p.working_group_id IS NULL
-            ${req.query.authored === 'true' ? 'AND EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id)' : ''}
-          ORDER BY p.published_at DESC NULLS LAST`
+            id, slug, content_type, title, subtitle, category, excerpt,
+            external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            published_at, display_order, tags, like_count
+          FROM perspectives
+          WHERE status = 'published' AND working_group_id IS NULL
+          ORDER BY published_at DESC NULLS LAST`
         );
 
         res.json(result.rows);
@@ -4922,26 +4828,12 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT
-            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
-            p.content, p.external_url, p.external_site_name,
-            p.author_name, p.author_title, p.featured_image_url,
-            p.illustration_id,
-            p.published_at, p.tags, p.metadata, p.like_count, p.updated_at,
-            COALESCE(
-              (SELECT json_agg(json_build_object(
-                'display_name', ca.display_name,
-                'display_title', ca.display_title,
-                'portrait_id', mp.portrait_id::text
-              ) ORDER BY ca.display_order)
-              FROM content_authors ca
-              LEFT JOIN organization_memberships om ON om.workos_user_id = ca.user_id
-              LEFT JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
-                AND mp.portrait_id IS NOT NULL
-              WHERE ca.perspective_id = p.id),
-              '[]'::json
-            ) AS authors
-          FROM perspectives p
-          WHERE p.slug = $1 AND p.status = 'published'`,
+            id, slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            published_at, tags, metadata, like_count, updated_at
+          FROM perspectives
+          WHERE slug = $1 AND status = 'published'`,
           [slug]
         );
 
@@ -4958,88 +4850,6 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get perspective',
         });
-      }
-    });
-
-    // GET /api/perspectives/:slug/card.png - Generate editorial title card image
-    // Priority: 1) featured_image_url redirect, 2) AI illustration composite, 3) typographic fallback
-    this.app.get('/api/perspectives/:slug/card.png', async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const { getPerspectiveWithIllustration, getIllustrationData } = await import("./db/illustration-db.js");
-        const { compositePerspectiveCard } = await import("./services/perspective-cards.js");
-
-        const p = await getPerspectiveWithIllustration(slug);
-        if (!p) {
-          return res.status(404).send('Not found');
-        }
-
-        // If featured image exists, redirect to it (only https URLs)
-        if (p.featured_image_url) {
-          try {
-            const imgUrl = new URL(p.featured_image_url);
-            if (imgUrl.protocol === 'https:') {
-              return res.redirect(p.featured_image_url);
-            }
-          } catch {
-            // Invalid URL — fall through to generation
-          }
-        }
-
-        // If AI illustration exists, composite it with portrait + text
-        if (p.illustration_id) {
-          const illustrationData = await getIllustrationData(p.illustration_id);
-          if (illustrationData) {
-            // Try to load author portrait
-            let authorPortraitBuffer: Buffer | undefined;
-            try {
-              const pool = getPool();
-              const authorResult = await pool.query(
-                `SELECT mp.portrait_id FROM content_authors ca
-                 JOIN organization_memberships om ON om.workos_user_id = ca.user_id
-                 JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
-                 WHERE ca.perspective_id = $1 AND mp.portrait_id IS NOT NULL
-                 LIMIT 1`,
-                [p.id]
-              );
-              if (authorResult.rows[0]?.portrait_id) {
-                const { getPortraitData } = await import("./db/portrait-db.js");
-                const portraitData = await getPortraitData(authorResult.rows[0].portrait_id);
-                if (portraitData?.portrait_data) {
-                  authorPortraitBuffer = portraitData.portrait_data;
-                }
-              }
-            } catch { /* portrait is optional */ }
-
-            const buffer = await compositePerspectiveCard({
-              illustrationBuffer: illustrationData,
-              authorPortraitBuffer,
-              title: p.title,
-              category: p.category || undefined,
-              authorName: p.author_name || undefined,
-              authorTitle: p.author_title || undefined,
-            });
-
-            res.set('Content-Type', 'image/png');
-            res.set('Cache-Control', 'public, max-age=3600, must-revalidate');
-            return res.send(buffer);
-          }
-        }
-
-        // Typographic fallback
-        const buffer = await generatePerspectiveCard({
-          title: p.title,
-          category: p.category || undefined,
-          authorName: p.author_name || undefined,
-          authorTitle: p.author_title || undefined,
-        });
-
-        res.set('Content-Type', 'image/png');
-        res.set('Cache-Control', 'public, max-age=86400');
-        res.send(buffer);
-      } catch (error) {
-        logger.error({ err: error }, 'Generate perspective card error:');
-        res.status(500).send('Failed to generate card');
       }
     });
 
@@ -5920,7 +5730,6 @@ Disallow: /api/admin/
               first_name: user.firstName,
               last_name: user.lastName,
               isAdmin: devUser.isAdmin,
-              isManage: devUser.isManage || devUser.isAdmin,
             },
             organizations,
             // Include dev mode info for debugging
@@ -5961,8 +5770,6 @@ Disallow: /api/admin/
         // Check if user is admin
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
-        const isManage = isAdmin || await isWebUserAAOCouncil(user.id);
-
         // Check Slack sync status
         let isLinkedToSlack = false;
         try {
@@ -5981,7 +5788,6 @@ Disallow: /api/admin/
             first_name: user.firstName,
             last_name: user.lastName,
             isAdmin,
-            isManage,
             isLinkedToSlack,
           },
           organizations,
@@ -6689,6 +6495,12 @@ Disallow: /api/admin/
         const version = req.query.version as string;
         const format = req.query.format as string; // 'json' or 'html' (default: html)
 
+        // Serve the page shell for non-JSON requests; it fetches content client-side
+        if (format !== 'json') {
+          return await this.serveHtmlWithConfig(req, res, 'agreement.html');
+        }
+
+        // JSON API: validate params and return agreement data
         if (!type) {
           return res.status(400).json({
             error: 'Missing parameters',
@@ -6703,7 +6515,6 @@ Disallow: /api/admin/
           });
         }
 
-        // If version is provided, get that specific version, otherwise get current
         const agreement = version
           ? await orgDb.getAgreementByTypeAndVersion(type, version)
           : await orgDb.getCurrentAgreementByType(type);
@@ -6717,95 +6528,16 @@ Disallow: /api/admin/
           });
         }
 
-        // Return JSON if explicitly requested
-        if (format === 'json') {
-          return res.json({
-            version: agreement.version,
-            type: type,
-            text: agreement.text,
-            effective_date: agreement.effective_date,
-          });
-        }
-
-        // Otherwise render as HTML
         const { marked } = await import('marked');
         const htmlContent = await marked(agreement.text);
 
-        const typeLabels: Record<string, string> = {
-          terms_of_service: 'Terms of Use',
-          privacy_policy: 'Privacy Policy',
-          membership: 'Membership Agreement'
-        };
-
-        const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${typeLabels[type]} - AdCP Registry</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f5f5;
-      padding: 40px 20px;
-      line-height: 1.6;
-      color: #333;
-    }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: white;
-      padding: 40px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    h1 {
-      color: #2d3748;
-      margin-bottom: 10px;
-    }
-    .meta {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #e0e0e0;
-    }
-    .content h1 { margin-top: 30px; margin-bottom: 15px; font-size: 24px; }
-    .content h2 { margin-top: 30px; margin-bottom: 15px; font-size: 20px; }
-    .content h3 { margin-top: 25px; margin-bottom: 10px; font-size: 18px; }
-    .content p { margin-bottom: 15px; }
-    .content ul, .content ol { margin-bottom: 15px; padding-left: 30px; }
-    .content li { margin-bottom: 8px; }
-    .back-link {
-      display: inline-block;
-      margin-top: 30px;
-      color: #667eea;
-      text-decoration: none;
-    }
-    .back-link:hover {
-      text-decoration: underline;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>${typeLabels[type]}</h1>
-    <div class="meta">
-      Version ${agreement.version} • Effective Date: ${new Date(agreement.effective_date).toLocaleDateString()}
-    </div>
-    <div class="content">
-      ${htmlContent}
-    </div>
-    <a href="javascript:window.close()" class="back-link">← Close</a>
-  </div>
-</body>
-</html>
-        `;
-
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
+        return res.json({
+          version: agreement.version,
+          type: type,
+          text: agreement.text,
+          html: htmlContent,
+          effective_date: agreement.effective_date,
+        });
       } catch (error) {
         logger.error({ err: error }, 'Get agreement error:');
         res.status(500).json({
@@ -7516,6 +7248,7 @@ Disallow: /api/admin/
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+
     await runMigrations();
 
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)
@@ -7575,10 +7308,6 @@ Disallow: /api/admin/
     jobScheduler.startAll();
 
     // Stop jobs that require missing env vars
-    if (!process.env.MOLTBOOK_API_KEY) {
-      jobScheduler.stop(JOB_NAMES.MOLTBOOK_POSTER);
-      jobScheduler.stop(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
-    }
     if (!process.env.LLMPULSE_API_KEY) {
       jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
       jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);

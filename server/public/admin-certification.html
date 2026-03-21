@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <title>Certification - AdCP Admin</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -683,15 +683,19 @@
           result.style.background = 'var(--color-error-50)';
           result.style.color = 'var(--color-error-800)';
           result.textContent = data.error || 'Failed to backfill badges';
-        } else if (data.total === 0) {
+        } else if (data.total === 0 && !data.credentialsAwarded) {
           result.style.background = 'var(--color-success-50, #f0fdf4)';
           result.style.color = 'var(--color-success-800, #166534)';
           result.textContent = 'All badges are up to date.';
         } else {
-          result.style.background = data.errors.length > 0 ? 'var(--color-warning-100)' : 'var(--color-success-50, #f0fdf4)';
-          result.style.color = data.errors.length > 0 ? 'var(--color-warning-800)' : 'var(--color-success-800, #166534)';
-          result.textContent = `Updated ${data.updated}/${data.total} badges.` +
-            (data.errors.length > 0 ? ` ${data.errors.length} errors.` : '');
+          const hasErrors = data.errors.length > 0;
+          result.style.background = hasErrors ? 'var(--color-warning-100)' : 'var(--color-success-50, #f0fdf4)';
+          result.style.color = hasErrors ? 'var(--color-warning-800)' : 'var(--color-success-800, #166534)';
+          const parts = [];
+          if (data.credentialsAwarded > 0) parts.push(`Awarded ${data.credentialsAwarded} missing credential(s).`);
+          if (data.total > 0) parts.push(`Updated ${data.updated}/${data.total} badges.`);
+          if (hasErrors) parts.push(`${data.errors.length} errors.`);
+          result.textContent = parts.join(' ');
         }
         result.style.display = 'block';
         loadOverview();

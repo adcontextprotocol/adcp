@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/limited-series.json",
+  "title": "Limited Series",
+  "description": "A bounded content run with a defined arc. Indicates the show has a planned beginning, end, and episode count — distinguishing it from ongoing series.",
+  "type": "object",
+  "properties": {
+    "total_episodes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Planned number of episodes in the series"
+    },
+    "starts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the series begins (ISO 8601)"
+    },
+    "ends": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the series ends (ISO 8601)"
+    }
+  },
+  "required": ["total_episodes"],
+  "additionalProperties": true
+}

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ask Addie - AgenticAdvertising.org</title>
-  <link rel="icon" type="image/svg+xml" href="/AAo.svg">
+  <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -687,46 +687,6 @@
     .anonymous-banner a:hover {
       text-decoration: underline;
     }
-
-    /* Soft gate for anonymous users after N messages */
-    .anon-soft-gate {
-      margin: 16px 0;
-      padding: 0 16px;
-    }
-    .anon-soft-gate__inner {
-      background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
-      border: 1px solid #bfdbfe;
-      border-radius: 12px;
-      padding: 20px;
-      font-size: 14px;
-      line-height: 1.5;
-      color: #1e3a5f;
-    }
-    .anon-soft-gate__actions {
-      display: flex;
-      gap: 12px;
-      margin-top: 12px;
-      align-items: center;
-    }
-    .anon-soft-gate__btn {
-      display: inline-block;
-      background: var(--color-primary-600, #1a36b4);
-      color: #fff;
-      padding: 8px 20px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      text-decoration: none;
-    }
-    .anon-soft-gate__btn:hover { opacity: 0.9; }
-    .anon-soft-gate__dismiss {
-      background: none;
-      border: none;
-      color: #6b7280;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .anon-soft-gate__dismiss:hover { color: #374151; }
 
     /* Status indicator */
     .status-indicator {
@@ -2412,7 +2372,7 @@
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
-  <div id="anonymous-banner" class="anonymous-banner">Free preview — <a href="/auth/signup?return_to=/chat">create an account</a> to save conversations, search Slack, and get full-quality answers.</div>
+  <div id="anonymous-banner" class="anonymous-banner">Free preview — <a href="/api/auth/login">sign in</a> to search Slack discussions, validate schemas, and get full-quality answers.</div>
   <div id="adcp-nav"></div>
 
   <!-- SI (Sponsored Intelligence) Chat Modal -->
@@ -4078,7 +4038,7 @@
           try {
             const notification = new Notification(title, {
               body: body.slice(0, 100) + (body.length > 100 ? '...' : ''),
-              icon: '/AAo.svg',
+              icon: '/addie-icon.svg',
               tag: tabId // Prevents duplicate notifications
             });
             notification.onclick = () => {
@@ -4097,38 +4057,10 @@
         }
       }
 
-      // Track anonymous message count for soft gate
-      let anonMessageCount = 0;
-      const ANON_GATE_THRESHOLD = 3;
-
-      function showAnonSoftGate() {
-        // Don't show if already shown or if authenticated
-        if (isAuthenticated || document.querySelector('.anon-soft-gate')) return;
-        const gate = document.createElement('div');
-        gate.className = 'anon-soft-gate';
-        gate.innerHTML = '<div class="anon-soft-gate__inner">' +
-          '<strong>Enjoying the conversation?</strong> Create a free account to save your chat history, unlock full answers, and track your learning.' +
-          '<div class="anon-soft-gate__actions">' +
-          '<a href="/auth/signup?return_to=/chat" class="anon-soft-gate__btn">Create free account</a>' +
-          '<button class="anon-soft-gate__dismiss" onclick="this.closest(\'.anon-soft-gate\').remove()">Not now</button>' +
-          '</div></div>';
-        messagesContainer.appendChild(gate);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-      }
-
       // Send message with streaming
       async function sendMessage() {
         const message = chatInput.value.trim();
         if (!message || isLoading || !isReady) return;
-
-        // Soft gate for anonymous users
-        if (!isAuthenticated) {
-          anonMessageCount++;
-          if (anonMessageCount === ANON_GATE_THRESHOLD) {
-            // Show after Addie's response comes back — delay slightly
-            setTimeout(showAnonSoftGate, 2000);
-          }
-        }
 
         isLoading = true;
         updateSendButton();

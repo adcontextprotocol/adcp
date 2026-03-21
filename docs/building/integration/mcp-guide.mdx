@@ -229,7 +229,7 @@ const refined = await session.call('get_products', {
 
 MCP doesn't define push notifications. AdCP fills this gap by specifying the webhook configuration (`pushNotificationConfig`) and payload format (`mcp-webhook-payload.json`). When you configure a webhook, the server will POST task updates to your URL instead of requiring you to poll.
 
-**Webhook Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
+**Webhook Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json)
 
 ##### Best Practice: URL-Based Routing
 
@@ -307,7 +307,7 @@ The `result` field contains the AdCP data payload. For `completed`/`failed` stat
 
 #### MCP Webhook Envelope Fields
 
-The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json) envelope includes:
+The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) envelope includes:
 
 **Required fields:**
 - `task_id` — Unique task identifier for correlation
@@ -354,7 +354,7 @@ The `result` field in MCP webhooks uses status-specific schemas:
 | `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
 | `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
 
-Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json)
 
 #### Webhook Handler Example
 
@@ -700,15 +700,31 @@ const toolSchema = await mcp.getToolSchema('get_products');
 ```
 
 ### Error Handling
+
+AdCP errors are returned as tool-level responses with `isError: true` and the error in `structuredContent.adcp_error`. For the full extraction logic and JSON-RPC transport codes, see [Transport Error Mapping](/docs/building/implementation/transport-errors).
+
 ```javascript
 try {
   const response = await session.call('get_products', params);
+
+  // Check for AdCP application errors (isError: true with structured data)
+  if (response.isError) {
+    const adcpError = response.structuredContent?.adcp_error;
+    if (adcpError) {
+      // Structured error with code, recovery, retry_after, etc.
+      console.log('AdCP error:', adcpError.code, adcpError.recovery);
+    }
+  }
 } catch (mcpError) {
   // MCP transport errors (connection, auth, etc.)
-  console.error('MCP Error:', mcpError);
-} 
-
-// AdCP task errors come in response.status === 'failed'
+  // Check for AdCP-structured transport errors
+  const adcpError = mcpError.data?.adcp_error;
+  if (adcpError) {
+    console.log('Transport error:', adcpError.code);
+  } else {
+    console.error('MCP Error:', mcpError);
+  }
+}
 ```
 
 ## Best Practices

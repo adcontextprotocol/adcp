@@ -1,8 +1,9 @@
 /**
  * Internal types for the training agent.
- * Schema-level types (Product, Format, etc.) are used as plain objects
- * matching the JSON schemas in static/schemas/source/.
+ * Schema-level types (Product, Format, etc.) come from @adcp/client.
  */
+
+import type { Product, FormatID } from '@adcp/client';
 
 export interface TrainingContext {
   mode: 'open' | 'training';
@@ -10,6 +11,19 @@ export interface TrainingContext {
   moduleId?: string;
   trackId?: string;
   learnerLevel?: 'basics' | 'practitioner' | 'specialist';
+}
+
+export interface ShowSpecial {
+  name: string;
+  category?: string;
+  starts?: string;
+  ends?: string;
+}
+
+export interface ShowLimitedSeries {
+  totalEpisodes?: number;
+  starts?: string;
+  ends?: string;
 }
 
 export interface ShowDefinition {
@@ -22,6 +36,8 @@ export interface ShowDefinition {
   talent?: Array<{ name: string; role: string }>;
   distribution?: Array<{ publisherDomain: string; identifiers: Array<{ type: string; value: string }> }>;
   description?: string;
+  special?: ShowSpecial;
+  limitedSeries?: ShowLimitedSeries;
   /** Channels this show's products should appear on */
   channels: string[];
   /** Episode templates to generate for this show */
@@ -30,7 +46,8 @@ export interface ShowDefinition {
     title: string;
     status: string;
     scheduledAt?: string;
-    duration?: string;
+    durationSeconds?: number;
+    special?: ShowSpecial;
   }>;
 }
 
@@ -71,19 +88,19 @@ export interface PricingTemplate {
   priceGuidance?: { suggested: number; range: { min: number; max: number } };
   minSpendPerPackage?: number;
   /** For DOOH flat_rate with parameters */
-  doohParameters?: Record<string, unknown>;
+  doohParameters?: { type: 'dooh'; sov_percentage?: number; loop_duration_seconds?: number; min_plays_per_hour?: number; venue_package?: string; duration_hours?: number; daypart?: string; estimated_impressions?: number };
   /** For CPA: the event type that triggers billing */
   eventType?: string;
   /** For CPP: demographic targeting parameters */
   cppParameters?: { demographic: string };
   /** For CPV: view threshold parameters */
-  cpvParameters?: { view_threshold: Record<string, unknown> };
+  cpvParameters?: { view_threshold: number | { type: string; value: number; unit: string } };
   /** For time: the time unit and duration constraints */
   timeParameters?: { unit: string; min_duration: number; max_duration: number };
 }
 
 export interface CatalogProduct {
-  product: Record<string, unknown>;
+  product: Partial<Product>;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];
@@ -97,8 +114,8 @@ export interface SessionState {
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   lastGetProductsContext?: {
-    products: Record<string, unknown>[];
-    proposals?: Record<string, unknown>[];
+    products: Partial<Product>[];
+    proposals?: Partial<Product>[];
   };
   createdAt: Date;
   lastAccessedAt: Date;
@@ -114,12 +131,24 @@ export interface SignalActivationState {
   activatedAt: string;
 }
 
+export interface AccountRef {
+  account_id?: string;
+  brand?: { domain: string };
+  operator?: string;
+  sandbox?: boolean;
+}
+
+export interface BrandRef {
+  domain: string;
+  name?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   buyerRef: string;
   buyerCampaignRef?: string;
-  accountRef: Record<string, unknown>;
-  brandRef?: Record<string, unknown>;
+  accountRef: AccountRef;
+  brandRef?: BrandRef;
   status: string;
   currency: string;
   packages: PackageState[];
@@ -140,17 +169,17 @@ export interface PackageState {
   paused: boolean;
   startTime: string;
   endTime: string;
-  formatIds?: Record<string, unknown>[];
+  formatIds?: FormatID[];
   creativeAssignments: string[];
 }
 
 export interface CreativeState {
   creativeId: string;
-  formatId: { agent_url: string; id: string };
+  formatId: FormatID;
   name?: string;
   status: string;
   syncedAt: string;
-  manifest?: Record<string, unknown>;
+  manifest?: { format_id: FormatID; assets: Record<string, unknown> };
 }
 
 // ── Governance types ────────────────────────────────────────────
@@ -167,7 +196,7 @@ export interface GovernancePlanState {
   planId: string;
   version: number;
   status: 'active' | 'suspended' | 'completed';
-  brand: Record<string, unknown>;
+  brand: BrandRef;
   objectives: string;
   budget: {
     total: number;
@@ -204,7 +233,7 @@ export interface GovernanceCheckState {
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
-  escalation?: Record<string, unknown>;
+  escalation?: { reason: string; action?: string };
   explanation: string;
   mode: string;
   categoriesEvaluated: string[];
@@ -220,7 +249,7 @@ export interface GovernanceFinding {
   explanation: string;
   policyId?: string;
   confidence?: number;
-  details?: Record<string, unknown>;
+  details?: { field?: string; expected?: unknown; actual?: unknown };
 }
 
 export interface GovernanceCondition {

@@ -80,8 +80,12 @@ export function sessionKeyFromArgs(
     return `training:${userId}:${moduleId || 'default'}`;
   }
   const account = args.account as Record<string, unknown> | undefined;
-  const brand = account?.brand as Record<string, unknown> | undefined;
-  const domain = brand?.domain as string | undefined;
+  // account-ref is either {account_id} or {brand: {domain}, operator}
+  const accountId = account?.account_id as string | undefined;
+  if (accountId) return `open:${accountId}`;
+  const accountBrand = account?.brand as Record<string, unknown> | undefined;
+  const topBrand = args.brand as Record<string, unknown> | undefined;
+  const domain = (accountBrand?.domain ?? topBrand?.domain) as string | undefined;
   return `open:${domain || 'default'}`;
 }
 

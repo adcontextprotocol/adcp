@@ -64,6 +64,85 @@
       "timestamp": 2208988800,
       "raw_body": "{\"event\":\"test\"}",
       "expected_signature": "sha256=a0fdee5e93b2ac2efdf8d3d22b7a03ae8e6df157b493d0140f7902ef32f6be60"
+    },
+    {
+      "description": "null bytes in body",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\u0000null\"}",
+      "expected_signature": "sha256=7672d4251c1bc327b8c4cbb0e0d4d93a062db44810663f46bcabdd7d3736e9fc"
+    },
+    {
+      "description": "trailing newline in body",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\"}\n",
+      "expected_signature": "sha256=bc9597756458e0349125bcb50b828271adadc9ed1282e91a5b0c79dbf0864fc8"
+    }
+  ],
+  "rejection_vectors": [
+    {
+      "description": "truncated signature",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": "sha256=c4faf8",
+      "reason": "Signature length mismatch — MUST reject before HMAC comparison"
+    },
+    {
+      "description": "wrong algorithm prefix",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": "sha512=0ae7bf3ebd08098a9bec251fd1405a852dfbe3f75f5f19d9aa3e81af0f2617ca",
+      "reason": "Only sha256= prefix is valid"
+    },
+    {
+      "description": "empty signature header",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": "",
+      "reason": "Missing or empty signature MUST be rejected"
+    },
+    {
+      "description": "missing signature header",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": null,
+      "reason": "Null signature MUST be rejected"
+    },
+    {
+      "description": "timestamp outside window (5 minutes in the past)",
+      "timestamp": 1699999399,
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": "sha256=valid_but_irrelevant",
+      "current_time": 1700000000,
+      "reason": "Timestamp 601 seconds old — exceeds 300-second window"
+    },
+    {
+      "description": "timestamp outside window (5 minutes in the future)",
+      "timestamp": 1700000401,
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": "sha256=valid_but_irrelevant",
+      "current_time": 1700000000,
+      "reason": "Timestamp 401 seconds in the future — exceeds 300-second window"
+    },
+    {
+      "description": "non-numeric timestamp",
+      "timestamp": "not-a-number",
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": "sha256=anything",
+      "reason": "Non-numeric timestamp MUST be rejected before HMAC computation"
+    },
+    {
+      "description": "body modified after signing",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"hacked\"}",
+      "signature": "sha256=0ae7bf3ebd08098a9bec251fd1405a852dfbe3f75f5f19d9aa3e81af0f2617ca",
+      "reason": "Signature was computed over {\"event\":\"test\"} — modified body MUST not verify"
+    },
+    {
+      "description": "double prefix",
+      "timestamp": 1700000000,
+      "raw_body": "{\"event\":\"test\"}",
+      "signature": "sha256=sha256=0ae7bf3ebd08098a9bec251fd1405a852dfbe3f75f5f19d9aa3e81af0f2617ca",
+      "reason": "Double sha256= prefix produces wrong length and MUST be rejected"
     }
   ]
 }

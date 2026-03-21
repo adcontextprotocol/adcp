@@ -597,10 +597,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // Enable CORS for all API routes (for native app support)
   apiRouter.use(cors(chatCorsOptions));
 
-  // Initialize client on startup
-  initializeChatClient().catch((err) => {
-    logger.error({ err }, "Failed to initialize Addie chat client");
-  });
+  // Initialize client after server starts (deferred to avoid blocking startup with sync I/O)
+  setTimeout(() => {
+    initializeChatClient().catch((err) => {
+      logger.error({ err }, "Failed to initialize Addie chat client");
+    });
+  }, 5000);
 
   // =========================================================================
   // PAGE ROUTES (mounted at /chat)

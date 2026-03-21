@@ -481,7 +481,7 @@ export function createContentRouter(): Router {
       // Build query for pending content
       let query = `
         SELECT
-          p.id, p.title, p.excerpt, p.slug, p.content_type,
+          p.id, p.title, p.excerpt, p.content, p.slug, p.content_type,
           p.proposer_user_id, p.proposed_at, p.working_group_id,
           wg.name as committee_name, wg.slug as committee_slug,
           u.first_name, u.last_name, u.email as proposer_email,
@@ -518,6 +518,7 @@ export function createContentRouter(): Router {
         title: row.title,
         slug: row.slug,
         excerpt: row.excerpt,
+        content: row.content,
         content_type: row.content_type,
         proposer: {
           id: row.proposer_user_id,

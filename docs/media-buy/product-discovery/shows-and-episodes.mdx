@@ -18,11 +18,11 @@ Shows and placements are parallel dimensions, not hierarchical. "Pre-roll" is a 
 
 ## The show object
 
-A show is a persistent content program that produces episodes over time. Shows work like properties — they are reusable objects declared once in a `get_products` response, and multiple products reference the same show by `show_id`.
+A show is a persistent content program that produces episodes over time. Shows work like properties — publishers declare them in their `adagents.json`, and products reference them via `shows` selectors with `publisher_domain` and `show_ids`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `show_id` | string | Yes | Seller-assigned identifier. Unique within one `get_products` response, not globally. Use distribution identifiers for cross-seller matching. |
+| `show_id` | string | Yes | Publisher-assigned identifier. Declared in the publisher's `adagents.json`. Products reference shows via `shows` selectors. Use distribution identifiers for cross-seller matching. |
 | `name` | string | Yes | Human-readable show name |
 | `description` | string | No | What the show is about |
 | `genre` | string[] | No | Genre tags. When `genre_taxonomy` is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0). Otherwise free-form. |
@@ -34,8 +34,10 @@ A show is a persistent content program that produces episodes over time. Shows w
 | `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
 | `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
 | `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
+| `special` | object | No | When present, this show is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
+| `limited_series` | object | No | When present, this show is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
 | `distribution` | array | No | Where this show is distributed, with platform-specific identifiers per publisher. |
-| `related_shows` | array | No | Relationships to other shows: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `show_id` + `relationship`. References are scoped to the same `get_products` response. Symmetric types (`companion`, `crossover`) do not require both shows to declare. |
+| `related_shows` | array | No | Relationships to other shows: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `show_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both shows to declare. |
 
 ```json
 {
@@ -96,6 +98,7 @@ An episode is a specific installment of a show. Not all episodes will be known i
 | `valid_until` | datetime | No | When this data expires. Agents should re-query before committing budget to tentative episodes. |
 | `content_rating` | object | No | Overrides the show's baseline when present |
 | `topics` | string[] | No | Episode-level content topics for brand safety. Uses show's `genre_taxonomy` when present. |
+| `special` | object | No | Episode-specific event context. When present, this episode is anchored to a real-world event. Overrides the show-level `special`. |
 | `guest_talent` | array | No | Episode-specific guests. Additive to the show's recurring `talent`. |
 | `ad_inventory` | object | No | Break-based ad inventory configuration |
 | `derivative_of` | object | No | When this episode is a clip, highlight, or recap derived from a full episode. Has `episode_id` + `type` (`clip`, `highlight`, `recap`, `trailer`, `bonus`). Source `episode_id` must be in the same response. |
@@ -119,6 +122,7 @@ Expected transitions: `scheduled` or `tentative` → `live` → `aired` or `publ
 Episodes inherit show-level fields they do not override:
 
 - **`content_rating`**: Episode value overrides show baseline. When absent, the show's rating applies.
+- **`special`**: Episode value overrides show-level special. When absent, the show's special applies. A regular show can have event-anchored episodes (e.g., a daily news show with an election night special).
 - **`guest_talent`**: Additive to the show's recurring `talent` — does not replace it.
 - **`topics`**: Additive context for brand safety, not a replacement for the show's `genre`.
 
@@ -158,9 +162,77 @@ Buyer agents evaluate both levels: the show baseline provides the default safety
 }
 ```
 
+## Specials and limited series
+
+Shows can carry optional annotations that signal their nature to buyer agents. These are composable — a show can be both a special and a limited series (e.g., a 4-episode Olympics documentary).
+
+### Specials
+
+A special is content anchored to a real-world event or occasion. The `special` object can appear on both shows and episodes. On a show, it means the entire show is event-anchored. On an episode, it means that specific episode is event-anchored (and overrides the show-level special when present, following the same inheritance pattern as `content_rating`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Name of the event (e.g., "Olympics 2028", "Super Bowl LXI") |
+| `category` | string | No | `awards`, `championship`, `concert`, `conference`, `election`, `festival`, `gala`, `holiday`, `premiere`, `product_launch`, `reunion`, `tribute` |
+| `starts` | datetime | No | When the event starts |
+| `ends` | datetime | No | When the event ends. Omit for single-day events. |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/show.json",
+  "show_id": "apex_finals_2026",
+  "name": "Apex Championship Finals 2026",
+  "genre": ["IAB17", "IAB17-12"],
+  "genre_taxonomy": "iab_content_3.0",
+  "cadence": "event",
+  "status": "upcoming",
+  "special": {
+    "name": "Apex Championship Finals 2026",
+    "category": "championship",
+    "starts": "2026-05-18T19:00:00Z",
+    "ends": "2026-05-25T23:00:00Z"
+  },
+  "talent": [
+    { "role": "host", "name": "Deshawn Moreaux" }
+  ]
+}
+```
+
+The `special` field is distinct from `cadence`. Cadence describes release frequency (`event` = one-time or occasional). The `special` object describes what real-world event anchors the content and when it happens — information a buyer agent needs to evaluate timing relevance and premium pricing.
+
+### Limited series
+
+A limited series is a bounded content run with a defined arc. Unlike ongoing series, limited series have a planned end.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `total_episodes` | integer | No | Planned number of episodes |
+| `starts` | datetime | No | When the series begins |
+| `ends` | datetime | No | When the series ends |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/show.json",
+  "show_id": "ember_s3",
+  "name": "The Ember",
+  "description": "Award-winning drama following a chef navigating the pressure of running a top restaurant",
+  "genre": ["IAB1", "IAB1-7"],
+  "genre_taxonomy": "iab_content_3.0",
+  "cadence": "weekly",
+  "status": "active",
+  "limited_series": {
+    "total_episodes": 8,
+    "starts": "2026-02-28T21:00:00Z",
+    "ends": "2026-04-18T21:00:00Z"
+  }
+}
+```
+
+This tells buyer agents that The Ember is a finite opportunity — 8 episodes over 7 weeks. The `limited_series` field is distinct from `season`: a show can have seasons without being limited (ongoing series have seasons too), and a limited series is a structural commitment that the show has a planned end.
+
 ## How products reference shows
 
-Products reference shows via `show_ids` — an array, since a single product can span multiple shows (e.g., a network bundle). Episodes are listed per-product in the `episodes` array, since different products may scope different episodes of the same show.
+Products reference shows via `shows` — an array of `{publisher_domain, show_ids}` selectors that point to shows declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`. Buyers resolve full show objects from the publisher's `adagents.json`. Episodes are listed per-product in the `episodes` array, since different products may scope different episodes of the same show.
 
 ### Run-of-show (no specific episodes)
 
@@ -170,7 +242,7 @@ A product can reference a show without listing episodes. This means "inventory a
 {
   "product_id": "pinnacle_run_of_show",
   "name": "Pinnacle Challenge Run of Show",
-  "show_ids": ["pinnacle_challenge"],
+  "shows": [{ "publisher_domain": "acmestreaming.example.com", "show_ids": ["pinnacle_challenge"] }],
   "placements": [
     { "placement_id": "pre_roll", "name": "Pre-roll" }
   ],
@@ -189,7 +261,7 @@ For premium or guaranteed buys, the seller scopes to specific episodes:
 {
   "product_id": "pinnacle_finale",
   "name": "Pinnacle Challenge Season Finale Sponsorship",
-  "show_ids": ["pinnacle_challenge"],
+  "shows": [{ "publisher_domain": "acmestreaming.example.com", "show_ids": ["pinnacle_challenge"] }],
   "episodes": [
     {
       "episode_id": "s1e10_finale",
@@ -212,37 +284,15 @@ For premium or guaranteed buys, the seller scopes to specific episodes:
 
 ## get_products response structure
 
-Shows are returned as a top-level `shows` array in the `get_products` response, alongside `products`. Products reference shows by ID instead of embedding them, so the same show is not duplicated when multiple products reference it.
-
-The `shows` array MUST only include shows referenced by the returned products. Under pagination, each page includes all show objects needed for that page's products.
+Products reference shows via `shows` selectors — the same pattern as `publisher_properties`. Each selector has a `publisher_domain` and `show_ids` array pointing to shows declared in that publisher's `adagents.json`. Buyers resolve full show objects from `adagents.json`.
 
 ```json
 {
-  "shows": [
-    {
-      "show_id": "pinnacle_challenge",
-      "name": "The Pinnacle Challenge",
-      "genre": ["IAB1", "IAB1-6"],
-      "genre_taxonomy": "iab_content_3.0",
-      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
-      "cadence": "weekly",
-      "status": "active",
-      "talent": [
-        { "role": "host", "name": "Jordan Vega", "brand_url": "https://jordanvega.example.com/brand.json" }
-      ],
-      "distribution": [
-        {
-          "publisher_domain": "acmestreaming.example.com",
-          "identifiers": [{ "type": "imdb_id", "value": "tt9876543" }]
-        }
-      ]
-    }
-  ],
   "products": [
     {
       "product_id": "pinnacle_april_bundle",
       "name": "Pinnacle Challenge April Sponsorship",
-      "show_ids": ["pinnacle_challenge"],
+      "shows": [{ "publisher_domain": "acmestreaming.example.com", "show_ids": ["pinnacle_challenge"] }],
       "episodes": [
         {
           "episode_id": "s1e03",
@@ -274,6 +324,49 @@ The `shows` array MUST only include shows referenced by the returned products. U
 }
 ```
 
+## Canonical show identity
+
+A show's identity is **`{publisher_domain, show_id}`** — scoped to the publisher that declares it in their `adagents.json`. This means any show creator can serve as their own canonical registry.
+
+### Creator as canonical publisher
+
+A creator like MrBeast declares shows in `mrbeast.com/adagents.json`. Any seller packaging that creator's inventory — a YouTube sales house, a CTV distributor, the creator's own team — references the same canonical source:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "beast_games_youtube",
+      "name": "Beast Games - YouTube Pre-roll",
+      "shows": [
+        { "publisher_domain": "mrbeast.com", "show_ids": ["beast_games"] }
+      ],
+      "publisher_properties": [
+        { "publisher_domain": "youtube.com", "property_ids": ["UCX6OQ3DkcsbYNE6H8uQQuVA"] }
+      ],
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm", "pricing_model": "cpm", "floor_price": 18.00, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+The buyer sees `mrbeast.com` + `beast_games` regardless of which seller or platform the inventory comes from. No cross-referencing of IMDb IDs or distribution identifiers needed — the creator's domain **is** the registry.
+
+### When creators don't publish adagents.json
+
+Not every show has a creator-owned domain. A streaming platform's original series may only exist in that platform's `adagents.json`. In that case, the platform is the canonical publisher and `shows` points to their domain. Distribution identifiers on the show object handle cross-seller matching when the same show appears on multiple platforms without a single canonical source.
+
+### Identity resolution priority
+
+Buyer agents should resolve show identity in this order:
+
+1. **Canonical publisher** — `publisher_domain` + `show_id` from the creator's own `adagents.json`. Strongest signal.
+2. **Platform-independent identifiers** — `imdb_id`, `gracenote_id`, `eidr_id` from the show's `distribution` array. Reliable cross-reference when no canonical publisher exists.
+3. **Platform-specific identifiers** — Spotify, Apple, YouTube IDs. Useful within a platform but not universal.
+
 ## Discovery examples
 
 ### CTV show with episodes
@@ -282,36 +375,11 @@ A streaming platform selling sponsorships against a known show with upcoming epi
 
 ```json
 {
-  "shows": [
-    {
-      "show_id": "nova_kitchen",
-      "name": "Nova Kitchen",
-      "description": "Celebrity cooking competition filmed in real time",
-      "genre": ["IAB8", "IAB8-5"],
-      "genre_taxonomy": "iab_content_3.0",
-      "content_rating": { "system": "tv_parental", "rating": "TV-G" },
-      "cadence": "weekly",
-      "status": "active",
-      "talent": [
-        { "role": "host", "name": "Elara Chen" }
-      ],
-      "distribution": [
-        {
-          "publisher_domain": "novastreaming.example.com",
-          "identifiers": [{ "type": "imdb_id", "value": "tt1122334" }]
-        },
-        {
-          "publisher_domain": "youtube.com",
-          "identifiers": [{ "type": "youtube_channel_id", "value": "UCnovakitchen" }]
-        }
-      ]
-    }
-  ],
   "products": [
     {
       "product_id": "nova_kitchen_april",
       "name": "Nova Kitchen - April Episodes",
-      "show_ids": ["nova_kitchen"],
+      "shows": [{ "publisher_domain": "novastreaming.example.com", "show_ids": ["nova_kitchen"] }],
       "publisher_properties": [{
         "publisher_domain": "novastreaming.example.com",
         "selection_type": "all"
@@ -357,34 +425,11 @@ A streaming platform offering a main show and its companion after-show, plus hig
 
 ```json
 {
-  "shows": [
-    {
-      "show_id": "nova_kitchen",
-      "name": "Nova Kitchen",
-      "genre": ["IAB8", "IAB8-5"],
-      "genre_taxonomy": "iab_content_3.0",
-      "content_rating": { "system": "tv_parental", "rating": "TV-G" },
-      "status": "active",
-      "production_quality": "professional",
-      "related_shows": [
-        { "show_id": "nova_kitchen_afterhours", "relationship": "companion" }
-      ]
-    },
-    {
-      "show_id": "nova_kitchen_afterhours",
-      "name": "Nova Kitchen: After Hours",
-      "genre": ["IAB8", "IAB8-5"],
-      "genre_taxonomy": "iab_content_3.0",
-      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
-      "status": "active",
-      "production_quality": "prosumer"
-    }
-  ],
   "products": [
     {
       "product_id": "nova_highlights",
       "name": "Nova Kitchen Highlights Package",
-      "show_ids": ["nova_kitchen"],
+      "shows": [{ "publisher_domain": "novastreaming.example.com", "show_ids": ["nova_kitchen"] }],
       "episodes": [
         {
           "episode_id": "s3e09",
@@ -419,46 +464,15 @@ The highlight clip references its source episode via `derivative_of`. The compan
 
 ### Podcast with distribution
 
-A podcast network selling across multiple distribution platforms. The show object captures the full distribution footprint:
+A podcast network selling across multiple distribution platforms. The show's `distribution` array in `adagents.json` captures the full distribution footprint; buyers use distribution identifiers for cross-seller matching:
 
 ```json
 {
-  "shows": [
-    {
-      "show_id": "wonderstruck_weekly",
-      "name": "Wonderstruck Weekly",
-      "genre": ["technology", "business"],
-      "content_rating": { "system": "podcast", "rating": "explicit" },
-      "cadence": "weekly",
-      "status": "active",
-      "talent": [
-        { "role": "host", "name": "Maren Solberg", "brand_url": "https://marensolberg.example.com/brand.json" }
-      ],
-      "distribution": [
-        {
-          "publisher_domain": "spotify.com",
-          "identifiers": [{ "type": "spotify_show_id", "value": "4rOoJ6Egrf8K2IrywzwOMk" }]
-        },
-        {
-          "publisher_domain": "apple.com",
-          "identifiers": [{ "type": "apple_podcast_id", "value": "1234567890" }]
-        },
-        {
-          "publisher_domain": "youtube.com",
-          "identifiers": [{ "type": "youtube_channel_id", "value": "UCwonderstruck" }]
-        },
-        {
-          "publisher_domain": "wonderstruck.example.com",
-          "identifiers": [{ "type": "domain", "value": "wonderstruck.example.com" }]
-        }
-      ]
-    }
-  ],
   "products": [
     {
       "product_id": "wonderstruck_april",
       "name": "Wonderstruck Weekly - April Episodes",
-      "show_ids": ["wonderstruck_weekly"],
+      "shows": [{ "publisher_domain": "wonderstruck.example.com", "show_ids": ["wonderstruck_weekly"] }],
       "episodes": [
         {
           "episode_id": "ep47",
@@ -502,35 +516,11 @@ A sports league selling sponsorships against a live event series. Live broadcast
 
 ```json
 {
-  "shows": [
-    {
-      "show_id": "apex_championship_2026",
-      "name": "Apex Championship Series 2026",
-      "description": "Best-of-five championship finals for the Apex Professional League",
-      "genre": ["IAB17", "IAB17-12", "live_event"],
-      "genre_taxonomy": "iab_content_3.0",
-      "content_rating": { "system": "tv_parental", "rating": "TV-PG" },
-      "cadence": "event",
-      "season": "2026",
-      "status": "active",
-      "production_quality": "professional",
-      "talent": [
-        { "role": "commentator", "name": "Deshawn Moreaux" },
-        { "role": "commentator", "name": "Liora Voss" }
-      ],
-      "distribution": [
-        {
-          "publisher_domain": "apexleague.example.com",
-          "identifiers": [{ "type": "gracenote_id", "value": "EP999000001" }]
-        }
-      ]
-    }
-  ],
   "products": [
     {
       "product_id": "apex_finals_sponsorship",
       "name": "Apex Championship Finals — Category Sponsorship",
-      "show_ids": ["apex_championship_2026"],
+      "shows": [{ "publisher_domain": "apexleague.example.com", "show_ids": ["apex_championship_2026"] }],
       "episodes": [
         {
           "episode_id": "finals_game4",
@@ -594,11 +584,7 @@ Buyers discover shows through the standard `get_products` workflow. Natural lang
 }
 ```
 
-The seller returns products referencing shows from the top-level `shows` array. There is no separate show discovery endpoint — shows surface through product discovery.
-
-### Declaring shows in adagents.json
-
-Publishers can declare shows in their [adagents.json](/docs/governance/property/adagents) file alongside properties. This makes the show catalog discoverable for buyers that crawl adagents.json files. Products in `get_products` responses reference these same show IDs.
+The seller returns products with `shows` selectors. The buyer resolves full show objects from each publisher's [adagents.json](/docs/governance/property/adagents). There is no separate show discovery endpoint — shows surface through product discovery and `adagents.json` crawling.
 
 ## Brand safety
 
@@ -711,21 +697,26 @@ The episode model aligns with IAB Tech Lab's LEAP Forecasting API for live strea
 
 LEAP targets SSP-to-DSP plumbing. AdCP operates at the agent-to-agent negotiation layer where buying decisions happen.
 
+## Show targeting
+
+Products with multiple shows default to bundles — the buyer gets all listed shows. Sellers can set `show_targeting_allowed: true` to let buyers target a subset, the same pattern as `property_targeting_allowed` for properties.
+
+| `show_targeting_allowed` | Meaning |
+|---|---|
+| `false` (default) | Bundle — buyer gets all shows |
+| `true` | Buyer can select specific shows in the media buy |
+
 ## Multi-show bundles
 
-A single product can span multiple shows by listing multiple entries in `show_ids`. When a product has multiple shows, each episode MUST include `show_id` so the buyer agent knows which show each episode belongs to.
+A single product can span multiple shows by listing multiple show IDs in `shows`. When a product has multiple shows, each episode MUST include `show_id` so the buyer agent knows which show each episode belongs to.
 
 ```json
 {
-  "shows": [
-    { "show_id": "tech_weekly", "name": "Tech Weekly", "genre": ["IAB19"], "genre_taxonomy": "iab_content_3.0", "status": "active" },
-    { "show_id": "startup_hour", "name": "The Startup Hour", "genre": ["IAB3"], "genre_taxonomy": "iab_content_3.0", "status": "active" }
-  ],
   "products": [
     {
       "product_id": "technet_april_bundle",
       "name": "TechNet Podcast Bundle - April",
-      "show_ids": ["tech_weekly", "startup_hour"],
+      "shows": [{ "publisher_domain": "technet.example.com", "show_ids": ["tech_weekly", "startup_hour"] }],
       "episodes": [
         { "episode_id": "tw_ep12", "show_id": "tech_weekly", "scheduled_at": "2026-04-07T10:00:00Z", "status": "scheduled" },
         { "episode_id": "tw_ep13", "show_id": "tech_weekly", "scheduled_at": "2026-04-14T10:00:00Z", "status": "tentative" },

@@ -532,8 +532,11 @@ export async function runRelationshipOrchestratorCycle(options: {
           data: { action: 'skip', reason: 'nothing meaningful to say', stage: candidate.stage },
         }).catch(err => logger.warn({ err }, 'Failed to record person event'));
 
-        // Back off so we don't retry this person every run
-        const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+        // Back off using the stage cooldown so we don't retry with identical context.
+        // 24h was too short — Sonnet won't have new material that quickly, and
+        // concurrent machines can race past a short window.
+        const cooldownDays = STAGE_COOLDOWNS[candidate.stage] ?? 7;
+        const retryDate = new Date(Date.now() + cooldownDays * 24 * 60 * 60 * 1000);
         await relationshipDb.setNextContactAfter(candidate.id, retryDate);
 
         skipped++;

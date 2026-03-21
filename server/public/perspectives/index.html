@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Perspectives | AgenticAdvertising.org</title>
   <meta name="description" content="Thought leadership on agentic AI, open standards, and the future of advertising. Educational resources from AgenticAdvertising.org.">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="canonical" href="https://agenticadvertising.org/perspectives">
 
   <!-- Open Graph / Facebook -->
@@ -24,7 +24,6 @@
   <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
 
   <link rel="stylesheet" href="/design-system.css">
-  <link rel="stylesheet" href="/layout.css">
   <script src="/perspectives/utils.js"></script>
   <style>
     /* Page-specific: nav offset */
@@ -316,68 +315,6 @@
       height: 16px;
     }
 
-    /* Card title image */
-    .article-card-image {
-      width: 100%;
-      aspect-ratio: 1200 / 630;
-      object-fit: cover;
-      display: block;
-      border-radius: 8px 8px 0 0;
-    }
-
-    /* Author portrait byline */
-    .article-card-byline {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: var(--space-4) var(--space-6) 0;
-    }
-    .byline-portrait {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      padding: 2px;
-      background: linear-gradient(135deg, #b45309, #d97706, #f59e0b);
-      flex-shrink: 0;
-    }
-    .byline-portrait img {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      object-fit: cover;
-      background: var(--color-gray-100);
-    }
-    .byline-portrait-placeholder {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: var(--text-sm);
-      font-weight: var(--font-bold);
-      color: #92400e;
-      background: #fef3c7;
-    }
-    .byline-info {
-      min-width: 0;
-    }
-    .byline-name {
-      font-size: var(--text-sm);
-      font-weight: var(--font-semibold);
-      color: var(--color-text-heading);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .byline-title {
-      font-size: 0.7rem;
-      color: var(--color-text-muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
     /* Responsive: collapse sidebar on mobile */
     @media (max-width: 900px) {
       .perspectives-layout {
@@ -454,10 +391,10 @@
   <script src="/nav.js"></script>
 
   <!-- Hero Section -->
-  <section class="hero hero--clean hero--article">
+  <section class="hero hero--article">
     <div class="hero-container">
       <h1>Perspectives</h1>
-      <p class="hero-subtitle">Analysis and commentary on agentic AI and the future of advertising</p>
+      <p class="hero-subtitle">Thought leadership on agentic AI and the future of advertising</p>
     </div>
   </section>
 
@@ -548,7 +485,19 @@
     </main>
   </div>
 
-  <div id="adcp-footer"></div>
+  <!-- Footer -->
+  <footer class="footer footer--centered">
+    <div class="footer-links">
+      <a href="/">Home</a>
+      <a href="https://docs.adcontextprotocol.org">AdCP Documentation</a>
+      <a href="/members">Members</a>
+      <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
+      <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA">Slack Community</a>
+    </div>
+    <div class="footer-copyright">
+      &copy; 2025 AgenticAdvertising.org
+    </div>
+  </footer>
 
   <script>
     // Note: userFingerprint, loadUserLikesFromStorage, saveUserLikesToStorage, escapeHtml, formatDateShort
@@ -1033,40 +982,8 @@
             </div>`
           : '';
 
-        // Resolve authors: prefer content_authors array, fall back to author_name
-        const authors = (perspective.authors && perspective.authors.length > 0)
-          ? perspective.authors
-          : (perspective.author_name ? [{ display_name: perspective.author_name.trim(), display_title: perspective.author_title, portrait_id: null }] : []);
-
-        // Build portrait stack HTML for multiple authors
-        function renderPortrait(author, size, overlap) {
-          const innerSize = size - 4;
-          const ml = overlap ? `margin-left: -${Math.round(size * 0.25)}px;` : '';
-          const portraitContent = author.portrait_id
-            ? `<img src="/api/portraits/${escapeHtml(author.portrait_id)}.png" alt="${escapeHtml(author.display_name)}" style="width:${innerSize}px;height:${innerSize}px;border-radius:50%;object-fit:cover;">`
-            : `<div class="byline-portrait-placeholder" style="width:${innerSize}px;height:${innerSize}px;">${escapeHtml(author.display_name[0])}</div>`;
-          return `<div class="byline-portrait" style="${ml}position:relative;">${portraitContent}</div>`;
-        }
-        const portraitsHtml = authors.map((a, i) => renderPortrait(a, 48, i > 0)).join('');
-        const displayName = authors.map(a => a.display_name).join(' & ');
-        const displayTitle = authors[0]?.display_title || '';
-
-        // Title card image
-        const cardSlug = perspective.slug;
-        const cardImageHtml = cardSlug
-          ? `<img src="/api/perspectives/${escapeHtml(cardSlug)}/card.png" alt="" class="article-card-image" loading="lazy">`
-          : '';
-
         html += `
           <a href="${escapeHtml(href)}" class="article-card"${target}>
-            ${cardImageHtml}
-            ${authors.length > 0 ? `<div class="article-card-byline">
-              <div style="display:flex;align-items:center;">${portraitsHtml}</div>
-              <div class="byline-info">
-                <div class="byline-name">${escapeHtml(displayName)}</div>
-                ${displayTitle ? `<div class="byline-title">${escapeHtml(displayTitle)}</div>` : ''}
-              </div>
-            </div>` : ''}
             <div class="article-card-content">
               <div class="article-meta">
                 ${perspective.category ? `<span class="article-category">${escapeHtml(perspective.category)}</span>` : ''}

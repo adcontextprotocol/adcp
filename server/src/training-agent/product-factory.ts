@@ -5,19 +5,84 @@
  * combinations. Products reference formats from formats.ts via format_id.
  */
 
-import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition } from './types.js';
+import type { Product, FormatID } from '@adcp/client';
+
+/** Types re-declared locally — not exported from @adcp/client's public API. */
+type MediaChannel = string;
+type ReportingFrequency = string;
+type AvailableMetric = string;
+
+interface Episode {
+  episode_id: string;
+  show_id: string;
+  name: string;
+  status: string;
+  scheduled_at?: string;
+  duration_seconds?: number;
+  special?: {
+    name: string;
+    category?: string;
+    starts?: string;
+    ends?: string;
+  };
+}
+
+interface ShowSelector {
+  publisher_domain: string;
+  show_ids: string[];
+}
+
+interface ReportingCapabilities {
+  available_reporting_frequencies: ReportingFrequency[];
+  expected_delay_minutes: number;
+  timezone: string;
+  supports_webhooks: boolean;
+  available_metrics?: AvailableMetric[];
+  date_range_support: string;
+  supports_creative_breakdown: boolean;
+}
+
+interface ForecastPoint {
+  budget: number;
+  metrics: Record<string, { low: number; mid: number; high: number }>;
+}
+
+interface PublisherPropertySelector {
+  publisher_domain: string;
+  selection_type: 'all' | 'by_id';
+  property_ids?: string[];
+}
+import type { PublisherProfile, PricingTemplate, CatalogProduct } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
+
+/** Pricing model identifiers from the AdCP spec. */
+type PricingModel = 'cpm' | 'vcpm' | 'cpc' | 'cpcv' | 'cpv' | 'cpp' | 'cpa' | 'flat_rate' | 'time';
+
+/** Shape built by the training agent for pricing options — covers all PricingOption union members. */
+interface TrainingPricingOption {
+  pricing_option_id: string;
+  pricing_model: PricingModel;
+  model: PricingModel; // #1525: alias for @adcp/client < 4.11.0
+  currency: string;
+  fixed_price?: number;
+  floor_price?: number;
+  price_guidance?: { p25: number; p50: number; p75: number; p90: number };
+  min_spend_per_package?: number;
+  parameters?: unknown;
+  event_type?: string;
+}
 
 function buildPricingOption(
   template: PricingTemplate,
   productId: string,
   index: number,
-): Record<string, unknown> {
-  const option: Record<string, unknown> = {
+): TrainingPricingOption {
+  const option: TrainingPricingOption = {
     pricing_option_id: `${productId}_pricing_${index}`,
     pricing_model: template.model,
+    model: template.model,
     currency: template.currency,
   };
   if (template.fixedPrice !== undefined) option.fixed_price = template.fixedPrice;
@@ -40,8 +105,8 @@ function buildPricingOption(
   return option;
 }
 
-function formatIdsForChannels(channels: string[], agentUrl: string): Record<string, unknown>[] {
-  const ids: Record<string, unknown>[] = [];
+function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] {
+  const ids: FormatID[] = [];
   const seen = new Set<string>();
   for (const channel of channels) {
     for (const [formatId, formatChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
@@ -54,7 +119,7 @@ function formatIdsForChannels(channels: string[], agentUrl: string): Record<stri
   return ids;
 }
 
-function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): Record<string, unknown>[] {
+function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): PublisherPropertySelector[] {
   if (!channels) {
     return [{ publisher_domain: pub.domain, selection_type: 'all' as const }];
   }
@@ -242,40 +307,41 @@ function buildProduct(
   // Fall back to all pricing if filter yields nothing
   const effectivePricing = pricingTemplates.length > 0 ? pricingTemplates : pub.pricingTemplates;
 
-  const product: Record<string, unknown> = {
+  const product: Partial<Product> & Record<string, unknown> = {
     product_id: productId,
     name: template.name,
     description: template.description,
-    publisher_properties: publisherPropertySelectors(pub, template.channels),
-    channels: template.channels,
+    publisher_properties: publisherPropertySelectors(pub, template.channels) as Product['publisher_properties'],
+    channels: template.channels as Product['channels'],
     format_ids: formatIdsForChannels(template.channels, agentUrl),
     delivery_type: template.deliveryType,
     delivery_measurement: {
       provider: pub.measurementProvider,
       notes: pub.measurementNotes,
     },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)),
+    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)) as unknown as Product['pricing_options'],
   };
 
   if (pub.reportingFrequencies || pub.reportingMetrics) {
     product.reporting_capabilities = {
-      available_reporting_frequencies: pub.reportingFrequencies || ['daily'],
+      available_reporting_frequencies: (pub.reportingFrequencies || ['daily']) as ReportingFrequency[],
       expected_delay_minutes: 240,
       timezone: 'UTC',
       supports_webhooks: false,
-      ...(pub.reportingMetrics && { available_metrics: pub.reportingMetrics }),
-      date_range_support: 'date_range',
+      ...(pub.reportingMetrics && { available_metrics: pub.reportingMetrics as AvailableMetric[] }),
+      date_range_support: 'date_range' as const,
       supports_creative_breakdown: true,
-    };
+    } as Product['reporting_capabilities'];
   }
 
   if (pub.catalogTypes?.length) {
-    product.catalog_types = pub.catalogTypes;
+    product.catalog_types = pub.catalogTypes as Product['catalog_types'];
   }
 
   // Add metric optimization for non-guaranteed products with appropriate channels
   if (template.deliveryType === 'non_guaranteed') {
-    const metrics: string[] = ['clicks'];
+    type SupportedMetric = NonNullable<Product['metric_optimization']>['supported_metrics'][number];
+    const metrics: SupportedMetric[] = ['clicks'];
     if (template.channels.some(c => ['olv', 'ctv', 'social', 'gaming'].includes(c))) {
       metrics.push('views', 'completed_views');
     }
@@ -295,23 +361,25 @@ function buildProduct(
     const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
     const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
 
+    const forecastPoints: ForecastPoint[] = [
+      {
+        budget: 5000,
+        metrics: {
+          impressions: { low: impressionsPer1k * 4, mid: impressionsPer1k * 5, high: Math.round(impressionsPer1k * 5.5) },
+          reach: { low: Math.round(impressionsPer1k * 3), mid: Math.round(impressionsPer1k * 3.5), high: Math.round(impressionsPer1k * 4) },
+        },
+      },
+      {
+        budget: 25000,
+        metrics: {
+          impressions: { low: impressionsPer1k * 22, mid: impressionsPer1k * 25, high: impressionsPer1k * 27 },
+          reach: { low: Math.round(impressionsPer1k * 12), mid: Math.round(impressionsPer1k * 15), high: Math.round(impressionsPer1k * 17) },
+        },
+      },
+    ];
+
     product.forecast = {
-      points: [
-        {
-          budget: 5000,
-          metrics: {
-            impressions: { low: impressionsPer1k * 4, mid: impressionsPer1k * 5, high: Math.round(impressionsPer1k * 5.5) },
-            reach: { low: Math.round(impressionsPer1k * 3), mid: Math.round(impressionsPer1k * 3.5), high: Math.round(impressionsPer1k * 4) },
-          },
-        },
-        {
-          budget: 25000,
-          metrics: {
-            impressions: { low: impressionsPer1k * 22, mid: impressionsPer1k * 25, high: impressionsPer1k * 27 },
-            reach: { low: Math.round(impressionsPer1k * 12), mid: Math.round(impressionsPer1k * 15), high: Math.round(impressionsPer1k * 17) },
-          },
-        },
-      ],
+      points: forecastPoints,
       method: 'modeled',
       currency: effectivePricing[0]?.currency || 'USD',
     };
@@ -320,8 +388,8 @@ function buildProduct(
   // Add conversion tracking for retail/social
   if (pub.catalogTypes?.includes('product') || template.channels.includes('social')) {
     product.conversion_tracking = {
-      action_sources: ['website'],
-      supported_targets: ['cost_per'],
+      action_sources: ['website' as const],
+      supported_targets: ['cost_per' as const],
       ...(pub.catalogTypes?.includes('product') && { platform_managed: true }),
     };
   }
@@ -332,23 +400,39 @@ function buildProduct(
       s.channels.some(c => template.channels.includes(c)),
     );
     if (matchingShows.length > 0) {
-      product.show_ids = matchingShows.map(s => s.showId);
+      const showSelectors: ShowSelector[] = [{
+        publisher_domain: pub.domain,
+        show_ids: matchingShows.map(s => s.showId),
+      }];
+      product.shows = showSelectors;
       // Guaranteed products with shows get exclusivity
       if (template.deliveryType === 'guaranteed') {
         product.exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
       }
+      // Multi-show non-guaranteed products allow show targeting
+      if (matchingShows.length > 1 && template.deliveryType === 'non_guaranteed') {
+        product.show_targeting_allowed = true;
+      }
       // Flatten episodes from matching shows
-      const episodes: Record<string, unknown>[] = [];
+      const episodes: Partial<Episode>[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const episode: Record<string, unknown> = {
+          const episode: Partial<Episode> = {
             episode_id: ep.episodeId,
             show_id: show.showId,
             name: ep.title,
-            status: ep.status,
+            status: ep.status as Episode['status'],
           };
           if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
-          if (ep.duration) episode.duration_seconds = ep.duration;
+          if (ep.durationSeconds) episode.duration_seconds = ep.durationSeconds;
+          if (ep.special) {
+            episode.special = {
+              name: ep.special.name,
+              ...(ep.special.category && { category: ep.special.category }),
+              ...(ep.special.starts && { starts: ep.special.starts }),
+              ...(ep.special.ends && { ends: ep.special.ends }),
+            };
+          }
           episodes.push(episode);
         }
       }
@@ -359,64 +443,11 @@ function buildProduct(
   }
 
   return {
-    product,
+    product: product as Partial<Product>,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
   };
-}
-
-function buildShowObject(show: ShowDefinition): Record<string, unknown> {
-  const obj: Record<string, unknown> = {
-    show_id: show.showId,
-    name: show.name,
-    genre: show.genre,
-    cadence: show.cadence,
-    status: show.status,
-  };
-  if (show.description) obj.description = show.description;
-  if (show.contentRatings?.length) {
-    obj.content_rating = show.contentRatings.map(r => ({
-      system: r.system,
-      rating: r.rating,
-    }));
-  }
-  if (show.talent?.length) {
-    obj.talent = show.talent.map(t => ({
-      name: t.name,
-      role: t.role,
-    }));
-  }
-  if (show.distribution?.length) {
-    obj.distribution = show.distribution.map(d => ({
-      publisher_domain: d.publisherDomain,
-      identifiers: d.identifiers.map(id => ({ type: id.type, value: id.value })),
-    }));
-  }
-  return obj;
-}
-
-/**
- * Build the top-level shows array for a get_products response,
- * scoped to only shows referenced by the given products.
- */
-export function buildShowsForProducts(products: Record<string, unknown>[]): Record<string, unknown>[] {
-  const referencedIds = new Set<string>();
-  for (const p of products) {
-    const ids = p.show_ids as string[] | undefined;
-    if (ids) ids.forEach(id => referencedIds.add(id));
-  }
-  if (referencedIds.size === 0) return [];
-
-  const shows: Record<string, unknown>[] = [];
-  for (const pub of PUBLISHERS) {
-    for (const show of pub.shows || []) {
-      if (referencedIds.has(show.showId)) {
-        shows.push(buildShowObject(show));
-      }
-    }
-  }
-  return shows;
 }
 
 /**

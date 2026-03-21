@@ -223,15 +223,15 @@ export async function getRecentArticlesForDigest(
  */
 export async function getNewOrganizations(days: number = 7): Promise<Array<{
   name: string;
-  description: string | null;
+  enrichment_description: string | null;
   created_at: Date;
 }>> {
   const result = await query<{
     name: string;
-    description: string | null;
+    enrichment_description: string | null;
     created_at: Date;
   }>(
-    `SELECT name, description, created_at
+    `SELECT name, enrichment_description, created_at
      FROM organizations
      WHERE created_at > NOW() - make_interval(days => $1)
        AND is_personal = FALSE

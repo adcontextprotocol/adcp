@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My organization - Dashboard</title>
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
@@ -1101,14 +1101,14 @@
       const hdr = `
         <div class="hub-card-header">
           <span class="hub-card-title">Team certification</span>
-          <a href="/academy" class="hub-card-link">View portal →</a>
+          <a href="/certification" class="hub-card-link">View portal →</a>
         </div>`;
 
       if (members_with_credentials === 0 && members.every(m => m.modules_completed === 0)) {
         return `${hdr}
           <div class="hub-empty">
             <p>No team members have started certification yet.</p>
-            <a href="/academy">Explore AdCP Academy →</a>
+            <a href="/certification">Explore AdCP Academy →</a>
           </div>`;
       }
 
@@ -1139,8 +1139,8 @@
         .filter(m => m.modules_completed > 0 || (m.credentials && m.credentials.length > 0))
         .map(m => `
           <tr>
-            <td data-label="Name">${escapeHtml(m.name)}</td>
-            <td data-label="Credentials">${(m.credentials || []).map(c => `<span class="group-rec-badge">${escapeHtml(c)}</span>`).join(' ') || '<span style="color:var(--color-text-muted);">None</span>'}</td>
+            <td data-label="Name">${escapeHtml(((m.first_name || '') + ' ' + (m.last_name || '')).trim() || 'Unknown')}</td>
+            <td data-label="Credentials">${(m.credentials || []).map(c => `<span class="group-rec-badge">${escapeHtml(typeof c === 'string' ? c : c.name)}</span>`).join(' ') || '<span style="color:var(--color-text-muted);">None</span>'}</td>
             <td data-label="Progress">${m.modules_completed} completed${m.modules_in_progress > 0 ? `, ${m.modules_in_progress} in progress` : ''}</td>
           </tr>
         `).join('');
