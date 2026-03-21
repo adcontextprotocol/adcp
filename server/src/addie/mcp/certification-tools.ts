@@ -827,7 +827,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
-    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
     { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/implementation/seller-integration` },
   ],
   B2: [
@@ -997,7 +997,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Sponsored Intelligence overview', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'SI specification', url: `${DOCS_BASE}/docs/sponsored-intelligence/specification` },
     { label: 'SI Chat Protocol', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-hosts` },
-    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
