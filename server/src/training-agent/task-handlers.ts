@@ -32,6 +32,7 @@ import type {
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
 } from '@adcp/client';
+import { adcpError } from '@adcp/client';
 
 // Derive types from SDK request types that aren't re-exported from main entry
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
@@ -585,7 +586,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   if (!req.packages?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'packages array is required and must have at least one item' }] as TaskError[],
+      errors: [{ code: 'INVALID_REQUEST', message: 'packages array is required and must have at least one item' }] as TaskError[],
     };
   }
 
@@ -599,13 +600,13 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const buyStart = req.start_time;
   const buyEnd = req.end_time;
   if (buyStart !== 'asap' && isNaN(new Date(buyStart).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
   }
   if (isNaN(new Date(buyEnd).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
   }
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
-    return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] as TaskError[] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must be before end_time' }] as TaskError[] };
   }
 
   // Validate all packages and collect errors before returning
@@ -615,9 +616,15 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const pkg: PackageRequest = req.packages[i];
     const pkgLabel = pkg.buyer_ref ? `Package "${pkg.buyer_ref}"` : `Package ${i}`;
 
+    // Check negative budget before product lookup (budget is always validatable)
+    if (pkg.budget < 0) {
+      errors.push({ code: 'BUDGET_TOO_LOW', message: `${pkgLabel}: Budget must be non-negative, got ${pkg.budget}` });
+      continue;
+    }
+
     const product = productMap.get(pkg.product_id);
     if (!product) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Product not found: ${pkg.product_id}` });
+      errors.push({ code: 'PRODUCT_NOT_FOUND', message: `${pkgLabel}: Product not found: ${pkg.product_id}` });
       continue;
     }
 
@@ -625,15 +632,10 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricing_option_id);
     if (!pricing) {
       errors.push({
-        code: 'validation_error',
+        code: 'INVALID_REQUEST',
         message: `${pkgLabel}: Pricing option not found: ${pkg.pricing_option_id}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
       });
       continue;
-    }
-
-    // Check negative budget
-    if (pkg.budget < 0) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Budget must be non-negative, got ${pkg.budget}` });
     }
 
     // Check bid vs floor price (floor_price exists on all pricing models except CPA)
@@ -643,14 +645,14 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     if (isAuction && pkg.bid_price === undefined) {
       errors.push({
-        code: 'validation_error',
+        code: 'INVALID_REQUEST',
         message: `${pkgLabel}: bid_price is required for auction pricing (${pricing.pricing_model}, option ${pkg.pricing_option_id})`,
       });
     }
 
     if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice) {
       errors.push({
-        code: 'validation_error',
+        code: 'INVALID_REQUEST',
         message: `${pkgLabel}: Bid price $${pkg.bid_price} is below floor price of $${floorPrice} for pricing option ${pkg.pricing_option_id}`,
       });
     }
@@ -659,7 +661,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const minSpend = pricing.min_spend_per_package;
     if (minSpend && pkg.budget < minSpend) {
       errors.push({
-        code: 'validation_error',
+        code: 'INVALID_REQUEST',
         message: `${pkgLabel}: Budget $${pkg.budget} is below minimum spend of $${minSpend} for pricing option ${pkg.pricing_option_id}`,
       });
     }
@@ -669,10 +671,10 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     // Validate package-level dates if overridden
     if (pkg.start_time && startTime !== 'asap' && isNaN(new Date(startTime).getTime())) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Invalid start_time: "${startTime}". Use ISO 8601 format or "asap".` });
+      errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid start_time: "${startTime}". Use ISO 8601 format or "asap".` });
     }
     if (pkg.end_time && isNaN(new Date(endTime).getTime())) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
+      errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
     // Don't build package state if there are any validation errors (atomic create)
@@ -944,7 +946,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
 
   if (!req.creatives?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'creatives array is required' }] as TaskError[],
+      errors: [{ code: 'INVALID_REQUEST', message: 'creatives array is required' }] as TaskError[],
     };
   }
 
@@ -962,7 +964,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     if (!creative.creative_id) {
       return {
         errors: [{
-          code: 'validation_error',
+          code: 'INVALID_REQUEST',
           message: 'creative_id is required on each creative. The buyer assigns creative IDs.',
         }],
       };
@@ -974,7 +976,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     if (formatId?.id && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
-          code: 'validation_error',
+          code: 'INVALID_REQUEST',
           message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
         }] as TaskError[],
       };
@@ -1082,7 +1084,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   // Update end_time with validation
   if (req.end_time) {
     if (isNaN(new Date(req.end_time).getTime())) {
-      return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${req.end_time}". Use ISO 8601 format.` }] };
+      return { errors: [{ code: 'INVALID_REQUEST', message: `Invalid end_time: "${req.end_time}". Use ISO 8601 format.` }] };
     }
     mb.endTime = req.end_time;
   }
@@ -1100,7 +1102,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       }
       if (update.budget !== undefined) {
         if (update.budget < 0) {
-          return { errors: [{ code: 'validation_error', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
+          return { errors: [{ code: 'INVALID_REQUEST', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
         }
         pkg.budget = update.budget;
       }
@@ -1174,7 +1176,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
 
   if (!signalSpec && !req.signal_ids?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'Either signal_spec or signal_ids is required' }],
+      errors: [{ code: 'INVALID_REQUEST', message: 'Either signal_spec or signal_ids is required' }],
     };
   }
 
@@ -1325,10 +1327,10 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
-    return { errors: [{ code: 'validation_error', message: 'signal_agent_segment_id is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'signal_agent_segment_id is required' }] };
   }
   if (!destinations?.length) {
-    return { errors: [{ code: 'validation_error', message: 'destinations array is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'destinations array is required' }] };
   }
 
   // Find the signal in our catalog
@@ -1427,7 +1429,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
 
   if (!mediaBuyIds?.length && !buyerRefs?.length && !creativeIds?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
+      errors: [{ code: 'INVALID_REQUEST', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
     };
   }
 
@@ -1603,25 +1605,30 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const handler = HANDLER_MAP[name];
 
     if (!handler) {
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ error: `Unknown tool: ${name}` }) }],
-        isError: true,
-      };
+      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` });
     }
 
     try {
       const result = handler((args as Record<string, unknown>) || {}, ctx);
+      const hasErrors = result && 'errors' in result && Array.isArray(result.errors) && result.errors.length > 0;
+      if (hasErrors) {
+        const firstError = (result as { errors: Array<{ code: string; message: string }> }).errors[0];
+        return adcpError(firstError.code, {
+          message: firstError.message,
+          details: (result as { errors: Array<unknown> }).errors.length > 1
+            ? { all_errors: (result as { errors: Array<unknown> }).errors }
+            : undefined,
+        });
+      }
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       };
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
-      return {
-        content: [{ type: 'text', text: JSON.stringify({
-          error: error instanceof Error ? error.message : 'Unknown error',
-        }) }],
-        isError: true,
-      };
+      return adcpError('SERVICE_UNAVAILABLE', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        recovery: 'transient',
+      });
     }
   });
 

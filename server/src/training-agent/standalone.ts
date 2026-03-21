@@ -57,9 +57,11 @@ async function handleMcpRequest(req: Request, res: Response) {
   }
 }
 
+app.post('/', handleMcpRequest);
 app.post('/api/training-agent/mcp', handleMcpRequest);
 app.post('/mcp', handleMcpRequest);
 
+app.options('/', (_req, res) => res.status(204).end());
 app.options('/api/training-agent/mcp', (_req, res) => res.status(204).end());
 app.options('/mcp', (_req, res) => res.status(204).end());
 
