@@ -478,16 +478,14 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       };
 
       // Check membership including inheritance through brand hierarchy
-      if (!org.is_personal) {
-        const membership = await resolveEffectiveMembership(organizationId);
-        context.is_member = membership.is_member;
-        if (membership.is_inherited && membership.paying_org_id) {
-          context.is_inherited_member = true;
-          context.covered_by = {
-            org_id: membership.paying_org_id,
-            org_name: membership.paying_org_name ?? 'Unknown',
-          };
-        }
+      const membership = await resolveEffectiveMembership(organizationId);
+      context.is_member = membership.is_member;
+      if (membership.is_inherited && membership.paying_org_id) {
+        context.is_inherited_member = true;
+        context.covered_by = {
+          org_id: membership.paying_org_id,
+          org_name: membership.paying_org_name ?? 'Unknown',
+        };
       }
     }
 
@@ -769,16 +767,14 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       };
 
       // Check membership including inheritance through brand hierarchy
-      if (!org.is_personal) {
-        const membership = await resolveEffectiveMembership(organizationId);
-        context.is_member = membership.is_member;
-        if (membership.is_inherited && membership.paying_org_id) {
-          context.is_inherited_member = true;
-          context.covered_by = {
-            org_id: membership.paying_org_id,
-            org_name: membership.paying_org_name ?? 'Unknown',
-          };
-        }
+      const membership = await resolveEffectiveMembership(organizationId);
+      context.is_member = membership.is_member;
+      if (membership.is_inherited && membership.paying_org_id) {
+        context.is_inherited_member = true;
+        context.covered_by = {
+          org_id: membership.paying_org_id,
+          org_name: membership.paying_org_name ?? 'Unknown',
+        };
       }
     }
 
