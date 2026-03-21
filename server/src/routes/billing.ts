@@ -715,11 +715,12 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       let subscriptionSyncError: string | null = null;
       if (stripe) {
         try {
-          const customer = await stripe.customers.retrieve(customerId, {
+          const customerResp = await stripe.customers.retrieve(customerId, {
             expand: ["subscriptions"],
           });
+          const customer = customerResp as Stripe.Customer | Stripe.DeletedCustomer;
 
-          if (!customer.deleted) {
+          if (!('deleted' in customer && customer.deleted)) {
             const subscriptions = (customer as Stripe.Customer).subscriptions;
             if (subscriptions && subscriptions.data.length > 0) {
               const subscription = subscriptions.data[0];
@@ -892,13 +893,15 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       }
 
       // Fetch customer to check for subscriptions and invoices
-      const customer = await stripe.customers.retrieve(customerId, {
+      const customerResp = await stripe.customers.retrieve(customerId, {
         expand: ["subscriptions"],
       });
+      const customerRaw = customerResp as Stripe.Customer | Stripe.DeletedCustomer;
 
-      if (customer.deleted) {
+      if ('deleted' in customerRaw && customerRaw.deleted) {
         return res.status(404).json({ error: "Customer already deleted" });
       }
+      const customer = customerRaw as Stripe.Customer;
 
       // Check for active subscriptions
       if (customer.subscriptions && customer.subscriptions.data.length > 0) {
@@ -1082,13 +1085,15 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
     if (!stripe) return null;
 
     try {
-      const customer = await stripe.customers.retrieve(customerId, {
+      const customerResp = await stripe.customers.retrieve(customerId, {
         expand: ["subscriptions"],
       });
+      const customerRaw2 = customerResp as Stripe.Customer | Stripe.DeletedCustomer;
 
-      if (customer.deleted) {
+      if ('deleted' in customerRaw2 && customerRaw2.deleted) {
         return null;
       }
+      const customer = customerRaw2 as Stripe.Customer;
 
       // Count paid invoices and total paid
       let paidInvoiceCount = 0;

@@ -46,9 +46,7 @@ describe('decodeHtmlEntities', () => {
 
   it('handles null and empty strings', () => {
     expect(decodeHtmlEntities('')).toBe('');
-    // @ts-expect-error testing null handling
     expect(decodeHtmlEntities(null)).toBe(null);
-    // @ts-expect-error testing undefined handling
     expect(decodeHtmlEntities(undefined)).toBe(undefined);
   });
 

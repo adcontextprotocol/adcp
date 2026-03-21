@@ -1781,7 +1781,7 @@ export async function createEventSponsorshipProduct(input: EventSponsorshipProdu
       const product = existingPrice.product as Stripe.Product;
 
       // Update the product name if it changed
-      if (product && typeof product !== 'string' && !product.deleted) {
+      if (product && typeof product !== 'string' && !(product as any).deleted) {
         if (product.name !== productName) {
           await stripe.products.update(product.id, { name: productName });
           logger.info({ productId: product.id, lookupKey }, 'Updated existing event sponsorship product name');
@@ -1845,7 +1845,7 @@ export async function getProductWithEventInfo(productId: string): Promise<{
 
   try {
     const product = await stripe.products.retrieve(productId);
-    if (product.deleted) return null;
+    if ((product as any).deleted) return null;
 
     return {
       product_id: product.id,

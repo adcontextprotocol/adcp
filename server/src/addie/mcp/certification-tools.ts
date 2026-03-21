@@ -817,7 +817,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Signals walkthrough', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
-    { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
+    { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
   ],
   // Track B: Publisher / Seller
   B1: [
@@ -827,8 +827,8 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/shows-and-episodes` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
-    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
-    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/implementation/seller-integration` },
   ],
   B2: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -863,7 +863,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track C: Buyer / Brand
   C1: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
-    { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/guides/buying-ai-media` },
+    { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
@@ -921,7 +921,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
-    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
   ],
   D2: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
@@ -973,7 +973,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Signal discovery', url: `${DOCS_BASE}/docs/signals/tasks/get_signals` },
     { label: 'Signal activation', url: `${DOCS_BASE}/docs/signals/tasks/activate_signal` },
     { label: 'Data provider guide', url: `${DOCS_BASE}/docs/signals/data-providers` },
-    { label: 'Signals ecosystem guide', url: `${DOCS_BASE}/docs/guides/signals-ecosystem` },
+    { label: 'Signals ecosystem guide', url: `${DOCS_BASE}/docs/signals/ecosystem` },
     { label: 'Event tracking', url: `${DOCS_BASE}/docs/media-buy/task-reference/sync_event_sources` },
     { label: 'Conversion logging', url: `${DOCS_BASE}/docs/media-buy/task-reference/log_event` },
     { label: 'Signals specification', url: `${DOCS_BASE}/docs/signals/specification` },
@@ -997,11 +997,11 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Sponsored Intelligence overview', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
     { label: 'SI specification', url: `${DOCS_BASE}/docs/sponsored-intelligence/specification` },
     { label: 'SI Chat Protocol', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-hosts` },
-    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/guides/ai-media` },
+    { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
-    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/guides/seller-integration` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/implementation/seller-integration` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
 };

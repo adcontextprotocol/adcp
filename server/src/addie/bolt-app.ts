@@ -1367,7 +1367,7 @@ async function handleUserMessage({
                 title: event.tool_name.replace(/_/g, ' '),
                 status: 'in_progress',
               }],
-            });
+            } as any);
           } catch {
             // Ignore stream errors for status updates
           }
@@ -1387,7 +1387,7 @@ async function handleUserMessage({
                 title: event.tool_name.replace(/_/g, ' '),
                 status: event.is_error ? 'error' : 'complete',
               }],
-            });
+            } as any);
           } catch {
             // Ignore stream errors for status updates
           }
