@@ -1,0 +1,9 @@
+{
+  "vertical_id": "cpg",
+  "name": "Consumer Packaged Goods",
+  "description": "Food, beverage, household products, personal care, and other fast-moving consumer goods.",
+  "regulatory_frameworks": [],
+  "commonly_restricted_attributes": [],
+  "guidance": "No vertical-specific advertising restrictions beyond product-specific rules (e.g., HFSS food in the UK falls under children-related regulations, not CPG). Campaigns for products restricted to adults (e.g., energy drinks, tobacco alternatives) should use the appropriate regulated vertical instead.",
+  "related_verticals": ["children"]
+}

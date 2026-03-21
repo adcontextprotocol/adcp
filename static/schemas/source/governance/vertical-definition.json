@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/vertical-definition.json",
   "title": "Vertical Definition",
-  "description": "Definition of an industry vertical in the policy registry. Verticals are the shared vocabulary used to match campaign plans (via the plan's vertical field) to applicable policies (via policy-entry.verticals). Each definition documents the regulatory frameworks, commonly restricted attributes, and governance considerations for the vertical.",
+  "description": "Definition of an industry vertical in the policy registry. Verticals are the shared vocabulary used across brand.json (brand.industry), campaign plans (plan.vertical), and policy entries (policy-entry.verticals). Every industry has a vertical definition; regulated industries have additional regulatory_frameworks and commonly_restricted_attributes. Non-regulated industries have empty arrays for those fields.",
   "type": "object",
   "properties": {
     "vertical_id": {

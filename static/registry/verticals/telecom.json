@@ -1,0 +1,9 @@
+{
+  "vertical_id": "telecom",
+  "name": "Telecommunications",
+  "description": "Mobile carriers, internet service providers, cable companies, and communications infrastructure.",
+  "regulatory_frameworks": [],
+  "commonly_restricted_attributes": [],
+  "guidance": "No vertical-specific advertising restrictions. ISPs and carriers that use subscriber data for targeting should ensure compliance with applicable privacy regulations at the plan level.",
+  "related_verticals": ["technology"]
+}

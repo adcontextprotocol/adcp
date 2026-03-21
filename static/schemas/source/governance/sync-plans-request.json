@@ -117,7 +117,7 @@
           },
           "vertical": {
             "type": "string",
-            "description": "Campaign vertical or product category. Matched against policy-entry.verticals in the policy registry to resolve applicable policies. For example, 'housing' matches registry policies with verticals including 'housing' (US FHA, UK Equality Act). A housing campaign targeted by zip code (geo, not audience) still triggers fair housing rules. Use values consistent with the policy registry (e.g., 'housing', 'employment', 'credit', 'alcohol', 'pharmaceutical', 'gambling')."
+            "description": "Industry vertical for this campaign. Uses the same vocabulary as brand.industry and policy-entry.verticals in the policy registry. When omitted, governance agents SHOULD resolve the vertical from the plan's brand (brand.industry). When present, overrides the brand's default — a pharmaceutical company running a general corporate awareness campaign can set vertical to 'cpg' to avoid pharma-specific restrictions."
           },
           "audience": {
             "$ref": "/schemas/governance/audience-constraints.json",

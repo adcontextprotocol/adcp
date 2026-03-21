@@ -242,7 +242,7 @@
         },
         "industry": {
           "type": "string",
-          "description": "Industry or vertical (e.g., 'retail', 'automotive', 'cpg')"
+          "description": "Industry vertical. Uses the same vocabulary as plan.vertical and policy-entry.verticals in the policy registry (e.g., 'retail', 'automotive', 'cpg', 'housing', 'pharmaceutical'). Governance agents use this to auto-resolve the vertical when a campaign plan does not explicitly declare one."
         },
         "target_audience": {
           "type": "string",

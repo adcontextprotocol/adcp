@@ -1,0 +1,9 @@
+{
+  "vertical_id": "retail",
+  "name": "Retail",
+  "description": "Physical and e-commerce retailers, department stores, specialty retail, and direct-to-consumer brands.",
+  "regulatory_frameworks": [],
+  "commonly_restricted_attributes": [],
+  "guidance": "No vertical-specific advertising restrictions. Retailers selling regulated products (alcohol, firearms, pharmaceuticals) should use the product-specific vertical for those campaigns.",
+  "related_verticals": ["cpg"]
+}

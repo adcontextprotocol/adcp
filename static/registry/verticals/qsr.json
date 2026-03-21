@@ -1,0 +1,9 @@
+{
+  "vertical_id": "qsr",
+  "name": "Quick Service Restaurants",
+  "description": "Fast food, fast casual, coffee chains, and quick service dining.",
+  "regulatory_frameworks": [],
+  "commonly_restricted_attributes": [],
+  "guidance": "No vertical-specific advertising restrictions for general QSR. Campaigns promoting high fat/sugar/salt (HFSS) food to children fall under children-related regulations in some jurisdictions (UK HFSS rules).",
+  "related_verticals": ["cpg", "children"]
+}
