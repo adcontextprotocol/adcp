@@ -482,6 +482,12 @@
           const orgId = btn.dataset.orgId;
           const orgName = btn.dataset.orgName;
           const domain = btn.dataset.domain;
+          const reassignFrom = btn.dataset.reassignFrom;
+          if (reassignFrom) {
+            if (!confirm(`Reassign ${domain} from ${reassignFrom} to ${orgName}?\n\nThis will remove the domain from the personal workspace.`)) {
+              return;
+            }
+          }
           linkDomainToOrg(btn, orgId, orgName, domain);
         });
       });
@@ -1136,11 +1142,16 @@
                 }
               });
 
-              // Find the first corporate domain (not a personal email domain AND not claimed by another org)
-              const corporateDomains = (o.user_domains || []).filter(d =>
-                d && !personalDomains.includes(d.toLowerCase()) && !claimedDomainsMap.has(d.toLowerCase())
-              );
+              // Find the first corporate domain (not a personal email domain AND not claimed by a corporate org)
+              // Domains claimed by personal orgs can be reassigned
+              const corporateDomains = (o.user_domains || []).filter(d => {
+                if (!d || personalDomains.includes(d.toLowerCase())) return false;
+                const claim = claimedDomainsMap.get(d.toLowerCase());
+                // Allow if unclaimed, or claimed by a personal org (reassignable)
+                return !claim || claim.is_personal;
+              });
               const suggestedDomain = corporateDomains[0] || null;
+              const suggestedDomainClaim = suggestedDomain ? claimedDomainsMap.get(suggestedDomain.toLowerCase()) : null;
 
               return `
               <tr>
@@ -1175,8 +1186,9 @@
                               data-org-id="${escapeHtml(o.org_id)}"
                               data-org-name="${escapeHtml(o.name)}"
                               data-domain="${escapeHtml(suggestedDomain)}"
-                              title="Link ${escapeHtml(suggestedDomain)} to ${escapeHtml(o.name)}">
-                        Link ${escapeHtml(suggestedDomain)}
+                              ${suggestedDomainClaim ? `data-reassign-from="${escapeHtml(suggestedDomainClaim.org_name)}"` : ''}
+                              title="${suggestedDomainClaim ? `Reassign ${escapeHtml(suggestedDomain)} from ${escapeHtml(suggestedDomainClaim.org_name)} to ${escapeHtml(o.name)}` : `Link ${escapeHtml(suggestedDomain)} to ${escapeHtml(o.name)}`}">
+                        ${suggestedDomainClaim ? 'Reassign' : 'Link'} ${escapeHtml(suggestedDomain)}
                       </button>
                     ` : ''}
                     <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="btn btn-secondary btn-sm">View Org</a>
