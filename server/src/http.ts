@@ -4732,7 +4732,7 @@ export class HTTPServer {
         // Static pages with their priorities and change frequencies
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
-          { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/stories', priority: '0.9', changefreq: 'daily' },
           { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
