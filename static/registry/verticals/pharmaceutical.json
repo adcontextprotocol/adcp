@@ -1,0 +1,22 @@
+{
+  "vertical_id": "pharmaceutical",
+  "name": "Pharmaceutical",
+  "description": "Prescription drugs, OTC medications, drug manufacturers (DTC advertising). Campaigns promoting specific drug products or pharmaceutical brands.",
+  "regulatory_frameworks": [
+    {
+      "name": "US FDA DTC Advertising Rules",
+      "jurisdictions": ["US"],
+      "summary": "Requires fair balance (risks alongside benefits), major statement of side effects, and adequate provision for full prescribing information."
+    },
+    {
+      "name": "EU Directive 2001/83/EC",
+      "jurisdictions": ["EU"],
+      "summary": "Prohibits DTC advertising of prescription drugs entirely. OTC advertising permitted with restrictions."
+    }
+  ],
+  "commonly_restricted_attributes": [
+    "health_data"
+  ],
+  "guidance": "Distinct from 'healthcare' because of FDA/EMA-specific advertising requirements. A hospital system ad is 'healthcare'; an Ozempic campaign is 'pharmaceutical'. Health-data targeting for pharmaceutical campaigns raises additional concerns about inferred medical conditions.",
+  "related_verticals": ["healthcare"]
+}

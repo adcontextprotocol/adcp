@@ -1,0 +1,14 @@
+{
+  "vertical_id": "firearms",
+  "name": "Firearms",
+  "description": "Firearms, ammunition, accessories. Campaigns promoting firearms products or related services.",
+  "regulatory_frameworks": [
+    {
+      "name": "Platform-Specific Restrictions",
+      "summary": "Most major advertising platforms restrict or prohibit firearms advertising. Jurisdiction-specific regulations apply in addition to platform policies."
+    }
+  ],
+  "commonly_restricted_attributes": [],
+  "guidance": "Limited programmatic inventory due to platform restrictions. Campaigns should verify seller capabilities before committing budget.",
+  "related_verticals": []
+}

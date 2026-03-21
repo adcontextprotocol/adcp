@@ -1,0 +1,26 @@
+{
+  "vertical_id": "housing",
+  "name": "Housing",
+  "description": "Real estate sales, rentals, mortgage lending, home insurance. Campaigns promoting residential property transactions or housing-related financial products.",
+  "regulatory_frameworks": [
+    {
+      "name": "US Fair Housing Act (FHA)",
+      "jurisdictions": ["US"],
+      "summary": "Prohibits targeting by race, color, religion, sex, disability, familial status, or national origin in housing advertising.",
+      "policy_ids": ["us_fha"]
+    },
+    {
+      "name": "UK Equality Act 2010",
+      "jurisdictions": ["GB"],
+      "summary": "Prohibits discrimination in housing advertising on the basis of protected characteristics including age, disability, race, religion, sex, and sexual orientation."
+    }
+  ],
+  "commonly_restricted_attributes": [
+    "racial_ethnic_origin",
+    "religious_beliefs",
+    "sex_life_sexual_orientation",
+    "health_data"
+  ],
+  "guidance": "A mortgage product may belong to both 'housing' and 'credit'. Use 'housing' when the campaign promotes residential property — FHA restrictions are stricter than ECOA for targeting. Use 'credit' when the focus is the financial product itself without a housing context.",
+  "related_verticals": ["credit", "insurance", "financial_services"]
+}

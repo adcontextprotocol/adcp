@@ -1,0 +1,25 @@
+{
+  "vertical_id": "children",
+  "name": "Children",
+  "description": "Products or content directed at minors (toys, children's media, educational products for kids). This is about the product category, not the audience — a financial services ad targeting parents is not 'children'.",
+  "regulatory_frameworks": [
+    {
+      "name": "US COPPA",
+      "jurisdictions": ["US"],
+      "summary": "Children's Online Privacy Protection Act. Restricts data collection and targeting for children under 13. Parental consent required."
+    },
+    {
+      "name": "UK Age Appropriate Design Code (AADC)",
+      "jurisdictions": ["GB"],
+      "summary": "Applies to services likely to be accessed by children under 18. Requires age-appropriate design and limits on data use for targeting."
+    },
+    {
+      "name": "EU GDPR Article 8",
+      "jurisdictions": ["EU"],
+      "summary": "Parental consent required for children under 16 (member states may lower to 13). Most restrictive applicable threshold applies."
+    }
+  ],
+  "commonly_restricted_attributes": [],
+  "guidance": "The most restrictive applicable age threshold applies. Certain targeting categories are entirely prohibited, not just size-constrained. Governance agents should treat this vertical as requiring the strictest audience protections across all jurisdictions in the campaign.",
+  "related_verticals": ["education"]
+}

@@ -1,0 +1,15 @@
+{
+  "vertical_id": "cannabis",
+  "name": "Cannabis",
+  "description": "Cannabis and CBD products. Campaigns promoting cannabis products, dispensaries, or CBD brands.",
+  "regulatory_frameworks": [
+    {
+      "name": "US Federal/State Conflict",
+      "jurisdictions": ["US"],
+      "summary": "Federally prohibited but legal in many states. Geo-restriction to legal jurisdictions required. No targeting of minors. State-specific advertising rules vary significantly."
+    }
+  ],
+  "commonly_restricted_attributes": [],
+  "guidance": "Geo-restriction is critical — campaigns must be restricted to jurisdictions where cannabis is legal. The plan's regions field should specify legal states/provinces. Age-gating required in all jurisdictions.",
+  "related_verticals": []
+}

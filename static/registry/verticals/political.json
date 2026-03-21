@@ -1,0 +1,24 @@
+{
+  "vertical_id": "political",
+  "name": "Political",
+  "description": "Political candidates, ballot measures, issue advocacy. Campaigns promoting political positions, candidates, or legislative issues.",
+  "regulatory_frameworks": [
+    {
+      "name": "US FEC Disclaimer Requirements",
+      "jurisdictions": ["US"],
+      "summary": "Political ads must include 'paid for by' disclaimers. State-level AI disclosure laws increasingly require disclosure of AI-generated content in political ads."
+    },
+    {
+      "name": "EU DSA Political Ad Transparency",
+      "jurisdictions": ["EU"],
+      "summary": "Political advertising requires transparency about funding, targeting criteria, and reach. EU DSA Article 26 prohibits targeting on special categories for political ads."
+    }
+  ],
+  "commonly_restricted_attributes": [
+    "political_opinions",
+    "racial_ethnic_origin",
+    "religious_beliefs"
+  ],
+  "guidance": "Many jurisdictions require ad libraries and targeting disclosure for political advertising. EU DSA Article 26 specifically prohibits targeting political ads using GDPR Article 9 special categories.",
+  "related_verticals": []
+}
