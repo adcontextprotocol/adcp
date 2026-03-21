@@ -1,0 +1,25 @@
+{
+  "attribute_id": "trade_union_membership",
+  "name": "Trade Union Membership",
+  "description": "Membership in or affiliation with trade unions or labor organizations.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Trade union membership is a special category of personal data."
+    }
+  ],
+  "includes": [
+    "Union membership status",
+    "Union affiliation or specific union membership",
+    "Labor organization participation"
+  ],
+  "excludes": [
+    "General employment sector (e.g., 'works in manufacturing') without union inference",
+    "Professional association membership (e.g., 'AMA member') unless the association is a trade union"
+  ],
+  "signal_patterns": [
+    "union_", "labor_org_"
+  ],
+  "guidance": "Primarily relevant in EU markets where GDPR treats this as a special category. Less commonly encountered in advertising targeting than other restricted attributes, but important for employment-vertical campaigns."
+}

@@ -1,0 +1,32 @@
+{
+  "attribute_id": "biometric_data",
+  "name": "Biometric Data",
+  "description": "Biometric data used for identification purposes, such as fingerprints, facial recognition, voice prints, or retinal scans.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Biometric data for identification is a special category of personal data."
+    },
+    {
+      "name": "Illinois BIPA",
+      "jurisdictions": ["US"],
+      "summary": "Biometric Information Privacy Act requires informed consent before collecting biometric identifiers. Private right of action for violations."
+    }
+  ],
+  "includes": [
+    "Facial recognition data",
+    "Fingerprint data",
+    "Voice prints",
+    "Retinal or iris scans",
+    "Gait or behavioral biometrics used for identification"
+  ],
+  "excludes": [
+    "Device identifiers (MAIDs, cookies) — these are not biometric",
+    "Demographic attributes inferred from photos (age, gender) unless the photo itself is processed biometrically"
+  ],
+  "signal_patterns": [
+    "biometric_", "facial_", "fingerprint_", "voiceprint_"
+  ],
+  "guidance": "Biometric data is rarely used directly in advertising targeting, but may appear in identity resolution or measurement contexts. Illinois BIPA has created significant litigation risk for companies processing biometric data without consent, even outside advertising contexts."
+}

@@ -1,0 +1,30 @@
+{
+  "attribute_id": "genetic_data",
+  "name": "Genetic Data",
+  "description": "Genetic information, DNA test results, or hereditary characteristics.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Genetic data is a special category of personal data."
+    },
+    {
+      "name": "US GINA",
+      "jurisdictions": ["US"],
+      "summary": "Genetic Information Nondiscrimination Act prohibits use of genetic information in employment and health insurance decisions."
+    }
+  ],
+  "includes": [
+    "DNA test results or ancestry data from genetic testing",
+    "Hereditary disease risk scores",
+    "Genetic predisposition segments"
+  ],
+  "excludes": [
+    "Self-reported ancestry or ethnicity (covered by racial_ethnic_origin)",
+    "Family health history when not based on genetic testing"
+  ],
+  "signal_patterns": [
+    "genetic_", "dna_", "hereditary_", "genome_"
+  ],
+  "guidance": "Genetic data in advertising is rare but growing with DTC genetic testing services. Ancestry-based segments from genetic testing services fall here; self-reported ancestry falls under racial_ethnic_origin."
+}

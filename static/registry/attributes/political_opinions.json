@@ -1,0 +1,32 @@
+{
+  "attribute_id": "political_opinions",
+  "name": "Political Opinions",
+  "description": "Political opinions, affiliations, party membership, or voting behavior.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Political opinions are a special category of personal data."
+    },
+    {
+      "name": "EU DSA Article 26",
+      "jurisdictions": ["EU"],
+      "summary": "Explicitly prohibits using political opinions for advertising targeting."
+    }
+  ],
+  "includes": [
+    "Political party affiliation or registration",
+    "Voting history or likelihood",
+    "Political ideology segments (e.g., 'conservative', 'progressive')",
+    "Issue-based political segments (e.g., 'gun rights supporters', 'climate activists')",
+    "Political donor data"
+  ],
+  "excludes": [
+    "General news consumption habits",
+    "Civic engagement (e.g., 'registered voter') without partisan inference"
+  ],
+  "signal_patterns": [
+    "political_", "voter_", "party_", "ideology_", "partisan_"
+  ],
+  "guidance": "EU DSA Article 26 is absolute — political opinions cannot be used for ad targeting in EU markets regardless of vertical. In the US, political data is widely used for political advertising but restricted in housing/employment/credit contexts."
+}

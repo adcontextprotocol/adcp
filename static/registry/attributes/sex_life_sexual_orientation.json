@@ -1,0 +1,31 @@
+{
+  "attribute_id": "sex_life_sexual_orientation",
+  "name": "Sex Life or Sexual Orientation",
+  "description": "Sexual orientation, gender identity, or data about an individual's sex life.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Data concerning sex life or sexual orientation is a special category of personal data."
+    },
+    {
+      "name": "US Fair Housing Act (as interpreted)",
+      "jurisdictions": ["US"],
+      "summary": "HUD interprets sex discrimination to include sexual orientation and gender identity in housing advertising."
+    }
+  ],
+  "includes": [
+    "Sexual orientation segments (e.g., 'LGBTQ+')",
+    "Gender identity data beyond binary male/female",
+    "Dating preference signals",
+    "Relationship status when linked to sexual orientation"
+  ],
+  "excludes": [
+    "Binary gender (male/female) for demographic targeting — covered by sex discrimination rules, not this category",
+    "Parental status"
+  ],
+  "signal_patterns": [
+    "orientation_", "lgbtq_", "gender_identity_"
+  ],
+  "guidance": "This category covers sexual orientation and gender identity specifically, not binary gender targeting. Binary gender (male/female) used for demographic targeting is regulated separately under sex discrimination rules in housing/employment/credit verticals."
+}
