@@ -91,18 +91,21 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
     try {
       const { category, active_only, source_type, status, limit, offset } = req.query;
 
-      const documents = await addieDb.listKnowledge({
+      const parsedLimit = limit ? parseInt(limit as string, 10) : 100;
+      const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+
+      const { rows: documents, total } = await addieDb.listKnowledge({
         category: category as string | undefined,
         sourceType: source_type as string | undefined,
         fetchStatus: status as string | undefined,
         activeOnly: active_only !== "false",
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: isNaN(parsedLimit) ? 100 : Math.min(Math.max(parsedLimit, 1), 500),
+        offset: isNaN(parsedOffset) ? 0 : Math.max(parsedOffset, 0),
       });
 
       res.json({
         documents,
-        total: documents.length,
+        total,
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching knowledge documents");

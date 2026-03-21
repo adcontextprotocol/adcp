@@ -2243,7 +2243,11 @@
     }
 
     // Load unified knowledge list (docs, curated resources, slack messages)
-    async function loadKnowledge() {
+    let knowledgePage = 0;
+    const knowledgePageSize = 100;
+
+    async function loadKnowledge(page) {
+      if (typeof page === 'number') knowledgePage = page;
       const sourceType = document.getElementById('source-type-filter').value;
       const category = document.getElementById('category-filter').value;
       const fetchStatus = document.getElementById('fetch-status-filter').value;
@@ -2252,13 +2256,15 @@
       const fetchStatusFilter = document.getElementById('fetch-status-filter');
       fetchStatusFilter.style.display = sourceType === 'curated' ? 'block' : 'none';
 
-      // Build URL with filters
+      // Build URL with filters and pagination
       const params = new URLSearchParams();
       if (sourceType) params.append('source_type', sourceType);
       if (category) params.append('category', category);
       if (fetchStatus && sourceType === 'curated') params.append('status', fetchStatus);
+      params.append('limit', knowledgePageSize.toString());
+      params.append('offset', (knowledgePage * knowledgePageSize).toString());
 
-      const url = '/api/admin/addie/knowledge' + (params.toString() ? '?' + params.toString() : '');
+      const url = '/api/admin/addie/knowledge?' + params.toString();
 
       try {
         // Load stats
@@ -2374,6 +2380,22 @@
             </div>
           `;
         }).join('');
+
+        // Pagination controls
+        const totalPages = Math.ceil(data.total / knowledgePageSize);
+        if (totalPages > 1) {
+          list.innerHTML += `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) 0; border-top: var(--border-1) solid var(--color-gray-200); margin-top: var(--space-3);">
+              <span style="color: var(--color-text-muted); font-size: var(--text-sm);">
+                Showing ${knowledgePage * knowledgePageSize + 1}–${Math.min((knowledgePage + 1) * knowledgePageSize, data.total)} of ${data.total}
+              </span>
+              <div style="display: flex; gap: var(--space-2);">
+                ${knowledgePage > 0 ? `<button class="btn btn-small btn-secondary" onclick="loadKnowledge(${knowledgePage - 1})">Previous</button>` : ''}
+                ${knowledgePage < totalPages - 1 ? `<button class="btn btn-small btn-secondary" onclick="loadKnowledge(${knowledgePage + 1})">Next</button>` : ''}
+              </div>
+            </div>
+          `;
+        }
       } catch (error) {
         console.error('Error loading knowledge:', error);
         document.getElementById('knowledge-list').innerHTML =
@@ -3002,9 +3024,9 @@
     }
 
     // Event listeners
-    document.getElementById('source-type-filter').addEventListener('change', loadKnowledge);
-    document.getElementById('category-filter').addEventListener('change', loadKnowledge);
-    document.getElementById('fetch-status-filter').addEventListener('change', loadKnowledge);
+    document.getElementById('source-type-filter').addEventListener('change', () => loadKnowledge(0));
+    document.getElementById('category-filter').addEventListener('change', () => loadKnowledge(0));
+    document.getElementById('fetch-status-filter').addEventListener('change', () => loadKnowledge(0));
 
     // Close modal on outside click
     document.getElementById('knowledge-modal').addEventListener('click', (e) => {
