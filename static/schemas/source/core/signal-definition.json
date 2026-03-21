@@ -41,6 +41,14 @@
       },
       "minItems": 1
     },
+    "restricted_attributes": {
+      "type": "array",
+      "description": "Restricted attribute categories this signal touches. Data providers SHOULD declare these so governance agents can structurally match signals against a plan's restricted_attributes without relying on semantic inference from the signal name or description.",
+      "items": {
+        "$ref": "/schemas/enums/restricted-attribute.json"
+      },
+      "minItems": 1
+    },
     "range": {
       "type": "object",
       "description": "For numeric signals, the valid value range",
