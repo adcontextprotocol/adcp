@@ -437,7 +437,7 @@ function buildProduct(
         }
       }
       if (episodes.length > 0) {
-        product.episodes = episodes;
+        product.episodes = episodes as unknown as NonNullable<Product['episodes']>;
       }
     }
   }
