@@ -117,7 +117,7 @@
           },
           "vertical": {
             "type": "string",
-            "description": "Industry vertical for this campaign. Uses the same vocabulary as brand.industry and policy-entry.verticals in the policy registry. When omitted, governance agents SHOULD resolve the vertical from the plan's brand (brand.industry). When present, overrides the brand's default — a pharmaceutical company running a general corporate awareness campaign can set vertical to 'cpg' to avoid pharma-specific restrictions."
+            "description": "Vertical for this campaign. Same vocabulary as brand.vertical and policy-entry.verticals in the policy registry. When omitted, governance agents SHOULD resolve the vertical from the plan's brand (brand.vertical). When present, overrides the brand's default — a pharmaceutical company running a general corporate awareness campaign can set vertical to 'cpg' to avoid pharma-specific restrictions."
           },
           "audience": {
             "$ref": "/schemas/governance/audience-constraints.json",

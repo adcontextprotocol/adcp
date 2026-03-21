@@ -240,9 +240,9 @@
           "type": "string",
           "description": "Brand description"
         },
-        "industry": {
+        "vertical": {
           "type": "string",
-          "description": "Industry vertical. Uses the same vocabulary as plan.vertical and policy-entry.verticals in the policy registry (e.g., 'retail', 'automotive', 'cpg', 'housing', 'pharmaceutical'). Governance agents use this to auto-resolve the vertical when a campaign plan does not explicitly declare one."
+          "description": "Brand vertical. Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry (e.g., 'retail', 'automotive', 'cpg', 'housing', 'pharmaceutical'). Governance agents use this to auto-resolve the vertical when a campaign plan does not explicitly declare one."
         },
         "target_audience": {
           "type": "string",
@@ -1153,7 +1153,7 @@
           "url": "https://tide.com",
           "names": [{"en-US": "Tide"}, {"es-MX": "Tide"}, {"zh-CN": "汰渍"}],
           "keller_type": "master",
-          "industry": "cpg",
+          "vertical": "cpg",
           "description": "Laundry detergent brand",
           "logos": [
             {
@@ -1315,7 +1315,7 @@
           "url": "https://pampers.com",
           "names": [{"en-US": "Pampers"}],
           "keller_type": "master",
-          "industry": "cpg",
+          "vertical": "cpg",
           "logos": [
             {
               "url": "https://cdn.pg.com/pampers/logo.png",
