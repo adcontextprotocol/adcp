@@ -1,8 +1,7 @@
 /**
  * Addie Admin routes module
  *
- * Admin routes for managing Addie's knowledge base, viewing interactions,
- * and managing the approval queue.
+ * Admin routes for managing Addie's knowledge base and viewing interactions.
  */
 
 import { Router } from "express";
@@ -19,7 +18,6 @@ import {
 } from "../addie/thread-service.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { ModelConfig } from "../config/models.js";
-import { getAddieBoltApp } from "../addie/bolt-app.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
@@ -93,18 +91,21 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
     try {
       const { category, active_only, source_type, status, limit, offset } = req.query;
 
-      const documents = await addieDb.listKnowledge({
+      const parsedLimit = limit ? parseInt(limit as string, 10) : 100;
+      const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+
+      const { rows: documents, total } = await addieDb.listKnowledge({
         category: category as string | undefined,
         sourceType: source_type as string | undefined,
         fetchStatus: status as string | undefined,
         activeOnly: active_only !== "false",
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: isNaN(parsedLimit) ? 100 : Math.min(Math.max(parsedLimit, 1), 500),
+        offset: isNaN(parsedOffset) ? 0 : Math.max(parsedOffset, 0),
       });
 
       res.json({
         documents,
-        total: documents.length,
+        total,
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching knowledge documents");
@@ -984,130 +985,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to fetch conversation",
-      });
-    }
-  });
-
-  // =========================================================================
-  // APPROVAL QUEUE API (mounted at /api/admin/addie/queue)
-  // =========================================================================
-
-  // GET /api/admin/addie/queue - Get pending approval items
-  apiRouter.get("/queue", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { limit } = req.query;
-
-      const items = await addieDb.getPendingApprovals({
-        limit: limit ? parseInt(limit as string, 10) : 50,
-      });
-
-      res.json({
-        items,
-        total: items.length,
-      });
-    } catch (error) {
-      logger.error({ err: error }, "Error fetching approval queue");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to fetch approval queue",
-      });
-    }
-  });
-
-  // GET /api/admin/addie/queue/stats - Get approval queue statistics
-  apiRouter.get("/queue/stats", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const stats = await addieDb.getApprovalStats();
-      res.json(stats);
-    } catch (error) {
-      logger.error({ err: error }, "Error fetching approval queue stats");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to fetch approval queue statistics",
-      });
-    }
-  });
-
-  // PUT /api/admin/addie/queue/:id/approve - Approve a queued item
-  apiRouter.put("/queue/:id/approve", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const numericId = parseNumericId(req.params.id);
-      if (!numericId) {
-        return res.status(400).json({ error: "Invalid queue item ID" });
-      }
-      const { edit_notes, final_content } = req.body;
-
-      const item = await addieDb.approveItem(numericId, req.user?.id || "admin", {
-        editNotes: edit_notes,
-        finalContent: final_content,
-      });
-
-      if (!item) {
-        return res.status(404).json({ error: "Approval item not found or already processed" });
-      }
-
-      // Execute the approved action (send the message to Slack)
-      const boltApp = getAddieBoltApp();
-      if (boltApp && item.target_channel_id) {
-        try {
-          const contentToSend = final_content || item.proposed_content;
-          const result = await boltApp.client.chat.postMessage({
-            channel: item.target_channel_id,
-            text: contentToSend,
-            thread_ts: item.target_thread_ts || undefined,
-          });
-
-          // Update the item with execution result
-          await addieDb.markExecuted(numericId, {
-            success: true,
-            message_ts: result.ts,
-            channel: result.channel,
-          });
-
-          logger.info({ queueId: numericId, messageTs: result.ts }, "Approved and sent queue item");
-        } catch (sendError) {
-          logger.error({ err: sendError, queueId: numericId }, "Failed to send approved message");
-          // Still return success for approval, but note the send failure
-          await addieDb.markExecuted(numericId, {
-            success: false,
-            error: sendError instanceof Error ? sendError.message : "Unknown error",
-          });
-        }
-      }
-
-      logger.info({ queueId: numericId }, "Approved queue item");
-      res.json(item);
-    } catch (error) {
-      logger.error({ err: error }, "Error approving queue item");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to approve queue item",
-      });
-    }
-  });
-
-  // PUT /api/admin/addie/queue/:id/reject - Reject a queued item
-  apiRouter.put("/queue/:id/reject", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const numericId = parseNumericId(req.params.id);
-      if (!numericId) {
-        return res.status(400).json({ error: "Invalid queue item ID" });
-      }
-      const { reason } = req.body;
-
-      const item = await addieDb.rejectItem(numericId, req.user?.id || "admin", reason);
-
-      if (!item) {
-        return res.status(404).json({ error: "Approval item not found or already processed" });
-      }
-
-      logger.info({ queueId: numericId, reason }, "Rejected queue item");
-      res.json(item);
-    } catch (error) {
-      logger.error({ err: error }, "Error rejecting queue item");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to reject queue item",
       });
     }
   });

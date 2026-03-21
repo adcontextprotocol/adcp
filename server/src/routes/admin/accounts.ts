@@ -92,10 +92,11 @@ export function setupAccountRoutes(
     }
   );
 
-  // Redirect old URL to new
+  // Redirect old /admin/organizations URL to /admin/accounts
   pageRouter.get(
     "/organizations/:orgId",
     requireAuth,
+    requireAdmin,
     (req, res) => {
       res.redirect(301, `/admin/accounts/${req.params.orgId}`);
     }

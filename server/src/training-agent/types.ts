@@ -15,6 +15,19 @@ export interface TrainingContext {
   learnerLevel?: 'basics' | 'practitioner' | 'specialist';
 }
 
+export interface ShowSpecial {
+  name: string;
+  category?: string;
+  starts?: string;
+  ends?: string;
+}
+
+export interface ShowLimitedSeries {
+  totalEpisodes?: number;
+  starts?: string;
+  ends?: string;
+}
+
 export interface ShowDefinition {
   showId: string;
   name: string;
@@ -25,6 +38,8 @@ export interface ShowDefinition {
   talent?: Array<{ name: string; role: string }>;
   distribution?: Array<{ publisherDomain: string; identifiers: Array<{ type: string; value: string }> }>;
   description?: string;
+  special?: ShowSpecial;
+  limitedSeries?: ShowLimitedSeries;
   /** Channels this show's products should appear on */
   channels: string[];
   /** Episode templates to generate for this show */
@@ -33,7 +48,8 @@ export interface ShowDefinition {
     title: string;
     status: string;
     scheduledAt?: string;
-    duration?: string;
+    durationSeconds?: number;
+    special?: ShowSpecial;
   }>;
 }
 
@@ -142,6 +158,18 @@ export interface SignalActivationState {
   activatedAt: string;
 }
 
+export interface AccountRef {
+  account_id?: string;
+  brand?: { domain: string };
+  operator?: string;
+  sandbox?: boolean;
+}
+
+export interface BrandRef {
+  domain: string;
+  name?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   buyerRef: string;
@@ -178,7 +206,7 @@ export interface CreativeState {
   name?: string;
   status: string;
   syncedAt: string;
-  manifest?: Record<string, unknown>;
+  manifest?: { format_id: FormatID; assets: Record<string, unknown> };
 }
 
 // ── Governance types ────────────────────────────────────────────
@@ -232,7 +260,7 @@ export interface GovernanceCheckState {
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
-  escalation?: Record<string, unknown>;
+  escalation?: { reason: string; action?: string };
   explanation: string;
   mode: string;
   categoriesEvaluated: string[];
@@ -248,7 +276,7 @@ export interface GovernanceFinding {
   explanation: string;
   policyId?: string;
   confidence?: number;
-  details?: Record<string, unknown>;
+  details?: { field?: string; expected?: unknown; actual?: unknown };
 }
 
 export interface GovernanceCondition {

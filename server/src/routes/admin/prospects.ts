@@ -10,31 +10,32 @@
  */
 
 import { Router } from "express";
+import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 
 export function setupProspectRoutes(apiRouter: Router, _config: { workos: any }): void {
 
   // POST /api/admin/prospects → POST /api/admin/accounts
-  apiRouter.post("/prospects", (req, res) => {
+  apiRouter.post("/prospects", requireAuth, requireAdmin, (req, res) => {
     res.redirect(308, "/api/admin/accounts");
   });
 
   // PUT /api/admin/prospects/:orgId → PUT /api/admin/accounts/:orgId
-  apiRouter.put("/prospects/:orgId", (req, res) => {
+  apiRouter.put("/prospects/:orgId", requireAuth, requireAdmin, (req, res) => {
     res.redirect(308, `/api/admin/accounts/${req.params.orgId}`);
   });
 
   // POST /api/admin/prospects/:orgId/payment-link → POST /api/admin/accounts/:orgId/payment-link
-  apiRouter.post("/prospects/:orgId/payment-link", (req, res) => {
+  apiRouter.post("/prospects/:orgId/payment-link", requireAuth, requireAdmin, (req, res) => {
     res.redirect(308, `/api/admin/accounts/${req.params.orgId}/payment-link`);
   });
 
   // POST /api/admin/prospects/:orgId/invoice → POST /api/admin/accounts/:orgId/invoice
-  apiRouter.post("/prospects/:orgId/invoice", (req, res) => {
+  apiRouter.post("/prospects/:orgId/invoice", requireAuth, requireAdmin, (req, res) => {
     res.redirect(308, `/api/admin/accounts/${req.params.orgId}/invoice`);
   });
 
   // GET /api/admin/prospects/typeahead?q=... → GET /api/admin/accounts?view=all&search=...&limit=10
-  apiRouter.get("/prospects/typeahead", (req, res) => {
+  apiRouter.get("/prospects/typeahead", requireAuth, requireAdmin, (req, res) => {
     const q = req.query.q as string || "";
     res.redirect(307, `/api/admin/accounts?view=all&search=${encodeURIComponent(q)}&limit=10`);
   });

@@ -456,8 +456,14 @@ function buildProduct(
             name: ep.title,
             status: ep.status as EpisodeStatus,
             ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
-            ...(ep.duration && parseDurationToSeconds(ep.duration) !== null && {
-              duration_seconds: parseDurationToSeconds(ep.duration)!,
+            ...(ep.durationSeconds && { duration_seconds: ep.durationSeconds }),
+            ...(ep.special && {
+              special: {
+                name: ep.special.name,
+                ...(ep.special.category && { category: ep.special.category }),
+                ...(ep.special.starts && { starts: ep.special.starts }),
+                ...(ep.special.ends && { ends: ep.special.ends }),
+              },
             }),
           };
           builtEpisodes.push(episode);

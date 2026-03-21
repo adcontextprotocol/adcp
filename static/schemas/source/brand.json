@@ -16,7 +16,7 @@
     },
     "localized_name": {
       "type": "object",
-      "description": "A localized name with language code key and name value",
+      "description": "A localized name with BCP 47 locale code key (e.g., 'en_US', 'fr_CA', 'zh_CN') and name value. Bare language codes ('en') are accepted as wildcards for backwards compatibility.",
       "minProperties": 1,
       "maxProperties": 1,
       "additionalProperties": {
@@ -287,8 +287,19 @@
           ]
         },
         "tagline": {
-          "type": "string",
-          "description": "Brand tagline or slogan"
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Plain tagline string for backwards compatibility"
+            },
+            {
+              "type": "array",
+              "description": "Localized taglines with BCP 47 locale codes",
+              "items": { "$ref": "#/definitions/localized_name" },
+              "minItems": 1
+            }
+          ],
+          "description": "Brand tagline or slogan. Accepts a plain string or a localized array matching the names pattern."
         },
         "assets": {
           "type": "array",
@@ -1139,7 +1150,7 @@
         {
           "id": "tide",
           "url": "https://tide.com",
-          "names": [{"en": "Tide"}, {"es": "Tide"}, {"zh": "汰渍"}],
+          "names": [{"en_US": "Tide"}, {"es_MX": "Tide"}, {"zh_CN": "汰渍"}],
           "keller_type": "master",
           "industry": "cpg",
           "description": "Laundry detergent brand",
@@ -1166,7 +1177,7 @@
             "dos": ["Use simple, direct language", "Emphasize cleaning power"],
             "donts": ["Avoid technical jargon", "Don't be overly serious"]
           },
-          "tagline": "Tide's In, Dirt's Out",
+          "tagline": [{"en_US": "Tide's In, Dirt's Out"}],
           "visual_guidelines": {
             "photography": {
               "realism": "natural",
@@ -1301,7 +1312,7 @@
         {
           "id": "pampers",
           "url": "https://pampers.com",
-          "names": [{"en": "Pampers"}],
+          "names": [{"en_US": "Pampers"}],
           "keller_type": "master",
           "industry": "cpg",
           "logos": [
@@ -1335,7 +1346,7 @@
         {
           "id": "nike",
           "url": "https://nike.com",
-          "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
+          "names": [{"en_US": "Nike"}, {"zh_CN": "耐克"}, {"ja_JP": "ナイキ"}],
           "keller_type": "master",
           "logos": [
             {
@@ -1355,7 +1366,7 @@
           ],
           "colors": {"primary": "#111111", "accent": "#FF6600"},
           "tone": "inspirational, bold, athletic",
-          "tagline": "Just Do It",
+          "tagline": [{"en_US": "Just Do It"}],
           "properties": [
             {"type": "website", "identifier": "nike.com", "primary": true},
             {"type": "website", "identifier": "nike.cn", "region": "CN"},
@@ -1365,7 +1376,7 @@
         {
           "id": "air_jordan",
           "url": "https://jordan.com",
-          "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
+          "names": [{"en_US": "Air Jordan"}, {"en_US": "Jordan"}, {"en_US": "Jumpman"}],
           "keller_type": "endorsed",
           "parent_brand": "nike",
           "logos": [
@@ -1389,7 +1400,7 @@
         {
           "id": "converse",
           "url": "https://converse.com",
-          "names": [{"en": "Converse"}],
+          "names": [{"en_US": "Converse"}],
           "keller_type": "independent",
           "logos": [
             {

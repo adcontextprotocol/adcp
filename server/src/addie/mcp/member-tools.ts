@@ -3222,8 +3222,22 @@ export function createMemberToolHandlers(
       return '❌ Unable to identify your Slack user. This tool is only available in Slack.';
     }
 
+    const optOutProvided = input.opt_out !== undefined;
     const optOut = input.opt_out === true;
-    const cadence = input.cadence as 'default' | 'monthly' | 'quarterly' | undefined;
+    const validCadences = ['default', 'monthly', 'quarterly'] as const;
+    const cadence = validCadences.includes(input.cadence as any)
+      ? (input.cadence as (typeof validCadences)[number])
+      : undefined;
+
+    // Require at least one parameter — calling with empty params should not silently change state
+    if (!optOutProvided && !cadence) {
+      return 'Please specify what you\'d like to change: opt out of messages (`opt_out: true`), or set a cadence (`monthly` or `quarterly`). You can also set cadence to `default` to return to normal frequency.';
+    }
+
+    // Guard: calling with no parameters should not change state
+    if (input.opt_out === undefined && !cadence) {
+      return 'Please specify opt_out (true/false) or a cadence (monthly, quarterly, default).';
+    }
 
     try {
       // Find the person relationship
@@ -3233,7 +3247,7 @@ export function createMemberToolHandlers(
       }
 
       if (optOut) {
-        await relationshipDb.setOptedOut(relationship.id, true);
+        await relationshipDb.setCadence(relationship.id, true, null);
         await personEvents.recordEvent(relationship.id, 'preference_changed', {
           channel: 'slack',
           data: { preference: 'opted_out' },
@@ -3249,12 +3263,7 @@ export function createMemberToolHandlers(
 
         // Clear opted_out — setting a cadence implies opting back in
         await relationshipDb.setOptedOut(relationship.id, false);
-
-        // Set next_contact_after to enforce the cadence
-        await query(
-          `UPDATE person_relationships SET next_contact_after = $2, updated_at = NOW() WHERE id = $1`,
-          [relationship.id, nextContact]
-        );
+        await relationshipDb.setNextContactAfter(relationship.id, nextContact);
         await personEvents.recordEvent(relationship.id, 'preference_changed', {
           channel: 'slack',
           data: { cadence, nextContactAfter: nextContact.toISOString() },
@@ -3264,10 +3273,7 @@ export function createMemberToolHandlers(
 
       // Default: opt back in with normal cadence
       await relationshipDb.setOptedOut(relationship.id, false);
-      await query(
-        `UPDATE person_relationships SET next_contact_after = NULL, updated_at = NOW() WHERE id = $1`,
-        [relationship.id]
-      );
+      await relationshipDb.setNextContactAfter(relationship.id, null);
       await personEvents.recordEvent(relationship.id, 'preference_changed', {
         channel: 'slack',
         data: { preference: 'opted_in', cadence: 'default' },

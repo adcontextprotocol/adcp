@@ -811,15 +811,28 @@ const finalResult = await handleA2aResponse(result);
 ## A2A-Specific Considerations
 
 ### Error Handling
+
+Failed tasks carry structured AdCP errors in artifact `DataPart` under the `adcp_error` key. For the full extraction logic and recovery behavior, see [Transport Error Mapping](/docs/building/implementation/transport-errors).
+
 ```javascript
-// A2A transport vs. task errors
-// For complete task management patterns, see Task Management guide
 try {
   const response = await a2a.send(message);
-  
+
   if (response.status === 'failed') {
-    // AdCP task error - show to user
-    showError(response.message);
+    // Check for structured AdCP error in artifacts
+    const dataPart = response.artifacts?.[0]?.parts?.find(p => p.kind === 'data');
+    const adcpError = dataPart?.data?.adcp_error;
+
+    if (adcpError) {
+      // Structured error with code, recovery, retry_after, etc.
+      console.log('AdCP error:', adcpError.code, adcpError.recovery);
+      if (adcpError.recovery === 'transient') {
+        // Retry after delay
+        await sleep((adcpError.retry_after || 5) * 1000);
+        return retry();
+      }
+    }
+    throw new Error(response.message);
   }
 } catch (a2aError) {
   // A2A transport error (connection, auth, etc.)

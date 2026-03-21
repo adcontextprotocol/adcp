@@ -127,6 +127,7 @@
                       "docs/building/implementation/webhooks",
                       "docs/building/implementation/orchestrator-design",
                       "docs/building/implementation/error-handling",
+                      "docs/building/implementation/transport-errors",
                       "docs/building/implementation/security"
                     ]
                   },
@@ -575,6 +576,7 @@
                   "docs/building/implementation/webhooks",
                   "docs/building/implementation/orchestrator-design",
                   "docs/building/implementation/error-handling",
+                  "docs/building/implementation/transport-errors",
                   "docs/building/implementation/security"
                 ]
               },

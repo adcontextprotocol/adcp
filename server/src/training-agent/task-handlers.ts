@@ -17,6 +17,7 @@ import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, Sign
 import type {
   Product,
   FormatID,
+  Format,
   CreateMediaBuyRequest,
   PackageRequest,
   UpdateMediaBuyRequest,
@@ -29,6 +30,7 @@ import type {
   GetSignalsRequest,
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
+  GetAdCPCapabilitiesRequest,
 } from '@adcp/client';
 
 // Derive types from SDK request types that aren't re-exported from main entry
@@ -48,6 +50,104 @@ import {
   handleGetPlanAuditLogs,
 } from './governance-handlers.js';
 import { PUBLISHERS } from './publishers.js';
+
+/** Wire-format error shared by all training agent responses. */
+interface TaskError {
+  code: string;
+  message: string;
+  field?: string;
+  suggestion?: string;
+}
+
+/** Signal deployment entry in get_signals response. */
+interface SignalDeployment {
+  type: 'agent' | 'platform';
+  agent_url?: string;
+  platform?: string;
+  account?: string;
+  is_live: boolean;
+  activation_key?: { type: string; key: string; value: string };
+  deployed_at?: string;
+  estimated_activation_duration_minutes?: number;
+}
+
+/** Signal entry in get_signals response. */
+interface SignalResponse {
+  signal_agent_segment_id: string;
+  signal_id: { source: string; data_provider_domain: string; id: string };
+  name: string;
+  description: string;
+  value_type: string;
+  signal_type: string;
+  data_provider: string;
+  coverage_percentage?: number;
+  deployments: SignalDeployment[];
+  pricing_options: SignalPricingOption[];
+  categories?: string[];
+  range?: { min: number; max: number };
+}
+
+/** Signal pricing option in get_signals response. */
+interface SignalPricingOption {
+  pricing_option_id: string;
+  model: string;
+  currency: string;
+  cpm?: number;
+  percent?: number;
+  max_cpm?: number;
+  amount?: number;
+  period?: string;
+}
+
+/** Package delivery metrics in get_media_buy_delivery response. */
+interface PackageDeliveryMetrics {
+  package_id: string;
+  buyer_ref: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  pricing_model: string;
+  model: string;
+  rate: number;
+  currency: string;
+  paused: boolean;
+  delivery_status: 'delivering' | 'completed';
+}
+
+/** Creative variant in get_creative_delivery response. */
+interface CreativeVariant {
+  variant_id: string;
+  generation_context: { context_type: string; topic: string; device_class: string };
+  manifest: { format_id: FormatID; assets: Record<string, unknown> };
+  impressions: number;
+  spend: number;
+  clicks: number;
+  ctr: number;
+}
+
+/** Creative delivery entry in get_creative_delivery response. */
+interface CreativeDeliveryEntry {
+  creative_id: string;
+  media_buy_id?: string;
+  format_id: FormatID;
+  totals: { impressions: number; spend: number; clicks: number; ctr: number };
+  variant_count: number;
+  variants: CreativeVariant[];
+}
+
+/** Sync creative result entry. */
+interface SyncCreativeResult {
+  creative_id: string;
+  action: 'created' | 'updated';
+}
+
+/** Creative assignment result. */
+interface AssignmentResult {
+  creative_id: string;
+  package_id: string;
+  status: 'assigned' | 'error';
+  message?: string;
+}
 
 
 const logger = createLogger('training-agent');
@@ -119,7 +219,7 @@ function getCatalog(): CatalogProduct[] {
   return cachedCatalog;
 }
 
-function getFormats() {
+function getFormats(): ReturnType<typeof buildFormats> {
   if (!cachedFormats) {
     cachedFormats = buildFormats(getAgentUrl());
   }
@@ -366,7 +466,7 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   const buyingMode = req.buying_mode || 'brief';
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let products = getCatalog().map(cp => ({ ...cp.product }));
+  let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
   // Apply filters
   if (req.filters) {
@@ -485,13 +585,13 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   if (!req.packages?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'packages array is required and must have at least one item' }],
+      errors: [{ code: 'validation_error', message: 'packages array is required and must have at least one item' }] as TaskError[],
     };
   }
 
   if (session.mediaBuys.size >= MAX_MEDIA_BUYS_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }],
+      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
     };
   }
 
@@ -499,17 +599,17 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const buyStart = req.start_time;
   const buyEnd = req.end_time;
   if (buyStart !== 'asap' && isNaN(new Date(buyStart).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] };
+    return { errors: [{ code: 'validation_error', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
   }
   if (isNaN(new Date(buyEnd).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] };
+    return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
   }
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
-    return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] };
+    return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] as TaskError[] };
   }
 
   // Validate all packages and collect errors before returning
-  const errors: Array<{ code: string; message: string }> = [];
+  const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
   for (let i = 0; i < req.packages.length; i++) {
     const pkg: PackageRequest = req.packages[i];
@@ -844,13 +944,13 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
 
   if (!req.creatives?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'creatives array is required' }],
+      errors: [{ code: 'validation_error', message: 'creatives array is required' }] as TaskError[],
     };
   }
 
   if (session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }],
+      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
   }
 
@@ -876,7 +976,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
         errors: [{
           code: 'validation_error',
           message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
-        }],
+        }] as TaskError[],
       };
     }
 
@@ -889,7 +989,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
       status: 'approved',
       syncedAt: new Date().toISOString(),
       // manifest is a training-agent extension, not in SDK CreativeAsset type
-      manifest: (creative as unknown as Record<string, unknown>).manifest as Record<string, unknown> | undefined,
+      manifest: (creative as unknown as Record<string, unknown>).manifest as CreativeState['manifest'],
     });
 
     results.push({
@@ -1017,7 +1117,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   mb.updatedAt = new Date().toISOString();
 
-  const result: Record<string, unknown> = {
+  const result: { media_buy_id: string; buyer_ref: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } = {
     media_buy_id: mb.mediaBuyId,
     buyer_ref: mb.buyerRef,
     packages: mb.packages.map(pkg => ({
@@ -1036,7 +1136,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
+function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
@@ -1135,7 +1235,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   const agentUrl = getAgentUrl();
 
   // Build response signals with deployments
-  const signals = results.map(s => {
+  const signals: SignalResponse[] = results.map(s => {
     // Check if this signal has been activated in this session
     const activationKey = `${s.signalAgentSegmentId}:${agentUrl}`;
     const activation = session.signalActivations.get(activationKey);
@@ -1192,7 +1292,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   // Scope boundary note for identity resolution queries
   const identityTerms = ['identity', 'resolution', 'matching', 'graph', 'credit'];
   const hasIdentityTerm = rawTerms.some(t => identityTerms.includes(t));
-  const response: Record<string, unknown> = { signals, sandbox: true };
+  const response: { signals: SignalResponse[]; sandbox: boolean; note?: string } = { signals, sandbox: true };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
     response.note = isCreditQuery

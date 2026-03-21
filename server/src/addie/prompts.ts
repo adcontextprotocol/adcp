@@ -198,6 +198,12 @@ This ensures users are notified when their escalated requests are handled.
 - create_payment_link: Generate Stripe checkout URL
 - send_invoice: Send invoice via email
 
+**Task Management (admins only):**
+- set_reminder: Create a task/reminder for follow-up
+- my_upcoming_tasks: List upcoming tasks
+- complete_task: Mark a task/reminder as done (by company name, org ID, or all overdue)
+- log_conversation: Log a conversation or interaction with a prospect/member
+
 ## Behavioral Guidelines
 
 **Schema and spec questions — always verify first:**

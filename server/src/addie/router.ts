@@ -347,6 +347,8 @@ IMPORTANT: Select tool SETS based on the user's INTENT:
 - Billing, invoices, payment links, resending invoices → ["billing"]
 - Scheduling meetings, events, calendar, RSVPs, covering topics, joining a call, meeting agendas → ["meetings"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
+- Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
+- Adding/removing committee or working group leaders (admin action) → ["admin"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin"]
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
 - General questions needing no tools → []

@@ -138,26 +138,6 @@ export interface RecentNewsResult {
   discovery_source: string | null;
 }
 
-export interface AddieApprovalQueueItem {
-  id: number;
-  action_type: string;
-  target_channel_id: string | null;
-  target_thread_ts: string | null;
-  target_user_id: string | null;
-  proposed_content: string;
-  trigger_type: string;
-  trigger_context: Record<string, unknown> | null;
-  status: 'pending' | 'approved' | 'rejected' | 'expired';
-  reviewed_by: string | null;
-  reviewed_at: Date | null;
-  edit_notes: string | null;
-  final_content: string | null;
-  executed_at: Date | null;
-  execution_result: Record<string, unknown> | null;
-  created_at: Date;
-  expires_at: Date | null;
-}
-
 export interface AddieInteractionStats {
   total: number;
   flagged: number;
@@ -450,7 +430,7 @@ export class AddieDatabase {
     activeOnly?: boolean;
     limit?: number;
     offset?: number;
-  } = {}): Promise<AddieKnowledge[]> {
+  } = {}): Promise<{ rows: AddieKnowledge[]; total: number }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     let paramIndex = 1;
@@ -476,28 +456,35 @@ export class AddieDatabase {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    let sql = `
-      SELECT * FROM addie_knowledge
+    const limit = options.limit ?? 100;
+    const offset = options.offset ?? 0;
+
+    params.push(limit);
+    const limitParam = `$${paramIndex++}`;
+    params.push(offset);
+    const offsetParam = `$${paramIndex++}`;
+
+    const sql = `
+      SELECT id, title, category, source_url, source_type, is_active,
+        LEFT(content, 250) as content,
+        fetch_url, fetch_status, last_fetched_at, summary, addie_notes,
+        relevance_tags, quality_score, discovery_source,
+        slack_channel_name, slack_username, slack_permalink,
+        created_by, created_at, updated_at,
+        COUNT(*) OVER()::int as total_count
+      FROM addie_knowledge
       ${whereClause}
       ORDER BY
         CASE WHEN source_type = 'curated' AND fetch_status = 'pending' THEN 0 ELSE 1 END,
         updated_at DESC,
         category,
         title
+      LIMIT ${limitParam} OFFSET ${offsetParam}
     `;
 
-    if (options.limit) {
-      sql += ` LIMIT $${paramIndex++}`;
-      params.push(options.limit);
-    }
-
-    if (options.offset) {
-      sql += ` OFFSET $${paramIndex++}`;
-      params.push(options.offset);
-    }
-
-    const result = await query<AddieKnowledge>(sql, params);
-    return result.rows;
+    const result = await query<AddieKnowledge & { total_count: number }>(sql, params);
+    const total = result.rows[0]?.total_count ?? 0;
+    return { rows: result.rows, total };
   }
 
   /**
@@ -1270,158 +1257,6 @@ export class AddieDatabase {
       unreviewed: parseInt(row.unreviewed, 10),
       by_event_type: byEventType,
       avg_latency_ms: parseFloat(row.avg_latency_ms),
-    };
-  }
-
-  // ============== Approval Queue ==============
-
-  /**
-   * Add an item to the approval queue
-   */
-  async queueForApproval(item: {
-    action_type: string;
-    target_channel_id?: string;
-    target_thread_ts?: string;
-    target_user_id?: string;
-    proposed_content: string;
-    trigger_type: string;
-    trigger_context?: Record<string, unknown>;
-    expires_at?: Date;
-  }): Promise<AddieApprovalQueueItem> {
-    const result = await query<AddieApprovalQueueItem>(
-      `INSERT INTO addie_approval_queue (
-        action_type, target_channel_id, target_thread_ts, target_user_id,
-        proposed_content, trigger_type, trigger_context, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *`,
-      [
-        item.action_type,
-        item.target_channel_id || null,
-        item.target_thread_ts || null,
-        item.target_user_id || null,
-        item.proposed_content,
-        item.trigger_type,
-        item.trigger_context ? JSON.stringify(item.trigger_context) : null,
-        item.expires_at || null,
-      ]
-    );
-    return result.rows[0];
-  }
-
-  /**
-   * Get pending approval items
-   */
-  async getPendingApprovals(options: { limit?: number } = {}): Promise<AddieApprovalQueueItem[]> {
-    const limit = options.limit ?? 50;
-    const result = await query<AddieApprovalQueueItem>(
-      `SELECT * FROM addie_approval_queue
-       WHERE status = 'pending'
-         AND (expires_at IS NULL OR expires_at > NOW())
-       ORDER BY created_at ASC
-       LIMIT $1`,
-      [limit]
-    );
-    return result.rows;
-  }
-
-  /**
-   * Approve a queued item
-   */
-  async approveItem(
-    id: number,
-    reviewedBy: string,
-    options: { editNotes?: string; finalContent?: string } = {}
-  ): Promise<AddieApprovalQueueItem | null> {
-    const result = await query<AddieApprovalQueueItem>(
-      `UPDATE addie_approval_queue
-       SET status = 'approved',
-           reviewed_by = $1,
-           reviewed_at = NOW(),
-           edit_notes = $2,
-           final_content = $3
-       WHERE id = $4 AND status = 'pending'
-       RETURNING *`,
-      [reviewedBy, options.editNotes || null, options.finalContent || null, id]
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Reject a queued item
-   */
-  async rejectItem(id: number, reviewedBy: string, reason?: string): Promise<AddieApprovalQueueItem | null> {
-    const result = await query<AddieApprovalQueueItem>(
-      `UPDATE addie_approval_queue
-       SET status = 'rejected',
-           reviewed_by = $1,
-           reviewed_at = NOW(),
-           edit_notes = $2
-       WHERE id = $3 AND status = 'pending'
-       RETURNING *`,
-      [reviewedBy, reason || null, id]
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Mark a queued item as executed
-   */
-  async markExecuted(id: number, result: Record<string, unknown>): Promise<void> {
-    await query(
-      `UPDATE addie_approval_queue
-       SET executed_at = NOW(), execution_result = $1
-       WHERE id = $2`,
-      [JSON.stringify(result), id]
-    );
-  }
-
-  /**
-   * Expire old pending items
-   */
-  async expireOldItems(): Promise<number> {
-    const result = await query(
-      `UPDATE addie_approval_queue
-       SET status = 'expired'
-       WHERE status = 'pending'
-         AND expires_at IS NOT NULL
-         AND expires_at <= NOW()`
-    );
-    return result.rowCount ?? 0;
-  }
-
-  /**
-   * Get approval queue stats
-   */
-  async getApprovalStats(): Promise<{
-    pending: number;
-    approved_today: number;
-    rejected_today: number;
-    total_approved: number;
-    total_rejected: number;
-  }> {
-    const result = await query<{
-      pending: string;
-      approved_today: string;
-      rejected_today: string;
-      total_approved: string;
-      total_rejected: string;
-    }>(
-      `SELECT
-        COUNT(*) FILTER (WHERE status = 'pending')::text as pending,
-        COUNT(*) FILTER (WHERE status = 'approved' AND reviewed_at::date = CURRENT_DATE)::text as approved_today,
-        COUNT(*) FILTER (WHERE status = 'rejected' AND reviewed_at::date = CURRENT_DATE)::text as rejected_today,
-        COUNT(*) FILTER (WHERE status = 'approved')::text as total_approved,
-        COUNT(*) FILTER (WHERE status = 'rejected')::text as total_rejected
-       FROM addie_approval_queue`
-    );
-
-    const row = result.rows[0];
-    return {
-      pending: parseInt(row.pending, 10),
-      approved_today: parseInt(row.approved_today, 10),
-      rejected_today: parseInt(row.rejected_today, 10),
-      total_approved: parseInt(row.total_approved, 10),
-      total_rejected: parseInt(row.total_rejected, 10),
     };
   }
 

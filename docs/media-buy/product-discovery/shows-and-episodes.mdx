@@ -34,6 +34,8 @@ A show is a persistent content program that produces episodes over time. Shows w
 | `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
 | `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
 | `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
+| `special` | object | No | When present, this show is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
+| `limited_series` | object | No | When present, this show is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
 | `distribution` | array | No | Where this show is distributed, with platform-specific identifiers per publisher. |
 | `related_shows` | array | No | Relationships to other shows: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `show_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both shows to declare. |
 
@@ -96,6 +98,7 @@ An episode is a specific installment of a show. Not all episodes will be known i
 | `valid_until` | datetime | No | When this data expires. Agents should re-query before committing budget to tentative episodes. |
 | `content_rating` | object | No | Overrides the show's baseline when present |
 | `topics` | string[] | No | Episode-level content topics for brand safety. Uses show's `genre_taxonomy` when present. |
+| `special` | object | No | Episode-specific event context. When present, this episode is anchored to a real-world event. Overrides the show-level `special`. |
 | `guest_talent` | array | No | Episode-specific guests. Additive to the show's recurring `talent`. |
 | `ad_inventory` | object | No | Break-based ad inventory configuration |
 | `derivative_of` | object | No | When this episode is a clip, highlight, or recap derived from a full episode. Has `episode_id` + `type` (`clip`, `highlight`, `recap`, `trailer`, `bonus`). Source `episode_id` must be in the same response. |
@@ -119,6 +122,7 @@ Expected transitions: `scheduled` or `tentative` → `live` → `aired` or `publ
 Episodes inherit show-level fields they do not override:
 
 - **`content_rating`**: Episode value overrides show baseline. When absent, the show's rating applies.
+- **`special`**: Episode value overrides show-level special. When absent, the show's special applies. A regular show can have event-anchored episodes (e.g., a daily news show with an election night special).
 - **`guest_talent`**: Additive to the show's recurring `talent` — does not replace it.
 - **`topics`**: Additive context for brand safety, not a replacement for the show's `genre`.
 
@@ -157,6 +161,74 @@ Buyer agents evaluate both levels: the show baseline provides the default safety
   }
 }
 ```
+
+## Specials and limited series
+
+Shows can carry optional annotations that signal their nature to buyer agents. These are composable — a show can be both a special and a limited series (e.g., a 4-episode Olympics documentary).
+
+### Specials
+
+A special is content anchored to a real-world event or occasion. The `special` object can appear on both shows and episodes. On a show, it means the entire show is event-anchored. On an episode, it means that specific episode is event-anchored (and overrides the show-level special when present, following the same inheritance pattern as `content_rating`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Name of the event (e.g., "Olympics 2028", "Super Bowl LXI") |
+| `category` | string | No | `awards`, `championship`, `concert`, `conference`, `election`, `festival`, `gala`, `holiday`, `premiere`, `product_launch`, `reunion`, `tribute` |
+| `starts` | datetime | No | When the event starts |
+| `ends` | datetime | No | When the event ends. Omit for single-day events. |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/show.json",
+  "show_id": "apex_finals_2026",
+  "name": "Apex Championship Finals 2026",
+  "genre": ["IAB17", "IAB17-12"],
+  "genre_taxonomy": "iab_content_3.0",
+  "cadence": "event",
+  "status": "upcoming",
+  "special": {
+    "name": "Apex Championship Finals 2026",
+    "category": "championship",
+    "starts": "2026-05-18T19:00:00Z",
+    "ends": "2026-05-25T23:00:00Z"
+  },
+  "talent": [
+    { "role": "host", "name": "Deshawn Moreaux" }
+  ]
+}
+```
+
+The `special` field is distinct from `cadence`. Cadence describes release frequency (`event` = one-time or occasional). The `special` object describes what real-world event anchors the content and when it happens — information a buyer agent needs to evaluate timing relevance and premium pricing.
+
+### Limited series
+
+A limited series is a bounded content run with a defined arc. Unlike ongoing series, limited series have a planned end.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `total_episodes` | integer | No | Planned number of episodes |
+| `starts` | datetime | No | When the series begins |
+| `ends` | datetime | No | When the series ends |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/show.json",
+  "show_id": "ember_s3",
+  "name": "The Ember",
+  "description": "Award-winning drama following a chef navigating the pressure of running a top restaurant",
+  "genre": ["IAB1", "IAB1-7"],
+  "genre_taxonomy": "iab_content_3.0",
+  "cadence": "weekly",
+  "status": "active",
+  "limited_series": {
+    "total_episodes": 8,
+    "starts": "2026-02-28T21:00:00Z",
+    "ends": "2026-04-18T21:00:00Z"
+  }
+}
+```
+
+This tells buyer agents that The Ember is a finite opportunity — 8 episodes over 7 weeks. The `limited_series` field is distinct from `season`: a show can have seasons without being limited (ongoing series have seasons too), and a limited series is a structural commitment that the show has a planned end.
 
 ## How products reference shows
 

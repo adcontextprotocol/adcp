@@ -22,7 +22,7 @@ function startCleanup(): void {
     try {
       await query(`DELETE FROM rate_limit_hits WHERE reset_at <= NOW()`);
     } catch (err) {
-      logger.error({ err }, 'Failed to clean up expired rate limit hits');
+      logger.warn({ err }, 'Failed to clean up expired rate limit hits');
     }
   }, 5 * 60 * 1000); // every 5 minutes
   timer.unref();
@@ -73,7 +73,7 @@ export class PostgresStore implements Store {
         resetTime: row.reset_at,
       };
     } catch (err) {
-      logger.error({ err, key: prefixedKey }, 'Rate limit increment failed');
+      logger.warn({ err, key: prefixedKey }, 'Rate limit increment failed');
       // Permit on error to avoid blocking requests due to DB issues
       return { totalHits: 0, resetTime: undefined };
     }
@@ -90,7 +90,7 @@ export class PostgresStore implements Store {
         [prefixedKey],
       );
     } catch (err) {
-      logger.error({ err, key: prefixedKey }, 'Rate limit decrement failed');
+      logger.warn({ err, key: prefixedKey }, 'Rate limit decrement failed');
     }
   }
 
@@ -100,7 +100,7 @@ export class PostgresStore implements Store {
     try {
       await query(`DELETE FROM rate_limit_hits WHERE key = $1`, [prefixedKey]);
     } catch (err) {
-      logger.error({ err, key: prefixedKey }, 'Rate limit resetKey failed');
+      logger.warn({ err, key: prefixedKey }, 'Rate limit resetKey failed');
     }
   }
 
@@ -113,7 +113,7 @@ export class PostgresStore implements Store {
         await query(`DELETE FROM rate_limit_hits`);
       }
     } catch (err) {
-      logger.error({ err }, 'Rate limit resetAll failed');
+      logger.warn({ err }, 'Rate limit resetAll failed');
     }
   }
 }

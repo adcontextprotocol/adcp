@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Academy - AgenticAdvertising.org</title>
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>AdCP Certification - AgenticAdvertising.org</title>
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
   <style>
@@ -823,12 +823,19 @@
 
   <section class="hero hero--clean">
     <div class="hero-container">
-      <h1>Academy</h1>
-      <p class="hero-subtitle">Learn agentic advertising through hands-on training with Addie, our AI instructor. Work with real sandbox agents and earn a verifiable credential at each tier.</p>
+      <h1>Get Certified in Agentic Advertising</h1>
+      <p class="hero-subtitle">The ad industry is adopting agent-to-agent protocols. Prove you know how they work — through conversation, not coursework.</p>
+      <p class="hero-subtitle" style="font-size: var(--text-sm); margin-top: var(--space-1);">Level 1 takes about 90 minutes. Each tier earns a digital credential you can add to LinkedIn and embed in your email signature.</p>
+      <div id="cert-social-proof" style="display: none; font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);"></div>
       <div class="cert-header-actions">
-        <a id="start-btn" href="/chat?topic=certification&action=start" class="btn-primary">Start with the basics</a>
-        <a id="assess-btn" href="/chat?topic=certification&action=assess" class="btn-secondary">Find your tier</a>
-        <a href="/study-guide.html" class="link-tertiary">See the full curriculum</a>
+        <a id="start-btn" href="/chat?topic=certification&action=start" class="btn-primary">Start a free lesson</a>
+        <a id="assess-btn" href="/chat?topic=certification&action=assess" class="btn-secondary">Test out of the basics</a>
+        <a href="/study-guide.html" class="link-tertiary">View study guide</a>
+      </div>
+      <div id="cert-decline-banner" style="display: none; margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md); font-size: var(--text-sm);">
+        <span>Your team has invited you to get certified.</span>
+        <a href="#" id="cert-snooze-link" style="margin-left: var(--space-2); color: var(--color-text-secondary); text-decoration: underline; font-size: var(--text-xs);">Not right now</a>
+        <a href="#" id="cert-decline-link" style="margin-left: var(--space-2); color: var(--color-text-muted); text-decoration: underline; font-size: var(--text-xs);">Not for me</a>
       </div>
     </div>
   </section>
@@ -837,7 +844,7 @@
 
     <!-- Tier progression -->
     <div id="tier-section" class="tier-section">
-      <h2>Your progress</h2>
+      <h2>Three tiers, one path</h2>
       <div id="tier-grid" class="tier-grid">
         <div class="loading">Loading credentials...</div>
       </div>
@@ -845,7 +852,7 @@
 
     <!-- Learning path -->
     <div id="learning-section" class="learning-section">
-      <h2>Learning path</h2>
+      <h2>Curriculum</h2>
       <div id="learning-container">
         <div class="loading">Loading modules...</div>
       </div>
@@ -923,6 +930,68 @@
         }
 
         render();
+        loadSocialProof();
+        if (state.isAuthenticated) loadDeclineBanner();
+      }
+
+      async function loadSocialProof() {
+        try {
+          var resp = await fetch('/api/certification/stats');
+          if (!resp.ok) return;
+          var stats = await resp.json();
+          if (stats.totalCertified >= 10) {
+            var el = document.getElementById('cert-social-proof');
+            if (el) {
+              var parts = [];
+              parts.push(stats.totalCertified + ' professionals certified');
+              if (stats.totalOrgs >= 3) parts.push(stats.totalOrgs + ' organizations');
+              el.textContent = parts.join(' from ') + ' — and growing';
+              el.style.display = '';
+            }
+          }
+        } catch (e) { /* non-critical */ }
+      }
+
+      async function loadDeclineBanner() {
+        try {
+          var resp = await fetch('/api/me/certification/expectation', { credentials: 'include' });
+          if (!resp.ok) return;
+          var data = await resp.json();
+          if (!data.expectation) return;
+
+          var banner = document.getElementById('cert-decline-banner');
+          if (banner) banner.style.display = '';
+
+          var snoozeLink = document.getElementById('cert-snooze-link');
+          if (snoozeLink) {
+            snoozeLink.addEventListener('click', function(ev) {
+              ev.preventDefault();
+              fetch('/api/me/certification/expectation/snooze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ days: 7 }),
+              }).then(function() {
+                banner.innerHTML = '<span style="color: var(--color-text-secondary);">No problem — we\'ll check back in a week.</span>';
+              });
+            });
+          }
+
+          var declineLink = document.getElementById('cert-decline-link');
+          if (declineLink) {
+            declineLink.addEventListener('click', function(ev) {
+              ev.preventDefault();
+              if (!confirm('Are you sure? You can always come back later if things change.')) return;
+              fetch('/api/me/certification/expectation/decline', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+              }).then(function() {
+                banner.style.display = 'none';
+              });
+            });
+          }
+        } catch (e) { /* non-critical */ }
       }
 
       function getModuleStatus(moduleId, isFree, prerequisites) {
@@ -1032,7 +1101,7 @@
           }
 
           // Share buttons
-          html += '<h4>Tell everyone</h4>';
+          html += '<h4>Share your credential</h4>';
           html += '<div class="share-buttons">';
 
           // X (Twitter) — separate text and url params for proper card rendering
@@ -1075,7 +1144,7 @@
           html += '</div>';
 
           // Use stored badge image URL, fall back to org logo
-          var embedImgSrc = badgeImgUrl || window.location.origin + '/AAo.svg';
+          var embedImgSrc = badgeImgUrl || window.location.origin + '/addie-icon.svg';
           var safeAltName = credName.replace(/"/g, '&quot;');
           var embedHtml = '<a href="' + shareUrl + '" target="_blank" rel="noopener">'
             + '<img src="' + embedImgSrc + '" alt="' + safeAltName + ' - AgenticAdvertising.org" height="80" />'
@@ -1151,7 +1220,7 @@
 
         var hasAnyProgress = state.progress.length > 0;
         if (hasAnyProgress && startBtn) {
-          startBtn.textContent = 'Continue where you left off';
+          startBtn.textContent = 'Pick up where you left off';
           startBtn.href = '/chat?topic=certification&action=continue';
           // Hide placement option for returning learners
           if (assessBtn) assessBtn.style.display = 'none';
@@ -1170,9 +1239,9 @@
 
         // Tier display info
         var tierMeta = [
-          { level: 1, fallbackName: 'AdCP Basics', fallbackReq: 'Complete A1 + A2 + A3 (free)', accent: '1' },
-          { level: 2, fallbackName: 'AdCP Practitioner', fallbackReq: 'Complete Basics + role track with build project', accent: '2' },
-          { level: 3, fallbackName: 'AdCP Specialist', fallbackReq: 'Complete Practitioner + protocol capstone', accent: '3' },
+          { level: 1, fallbackName: 'AdCP Basics', fallbackReq: 'Complete three free modules — about 90 minutes total', accent: '1' },
+          { level: 2, fallbackName: 'AdCP Practitioner', fallbackReq: 'Finish the basics, then complete a role-specific track with a build project', accent: '2' },
+          { level: 3, fallbackName: 'AdCP Specialist', fallbackReq: 'Earn Practitioner, then pass a protocol deep-dive capstone', accent: '3' },
         ];
 
         var html = '';
@@ -1250,7 +1319,7 @@
         var foundationModules = getModulesByPrefix('A');
         if (foundationModules.length > 0) {
           html += '<div class="module-group">';
-          html += '  <div class="section-label">Basics (free)</div>';
+          html += '  <div class="section-label">Foundations (free)</div>';
           html += '  <div class="module-list">';
           foundationModules.forEach(function(mod) {
             html += renderModule(mod);
@@ -1267,7 +1336,7 @@
 
         if (hasSpecModules) {
           html += '<div class="module-group">';
-          html += '  <div class="section-label">Specialization tracks</div>';
+          html += '  <div class="section-label">Choose your role</div>';
           html += '  <div class="tabs" role="tablist">';
           specTracks.forEach(function(prefix, i) {
             var info = SPEC_TRACKS[prefix];
@@ -1300,7 +1369,7 @@
         var capstoneModules = getModulesByPrefix('S');
         if (capstoneModules.length > 0) {
           html += '<div class="module-group">';
-          html += '  <div class="section-label">Specialist deep dives</div>';
+          html += '  <div class="section-label">Protocol capstones</div>';
           html += '  <div class="capstone-grid">';
           capstoneModules.forEach(function(mod) {
             var status = getModuleStatus(mod.id, mod.is_free, mod.prerequisites);

@@ -241,18 +241,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
-  moltbook: {
-    name: 'moltbook',
-    description: 'Interact with Moltbook (social network for AI agents) - search discussions, post content, comment on threads, check stats',
-    tools: [
-      'search_moltbook',
-      'get_moltbook_thread',
-      'post_to_moltbook',
-      'comment_on_moltbook',
-      'get_moltbook_stats',
-      'get_moltbook_feed',
-    ],
-  },
 
   committee_leadership: {
     name: 'committee_leadership',
@@ -261,12 +249,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'add_committee_co_leader',
       'remove_committee_co_leader',
       'list_committee_co_leaders',
+      'list_working_groups',
     ],
   },
 
   admin: {
     name: 'admin',
-    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, member insights and engagement analytics, community-wide engagement ranking (admin only)',
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, member insights and engagement analytics, community-wide engagement ranking (admin only)',
     tools: [
       'list_pending_invoices',
       'get_account',
@@ -288,6 +277,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'list_chapters',
       'create_industry_gathering',
       'list_industry_gatherings',
+      'list_working_groups',
+      'get_working_group',
       'add_committee_leader',
       'remove_committee_leader',
       'list_committee_leaders',
@@ -303,6 +294,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'suggest_prospects',
       'set_reminder',
       'my_upcoming_tasks',
+      'complete_task',
       'log_conversation',
       'get_insight_summary',
       'get_member_search_analytics',
