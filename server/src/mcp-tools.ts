@@ -805,7 +805,7 @@ export class MCPToolHandler {
 
       case "get_products_for_agent": {
         const agentUrl = args?.agent_url as string;
-        const params = args?.params || {};
+        const params = (args?.params || {}) as Record<string, unknown>;
 
         try {
           const { AdCPClient } = await import("@adcp/client");
@@ -865,7 +865,7 @@ export class MCPToolHandler {
 
       case "list_creative_formats_for_agent": {
         const agentUrl = args?.agent_url as string;
-        const params = args?.params || {};
+        const params = (args?.params || {}) as Record<string, unknown>;
 
         try {
           const { AdCPClient } = await import("@adcp/client");

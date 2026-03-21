@@ -460,10 +460,10 @@ function buildProduct(
             ...(ep.special && {
               special: {
                 name: ep.special.name,
-                ...(ep.special.category && { category: ep.special.category }),
-                ...(ep.special.starts && { starts: ep.special.starts }),
-                ...(ep.special.ends && { ends: ep.special.ends }),
-              },
+                category: ep.special.category,
+                starts: ep.special.starts,
+                ends: ep.special.ends,
+              } satisfies Episode['special'],
             }),
           };
           builtEpisodes.push(episode);

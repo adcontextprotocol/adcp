@@ -4,6 +4,10 @@
  */
 import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
 
+// Derive SpecialCategory from Episode.special.category (not re-exported from @adcp/client)
+type Episode = NonNullable<Product['episodes']>[number];
+type SpecialCategory = NonNullable<NonNullable<Episode['special']>['category']>;
+
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
 
@@ -17,7 +21,7 @@ export interface TrainingContext {
 
 export interface ShowSpecial {
   name: string;
-  category?: string;
+  category?: SpecialCategory;
   starts?: string;
   ends?: string;
 }
