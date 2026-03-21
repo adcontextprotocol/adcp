@@ -58,7 +58,7 @@
       "type": "array",
       "description": "Audience targeting the caller intends to activate. Each entry is either a specific signal reference or a natural language description. The governance agent performs a three-way comparison: (1) this field against the plan's audience.include/exclude constraints, (2) this field against planned_delivery.audience_targeting when both are present, to detect divergence between what the orchestrator requested and what the seller will actually activate, and (3) the plan's vertical and restricted_attributes against the targeting criteria.",
       "items": {
-        "$ref": "/schemas/core/audience-criterion.json"
+        "$ref": "/schemas/core/audience-selector.json"
       },
       "minItems": 1
     }

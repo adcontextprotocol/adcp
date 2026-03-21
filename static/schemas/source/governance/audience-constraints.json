@@ -9,7 +9,7 @@
       "type": "array",
       "description": "Desired audience criteria. The seller's targeting should align with these. Each criterion is evaluated independently — the combined targeting should satisfy at least one inclusion criterion.",
       "items": {
-        "$ref": "/schemas/core/audience-criterion.json"
+        "$ref": "/schemas/core/audience-selector.json"
       },
       "minItems": 1
     },
@@ -17,7 +17,7 @@
       "type": "array",
       "description": "Excluded audience criteria. The seller's targeting must not overlap with these. Exclusions take precedence over inclusions. Used for protected groups, vulnerable communities, regulatory restrictions, or brand safety.",
       "items": {
-        "$ref": "/schemas/core/audience-criterion.json"
+        "$ref": "/schemas/core/audience-selector.json"
       },
       "minItems": 1
     }

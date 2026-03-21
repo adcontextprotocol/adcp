@@ -116,8 +116,8 @@
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
           "vertical": {
-            "$ref": "/schemas/enums/campaign-vertical.json",
-            "description": "Campaign vertical or product category. Governance agents use this to activate vertical-specific bias and compliance rules regardless of whether audience constraints are specified. For example, a housing campaign targeted by zip code (geo, not audience) still triggers US fair housing rules."
+            "type": "string",
+            "description": "Campaign vertical or product category. Matched against policy-entry.verticals in the policy registry to resolve applicable policies. For example, 'housing' matches registry policies with verticals including 'housing' (US FHA, UK Equality Act). A housing campaign targeted by zip code (geo, not audience) still triggers fair housing rules. Use values consistent with the policy registry (e.g., 'housing', 'employment', 'credit', 'alcohol', 'pharmaceutical', 'gambling')."
           },
           "audience": {
             "$ref": "/schemas/governance/audience-constraints.json",
