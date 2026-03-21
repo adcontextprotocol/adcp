@@ -1,0 +1,12 @@
+[
+  {
+    "filename": "server/public/images/stories/cover-the-shelf.png",
+    "prompt": "A dramatic graphic novel cover composition. A confident man in his mid-40s (Daniel Park, VP of Retail Media) stands in a vast warehouse-turned-digital-marketplace. He wears a sharp blazer over a casual shirt, arms crossed, looking at the viewer with quiet authority. Behind him, towering retail shelves stretch upward but the products on them are holographic — glowing product cards, audience segments, and deal terms floating above each shelf position. The shelves form a corridor of light. Small autonomous agents — represented as sleek floating orbs of teal light — navigate the aisles, each trailing thin data streams back to a central hub above. The overall palette is deep green and warm amber, with teal accents. Dramatic overhead warehouse lighting creates strong shadows. The mood is: the future of retail media is a store that sells itself. Do not include any text, words, or labels in the image.",
+    "alt_text": "Graphic novel cover: Daniel Park standing in a warehouse-marketplace with holographic product shelves and autonomous agent orbs navigating the aisles"
+  },
+  {
+    "filename": "server/public/images/stories/cover-the-pitch.png",
+    "prompt": "A dramatic graphic novel cover composition. A woman in her late 30s (Tomoko Hara, Head of Media at an auto company) stands at the head of a sleek boardroom table, one hand resting on the table edge, the other gesturing toward a holographic presentation floating above the table surface. She wears a tailored blazer and has an expression of composed determination. The holographic display shows three interconnected nodes — representing the three shifts in her pitch — glowing in amber and gold light. Around the table, silhouetted executive figures lean forward, engaged. Through floor-to-ceiling windows behind her, a city skyline glows at dusk in warm amber tones. The table reflects the holographic light. The mood is: one person about to change how an entire company thinks about advertising. Warm amber and gold palette with deep navy shadows. Do not include any text, words, or labels in the image.",
+    "alt_text": "Graphic novel cover: Tomoko Hara pitching to a boardroom with a holographic three-node display, city skyline at dusk through the windows"
+  }
+]

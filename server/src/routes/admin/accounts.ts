@@ -710,8 +710,13 @@ export function setupAccountRoutes(
               }
             : null,
 
-          // Pricing & discount
+          // Pricing & discount (flat fields for invoice/payment-link modals)
           revenue_tier: org.revenue_tier,
+          discount_percent: org.discount_percent ?? null,
+          discount_amount_cents: org.discount_amount_cents ?? null,
+          stripe_coupon_id: org.stripe_coupon_id || null,
+          stripe_promotion_code: org.stripe_promotion_code || null,
+          // Nested discount object for pricing display
           discount: org.discount_percent || org.discount_amount_cents
             ? {
                 percent: org.discount_percent,
@@ -2407,7 +2412,9 @@ export function setupAccountRoutes(
         }
 
         const org = orgResult.rows[0];
-        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+        // Only fall back to org coupon if coupon_id was not provided;
+        // explicit null means the admin opted out of the discount
+        const effectiveCouponId = coupon_id !== undefined ? coupon_id : org.stripe_coupon_id;
 
         const result = await createAndSendInvoice({
           lookupKey: lookup_key,

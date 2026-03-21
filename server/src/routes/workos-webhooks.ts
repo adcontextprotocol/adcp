@@ -26,6 +26,7 @@ import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain } from '../services/brand-enrichment.js';
+import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 
 const logger = createLogger('workos-webhooks');
 
@@ -142,6 +143,12 @@ async function upsertMembership(
       role,
     ]
   );
+
+  // Set primary_organization_id if not already set (prefer paying orgs)
+  const preferredOrg = await resolvePreferredOrganization(membership.user_id);
+  if (preferredOrg) {
+    await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+  }
 
   logger.info({
     membershipId: membership.id,

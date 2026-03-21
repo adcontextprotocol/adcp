@@ -140,7 +140,7 @@ Determine whether AdCP works for a network topology (buyer → network → platf
 
 ### Pages he'd likely visit
 1. `/docs/sponsored-intelligence/overview` — Core page, looking for network-specific guidance
-2. `/docs/guides/seller-integration` — How to appear as a seller to buyer agents
+2. `/docs/building/implementation/seller-integration` — How to appear as a seller to buyer agents
 3. `/docs/accounts/overview` — Network account model (agent-trusted, implicit accounts)
 4. `/docs/building/integration/accounts-and-agents` — Multi-level account delegation
 5. `/docs/creative/catalogs` — Catalog sync mechanics for pass-through
@@ -222,7 +222,7 @@ Decide whether to adopt AdCP as the standard interface for her platform's demand
 1. `/docs/intro` — Starting point, looking for AI-specific framing
 2. `/docs/sponsored-intelligence/overview` — The core page for her use case — expects to find the reversed data flow argument, catalog sync, governance, and product modeling
 3. `/docs/creative/catalogs` — Deep dive on catalog sync — this is her biggest operational pain point
-4. `/docs/guides/seller-integration` — What she'd need to build as a seller agent
+4. `/docs/building/implementation/seller-integration` — What she'd need to build as a seller agent
 5. `/docs/governance/overview` — How content standards work as an "oracle" the platform queries/receives
 6. `/docs/media-buy/media-buys/optimization-reporting` — How optimization goals and conversion events work
 7. `/docs/accounts/overview` — Understanding account models (walled garden vs. agent-trusted)
@@ -306,7 +306,7 @@ Understand whether AdCP is the right standard for her agency to adopt for AI med
 3. `/docs/building/understanding/adcp-vs-openrtb` — Directly answers her "how is this different" question
 4. `/docs/sponsored-intelligence/overview` — The core guide for her use case (she's the buyer)
 5. `/docs/sponsored-intelligence/workflow` — Wants to see what the workflow looks like, even if she won't code it
-6. `/docs/guides/seller-integration` — Might read this to understand the other side
+6. `/docs/building/implementation/seller-integration` — Might read this to understand the other side
 7. `/docs/governance/overview` — How brand safety works in this world
 8. `/docs/creative/catalogs` — Understanding the catalog workflow
 9. `/docs/accounts/overview` — How multi-platform billing works

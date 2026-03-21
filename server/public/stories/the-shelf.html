@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Shelf — Find Your Story — AgenticAdvertising.org</title>
+  <meta name="description" content="A retail media network chooses an agentic storefront over a self-service platform — exposing sponsored products, in-store screens, and closed-loop attribution to every buyer agent. Issue 04 of Find Your Story.">
+  <meta property="og:title" content="The Shelf — Find Your Story">
+  <meta property="og:description" content="A retail media network chooses an agentic storefront over a self-service platform — exposing sponsored products, in-store screens, and closed-loop attribution to every buyer agent.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://agenticadvertising.org/stories/the-shelf">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
+  <style>
+    .story-hero {
+      text-align: center;
+      padding: var(--space-20) var(--space-6) var(--space-12);
+      background: linear-gradient(160deg, #1a2e1a 0%, #2d4a2d 40%, #3e6b3e 70%, #5cb85c 100%);
+      color: #fff;
+    }
+
+    .story-hero-issue {
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: var(--space-3);
+    }
+
+    .story-hero h1 {
+      font-size: var(--text-5xl);
+      font-weight: var(--font-extrabold);
+      letter-spacing: var(--tracking-tight);
+      line-height: var(--leading-tight);
+      margin-bottom: var(--space-4);
+    }
+
+    .story-hero p {
+      font-size: var(--text-xl);
+      color: rgba(255, 255, 255, 0.85);
+      max-width: 640px;
+      margin: 0 auto;
+      line-height: var(--leading-relaxed);
+    }
+
+    .story-hero-characters {
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Story content */
+    .story-content {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: var(--space-16) var(--space-6);
+    }
+
+    .story-content h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: var(--space-12) 0 var(--space-4) 0;
+      line-height: var(--leading-tight);
+    }
+
+    .story-content h2:first-child {
+      margin-top: 0;
+    }
+
+    .story-content h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin: var(--space-8) 0 var(--space-3) 0;
+    }
+
+    .story-content p {
+      font-size: var(--text-lg);
+      color: var(--color-gray-700);
+      line-height: var(--leading-loose);
+      margin-bottom: var(--space-4);
+    }
+
+    .story-content ul {
+      margin: var(--space-4) 0;
+      padding-left: var(--space-6);
+    }
+
+    .story-content li {
+      font-size: var(--text-lg);
+      color: var(--color-gray-700);
+      line-height: var(--leading-loose);
+      margin-bottom: var(--space-2);
+    }
+
+    .story-content strong {
+      color: var(--color-text-heading);
+    }
+
+    .story-content em {
+      font-style: italic;
+    }
+
+    .story-img {
+      width: 100%;
+      border-radius: var(--radius-lg);
+      margin: var(--space-8) 0;
+    }
+
+    /* Callout boxes */
+    .callout {
+      background: var(--color-primary-50);
+      border-left: 4px solid var(--color-brand);
+      border-radius: var(--radius-md);
+      padding: var(--space-4) var(--space-6);
+      margin: var(--space-6) 0;
+    }
+
+    .callout p {
+      font-size: var(--text-base);
+      color: var(--color-gray-700);
+      margin: 0;
+    }
+
+    .callout a {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
+
+    /* Protocol detail toggles */
+    .protocol-detail {
+      margin: var(--space-4) 0;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .protocol-detail summary {
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-gray-600);
+      cursor: pointer;
+      background: var(--color-gray-50);
+      border-bottom: 1px solid transparent;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .protocol-detail summary::before {
+      content: '\25B6';
+      font-size: 10px;
+      transition: transform 0.2s ease;
+    }
+
+    .protocol-detail[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    .protocol-detail[open] summary {
+      border-bottom-color: var(--color-border);
+    }
+
+    .protocol-detail pre {
+      margin: 0;
+      padding: var(--space-4);
+      background: var(--color-gray-900);
+      color: #e2e8f0;
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+      overflow-x: auto;
+    }
+
+    .protocol-detail code {
+      font-family: var(--font-mono);
+    }
+
+    .protocol-detail .detail-note {
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-gray-600);
+      background: var(--color-gray-50);
+      border-top: 1px solid var(--color-border);
+      line-height: var(--leading-relaxed);
+    }
+
+    .protocol-detail .detail-note a {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
+
+    /* CTA section */
+    .story-cta {
+      background: var(--color-gray-50);
+      padding: var(--space-16) var(--space-6);
+      text-align: center;
+    }
+
+    .story-cta h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-4);
+    }
+
+    .story-cta p {
+      font-size: var(--text-lg);
+      color: var(--color-gray-600);
+      max-width: 560px;
+      margin: 0 auto var(--space-6) auto;
+      line-height: var(--leading-relaxed);
+    }
+
+    .story-cta-links {
+      display: flex;
+      gap: var(--space-4);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .story-cta-links a {
+      display: inline-block;
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-md);
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      text-decoration: none;
+      transition: background 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: var(--color-brand);
+      border: 1px solid var(--color-border-strong);
+    }
+
+    .btn-secondary:hover {
+      background: var(--color-gray-50);
+    }
+
+    /* Back link */
+    .story-back {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: var(--space-6) var(--space-6) 0;
+    }
+
+    .story-back a {
+      font-size: var(--text-sm);
+      color: var(--color-gray-500);
+      text-decoration: none;
+    }
+
+    .story-back a:hover {
+      color: var(--color-brand);
+    }
+
+    /* Share buttons */
+    .story-share {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-6);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      border-top: 1px solid var(--color-border);
+    }
+    .story-share-label { font-size: var(--text-sm); color: var(--color-text-muted); }
+    .story-share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 8px;
+      border: 1px solid var(--color-border); background: white;
+      color: var(--color-text-heading); cursor: pointer;
+      transition: all 0.15s; text-decoration: none;
+    }
+    .story-share-btn:hover { background: var(--color-gray-100); border-color: var(--color-primary-600); color: var(--color-primary-600); }
+    .story-share-btn svg { width: 18px; height: 18px; }
+    .story-share-btn.copied { background: #047857; border-color: #047857; color: white; }
+
+    /* Partners section */
+    .story-partners {
+      background: var(--color-gray-50);
+      padding: var(--space-16) var(--space-6);
+    }
+
+    .story-partners-inner {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .story-partners h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .story-partners > .story-partners-inner > p {
+      font-size: var(--text-lg);
+      color: var(--color-gray-600);
+      margin-bottom: var(--space-8);
+      line-height: var(--leading-relaxed);
+    }
+
+    .partner-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-4);
+      margin-bottom: var(--space-8);
+    }
+
+    .partner-card {
+      background: #fff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+    }
+
+    .partner-card h3 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .partner-card p {
+      font-size: var(--text-sm);
+      color: var(--color-gray-600);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-3);
+    }
+
+    .partner-names {
+      font-size: var(--text-xs);
+      color: var(--color-brand);
+      font-weight: var(--font-semibold);
+    }
+
+    .partner-cta {
+      display: flex;
+      gap: var(--space-4);
+      justify-content: center;
+    }
+
+    /* Cross-story links */
+    .story-crosslinks {
+      padding: var(--space-16) var(--space-6);
+    }
+
+    .story-crosslinks-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .story-crosslinks h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-6);
+    }
+
+    .crosslink-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-4);
+    }
+
+    .crosslink-card {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      padding: var(--space-5);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      text-decoration: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .crosslink-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.1);
+    }
+
+    .crosslink-issue {
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-gray-400);
+    }
+
+    .crosslink-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+
+    .crosslink-desc {
+      font-size: var(--text-sm);
+      color: var(--color-gray-600);
+      line-height: var(--leading-relaxed);
+    }
+    .crosslink-card--walkthrough {
+      border-left: 3px solid #14b8a6;
+    }
+    .crosslink-card--walkthrough:hover {
+      border-color: #14b8a6;
+      box-shadow: 0 4px 12px rgba(20, 184, 166, 0.12);
+    }
+    .crosslink-card--walkthrough .crosslink-issue {
+      color: #047857;
+    }
+
+    @media (max-width: 900px) {
+      .partner-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .story-hero h1 {
+        font-size: var(--text-3xl);
+      }
+      .partner-grid {
+        grid-template-columns: 1fr;
+      }
+      .crosslink-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <section class="story-hero">
+    <div class="story-hero-issue">Issue 04</div>
+    <h1>The Shelf</h1>
+    <p>Daniel Park almost built another ad platform nobody would use. Then he realized ShopGrid's moat was never the dashboard.</p>
+    <div class="story-hero-characters">Featuring Daniel Park at ShopGrid</div>
+  </section>
+
+  <div class="story-back"><a href="/stories">Stories</a> / <a href="/stories?topic=retail-media">Retail Media</a></div>
+
+  <div class="story-content">
+
+    <p>Every retail media network starts the same way. A marketplace with millions of shoppers looks at its purchase data and thinks: we should sell ads. Then someone draws a roadmap on a whiteboard. Self-service campaign tool. Proprietary audience builder. Custom reporting dashboard. Eventually a DSP.</p>
+
+    <p>Daniel Park drew that roadmap. He's VP of retail media at ShopGrid, a marketplace with 200 million monthly shoppers. His board wanted an ad business. He had the data. The path looked obvious.</p>
+
+    <img src="/images/stories/daniel-platform-roadmap.png" alt="Daniel reviews a cluttered platform roadmap on a wall screen — dashboard mockups, audience builders, and reporting UIs pile up while he looks skeptical" class="story-img">
+
+    <p>Six months and 40% of the engineering budget later, Daniel looked up.</p>
+
+    <h2>The $12 million dashboard</h2>
+
+    <p>The CPG brands Daniel wanted to attract were already managing campaigns across a dozen retail media platforms. Each with its own API, its own audience taxonomy, its own reporting format. Every mid-size retailer was asking the same brands to integrate yet another proprietary system.</p>
+
+    <p>Daniel was building a dashboard to compete on UI quality against companies with 100x his engineering budget.</p>
+
+    <p>He pulled the usage numbers on the beta: 23 logins in a month, mostly from his own team testing it. The two brands that had onboarded were running minimum-spend campaigns to "evaluate the platform." Their feedback was polite and damning — <em>nice start, but we already manage eleven of these.</em></p>
+
+    <p>ShopGrid was never going to win that fight.</p>
+
+    <h2>The Tuesday walk</h2>
+
+    <img src="/images/stories/daniel-retail-floor.png" alt="Daniel walks a retail floor as data streams flow from his tablet to glowing digital screens on end-caps and checkout lanes — the store as a data asset" class="story-img">
+
+    <p>Daniel walked one of ShopGrid's flagship stores on a Tuesday afternoon and it hit him. He was standing in front of a digital end-cap screen when a loyalty member scanned her app at checkout three aisles over. Real-time, deterministic, matched to a receipt. He could tell you what she bought, what she browsed, what aisle she lingered in, and whether the screen she passed showed a competitor's ad.</p>
+
+    <p>No DSP on earth has that signal. No walled garden shares it. ShopGrid's advantage was never going to be its software. It was this:</p>
+
+    <ul>
+      <li><strong>Deterministic purchase attribution</strong> from millions of loyalty members. Not modeled. Not panel-based. Loyalty card matched to receipt.</li>
+      <li><strong>Real-time inventory</strong> across thousands of stores — what's on the shelf, what's running low, what's on promotion.</li>
+      <li><strong>In-store digital screens</strong> at the point of purchase — checkout lanes, end-caps, pharmacy waiting areas — inventory nobody can replicate from a server room.</li>
+    </ul>
+
+    <p>A self-service platform locks all of that behind a proprietary UI. Only brands willing to learn ShopGrid's tools get access. Daniel needed the opposite: make the data and inventory accessible to the widest possible set of buyers, without asking any of them to learn anything new.</p>
+
+    <div class="callout">
+      <p>Daniel's pivot echoes a pattern across retail media. The retailers winning ad revenue aren't the ones with the best dashboards — they're the ones whose data is easiest to activate. The dashboard is a cost center. The data is the product.</p>
+    </div>
+
+    <h2>One storefront, everything on the shelf</h2>
+
+    <img src="/images/stories/daniel-storefront-launch.png" alt="Daniel at his desk as retail media product cards radiate outward from his monitor — sponsored products, display, video, in-store, and premium placements being published" class="story-img">
+
+    <p>Daniel stood up an agentic storefront instead. ShopGrid's entire retail media catalog — sponsored products, on-site display, in-store screens, homepage takeovers — exposed as <a href="https://docs.adcontextprotocol.org/docs/media-buy/product-discovery/media-products">products</a> that any buyer agent can discover.</p>
+
+    <p>The loyalty data powers closed-loop attribution. The store locations are modeled as <a href="https://docs.adcontextprotocol.org/docs/creative/catalogs">catalogs</a> with catchment areas for proximity targeting. Daniel defines the products, the pricing, and the rules. Buyer agents handle discovery and execution.</p>
+
+    <p>And because ShopGrid runs the server, every transaction flows through their infrastructure. Data stays home.</p>
+
+    <details class="protocol-detail">
+      <summary>What ShopGrid's storefront sells</summary>
+      <pre><code>Sponsored product listings   — CPC, catalog-rendered, no creative upload needed
+On-site display and video    — CPM, first-party audience targeting
+Off-site audience extension  — ShopGrid purchase data on third-party inventory
+Premium placements           — Homepage takeovers, category sponsorships, flat-rate
+In-store digital screens     — Checkout lanes, end-caps, pharmacy waiting areas
+                               2,000+ locations, guaranteed delivery</code></pre>
+      <div class="detail-note">Each product type is exposed via <a href="https://docs.adcontextprotocol.org/docs/media-buy/task-reference/get_products">get_products</a> with pricing, targeting capabilities, and measurement methodology.</div>
+    </details>
+
+    <p>Brands that aren't using buyer agents still have basic self-service access. But the storefront is the growth layer — how ShopGrid reaches buyers who would never have integrated a mid-size retailer's proprietary platform.</p>
+
+    <h2>Sam shows up</h2>
+
+    <img src="/images/stories/daniel-sam-discovery.png" alt="Split scene — Sam runs a brief from his agency desk as search beams connect to Daniel's retail media products floating on the right, discovery in action" class="story-img">
+
+    <p>Sam Adeyemi at Pinnacle Agency is running a cross-retailer campaign for Summit Foods. His buyer agent sends a brief to every retail media storefront in the <a href="https://agenticadvertising.org/registry">registry</a> — the same brief, the same protocol, regardless of retailer.</p>
+
+    <details class="protocol-detail">
+      <summary>The brief Sam's agent sends via get_products</summary>
+      <pre><code>{
+  "buying_mode": "brief",
+  "brief": "Organic food brand targeting health-conscious grocery shoppers.
+           Looking for sponsored products and in-store screens across
+           grocery retailers with deterministic purchase attribution. Q4 2026.",
+  "brand": { "domain": "summitfoods.example.com" },
+  "filters": {
+    "channels": ["sponsored_listing", "digital_out_of_home"],
+    "start_date": "2026-10-01",
+    "end_date": "2026-12-31"
+  }
+}</code></pre>
+      <div class="detail-note">Sam's agent sends this same brief to every storefront in the <a href="https://agenticadvertising.org/registry">registry</a>. Each storefront responds with its own matching products.</div>
+    </details>
+
+    <p>ShopGrid's agent evaluates the brief, matches Summit's product catalog against ShopGrid's inventory, and returns only the products where Summit has eligible GTINs. Sam's agent sees sponsored products, on-site display, and in-store screens — all with pricing and measurement methodology — through the same protocol it used for the other eight retailers in the campaign.</p>
+
+    <p>Sam never logged into ShopGrid's platform. He didn't learn a new UI. He didn't schedule a call with a sales rep.</p>
+
+    <h3>Sam's agent validates ShopGrid's signals</h3>
+
+    <p>Before committing budget, Sam's agent calls <a href="https://docs.adcontextprotocol.org/docs/signals/tasks/get_signals">get_signals</a> to check what targeting data ShopGrid can offer:</p>
+
+    <details class="protocol-detail">
+      <summary>ShopGrid's audience signals</summary>
+      <pre><code>{
+  "signals": [
+    {
+      "signal_agent_segment_id": "loyalty_health_shoppers",
+      "name": "Health-Conscious Loyalty Members",
+      "signal_type": "owned",
+      "data_provider": "ShopGrid",
+      "coverage_percentage": 38,
+      "deployments": [{
+        "type": "agent",
+        "agent_url": "https://ads.shopgrid.example.com",
+        "is_live": true,
+        "activation_key": { "type": "segment_id", "segment_id": "sg_health_loyalty" }
+      }],
+      "pricing_options": [
+        { "pricing_option_id": "loyalty_cpm", "model": "cpm", "cpm": 6.50, "currency": "USD" }
+      ]
+    },
+    {
+      "signal_agent_segment_id": "organic_purchasers_90d",
+      "name": "Organic Category Purchasers (90-day)",
+      "signal_type": "owned",
+      "data_provider": "ShopGrid",
+      "coverage_percentage": 22,
+      "deployments": [{
+        "type": "agent",
+        "agent_url": "https://ads.shopgrid.example.com",
+        "is_live": true,
+        "activation_key": { "type": "segment_id", "segment_id": "sg_organic_90d" }
+      }],
+      "pricing_options": [
+        { "pricing_option_id": "purchasers_cpm", "model": "cpm", "cpm": 9.00, "currency": "USD" }
+      ]
+    }
+  ]
+}</code></pre>
+      <div class="detail-note">These are signals ShopGrid owns — built from loyalty data and point-of-sale records, not modeled lookalikes. See the <a href="https://docs.adcontextprotocol.org/docs/signals/overview">Signals protocol</a> for how data providers expose audience segments.</div>
+    </details>
+
+    <p>The organic purchaser segment is what closes the deal. ShopGrid doesn't just know who sees the ad — they know who bought the product. That's the data moat Daniel walked past on the store floor.</p>
+
+    <h3>Sam's agent books the deal</h3>
+
+    <p>His agent calls <a href="https://docs.adcontextprotocol.org/docs/media-buy/task-reference/create_media_buy">create_media_buy</a> to book a combined deal — sponsored products with a 3x ROAS target, plus a homepage takeover — in a single call.</p>
+
+    <details class="protocol-detail">
+      <summary>The media buy</summary>
+      <pre><code>{
+  "buyer_ref": "summit_shopgrid_q4",
+  "brand": { "domain": "summitfoods.example.com" },
+  "start_time": "2026-10-01T00:00:00Z",
+  "end_time": "2026-12-31T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "sponsored_products",
+      "product_id": "sg_sponsored_grocery",
+      "pricing_option_id": "cpc_standard",
+      "budget": 45000,
+      "targeting": {
+        "signal_ids": ["sg_organic_90d"]
+      },
+      "performance_target": { "metric": "roas", "value": 3.0 }
+    },
+    {
+      "buyer_ref": "homepage_takeover",
+      "product_id": "sg_homepage_premium",
+      "pricing_option_id": "flat_weekly",
+      "budget": 15000
+    }
+  ]
+}</code></pre>
+    </details>
+
+    <p>From brief to booked. Daniel's team didn't take a call. Sam's team didn't learn a new platform. The agents had a structured conversation, and every response was machine-readable and ready to execute.</p>
+
+    <h2>The closed loop</h2>
+
+    <img src="/images/stories/daniel-closed-loop.png" alt="Daniel and Sam view a closed-loop attribution flow — impressions flow through clicks, store visits, and purchases in a circular diagram with website, app, and in-store sources" class="story-img">
+
+    <p>This is commerce media's defining advantage. The same company that shows the ad records the purchase. Not modeled conversions. Not panel-based measurement. Deterministic: loyalty card matched to point-of-sale receipt. Online and in the physical store.</p>
+
+    <p>When Sam pulls delivery reports, he sees exactly where conversions happened — website, app, and in-store — broken out with attributed revenue and ROAS. For Summit's ketchup campaign, 12% of attributed sales came from in-store purchases by shoppers who saw ads on checkout screens. No other media channel can close that loop.</p>
+
+    <details class="protocol-detail">
+      <summary>Closed-loop attribution in delivery reporting</summary>
+      <pre><code>{
+  "attribution_window": {
+    "post_click": { "interval": 14, "unit": "days" },
+    "post_view": { "interval": 1, "unit": "days" }
+  },
+  "by_package": [{
+    "buyer_ref": "sponsored_products",
+    "impressions": 850000,
+    "spend": 10350,
+    "conversions": 2100,
+    "conversion_value": 28500,
+    "roas": 2.75,
+    "by_action_source": [
+      { "action_source": "website", "count": 1500, "value": 20000 },
+      { "action_source": "app", "count": 350, "value": 4800 },
+      { "action_source": "in_store", "count": 250, "value": 3700 }
+    ]
+  }]
+}</code></pre>
+      <div class="detail-note">Different retailers use different attribution windows — 14-day click vs. 7-day click, for example. The protocol makes this transparent, so Sam can normalize ROAS comparisons across retailers without calling each sales rep to ask how they count.</div>
+    </details>
+
+    <div class="callout">
+      <p>This is what changes the economics. A CPG brand running across ten retailers used to need ten integrations, ten logins, ten reporting views. Now Sam sends one brief and compares ROAS across all of them, because every storefront reports attribution in the same format.</p>
+    </div>
+
+    <h2>So you launch the storefront. Then what?</h2>
+
+    <img src="/images/stories/daniel-ecosystem.png" alt="Daniel by a retail storefront and Priya by a streaming TV shape flank Sam in the center — different sell-side verticals connecting to one buyer through the same protocol" class="story-img">
+
+    <p>The moment ShopGrid's agent goes live, its retail media inventory is one prompt away from every buyer agent in the ecosystem.</p>
+
+    <p>An agency strategist asks their planning tool: <em>"Find me retail media across grocery with deterministic purchase attribution and in-store screens."</em> ShopGrid shows up — not because Daniel pitched them, but because the storefront is discoverable through the <a href="https://agenticadvertising.org/registry">registry</a>.</p>
+
+    <p>A mid-market CPG brand without a dedicated retail media team asks their AI assistant: <em>"I sell organic ketchup and I want to promote it across grocery retailers. What's available for $50K?"</em> Daniel's agent responds with sponsored products and in-store screens — a deal that never would have happened through traditional sales channels, because ShopGrid's sales team would never have prioritized a $50K brand.</p>
+
+    <p>Daniel's engineering investment goes into what differentiates ShopGrid: loyalty data quality, attribution accuracy, in-store screen coverage, real-time inventory feeds. Not into another dashboard that agencies use reluctantly.</p>
+
+    <p>For mid-size retailers, this is the unlock. You don't need to outbuild Amazon's ad platform. You need to make your data accessible through the same protocol Amazon's data is accessible through. The buyer agent doesn't care about your dashboard. It cares about your data.</p>
+
+    <p>On a Tuesday afternoon, Daniel walks the same store floor where the idea hit him. The checkout screens are running a Summit Foods campaign. A shopper scans her loyalty card. The attribution closes in real time. Daniel's phone buzzes — a new buyer agent just discovered ShopGrid's storefront and sent a brief. He doesn't need to take the call. The agent already responded.</p>
+
+    <p>His team isn't managing campaigns. They're building product.</p>
+
+  </div>
+
+  <div class="story-share">
+    <span class="story-share-label">Share:</span>
+    <a class="story-share-btn" href="#" id="shareTwitter" target="_blank" rel="noopener" title="Share on X">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    </a>
+    <a class="story-share-btn" href="#" id="shareLinkedIn" target="_blank" rel="noopener" title="Share on LinkedIn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+    </a>
+    <button class="story-share-btn" onclick="(function(b){navigator.clipboard.writeText(window.location.href);b.classList.add('copied');setTimeout(function(){b.classList.remove('copied')},2000)})(this)" title="Copy link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    </button>
+  </div>
+  <script>
+    (function() {
+      var url = encodeURIComponent(window.location.href);
+      var title = encodeURIComponent(document.title);
+      var tw = document.getElementById('shareTwitter');
+      var li = document.getElementById('shareLinkedIn');
+      if (tw) tw.href = 'https://twitter.com/intent/tweet?url=' + url + '&text=' + title;
+      if (li) li.href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + url;
+    })();
+  </script>
+
+  <section class="story-partners">
+    <div class="story-partners-inner">
+      <h2>Who builds this?</h2>
+      <p>AAO members are already building the tools and infrastructure for agentic advertising. Here's who can help a retail media network like ShopGrid get started.</p>
+
+      <div class="partner-grid">
+        <div class="partner-card">
+          <h3>Ad ops & retail media platforms</h3>
+          <p>Build and manage the sales agent that powers your retail media storefront.</p>
+          <div class="partner-names">Operative, Mediaocean, Media.net, ResponsiveAds</div>
+        </div>
+        <div class="partner-card">
+          <h3>Measurement & attribution</h3>
+          <p>Prove closed-loop attribution and incremental lift to buyer agents.</p>
+          <div class="partner-names">iSpot, Adelaide, Skyrise, mFilterIt</div>
+        </div>
+        <div class="partner-card">
+          <h3>Retail technology</h3>
+          <p>In-store screens, digital shelf, and physical inventory infrastructure.</p>
+          <div class="partner-names">Broadsign, VIOOH, ShowHeroes</div>
+        </div>
+        <div class="partner-card">
+          <h3>Data & identity</h3>
+          <p>Identity resolution, loyalty data activation, and cross-device matching.</p>
+          <div class="partner-names">LiveRamp, MetaRouter, Utiq, Evorra, AdFixus</div>
+        </div>
+        <div class="partner-card">
+          <h3>Programmatic infrastructure</h3>
+          <p>Connect your storefront to programmatic demand and manage yield.</p>
+          <div class="partner-names">StackAdapt, Cognitiv, Sabio, Venatus</div>
+        </div>
+        <div class="partner-card">
+          <h3>Creative & catalog rendering</h3>
+          <p>Generate catalog-rendered creatives, dynamic product ads, and in-store content.</p>
+          <div class="partner-names">Celtra, Connected-Stories, Camcorder AI, HyperMindZ.ai</div>
+        </div>
+      </div>
+
+      <div class="partner-cta">
+        <a href="/registry" class="btn-secondary">Browse the full registry</a>
+        <a href="/membership" class="btn-secondary">Find a partner</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="story-crosslinks">
+    <div class="story-crosslinks-inner">
+      <h2>Characters you met here appear in other stories</h2>
+      <div class="crosslink-grid">
+        <a href="/stories/the-studio" class="crosslink-card">
+          <span class="crosslink-issue">Issue 01</span>
+          <span class="crosslink-title">The Studio</span>
+          <span class="crosslink-desc">Ren Castillo builds a creator storefront at Halfmoon Studios. Same protocol, different inventory — shows and talent instead of shelves and screens.</span>
+        </a>
+        <a href="/stories/the-brief" class="crosslink-card">
+          <span class="crosslink-issue">Issue 02</span>
+          <span class="crosslink-title">The Brief</span>
+          <span class="crosslink-desc">Sam Adeyemi is the buyer in this story too. In <em>The Brief</em>, follow his side — one brief sent to a hundred storefronts, retail media included.</span>
+        </a>
+        <a href="https://docs.adcontextprotocol.org/docs/media-buy" class="crosslink-card crosslink-card--walkthrough">
+          <span class="crosslink-issue">Protocol walkthrough</span>
+          <span class="crosslink-title">Media buy walkthrough</span>
+          <span class="crosslink-desc">See how the protocol handles media buying from the buyer's perspective — the same flow Sam's agent uses.</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="story-cta">
+    <h2>Build your storefront</h2>
+    <p>If you run a retail media network — or want to build tools for one — here's where to start.</p>
+    <div class="story-cta-links">
+      <a href="/chat?topic=I just read The Shelf. How would a retail media storefront work for us?" class="btn-primary">Discuss with Addie</a>
+      <a href="/academy" class="btn-secondary">Learn how storefronts work</a>
+      <a href="/stories" class="btn-secondary">More stories</a>
+    </div>
+  </section>
+
+  <div id="adcp-footer"></div>
+  <script src="/nav.js"></script>
+</body>
+</html>

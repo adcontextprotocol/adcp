@@ -1368,8 +1368,7 @@ async function handleUserMessage({
                 title: event.tool_name.replace(/_/g, ' '),
                 status: 'in_progress',
               }],
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any);
+            } as any);
           } catch {
             // Ignore stream errors for status updates
           }
@@ -1390,8 +1389,7 @@ async function handleUserMessage({
                 title: event.tool_name.replace(/_/g, ' '),
                 status: event.is_error ? 'error' : 'complete',
               }],
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any);
+            } as any);
           } catch {
             // Ignore stream errors for status updates
           }

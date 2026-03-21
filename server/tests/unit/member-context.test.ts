@@ -76,6 +76,29 @@ describe('formatMemberContextForPrompt', () => {
     expect(result).toContain('active AgenticAdvertising.org member');
   });
 
+  it('should indicate individual member status for personal org members', () => {
+    const context: MemberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_123',
+        email: 'kenneth@ripley.media',
+        first_name: 'Ken',
+      },
+      organization: {
+        workos_organization_id: 'org_personal_123',
+        name: 'Ken Ripley',
+        subscription_status: 'active',
+        is_personal: true,
+      },
+    };
+
+    const result = formatMemberContextForPrompt(context);
+    expect(result).toContain('individual account');
+    expect(result).toContain('active AgenticAdvertising.org individual member');
+  });
+
   it('should indicate non-member status', () => {
     const context: MemberContext = {
       is_mapped: true,
