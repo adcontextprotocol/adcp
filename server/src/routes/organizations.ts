@@ -1127,7 +1127,7 @@ export function createOrganizationsRouter(): Router {
       // Check if an org with this domain already exists BEFORE creating
       if (verifiedDomain) {
         const existingOrgResult = await pool.query(
-          `SELECT o.workos_organization_id, o.name
+          `SELECT o.workos_organization_id, o.name, o.prospect_status, o.subscription_status
            FROM organization_domains od
            JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
            WHERE LOWER(od.domain) = LOWER($1)`,
@@ -1135,11 +1135,111 @@ export function createOrganizationsRouter(): Router {
         );
 
         if (existingOrgResult.rows.length > 0) {
-          return res.status(409).json({
-            error: 'Organization exists',
-            message: `An organization for ${verifiedDomain} already exists: "${existingOrgResult.rows[0].name}". Please search for it and request to join instead of creating a new one.`,
-            existing_org_id: existingOrgResult.rows[0].workos_organization_id,
-            existing_org_name: existingOrgResult.rows[0].name,
+          const existing = existingOrgResult.rows[0];
+          const existingOrgId = existing.workos_organization_id;
+          const existingOrgName = existing.name;
+
+          // Only auto-adopt prospect orgs. Active orgs (with subscriptions or
+          // that have already been joined/converted) should use the join-request flow.
+          const isAdoptable = !existing.subscription_status
+            && (!existing.prospect_status || !['joined', 'declined'].includes(existing.prospect_status));
+
+          if (!isAdoptable) {
+            return res.status(409).json({
+              error: 'Organization exists',
+              message: `An organization for ${verifiedDomain} already exists: "${existingOrgName}". Please search for it and request to join instead of creating a new one.`,
+              existing_org_id: existingOrgId,
+              existing_org_name: existingOrgName,
+            });
+          }
+
+          // Prospect org — check if user is already a member
+          const isDevUser = isDevModeEnabled() && getDevUser(req);
+          let alreadyMember = false;
+          if (!isDevUser) {
+            const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+              userId: user.id,
+              organizationId: existingOrgId,
+            });
+            alreadyMember = userMemberships.data.length > 0;
+          }
+
+          if (alreadyMember) {
+            return res.status(200).json({
+              id: existingOrgId,
+              name: existingOrgName,
+              adopted: true,
+            });
+          }
+
+          // Add user to the prospect org. Owner if none exists, otherwise member.
+          let roleSlug = 'owner';
+          if (!isDevUser) {
+            const existingMembers = await workos!.userManagement.listOrganizationMemberships({
+              organizationId: existingOrgId,
+              limit: 100,
+            });
+            const hasOwner = existingMembers.data.some((m) => m.role?.slug === 'owner');
+            if (hasOwner) {
+              roleSlug = 'member';
+            }
+          }
+
+          logger.info({
+            userId: user.id,
+            orgId: existingOrgId,
+            orgName: existingOrgName,
+            domain: verifiedDomain,
+            role: roleSlug,
+          }, 'User adopting prospect organization via registration');
+
+          if (!isDevUser) {
+            await workos!.userManagement.createOrganizationMembership({
+              userId: user.id,
+              organizationId: existingOrgId,
+              roleSlug,
+            });
+          }
+
+          // Mirror membership and update prospect status locally
+          try {
+            await pool.query(`
+              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
+              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
+              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
+            `, [user.id, existingOrgId, user.email, roleSlug]);
+
+            await pool.query(`
+              UPDATE organizations SET prospect_status = 'joined', updated_at = NOW()
+              WHERE workos_organization_id = $1
+                AND prospect_status IS NOT NULL
+                AND prospect_status NOT IN ('joined', 'declined')
+            `, [existingOrgId]);
+
+            await orgDb.recordAuditLog({
+              workos_organization_id: existingOrgId,
+              workos_user_id: user.id,
+              action: 'organization_adopted',
+              resource_type: 'organization',
+              resource_id: existingOrgId,
+              details: {
+                user_email: user.email,
+                domain: verifiedDomain,
+                role: roleSlug,
+              },
+            });
+          } catch (dbError) {
+            logger.error({
+              userId: user.id,
+              orgId: existingOrgId,
+              error: dbError,
+            }, 'Local DB failed after WorkOS membership created — needs reconciliation');
+          }
+
+          return res.status(200).json({
+            id: existingOrgId,
+            name: existingOrgName,
+            adopted: true,
           });
         }
       }
