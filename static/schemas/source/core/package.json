@@ -94,6 +94,30 @@
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
     },
+    "canceled": {
+      "type": "boolean",
+      "description": "Whether this package has been canceled. Canceled packages stop delivery and cannot be reactivated. Defaults to false.",
+      "default": false
+    },
+    "canceled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when this package was canceled. Present only when canceled is true."
+    },
+    "canceled_by": {
+      "$ref": "/schemas/enums/canceled-by.json",
+      "description": "Which party initiated the package cancellation. Present only when canceled is true."
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "description": "Reason the package was canceled. Present only when canceled is true.",
+      "maxLength": 500
+    },
+    "creative_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

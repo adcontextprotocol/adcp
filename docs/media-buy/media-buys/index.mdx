@@ -28,9 +28,14 @@ Transform discovered products into active advertising campaigns using [`create_m
 - **Platform Deployment**: Campaign creation across advertising platforms
 
 This phase may involve:
-- Immediate creation with `pending_activation` status
-- Human approval workflow with `pending_manual` status
-- Permission requirements with `pending_permission` status
+- Immediate creation with `active` status (instant activation)
+- Deferred creation with `pending_activation` status (awaiting platform setup)
+- Human approval workflow via `pending_manual` task status (see [Asynchronous Operations](#asynchronous-operations-and-human-in-the-loop))
+- Permission requirements via `pending_permission` task status (see [Asynchronous Operations](#asynchronous-operations-and-human-in-the-loop))
+
+<Note>
+`pending_manual` and `pending_permission` are **task-level** statuses from the human-in-the-loop queue — they describe whether the *operation* requires approval, not the media buy's lifecycle state. The media buy itself enters `pending_activation` or `active` once the operation completes.
+</Note>
 
 **Platform Mapping:**
 - **Google Ad Manager**: Creates an Order with LineItems
@@ -239,12 +244,39 @@ For products with `property_targeting_allowed: true`, buyers can specify which p
 See [Media Products - Property Targeting](/docs/media-buy/product-discovery/media-products#property-targeting) for more on how products declare targeting flexibility.
 
 ### Lifecycle States
-Media buys progress through predictable states:
-- **`pending_activation`**: Created, awaiting platform setup
-- **`pending_manual`**: Requires human approval
+
+Media buys progress through defined states with explicit transition rules:
+
+```
+create_media_buy ──┬──▶ pending_activation ──▶ active
+                   │                              ▲
+                   └──▶ active                    │ resume
+                        │    ▲                    │
+               (pause)  │    │ (resume)           │
+                        ▼    │                    │
+                       paused ────────────────────┘
+                        │
+          active ───────┼──────────────▶ completed (terminal)
+          paused ───────┘                ▲ flight ends / goal met / budget exhausted
+
+create_media_buy ──▶ rejected (terminal)
+pending_activation ──▶ rejected (terminal)  — seller rejects during setup
+
+Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
+```
+
+- **`pending_activation`**: Created, awaiting platform setup or creative upload
 - **`active`**: Running and delivering impressions
-- **`paused`**: Temporarily stopped
-- **`completed`**: Finished successfully
+- **`paused`**: Temporarily stopped by buyer or seller
+- **`completed`**: Finished — flight ended, goal met, or budget exhausted
+- **`rejected`**: Declined by the seller (terminal)
+- **`canceled`**: Terminated before natural completion. Check `canceled_by` to determine whether the buyer or seller initiated.
+
+**Order confirmation**: A successful `create_media_buy` response constitutes order confirmation. The response includes `confirmed_at` with the confirmation timestamp.
+
+**Terminal states**: `completed`, `rejected`, and `canceled` are terminal — no transitions out. Sellers MUST reject updates to terminal-state media buys with error code `INVALID_STATE`.
+
+**Discovering valid actions**: The `get_media_buys` response includes `valid_actions` for each media buy — a list of actions the buyer can perform in the current state. Agents SHOULD use this instead of hardcoding the state machine.
 
 
 ## Core Operations
@@ -263,10 +295,53 @@ Modification capabilities include:
 - **Package modifications** adding/removing products and formats
 - **Schedule changes** for extended or shortened campaign timing
 
+### Canceling Media Buys
+
+Cancel a media buy or individual package using [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) with `canceled: true`:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "canceled": true,
+  "cancellation_reason": "Campaign strategy changed"
+}
+```
+
+Cancel a single package within an active media buy:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "packages": [
+    {
+      "package_id": "pkg_67890",
+      "canceled": true,
+      "cancellation_reason": "Underperforming — reallocating budget"
+    }
+  ]
+}
+```
+
+- Cancellation is **irreversible** — canceled media buys and packages cannot be reactivated
+- Sellers MAY reject cancellation with error code `NOT_CANCELLABLE` (e.g., contractual obligations, in-production print orders)
+- A canceled package does not affect other packages in the same media buy
+- Sellers MAY cancel media buys or packages (e.g., policy violation, inventory withdrawal). Seller-initiated cancellations set `canceled_by: "seller"` and MUST trigger a webhook notification to the orchestrator.
+
+### Package Lifecycle
+
+Packages follow the same pause/cancel pattern as media buys, with additional creative deadline enforcement:
+
+- **`paused`**: Temporarily stopped — can be resumed with `paused: false`
+- **`canceled`**: Permanently stopped — irreversible
+- **`creative_deadline`**: Per-package deadline for creative uploads or changes. After this deadline, creative changes are rejected with `CREATIVE_REJECTED`.
+
+When `creative_deadline` is absent on a package, the media buy's `creative_deadline` applies. This is important for mixed-channel orders — a print package may have an earlier material deadline than a digital package in the same media buy.
+
 ### Status Management
 Campaign state transitions:
 - **Activation requests** to start pending campaigns
 - **Pause/resume operations** for campaign control
+- **Cancellation** for buyer-initiated termination
 - **Completion handling** for successful campaign closure
 - **Error recovery** for failed operations
 

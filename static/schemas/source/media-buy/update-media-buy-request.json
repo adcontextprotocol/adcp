@@ -17,6 +17,16 @@
       "type": "boolean",
       "description": "Pause/resume the entire media buy (true = paused, false = active)"
     },
+    "canceled": {
+      "type": "boolean",
+      "description": "Cancel the entire media buy. Cancellation is irreversible — canceled media buys cannot be reactivated. Sellers MAY reject with NOT_CANCELLABLE if the media buy cannot be canceled in its current state.",
+      "const": true
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "description": "Reason for cancellation. Sellers SHOULD store this and return it in subsequent get_media_buys responses.",
+      "maxLength": 500
+    },
     "start_time": {
       "$ref": "/schemas/core/start-timing.json"
     },

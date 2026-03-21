@@ -55,6 +55,24 @@
             "format": "date-time",
             "description": "ISO 8601 timestamp for creative upload deadline"
           },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the seller confirmed this media buy. A successful create_media_buy response constitutes order confirmation."
+          },
+          "canceled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when this media buy was canceled. Present only when status is 'canceled'."
+          },
+          "canceled_by": {
+            "$ref": "/schemas/enums/canceled-by.json",
+            "description": "Which party initiated the cancellation. Present only when status is 'canceled'."
+          },
+          "cancellation_reason": {
+            "type": "string",
+            "description": "Reason the media buy was canceled. Present only when status is 'canceled'."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -64,6 +82,22 @@
             "type": "string",
             "format": "date-time",
             "description": "Last update timestamp"
+          },
+          "valid_actions": {
+            "type": "array",
+            "description": "Actions the buyer can perform on this media buy in its current state. Eliminates the need for agents to internalize the state machine — the seller declares what is permitted right now.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "pause",
+                "resume",
+                "cancel",
+                "update_budget",
+                "update_dates",
+                "update_packages",
+                "sync_creatives"
+              ]
+            }
           },
           "packages": {
             "type": "array",
@@ -118,6 +152,28 @@
                 "paused": {
                   "type": "boolean",
                   "description": "Whether this package is currently paused by the buyer"
+                },
+                "canceled": {
+                  "type": "boolean",
+                  "description": "Whether this package has been canceled. Canceled packages stop delivery and cannot be reactivated."
+                },
+                "canceled_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 timestamp when this package was canceled. Present only when canceled is true."
+                },
+                "canceled_by": {
+                  "$ref": "/schemas/enums/canceled-by.json",
+                  "description": "Which party initiated the package cancellation. Present only when canceled is true."
+                },
+                "cancellation_reason": {
+                  "type": "string",
+                  "description": "Reason the package was canceled. Present only when canceled is true."
+                },
+                "creative_deadline": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
                 },
                 "creative_approvals": {
                   "type": "array",

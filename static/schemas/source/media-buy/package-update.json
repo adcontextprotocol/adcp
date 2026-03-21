@@ -46,6 +46,16 @@
       "type": "boolean",
       "description": "Pause/resume specific package (true = paused, false = active)"
     },
+    "canceled": {
+      "type": "boolean",
+      "description": "Cancel this specific package. Cancellation is irreversible — canceled packages stop delivery and cannot be reactivated. Sellers MAY reject with NOT_CANCELLABLE.",
+      "const": true
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "description": "Reason for canceling this package.",
+      "maxLength": 500
+    },
     "catalogs": {
       "type": "array",
       "description": "Replace the catalogs this package promotes. Uses replacement semantics — the provided array replaces the current list. Omit to leave catalogs unchanged.",

@@ -18,6 +18,6 @@
     "paused": "Media buy is temporarily paused",
     "completed": "Media buy has finished running",
     "rejected": "Media buy was declined by the seller after creation",
-    "canceled": "Media buy was terminated by the buyer before natural completion"
+    "canceled": "Media buy was terminated before natural completion. Check canceled_by to determine whether the buyer or seller initiated."
   }
 }

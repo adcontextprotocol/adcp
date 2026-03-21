@@ -26,6 +26,11 @@
           "$ref": "/schemas/core/account.json",
           "description": "Account billed for this media buy. Includes advertiser, billing proxy (if any), and rate card applied."
         },
+        "confirmed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this media buy was confirmed by the seller. A successful create_media_buy response constitutes order confirmation."
+        },
         "creative_deadline": {
           "type": "string",
           "format": "date-time",
@@ -56,6 +61,7 @@
       "required": [
         "media_buy_id",
         "buyer_ref",
+        "confirmed_at",
         "packages"
       ],
       "additionalProperties": true,

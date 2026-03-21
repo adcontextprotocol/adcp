@@ -18,6 +18,10 @@
           "type": "string",
           "description": "Buyer's reference identifier for the media buy"
         },
+        "status": {
+          "$ref": "/schemas/enums/media-buy-status.json",
+          "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused')."
+        },
         "implementation_date": {
           "type": [
             "string",

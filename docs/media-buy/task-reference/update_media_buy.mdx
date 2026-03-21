@@ -143,6 +143,8 @@ asyncio.run(create_and_pause_campaign())
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
+| `canceled` | boolean | No | Cancel the entire media buy (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | No | Reason for cancellation |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
@@ -170,6 +172,8 @@ Configure automated delivery reporting for this media buy:
 | `package_id` | string | Publisher's package identifier to update |
 | `buyer_ref` | string | Your reference for the package to update |
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
+| `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | Reason for canceling this package |
 | `budget` | number | Updated budget allocation |
 | `impressions` | number | Updated impression goal for this package |
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
@@ -196,6 +200,7 @@ Configure automated delivery reporting for this media buy:
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
 | `buyer_ref` | Your reference identifier |
+| `status` | Media buy status after the update (present when status changes, e.g., cancellation) |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `affected_packages` | Array of full Package objects showing complete state after update |
 
@@ -530,13 +535,44 @@ asyncio.run(update_multiple_packages())
 
 </CodeGroup>
 
+### Cancel a Media Buy
+
+Cancel an entire media buy:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "canceled": true,
+  "cancellation_reason": "Campaign strategy changed"
+}
+```
+
+The response includes `status: "canceled"` to confirm the transition. Cancellation is irreversible. If the seller cannot cancel (e.g., contractual obligations), the response will contain an error with code `NOT_CANCELLABLE`.
+
+### Cancel a Package
+
+Cancel a single package while the media buy remains active:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "packages": [
+    {
+      "package_id": "pkg_67890",
+      "canceled": true,
+      "cancellation_reason": "Underperforming — reallocating budget"
+    }
+  ]
+}
+```
+
 ## What Can Be Updated
 
 ### Campaign-Level Updates
 
 ✅ **Can update:**
 - Start/end times (subject to seller approval)
-- Campaign status (active/paused)
+- Campaign status (active/paused/canceled)
 - Reporting webhook configuration (URL, frequency, metrics)
 
 ❌ **Cannot update:**
@@ -554,8 +590,9 @@ asyncio.run(update_multiple_packages())
 - Optimization goal (event source, event type, target ROAS/CPA)
 - Targeting overlays
 - Creative assignments
-- Package status (active/paused)
+- Package status (active/paused/canceled)
 - Catalog reference (replace the catalog a catalog-driven package promotes)
+- Creative assignments (before the package's `creative_deadline`)
 
 ❌ **Cannot update:**
 - Package ID
@@ -571,10 +608,12 @@ Common errors and resolutions:
 |------------|-------------|------------|
 | `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id or buyer_ref |
 | `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id or buyer_ref |
-| `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
-| `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
+| `UNSUPPORTED_FEATURE` | Field cannot be changed | See "What Can Be Updated" above |
+| `BUDGET_TOO_LOW` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
-| `INVALID_STATE` | Operation not allowed in current state | Check campaign status |
+| `INVALID_STATE` | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
+| `NOT_CANCELLABLE` | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
+| `CREATIVE_REJECTED` | Creative change rejected (may be past `creative_deadline`) | Check package `creative_deadline` before submitting creative changes |
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 
 Example error response:
@@ -582,7 +621,7 @@ Example error response:
 ```json
 {
   "errors": [{
-    "code": "UPDATE_NOT_ALLOWED",
+    "code": "UNSUPPORTED_FEATURE",
     "message": "Cannot change product_id for existing package",
     "field": "packages[0].product_id",
     "suggestion": "Create a new package with the desired product instead"

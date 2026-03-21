@@ -24,7 +24,13 @@
     "ACCOUNT_SUSPENDED",
     "COMPLIANCE_UNSATISFIED",
     "BUDGET_EXHAUSTED",
-    "CONFLICT"
+    "BUDGET_EXCEEDED",
+    "CONFLICT",
+    "INVALID_STATE",
+    "MEDIA_BUY_NOT_FOUND",
+    "NOT_CANCELLABLE",
+    "PACKAGE_NOT_FOUND",
+    "VALIDATION_ERROR"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -36,7 +42,7 @@
     "PRODUCT_UNAVAILABLE": "The requested product is sold out or no longer available. Recovery: correctable (choose a different product).",
     "PROPOSAL_EXPIRED": "A referenced proposal ID has passed its expires_at timestamp. Recovery: correctable (re-discover with get_products to get a fresh proposal).",
     "BUDGET_TOO_LOW": "Budget is below the seller's minimum. Recovery: correctable (increase budget or check capabilities.media_buy.limits).",
-    "CREATIVE_REJECTED": "Creative failed content policy review. Recovery: correctable (revise the creative per the seller's advertising_policies).",
+    "CREATIVE_REJECTED": "Creative failed content policy review or was submitted past the package's creative_deadline. Recovery: correctable (revise the creative per the seller's advertising_policies, or check the package creative_deadline before submitting changes).",
     "UNSUPPORTED_FEATURE": "A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).",
     "AUDIENCE_TOO_SMALL": "Audience segment is below the minimum required size for targeting. Recovery: correctable (broaden targeting or upload more audience members).",
     "ACCOUNT_NOT_FOUND": "The account reference could not be resolved. Recovery: terminal (verify account via list_accounts or contact seller).",
@@ -46,6 +52,12 @@
     "ACCOUNT_SUSPENDED": "Account has been suspended. Recovery: terminal (contact seller to resolve suspension).",
     "COMPLIANCE_UNSATISFIED": "A required disclosure from the brief's compliance section cannot be satisfied by the target format — either the required position or the required persistence mode is not in the format's disclosure_capabilities. Recovery: correctable (choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement).",
     "BUDGET_EXHAUSTED": "Account or campaign budget has been fully spent. Distinct from BUDGET_TOO_LOW (rejected at submission). Recovery: terminal (buyer must add funds or increase budget cap).",
-    "CONFLICT": "Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state)."
+    "BUDGET_EXCEEDED": "Operation would exceed the allocated budget for the media buy or package. Distinct from BUDGET_EXHAUSTED (already spent) and BUDGET_TOO_LOW (below minimum). Recovery: correctable (reduce requested amount or increase budget allocation).",
+    "CONFLICT": "Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state).",
+    "INVALID_STATE": "Operation is not permitted for the resource's current status (e.g., updating a completed or canceled media buy, or modifying a canceled package). Recovery: correctable (check current status via get_media_buys and adjust request).",
+    "MEDIA_BUY_NOT_FOUND": "Referenced media buy does not exist or is not accessible to the requesting agent. Recovery: correctable (verify media_buy_id or buyer_ref).",
+    "NOT_CANCELLABLE": "The media buy or package cannot be canceled in its current state. The seller may have contractual or operational constraints that prevent cancellation. Recovery: correctable (check the seller's cancellation policy or contact the seller).",
+    "PACKAGE_NOT_FOUND": "Referenced package does not exist within the specified media buy. Recovery: correctable (verify package_id or buyer_ref via get_media_buys).",
+    "VALIDATION_ERROR": "Request contains invalid field values or violates business rules beyond schema validation. Recovery: correctable (review error details and fix field values)."
   }
 }

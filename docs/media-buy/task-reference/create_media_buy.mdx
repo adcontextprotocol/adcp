@@ -213,8 +213,9 @@ npx adcp \
 | `media_buy_id` | Publisher's unique identifier |
 | `buyer_ref` | Your reference identifier |
 | `buyer_campaign_ref` | Buyer's campaign label (echoed from request) |
+| `confirmed_at` | ISO 8601 timestamp of order confirmation. A successful response constitutes confirmation. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
-| `packages` | Array of created packages with complete state |
+| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
 
 ### Error Response
 
@@ -800,7 +801,7 @@ Common errors and resolutions:
 |------------|-------------|------------|
 | `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
 | `FORMAT_INCOMPATIBLE` | Format not supported by product | Check product's `format_ids` field |
-| `BUDGET_INSUFFICIENT` | Budget below product minimum | Increase budget or choose different product |
+| `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
