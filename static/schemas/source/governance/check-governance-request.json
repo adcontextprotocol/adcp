@@ -125,7 +125,7 @@
             },
             "indices": {
               "type": "object",
-              "description": "Audience index values for the current reporting period. Keys are signal ID strings in the format 'catalog:{domain}:{id}' for catalog signals or 'agent:{agent_url}:{id}' for agent signals. For description-based criteria, use 'desc:{sha256_hex_16}' where the hash is the first 16 hex characters of the SHA-256 of the description text. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
+              "description": "Audience index values for the current reporting period. Keys are signal ID strings in the format 'catalog:{domain}:{id}' for catalog signals or 'agent:{agent_url}:{id}' for agent signals. For description-based criteria, use 'desc:{sha256_hex_16}' where the hash is the first 16 hex characters of the SHA-256 of the description text. Description strings are treated as immutable once a plan is synced — changing the text changes the key. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
               "additionalProperties": {
                 "type": "number",
                 "minimum": 0
