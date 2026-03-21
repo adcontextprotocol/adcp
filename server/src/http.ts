@@ -6168,6 +6168,7 @@ Disallow: /api/admin/
             // If org has no admin/owner yet, promote this user to owner
             const existingMembers = await workos!.userManagement.listOrganizationMemberships({
               organizationId: organization_id,
+              statuses: ['active', 'inactive', 'pending'],
               limit: 100,
             });
             const hasAdmin = existingMembers.data.some((m) => {
@@ -6299,6 +6300,7 @@ Disallow: /api/admin/
         // Check if org has any existing members
         const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
           organizationId: organization_id,
+          statuses: ['active', 'inactive', 'pending'],
         });
 
         // If org has no members (e.g., prospect org) AND user's email domain matches,
