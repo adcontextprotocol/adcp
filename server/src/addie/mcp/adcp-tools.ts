@@ -768,9 +768,9 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
   {
     name: 'update_media_buy',
     description:
-      'Modify an existing media buy using PATCH semantics. Supports campaign-level updates (dates, pause/resume, cancel) and package-level updates (budget, targeting, creatives, cancel individual packages).',
+      'Modify an existing media buy using PATCH semantics. Supports campaign-level updates (dates, pause/resume, cancel), package-level updates (budget, targeting, creatives, cancel individual packages), and adding new packages via new_packages.',
     usage_hints:
-      'use when the user wants to modify a campaign, pause/resume ads, cancel a campaign or line item, change budget, update targeting, or swap creatives',
+      'use when the user wants to modify a campaign, pause/resume ads, cancel a campaign or line item, change budget, update targeting, swap creatives, or add new packages to an existing campaign',
     input_schema: {
       type: 'object',
       properties: {
@@ -838,6 +838,23 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
                 description: 'Replace creative assignments',
               },
             },
+          },
+        },
+        new_packages: {
+          type: 'array',
+          description: 'New packages to add to this media buy. Same shape as create_media_buy packages. Only supported by sellers that advertise add_packages in valid_actions.',
+          items: {
+            type: 'object',
+            properties: {
+              buyer_ref: { type: 'string', description: 'Your reference for the new package' },
+              product_id: { type: 'string', description: 'Product ID for this package' },
+              budget: { type: 'number', description: 'Budget allocation' },
+              pricing_option_id: { type: 'string', description: 'Selected pricing option' },
+              bid_price: { type: 'number', description: 'Bid price (auction only)' },
+              start_time: { type: 'string', description: 'Flight start (ISO 8601)' },
+              end_time: { type: 'string', description: 'Flight end (ISO 8601)' },
+            },
+            required: ['buyer_ref', 'product_id', 'budget', 'pricing_option_id'],
           },
         },
         reporting_webhook: {

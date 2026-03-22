@@ -101,6 +101,7 @@
                 "update_budget",
                 "update_dates",
                 "update_packages",
+                "add_packages",
                 "sync_creatives"
               ]
             }

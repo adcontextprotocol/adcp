@@ -218,8 +218,8 @@ function deriveStatus(mb: MediaBuyState): string {
 function validActionsForStatus(status: string): string[] {
   switch (status) {
     case 'pending_activation': return ['cancel', 'sync_creatives'];
-    case 'active': return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'sync_creatives'];
-    case 'paused': return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'sync_creatives'];
+    case 'active': return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+    case 'paused': return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     default: return [];
   }
 }
@@ -437,7 +437,8 @@ const TOOLS = [
         // Cast: MCP SDK ToolInput type doesn't support JSON Schema `const`
         canceled: { type: 'boolean', const: true, description: 'Cancel the entire media buy (irreversible). Only true is valid — cancellation cannot be undone.' } as Record<string, unknown>,
         cancellation_reason: { type: 'string', maxLength: 500, description: 'Reason for cancellation' },
-        packages: { type: 'array' },
+        packages: { type: 'array', description: 'Updates to existing packages' },
+        new_packages: { type: 'array', description: 'New packages to add (same shape as create_media_buy packages)' },
         end_time: { type: 'string' },
       },
       required: ['media_buy_id'] as const,
@@ -1321,6 +1322,49 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         }
         pkg.endTime = update.end_time;
       }
+      affectedPackages.push({
+        package_id: pkg.packageId,
+        buyer_ref: pkg.buyerRef,
+        product_id: pkg.productId,
+        budget: pkg.budget,
+        paused: pkg.paused,
+        start_time: pkg.startTime,
+        end_time: pkg.endTime,
+      });
+    }
+  }
+
+  // Handle new_packages — add new packages to the media buy
+  const newPackages = args.new_packages as PackageInput[] | undefined;
+  if (newPackages?.length) {
+    const catalog = getCatalog();
+    const productMap = new Map(catalog.map(cp => [cp.product.product_id!, cp.product]));
+    for (const newPkg of newPackages) {
+      const product = productMap.get(newPkg.product_id);
+      if (!product) {
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `New package: Product not found: ${newPkg.product_id}` }] };
+      }
+      const pricingOptions = product.pricing_options as Array<{ pricing_option_id: string }> | undefined;
+      const pricing = pricingOptions?.find(po => po.pricing_option_id === newPkg.pricing_option_id);
+      if (!pricing) {
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `New package: Pricing option not found: ${newPkg.pricing_option_id}` }] };
+      }
+      const pkg: PackageState = {
+        packageId: `pkg_${randomUUID().slice(0, 8)}`,
+        buyerRef: newPkg.buyer_ref || `pkg_ref_${randomUUID().slice(0, 6)}`,
+        productId: newPkg.product_id,
+        pricingOptionId: newPkg.pricing_option_id,
+        budget: newPkg.budget,
+        bidPrice: newPkg.bid_price,
+        impressions: newPkg.impressions,
+        startTime: newPkg.start_time || mb.startTime,
+        endTime: newPkg.end_time || mb.endTime,
+        paused: newPkg.paused || false,
+        canceled: false,
+        creativeAssignments: [],
+      };
+      mb.packages.push(pkg);
+      mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'updated_packages', packageId: pkg.packageId, summary: `New package added: ${pkg.buyerRef}` });
       affectedPackages.push({
         package_id: pkg.packageId,
         buyer_ref: pkg.buyerRef,

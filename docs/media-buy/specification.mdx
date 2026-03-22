@@ -130,9 +130,10 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 **Package-level lifecycle:**
 
 Packages follow the same pause/cancel pattern as media buys. Additionally:
-- Packages MAY have a `creative_deadline` — after this deadline, creative changes to the package are rejected with `CREATIVE_REJECTED`. When absent, the media buy's `creative_deadline` applies.
+- Packages MAY have a `creative_deadline` — after this deadline, creative changes to the package are rejected with `CREATIVE_DEADLINE_EXCEEDED`. When absent, the media buy's `creative_deadline` applies. `CREATIVE_REJECTED` is reserved for content policy failures.
 - Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active.
-- When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Since `update_media_buy` does not currently support adding new packages, the buyer SHOULD explicitly cancel the media buy. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled. Sales agents MAY auto-transition the media buy to `canceled` after a seller-defined grace period if no new activity occurs.
+- Sales agents MUST retain delivery data for canceled packages. When `include_snapshot` is true, sales agents SHOULD return a final snapshot reflecting delivery state at the time of cancellation.
+- When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sellers that support mid-flight package additions advertise `add_packages` in `valid_actions` — the buyer can add new packages via `new_packages` in `update_media_buy`. Otherwise, the buyer SHOULD explicitly cancel the media buy. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled. Sales agents MAY auto-transition the media buy to `canceled` after a seller-defined grace period if no new activity occurs.
 
 ## Tasks
 
@@ -218,7 +219,8 @@ Modify an existing media buy's budget, targeting, or settings.
 - Sales agents MUST transition the media buy to `canceled` status upon accepting cancellation
 - Sales agents MAY reject cancellation with error code `NOT_CANCELLABLE`
 - Orchestrators MAY cancel individual packages by setting `canceled: true` on a package update
-- Sales agents MUST reject creative changes to packages past their `creative_deadline` with error code `CREATIVE_REJECTED`
+- Sales agents MUST reject creative changes to packages past their `creative_deadline` with error code `CREATIVE_DEADLINE_EXCEEDED`
+- Orchestrators MAY add new packages to an existing media buy via `new_packages`. Sales agents that support this MUST advertise `add_packages` in `valid_actions`. Sales agents that do not support adding packages MUST reject with `UNSUPPORTED_FEATURE`.
 - When `canceled: true` is present alongside other fields in an update request, sales agents MUST apply cancellation and MUST ignore all other fields except `cancellation_reason`. Cancellation takes precedence over concurrent mutations. Sales agents SHOULD include a warning in the response `context` when non-cancellation fields were present and ignored.
 - Sales agents MUST return `affected_packages` containing the state of each directly modified package after the update is applied (or the proposed state if pending approval); an empty array is valid when only campaign-level fields (e.g., `paused`, `start_time`) are updated
 - When manual approval is required, sales agents MUST persist the pending update request, MUST return `implementation_date: null`, and MUST NOT return empty `affected_packages`
@@ -268,11 +270,11 @@ Retrieve operational media buy state, including package status, creative approva
 | Status | Expected `valid_actions` |
 |--------|------------------------|
 | `pending_activation` | `cancel`, `sync_creatives` |
-| `active` | `pause`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `sync_creatives` |
-| `paused` | `resume`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `sync_creatives` |
+| `active` | `pause`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
+| `paused` | `resume`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `completed` / `rejected` / `canceled` | *(empty array)* |
 
-Sellers MAY omit actions based on business rules (e.g., omit `cancel` when contractual obligations prevent it).
+Sellers MAY omit actions based on business rules (e.g., omit `cancel` when contractual obligations prevent it, omit `add_packages` when the platform does not support mid-flight additions).
 
 `valid_actions` contains only mutation operations — read-only operations (`get_media_buys`, `get_media_buy_delivery`) are always permitted regardless of state. Agents SHOULD use `valid_actions` as an optimization hint but MUST handle `INVALID_STATE` errors gracefully, since `valid_actions` may not reflect real-time state changes from concurrent operations. Absence of an action means "not declared by this seller," not necessarily "forbidden."
 - Orchestrators MAY request revision history by setting `include_history` to the number of most-recent entries desired. Sales agents SHOULD return a `history` array per media buy when `include_history > 0`, containing revision number, timestamp, server-derived actor identity, action type, and optional summary. History entries MUST be ordered most-recent-first.
@@ -369,7 +371,8 @@ Common error codes:
 - `PACKAGE_NOT_FOUND`: Referenced package does not exist
 - `PRODUCT_NOT_FOUND`: Referenced product does not exist
 - `BUDGET_EXCEEDED`: Operation would exceed allocated budget
-- `CREATIVE_REJECTED`: Creative failed validation, approval, or was submitted past the package's `creative_deadline`
+- `CREATIVE_REJECTED`: Creative failed content policy review
+- `CREATIVE_DEADLINE_EXCEEDED`: Creative change submitted after the package's `creative_deadline`
 - `INVALID_STATE`: Operation is not permitted for the resource's current status (e.g., updating a completed or canceled media buy)
 - `NOT_CANCELLABLE`: Media buy or package cannot be canceled in its current state
 - `VALIDATION_ERROR`: Request format or parameter errors

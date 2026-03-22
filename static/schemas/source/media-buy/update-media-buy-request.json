@@ -42,9 +42,17 @@
     },
     "packages": {
       "type": "array",
-      "description": "Package-specific updates",
+      "description": "Package-specific updates for existing packages",
       "items": {
         "$ref": "/schemas/media-buy/package-update.json"
+      },
+      "minItems": 1
+    },
+    "new_packages": {
+      "type": "array",
+      "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. Sellers that support mid-flight package additions advertise add_packages in valid_actions. Sellers that do not support this MUST reject with UNSUPPORTED_FEATURE.",
+      "items": {
+        "$ref": "/schemas/media-buy/package-request.json"
       },
       "minItems": 1
     },

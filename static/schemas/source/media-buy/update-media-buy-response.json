@@ -47,7 +47,7 @@
           "description": "Actions the buyer can perform after this update. Saves a round-trip to get_media_buys.",
           "items": {
             "type": "string",
-            "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "sync_creatives"]
+            "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "add_packages", "sync_creatives"]
           }
         },
         "sandbox": {
