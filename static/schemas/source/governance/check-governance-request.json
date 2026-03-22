@@ -125,7 +125,10 @@
             },
             "indices": {
               "type": "object",
-              "description": "Audience index values for the current reporting period. Keys are dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
+              "description": "Audience index values for the current reporting period. Keys are seller-defined dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). The protocol does not mandate a taxonomy — dimensions and value labels vary by seller. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
+              "propertyNames": {
+                "pattern": "^[a-z_]+:.+$"
+              },
               "additionalProperties": {
                 "type": "number",
                 "minimum": 0
@@ -134,6 +137,9 @@
             "cumulative_indices": {
               "type": "object",
               "description": "Cumulative audience index values since the media buy started. Same key format as indices (dimension:value). Use for detecting sustained bias drift that may not appear in a single reporting period.",
+              "propertyNames": {
+                "pattern": "^[a-z_]+:.+$"
+              },
               "additionalProperties": {
                 "type": "number",
                 "minimum": 0

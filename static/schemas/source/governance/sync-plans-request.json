@@ -117,7 +117,7 @@
           },
           "policy_categories": {
             "type": "array",
-            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industry and the plan's objectives.",
+            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum — new categories are added as regulations evolve).",
             "items": { "type": "string" },
             "minItems": 1
           },
