@@ -722,15 +722,16 @@ export class HTTPServer {
       }
 
       try {
-        // Check if file exists; for extensionless paths, also try /index.html
+        // Read HTML file directly; for extensionless paths, also try /index.html
+        let html: string;
         try {
-          await fs.access(filePath);
+          html = await fs.readFile(filePath, 'utf-8');
         } catch {
           if (urlPath.endsWith('.html')) {
             throw new Error('not found');
           }
           filePath = path.join(publicPath, urlPath, 'index.html');
-          await fs.access(filePath);
+          html = await fs.readFile(filePath, 'utf-8');
         }
 
         // Cross-domain session bridge: if on AdCP without a session cookie,
@@ -741,8 +742,7 @@ export class HTTPServer {
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
 
-        // Read and inject config
-        let html = await fs.readFile(filePath, 'utf-8');
+        // Inject config
         const configScript = getAppConfigScript(user);
 
         // Inject before </head>
