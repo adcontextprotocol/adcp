@@ -123,12 +123,16 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - Sales agents MUST set `canceled_by` and `canceled_at` when transitioning a media buy or package to `canceled`
 - Sales agents MAY reject buyer cancellation with error code `NOT_CANCELLABLE`
 - Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
+- Rejection (`rejected` status) is only valid from `pending_activation`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
+- Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, `canceled_by: "seller"`, and `cancellation_reason`.
+- The `canceled` field on update requests uses `"const": true` — only `true` is valid. Sending `canceled: false` fails schema validation. Cancellation is irreversible; there is no "uncancel" operation.
 
 **Package-level lifecycle:**
 
 Packages follow the same pause/cancel pattern as media buys. Additionally:
 - Packages MAY have a `creative_deadline` — after this deadline, creative changes to the package are rejected with `CREATIVE_REJECTED`. When absent, the media buy's `creative_deadline` applies.
 - Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active.
+- When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sales agents MUST NOT auto-transition the media buy to `canceled` — the buyer decides whether to cancel the media buy or add new packages.
 
 ## Tasks
 
@@ -215,7 +219,7 @@ Modify an existing media buy's budget, targeting, or settings.
 - Sales agents MAY reject cancellation with error code `NOT_CANCELLABLE`
 - Orchestrators MAY cancel individual packages by setting `canceled: true` on a package update
 - Sales agents MUST reject creative changes to packages past their `creative_deadline` with error code `CREATIVE_REJECTED`
-- When `canceled: true` is present alongside other fields in an update request, sales agents MUST apply cancellation and MUST ignore all other fields except `cancellation_reason`. Cancellation takes precedence over concurrent mutations.
+- When `canceled: true` is present alongside other fields in an update request, sales agents MUST apply cancellation and MUST ignore all other fields except `cancellation_reason`. Cancellation takes precedence over concurrent mutations. Sales agents SHOULD include a warning in the response `context` when non-cancellation fields were present and ignored.
 - Sales agents MUST return `affected_packages` containing the state of each directly modified package after the update is applied (or the proposed state if pending approval); an empty array is valid when only campaign-level fields (e.g., `paused`, `start_time`) are updated
 - When manual approval is required, sales agents MUST persist the pending update request, MUST return `implementation_date: null`, and MUST NOT return empty `affected_packages`
 - Sales agents SHOULD return the updated media buy state
@@ -269,6 +273,8 @@ Retrieve operational media buy state, including package status, creative approva
 | `completed` / `rejected` / `canceled` | *(empty array)* |
 
 Sellers MAY omit actions based on business rules (e.g., omit `cancel` when contractual obligations prevent it).
+
+`valid_actions` contains only mutation operations — read-only operations (`get_media_buys`, `get_media_buy_delivery`) are always permitted regardless of state. Agents SHOULD use `valid_actions` as an optimization hint but MUST handle `INVALID_STATE` errors gracefully, since `valid_actions` may not reflect real-time state changes from concurrent operations. Absence of an action means "not declared by this seller," not necessarily "forbidden."
 - Sales agents MUST include a media-buy currency and MUST denominate monetary fields consistently (`snapshot.currency` -> `package.currency` -> `media_buy.currency`)
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
 - If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
