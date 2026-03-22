@@ -1196,6 +1196,16 @@ export async function createCheckoutSession(
     }
     sessionParams.billing_address_collection = 'required';
 
+    // For subscriptions, copy org metadata to the subscription so webhook handlers
+    // can resolve the org even if checkout.session.completed hasn't linked the customer yet.
+    if (mode === 'subscription') {
+      sessionParams.subscription_data = {
+        metadata: {
+          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        },
+      };
+    }
+
     // For one-time payments, also create invoices and customers
     // Note: customer_creation is not allowed in subscription mode - Stripe creates customers automatically
     if (mode === 'payment') {

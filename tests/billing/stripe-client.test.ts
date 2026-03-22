@@ -654,4 +654,86 @@ describe('stripe-client', () => {
       expect(mockStripeInstance.customers.create).not.toHaveBeenCalled();
     });
   });
+
+  describe('createCheckoutSession', () => {
+    test('includes subscription_data.metadata with org ID for subscription-mode checkout', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const mockSession = {
+        id: 'cs_test_123',
+        url: 'https://checkout.stripe.com/test',
+      };
+      const mockStripeInstance = {
+        prices: {
+          retrieve: jest.fn<any>().mockResolvedValue({
+            id: 'price_test',
+            recurring: { interval: 'year' },
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: jest.fn<any>().mockResolvedValue(mockSession),
+          },
+        },
+      };
+      StripeMock.mockImplementation(() => mockStripeInstance as any);
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_test',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+        workosOrganizationId: 'org_test_123',
+        workosUserId: 'user_test_456',
+        isPersonalWorkspace: true,
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.subscription_data).toBeDefined();
+      expect(createCall.subscription_data.metadata.workos_organization_id).toBe('org_test_123');
+      expect(createCall.subscription_data.metadata.workos_user_id).toBeUndefined();
+    });
+
+    test('does not include subscription_data for one-time payment checkout', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const mockSession = {
+        id: 'cs_test_456',
+        url: 'https://checkout.stripe.com/test2',
+      };
+      const mockStripeInstance = {
+        prices: {
+          retrieve: jest.fn<any>().mockResolvedValue({
+            id: 'price_onetime',
+            recurring: null,
+          }),
+        },
+        checkout: {
+          sessions: {
+            create: jest.fn<any>().mockResolvedValue(mockSession),
+          },
+        },
+      };
+      StripeMock.mockImplementation(() => mockStripeInstance as any);
+
+      const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await createCheckoutSession({
+        priceId: 'price_onetime',
+        customerEmail: 'test@example.com',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+        workosOrganizationId: 'org_test_123',
+        workosUserId: 'user_test_456',
+        isPersonalWorkspace: false,
+      });
+
+      const createCall = mockStripeInstance.checkout.sessions.create.mock.calls[0][0] as any;
+      expect(createCall.subscription_data).toBeUndefined();
+    });
+  });
 });

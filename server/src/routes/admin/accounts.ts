@@ -52,11 +52,6 @@ export function setupAccountRoutes(
 ): void {
   const workos = config?.workos ?? null;
 
-  // Redirect to manage accounts page
-  pageRouter.get("/accounts", requireAuth, (req, res) => {
-    res.redirect(301, "/admin/accounts");
-  });
-
   // Page route for domain discovery tool
   pageRouter.get(
     "/tools/domain-discovery",
@@ -80,15 +75,6 @@ export function setupAccountRoutes(
         logger.error({ err }, "Error serving data cleanup page");
         res.status(500).send("Internal server error");
       });
-    }
-  );
-
-  // Redirect account detail to manage
-  pageRouter.get(
-    "/accounts/:orgId",
-    requireAuth,
-    (req, res) => {
-      res.redirect(301, `/admin/accounts/${req.params.orgId}`);
     }
   );
 
