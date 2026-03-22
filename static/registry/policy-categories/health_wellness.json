@@ -14,7 +14,7 @@
       "summary": "Advertising Standards Authority enforces EU-derived nutrition and health claims regulations. Claims must be authorized and substantiated."
     }
   ],
-  "commonly_restricted_attributes": ["health_data"],
+  "restricted_attributes": ["health_data"],
   "industries": ["supplements", "fitness", "wellness", "cosmetics"],
   "guidance": "Health and wellness claims face FTC scrutiny even for non-pharmaceutical products. Weight loss, supplement efficacy, and anti-aging claims are high-enforcement areas. Targeting people with health conditions to sell unproven treatments is a particular concern.",
   "related_categories": ["pharmaceutical_advertising"]

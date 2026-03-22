@@ -24,7 +24,7 @@
       "summary": "State-level cannabis advertising rules. Typically require geo-restriction to legal states, age-gating, and health warnings."
     }
   ],
-  "commonly_restricted_attributes": [],
+  "restricted_attributes": [],
   "industries": ["alcohol", "gambling", "cannabis", "tobacco"],
   "guidance": "Age restriction rules vary significantly by jurisdiction and product type. Alcohol age is 21 in the US, 18 in the UK/EU. Gambling legality varies by US state. Cannabis is federally illegal in the US but permitted in some states. Governance agents must cross-reference plan.countries and plan.regions with product-specific age and legality requirements.",
   "related_categories": ["children_directed"]

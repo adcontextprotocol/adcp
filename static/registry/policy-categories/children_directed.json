@@ -24,7 +24,7 @@
       "summary": "Children's Advertising Review Unit self-regulatory guidelines for advertising directed at children under 13."
     }
   ],
-  "commonly_restricted_attributes": [],
+  "restricted_attributes": [],
   "industries": ["entertainment", "toys", "education", "food_beverage"],
   "guidance": "The key distinction is product-directed vs. audience-incidental. A toy company advertising toys is children_directed. A car company whose ad happens to air during a family show is not. COPPA applies based on whether the service is 'directed to children' — the FTC uses a multi-factor test including subject matter, visual content, and the age of models.",
   "related_categories": ["age_restricted"]

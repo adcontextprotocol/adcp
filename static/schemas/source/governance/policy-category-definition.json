@@ -47,9 +47,9 @@
         "additionalProperties": false
       }
     },
-    "commonly_restricted_attributes": {
+    "restricted_attributes": {
       "type": "array",
-      "description": "Restricted attribute categories that regulations in this category commonly prohibit. Informational — the plan's restricted_attributes field is authoritative.",
+      "description": "Restricted attribute categories that regulations in this category prohibit for targeting. Governance agents enforce these when the category is active on a plan — if a plan declares policy_categories: ['fair_housing'], the governance agent restricts targeting on these attributes.",
       "items": {
         "$ref": "/schemas/enums/restricted-attribute.json"
       }

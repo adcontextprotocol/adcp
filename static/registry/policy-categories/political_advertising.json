@@ -19,7 +19,7 @@
       "summary": "Requires imprint information on digital political advertising identifying the promoter."
     }
   ],
-  "commonly_restricted_attributes": ["political_opinions"],
+  "restricted_attributes": ["political_opinions"],
   "industries": [],
   "guidance": "Any organization can run political ads — this is not industry-specific. Issue advocacy (e.g., 'support clean energy') is political advertising even when run by a corporate brand. The EU DSA prohibits targeting political ads using GDPR Article 9 special categories, which is stricter than US rules.",
   "related_categories": []
