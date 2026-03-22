@@ -37,6 +37,11 @@ import {
   type EscalationCategory,
 } from "../db/escalation-db.js";
 import * as imageDb from "../db/addie-image-db.js";
+import {
+  listInsights,
+  getInsightByWeek,
+} from "../db/conversation-insights-db.js";
+import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -2566,6 +2571,52 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.json({ misses });
     } catch (error) {
       logger.error({ err: error }, "Error fetching image misses");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // =========================================================================
+  // CONVERSATION INSIGHTS
+  // =========================================================================
+
+  // GET /api/admin/addie/conversation-insights - List past insights
+  apiRouter.get("/conversation-insights", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 12;
+      const limit = Math.max(1, Math.min(rawLimit || 12, 52));
+      const insights = await listInsights(limit);
+      res.json({ insights });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching conversation insights");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/addie/conversation-insights/:weekStart - Get specific week
+  apiRouter.get("/conversation-insights/:weekStart", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const weekStart = req.params.weekStart;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        return res.status(400).json({ error: "weekStart must be in YYYY-MM-DD format" });
+      }
+      const insight = await getInsightByWeek(weekStart);
+      if (!insight) {
+        return res.status(404).json({ error: "No insights found for this week" });
+      }
+      res.json(insight);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching conversation insight");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/admin/addie/conversation-insights/run - Manually trigger
+  apiRouter.post("/conversation-insights/run", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await runConversationInsightsJob({ force: true });
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, "Error running conversation insights");
       res.status(500).json({ error: "Internal server error" });
     }
   });

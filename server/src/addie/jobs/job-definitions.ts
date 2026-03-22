@@ -30,6 +30,7 @@ import { runGeoContentPlannerJob } from './geo-content-planner.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
 import { runSocialPostIdeasJob } from './social-post-ideas.js';
+import { runConversationInsightsJob } from './conversation-insights.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
@@ -252,6 +253,16 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.posted || r.skipped,
   });
 
+  // Conversation insights - weekly analysis of Addie conversations
+  jobScheduler.register({
+    name: 'conversation-insights',
+    description: 'Weekly conversation insights analysis',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 8, unit: 'minutes' },
+    runner: runConversationInsightsJob,
+    shouldLogResult: (r) => r.generated || r.posted,
+  });
+
   jobScheduler.register({
     name: 'slack-auto-link',
     description: 'Reconcile unmapped Slack users to website accounts by email',
@@ -364,6 +375,7 @@ export const JOB_NAMES = {
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
+  CONVERSATION_INSIGHTS: 'conversation-insights',
   SLACK_AUTO_LINK: 'slack-auto-link',
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   EVENT_REMINDER: 'event-reminder',
