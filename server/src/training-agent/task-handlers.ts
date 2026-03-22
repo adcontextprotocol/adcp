@@ -341,6 +341,7 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Filter to specific media buy IDs' },
         buyer_refs: { type: 'array', items: { type: 'string' }, description: 'Filter to specific buyer references' },
+        include_history: { type: 'integer', minimum: 0, maximum: 1000, description: 'Include the last N revision history entries per media buy. 0 or omit to exclude.' },
         status_filter: {
           description: 'Filter by status. Defaults to ["active"] when no IDs provided.',
           oneOf: [
@@ -420,7 +421,7 @@ const TOOLS = [
         revision: { type: 'integer', description: 'Expected revision for optimistic concurrency. Seller rejects with CONFLICT on mismatch.' },
         paused: { type: 'boolean', description: 'Pause (true) or resume (false) the entire media buy' },
         canceled: { type: 'boolean', description: 'Cancel the entire media buy (irreversible, must be true)' },
-        cancellation_reason: { type: 'string', description: 'Reason for cancellation' },
+        cancellation_reason: { type: 'string', maxLength: 500, description: 'Reason for cancellation' },
         packages: { type: 'array' },
         end_time: { type: 'string' },
       },
@@ -609,7 +610,7 @@ interface PackageInput {
   format_ids?: FormatID[];
 }
 
-function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; status: string; confirmed_at: string; creative_deadline: string; revision: number; packages: unknown[]; sandbox: boolean; buyer_campaign_ref?: string } | { errors: TaskError[] } {
+function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; status: string; confirmed_at: string; creative_deadline: string; revision: number; valid_actions: string[]; packages: unknown[]; sandbox: boolean; buyer_campaign_ref?: string } | { errors: TaskError[] } {
   const request = args as unknown as Partial<CreateMediaBuyRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
@@ -753,6 +754,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     confirmedAt: now,
     revision: 1,
     creativeDeadline,
+    history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Created with ${createdPackages.length} package(s), budget $${createdPackages.reduce((s, p) => s + p.budget, 0)}` }],
     createdAt: now,
     updatedAt: now,
   };
@@ -767,6 +769,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     creative_deadline: creativeDeadline,
     revision: 1,
     status: deriveStatus(mediaBuy),
+    valid_actions: validActionsForStatus(deriveStatus(mediaBuy)),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       buyer_ref: pkg.buyerRef,
@@ -794,6 +797,7 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
   const statusFilter = rawStatusFilter
     ? (Array.isArray(rawStatusFilter) ? rawStatusFilter : [rawStatusFilter])
     : (!filterIds?.length && !buyerRefs?.length ? ['active'] : undefined);
+  const includeHistory = (args.include_history as number | undefined) || 0;
 
   let buys = Array.from(session.mediaBuys.values());
   if (filterIds?.length) {
@@ -820,11 +824,21 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
         end_time: mb.endTime,
         confirmed_at: mb.confirmedAt,
         revision: mb.revision,
+        created_at: mb.createdAt,
+        updated_at: mb.updatedAt,
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
         ...(mb.canceledAt && { canceled_at: mb.canceledAt }),
         ...(mb.canceledBy && { canceled_by: mb.canceledBy }),
         ...(mb.cancellationReason && { cancellation_reason: mb.cancellationReason }),
         valid_actions: validActionsForStatus(status),
+        ...(includeHistory > 0 && { history: mb.history.slice(-includeHistory).reverse().map(h => ({
+          revision: h.revision,
+          timestamp: h.timestamp,
+          actor: h.actor,
+          action: h.action,
+          ...(h.summary && { summary: h.summary }),
+          ...(h.packageId && { package_id: h.packageId }),
+        })) }),
         packages: mb.packages.map(pkg => ({
           package_id: pkg.packageId,
           buyer_ref: pkg.buyerRef,
@@ -1097,7 +1111,7 @@ interface PackageUpdate {
   end_time?: string;
 }
 
-function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; revision: number; sandbox: boolean; status?: string; implementation_date?: string; affected_packages?: unknown[] } | { errors: TaskError[] } {
+function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; revision: number; valid_actions: string[]; sandbox: boolean; status?: string; implementation_date?: string; affected_packages?: unknown[] } | { errors: TaskError[] } {
   const request = args as unknown as Partial<UpdateMediaBuyRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = (args.media_buy_id || args.buyer_ref) as string;
@@ -1126,21 +1140,25 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     };
   }
 
+  // Increment revision once per update call, before any mutations
+  mb.revision++;
+  const updateTimestamp = new Date().toISOString();
+
   // Handle media buy cancellation — takes precedence over all other fields
   if (args.canceled === true) {
-    const now = new Date().toISOString();
     mb.status = 'canceled';
-    mb.canceledAt = now;
+    mb.canceledAt = updateTimestamp;
     mb.canceledBy = 'buyer';
     mb.cancellationReason = (args.cancellation_reason as string) || undefined;
-    mb.revision++;
-    mb.updatedAt = now;
+    mb.updatedAt = updateTimestamp;
+    mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'canceled', summary: mb.cancellationReason || 'Media buy canceled' });
     return {
       media_buy_id: mb.mediaBuyId,
       buyer_ref: mb.buyerRef,
       status: 'canceled' as const,
       revision: mb.revision,
-      implementation_date: now,
+      valid_actions: validActionsForStatus('canceled'),
+      implementation_date: updateTimestamp,
       affected_packages: [],
       sandbox: true,
     };
@@ -1149,6 +1167,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   // Handle pause/resume
   if (args.paused !== undefined) {
     mb.status = args.paused ? 'paused' : 'active';
+    mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: args.paused ? 'paused' : 'resumed' });
   }
 
   // Update end_time with validation
@@ -1157,7 +1176,9 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     if (isNaN(new Date(newEnd).getTime())) {
       return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${newEnd}". Use ISO 8601 format.` }] };
     }
+    const oldEnd = mb.endTime;
     mb.endTime = newEnd;
+    mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'updated_dates', summary: `End time changed from ${oldEnd} to ${newEnd}` });
   }
 
   // Update packages
@@ -1179,16 +1200,16 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
       // Package cancellation takes precedence
       if (update.canceled === true) {
-        const now = new Date().toISOString();
         pkg.canceled = true;
-        pkg.canceledAt = now;
+        pkg.canceledAt = updateTimestamp;
         pkg.canceledBy = 'buyer';
         pkg.cancellationReason = (update.cancellation_reason as string) || undefined;
+        mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'package_canceled', packageId: pkg.packageId, summary: pkg.cancellationReason || `Package ${pkg.packageId} canceled` });
         affectedPackages.push({
           package_id: pkg.packageId,
           buyer_ref: pkg.buyerRef,
           canceled: true,
-          canceled_at: now,
+          canceled_at: updateTimestamp,
           canceled_by: 'buyer',
           ...(pkg.cancellationReason && { cancellation_reason: pkg.cancellationReason }),
         });
@@ -1199,9 +1220,16 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         if (update.budget < 0) {
           return { errors: [{ code: 'VALIDATION_ERROR', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
         }
+        const oldBudget = pkg.budget;
         pkg.budget = update.budget;
+        if (oldBudget !== update.budget) {
+          mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'updated_budget', packageId: pkg.packageId, summary: `Budget changed from $${oldBudget} to $${update.budget}` });
+        }
       }
-      if (update.paused !== undefined) pkg.paused = update.paused;
+      if (update.paused !== undefined) {
+        pkg.paused = update.paused;
+        mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: update.paused ? 'package_paused' : 'package_resumed', packageId: pkg.packageId });
+      }
       if (update.end_time) {
         if (isNaN(new Date(update.end_time).getTime())) {
           return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time for package ${pkgId}: "${update.end_time}".` }] };
@@ -1220,16 +1248,15 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     }
   }
 
-  const now = new Date().toISOString();
-  mb.revision++;
-  mb.updatedAt = now;
+  mb.updatedAt = updateTimestamp;
 
   return {
     media_buy_id: mb.mediaBuyId,
     buyer_ref: mb.buyerRef,
     ...(args.paused !== undefined || args.canceled !== undefined ? { status: deriveStatus(mb) } : {}),
     revision: mb.revision,
-    implementation_date: now,
+    valid_actions: validActionsForStatus(deriveStatus(mb)),
+    implementation_date: updateTimestamp,
     affected_packages: affectedPackages,
     sandbox: true,
   };

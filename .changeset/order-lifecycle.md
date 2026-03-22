@@ -12,6 +12,7 @@ Add order lifecycle management to the Media Buy Protocol.
 - `valid_actions` on get_media_buys response — seller declares what actions are permitted in the current state so agents don't need to internalize the state machine
 - `get_media_buys` MCP tool added to Addie for reading media buy state, creative approvals, and delivery snapshots
 - `revision` number on media buys for optimistic concurrency — callers pass in update requests, sellers reject on mismatch
+- `include_history` on get_media_buys request — opt-in revision history per media buy with actor, action, summary, and package attribution
 - `status` field on update_media_buy response to confirm state transitions
 - Formal state transition diagram and normative rules in specification
 - Valid actions mapping table in specification and get_media_buys docs

@@ -45,6 +45,13 @@
       "description": "When true, include a near-real-time delivery snapshot for each package. Snapshots reflect the latest available entity-level stats from the platform (e.g., updated every ~15 minutes on GAM, ~1 hour on batch-only platforms). The staleness_seconds field on each snapshot indicates data freshness. If a snapshot cannot be returned, package.snapshot_unavailable_reason explains why. Defaults to false.",
       "default": false
     },
+    "include_history": {
+      "type": "integer",
+      "description": "When present, include the last N revision history entries for each media buy (returns min(N, available entries)). Each entry contains revision number, timestamp, actor, and a summary of what changed. Omit or set to 0 to exclude history (default). Recommended: 5-10 for monitoring, 50+ for audit.",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 0
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json",
       "description": "Cursor-based pagination controls. Strongly recommended when querying broad scopes (for example, all active media buys in an account)."

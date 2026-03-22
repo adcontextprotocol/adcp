@@ -26,6 +26,10 @@
           "$ref": "/schemas/core/account.json",
           "description": "Account billed for this media buy. Includes advertiser, billing proxy (if any), and rate card applied."
         },
+        "status": {
+          "$ref": "/schemas/enums/media-buy-status.json",
+          "description": "Initial media buy status. Either 'active' (immediate activation) or 'pending_activation' (awaiting platform setup)."
+        },
         "confirmed_at": {
           "type": "string",
           "format": "date-time",
@@ -40,6 +44,14 @@
           "type": "integer",
           "description": "Initial revision number for this media buy. Use in subsequent update_media_buy requests for optimistic concurrency.",
           "minimum": 1
+        },
+        "valid_actions": {
+          "type": "array",
+          "description": "Actions the buyer can perform on this media buy after creation. Saves a round-trip to get_media_buys.",
+          "items": {
+            "type": "string",
+            "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "sync_creatives"]
+          }
         },
         "packages": {
           "type": "array",

@@ -22,6 +22,7 @@ Retrieve the current operational state of media buys: configuration, creative ap
 | `buyer_refs` | string[] | No* | Array of buyer reference IDs |
 | `status_filter` | string \| string[] | No | Status filter: `"pending_activation"`, `"active"`, `"paused"`, `"completed"`, `"rejected"`, `"canceled"`. Defaults to `["active"]` only when both `media_buy_ids` and `buyer_refs` are omitted. |
 | `include_snapshot` | boolean | No | When true, include near-real-time delivery snapshots for each package. Defaults to `false`. |
+| `include_history` | integer | No | Include the last N revision history entries per media buy (returns min(N, available)). 0 or omit to exclude. Max 1000. |
 | `pagination` | object | No | Cursor-based pagination controls (`max_results`, `cursor`) for broad queries. |
 
 *Either `media_buy_ids` or `buyer_refs` can be provided. If neither is provided, the query is scope-based and uses `status_filter` + `pagination`.
@@ -55,6 +56,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `cancellation_reason` | Reason for cancellation (present only when `status` is `canceled`) |
 | `revision` | Current revision number. Pass in `update_media_buy` for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
+| `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
 | `packages` | Array of packages with creative status and optional snapshots |
 
 ### Package Object
@@ -87,6 +89,19 @@ Returns an array of media buys with current status, creative approval state, and
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 
 Creative revisions are represented as `approval_status: "rejected"` with a specific `rejection_reason`. There is no package-level `input-required` status for creative edits; upload corrected assets via [`sync_creatives`](/docs/creative/task-reference/sync_creatives).
+
+### History Entry Object
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `revision` | Yes | Revision number after this change was applied |
+| `timestamp` | Yes | ISO 8601 timestamp when this change occurred |
+| `action` | Yes | What happened: `created`, `activated`, `paused`, `resumed`, `canceled`, `rejected`, `completed`, `updated_budget`, `updated_dates`, `updated_packages`, `package_canceled`, `package_paused`, `package_resumed` |
+| `actor` | No | Identity of who made the change (server-derived from auth context, not caller-provided) |
+| `summary` | No | Human-readable description (e.g., "Budget changed from $5,000 to $7,500 on pkg_abc") |
+| `package_id` | No | Package affected, when the change targeted a specific package |
+
+History entries are **append-only** — sellers MUST NOT modify or delete previously emitted entries. Callers MAY cache entries by revision number.
 
 ### Snapshot Object
 

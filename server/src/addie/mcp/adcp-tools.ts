@@ -629,7 +629,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
   {
     name: 'get_media_buys',
     description:
-      'Retrieve media buy state: status, creative approvals, pending formats, and optional delivery snapshots. Use to check current status before updates or cancellations.',
+      'Retrieve media buy state: status, valid_actions, creative approvals, pending formats, and optional delivery snapshots or revision history. Not for detailed delivery metrics or reporting — use get_media_buy_delivery for that.',
     usage_hints:
       'use when the user wants to check campaign status, see creative approval state, find out what actions are available, or monitor media buy lifecycle',
     input_schema: {
@@ -674,6 +674,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         include_snapshot: {
           type: 'boolean',
           description: 'Include near-real-time delivery snapshots per package (impressions, spend, pacing).',
+        },
+        include_history: {
+          type: 'integer',
+          description: 'Include the last N revision history entries per media buy. Each entry has revision, timestamp, actor, action, and summary. 0 or omit to exclude. Recommended: 5-10 for monitoring, 50+ for audit.',
         },
         pagination: {
           type: 'object',

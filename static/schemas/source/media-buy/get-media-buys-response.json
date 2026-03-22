@@ -105,6 +105,66 @@
               ]
             }
           },
+          "history": {
+            "type": "array",
+            "description": "Revision history entries, most recent first. Only present when include_history > 0 in the request. Each entry represents a state change or update to the media buy. Entries are append-only: sellers MUST NOT modify or delete previously emitted history entries. Callers MAY cache entries by revision number. Returns min(N, available entries) when include_history exceeds the total.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "revision": {
+                  "type": "integer",
+                  "description": "Revision number after this change was applied.",
+                  "minimum": 1
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When this change occurred."
+                },
+                "actor": {
+                  "type": "string",
+                  "description": "Identity of who made the change — derived from authentication context, not caller-provided. Format is seller-defined (e.g., agent URL, user email, API key label)."
+                },
+                "action": {
+                  "type": "string",
+                  "description": "What happened.",
+                  "enum": [
+                    "created",
+                    "activated",
+                    "paused",
+                    "resumed",
+                    "canceled",
+                    "rejected",
+                    "completed",
+                    "updated_budget",
+                    "updated_dates",
+                    "updated_packages",
+                    "package_canceled",
+                    "package_paused",
+                    "package_resumed"
+                  ]
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "Human-readable summary of the change (e.g., 'Budget increased from $5,000 to $7,500 on pkg_abc').",
+                  "maxLength": 500
+                },
+                "package_id": {
+                  "type": "string",
+                  "description": "Package affected, when the change targeted a specific package."
+                },
+                "ext": {
+                  "$ref": "/schemas/core/ext.json"
+                }
+              },
+              "required": [
+                "revision",
+                "timestamp",
+                "action"
+              ],
+              "additionalProperties": true
+            }
+          },
           "packages": {
             "type": "array",
             "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots",

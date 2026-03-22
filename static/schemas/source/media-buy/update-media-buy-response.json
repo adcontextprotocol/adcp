@@ -42,6 +42,14 @@
             "$ref": "/schemas/core/package.json"
           }
         },
+        "valid_actions": {
+          "type": "array",
+          "description": "Actions the buyer can perform after this update. Saves a round-trip to get_media_buys.",
+          "items": {
+            "type": "string",
+            "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "sync_creatives"]
+          }
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."

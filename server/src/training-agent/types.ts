@@ -143,6 +143,15 @@ export interface BrandRef {
   name?: string;
 }
 
+export interface HistoryEntry {
+  revision: number;
+  timestamp: string;
+  actor: string;
+  action: string;
+  summary?: string;
+  packageId?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   buyerRef: string;
@@ -160,6 +169,7 @@ export interface MediaBuyState {
   canceledBy?: 'buyer' | 'seller';
   cancellationReason?: string;
   creativeDeadline?: string;
+  history: HistoryEntry[];
   createdAt: string;
   updatedAt: string;
 }
