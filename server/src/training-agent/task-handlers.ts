@@ -333,13 +333,21 @@ const TOOLS = [
   },
   {
     name: 'get_media_buys',
-    description: 'List media buys for the current session/account. Returns buy configuration and status only — not delivery metrics (use get_media_buy_delivery for that). Only returns buys created in the current session; buys from other sessions are not visible.',
+    description: 'List media buys for the current session/account. Returns status, valid_actions, creative approvals, and configuration. Not for delivery metrics (use get_media_buy_delivery). Only returns buys from the current session.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
-        media_buy_ids: { type: 'array', items: { type: 'string' } },
+        media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Filter to specific media buy IDs' },
+        buyer_refs: { type: 'array', items: { type: 'string' }, description: 'Filter to specific buyer references' },
+        status_filter: {
+          description: 'Filter by status. Defaults to ["active"] when no IDs provided.',
+          oneOf: [
+            { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] },
+            { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] } },
+          ],
+        },
       },
     },
   },
@@ -402,7 +410,7 @@ const TOOLS = [
   {
     name: 'update_media_buy',
     description: 'Update an existing media buy. Supports pause/resume, cancellation (media buy or individual packages), budget, end_time, and optimistic concurrency via revision. Cannot add new packages or change product_id/pricing_option_id.',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -612,13 +620,13 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   if (!packages?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'packages array is required and must have at least one item' }] as TaskError[],
+      errors: [{ code: 'VALIDATION_ERROR', message: 'packages array is required and must have at least one item' }] as TaskError[],
     };
   }
 
   if (session.mediaBuys.size >= MAX_MEDIA_BUYS_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
+      errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
     };
   }
 
@@ -626,13 +634,13 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const buyStart = args.start_time as string;
   const buyEnd = args.end_time as string;
   if (buyStart !== 'asap' && isNaN(new Date(buyStart).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
   }
   if (isNaN(new Date(buyEnd).getTime())) {
-    return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
   }
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
-    return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] as TaskError[] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'start_time must be before end_time' }] as TaskError[] };
   }
 
   // Validate all packages and collect errors before returning
@@ -645,7 +653,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const productId = pkg.product_id;
     const product = productMap.get(productId);
     if (!product) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Product not found: ${productId}` });
+      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Product not found: ${productId}` });
       continue;
     }
 
@@ -654,7 +662,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const pricing = pricingOptions?.find(po => po.pricing_option_id === pricingOptionId);
     if (!pricing) {
       errors.push({
-        code: 'validation_error',
+        code: 'VALIDATION_ERROR',
         message: `${pkgLabel}: Pricing option not found: ${pricingOptionId}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
       });
       continue;
@@ -664,7 +672,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     // Check negative budget
     if (budget < 0) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Budget must be non-negative, got ${budget}` });
+      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Budget must be non-negative, got ${budget}` });
     }
 
     // Check bid vs floor price
@@ -672,7 +680,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const bidPrice = pkg.bid_price;
     if (floorPrice !== undefined && bidPrice !== undefined && bidPrice < floorPrice) {
       errors.push({
-        code: 'validation_error',
+        code: 'VALIDATION_ERROR',
         message: `${pkgLabel}: Bid price $${bidPrice} is below floor price of $${floorPrice} for pricing option ${pricingOptionId}`,
       });
     }
@@ -681,7 +689,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const minSpend = pricing.min_spend_per_package;
     if (minSpend && budget < minSpend) {
       errors.push({
-        code: 'validation_error',
+        code: 'VALIDATION_ERROR',
         message: `${pkgLabel}: Budget $${budget} is below minimum spend of $${minSpend} for pricing option ${pricingOptionId}`,
       });
     }
@@ -691,10 +699,10 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     // Validate package-level dates if overridden
     if (pkg.start_time && startTime !== 'asap' && isNaN(new Date(startTime).getTime())) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Invalid start_time: "${startTime}". Use ISO 8601 format or "asap".` });
+      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Invalid start_time: "${startTime}". Use ISO 8601 format or "asap".` });
     }
     if (pkg.end_time && isNaN(new Date(endTime).getTime())) {
-      errors.push({ code: 'validation_error', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
+      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
     // Don't build package state if there are any validation errors (atomic create)
@@ -781,10 +789,21 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
   const request = args as unknown as Partial<GetMediaBuysRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = args.media_buy_ids as string[] | undefined;
+  const buyerRefs = args.buyer_refs as string[] | undefined;
+  const rawStatusFilter = args.status_filter as string | string[] | undefined;
+  const statusFilter = rawStatusFilter
+    ? (Array.isArray(rawStatusFilter) ? rawStatusFilter : [rawStatusFilter])
+    : (!filterIds?.length && !buyerRefs?.length ? ['active'] : undefined);
 
   let buys = Array.from(session.mediaBuys.values());
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
+  }
+  if (buyerRefs?.length) {
+    buys = buys.filter(b => buyerRefs.includes(b.buyerRef));
+  }
+  if (statusFilter) {
+    buys = buys.filter(b => statusFilter.includes(deriveStatus(b)));
   }
 
   return {
@@ -842,7 +861,7 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
 
   if (!mb) {
     return {
-      errors: [{ code: 'not_found', message: `Media buy not found: ${mediaBuyId}` }],
+      errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
     };
   }
 
@@ -860,8 +879,8 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   let totalClicks = 0;
 
   const byPackage = mb.packages.map(pkg => {
-    // Paused packages stop accruing delivery
-    if (pkg.paused) {
+    // Paused or canceled packages stop accruing delivery
+    if (pkg.paused || pkg.canceled) {
       const { model, rate } = derivePricing(pkg, productMap);
       return {
         package_id: pkg.packageId,
@@ -963,13 +982,13 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
 
   if (!creatives?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'creatives array is required' }] as TaskError[],
+      errors: [{ code: 'VALIDATION_ERROR', message: 'creatives array is required' }] as TaskError[],
     };
   }
 
   if (session.creatives.size + creatives.length > MAX_CREATIVES_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
+      errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
   }
 
@@ -985,7 +1004,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     if (formatId?.id && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
-          code: 'validation_error',
+          code: 'VALIDATION_ERROR',
           message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
         }] as TaskError[],
       };
@@ -1264,7 +1283,7 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
 
   if (!signalSpec && !signalIds?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'Either signal_spec or signal_ids is required' }],
+      errors: [{ code: 'VALIDATION_ERROR', message: 'Either signal_spec or signal_ids is required' }],
     };
   }
 
@@ -1436,10 +1455,10 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
-    return { errors: [{ code: 'validation_error', message: 'signal_agent_segment_id is required' }] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'signal_agent_segment_id is required' }] };
   }
   if (!destinations?.length) {
-    return { errors: [{ code: 'validation_error', message: 'destinations array is required' }] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'destinations array is required' }] };
   }
 
   // Find the signal in our catalog
@@ -1542,7 +1561,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
 
   if (!mediaBuyIds?.length && !buyerRefs?.length && !creativeIds?.length) {
     return {
-      errors: [{ code: 'validation_error', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
+      errors: [{ code: 'VALIDATION_ERROR', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
     };
   }
 
