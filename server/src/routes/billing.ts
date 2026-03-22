@@ -901,11 +901,11 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       if ('deleted' in customerRaw && customerRaw.deleted) {
         return res.status(404).json({ error: "Customer already deleted" });
       }
-      const customer = customerRaw as Stripe.Customer;
+      const cust = customerRaw as Stripe.Customer;
 
       // Check for active subscriptions
-      if (customer.subscriptions && customer.subscriptions.data.length > 0) {
-        const activeSubscriptions = customer.subscriptions.data.filter(
+      if (cust.subscriptions && cust.subscriptions.data.length > 0) {
+        const activeSubscriptions = cust.subscriptions.data.filter(
           (s) => s.status === "active" || s.status === "trialing"
         );
         if (activeSubscriptions.length > 0) {
@@ -1093,7 +1093,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       if ('deleted' in customerRaw2 && customerRaw2.deleted) {
         return null;
       }
-      const customer = customerRaw2 as Stripe.Customer;
+      const cust = customerRaw2 as Stripe.Customer;
 
       // Count paid invoices and total paid
       let paidInvoiceCount = 0;
@@ -1120,18 +1120,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       }
 
       const activeSubscriptions =
-        customer.subscriptions?.data.filter((s) => s.status === "active" || s.status === "trialing").length ?? 0;
+        cust.subscriptions?.data.filter((s) => s.status === "active" || s.status === "trialing").length ?? 0;
 
-      const hasPaymentMethod = !!customer.default_source || !!customer.invoice_settings?.default_payment_method;
+      const hasPaymentMethod = !!cust.default_source || !!cust.invoice_settings?.default_payment_method;
 
       // Customer has activity if: active subs, open invoices, or paid invoices
       const hasActivity = activeSubscriptions > 0 || openInvoiceCount > 0 || paidInvoiceCount > 0;
 
       return {
         customer_id: customerId,
-        name: customer.name ?? null,
-        email: customer.email ?? null,
-        created: customer.created,
+        name: cust.name ?? null,
+        email: cust.email ?? null,
+        created: cust.created,
         has_payment_method: hasPaymentMethod,
         active_subscriptions: activeSubscriptions,
         open_invoice_count: openInvoiceCount,

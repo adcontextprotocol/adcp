@@ -46,8 +46,8 @@ describe('decodeHtmlEntities', () => {
 
   it('handles null and empty strings', () => {
     expect(decodeHtmlEntities('')).toBe('');
-    expect(decodeHtmlEntities(null)).toBe(null);
-    expect(decodeHtmlEntities(undefined)).toBe(undefined);
+    expect(decodeHtmlEntities(null as any)).toBe(null);
+    expect(decodeHtmlEntities(undefined as any)).toBe(undefined);
   });
 
   it('preserves strings without entities', () => {

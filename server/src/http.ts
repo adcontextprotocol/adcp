@@ -22,6 +22,7 @@ import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
+import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -3127,29 +3128,17 @@ export class HTTPServer {
               eventType: event.type,
             }, 'Processing subscription event');
 
+            // Resolve org once for all subscription event types
+            const customerId = subscription.customer as string;
+            const org = await resolveOrgForStripeCustomer({
+              customerId,
+              stripe,
+              orgDb,
+              subscription,
+            });
+
             // For subscription created, record agreement acceptance atomically
             if (event.type === 'customer.subscription.created') {
-              const customerId = subscription.customer as string;
-
-              // Try to find org by stripe_customer_id first
-              let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
-              // If not found, look up by workos_organization_id in Stripe customer metadata
-              if (!org) {
-                logger.info({ customerId }, 'Org not found by customer ID, checking Stripe metadata');
-                const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-                const workosOrgId = customer.metadata?.workos_organization_id;
-
-                if (workosOrgId) {
-                  org = await orgDb.getOrganization(workosOrgId);
-                  if (org) {
-                    // Link the Stripe customer ID to the organization
-                    await orgDb.setStripeCustomerId(workosOrgId, customerId);
-                    logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization');
-                  }
-                }
-              }
-
               if (org) {
                 // Get agreement info from organization's pending fields
                 // (set when user checked the agreement checkbox)
@@ -3360,15 +3349,12 @@ export class HTTPServer {
             // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
-              const customerId = subscription.customer as string;
-              const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
               if (org) {
                 // Calculate period end from subscription or invoice
                 let periodEnd: Date | null = null;
 
-                if ((subscription as any).current_period_end) {
-                  periodEnd = new Date((subscription as any).current_period_end * 1000);
+                if (subscription.current_period_end) {
+                  periodEnd = new Date(subscription.current_period_end * 1000);
                 }
 
                 // Extract pricing details from subscription items
@@ -3513,24 +3499,12 @@ export class HTTPServer {
             // Get organization from customer ID
             const customerId = invoice.customer as string;
 
-            // Try to find org by stripe_customer_id first
-            let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
-            // If not found, look up by workos_organization_id in Stripe customer metadata
-            if (!org) {
-              logger.info({ customerId, invoiceId: invoice.id }, 'Org not found by customer ID, checking Stripe metadata');
-              const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-              const workosOrgId = customer.metadata?.workos_organization_id;
-
-              if (workosOrgId) {
-                org = await orgDb.getOrganization(workosOrgId);
-                if (org) {
-                  // Link the Stripe customer ID to the organization
-                  await orgDb.setStripeCustomerId(workosOrgId, customerId);
-                  logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization from invoice webhook');
-                }
-              }
-            }
+            let org = await resolveOrgForStripeCustomer({
+              customerId,
+              stripe,
+              orgDb,
+              invoice,
+            });
 
             if (!org) {
               logger.warn({
