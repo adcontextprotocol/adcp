@@ -31,7 +31,7 @@ import type {
   GetCreativeDeliveryRequest,
 } from '@adcp/client';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, AccountRef, BrandRef } from './types.js';
-import { buildCatalog } from './product-factory.js';
+import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
@@ -227,6 +227,7 @@ function validActionsForStatus(status: string): string[] {
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: Partial<Format>[] | null = null;
+let cachedProposals: import('@adcp/client').Proposal[] | null = null;
 
 function getCatalog(): CatalogProduct[] {
   if (!cachedCatalog) cachedCatalog = buildCatalog();
@@ -240,10 +241,16 @@ function getFormats(): Partial<Format>[] {
   return cachedFormats;
 }
 
+function getProposals(): import('@adcp/client').Proposal[] {
+  if (!cachedProposals) cachedProposals = buildProposals(getCatalog());
+  return cachedProposals;
+}
+
 /** Invalidate cached catalog/formats (for tests or hot-reload) */
 export function invalidateCache(): void {
   cachedCatalog = null;
   cachedFormats = null;
+  cachedProposals = null;
 }
 
 // ── Shared schema fragments ──────────────────────────────────────
@@ -491,7 +498,7 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   const filters = args.filters as { channels?: string[]; delivery_type?: string } | undefined;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let products: Partial<Product>[] = getCatalog().map(cp => ({ ...cp.product }));
+  let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
   // Apply filters
   if (filters) {
@@ -573,10 +580,38 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     }
   }
 
-  // Store context for refine
-  session.lastGetProductsContext = { products };
+  // Brief mode only: complete proposals by pulling in missing allocated products.
+  // This prevents keyword capping from accidentally breaking proposals.
+  const productIds = new Set(products.map(p => p.product_id));
+  if (buyingMode === 'brief') {
+    const catalogById = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    for (const proposal of getProposals()) {
+      const missing = proposal.allocations.filter(a => !productIds.has(a.product_id));
+      const present = proposal.allocations.filter(a => productIds.has(a.product_id));
+      if (present.length > 0 && missing.length > 0) {
+        for (const alloc of missing) {
+          const product = catalogById.get(alloc.product_id);
+          if (product) {
+            products.push({ ...product });
+            productIds.add(alloc.product_id);
+          }
+        }
+      }
+    }
+  }
 
-  return { products, sandbox: true };
+  const proposals = getProposals().filter(proposal =>
+    proposal.allocations.every(a => productIds.has(a.product_id)),
+  );
+
+  // Store context for refine
+  session.lastGetProductsContext = { products, proposals };
+
+  return {
+    products,
+    ...(proposals.length > 0 && { proposals }),
+    sandbox: true,
+  };
 }
 
 function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): { formats: Partial<Format>[]; sandbox: boolean } {
@@ -625,8 +660,49 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id!, cp.product]));
 
+  const req = request as Record<string, unknown> & Partial<CreateMediaBuyRequest>;
+
+  // Proposal-based creation: expand proposal allocations into packages
+  if (req.proposal_id && !req.packages?.length) {
+    const proposal = getProposals().find(p => p.proposal_id === req.proposal_id);
+    if (!proposal) {
+      return {
+        errors: [{ code: 'VALIDATION_ERROR', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
+      };
+    }
+    const totalBudget = (req as Record<string, unknown> & { total_budget?: { amount?: number } }).total_budget?.amount;
+    if (!totalBudget) {
+      return {
+        errors: [{ code: 'VALIDATION_ERROR', message: 'total_budget.amount is required when using proposal_id' }] as TaskError[],
+      };
+    }
+    req.packages = proposal.allocations.map((alloc, i) => {
+      const product = productMap.get(alloc.product_id);
+      const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
+      const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
+
+      let bidPrice: number | undefined;
+      if (pricing && pricing.pricing_model !== 'cpa') {
+        const po = pricing as unknown as Record<string, unknown>;
+        const hasFixed = po.fixed_price !== undefined;
+        if (!hasFixed) {
+          const pg = po.price_guidance as Record<string, number> | undefined;
+          bidPrice = pg?.p50 ?? (po.floor_price as number | undefined);
+        }
+      }
+
+      return {
+        product_id: alloc.product_id,
+        pricing_option_id: pricingOptionId,
+        budget: Math.round(totalBudget * alloc.allocation_percentage / 100),
+        buyer_ref: `proposal-${proposal.proposal_id}-${i + 1}`,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+      };
+    }) as unknown as typeof req.packages;
+  }
+
   const buyerRef = args.buyer_ref as string;
-  const packages = args.packages as PackageInput[] | undefined;
+  const packages = (req.packages || args.packages) as PackageInput[] | undefined;
 
   if (!packages?.length) {
     return {
@@ -753,8 +829,8 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     mediaBuyId,
     buyerRef,
     buyerCampaignRef: args.buyer_campaign_ref as string | undefined,
-    accountRef: args.account as AccountRef,
-    brandRef: args.brand as BrandRef | undefined,
+    accountRef: request.account as MediaBuyState['accountRef'],
+    brandRef: request.brand as MediaBuyState['brandRef'],
     status: 'active',
     currency: 'USD',
     packages: createdPackages,

@@ -1352,6 +1352,7 @@ async function handleUserMessage({
           activeToolTaskIds.push(taskId);
           // Show tool execution as an in-progress task in the streamed message
           try {
+            // chunks is a Slack streaming API feature not yet in the SDK types
             await streamer.append({
               chunks: [{
                 type: 'task_update',
@@ -1372,6 +1373,7 @@ async function handleUserMessage({
           // Mark tool execution as complete in the streamed message
           const taskId = activeToolTaskIds.pop() || event.tool_name;
           try {
+            // chunks is a Slack streaming API feature not yet in the SDK types
             await streamer.append({
               chunks: [{
                 type: 'task_update',
