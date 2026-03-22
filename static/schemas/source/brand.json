@@ -240,12 +240,11 @@
           "type": "string",
           "description": "Brand description"
         },
-        "industry": {
-          "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
-          ],
-          "description": "Brand industry or industries (e.g., 'automotive', 'pharmaceutical', or ['pharmaceutical', 'cpg'] for a consumer health company). Accepts a single string or an array. Describes what the company does — not what regulatory regimes apply (use policy_categories for that)."
+        "industries": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Brand industries (e.g., ['automotive'] or ['pharmaceutical', 'cpg'] for a consumer health company). Describes what the company does — not what regulatory regimes apply (use policy_categories for that)."
         },
         "target_audience": {
           "type": "string",
@@ -1156,7 +1155,7 @@
           "url": "https://tide.com",
           "names": [{"en-US": "Tide"}, {"es-MX": "Tide"}, {"zh-CN": "汰渍"}],
           "keller_type": "master",
-          "industry": "cpg",
+          "industries": ["cpg"],
           "description": "Laundry detergent brand",
           "logos": [
             {
@@ -1318,7 +1317,7 @@
           "url": "https://pampers.com",
           "names": [{"en-US": "Pampers"}],
           "keller_type": "master",
-          "industry": "cpg",
+          "industries": ["cpg"],
           "logos": [
             {
               "url": "https://cdn.pg.com/pampers/logo.png",

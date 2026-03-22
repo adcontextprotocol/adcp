@@ -43,12 +43,11 @@
           "type": "string",
           "description": "Brand description"
         },
-        "industry": {
-          "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
-          ],
-          "description": "Brand industry or industries."
+        "industries": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Brand industries."
         },
         "keller_type": {
           "type": "string",
@@ -247,7 +246,7 @@
             "type": "string",
             "enum": [
               "description",
-              "industry",
+              "industries",
               "keller_type",
               "logos",
               "colors",
