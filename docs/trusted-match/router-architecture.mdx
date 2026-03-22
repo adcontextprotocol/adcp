@@ -1,0 +1,158 @@
+---
+title: The TMP Router
+description: Architecture and operation of the TMP Router, including single-binary design, integration paths, and fan-out.
+---
+
+# The TMP Router
+
+The TMP Router is infrastructure that sits between publishers and buyer agents. It handles request fan-out, response merging, and privacy enforcement. It does not make decisions — it routes requests and aggregates responses. The publisher configures which providers the router calls.
+
+## What the Router Does
+
+1. **Fans out requests**: Sends Context Match requests to all configured providers with `context_match` capability. Sends Identity Match requests to all configured providers with `identity_match` capability.
+2. **Merges responses**: Combines offers, enrichment signals, and eligibility results from multiple providers into unified responses.
+3. **Enforces separation**: Context and identity code paths are structurally separate — the context path never accesses identity data and vice versa.
+4. **Manages latency**: Applies adaptive timeouts and deprioritizes providers that consistently exceed the latency budget.
+
+## Single Binary, Separate Code Paths
+
+The router is a single Go binary with two structurally separate code paths: one for context match, one for identity match.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                         TMP Router                            │
+│                                                               │
+│  ┌───────────────────────────┐  ┌───────────────────────────┐│
+│  │    Context Match Path      │  │    Identity Match Path     ││
+│  │                            │  │                            ││
+│  │  Inputs:                   │  │  Inputs:                   ││
+│  │  • Content artifact IDs    │  │  • Opaque user token       ││
+│  │  • Pre-computed signals    │  │  • ALL active package IDs  ││
+│  │  • Available packages      │  │                            ││
+│  │                            │  │  Outputs:                  ││
+│  │  Outputs:                  │  │  • Boolean eligible        ││
+│  │  • Offers                  │  │  • Intent score            ││
+│  │  • Enrichment signals      │  │    (per package)           ││
+│  │                            │  │                            ││
+│  │  Never touches:            │  │  Never touches:            ││
+│  │  • User tokens             │  │  • URLs                    ││
+│  │  • Any identity data       │  │  • Content signals         ││
+│  └───────────────────────────┘  └───────────────────────────┘│
+│                                                               │
+│  No shared state between code paths.                          │
+│  One binary, one audit surface, one Docker image.             │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The separation is in the code and auditable. The context path cannot read identity data because it is not passed to it, not stored in any reachable location, and not referenced in any data structure the context path processes. The same applies in reverse for the identity path. The router is open-source — anyone can verify this by reading the source.
+
+TEE attestation is an upgrade path. Without TEE, you trust that the operator deployed the published binary. With TEE, attestation proves the deployed binary matches the audited source, removing that trust requirement.
+
+## Provider Registration
+
+Publishers configure which providers the router calls. This is an operational relationship — the publisher trusts the provider to participate in their ad decisioning.
+
+| Setting | Type | Description |
+|---|---|---|
+| `endpoint` | URL | Provider's HTTP/2 endpoint |
+| `context_match` | bool | Provider handles Context Match requests |
+| `identity_match` | bool | Provider handles Identity Match requests |
+| `wire_formats` | list | Supported formats: `capnp`, `json` |
+
+Additional configuration per provider:
+
+- **Property scoping**: Which properties or property groups this provider serves
+- **Latency budget**: Per-provider timeout threshold
+- **Priority**: Provider ordering for tie-breaking in merge conflicts
+
+Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match`.
+
+### Wire format negotiation
+
+The router negotiates wire format with each provider based on their declared capabilities. Cap'n Proto is preferred when both formats are available — it eliminates serialization overhead and keeps payloads small (~100-300 bytes for a typical context match request). JSON is supported as a development and debugging fallback.
+
+## Integration
+
+### Prebid integration
+
+Publishers with Prebid Server or Prebid.js add a TMP module that replaces vendor-specific RTD modules. The TMP module sends Context Match and Identity Match requests to the router and returns the merged response as targeting signals and package activation data. The publisher's ad server (GAM, etc.) receives targeting key-values and activates the corresponding line items.
+
+### Non-Prebid surfaces
+
+For AI assistants, mobile apps, CTV, and retail media, the router provides a direct HTTP/2 API. Any platform that can make HTTP/2 POST requests can integrate. The request and response schemas are the same regardless of surface.
+
+### SSP and DSP integration
+
+SSPs and DSPs integrate as TMP providers — they expose an endpoint that the router calls during fan-out. This is the same pattern as existing RTD integrations.
+
+### Identity tokens
+
+Identity tokens come from existing providers (ID5, LiveRamp, UID2, etc.) that are already present on the page or in the app. TMP does not specify token lifecycle — it consumes tokens that the publisher's identity stack already produces.
+
+## Fan-Out and Response Merging
+
+### Context Match fan-out
+
+When the publisher sends a Context Match request:
+
+1. The router identifies all providers configured for the request's `property_id` with `context_match` capability.
+2. It sends the request to all matching providers in parallel over HTTP/2.
+3. It waits for responses up to the latency budget (default: 50ms).
+4. It merges responses:
+   - **Offers** are collected from all providers. If two providers return offers for the same package (uncommon — packages are typically provider-specific), the router includes both and flags the conflict for the publisher.
+   - **Enrichment signals** are concatenated. Segments from all providers are combined into a single list. Targeting key-values from different providers are namespaced to prevent collisions.
+5. It returns the merged response to the publisher.
+
+### Identity Match fan-out
+
+The same pattern applies. The router fans out to all providers with `identity_match` capability for the relevant properties, merges eligibility results, and returns a unified response.
+
+If two providers return eligibility for the same package (uncommon), the router applies conservative merging: if either provider says `eligible: false`, the merged result is `eligible: false`. For `intent_score`, the router takes the maximum.
+
+### Timeout handling
+
+Providers that respond within the latency budget are included in the merged response. Providers that exceed the budget are skipped — their packages are treated as "not activated" for this request.
+
+The router tracks per-provider latency percentiles (p50, p95, p99) and may deprioritize or preemptively skip providers whose p95 latency consistently exceeds the budget. This is an operational decision, not a protocol requirement.
+
+## Latency Budget
+
+TMP targets sub-50ms end-to-end latency: publisher sends request, router fans out, providers respond, router merges, publisher receives response.
+
+This is achievable because:
+
+- **Binary encoding**: Cap'n Proto wire format eliminates serialization/deserialization overhead. Typical Context Match request: 100-300 bytes.
+- **No price computation**: Packages are pre-negotiated. The provider evaluates targeting criteria, not auction dynamics.
+- **Parallel fan-out**: All providers are called simultaneously. The total latency is the slowest provider's response time, not the sum.
+- **Stateless router**: No database lookups in the hot path. The router's only job is forwarding and merging.
+- **Connection reuse**: HTTP/2 multiplexing allows concurrent requests to each provider over a single connection.
+
+## Comparison to Vendor RTD Modules
+
+The TMP Router generalizes what vendor-specific RTD modules do today. A single-vendor RTD module evaluates packages against content in real time, but it is locked to one provider, one surface (Prebid), and sends the full OpenRTB BidRequest.
+
+The TMP Router replaces this with a multi-provider, multi-surface, protocol-standard alternative:
+
+| | Vendor RTD Module (today) | TMP Router |
+|---|---|---|
+| Providers | Single vendor | Any provider declaring TMP capabilities |
+| Discovery | Publisher configuration | Publisher configuration |
+| Surfaces | Web (Prebid Server) | Web, AI, mobile, CTV, retail media |
+| Request format | Full OpenRTB BidRequest (~2-10KB JSON) | TMP ContextMatchRequest (~100-300 bytes Cap'n Proto) |
+| Privacy | Data masking before sending | Structural separation (TEE-ready) |
+| Identity handling | User ID in bid request | Separate Identity Match operation |
+
+For existing Prebid Server deployments, the TMP module replaces vendor-specific RTD modules with a generic TMP client. For surfaces without Prebid, the router's HTTP/2 API provides the same functionality.
+
+## Relationship to TEE Auction Infrastructure
+
+TEE-based auction infrastructure (encrypted bids, attestation proofs, verifiable winner selection) is complementary to TMP. When a publisher wants competitive selection among activated packages from multiple buyers:
+
+1. TMP Router collects Context Match responses (which packages each buyer wants to activate).
+2. Publisher submits the activated packages (with their pre-negotiated prices) to a TEE auction.
+3. The TEE enclave selects the winner and produces an attestation proof.
+4. Publisher activates the winning package.
+
+TMP handles matching. TEE auctions handle competition. Publishers choose whether they need competition at all — many surfaces (editorial AI content, CTV pod composition, retail carousels) are better served by publisher-side relevance ranking than by price-based auctions.
+
+TEE auction infrastructure (AWS Nitro Enclaves, attestation, key management) is directly applicable when upgrading the TMP Router to TEE-attested operation, making it a natural infrastructure partner for the protocol.

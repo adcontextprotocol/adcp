@@ -303,6 +303,38 @@
         "type": "string"
       }
     },
+    "trusted_match": {
+      "type": "object",
+      "description": "Trusted Match Protocol capabilities for this product. When present, the product supports real-time contextual and/or identity matching via TMP. Buyers use this to determine what response types the publisher can accept and whether brands can be selected dynamically at match time.",
+      "properties": {
+        "context_match": {
+          "type": "boolean",
+          "description": "Whether this product supports Context Match requests. When true, the publisher's TMP router will send context match requests to registered providers for this product's inventory.",
+          "default": true
+        },
+        "identity_match": {
+          "type": "boolean",
+          "description": "Whether this product supports Identity Match requests. When true, the publisher's TMP router will send identity match requests to evaluate user eligibility.",
+          "default": false
+        },
+        "response_types": {
+          "type": "array",
+          "description": "What the publisher can accept back from context match.",
+          "items": {
+            "$ref": "/schemas/enums/response-type.json"
+          },
+          "minItems": 1,
+          "default": ["activation"]
+        },
+        "dynamic_brands": {
+          "type": "boolean",
+          "description": "Whether the buyer can select a brand at match time. When false (default), the brand must be specified on the media buy/package. When true, the buyer's offer can include any brand — the publisher applies approval rules at match time. Enables multi-brand agreements where the holding company or buyer agent selects brand based on context.",
+          "default": false
+        }
+      },
+      "required": ["context_match"],
+      "additionalProperties": true
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

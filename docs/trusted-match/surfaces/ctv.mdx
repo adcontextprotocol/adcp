@@ -1,0 +1,214 @@
+---
+title: TMP for CTV
+description: How TMP activates packages for CTV pod composition with creative variant selection.
+---
+
+# TMP for CTV
+
+Connected TV apps compose ad pods -- sequences of ads that fill commercial breaks during streaming content. Pod composition means activating multiple packages simultaneously while respecting competitive separation, frequency limits, and duration constraints. TMP handles package activation and identity eligibility; the broadcaster's ad server handles pod assembly.
+
+## How It Works Today
+
+Broadcasters manage CTV deals through their ad server (FreeWheel, Google Ad Manager, SpringServe). Each deal is configured with targeting rules, competitive separation constraints, and creative rotation logic. Pod composition is handled by the ad server's pod optimization engine. There is no standard way for buyer agents to provide real-time input on which packages to activate or which creative variants to prefer for a specific pod.
+
+## The Four Messages
+
+A CTV ad break involves four TMP messages: a context match request and response (what content is playing, which packages match), then an identity match request and response (is this household eligible). The publisher joins the results locally to compose the pod.
+
+### Context Match Request
+
+When a pod break approaches, the broadcaster sends a context match request. The `placement_id` identifies the ad break position (e.g., `pre_roll`, `mid_roll_1`, `pod_break_2`). The `artifacts` reference the show and episode, which buyer agents use for content-level targeting. The `available_packages` list includes ALL packages for this placement -- not filtered by household.
+
+```json
+{
+  "request_id": "ctx-9f3a-e7b2",
+  "property_id": "riverview-streaming",
+  "property_type": "ctv_app",
+  "placement_id": "mid_roll_1",
+  "artifacts": [
+    "show:the-night-kitchen",
+    "episode:the-night-kitchen-s02e07"
+  ],
+  "available_packages": [
+    {
+      "package_id": "pkg-sparklean-30s",
+      "media_buy_id": "mb-sparklean-q1",
+      "format_ids": ["video_30s", "video_15s"]
+    },
+    {
+      "package_id": "pkg-greenleaf-15s",
+      "media_buy_id": "mb-greenleaf-spring",
+      "format_ids": ["video_15s"]
+    },
+    {
+      "package_id": "pkg-vaultline-30s",
+      "media_buy_id": "mb-vaultline-always-on",
+      "format_ids": ["video_30s"]
+    },
+    {
+      "package_id": "pkg-driftmoto-15s",
+      "media_buy_id": "mb-driftmoto-q1",
+      "format_ids": ["video_15s"]
+    }
+  ]
+}
+```
+
+Key points:
+
+- **Artifacts reference show and episode.** The buyer agent can match on the show ("The Night Kitchen" is a cooking drama, good fit for food brands), the specific episode, or both. Artifacts are registered with the property ahead of time.
+- **All packages for this placement are included.** Four packages from four different media buys. The broadcaster does not filter by household -- that happens in identity match.
+- **Creative support is declared on the product's `trusted_match` config.** When a product's config includes creative response types, buyer agents return creative manifests so the broadcaster can render directly.
+
+### Context Match Response
+
+Each buyer agent evaluates the content context and responds with offers for packages it wants to activate. The router merges all responses. Here two buyers activated:
+
+```json
+{
+  "request_id": "ctx-9f3a-e7b2",
+  "offers": [
+    {
+      "package_id": "pkg-sparklean-30s",
+      "brand": { "house": "Sparklean", "brand": "Sparklean" },
+      "summary": "Kitchen cleaning product -- contextual fit with cooking drama",
+      "creative_manifest": {
+        "format_id": { "id": "video_30s" },
+        "assets": {
+          "video": {
+            "asset_type": "video",
+            "mime_type": "application/xml",
+            "url": "https://creatives.sparklean.example/vast/kitchen-30s.xml"
+          }
+        }
+      }
+    },
+    {
+      "package_id": "pkg-greenleaf-15s",
+      "summary": "Organic grocery -- recipe content alignment",
+      "creative_manifest": {
+        "format_id": { "id": "video_15s" },
+        "assets": {
+          "video": {
+            "asset_type": "video",
+            "mime_type": "application/xml",
+            "url": "https://creatives.greenleaf.example/vast/spring-15s.xml"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+Vaultline (financial services) and Driftmoto (motorcycle brand) did not match the cooking drama context and are absent from the offers.
+
+For CTV creatives, the `creative_manifest` typically references a VAST URL rather than including the creative inline. Video assets are large; the manifest points to the external asset and the broadcaster's ad server fetches it at render time.
+
+### Identity Match Request
+
+Separately, the broadcaster sends an identity match request with a household token. The `package_ids` list includes ALL active packages for each buyer -- not just the ones in this pod break. This prevents a buyer from correlating the identity request with a specific context request by comparing package sets.
+
+```json
+{
+  "request_id": "id-7k2m-p4w1",
+  "user_token": "tok_household_q7w2",
+  "package_ids": [
+    "pkg-sparklean-30s",
+    "pkg-sparklean-display-web",
+    "pkg-sparklean-native-mobile",
+    "pkg-greenleaf-15s",
+    "pkg-greenleaf-display-web",
+    "pkg-vaultline-30s",
+    "pkg-vaultline-audio",
+    "pkg-driftmoto-15s",
+    "pkg-driftmoto-30s"
+  ]
+}
+```
+
+The list includes packages from other surfaces (web display, mobile native, audio). The broadcaster maintains a cached list of all active packages per buyer and sends the full set every time.
+
+### Identity Match Response
+
+Each buyer agent evaluates the household token against its own data (frequency caps, audience membership, purchase history) and returns a boolean `eligible` flag per package, plus an optional `intent_score`. The buyer does not disclose the reasons -- the publisher only needs to know whether the household qualifies.
+
+```json
+{
+  "request_id": "id-7k2m-p4w1",
+  "eligibility": [
+    { "package_id": "pkg-sparklean-30s", "eligible": true, "intent_score": 0.7 },
+    { "package_id": "pkg-sparklean-display-web", "eligible": true },
+    { "package_id": "pkg-sparklean-native-mobile", "eligible": false },
+    { "package_id": "pkg-greenleaf-15s", "eligible": true, "intent_score": 0.4 },
+    { "package_id": "pkg-greenleaf-display-web", "eligible": true },
+    { "package_id": "pkg-vaultline-30s", "eligible": true },
+    { "package_id": "pkg-vaultline-audio", "eligible": true },
+    { "package_id": "pkg-driftmoto-15s", "eligible": false },
+    { "package_id": "pkg-driftmoto-30s", "eligible": true }
+  ]
+}
+```
+
+The response covers all packages, not just CTV ones. The publisher extracts only the package IDs relevant to the current pod.
+
+## Pod Composition
+
+The broadcaster now has two sets of results and composes the pod locally:
+
+1. **Filter by context activation.** Only packages with offers from context match are candidates: Sparklean (30s) and Greenleaf (15s). Vaultline and Driftmoto did not activate.
+2. **Filter by identity eligibility.** Of the context-activated packages, check household eligibility: Sparklean is eligible, Greenleaf is eligible. Both pass.
+3. **Rank eligible offers.** Use `intent_score` if available, combined with the ad server's own priority and pacing rules. Sparklean has higher intent (0.7 vs 0.4).
+4. **Apply competitive separation.** The broadcaster's ad server enforces competitive separation rules -- two brands in the same advertiser category cannot appear in the same pod. Sparklean (cleaning) and Greenleaf (grocery) are in different categories, so no conflict.
+5. **Assemble the pod.** Fill the available duration. A typical mid-roll pod might be 60 seconds:
+   - Slot 1 (30s): Sparklean -- context match, household eligible, high intent
+   - Slot 2 (15s): Greenleaf -- context match, household eligible
+   - Remaining 15s: filled by other demand sources (programmatic, house ads)
+
+Competitive separation is the publisher's responsibility. TMP provides the activation and eligibility signals; the broadcaster's ad server applies business rules about which brands can appear together. This keeps the protocol simple and avoids encoding category taxonomies into TMP messages.
+
+## Show and Episode Artifacts
+
+CTV artifacts typically reference both a show and a specific episode:
+
+```json
+"artifacts": [
+  "show:the-night-kitchen",
+  "episode:the-night-kitchen-s02e07"
+]
+```
+
+A buyer agent can use these at different granularities:
+
+- **Show-level targeting.** "Activate on any episode of The Night Kitchen" -- the agent checks whether `show:the-night-kitchen` is in its targeting rules.
+- **Episode-level targeting.** "Activate only on the season premiere" -- the agent checks the specific episode ID.
+- **Genre or topic targeting.** The agent resolves genre and topic metadata from its cached artifact registry. This works for broad category targeting without hard-coding specific show IDs in targeting rules.
+
+Artifacts are registered with the property during setup. The buyer agent resolves artifact metadata (genre, cast, synopsis) from its cached copy of the property's artifact registry.
+
+## Example Flow
+
+```
+Mid-roll break in "The Night Kitchen" S02E07
+
+  Context Match
+  --> Broadcaster sends request: 4 packages, show + episode artifacts
+  --> Sparklean agent: activate pkg-sparklean-30s (VAST creative, cooking context fit)
+  --> Greenleaf agent: activate pkg-greenleaf-15s (VAST creative, food content)
+  --> Vaultline agent: no activation (financial services, no context fit)
+  --> Driftmoto agent: no activation (motorcycle brand, no context fit)
+
+  Identity Match (after temporal decorrelation delay)
+  --> Broadcaster sends request: all 9 active packages across all buyers
+  --> Sparklean: eligible (intent_score 0.7)
+  --> Greenleaf: eligible (intent_score 0.4)
+  --> Vaultline: eligible (but was not activated by context match)
+  --> Driftmoto: pkg-driftmoto-15s not eligible, pkg-driftmoto-30s eligible
+
+  Pod Assembly (broadcaster's ad server)
+  --> Join: Sparklean and Greenleaf both activated and eligible
+  --> Competitive separation: different categories, no conflict
+  --> Pod: Sparklean 30s + Greenleaf 15s + 15s backfill
+  --> Fetch VAST creatives from manifest URLs
+  --> Serve pod during commercial break
+```

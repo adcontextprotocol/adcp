@@ -1,0 +1,73 @@
+---
+title: Trusted Match Protocol
+description: AdCP's real-time execution layer for activating pre-negotiated packages across any surface.
+---
+
+# Trusted Match Protocol
+
+The Trusted Match Protocol (TMP) is the execution layer of AdCP. When a user visits a page, opens an app, or starts a conversation with an AI assistant, TMP determines which pre-negotiated packages should activate and how.
+
+## The problem
+
+AdCP defines the full lifecycle for agent-to-agent media buying: discovery (`get_products`), negotiation (`create_media_buy`), and reporting (`get_media_buy_delivery`). But between negotiation and reporting there is an execution gap. Deals are agreed, but activating them at serve time has no protocol-level definition. Publishers fall back to manual ad-ops, vendor-specific RTB modules, or surface-specific SDK integrations. Every surface solves it differently and none of them connect back to the deal.
+
+TMP fills this gap with a single protocol that works the same way on web, mobile, CTV, retail media, and AI assistants.
+
+## Two operations, structural separation
+
+TMP defines two operations that never share data:
+
+**Context Match** -- the publisher sends content artifact IDs and a list of all available packages for the placement. The buyer resolves artifact metadata from its cache and responds with offers for the packages it wants to activate. No user identity crosses this boundary.
+
+**Identity Match** -- the publisher sends an opaque user token and the full set of active package IDs for that buyer. The buyer responds with a boolean `eligible` flag and an optional `intent_score` per package. No page context crosses this boundary. The reasons behind eligibility (frequency caps, audience membership, purchase history) are opaque to the publisher.
+
+The publisher -- the party that already has both context and identity -- joins the two responses locally at decision time. Buyers never observe both signals simultaneously. This separation holds without TEE; TEE attestation is an upgrade path that makes the guarantee cryptographically verifiable.
+
+## The offer spectrum
+
+A context match response contains offers. Every offer requires a `package_id`; everything else is optional. This creates a spectrum from minimal activation to rich integration:
+
+| Integration | What the offer contains | Publisher behavior |
+|---|---|---|
+| GAM activation | `package_id` only | Publisher's ad server activates the corresponding line item via key-values |
+| Catalog steering | `package_id` + catalog items | Publisher renders preferred products from a synced catalog |
+| Creative delivery | `package_id` + `creative_manifest` | Publisher renders the inline creative (or fetches assets via URLs in the manifest) |
+| AI assistant integration | `package_id` + `brand` + `summary` + `creative_manifest` | Assistant weaves sponsored content into the conversation |
+
+Publishers declare what they can accept on each product via the `trusted_match` field on `get_products`, which includes `context_match`, `identity_match`, `response_types`, and `dynamic_brands`. The buyer reads these capabilities at planning time and adapts its offers accordingly.
+
+## Anti-correlation by design
+
+Two rules prevent buyers from correlating the context and identity paths:
+
+1. **`available_packages`** on the context match request includes ALL packages for the placement -- a stable per-placement set that does not change based on the user. This enables caching and prevents user-dependent filtering from leaking identity into the context path.
+
+2. **`package_ids`** on the identity match request includes ALL active packages for the buyer, not just those on the current page. Sending only the page-specific subset would let a buyer match package sets across the two operations.
+
+The publisher intersects the results after both responses arrive.
+
+## Connection to AXE and Scope3
+
+TMP generalizes what AXE (Ad eXchange Environment, Scope3's curation product) already does: evaluate packages against content context in real time. Where AXE is a specific implementation, TMP is the protocol layer that lets any buyer agent participate in the same decision, across any surface, with structural privacy guarantees.
+
+## Architecture
+
+The TMP Router is a single binary that handles both context match and identity match requests, with structurally separate code paths. It fans out requests to configured providers in parallel and merges their responses. Publishers configure the router with the TMP providers they want to use -- similar to configuring Prebid modules today.
+
+```
+Publisher --> Router (context path) --> Provider A, B, C --> merged offers
+Publisher --> Router (identity path) --> Provider A, B, C --> merged eligibility
+                                                                   |
+Publisher joins both responses and activates packages <-------------+
+```
+
+TEE attestation is an upgrade path. The separation works without TEE; TEE makes it independently verifiable.
+
+## Reading order
+
+1. **[The Execution Gap](/docs/trusted-match/execution-gap)** -- why existing protocols fail and why TMP takes a matching approach instead of an auction approach
+2. **[Context and Identity](/docs/trusted-match/context-and-identity)** -- both operations with concrete examples, including catalog refinement and the publisher-side join
+3. **[Specification](/docs/trusted-match/specification)** -- authoritative message types, field tables, and conformance requirements
+4. **[Privacy Architecture](/docs/trusted-match/privacy-architecture)** -- structural separation, temporal decorrelation, TEE attestation
+5. **[Router Architecture](/docs/trusted-match/router-architecture)** -- deployment, fan-out, provider configuration
+6. **Surfaces**: [Web](/docs/trusted-match/surfaces/web) | [AI Assistants](/docs/trusted-match/surfaces/ai-assistants) | [Mobile](/docs/trusted-match/surfaces/mobile) | [Retail Media](/docs/trusted-match/surfaces/retail-media) | [CTV](/docs/trusted-match/surfaces/ctv)

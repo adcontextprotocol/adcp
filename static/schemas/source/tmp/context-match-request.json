@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/context-match-request.json",
+  "title": "Context Match Request",
+  "description": "Sent by publisher to router or provider to evaluate available packages against contextual signals. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id.",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
+      "default": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Unique request identifier. MUST NOT correlate with any identity match request_id."
+    },
+    "property_id": {
+      "$ref": "/schemas/core/property-id.json",
+      "description": "Publisher property identifier from the registry"
+    },
+    "property_type": {
+      "$ref": "/schemas/enums/property-type.json",
+      "description": "Type of the publisher property"
+    },
+    "placement_id": {
+      "type": "string",
+      "description": "Placement identifier from the property's registered placements. Identifies where on the property this ad opportunity exists. One placement per request."
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Content artifact IDs adjacent to this ad opportunity. References artifacts registered with the property (articles, episodes, shows, videos, conversation turns). All packages in the request are evaluated against these artifacts.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "available_packages": {
+      "type": "array",
+      "description": "ALL packages eligible for this placement. MUST NOT be filtered by user identity or audience — that filtering happens via Identity Match. Sending only user-relevant packages leaks identity into the context path. Using a stable per-placement set also enables caching.",
+      "items": {
+        "$ref": "/schemas/tmp/available-package.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "request_id",
+    "property_id",
+    "property_type",
+    "placement_id",
+    "available_packages"
+  ],
+  "additionalProperties": false
+}

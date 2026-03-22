@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/available-package.json",
+  "title": "Available Package",
+  "description": "A package available for contextual matching on a given impression opportunity. Lightweight projection of a media buy package with the fields needed for real-time evaluation.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Unique identifier for the package"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Media buy that this package belongs to"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Creative format identifier strings eligible for this package. Uses the format ID string (e.g., 'display_300x250', 'video_30s') rather than the full format-id object to keep the real-time payload minimal.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "The buyer's catalogs attached to this package, with selectors (ids, gtins, tags, category, query) scoping which items are in play. References synced catalogs by catalog_id. The provider resolves items from its cached copy.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      }
+    }
+  },
+  "required": [
+    "package_id",
+    "media_buy_id"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/context-match-response.json",
+  "title": "Context Match Response",
+  "description": "Response from router or provider with offers for matched packages. An empty offers array means no packages matched. For simple GAM integration, package_id flows as a macro via signals. For rich integrations, the offer includes brand, price, summary, and optionally an inline creative manifest.",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the context match request"
+    },
+    "offers": {
+      "type": "array",
+      "description": "Offers from the buyer, one per activated package. An empty array means no packages matched. For simple activation, each offer has just package_id. For richer responses, offers include brand, price, summary, and creative manifest.",
+      "items": {
+        "$ref": "/schemas/tmp/offer.json"
+      }
+    },
+    "signals": {
+      "type": "object",
+      "description": "Response-level targeting signals for ad server pass-through. In the GAM case, these carry the key-value pairs that trigger line items. Not per-offer — applies to the response as a whole.",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "description": "Contextual segment identifiers",
+          "items": {
+            "type": "string"
+          }
+        },
+        "targeting_kvs": {
+          "type": "array",
+          "description": "Key-value pairs for ad server targeting",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "Targeting key"
+              },
+              "value": {
+                "type": "string",
+                "description": "Targeting value"
+              }
+            },
+            "required": [
+              "key",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "request_id",
+    "offers"
+  ],
+  "additionalProperties": true
+}

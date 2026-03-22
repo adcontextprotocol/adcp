@@ -1,0 +1,257 @@
+---
+title: TMP Specification
+description: Authoritative message type definitions, field tables, privacy requirements, and conformance levels for the Trusted Match Protocol.
+---
+
+# Trusted Match Protocol Specification
+
+This is the authoritative reference for the Trusted Match Protocol (TMP). For conceptual introductions, see the [overview](/docs/trusted-match/) and [core concepts](/docs/trusted-match/context-and-identity).
+
+## Definitions
+
+| Term | Definition |
+|---|---|
+| **Context Match** | TMP operation that evaluates available packages against content context. Carries no user identity. |
+| **Identity Match** | TMP operation that evaluates user eligibility against package criteria. Carries no page context. |
+| **TMP Router** | Infrastructure that fans out TMP requests to buyer agents and merges responses. A single binary that handles both context and identity requests, with structurally separate code paths. |
+| **Offer** | A buyer's response to a context match request. Ranges from simple activation (package_id only) to rich proposals with brand, price, summary, and creative manifest. Generalizes the concept of package activation. |
+| **Available package** | A package from an active media buy that the publisher offers for evaluation on a given request. |
+| **Eligibility matrix** | Per-package, per-user status returned by Identity Match. A boolean `eligible` flag plus optional `intent_score`. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
+| **Artifact** | A content item registered with a publisher property (article, episode, show, video, conversation turn). Referenced by ID in context match requests. |
+| **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
+
+## Message Types
+
+### ContextMatchRequest
+
+Sent by the publisher (via router) to buyer agents. Contains content context and available packages. MUST NOT contain user identity.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `protocol_version` | string | No | TMP protocol version. Default: `1.0`. Allows receivers to handle semantic differences across versions. |
+| `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
+| `property_id` | string | Yes | Publisher property identifier. |
+| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See [property-type enum](/schemas/enums/property-type). |
+| `placement_id` | string | Yes | Placement identifier from the property's registered placements. One placement per request. |
+| `artifacts` | List\<string\> | No | Content artifact IDs adjacent to this ad opportunity. References artifacts registered with the property (articles, episodes, shows, videos, conversation turns). Providers resolve artifact metadata from their cached copy of the property's artifact registry. |
+| `available_packages` | List\<AvailablePackage\> | Yes | ALL packages eligible for this placement. MUST NOT be filtered by user identity — that happens via Identity Match. A stable per-placement set enables caching. |
+
+#### AvailablePackage
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `package_id` | string | Yes | Package identifier from the media buy. |
+| `media_buy_id` | string | Yes | Parent media buy identifier. |
+| `format_ids` | List\<string\> | No | Creative format IDs this package supports. |
+| `catalogs` | List\<Catalog\> | No | The buyer's catalogs attached to this package, with selectors (`ids`, `gtins`, `tags`, `category`, `query`) scoping which items are in play. References synced catalogs by `catalog_id`. The provider resolves items from its cached copy. See [Catalog schema](/schemas/core/catalog). |
+
+### ContextMatchResponse
+
+Returned by the buyer agent. Contains offers for matched packages and optional response-level targeting signals.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `request_id` | string | Yes | Echo of the request's `request_id`. |
+| `offers` | List\<Offer\> | Yes | Offers from the buyer, one per activated package. Empty list means no packages matched. |
+| `signals` | Signals | No | Response-level targeting signals for ad server pass-through. Not per-offer — applies to the response as a whole. In the GAM case, these carry the key-value pairs that trigger line items. |
+
+#### Offer
+
+A buyer's response for a single package. For simple GAM activation, only `package_id` is needed. For richer integrations, the buyer can include brand, price, a summary for relevance judgment, and optionally an inline creative manifest.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `package_id` | string | Yes | Must match a `package_id` from `available_packages`. References the commercial terms (MSA, IO, deal). |
+| `brand` | [BrandRef](/schemas/core/brand-ref) | No | Brand for this offer. Required when the product allows dynamic brands. For single-brand packages, already known from the media buy. |
+| `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
+| `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Hellmann's mayo — recipe integration". |
+| `creative_manifest` | [CreativeManifest](/schemas/core/creative-manifest) | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
+| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Attribution reconciliation happens via delivery reporting or clean room. |
+
+#### OfferPrice
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `amount` | number | Yes | Price amount in the specified currency. |
+| `currency` | string | No | ISO 4217 currency code. Default: `USD`. |
+| `model` | enum | Yes | One of: `cpm`, `cpc`, `cpcv`, `cpa`, `flat`. |
+
+#### Signals
+
+Response-level targeting signals for ad server pass-through.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `segments` | List\<string\> | No | Audience or contextual segment IDs. |
+| `targeting_kvs` | List\<KeyValuePair\> | No | Key-value pairs for ad server targeting. |
+
+#### KeyValuePair
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `key` | string | Yes | Targeting key. |
+| `value` | string | Yes | Targeting value. |
+
+### IdentityMatchRequest
+
+Sent by the publisher (via router) to buyer agents. Contains an opaque user token and package IDs. MUST NOT contain page context.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
+| `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
+| `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
+| `uid_type` | enum | No | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See [uid-type enum](/schemas/enums/uid-type). |
+| `package_ids` | List\<string\> | Yes | ALL active packages for this buyer. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
+
+### IdentityMatchResponse
+
+Returned by the buyer agent. An eligibility matrix for the requested packages.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `request_id` | string | Yes | Echo of the request's `request_id`. |
+| `eligibility` | List\<PackageEligibility\> | Yes | Per-package eligibility. |
+
+#### PackageEligibility
+
+The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns a single boolean. The publisher does not need to know why — just whether the user is eligible. This keeps the identity response minimal and avoids leaking behavioral detail across the boundary.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `package_id` | string | Yes | Package being evaluated. |
+| `eligible` | bool | Yes | Whether the user is eligible for this package. |
+| `intent_score` | number | No | Buyer's estimate of user intent for this package, 0.0-1.0. Helps the publisher rank when multiple packages are eligible. |
+
+### Error Response
+
+Returned by a provider or router when a request cannot be processed. Distinct from an empty result — an empty `offers` array or `eligibility` array is a valid response meaning no matches, not an error.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `request_id` | string | Yes | Echo of the original request's `request_id`. |
+| `code` | enum | Yes | Machine-readable error code: `invalid_request`, `unknown_package`, `unsupported_response_type`, `unsupported_wire_format`, `rate_limited`, `timeout`, `internal_error`, `provider_unavailable`. |
+| `message` | string | No | Human-readable error description for debugging. |
+
+The router SHOULD exclude providers that return errors from the merged response for that request. The router MAY track error rates per provider and preemptively skip providers with sustained errors.
+
+## Provider Registration
+
+TMP providers are registered with the router via publisher configuration. The publisher specifies which providers the router should call, along with each provider's endpoint and supported capabilities. This is an operational relationship — the publisher trusts the provider to run code in their ad decisioning path.
+
+| Setting | Type | Required | Description |
+|---|---|---|---|
+| `context_match` | bool | Yes | Provider supports Context Match requests. |
+| `identity_match` | bool | No | Provider supports Identity Match requests. Default: false. |
+| `wire_formats` | List\<string\> | Yes | Supported wire formats. Must include at least one of `capnp` or `json`. |
+
+Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match`.
+
+## Product Integration
+
+Publishers declare TMP support on their products via the `trusted_match` field. Buyers see this on `get_products` and know what TMP capabilities are available.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `context_match` | bool | Yes | Product supports Context Match requests. |
+| `identity_match` | bool | No | Product supports Identity Match requests. Default: false. |
+| `response_types` | List\<string\> | No | What the publisher can accept back: `activation` (default), `catalog_items`, `creative`, `deal`. |
+| `dynamic_brands` | bool | No | Whether the buyer can select a brand at match time. When false (default), brand must be on the media buy. When true, the buyer's offer can include any brand — the publisher applies approval rules at match time. Enables multi-brand agreements. |
+
+## Privacy Requirements
+
+The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
+
+### Structural separation
+
+- Context Match requests MUST NOT contain user identity data (user tokens, device IDs, IP addresses, session tokens, or any data that could identify a specific user).
+- Identity Match requests MUST NOT contain page context data (URLs, content hashes, topic IDs, content signals, or any data that could identify what the user is viewing).
+- The TMP Router MUST process Context Match and Identity Match in structurally separate code paths with no shared state.
+- Context Match and Identity Match request IDs MUST NOT be correlated or derivable from each other.
+
+### Package set decorrelation
+
+- Context Match `available_packages` MUST include ALL packages eligible for this placement, not filtered by user identity or audience. Pre-filtering by user leaks identity into the context path. A stable per-placement set also enables caching context match responses across users.
+- Identity Match `package_ids` MUST include ALL active packages for the buyer, not just those available on the current page. Sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets.
+- The publisher SHOULD maintain a cached list of all active package IDs per buyer and send the full set on every Identity Match request.
+- The publisher performs the intersection of context match offers and identity match eligibility locally, after both responses arrive.
+
+### Temporal decorrelation
+
+- Publishers SHOULD introduce a random delay between Context Match and Identity Match requests. Recommended: 100-2000ms, uniformly distributed.
+- Publishers MAY batch Identity Match requests across multiple page views.
+- Publishers MAY route Context Match and Identity Match through different network paths.
+
+### TEE attestation
+
+- The TMP Router SHOULD provide TEE attestation when available, proving the deployed binary matches the published source.
+- Attestation documents SHOULD be available on request to publishers and auditors.
+- Attestation SHOULD include measurements confirming service code integrity and isolation.
+
+### User token requirements
+
+- User tokens MUST be opaque to buyer agents. Tokens may originate from identity providers (ID5, LiveRamp, UID2) or be publisher-generated.
+- User tokens MUST NOT contain PII or be reversible to PII by the buyer agent.
+
+## Wire Format
+
+### Cap'n Proto (primary)
+
+Content type: `application/x-capnp`
+
+Cap'n Proto schemas define all message types. Implementations MUST support Cap'n Proto encoding. Schema files are published at `https://adcontextprotocol.org/schemas/v3/tmp/`.
+
+### JSON (debug/development)
+
+Content type: `application/json`
+
+JSON encoding follows the field names and types defined in this specification. JSON support is OPTIONAL. Implementations that support JSON MUST produce responses consistent with their Cap'n Proto responses.
+
+### Content negotiation
+
+The router negotiates wire format with each provider based on provider configuration. The router prefers Cap'n Proto when both formats are available.
+
+## Transport
+
+- All TMP requests use HTTP/2 POST.
+- The router calls each provider's configured endpoint URL.
+- The request type is distinguished by a type field in the message, not by URL path.
+- Connections SHOULD be reused via HTTP/2 multiplexing.
+- The router SHOULD maintain a connection pool to each buyer agent.
+
+## Latency
+
+- TMP targets sub-50ms end-to-end latency (publisher → router → agents → router → publisher).
+- The router SHOULD apply adaptive per-agent timeouts based on observed latency percentiles.
+- Agents that exceed the timeout are excluded from the merged response for that request.
+- The router MAY preemptively skip agents whose p95 latency consistently exceeds the budget.
+
+## Conformance Levels
+
+### TMP Buyer Agent (Basic)
+
+- Supports `context_match` capability
+- Responds to ContextMatchRequest with valid ContextMatchResponse
+- Meets latency budget (p95 < 30ms for agent-side processing)
+- Respects privacy constraints (does not log or correlate requests with identity data from other sources)
+
+### TMP Buyer Agent (Full)
+
+All of Basic, plus:
+- Supports `identity_match` capability
+- Responds to IdentityMatchRequest with valid IdentityMatchResponse including eligibility matrix
+- Supports rich offers (brand, price, summary, creative manifest) when the product declares matching `response_types`
+
+### TMP Router (Basic)
+
+- Configured with provider endpoints
+- Fans out Context Match and Identity Match to authorized providers
+- Merges responses
+- Meets end-to-end latency budget (p95 < 50ms)
+
+### TMP Router (Trusted)
+
+All of Basic, plus:
+- Runs in a TEE-attested environment (e.g., AWS Nitro Enclaves)
+- Provides attestation documents on request, proving the deployed binary matches the published source
+- Structural separation between context and identity code paths is verifiable via attestation measurements

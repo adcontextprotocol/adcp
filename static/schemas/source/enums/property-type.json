@@ -12,7 +12,8 @@
     "dooh",
     "podcast",
     "radio",
-    "streaming_audio"
+    "streaming_audio",
+    "ai_assistant"
   ],
   "enumDescriptions": {
     "website": "Web properties accessible via browser, identified by domain",
@@ -22,6 +23,7 @@
     "dooh": "Digital out-of-home screen networks, identified by network/venue IDs",
     "podcast": "Podcast feeds and episodes, identified by RSS feed URLs or podcast IDs",
     "radio": "Radio station properties, identified by call signs or station IDs",
-    "streaming_audio": "Digital audio streaming properties, identified by platform-specific IDs"
+    "streaming_audio": "Digital audio streaming properties, identified by platform-specific IDs",
+    "ai_assistant": "AI-powered conversational interfaces including chatbots, AI assistants, and conversational AI platforms, identified by platform-specific IDs"
   }
 }

@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/error.json",
+  "title": "TMP Error",
+  "description": "Error response from a TMP provider or router. Returned instead of a normal response when the provider cannot process the request. Distinguishes errors from empty results (an empty offers array is a valid response meaning no matches, not an error).",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the original request"
+    },
+    "code": {
+      "type": "string",
+      "description": "Machine-readable error code",
+      "enum": [
+        "invalid_request",
+        "unknown_package",
+        "unsupported_response_type",
+        "unsupported_wire_format",
+        "rate_limited",
+        "timeout",
+        "internal_error",
+        "provider_unavailable"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable error description for debugging"
+    }
+  },
+  "required": [
+    "request_id",
+    "code"
+  ],
+  "additionalProperties": true
+}

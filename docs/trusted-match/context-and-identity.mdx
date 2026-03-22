@@ -1,0 +1,232 @@
+---
+title: Context Match and Identity Match
+description: The two operations at the heart of TMP, how they work, and how the publisher joins them at decision time.
+---
+
+# Context Match and Identity Match
+
+TMP defines two operations. They are independent by design — processed in separate infrastructure, carrying different data, answering different questions. The publisher joins their results to make the final activation decision.
+
+This page walks through both operations and the join using a concrete example.
+
+## The Scenario
+
+A retail publisher has three active AdCP media buys from a buyer agent. Each media buy contains packages:
+
+- **Package A**: Sponsored products — coffee brands, carousel format, available on search and category pages
+- **Package B**: Homepage takeover — premium display, available on the homepage only
+- **Package C**: Seasonal promotion — iced beverages, native format, available site-wide during summer
+
+A shopper searches for "best cold brew." The publisher's search results page loads.
+
+## Context Match
+
+The publisher sends a Context Match request to the TMP Router. The request contains the page context and the list of available packages. It contains no user identity.
+
+### What the publisher sends
+
+```json
+{
+  "request_id": "ctx-7f3a",
+  "property_id": "retailer-web",
+  "property_type": "website",
+  "placement_id": "search-results-grid",
+  "artifacts": ["search:beverages-coffee"],
+  "available_packages": [
+    {
+      "package_id": "pkg-A",
+      "media_buy_id": "mb-coffee-q1",
+      "format_ids": ["sponsored_carousel"],
+      "catalogs": [
+        { "catalog_id": "coffee-products", "type": "product", "gtins": ["gtin-001", "gtin-002", "gtin-003", "gtin-004"] }
+      ]
+    },
+    {
+      "package_id": "pkg-B",
+      "media_buy_id": "mb-homepage",
+      "format_ids": ["display_takeover"]
+    },
+    {
+      "package_id": "pkg-C",
+      "media_buy_id": "mb-summer-promo",
+      "format_ids": ["native_text"],
+      "catalogs": [
+        { "catalog_id": "iced-beverages", "type": "product", "gtins": ["gtin-005", "gtin-006", "gtin-003"] }
+      ]
+    }
+  ]
+}
+```
+
+Note what is absent: no user ID, no device information, no session token, no IP address. The buyer agent evaluates this request based purely on content context and package eligibility.
+
+### What the buyer responds
+
+The buyer agent evaluates each package against the context. Package B is homepage-only, so it does not match a search results page. Packages A and C match. The buyer returns an offer for each.
+
+```json
+{
+  "request_id": "ctx-7f3a",
+  "offers": [
+    {
+      "package_id": "pkg-A",
+      "brand": { "name": "Blue Bottle", "advertiser_domain": "bluebottle.example.com" },
+      "summary": "Cold brew coffee carousel — featuring top-rated blends",
+      "creative_manifest": {
+        "format_id": "sponsored_carousel",
+        "assets": {
+          "items": {
+            "type": "catalog-asset",
+            "items": [
+              { "gtin": "gtin-001", "image_url": "https://cdn.example.com/gtin-001.jpg" },
+              { "gtin": "gtin-002", "image_url": "https://cdn.example.com/gtin-002.jpg" }
+            ]
+          }
+        }
+      },
+      "macros": {
+        "sponsor_label": "Sponsored by Blue Bottle"
+      }
+    },
+    {
+      "package_id": "pkg-C",
+      "summary": "Free shipping on iced beverages — summer promotion",
+      "price": { "amount": 0, "currency": "USD", "model": "flat" },
+      "creative_manifest": {
+        "format_id": "native_text",
+        "assets": {
+          "headline": { "type": "text-asset", "text": "Free shipping on iced beverages" },
+          "body": { "type": "text-asset", "text": "Summer promotion — order any iced beverage and get free delivery." },
+          "cta": { "type": "text-asset", "text": "https://shop.example.com/promo/summer-iced" }
+        }
+      }
+    }
+  ],
+  "signals": {
+    "segments": ["coffee_enthusiast", "high_purchase_intent"],
+    "targeting_kvs": [
+      { "key": "category_affinity", "value": "beverages" },
+      { "key": "seasonal_relevance", "value": "high" }
+    ]
+  }
+}
+```
+
+The buyer returns an offer per matched package. Each offer carries a `package_id` and optionally a `brand`, `price`, `summary`, `creative_manifest`, and `macros`. The `summary` gives the publisher enough to judge relevance. When the creative manifest is present inline, the publisher has everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding them. The response also includes enrichment signals — audience segments and targeting key-values — that the publisher can pass to their ad server.
+
+### What Context Match never carries
+
+- User IDs (hashed or otherwise)
+- Device identifiers
+- Session tokens
+- IP addresses
+- Any data that could identify a specific user
+
+This is not a policy restriction. It is enforced by the router's context code path, which has no access to identity data — no shared memory, no shared state, no communication channel to the identity code path. [TEE attestation](/docs/trusted-match/privacy-architecture) can make this separation independently verifiable.
+
+## Identity Match
+
+Separately — and with a random time delay — the publisher sends an Identity Match request to the TMP Router. The request contains an opaque user token and the list of packages to evaluate. It contains no page context.
+
+### What the publisher sends
+
+```json
+{
+  "request_id": "id-9b2c",
+  "user_token": "tok_hk82mfp1",
+  "package_ids": ["pkg-A", "pkg-B", "pkg-C"]
+}
+```
+
+The `user_token` comes from an existing identity provider (ID5, LiveRamp, UID2) or is generated by the publisher. The protocol accepts whatever opaque token the publisher passes. The token is opaque to the buyer — the buyer can map it to their own identity graph (if they have a match), but cannot reverse it to PII or correlate it with any page context.
+
+Note what is absent: no URL, no search query, no content signals, no topic IDs. The buyer agent evaluates this request based purely on user identity and package eligibility.
+
+### What the buyer responds
+
+```json
+{
+  "request_id": "id-9b2c",
+  "eligibility": [
+    {
+      "package_id": "pkg-A",
+      "eligible": true,
+      "intent_score": 0.82
+    },
+    {
+      "package_id": "pkg-B",
+      "eligible": true,
+      "intent_score": 0.65
+    },
+    {
+      "package_id": "pkg-C",
+      "eligible": false,
+      "intent_score": 0.71
+    }
+  ]
+}
+```
+
+The buyer reports that this user is eligible for Package A (high intent score of 0.82). Package B is eligible too, but Context Match already excluded it for this page. Package C is not eligible for this user. The publisher does not need to know why — frequency capping, audience mismatch, and other disqualification reasons are buyer-internal. The publisher gets a boolean `eligible` and an optional `intent_score` (0.0–1.0), which is enough to make the activation decision.
+
+### What Identity Match never carries
+
+- Page URLs
+- Content hashes
+- Search queries
+- Topic IDs
+- Content ratings
+- Any data that could identify what the user is looking at
+
+This is enforced by the router's identity code path, which has no access to context data — no shared memory, no shared state, no communication channel to the context code path. TEE attestation can make this separation independently verifiable.
+
+## The Publisher-Side Join
+
+The publisher now has two independent responses. They join them on their own infrastructure — neither the buyer agents nor the router see the joined result.
+
+```
+For each offer from Context Match:
+
+  pkg-A:
+    Context says: offer for cold brew carousel (creative manifest inline)
+    Identity says: eligible, intent 0.82
+    → Accept the offer. Render using the inline creative manifest.
+    → Apply "coffee_enthusiast" segment to ad server targeting.
+
+  pkg-C:
+    Context says: offer for iced beverage promotion
+    Identity says: NOT eligible
+    → Skip this offer for this user.
+
+Result: Accept Package A.
+Set targeting KVs: category_affinity=beverages, seasonal_relevance=high.
+```
+
+The publisher already knows how to render Package A — it maps to a sponsored carousel slot. The inline creative manifest carries the catalog items and assets needed. The publisher handled the rest.
+
+## The Offer Model
+
+TMP's response model is the offer. An offer carries a `package_id` (required) and optional fields: `brand`, `price`, `summary`, `creative_manifest`, and `macros` (a key-value map for dynamic values).
+
+**Simple case (GAM/Prebid)**: The offer carries `package_id`. The publisher flows `package_id` via `targeting_kvs` signals to GAM for line item matching. The `macros` map carries dynamic values (e.g., sponsor labels, promo text) that GAM can insert into the creative at render time.
+
+**Rich case (AI assistants, dynamic retail)**: The offer includes a `summary` ("50% off cold brew — recipe integration") so the publisher can judge relevance, and an inline `creative_manifest` with everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding the full payload.
+
+**Dynamic brands**: When the product supports `dynamic_brands`, the buyer can include a `brand` on the offer, selecting from their portfolio at match time rather than being locked to a pre-configured package brand.
+
+**Variable pricing**: When the product supports variable pricing, the buyer can include a `price` on the offer.
+
+The creative manifest carries catalog items, text, images, and everything else needed for rendering. This reuses the existing [CreativeManifest](/schemas/core/creative-manifest) schema.
+
+Attribution tracking happens via delivery reporting or clean room integration, not via a real-time tracking token. The publisher reports which packages were delivered; attribution is reconciled out-of-band.
+
+## Enrichment Signals
+
+Context Match responses can include enrichment signals alongside package activation:
+
+- **Segments**: Audience or contextual segments (e.g., "coffee_enthusiast", "high_purchase_intent") that flow into the publisher's ad server as targeting signals.
+- **Targeting key-values**: Arbitrary key-value pairs (e.g., `category_affinity=beverages`) that the publisher can use for line item targeting, reporting breakdowns, or real-time decisioning.
+
+Enrichment signals are additive — they are not tied to specific packages. A buyer agent might return enrichment signals even when it activates no packages, providing value as a data provider rather than a demand source.
+
+This is how existing RTD (Real-Time Data) modules work today. TMP unifies enrichment and package activation into a single protocol, so a buyer agent can do both in one response.

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/identity-match-response.json",
+  "title": "Identity Match Response",
+  "description": "Response indicating per-package eligibility based on identity evaluation.",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the identity match request"
+    },
+    "eligibility": {
+      "type": "array",
+      "description": "Per-package eligibility determinations",
+      "items": {
+        "$ref": "/schemas/tmp/package-eligibility.json"
+      }
+    }
+  },
+  "required": [
+    "request_id",
+    "eligibility"
+  ],
+  "additionalProperties": true
+}

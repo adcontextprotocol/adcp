@@ -1,0 +1,200 @@
+---
+title: TMP for Web Publishers
+description: How TMP activates pre-negotiated packages on web pages using Prebid and GAM.
+---
+
+# TMP for Web Publishers
+
+Web publishers typically run an ad server (GAM, Kevel, FreeWheel) that manages line items, targeting rules, and ad selection. TMP integrates with this infrastructure through a Prebid module -- it tells the ad server which deals to activate, it does not replace the ad server.
+
+## How It Works Today
+
+A publisher running Prebid with AdCP deals has packages defined through `create_media_buy`. To activate them, the publisher manually creates corresponding line items or PMP deals in their ad server. A vendor-specific RTD module injects targeting signals by sending the full OpenRTB BidRequest to the vendor's API. This works but requires per-vendor integration and sends unnecessary data.
+
+TMP replaces vendor-specific RTD modules with a single Prebid module that speaks a standard protocol. Buyer agents evaluate context and identity separately, and the publisher joins the results locally before passing instructions to GAM.
+
+## Context Match
+
+When a page loads, the TMP Prebid module sends a Context Match request to the router. The request includes the page context and ALL packages available for the placement -- not filtered by the user viewing the page.
+
+### Context Match Request
+
+```json
+{
+  "request_id": "ctx-7f2a-oakwood-91b3",
+  "property_id": "oakwood-publishing-main",
+  "property_type": "website",
+  "placement_id": "article-sidebar-300x250",
+  "artifacts": ["article:sustainable-kitchen-2026-03"],
+  "available_packages": [
+    { "package_id": "pkg-display-0041", "media_buy_id": "mb-pinnacle-q1", "format_ids": ["display_300x250", "display_728x90"] },
+    { "package_id": "pkg-native-0078", "media_buy_id": "mb-greenleaf-q1", "format_ids": ["native_infeed"] },
+    { "package_id": "pkg-display-0103", "media_buy_id": "mb-summit-q1", "format_ids": ["display_300x250"] }
+  ]
+}
+```
+
+Key points:
+
+- `available_packages` includes ALL packages for this placement, across all buyers. This prevents user-identity leakage into the context path and enables caching the response across users.
+- `artifacts` references registered content. The buyer agent resolves artifact metadata from its cache — no inline signals needed on the request.
+
+### Context Match Response
+
+The router fans out to each buyer agent and merges the responses. Each buyer returns offers for packages whose targeting matched the content context, plus response-level signals that flow through to GAM as key-values.
+
+```json
+{
+  "request_id": "ctx-7f2a-oakwood-91b3",
+  "offers": [
+    { "package_id": "pkg-display-0041" },
+    { "package_id": "pkg-native-0078" }
+  ],
+  "signals": {
+    "segments": ["sustainability", "home_cooking"],
+    "targeting_kvs": [
+      { "key": "adcp_seg", "value": "sustainability" },
+      { "key": "adcp_seg", "value": "home_cooking" },
+      { "key": "adcp_pkg", "value": "pkg-display-0041" },
+      { "key": "adcp_pkg", "value": "pkg-native-0078" }
+    ]
+  }
+}
+```
+
+Key points:
+
+- `offers` contains one entry per activated package. Here, two of three packages matched. The third (`pkg-display-0103`) did not match the kitchen/sustainability context, so it is absent.
+- For web/GAM activation, offers are simple -- just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
+- `signals.targeting_kvs` are the key-value pairs that the Prebid module sets on the GAM ad request. GAM line items are configured to match on these keys.
+
+## Identity Match
+
+Separately, the TMP Prebid module sends an Identity Match request with the user's opaque token. This request carries no page context. The `package_ids` list includes ALL active packages for the buyer -- not just the packages on this page.
+
+### Identity Match Request
+
+```json
+{
+  "request_id": "id-3k9p-oakwood-d4f1",
+  "user_token": "tok_uid2_8f2a3b7c",
+  "package_ids": [
+    "pkg-display-0041",
+    "pkg-display-0042",
+    "pkg-display-0043",
+    "pkg-native-0078",
+    "pkg-native-0079",
+    "pkg-display-0103",
+    "pkg-display-0104",
+    "pkg-video-0201"
+  ]
+}
+```
+
+Key points:
+
+- `request_id` is unrelated to the context match `request_id`. The two must not be derivable from each other.
+- `package_ids` includes ALL active packages for the buyer across the entire site, not just the three that were on this placement's context match. Sending only the page-specific subset would let the buyer correlate identity with context by comparing package sets.
+- `user_token` is opaque. It comes from an identity provider (UID2, ID5, LiveRamp) or is publisher-generated. The buyer cannot reverse it to PII.
+
+### Identity Match Response
+
+The buyer evaluates the user against all requested packages and returns a boolean `eligible` flag per package, with an optional `intent_score` to help the publisher rank competing offers.
+
+```json
+{
+  "request_id": "id-3k9p-oakwood-d4f1",
+  "eligibility": [
+    { "package_id": "pkg-display-0041", "eligible": true, "intent_score": 0.82 },
+    { "package_id": "pkg-display-0042", "eligible": true },
+    { "package_id": "pkg-display-0043", "eligible": false },
+    { "package_id": "pkg-native-0078", "eligible": true, "intent_score": 0.65 },
+    { "package_id": "pkg-native-0079", "eligible": true },
+    { "package_id": "pkg-display-0103", "eligible": false },
+    { "package_id": "pkg-display-0104", "eligible": true },
+    { "package_id": "pkg-video-0201", "eligible": false }
+  ]
+}
+```
+
+Key points:
+
+- `eligible` is a boolean. The buyer computes it from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher.
+- `intent_score` is optional. When present, it helps the publisher choose between multiple eligible packages for the same placement.
+- There is no `frequency_capped`, `audience_match`, or `recency` field. The buyer's internal reasons stay with the buyer.
+
+## Activation: Joining Context and Identity
+
+The publisher joins context match and identity match locally. This is where the two halves come together -- the router never sees both at the same time.
+
+### Step 1: Intersect
+
+Take the offers from context match and filter by identity match eligibility.
+
+| Package | Context Match | Identity Match | Result |
+|---|---|---|---|
+| `pkg-display-0041` | Offered | Eligible (intent: 0.82) | Activate |
+| `pkg-native-0078` | Offered | Eligible (intent: 0.65) | Activate |
+| `pkg-display-0103` | Not offered | Not eligible | Skip |
+
+Only two packages survive: `pkg-display-0041` and `pkg-native-0078`.
+
+### Step 2: Set GAM Targeting
+
+The Prebid module takes the context match `signals.targeting_kvs` and sets them on the GAM ad request as key-value pairs:
+
+```
+adcp_seg = sustainability, home_cooking
+adcp_pkg = pkg-display-0041, pkg-native-0078
+```
+
+GAM line items are pre-configured to target on `adcp_pkg` values. When the ad request arrives with `adcp_pkg=pkg-display-0041`, GAM matches it to the corresponding line item and serves the creative.
+
+### Step 3: GAM Selects
+
+GAM applies its own priority rules, competitive exclusions, and pacing logic across all eligible line items -- including both TMP-activated deals and other demand sources. TMP does not override GAM's ad selection; it provides the inputs.
+
+## Prebid Integration
+
+The TMP Prebid module replaces vendor-specific RTD modules. It handles the full flow:
+
+1. **On auction init**: Send Context Match request to the TMP router with all available packages for each placement on the page.
+2. **On context match response**: Store offers and targeting signals.
+3. **After temporal delay** (100-2000ms, randomized): Send Identity Match request with the user's opaque token and ALL active package IDs for each buyer.
+4. **On identity match response**: Join with context match results. Set targeting key-values on the ad unit.
+5. **On bid request**: GAM receives the enriched ad request with TMP targeting keys and selects line items as normal.
+
+The temporal delay between context and identity requests is a privacy measure. It prevents timing-based correlation of the two request types.
+
+## Sequence Diagram
+
+```
+Page Load
+  |
+  |-- Prebid TMP Module ---> TMP Router (Context)
+  |                              |-- fan out --> Buyer Agent A
+  |                              |-- fan out --> Buyer Agent B
+  |                              |<- merge <--- offers + signals
+  |<--- Context Match Response --
+  |
+  |   (100-2000ms random delay)
+  |
+  |-- Prebid TMP Module ---> TMP Router (Identity)
+  |                              |-- fan out --> Buyer Agent A
+  |                              |-- fan out --> Buyer Agent B
+  |                              |<- merge <--- eligibility
+  |<--- Identity Match Response --
+  |
+  |-- Join locally: intersect offers with eligibility
+  |-- Set targeting KVs on GAM ad request
+  |-- GAM selects and serves ad
+```
+
+## Privacy Constraints for Web
+
+These constraints apply to all surfaces but are worth restating for the web case:
+
+- **Context match carries no user data.** No cookies, no user tokens, no IP addresses. The available_packages list is the same for every user viewing that placement.
+- **Identity match carries no page data.** No URLs, no content signals, no placement IDs. The package_ids list includes all active packages for the buyer, not just the ones on this page.
+- **The publisher joins locally.** The router never sees both context and identity for the same impression. Only the publisher, who already has both the page context and the user identity, performs the intersection.
+- **Temporal decorrelation.** A random delay between the two requests prevents timing-based correlation at the network level.

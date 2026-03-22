@@ -1,0 +1,92 @@
+---
+title: The Execution Gap
+description: Why existing protocols fail at real-time execution, and why TMP takes a matching approach instead of an auction approach.
+---
+
+# The Execution Gap
+
+A buyer agent discovers inventory through `get_products`, negotiates a deal through `create_media_buy`, and later measures delivery through `get_media_buy_delivery`. The deal exists. Packages are defined with agreed pricing, targeting, and budgets.
+
+Then a user visits a page. Or opens an app. Or asks an AI assistant a question.
+
+What happens?
+
+## What Happens Today
+
+The answer depends entirely on the surface — and on each surface, it's ad hoc.
+
+### Web (with ad server)
+
+The publisher's ad operations team manually creates line items or PMP deals in their ad server (GAM, Kevel, FreeWheel) that correspond to each AdCP package. When a page loads, the ad server evaluates its own targeting rules to decide which line items are eligible. If the publisher uses Prebid Server, vendor-specific RTD (Real-Time Data) modules can inject signals into the auction — but each module speaks its own API, sends the full OpenRTB BidRequest (~2-10KB of JSON), and operates independently of the AdCP deal structure.
+
+The result: packages negotiated through AdCP are activated through a separate, manual process. The deal and the execution are disconnected.
+
+### AI Assistants
+
+There is no standard mechanism. AI platforms (ChatGPT, Snap AI, Reddit chat, character.ai) that want to monetize conversations have no protocol for asking buyer agents "which of your packages match this conversation?" Each platform builds its own ad serving logic, its own buyer integrations, and its own targeting system — or partners with a single ad network and delegates the entire problem.
+
+### Mobile Apps
+
+Mediation SDKs (AppLovin MAX, ironSource, Google AdMob) handle the decision: which network deal should serve for this user and placement? But mediation operates on its own deal registry, disconnected from AdCP packages. The app developer configures waterfall priorities or auction rules inside the mediation dashboard. There is no protocol path from "AdCP package exists" to "mediation layer activates it."
+
+### CTV
+
+Pod servers compose ad breaks from multiple deals. Each deal is configured in the broadcaster's ad server with targeting rules, competitive separation constraints, and creative rotation logic. Pod composition is a complex, surface-specific problem. There is no standard way for a buyer agent to say "activate my package for this pod, and prefer the 15-second cutdown."
+
+### Retail Media
+
+Retailers manage sponsored product placements through internal recommendation engines. When a shopper searches or browses a category, the retailer's algorithm decides which sponsored products to show. Buyer agents have no real-time input into this decision beyond the initial deal terms. There is no protocol for saying "for this search context, prefer these GTINs and exclude these promotions."
+
+## Why OpenRTB Is Wrong for This
+
+OpenRTB was designed for a specific scenario: an ad exchange runs an auction among bidders who have no pre-existing relationship. It solves the cold-start problem — how do strangers trade ad inventory in real time?
+
+But when packages are pre-negotiated through AdCP, the parties are not strangers. They have a deal. The question at execution time is not "who will bid the highest?" but "which of our agreed packages should activate for this context?"
+
+OpenRTB is wrong for this in three specific ways:
+
+**It bundles user identity with page context.** Every OpenRTB bid request sends user IDs, device fingerprints, IP addresses, and page URLs in a single object. This is a structural privacy failure. Buyers can — and do — use this data to build cross-site browsing profiles. No amount of consent management fixes the architecture; the data travels together by design.
+
+**It forces auction semantics.** OpenRTB assumes every impression is a competitive auction. But pre-negotiated deals are not competitive — the price is already agreed. Forcing a deal through auction machinery means building PMP logic, deal ID matching, and floor price enforcement on top of a protocol that was designed for open competition. The tail wags the dog.
+
+**It is heavyweight.** A typical OpenRTB bid request is 2-10KB of JSON, carrying the full device object, user object, site/app object, and impression array. When execution only needs to know "which packages match this page context?" most of that payload is wasted bandwidth and wasted parsing time.
+
+| What execution needs | What OpenRTB sends |
+|---|---|
+| Page content signals | Full site object + referrer chain + keyword lists |
+| Available packages | Nothing — buyer must infer from deal IDs |
+| Content classification | Partial — buyer often reclassifies independently |
+| User eligibility | Raw user IDs, device IDs, IP address, GPS |
+| Result: package activation | Result: bid with price, creative URL, tracking pixels |
+
+## Why Auctions Are a Resolution Strategy, Not the Protocol
+
+A related instinct is to build a new auction protocol — faster, lighter, more privacy-aware — and use it for real-time execution. CloudX's OpenAuction takes this approach: open-source auction logic running in a TEE (Trusted Execution Environment) with encrypted bids and attestation proofs. It is well-engineered.
+
+But auctions are the wrong primitive for most real-time ad decisioning:
+
+**Filtering, not competition.** "Which of my pre-bought packages apply to this context?" is a filtering operation. The buyer evaluates the available packages against their campaign targeting and budget. There is no adversarial competition — the buyer is selecting from their own deals.
+
+**Steering, not bidding.** "Within this package, which catalog items or creative variants should I prefer?" is a steering operation. The buyer expresses preferences within the bounds of an agreed deal. There is no price to compute.
+
+**Eligibility, not ranking.** "Is this user frequency-capped or high-intent for this package?" is an eligibility check. The buyer looks up the user's status. There is no bid to rank.
+
+An auction is one valid resolution strategy when multiple packages from multiple buyers compete for the same placement. But making the auction the protocol forces every surface — including AI assistants selecting sponsored content by relevance, retailers populating carousels by product fit, and CTV broadcasters composing pods by editorial judgment — into a bidding paradigm.
+
+TMP takes a different approach: return the matching packages, and let the publisher decide how to resolve them. If the publisher wants an auction, they can run one — potentially using CloudX's TEE infrastructure for verifiable fairness. But the auction sits on top of matching, not in place of it.
+
+## What a Protocol-Level Solution Looks Like
+
+The execution gap requires a protocol that:
+
+1. **Works with pre-negotiated packages.** The market already happened at planning time. The real-time layer activates deals, it does not negotiate them.
+
+2. **Separates context from identity.** The buyer needs content signals to decide which packages match. The buyer needs user signals to evaluate eligibility. These two needs must be served by two independent operations so that buyers cannot correlate them.
+
+3. **Supports catalog and creative refinement.** Activating a package is not always a binary on/off. The buyer may need to specify which catalog items to feature, which creative variant to serve, or which promotions are active.
+
+4. **Works across surfaces.** The same protocol must work for web pages with ad servers, AI assistants without ad servers, mobile apps with mediation layers, retailers with recommendation engines, and broadcasters with pod servers.
+
+5. **Meets real-time latency requirements.** Sub-50ms end-to-end, because execution happens on every page load, every conversation turn, every app screen.
+
+This is what TMP provides: two lightweight operations — [Context Match and Identity Match](/docs/trusted-match/context-and-identity) — that activate pre-negotiated packages across any surface, with structural privacy guarantees and sub-50ms latency.

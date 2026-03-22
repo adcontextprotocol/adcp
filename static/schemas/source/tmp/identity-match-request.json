@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/identity-match-request.json",
+  "title": "Identity Match Request",
+  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks.",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
+      "default": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Unique request identifier. MUST NOT correlate with any context match request_id."
+    },
+    "user_token": {
+      "type": "string",
+      "description": "Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated"
+    },
+    "uid_type": {
+      "$ref": "/schemas/enums/uid-type.json",
+      "description": "Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching."
+    },
+    "package_ids": {
+      "type": "array",
+      "description": "ALL active package identifiers for this buyer. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "request_id",
+    "user_token",
+    "package_ids"
+  ],
+  "additionalProperties": false
+}

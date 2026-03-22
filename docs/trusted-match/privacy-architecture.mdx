@@ -1,0 +1,155 @@
+---
+title: Privacy Architecture
+description: How TMP separates user identity from page context, what each party can and cannot learn, and how TEE attestation upgrades the guarantee.
+---
+
+# Privacy Architecture
+
+TMP's privacy model is structural, not policy-based. The protocol separates user identity from page context so that buyers never receive both together. Without TEE, this separation is enforced by code: the context code path never accesses identity data and vice versa. The code is open-source and auditable. With TEE, attestation proves the expected code is running unmodified, upgrading the guarantee from "auditable" to "independently verifiable."
+
+This page explains what the separation is, what it prevents, and where the guarantees come from.
+
+## The Separation Principle
+
+The TMP Router is a single binary with two structurally separate code paths: one for context, one for identity.
+
+| | Context Path | Identity Path |
+|---|---|---|
+| **Inputs** | Page URL, content signals, topic IDs, available packages | Opaque user token, package IDs |
+| **Never receives** | Any user identity | Any page context |
+| **Returns** | Activated packages, enrichment signals | Boolean eligibility per package, optional intent score |
+
+The context code path has no access to identity data. The identity code path has no access to context data. The two paths share no state: no shared memory, no shared database, no communication channel, no shared logs or telemetry.
+
+### Without TEE
+
+Separation is enforced by the code itself. The context path cannot read identity data because it is not passed to it, not stored in any location the context path can reach, and not referenced in any data structure the context path processes. The same applies in reverse for the identity path.
+
+This is verifiable by reading the source code. The router is open-source. Anyone can audit it to confirm that the two code paths are isolated. But this is a trust-and-audit model: you are trusting that the deployed binary matches the published source, and that no modification has been introduced at runtime.
+
+### With TEE
+
+TEE (Trusted Execution Environment) attestation removes the need to trust the operator. An attestation document is a cryptographically signed statement of exactly what code is running inside the enclave. A publisher or auditor can:
+
+1. Obtain the attestation document from the router.
+2. Verify the signature against the TEE vendor's root certificate authority.
+3. Confirm that the running code matches the published, audited source.
+
+This makes the separation independently verifiable. No one needs to trust the router operator's claim that they deployed the right binary; the hardware proves it.
+
+TEE is an upgrade path, not a prerequisite. The protocol works without it. Publishers who need independent verification can require TEE-attested routers; those who are comfortable with code audit and operational trust do not need to.
+
+## What Each Party Learns
+
+### What the buyer agent learns
+
+**From Context Match requests**, a buyer agent learns:
+
+- Which publisher pages and content exist (by domain, content hash, topic)
+- What packages are available on those pages
+- Content signals: topics, sentiment, language, brand safety classification
+
+**From Identity Match requests**, a buyer agent learns:
+
+- Which user tokens exist (opaque, publisher-scoped)
+- Whether each user is eligible for each of the buyer's active packages
+
+The buyer computes eligibility internally from frequency caps, audience membership, purchase history, or whatever signals they have. They return a boolean `eligible` flag and an optional `intent_score`. The publisher does not learn why a user is or is not eligible.
+
+**What the buyer cannot do:**
+
+- Associate a user token with a page URL or content signal
+- Determine that a specific user visited a specific page
+- Build a cross-page browsing profile for any user
+
+These limitations hold because the buyer never receives identity and context in the same request, and the decorrelation mechanisms described below prevent joining them after the fact.
+
+### What the router operator learns
+
+The context code path sees content signals and package lists. It fans these out to buyer agents and merges responses. It never processes user tokens.
+
+The identity code path sees user tokens and package IDs. It fans these out to buyer agents and merges responses. It never processes content signals.
+
+Without TEE, the operator could theoretically modify the binary to bridge the two paths. The code is open-source and auditable, but you are trusting the operator to run it unmodified. With TEE, attestation proves the binary matches the published source, removing that trust requirement.
+
+### What the publisher retains
+
+The publisher has both context and identity. They are the first party: the user is on their page, using their app, in their conversation. TMP does not change the publisher's data posture. It prevents buyers and intermediaries from obtaining the same combined view.
+
+The publisher performs the join locally after both responses arrive. They can apply consent logic, frequency management, and relevance ranking on their own infrastructure.
+
+## Package Set Decorrelation
+
+If the context path sent only the packages relevant to this page, and the identity path sent only those same packages, a buyer could compare the two sets and infer which page the identity request came from. TMP prevents this by requiring structurally different sets:
+
+- **Context Match** sends `available_packages`: ALL packages eligible for this placement, determined by the publisher's inventory configuration. This set is stable per placement and does not vary by user. Pre-filtering by user identity would leak identity into the context path.
+- **Identity Match** sends `package_ids`: ALL active packages for the buyer across all placements and properties. The buyer evaluates the user against their full package portfolio.
+
+The context set is scoped to one placement. The identity set is scoped to one buyer's entire active inventory. The two sets are structurally different, and neither reveals information about the other.
+
+The publisher performs the intersection locally: which packages were both activated by context match and eligible by identity match.
+
+## Temporal Decorrelation
+
+Even with separate code paths and different package sets, if Context Match and Identity Match requests arrive at a buyer at the same instant from the same publisher, timing correlation is possible. TMP addresses this:
+
+- Publishers SHOULD introduce a random delay between context and identity requests. The recommended range is 100-2000ms, uniformly distributed.
+- Publishers MAY batch Identity Match requests across multiple page views, further obscuring which context request each identity request corresponds to.
+- Publishers MAY route context and identity requests through different network paths.
+
+Temporal decorrelation is defense in depth. It is not the primary separation mechanism; structural separation and package set decorrelation are. But it closes the timing side channel.
+
+## TEE Attestation Details
+
+TMP's reference architecture targets AWS Nitro Enclaves, though the protocol is TEE-agnostic. Any TEE that produces verifiable attestation documents is compatible.
+
+### What attestation proves
+
+- The router binary running inside the enclave matches the published, audited source code.
+- The code paths for context and identity are structurally separate, with no shared state.
+- The binary has not been modified by the operator, the hosting provider, or any runtime process.
+
+### What attestation does not prove
+
+- That buyer agents handle the data they receive responsibly. TMP limits what buyers receive; it does not control what they do with it.
+- That the publisher's join logic is correct. The publisher is the first party and is not constrained by TMP's separation model.
+- That the code is free of bugs. Attestation proves the code matches the published source. Whether that source is correct is a separate question, addressed by open-source audit.
+
+### Attestation measurements
+
+Each attestation document includes cryptographic hashes of the running environment:
+
+| Measurement | What it covers |
+|---|---|
+| **Image hash** | Hash of the enclave image. Confirms the binary matches the expected build. |
+| **Kernel hash** | Hash of the operating environment. |
+| **Application hash** | Hash of the application-level code. |
+| **Role hash** | Confirms the enclave's permissions match expectations (e.g., no access to external databases). |
+
+A publisher or auditor can verify these measurements against the published build artifacts. This verification can be automated and performed continuously.
+
+## Comparison to OpenRTB
+
+| Signal | OpenRTB | TMP |
+|---|---|---|
+| User ID + page URL | Same bid request | Separate code paths, never combined |
+| Device fingerprint | Included in bid request | Never sent |
+| IP address | Included in bid request | Never sent |
+| Raw cookies | Included in bid request | Never sent |
+| GPS coordinates | Included in bid request | Never sent |
+| Browsing history | Constructible via cookie sync | Not constructible: buyer never sees identity + context together |
+| Separation verification | Trust the exchange | Code audit (without TEE) or TEE attestation (with TEE) |
+
+In OpenRTB, the bid request is a bundle of everything: user identity, device signals, page context, behavioral data. Every participant in the auction receives the full bundle. Privacy depends on contractual promises not to misuse the data.
+
+TMP splits the bundle at the protocol level. Buyers receive context or identity, never both. The separation is structural, not contractual.
+
+## Regulatory Posture
+
+TMP's structural separation aligns with the data minimization principle required by GDPR, CCPA, ePrivacy, and similar regulations:
+
+- Buyer agents never receive user identity paired with content context. Minimization is enforced by the protocol, not by policy.
+- The publisher, as the first party with a direct user relationship, controls the join. They can apply consent logic before combining the datasets.
+- With TEE attestation, the separation is independently verifiable, providing auditable evidence for regulators.
+
+This is an architectural observation, not legal advice. Publishers and buyer agents should consult their own legal counsel regarding regulatory compliance.
