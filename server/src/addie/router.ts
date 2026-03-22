@@ -45,6 +45,8 @@ export type ExecutionPlanBase = {
   model?: string;
   /** When true, use a more capable model (Opus) for this query - for billing, financial, or precision-critical tasks */
   requires_precision?: boolean;
+  /** When true, use a more capable model (Opus) for depth - protocol design, schema architecture, technical discussions */
+  requires_depth?: boolean;
 };
 
 export type ExecutionPlan = ExecutionPlanBase & (
@@ -381,10 +383,11 @@ Respond with a JSON object for the execution plan. Choose ONE action:
    - When you need more information to help effectively
    - Use sparingly - only when truly ambiguous
 
-4. {"action": "respond", "tool_sets": ["set1", "set2"], "reason": "brief reason"}
+4. {"action": "respond", "tool_sets": ["set1", "set2"], "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
    - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
+   - Set "requires_depth": true when the discussion involves protocol design, schema architecture, technical implementation details, standards discussion, or multi-stakeholder governance decisions. NOT for simple lookup questions or basic "what is X" questions.
 
 Respond with ONLY the JSON object, no other text.`;
 }
@@ -396,7 +399,7 @@ type ParsedPlan =
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tool_sets: string[]; reason: string };
+  | { action: 'respond'; tool_sets: string[]; reason: string; requires_depth?: boolean };
 
 /**
  * Parse the router response into a partial ExecutionPlan
@@ -436,6 +439,7 @@ function parseRouterResponse(response: string): ParsedPlan {
         action: 'respond',
         tool_sets: toolSets,
         reason: parsed.reason || 'Can help with this topic',
+        ...(parsed.requires_depth && { requires_depth: true }),
       };
     }
 
@@ -488,8 +492,10 @@ export class AddieRouter {
 
       // Check if any selected tool sets require precision mode (billing, financial)
       let requiresPrecisionMode = false;
+      let requiresDepthMode = false;
       if (parsedPlan.action === 'respond') {
         requiresPrecisionMode = checkPrecision(parsedPlan.tool_sets);
+        requiresDepthMode = !!parsedPlan.requires_depth;
       }
 
       const plan: ExecutionPlan = {
@@ -500,6 +506,7 @@ export class AddieRouter {
         tokens_output: response.usage?.output_tokens,
         model: ModelConfig.fast,
         requires_precision: requiresPrecisionMode,
+        requires_depth: requiresDepthMode,
       };
 
       logger.debug({
@@ -511,6 +518,7 @@ export class AddieRouter {
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
         requiresPrecision: requiresPrecisionMode,
+        requiresDepth: requiresDepthMode,
       }, 'Router: Execution plan generated');
 
       // Track for performance metrics (fire-and-forget, errors handled internally)
