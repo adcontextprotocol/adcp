@@ -454,17 +454,16 @@ function buildProduct(
       const builtEpisodes: Episode[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const episode: Episode = {
+          const epAny = ep as Record<string, unknown>;
+          const episode = {
             episode_id: ep.episodeId,
             show_id: show.showId,
             name: ep.title,
             status: ep.status as EpisodeStatus,
             ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
             ...(ep.durationSeconds && { duration_seconds: ep.durationSeconds }),
-            ...((ep as unknown as { special?: { name: string; category: string; starts?: string; ends?: string } }).special && {
-              special: (ep as unknown as { special: unknown }).special,
-            }),
-          };
+            ...(epAny.special ? { special: epAny.special } : {}),
+          } as Episode;
           builtEpisodes.push(episode);
         }
       }
