@@ -288,7 +288,7 @@ const CHANNEL_ALIASES: Record<string, string> = {
   'online video': 'olv', 'pre-roll': 'olv', 'mid-roll': 'olv',
   'connected tv': 'ctv', 'ott': 'ctv',
   'programmatic display': 'display', 'banner': 'display',
-  'digital audio': 'streaming_audio', 'streaming audio': 'streaming_audio',
+  'digital audio': 'streaming_audio', 'streaming audio': 'streaming_audio', 'audio': 'streaming_audio',
   'digital out of home': 'dooh', 'outdoor digital': 'dooh',
   'newsletter': 'email',
 };
@@ -819,7 +819,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
               format: { type: 'string', description: 'Format if specified (300x250, pre-roll, etc.)' },
               pricing_model: { type: 'string', description: 'How it\'s priced (CPM, CPC, flat rate, etc.)' },
               rate: { type: 'number', description: 'Unit price (e.g., $12 CPM). IO rates are often negotiated above rate card.' },
-              quantity: { type: 'number', description: 'Units (impressions, clicks, etc.)' },
               budget: { type: 'number', description: 'Line item total spend' },
               start_date: { type: 'string', description: 'Start date (ISO 8601)' },
               end_date: { type: 'string', description: 'End date (ISO 8601)' },
