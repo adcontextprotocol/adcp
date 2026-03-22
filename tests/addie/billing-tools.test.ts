@@ -3,18 +3,18 @@ import type { MemberContext } from '../../server/src/addie/member-context.js';
 
 // Mock the stripe-client module
 jest.mock('../../server/src/billing/stripe-client.js', () => ({
-  getProductsForCustomer: jest.fn(),
-  createCheckoutSession: jest.fn(),
-  createAndSendInvoice: jest.fn(),
-  validateInvoiceDetails: jest.fn(),
-  createStripeCustomer: jest.fn().mockResolvedValue('cus_new_123'),
-  getPriceByLookupKey: jest.fn(),
+  getProductsForCustomer: jest.fn<any>(),
+  createCheckoutSession: jest.fn<any>(),
+  createAndSendInvoice: jest.fn<any>(),
+  validateInvoiceDetails: jest.fn<any>(),
+  createStripeCustomer: jest.fn<any>().mockResolvedValue('cus_new_123'),
+  getPriceByLookupKey: jest.fn<any>(),
 }));
 
 // Mock the organization-db module
-const mockGetOrganization = jest.fn();
-const mockSearchOrganizations = jest.fn();
-const mockGetOrCreateStripeCustomer = jest.fn().mockImplementation(
+const mockGetOrganization = jest.fn<any>();
+const mockSearchOrganizations = jest.fn<any>();
+const mockGetOrCreateStripeCustomer = jest.fn<any>().mockImplementation(
   async (_orgId: string, createFn: () => Promise<string | null>) => createFn()
 );
 jest.mock('../../server/src/db/organization-db.js', () => ({
@@ -86,7 +86,7 @@ describe('billing-tools', () => {
       ];
 
       const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
-      (getProductsForCustomer as jest.Mock).mockResolvedValue(mockProducts);
+      (getProductsForCustomer as jest.Mock<any>).mockResolvedValue(mockProducts);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
@@ -112,7 +112,7 @@ describe('billing-tools', () => {
     test('returns error message when no products found and no products exist', async () => {
       const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
       // First call (with filters) returns empty, second call (without filters) also returns empty
-      (getProductsForCustomer as jest.Mock)
+      (getProductsForCustomer as jest.Mock<any>)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
@@ -148,7 +148,7 @@ describe('billing-tools', () => {
 
       const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
       // First call (with filters) returns empty, second call (without filters) returns products
-      (getProductsForCustomer as jest.Mock)
+      (getProductsForCustomer as jest.Mock<any>)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce(mockProducts);
 
@@ -167,7 +167,7 @@ describe('billing-tools', () => {
 
     test('filters by revenue tier correctly', async () => {
       const { getProductsForCustomer } = await import('../../server/src/billing/stripe-client.js');
-      (getProductsForCustomer as jest.Mock).mockResolvedValue([]);
+      (getProductsForCustomer as jest.Mock<any>).mockResolvedValue([]);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
@@ -201,8 +201,8 @@ describe('billing-tools', () => {
 
     test('creates payment link using memberContext email by default', async () => {
       const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
-      (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
-      (createCheckoutSession as jest.Mock).mockResolvedValue({
+      (getPriceByLookupKey as jest.Mock<any>).mockResolvedValue('price_abc123');
+      (createCheckoutSession as jest.Mock<any>).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
       });
 
@@ -241,8 +241,8 @@ describe('billing-tools', () => {
 
     test('falls back to AI-provided email when memberContext has no email', async () => {
       const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
-      (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
-      (createCheckoutSession as jest.Mock).mockResolvedValue({
+      (getPriceByLookupKey as jest.Mock<any>).mockResolvedValue('price_abc123');
+      (createCheckoutSession as jest.Mock<any>).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
       });
 
@@ -284,8 +284,8 @@ describe('billing-tools', () => {
 
     test('falls back to AI-provided email when slack_user.email is null', async () => {
       const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
-      (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
-      (createCheckoutSession as jest.Mock).mockResolvedValue({
+      (getPriceByLookupKey as jest.Mock<any>).mockResolvedValue('price_abc123');
+      (createCheckoutSession as jest.Mock<any>).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
       });
 
@@ -332,7 +332,7 @@ describe('billing-tools', () => {
 
     test('returns error when price not found', async () => {
       const { getPriceByLookupKey } = await import('../../server/src/billing/stripe-client.js');
-      (getPriceByLookupKey as jest.Mock).mockResolvedValue(null);
+      (getPriceByLookupKey as jest.Mock<any>).mockResolvedValue(null);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
@@ -348,8 +348,8 @@ describe('billing-tools', () => {
 
     test('returns error when Stripe session creation fails', async () => {
       const { getPriceByLookupKey, createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
-      (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
-      (createCheckoutSession as jest.Mock).mockResolvedValue(null);
+      (getPriceByLookupKey as jest.Mock<any>).mockResolvedValue('price_abc123');
+      (createCheckoutSession as jest.Mock<any>).mockResolvedValue(null);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
@@ -366,7 +366,7 @@ describe('billing-tools', () => {
   describe('send_invoice', () => {
     test('returns invoice preview without creating Stripe resources', async () => {
       const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
-      (validateInvoiceDetails as jest.Mock).mockResolvedValue({
+      (validateInvoiceDetails as jest.Mock<any>).mockResolvedValue({
         amountDue: 150000,
         currency: 'usd',
         productName: 'Corporate Membership',
@@ -408,7 +408,7 @@ describe('billing-tools', () => {
 
     test('returns error when product not found', async () => {
       const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
-      (validateInvoiceDetails as jest.Mock).mockResolvedValue(null);
+      (validateInvoiceDetails as jest.Mock<any>).mockResolvedValue(null);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
@@ -435,7 +435,7 @@ describe('billing-tools', () => {
 
     test('handles exceptions gracefully', async () => {
       const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
-      (validateInvoiceDetails as jest.Mock).mockRejectedValue(new Error('Stripe API error'));
+      (validateInvoiceDetails as jest.Mock<any>).mockRejectedValue(new Error('Stripe API error'));
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
@@ -478,7 +478,7 @@ describe('billing-tools', () => {
 
     test('creates and sends invoice after confirmation', async () => {
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
-      (createAndSendInvoice as jest.Mock).mockResolvedValue({
+      (createAndSendInvoice as jest.Mock<any>).mockResolvedValue({
         invoiceId: 'in_abc123',
         invoiceUrl: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
         subscriptionId: 'sub_xyz789',
@@ -503,7 +503,7 @@ describe('billing-tools', () => {
 
     test('returns error when invoice send fails', async () => {
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
-      (createAndSendInvoice as jest.Mock).mockResolvedValue(null);
+      (createAndSendInvoice as jest.Mock<any>).mockResolvedValue(null);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();

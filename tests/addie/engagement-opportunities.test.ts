@@ -210,12 +210,13 @@ describe('computeEngagementOpportunities', () => {
 
   describe('company type weighting', () => {
     it('agency gets higher engagement scores', () => {
-      const baseCtx = {
+      const baseCtx: EngagementContext = {
         relationship: makeRelationship({ stage: 'exploring', slack_user_id: 'U1' }),
         capabilities: makeCapabilities({ working_group_count: 0, events_registered: 0 }),
         recentMessages: [],
         certification: null,
-      } as const;
+        company: null,
+      };
 
       const agencyResult = computeEngagementOpportunities({
         ...baseCtx,
@@ -236,12 +237,13 @@ describe('computeEngagementOpportunities', () => {
     });
 
     it('brand gets lower discovery scores (brands are buyers, not interviewees)', () => {
-      const baseCtx = {
+      const baseCtx: EngagementContext = {
         relationship: makeRelationship({ stage: 'prospect' }),
         capabilities: null,
         recentMessages: [],
         certification: null,
-      } as const;
+        company: null,
+      };
 
       const brandResult = computeEngagementOpportunities({
         ...baseCtx,
@@ -347,6 +349,7 @@ describe('computeEngagementOpportunities', () => {
         totalModules: 10,
         credentialsEarned: [],
         hasInProgressTrack: true,
+        abandonedModuleTitle: null,
       };
       const ctx = makeContext({
         relationship: makeRelationship({ stage: 'welcomed' }),
@@ -363,6 +366,7 @@ describe('computeEngagementOpportunities', () => {
         totalModules: 10,
         credentialsEarned: ['adcp-basics'],
         hasInProgressTrack: false,
+        abandonedModuleTitle: null,
       };
       const ctx = makeContext({
         relationship: makeRelationship({ stage: 'exploring' }),
