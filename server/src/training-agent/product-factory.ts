@@ -467,7 +467,7 @@ function buildProduct(
                 category: ep.special.category,
                 starts: ep.special.starts,
                 ends: ep.special.ends,
-              } as unknown as Episode extends { special?: infer S } ? S : never,
+              } as Episode['special'],
             }),
           };
           builtEpisodes.push(episode);
