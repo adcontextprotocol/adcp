@@ -43,6 +43,13 @@ import {
   handleReportPlanOutcome,
   handleGetPlanAuditLogs,
 } from './governance-handlers.js';
+import {
+  BRAND_TOOLS,
+  handleGetBrandIdentity,
+  handleGetRights,
+  handleAcquireRights,
+  handleUpdateRights,
+} from './brand-handlers.js';
 import { PUBLISHERS } from './publishers.js';
 
 /** Wire-format error shared by all training agent responses. */
@@ -462,6 +469,7 @@ const TOOLS = [
     },
   },
   ...GOVERNANCE_TOOLS,
+  ...BRAND_TOOLS,
   {
     name: 'get_adcp_capabilities',
     description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
@@ -1719,6 +1727,10 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   check_governance: handleCheckGovernance,
   report_plan_outcome: handleReportPlanOutcome,
   get_plan_audit_logs: handleGetPlanAuditLogs,
+  get_brand_identity: handleGetBrandIdentity,
+  get_rights: handleGetRights,
+  acquire_rights: handleAcquireRights,
+  update_rights: handleUpdateRights,
   get_adcp_capabilities: handleGetAdcpCapabilities,
 };
 

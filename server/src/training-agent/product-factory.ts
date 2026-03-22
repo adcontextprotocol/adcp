@@ -307,7 +307,7 @@ function buildProduct(
   // Fall back to all pricing if filter yields nothing
   const effectivePricing = pricingTemplates.length > 0 ? pricingTemplates : pub.pricingTemplates;
 
-  const product: Partial<Product> = {
+  const product: Partial<Product> & Record<string, unknown> = {
     product_id: productId,
     name: template.name,
     description: template.description,
@@ -437,7 +437,7 @@ function buildProduct(
         }
       }
       if (episodes.length > 0) {
-        product.episodes = episodes as Product['episodes'];
+        product.episodes = episodes as unknown as NonNullable<Product['episodes']>;
       }
     }
   }

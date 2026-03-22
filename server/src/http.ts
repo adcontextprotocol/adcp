@@ -4005,10 +4005,10 @@ export class HTTPServer {
               // Ensure the Stripe customer has org metadata so that subsequent
               // subscription and invoice webhooks can find the org.
               try {
-                const customer = await stripe.customers.retrieve(customerId);
-                if ('deleted' in customer && customer.deleted) {
+                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
+                if ('deleted' in customerRaw && customerRaw.deleted) {
                   logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
-                } else if (!customer.metadata?.workos_organization_id) {
+                } else if (!(customerRaw as Stripe.Customer).metadata?.workos_organization_id) {
                   await stripe.customers.update(customerId, {
                     metadata: { workos_organization_id: workosOrgId },
                   });
@@ -4732,7 +4732,7 @@ export class HTTPServer {
         // Static pages with their priorities and change frequencies
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
-          { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/stories', priority: '0.9', changefreq: 'daily' },
           { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
@@ -6168,6 +6168,7 @@ Disallow: /api/admin/
             // If org has no admin/owner yet, promote this user to owner
             const existingMembers = await workos!.userManagement.listOrganizationMemberships({
               organizationId: organization_id,
+              statuses: ['active', 'inactive', 'pending'],
               limit: 100,
             });
             const hasAdmin = existingMembers.data.some((m) => {
@@ -6299,6 +6300,7 @@ Disallow: /api/admin/
         // Check if org has any existing members
         const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
           organizationId: organization_id,
+          statuses: ['active', 'inactive', 'pending'],
         });
 
         // If org has no members (e.g., prospect org) AND user's email domain matches,

@@ -32,10 +32,6 @@ import {
   createBrandToolHandlers,
 } from "./mcp/brand-tools.js";
 import {
-  BRAND_SANDBOX_TOOLS,
-  createBrandSandboxToolHandlers,
-} from "./mcp/brand-sandbox-tools.js";
-import {
   PROPERTY_TOOLS,
   createPropertyToolHandlers,
 } from "./mcp/property-tools.js";
@@ -65,6 +61,5 @@ export async function registerBaselineTools(client: AddieClaudeClient): Promise<
   registerToolsFromMap(client, SCHEMA_TOOLS, createSchemaToolHandlers());
   registerToolsFromMap(client, DIRECTORY_TOOLS, createDirectoryToolHandlers());
   registerToolsFromMap(client, BRAND_TOOLS, createBrandToolHandlers());
-  registerToolsFromMap(client, BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers());
   registerToolsFromMap(client, PROPERTY_TOOLS, createPropertyToolHandlers());
 }

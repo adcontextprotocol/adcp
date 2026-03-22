@@ -702,8 +702,12 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('check_governance');
     expect(toolNames).toContain('report_plan_outcome');
     expect(toolNames).toContain('get_plan_audit_logs');
+    expect(toolNames).toContain('get_brand_identity');
+    expect(toolNames).toContain('get_rights');
+    expect(toolNames).toContain('acquire_rights');
+    expect(toolNames).toContain('update_rights');
     expect(toolNames).toContain('get_adcp_capabilities');
-    expect(toolNames).toHaveLength(16);
+    expect(toolNames).toHaveLength(20);
   });
 
   it('returns error for unknown tool', async () => {
