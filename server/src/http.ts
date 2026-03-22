@@ -722,8 +722,16 @@ export class HTTPServer {
       }
 
       try {
-        // Check if file exists
-        await fs.access(filePath);
+        // Check if file exists; for extensionless paths, also try /index.html
+        try {
+          await fs.access(filePath);
+        } catch {
+          if (urlPath.endsWith('.html')) {
+            throw new Error('not found');
+          }
+          filePath = path.join(publicPath, urlPath, 'index.html');
+          await fs.access(filePath);
+        }
 
         // Cross-domain session bridge: if on AdCP without a session cookie,
         // redirect through AAO to pick up the session (if one exists).
