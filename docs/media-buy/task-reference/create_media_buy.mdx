@@ -975,7 +975,9 @@ const response = await session.call('create_media_buy', {
   "status": "completed",
   "media_buy_id": "mb_12345",
   "buyer_ref": "summer_campaign_2025",
+  "confirmed_at": "2025-06-01T10:00:00Z",
   "creative_deadline": "2025-06-15T23:59:59Z",
+  "revision": 1,
   "packages": [
     {
       "package_id": "pkg_001",
@@ -1037,7 +1039,9 @@ const response = await session.call('create_media_buy',
   "result": {
     "media_buy_id": "mb_67890",
     "buyer_ref": "enterprise_campaign",
+    "confirmed_at": "2025-01-22T14:30:00Z",
     "creative_deadline": "2025-06-20T23:59:59Z",
+    "revision": 1,
     "packages": [
       {
         "package_id": "pkg_002",
@@ -1109,7 +1113,9 @@ const response = await a2a.send({
         "data": {
           "media_buy_id": "mb_12345",
           "buyer_ref": "summer_campaign_2025",
+          "confirmed_at": "2025-06-01T10:00:00Z",
           "creative_deadline": "2025-06-15T23:59:59Z",
+          "revision": 1,
           "packages": [
             {
               "package_id": "pkg_001",

@@ -64,6 +64,11 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp for creative upload deadline"
     },
+    "revision": {
+      "type": "integer",
+      "description": "Monotonically increasing revision number. Incremented on every state change or update. Callers MAY include this in update_media_buy requests for optimistic concurrency — sellers MUST reject with CONFLICT if the provided revision does not match the current value.",
+      "minimum": 1
+    },
     "created_at": {
       "type": "string",
       "format": "date-time",

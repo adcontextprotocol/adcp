@@ -36,6 +36,11 @@
           "format": "date-time",
           "description": "ISO 8601 timestamp for creative upload deadline"
         },
+        "revision": {
+          "type": "integer",
+          "description": "Initial revision number for this media buy. Use in subsequent update_media_buy requests for optimistic concurrency.",
+          "minimum": 1
+        },
         "packages": {
           "type": "array",
           "description": "Array of created packages with complete state information",

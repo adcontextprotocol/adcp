@@ -22,6 +22,11 @@
           "$ref": "/schemas/enums/media-buy-status.json",
           "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused')."
         },
+        "revision": {
+          "type": "integer",
+          "description": "Revision number after this update. Use this value in subsequent update_media_buy requests for optimistic concurrency.",
+          "minimum": 1
+        },
         "implementation_date": {
           "type": [
             "string",

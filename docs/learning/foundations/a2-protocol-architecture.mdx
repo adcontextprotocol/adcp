@@ -58,9 +58,10 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 Tell Addie what you want: audience, goals, budget. Then walk through each step as it happens:
 
 1. **Discovery** — `get_products` against `@cptestagent`, examine real response structure
-2. **Purchase** — `create_media_buy` with targeting and budget
+2. **Purchase** — `create_media_buy` with targeting and budget. Note the `confirmed_at` timestamp in the response — this is the seller's order confirmation.
 3. **Creative** — `sync_creatives` to deliver assets to the publisher
-4. **Delivery** — `get_media_buy_delivery` to see results
+4. **Status check** — `get_media_buys` to see lifecycle state, creative approvals, and `valid_actions`
+5. **Delivery** — `get_media_buy_delivery` to see results
 
 You'll see the actual protocol messages at each stage. By the end, you've bought media through an agent.
 

@@ -782,6 +782,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Your reference for the media buy to update (use this OR media_buy_id)',
         },
+        revision: {
+          type: 'integer',
+          description: 'Expected current revision for optimistic concurrency. Obtain from get_media_buys. Seller rejects with CONFLICT on mismatch.',
+        },
         start_time: {
           type: 'string',
           description: 'Updated campaign start time (ISO 8601)',

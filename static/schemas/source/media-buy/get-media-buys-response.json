@@ -71,7 +71,13 @@
           },
           "cancellation_reason": {
             "type": "string",
-            "description": "Reason the media buy was canceled. Present only when status is 'canceled'."
+            "description": "Reason the media buy was canceled. Present only when status is 'canceled'.",
+            "maxLength": 500
+          },
+          "revision": {
+            "type": "integer",
+            "description": "Current revision number. Pass this in update_media_buy for optimistic concurrency.",
+            "minimum": 1
           },
           "created_at": {
             "type": "string",
@@ -168,7 +174,8 @@
                 },
                 "cancellation_reason": {
                   "type": "string",
-                  "description": "Reason the package was canceled. Present only when canceled is true."
+                  "description": "Reason the package was canceled. Present only when canceled is true.",
+                  "maxLength": 500
                 },
                 "creative_deadline": {
                   "type": "string",

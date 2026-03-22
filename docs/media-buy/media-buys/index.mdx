@@ -276,7 +276,21 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 
 **Terminal states**: `completed`, `rejected`, and `canceled` are terminal — no transitions out. Sellers MUST reject updates to terminal-state media buys with error code `INVALID_STATE`.
 
-**Discovering valid actions**: The `get_media_buys` response includes `valid_actions` for each media buy — a list of actions the buyer can perform in the current state. Agents SHOULD use this instead of hardcoding the state machine.
+**Discovering valid actions**: The `get_media_buys` response includes `valid_actions` for each media buy — a list of actions the buyer can perform in the current state. Agents SHOULD use this instead of hardcoding the state machine:
+
+```json
+{
+  "media_buys": [{
+    "media_buy_id": "mb_12345",
+    "status": "active",
+    "revision": 3,
+    "valid_actions": ["pause", "cancel", "update_budget", "update_dates", "update_packages", "sync_creatives"],
+    "packages": [...]
+  }]
+}
+```
+
+**Revision tracking**: Each media buy carries a `revision` number that increments on every change. Pass `revision` in `update_media_buy` for optimistic concurrency — the seller rejects with `CONFLICT` if the revision has changed since you last read it.
 
 
 ## Core Operations

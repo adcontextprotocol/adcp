@@ -13,6 +13,11 @@
       "type": "string",
       "description": "Buyer's reference for the media buy to update"
     },
+    "revision": {
+      "type": "integer",
+      "description": "Expected current revision for optimistic concurrency. When provided, sellers MUST reject the update with CONFLICT if the media buy's current revision does not match. Obtain from get_media_buys or the most recent update response.",
+      "minimum": 1
+    },
     "paused": {
       "type": "boolean",
       "description": "Pause/resume the entire media buy (true = paused, false = active)"

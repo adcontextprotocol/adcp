@@ -140,6 +140,7 @@ asyncio.run(create_and_pause_campaign())
 |-----------|------|----------|-------------|
 | `media_buy_id` | string | Yes* | Publisher's media buy identifier to update |
 | `buyer_ref` | string | Yes* | Your reference for the media buy to update |
+| `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with `CONFLICT` on mismatch. Obtain from `get_media_buys` or the most recent response. |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
@@ -201,6 +202,7 @@ Configure automated delivery reporting for this media buy:
 | `media_buy_id` | Media buy identifier |
 | `buyer_ref` | Your reference identifier |
 | `status` | Media buy status after the update (present when status changes, e.g., cancellation) |
+| `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `affected_packages` | Array of full Package objects showing complete state after update |
 
@@ -547,7 +549,39 @@ Cancel an entire media buy:
 }
 ```
 
-The response includes `status: "canceled"` to confirm the transition. Cancellation is irreversible. If the seller cannot cancel (e.g., contractual obligations), the response will contain an error with code `NOT_CANCELLABLE`.
+**Success response:**
+```json
+{
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "summer_campaign_2025",
+  "status": "canceled",
+  "revision": 4,
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": []
+}
+```
+
+**`NOT_CANCELLABLE` error response:**
+```json
+{
+  "errors": [{
+    "code": "NOT_CANCELLABLE",
+    "message": "Media buy mb_12345 has contractual obligations preventing cancellation",
+    "suggestion": "Contact seller to discuss cancellation options"
+  }]
+}
+```
+
+**`INVALID_STATE` error response** (e.g., trying to update a completed media buy):
+```json
+{
+  "errors": [{
+    "code": "INVALID_STATE",
+    "message": "Media buy mb_12345 is in terminal state 'completed' and cannot be modified",
+    "suggestion": "Check current status via get_media_buys and adjust request"
+  }]
+}
+```
 
 ### Cancel a Package
 
@@ -615,6 +649,9 @@ Common errors and resolutions:
 | `NOT_CANCELLABLE` | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
 | `CREATIVE_REJECTED` | Creative change rejected (may be past `creative_deadline`) | Check package `creative_deadline` before submitting creative changes |
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
+| `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
+| `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
+| `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 
 Example error response:
 

@@ -113,7 +113,9 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 **Rules:**
 
 - Sales agents MAY return `active` or `pending_activation` from `create_media_buy` (seller's choice based on platform setup time)
+- Sales agents MUST transition media buys from `pending_activation` to `active` when platform setup is complete. Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
 - A successful `create_media_buy` response constitutes **order confirmation**. Sales agents MUST include `confirmed_at` in the response.
+- Sales agents MUST include `revision` in create and update responses. The revision number MUST increment on every state change or update.
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
 - `active` or `paused` → `completed` when the flight ends, goal is met, or budget is exhausted (seller-initiated)
 - Buyer-initiated cancellation uses `update_media_buy` with `canceled: true` and optional `cancellation_reason`
@@ -257,7 +259,16 @@ Retrieve operational media buy state, including package status, creative approva
 - Orchestrators MAY filter by `account_id`, `media_buy_ids`, `buyer_refs`, and `status_filter`
 - Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
 - Sales agents MUST return current media buy status and package-level operational state for each matched media buy
-- Sales agents SHOULD include `valid_actions` for each media buy, listing the actions the buyer can perform in the current state. This eliminates the need for agents to internalize the state machine.
+- Sales agents SHOULD include `valid_actions` for each media buy, listing the actions the buyer can perform in the current state. This eliminates the need for agents to internalize the state machine. Expected mapping:
+
+| Status | Expected `valid_actions` |
+|--------|------------------------|
+| `pending_activation` | `cancel`, `sync_creatives` |
+| `active` | `pause`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `sync_creatives` |
+| `paused` | `resume`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `sync_creatives` |
+| `completed` / `rejected` / `canceled` | *(empty array)* |
+
+Sellers MAY omit actions based on business rules (e.g., omit `cancel` when contractual obligations prevent it).
 - Sales agents MUST include a media-buy currency and MUST denominate monetary fields consistently (`snapshot.currency` -> `package.currency` -> `media_buy.currency`)
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
 - If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
