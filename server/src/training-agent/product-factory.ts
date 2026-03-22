@@ -29,6 +29,9 @@ type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('training-agent-catalog');
 
 /**
  * Parse ISO 8601 duration (e.g. "PT60M", "PT180M", "PT1H30M") to seconds.
@@ -658,7 +661,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       const productId = `${def.publisherId}_${alloc.productSuffix}`;
       const found = catalog.find(cp => cp.product.product_id === productId);
       if (!found) {
-        console.warn(`[training-agent] Proposal "${def.proposalId}" references missing product "${productId}" — skipping proposal`);
+        logger.warn(`Proposal "${def.proposalId}" references missing product "${productId}" — skipping proposal`);
         valid = false;
         break;
       }

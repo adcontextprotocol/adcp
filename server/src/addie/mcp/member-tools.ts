@@ -2785,11 +2785,14 @@ export function createMemberToolHandlers(
       const multiClient = new AdCPClient([agentConfig], { debug: false });
       const client = multiClient.agent('target');
 
-      const result = await client.executeTask('get_products', {
-        buying_mode: 'brief',
-        brief,
-        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
-      });
+      const result = await Promise.race([
+        client.executeTask('get_products', {
+          buying_mode: 'brief',
+          brief,
+          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
+      ]);
 
       if (!result.success) {
         const errMsg = (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)).slice(0, 500);
@@ -3001,10 +3004,13 @@ export function createMemberToolHandlers(
       const client = multiClient.agent('target');
 
       // Get full catalog via wholesale mode
-      const result = await client.executeTask('get_products', {
-        buying_mode: 'wholesale',
-        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
-      });
+      const result = await Promise.race([
+        client.executeTask('get_products', {
+          buying_mode: 'wholesale',
+          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
+      ]);
 
       if (!result.success) {
         const errMsg = (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)).slice(0, 500);
@@ -3229,7 +3235,10 @@ export function createMemberToolHandlers(
       let executeResult: { success: boolean; media_buy_id?: string; status?: string; packages_created?: number; error?: string } | undefined;
       if (shouldExecute && proposedRequest && mappedPackages.length > 0) {
         try {
-          const mbResult = await client.executeTask('create_media_buy', proposedRequest);
+          const mbResult = await Promise.race([
+            client.executeTask('create_media_buy', proposedRequest),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
+          ]);
           if (mbResult.success) {
             const mbData = mbResult.data as unknown as Record<string, unknown>;
             executeResult = {
