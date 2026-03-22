@@ -2,10 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/audience-selector.json",
   "title": "Audience Selector",
-  "description": "Selects an audience by signal reference or natural language description. Uses 'type' as the primary discriminator. Signal selectors additionally use 'value_type' to determine the targeting expression format (matching signal-targeting.json variants).",
-  "discriminator": {
-    "propertyName": "type"
-  },
+  "description": "Selects an audience by signal reference or natural language description. Uses 'type' as the primary discriminator (signal vs description). Signal selectors additionally use 'value_type' to determine the targeting expression format (matching signal-targeting.json variants).",
   "oneOf": [
     {
       "type": "object",

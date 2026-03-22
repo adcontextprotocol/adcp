@@ -9,6 +9,7 @@ SET brand_json = jsonb_set(
   to_jsonb(ARRAY[brand_json->'company'->>'industry'])
 )
 WHERE brand_json->'company'->>'industry' IS NOT NULL
+  AND brand_json->'company'->>'industry' != ''
   AND jsonb_typeof(brand_json->'company'->'industry') = 'string';
 
 -- hosted_brands.brand_json: already array → rename key only
@@ -29,6 +30,7 @@ SET brand_manifest = jsonb_set(
   to_jsonb(ARRAY[brand_manifest->'company'->>'industry'])
 )
 WHERE brand_manifest->'company'->>'industry' IS NOT NULL
+  AND brand_manifest->'company'->>'industry' != ''
   AND jsonb_typeof(brand_manifest->'company'->'industry') = 'string';
 
 -- discovered_brands.brand_manifest: already array → rename key only
@@ -40,3 +42,23 @@ SET brand_manifest = jsonb_set(
 )
 WHERE brand_manifest->'company'->'industry' IS NOT NULL
   AND jsonb_typeof(brand_manifest->'company'->'industry') = 'array';
+
+-- Post-flight: abort if any rows still have the old company.industry key
+DO $$
+DECLARE
+  stale_hosted int;
+  stale_discovered int;
+BEGIN
+  SELECT count(*) INTO stale_hosted
+  FROM hosted_brands
+  WHERE brand_json->'company' ? 'industry';
+
+  SELECT count(*) INTO stale_discovered
+  FROM discovered_brands
+  WHERE brand_manifest->'company' ? 'industry';
+
+  IF stale_hosted > 0 OR stale_discovered > 0 THEN
+    RAISE EXCEPTION '% hosted_brands and % discovered_brands still have company.industry key',
+      stale_hosted, stale_discovered;
+  END IF;
+END $$;

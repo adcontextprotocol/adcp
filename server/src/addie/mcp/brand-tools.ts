@@ -330,7 +330,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     const domain = args.domain as string;
     const brandName = args.brand_name as string;
     const rawIndustries = Array.isArray(args.industries)
-      ? (args.industries as string[]).map(s => typeof s === 'string' ? s.trim() : '').filter(s => s.length > 0)
+      ? (args.industries as string[]).map(s => typeof s === 'string' ? s.trim() : '').filter(s => s.length > 0 && s.length <= 200).slice(0, 20)
       : undefined;
     if (rawIndustries !== undefined && rawIndustries.length === 0) {
       return JSON.stringify({ error: 'industries must contain at least one non-empty string' });

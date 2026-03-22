@@ -2536,7 +2536,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         category: req.query.category as any,
         enforcement: req.query.enforcement as any,
         jurisdiction: req.query.jurisdiction as string,
-        policy_category: req.query.policy_category as string,
+        policy_category: typeof (req.query.policy_category ?? req.query.vertical) === 'string'
+          ? (req.query.policy_category ?? req.query.vertical) as string : undefined,
         domain: req.query.domain as string,
         limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 1000) : undefined,
         offset: parseInt(req.query.offset as string) || 0,
@@ -2665,12 +2666,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
+      // Bridge deprecated field name: verticals → policy_categories
+      if (req.body.verticals !== undefined && req.body.policy_categories === undefined) {
+        req.body.policy_categories = req.body.verticals;
+      }
+
       // Validate JSONB array fields
       if (req.body.jurisdictions !== undefined && !Array.isArray(req.body.jurisdictions)) {
         return res.status(400).json({ error: "jurisdictions must be an array" });
       }
-      if (req.body.policy_categories !== undefined && !Array.isArray(req.body.policy_categories)) {
-        return res.status(400).json({ error: "policy_categories must be an array" });
+      if (req.body.policy_categories !== undefined) {
+        if (!Array.isArray(req.body.policy_categories)) {
+          return res.status(400).json({ error: "policy_categories must be an array" });
+        }
+        if (!req.body.policy_categories.every((v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 100)) {
+          return res.status(400).json({ error: "policy_categories must be an array of non-empty strings" });
+        }
       }
       if (req.body.channels !== undefined && req.body.channels !== null && !Array.isArray(req.body.channels)) {
         return res.status(400).json({ error: "channels must be an array" });

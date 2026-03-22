@@ -412,7 +412,7 @@ const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 const CORE_FIELDS = ['brand_id', 'house', 'names'] as const;
 
 // Fields that are public (returned without auth)
-const PUBLIC_FIELDS = ['description', 'industry', 'keller_type', 'logos', 'tagline'] as const;
+const PUBLIC_FIELDS = ['description', 'industries', 'keller_type', 'logos', 'tagline'] as const;
 
 // Fields that require authorization
 const AUTHORIZED_FIELDS = ['colors', 'fonts', 'visual_guidelines', 'tone', 'voice_synthesis', 'assets', 'rights'] as const;
@@ -439,7 +439,7 @@ export const BRAND_SANDBOX_TOOLS: AddieTool[] = [
         fields: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Sections to include: description, industry, keller_type, logos, colors, fonts, visual_guidelines, tone, tagline, voice_synthesis, assets, rights. Omit for all.',
+          description: 'Sections to include: description, industries, keller_type, logos, colors, fonts, visual_guidelines, tone, tagline, voice_synthesis, assets, rights. Omit for all.',
         },
         use_case: {
           type: 'string',

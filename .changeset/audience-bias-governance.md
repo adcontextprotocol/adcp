@@ -22,4 +22,4 @@ Add structured audience data for bias/fairness governance validation.
 
 **Design notes**:
 - `policy_categories` on plans is intentionally freeform `string[]` (not an enum). Unlike GDPR Article 9 restricted attributes (a closed legal text), policy categories are open-ended — new jurisdictions and regulatory regimes add categories over time. Validation is at the registry level, not the schema level.
-- `audience-selector.json` signal variant uses `allOf` composition with `signal-targeting.json`. This depends on signal-targeting.json having `additionalProperties: true` (documented in the schema description). The alternative of adding `type` to signal-targeting.json was rejected to keep that schema general-purpose.
+- `audience-selector.json` uses flat `oneOf` with four inline variants (signal-binary, signal-categorical, signal-numeric, description) rather than `allOf` composition with `signal-targeting.json`. This avoids codegen fragility — `allOf` with `$ref` breaks quicktype, go-jsonschema, and similar tools.
