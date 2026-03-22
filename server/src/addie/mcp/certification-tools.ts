@@ -10,6 +10,7 @@ import type { MemberContext } from '../member-context.js';
 import * as certDb from '../../db/certification-db.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
+import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 
 const logger = createLogger('certification-tools');
 
@@ -344,6 +345,15 @@ async function checkAndFormatCredentials(
       lines.push(`**Credential earned: ${cred.name}!**`);
       const publicId = await issueCertifierBadge(userId, credId, cred, memberContext);
       lines.push(...buildShareLinks(cred.name, publicId));
+
+      // Post immediate Slack notification for Specialist (tier 3) credentials
+      if (cred.tier === 3) {
+        const wu = memberContext?.workos_user;
+        const userName = wu ? ((wu.first_name || '') + ' ' + (wu.last_name || '')).trim() || 'A member' : 'A member';
+        notifySpecialistCredential(userName, cred.name).catch(err => {
+          logger.warn({ err }, 'Specialist notification failed');
+        });
+      }
     }
   }
   return lines;

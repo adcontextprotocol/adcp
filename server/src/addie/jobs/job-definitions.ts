@@ -31,6 +31,7 @@ import { processUntriagedDomains, escalateUnclaimedProspects } from '../../servi
 import { runWeeklyDigestJob } from './weekly-digest.js';
 import { runSocialPostIdeasJob } from './social-post-ideas.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
+import { runCredentialDigestJob } from './credential-digest.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -242,6 +243,17 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.generated || r.sent > 0,
   });
 
+  // Credential digest - weekly summary of certification awards to Slack
+  jobScheduler.register({
+    name: 'credential-digest',
+    description: 'Weekly credential award digest',
+    interval: { value: 168, unit: 'hours' },
+    initialDelay: { value: 8, unit: 'minutes' },
+    runner: runCredentialDigestJob,
+    businessHours: { startHour: 9, endHour: 11, skipWeekends: true },
+    shouldLogResult: (r) => r.posted || r.awardsFound > 0,
+  });
+
   // Social post ideas - generates social copy for members to share
   jobScheduler.register({
     name: 'social-post-ideas',
@@ -363,6 +375,7 @@ export const JOB_NAMES = {
   PROSPECT_TRIAGE: 'prospect-triage',
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
+  CREDENTIAL_DIGEST: 'credential-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   SLACK_AUTO_LINK: 'slack-auto-link',
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
