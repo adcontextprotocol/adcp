@@ -53,6 +53,44 @@
                 "description": "Total members matched to platform users across all syncs (cumulative, not just this call). Populated when status is 'ready'.",
                 "minimum": 0
               },
+              "effective_match_rate": {
+                "type": "number",
+                "description": "Deduplicated match rate across all identifier types (matched_count / total_uploaded_count after deduplication). A single number for reach estimation. Populated when status is 'ready'.",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "match_breakdown": {
+                "type": "array",
+                "description": "Per-identifier-type match results. Shows which ID types are resolving and at what rate. Helps buyers decide which identifiers to prioritize. Populated when the seller can report per-type matching. Omitted when the seller only supports aggregate match counts.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id_type": {
+                      "type": "string",
+                      "description": "Identifier type. One of the uid-type enum values (rampid, uid2, maid, etc.) or a hashed PII type (sha256_email, sha256_phone)."
+                    },
+                    "submitted": {
+                      "type": "integer",
+                      "description": "Number of members submitted with this identifier type (cumulative across all syncs).",
+                      "minimum": 0
+                    },
+                    "matched": {
+                      "type": "integer",
+                      "description": "Number of members matched via this identifier type.",
+                      "minimum": 0
+                    },
+                    "match_rate": {
+                      "type": "number",
+                      "description": "Match rate for this identifier type (matched / submitted).",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": ["id_type", "submitted", "matched", "match_rate"],
+                  "additionalProperties": true
+                },
+                "minItems": 1
+              },
               "last_synced_at": {
                 "type": "string",
                 "format": "date-time",
