@@ -826,6 +826,10 @@
       <h1>Get Certified in Agentic Advertising</h1>
       <p class="hero-subtitle">The ad industry is adopting agent-to-agent protocols. Prove you know how they work — through conversation, not coursework.</p>
       <p class="hero-subtitle" style="font-size: var(--text-sm); margin-top: var(--space-1);">Level 1 takes about 90 minutes. Each tier earns a digital credential you can add to LinkedIn and embed in your email signature.</p>
+      <div id="founding-cohort-banner" style="display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--color-success-50); color: var(--color-success-700); border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: var(--font-medium);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Founding cohort — early certifiers shape the program as it grows
+      </div>
       <div id="cert-social-proof" style="display: none; font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);"></div>
       <div class="cert-header-actions">
         <a id="start-btn" href="/chat?topic=certification&action=start" class="btn-primary">Start a free lesson</a>
@@ -936,18 +940,34 @@
 
       async function loadSocialProof() {
         try {
+          var el = document.getElementById('cert-social-proof');
+          if (!el) return;
+
+          // Try org-specific stats first for authenticated users
+          if (state.isAuthenticated) {
+            try {
+              var orgResp = await fetch('/api/me/certification/expectation', { credentials: 'include' });
+              if (orgResp.ok) {
+                var orgData = await orgResp.json();
+                if (orgData.org_stats && orgData.org_stats.certified > 0) {
+                  el.textContent = orgData.org_stats.certified + ' people at ' + orgData.org_stats.org_name + ' have earned credentials';
+                  el.style.display = '';
+                  return;
+                }
+              }
+            } catch (e) { /* fall through to global stats */ }
+          }
+
+          // Global stats fallback
           var resp = await fetch('/api/certification/stats');
           if (!resp.ok) return;
           var stats = await resp.json();
           if (stats.totalCertified >= 10) {
-            var el = document.getElementById('cert-social-proof');
-            if (el) {
-              var parts = [];
-              parts.push(stats.totalCertified + ' professionals certified');
-              if (stats.totalOrgs >= 3) parts.push(stats.totalOrgs + ' organizations');
-              el.textContent = parts.join(' from ') + ' — and growing';
-              el.style.display = '';
-            }
+            var parts = [];
+            parts.push(stats.totalCertified + ' professionals certified');
+            if (stats.totalOrgs >= 3) parts.push(stats.totalOrgs + ' organizations');
+            el.textContent = parts.join(' from ') + ' — and growing';
+            el.style.display = '';
           }
         } catch (e) { /* non-critical */ }
       }
