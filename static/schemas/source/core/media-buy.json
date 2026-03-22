@@ -33,19 +33,27 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp when the seller confirmed this media buy. A successful create_media_buy response constitutes order confirmation."
     },
-    "canceled_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "ISO 8601 timestamp when this media buy was canceled. Present only when status is 'canceled'."
-    },
-    "canceled_by": {
-      "$ref": "/schemas/enums/canceled-by.json",
-      "description": "Which party initiated the cancellation. 'buyer' when canceled via update_media_buy; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal). Present only when status is 'canceled'."
-    },
-    "cancellation_reason": {
-      "type": "string",
-      "description": "Reason provided when the media buy was canceled. Present only when status is 'canceled'.",
-      "maxLength": 500
+    "cancellation": {
+      "type": "object",
+      "description": "Cancellation metadata. Present only when status is 'canceled'.",
+      "required": ["canceled_at", "canceled_by"],
+      "properties": {
+        "canceled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this media buy was canceled."
+        },
+        "canceled_by": {
+          "$ref": "/schemas/enums/canceled-by.json",
+          "description": "Which party initiated the cancellation. 'buyer' when canceled via update_media_buy; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason provided when the media buy was canceled.",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
     },
     "total_budget": {
       "type": "number",

@@ -118,13 +118,13 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
 - `active` or `paused` → `completed` when the flight ends, goal is met, or budget is exhausted (seller-initiated)
 - Buyer-initiated cancellation uses `update_media_buy` with `canceled: true` and optional `cancellation_reason`
-- Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `canceled_by: "seller"`. Sellers MUST notify orchestrators via webhook when performing seller-initiated cancellation.
+- Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `cancellation.canceled_by: "seller"`. Sellers MUST notify orchestrators via webhook when performing seller-initiated cancellation.
 - Seller-initiated rejection (from `pending_activation`) MUST also notify orchestrators via `push_notification_config`. The webhook payload MUST include `media_buy_id`, `status: "rejected"`, and `rejection_reason`.
-- Sales agents MUST set `canceled_by` and `canceled_at` when transitioning a media buy or package to `canceled`
+- Sales agents MUST include a `cancellation` object with `canceled_at` and `canceled_by` when transitioning a media buy or package to `canceled`
 - Sales agents MAY reject buyer cancellation with error code `NOT_CANCELLABLE`
 - Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
 - Rejection (`rejected` status) is only valid from `pending_activation`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
-- Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, `canceled_by: "seller"`, and `cancellation_reason`.
+- Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, and a `cancellation` object with `canceled_at`, `canceled_by: "seller"`, and `reason`.
 - The `canceled` field on update requests uses `"const": true` — only `true` is valid. Sending `canceled: false` fails schema validation. Cancellation is irreversible; there is no "uncancel" operation.
 
 **Package-level lifecycle:**

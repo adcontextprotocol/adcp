@@ -269,7 +269,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - **`paused`**: Temporarily stopped by buyer or seller
 - **`completed`**: Finished — flight ended, goal met, or budget exhausted
 - **`rejected`**: Declined by the seller (terminal)
-- **`canceled`**: Terminated before natural completion. Check `canceled_by` to determine whether the buyer or seller initiated.
+- **`canceled`**: Terminated before natural completion. Check `cancellation.canceled_by` to determine whether the buyer or seller initiated.
 
 **Order confirmation**: A successful `create_media_buy` response constitutes order confirmation. The response includes `confirmed_at` with the confirmation timestamp.
 
@@ -283,7 +283,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
     "media_buy_id": "mb_12345",
     "status": "active",
     "revision": 3,
-    "valid_actions": ["pause", "cancel", "update_budget", "update_dates", "update_packages", "sync_creatives"],
+    "valid_actions": ["pause", "cancel", "update_budget", "update_dates", "update_packages", "add_packages", "sync_creatives"],
     "packages": [...]
   }]
 }
@@ -338,7 +338,7 @@ Cancel a single package within an active media buy:
 - Cancellation is **irreversible** — canceled media buys and packages cannot be reactivated
 - Sellers MAY reject cancellation with error code `NOT_CANCELLABLE` (e.g., contractual obligations, in-production print orders)
 - A canceled package does not affect other packages in the same media buy. When all packages are canceled, sellers that support `add_packages` allow the buyer to add new packages via `new_packages` in `update_media_buy`. Otherwise, the buyer SHOULD explicitly cancel the media buy.
-- Sellers MAY cancel media buys or packages (e.g., policy violation, inventory withdrawal). Seller-initiated cancellations set `canceled_by: "seller"` and MUST trigger a webhook notification to the orchestrator.
+- Sellers MAY cancel media buys or packages (e.g., policy violation, inventory withdrawal). Seller-initiated cancellations set `cancellation.canceled_by: "seller"` and MUST trigger a webhook notification to the orchestrator.
 
 ### Package Lifecycle
 
