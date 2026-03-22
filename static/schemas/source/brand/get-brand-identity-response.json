@@ -43,9 +43,9 @@
           "type": "string",
           "description": "Brand description"
         },
-        "industry": {
+        "vertical": {
           "type": "string",
-          "description": "Industry or category"
+          "description": "Vertical or industry category. Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry."
         },
         "keller_type": {
           "type": "string",
@@ -244,7 +244,7 @@
             "type": "string",
             "enum": [
               "description",
-              "industry",
+              "vertical",
               "keller_type",
               "logos",
               "colors",
