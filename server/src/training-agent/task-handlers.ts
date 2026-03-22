@@ -12,6 +12,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { createLogger } from '../logger.js';
 import type {
   Product,
@@ -51,6 +53,33 @@ import {
   handleUpdateRights,
 } from './brand-handlers.js';
 import { PUBLISHERS } from './publishers.js';
+
+// ── MCP Tasks store (SDK-managed) ─────────────────────────────────
+
+/**
+ * Shared task store across per-request Server instances. The SDK's
+ * InMemoryTaskStore handles TTL cleanup, task ID generation, and
+ * result storage. Passing this to the Server constructor auto-registers
+ * handlers for tasks/get, tasks/result, tasks/list, and tasks/cancel.
+ *
+ * Note: no session isolation — any session can see/cancel tasks from
+ * another. This is intentional for the training agent where all sessions
+ * are sandboxed. Production servers should scope tasks by sessionId.
+ */
+let sdkTaskStore = new InMemoryTaskStore();
+
+/** Look up which tools allow task augmentation. */
+function toolSupportsTask(toolName: string): boolean {
+  const tool = TOOLS.find(t => t.name === toolName);
+  const support = tool?.execution?.taskSupport as string | undefined;
+  return support === 'optional' || support === 'required';
+}
+
+/** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
+export function clearTaskStore(): void {
+  sdkTaskStore.cleanup();
+  sdkTaskStore = new InMemoryTaskStore();
+}
 
 /** Wire-format error shared by all training agent responses. */
 interface TaskError {
@@ -257,6 +286,7 @@ const TOOLS = [
     name: 'get_products',
     description: 'Discover available advertising products. Supports brief (curated discovery), wholesale (raw catalog), and refine (iterate on previous results) buying modes. Use this before create_media_buy to find valid product_id and pricing_option_id values. Not for checking delivery or managing existing buys. Returns sandbox catalog data.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -276,6 +306,7 @@ const TOOLS = [
     name: 'list_creative_formats',
     description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Filter by channels to see formats relevant to specific media types. Not for uploading creatives (use sync_creatives) or checking creative status.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -288,6 +319,7 @@ const TOOLS = [
     name: 'create_media_buy',
     description: 'Create a media buy with one or more packages targeting specific products. Requires valid product_id and pricing_option_id from get_products. Not for updating existing buys (use update_media_buy). Cannot add packages to an existing buy after creation.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -329,6 +361,7 @@ const TOOLS = [
     name: 'get_media_buys',
     description: 'List media buys for the current session/account. Returns buy configuration and status only — not delivery metrics (use get_media_buy_delivery for that). Only returns buys created in the current session; buys from other sessions are not visible.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -341,6 +374,7 @@ const TOOLS = [
     name: 'get_media_buy_delivery',
     description: 'Get delivery metrics for a media buy including impressions, spend, and clicks by package. Requires a media_buy_id from create_media_buy. Returns simulated metrics proportional to elapsed flight time. Not for creating or updating buys.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -355,6 +389,7 @@ const TOOLS = [
     name: 'sync_creatives',
     description: 'Upload or update creative assets and optionally assign them to packages. Validates format_id against list_creative_formats. Not for listing existing creatives (use list_creatives). Creative content is not validated — only format_id is checked.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -369,6 +404,7 @@ const TOOLS = [
     name: 'list_creatives',
     description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. Not for uploading or updating creatives (use sync_creatives). Only returns creatives from the current session.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -382,6 +418,7 @@ const TOOLS = [
     name: 'get_creative_delivery',
     description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids, media_buy_buyer_refs, or creative_ids.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -397,6 +434,7 @@ const TOOLS = [
     name: 'update_media_buy',
     description: 'Update an existing media buy. Supports changing package budget, paused state, and end_time. Cannot add new packages or change product_id/pricing_option_id — only update existing package fields. Not for creating new buys (use create_media_buy).',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -413,6 +451,7 @@ const TOOLS = [
     name: 'get_signals',
     description: 'Discover signals matching campaign criteria. Supports natural language discovery via signal_spec or exact lookup via signal_ids. Returns signals with deployment status, pricing, and activation keys. Use this to find targetable audiences, contextual categories, geographic regions, and other data attributes.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -430,6 +469,7 @@ const TOOLS = [
     name: 'activate_signal',
     description: 'Activate a signal for use on a specific platform or agent. Requires signal_agent_segment_id from get_signals and at least one destination. Returns deployment status with activation keys.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -448,6 +488,7 @@ const TOOLS = [
     name: 'get_adcp_capabilities',
     description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -1606,16 +1647,27 @@ export function executeTrainingAgentTool(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
+  const taskStore = sdkTaskStore;
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: {
+        tools: {},
+        tasks: {
+          list: {},
+          cancel: {},
+          requests: { tools: { call: {} } },
+        },
+      },
+      taskStore,
+    },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return { tools: TOOLS };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name: string; arguments?: Record<string, unknown> } }) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     const handler = HANDLER_MAP[name];
 
@@ -1626,21 +1678,75 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       };
     }
 
+    // Check for task-augmented request (explicit `task` field in params)
+    const taskField = (request.params as { task?: { ttl?: number } }).task;
+    const isTaskRequest = taskField !== undefined;
+    if (isTaskRequest && !toolSupportsTask(name)) {
+      throw new Error(`Tool "${name}" does not support task augmentation`);
+    }
+
+    // Execute the tool handler
+    let toolResult: CallToolResult;
+    let isError = false;
     try {
       const result = handler((args as Record<string, unknown>) || {}, ctx);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
+      const resultObj = result as Record<string, unknown>;
+      if ('errors' in resultObj && Array.isArray(resultObj.errors)) {
+        isError = true;
+      }
+      toolResult = {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        ...(isError && { isError: true }),
       };
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
-      return {
-        content: [{ type: 'text', text: JSON.stringify({
+      isError = true;
+      toolResult = {
+        content: [{ type: 'text' as const, text: JSON.stringify({
           error: error instanceof Error ? error.message : 'Unknown error',
         }) }],
         isError: true,
       };
     }
+
+    // If not task-augmented, return result directly
+    if (!isTaskRequest) {
+      return toolResult;
+    }
+
+    // Clamp TTL to prevent unbounded task lifetime / memory exhaustion
+    const MAX_TASK_TTL = 24 * 60 * 60 * 1000; // 24 hours
+    const DEFAULT_TASK_TTL = 60 * 60 * 1000;  // 1 hour
+    const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
+
+    // Task-augmented: prefer extra.taskStore (SDK wrapper that sends
+    // notifications/tasks/status and propagates session IDs). Falls back
+    // to the raw module-level store for test harness calls with empty extra.
+    const terminalStatus: 'completed' | 'failed' = isError ? 'failed' : 'completed';
+    let task;
+    if (extra.taskStore) {
+      task = await extra.taskStore.createTask({ ttl: clampedTtl });
+      await extra.taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
+      task = await extra.taskStore.getTask(task.taskId);
+    } else {
+      task = await taskStore.createTask(
+        { ttl: clampedTtl },
+        0,
+        request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
+      );
+      await taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
+      task = await taskStore.getTask(task.taskId);
+    }
+    if (!task) {
+      throw new Error(`Task disappeared after creation for tool "${name}"`);
+    }
+    logger.info({ taskId: task.taskId, tool: name, status: terminalStatus }, 'Created MCP task');
+
+    return { task } as Record<string, unknown>;
   });
+
+  // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered
+  // by the SDK when taskStore is provided to the Server constructor.
 
   return server;
 }
