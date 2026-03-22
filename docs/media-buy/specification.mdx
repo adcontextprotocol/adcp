@@ -84,7 +84,7 @@ The Media Buy Protocol is asynchronous by design. Operations MAY return immediat
 - **Synchronous responses**: Sales agents MAY return completed results immediately
 - **Asynchronous responses**: Sales agents MAY return `status: "submitted"` or `status: "working"` with a task reference
 - **Human-in-the-loop**: Sales agents MAY require manual approval, indicated by `status: "pending_approval"`
-- **Rejection**: Sales agents MAY decline a media buy after creation, indicated by `status: "rejected"`. Orchestrators MUST treat `rejected` as a terminal state.
+- **Rejection**: Sales agents MAY reject a media buy in `pending_activation` status when platform setup reveals the order cannot be fulfilled (e.g., inventory sold out, policy issue discovered during ad server setup). Orchestrators MUST treat `rejected` as a terminal state. If the seller does not want to accept the order at create time, it SHOULD fail `create_media_buy` with an error rather than creating a media buy in `rejected` status.
 
 Orchestrators MUST handle all response types and MUST NOT assume synchronous completion.
 
@@ -104,7 +104,6 @@ create_media_buy ──┬──▶ pending_activation ──▶ active
           active ───────┼──────────────▶ completed (terminal)
           paused ───────┘                ▲ flight ends / goal met / budget exhausted
 
-create_media_buy ──▶ rejected (terminal)
 pending_activation ──▶ rejected (terminal)  — seller rejects during setup
 
 Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
@@ -120,6 +119,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - `active` or `paused` → `completed` when the flight ends, goal is met, or budget is exhausted (seller-initiated)
 - Buyer-initiated cancellation uses `update_media_buy` with `canceled: true` and optional `cancellation_reason`
 - Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `canceled_by: "seller"`. Sellers MUST notify orchestrators via webhook when performing seller-initiated cancellation.
+- Seller-initiated rejection (from `pending_activation`) MUST also notify orchestrators via `push_notification_config`. The webhook payload MUST include `media_buy_id`, `status: "rejected"`, and `rejection_reason`.
 - Sales agents MUST set `canceled_by` and `canceled_at` when transitioning a media buy or package to `canceled`
 - Sales agents MAY reject buyer cancellation with error code `NOT_CANCELLABLE`
 - Sales agents MUST reject updates to media buys in terminal states (`completed`, `rejected`, `canceled`) with error code `INVALID_STATE`
@@ -132,7 +132,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 Packages follow the same pause/cancel pattern as media buys. Additionally:
 - Packages MAY have a `creative_deadline` — after this deadline, creative changes to the package are rejected with `CREATIVE_REJECTED`. When absent, the media buy's `creative_deadline` applies.
 - Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active.
-- When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sales agents MUST NOT auto-transition the media buy to `canceled` — the buyer decides whether to cancel the media buy or add new packages.
+- When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sales agents MUST NOT auto-transition the media buy to `canceled`. Since `update_media_buy` does not currently support adding new packages, the buyer should cancel the media buy explicitly. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled.
 
 ## Tasks
 

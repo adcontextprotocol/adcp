@@ -401,7 +401,7 @@ const TOOLS = [
   },
   {
     name: 'update_media_buy',
-    description: 'Update an existing media buy. Supports changing package budget, paused state, and end_time. Cannot add new packages or change product_id/pricing_option_id — only update existing package fields. Not for creating new buys (use create_media_buy).',
+    description: 'Update an existing media buy. Supports pause/resume, cancellation (media buy or individual packages), budget, end_time, and optimistic concurrency via revision. Cannot add new packages or change product_id/pricing_option_id.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -409,6 +409,10 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
         buyer_ref: { type: 'string' },
+        revision: { type: 'integer', description: 'Expected revision for optimistic concurrency. Seller rejects with CONFLICT on mismatch.' },
+        paused: { type: 'boolean', description: 'Pause (true) or resume (false) the entire media buy' },
+        canceled: { type: 'boolean', description: 'Cancel the entire media buy (irreversible, must be true)' },
+        cancellation_reason: { type: 'string', description: 'Reason for cancellation' },
         packages: { type: 'array' },
         end_time: { type: 'string' },
       },

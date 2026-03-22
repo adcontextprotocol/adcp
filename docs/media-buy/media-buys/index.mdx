@@ -259,7 +259,6 @@ create_media_buy ──┬──▶ pending_activation ──▶ active
           active ───────┼──────────────▶ completed (terminal)
           paused ───────┘                ▲ flight ends / goal met / budget exhausted
 
-create_media_buy ──▶ rejected (terminal)
 pending_activation ──▶ rejected (terminal)  — seller rejects during setup
 
 Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
