@@ -31,7 +31,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context and
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. Allows receivers to handle semantic differences across versions. |
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_id` | string | Yes | Publisher property identifier. |
-| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See [property-type enum](/schemas/enums/property-type). |
+| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
 | `placement_id` | string | Yes | Placement identifier from the property's registered placements. One placement per request. |
 | `artifacts` | List\<string\> | No | Content artifact IDs adjacent to this ad opportunity. References artifacts registered with the property (articles, episodes, shows, videos, conversation turns). Providers resolve artifact metadata from their cached copy of the property's artifact registry. |
 | `available_packages` | List\<AvailablePackage\> | Yes | ALL packages eligible for this placement. MUST NOT be filtered by user identity — that happens via Identity Match. A stable per-placement set enables caching. |
@@ -43,7 +43,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context and
 | `package_id` | string | Yes | Package identifier from the media buy. |
 | `media_buy_id` | string | Yes | Parent media buy identifier. |
 | `format_ids` | List\<string\> | No | Creative format IDs this package supports. |
-| `catalogs` | List\<Catalog\> | No | The buyer's catalogs attached to this package, with selectors (`ids`, `gtins`, `tags`, `category`, `query`) scoping which items are in play. References synced catalogs by `catalog_id`. The provider resolves items from its cached copy. See [Catalog schema](/schemas/core/catalog). |
+| `catalogs` | List\<Catalog\> | No | The buyer's catalogs attached to this package, with selectors (`ids`, `gtins`, `tags`, `category`, `query`) scoping which items are in play. References synced catalogs by `catalog_id`. The provider resolves items from its cached copy. See `catalog` schema. |
 
 ### ContextMatchResponse
 
@@ -62,10 +62,10 @@ A buyer's response for a single package. For simple GAM activation, only `packag
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `package_id` | string | Yes | Must match a `package_id` from `available_packages`. References the commercial terms (MSA, IO, deal). |
-| `brand` | [BrandRef](/schemas/core/brand-ref) | No | Brand for this offer. Required when the product allows dynamic brands. For single-brand packages, already known from the media buy. |
+| `brand` | BrandRef | No | Brand for this offer. Required when the product allows dynamic brands. For single-brand packages, already known from the media buy. |
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Hellmann's mayo — recipe integration". |
-| `creative_manifest` | [CreativeManifest](/schemas/core/creative-manifest) | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
+| `creative_manifest` | CreativeManifest | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
 | `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Attribution reconciliation happens via delivery reporting or clean room. |
 
 #### OfferPrice
@@ -101,7 +101,7 @@ Sent by the publisher (via router) to buyer agents. Contains an opaque user toke
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
 | `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
-| `uid_type` | enum | No | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See [uid-type enum](/schemas/enums/uid-type). |
+| `uid_type` | enum | No | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
 | `package_ids` | List\<string\> | Yes | ALL active packages for this buyer. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
 
 ### IdentityMatchResponse
