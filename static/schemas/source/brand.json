@@ -241,8 +241,11 @@
           "description": "Brand description"
         },
         "vertical": {
-          "type": "string",
-          "description": "Brand vertical. Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry (e.g., 'retail', 'automotive', 'cpg', 'housing', 'pharmaceutical'). Governance agents use this to auto-resolve the vertical when a campaign plan does not explicitly declare one."
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ],
+          "description": "Brand vertical(s). Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry (e.g., 'automotive', 'pharmaceutical'). Accepts a single string or an array when a brand operates in multiple verticals (e.g., a consumer health company is both 'pharmaceutical' and 'cpg'). Governance agents use this to auto-resolve verticals when a campaign plan does not explicitly declare them."
         },
         "target_audience": {
           "type": "string",

@@ -44,8 +44,11 @@
           "description": "Brand description"
         },
         "vertical": {
-          "type": "string",
-          "description": "Vertical or industry category. Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry."
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ],
+          "description": "Brand vertical(s). Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry."
         },
         "keller_type": {
           "type": "string",

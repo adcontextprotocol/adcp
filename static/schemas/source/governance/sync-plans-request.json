@@ -116,8 +116,11 @@
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
           "vertical": {
-            "type": "string",
-            "description": "Vertical for this campaign. Same vocabulary as brand.vertical and policy-entry.verticals in the policy registry. When omitted, governance agents SHOULD resolve the vertical from the plan's brand (brand.vertical). When present, overrides the brand's default — a pharmaceutical company running a general corporate awareness campaign can set vertical to 'cpg' to avoid pharma-specific restrictions."
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            ],
+            "description": "Vertical(s) for this campaign. Same vocabulary as brand.vertical and policy-entry.verticals in the policy registry. Accepts a single string or an array when a campaign spans multiple verticals (e.g., a consumer health product is both 'pharmaceutical' and 'cpg'). When omitted, governance agents SHOULD resolve verticals from the plan's brand (brand.vertical). When present, overrides the brand's default. Governance agents apply rules for all declared verticals — the union of restrictions applies."
           },
           "audience": {
             "$ref": "/schemas/governance/audience-constraints.json",
