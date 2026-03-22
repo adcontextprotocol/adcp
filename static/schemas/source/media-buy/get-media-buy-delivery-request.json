@@ -11,15 +11,7 @@
     },
     "media_buy_ids": {
       "type": "array",
-      "description": "Array of publisher media buy IDs to get delivery data for",
-      "items": {
-        "type": "string"
-      },
-      "minItems": 1
-    },
-    "buyer_refs": {
-      "type": "array",
-      "description": "Array of buyer reference IDs to get delivery data for",
+      "description": "Array of media buy IDs to get delivery data for",
       "items": {
         "type": "string"
       },

@@ -2,16 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/package-update.json",
   "title": "Package Update",
-  "description": "Package update configuration for update_media_buy. Identifies package by package_id or buyer_ref and specifies fields to modify. Fields not present are left unchanged. Note: product_id, format_ids, and pricing_option_id cannot be changed after creation.",
+  "description": "Package update configuration for update_media_buy. Identifies package by package_id and specifies fields to modify. Fields not present are left unchanged. Note: product_id, format_ids, and pricing_option_id cannot be changed after creation.",
   "type": "object",
   "properties": {
     "package_id": {
       "type": "string",
-      "description": "Publisher's ID of package to update"
-    },
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference for the package to update"
+      "description": "Seller's ID of package to update"
     },
     "budget": {
       "type": "number",
@@ -179,17 +175,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "required": [
-        "package_id"
-      ]
-    },
-    {
-      "required": [
-        "buyer_ref"
-      ]
-    }
+  "required": [
+    "package_id"
   ],
   "additionalProperties": true
 }

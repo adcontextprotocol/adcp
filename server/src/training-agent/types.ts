@@ -145,8 +145,6 @@ export interface BrandRef {
 
 export interface MediaBuyState {
   mediaBuyId: string;
-  buyerRef: string;
-  buyerCampaignRef?: string;
   accountRef: AccountRef;
   brandRef?: BrandRef;
   status: string;
@@ -160,7 +158,6 @@ export interface MediaBuyState {
 
 export interface PackageState {
   packageId: string;
-  buyerRef: string;
   productId: string;
   budget: number;
   pricingOptionId: string;
@@ -225,7 +222,7 @@ export interface GovernancePlanState {
 export interface GovernanceCheckState {
   checkId: string;
   planId: string;
-  buyerCampaignRef: string;
+  governanceContext?: string;
   binding: 'proposed' | 'committed';
   status: 'approved' | 'denied' | 'conditions' | 'escalated';
   caller: string;
@@ -262,7 +259,7 @@ export interface GovernanceOutcomeState {
   outcomeId: string;
   planId: string;
   checkId?: string;
-  buyerCampaignRef: string;
+  governanceContext?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
   mediaBuyId?: string;

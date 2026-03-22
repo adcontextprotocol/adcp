@@ -7,7 +7,10 @@
   "properties": {
     "action": {
       "type": "string",
-      "enum": ["activate", "deactivate"],
+      "enum": [
+        "activate",
+        "deactivate"
+      ],
       "default": "activate",
       "description": "Whether to activate or deactivate the signal. Deactivating removes the segment from downstream platforms, required when campaigns end to comply with data governance policies (GDPR, CCPA). Defaults to 'activate' when omitted."
     },
@@ -31,9 +34,11 @@
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account for this activation. Associates with a commercial relationship established via sync_accounts."
     },
-    "buyer_campaign_ref": {
+    "idempotency_key": {
       "type": "string",
-      "description": "The buyer's campaign reference for this activation. Enables the signals agent to correlate activations with subsequent report_usage calls."
+      "description": "Client-generated unique key for this request. Prevents duplicate activations on retries.",
+      "minLength": 8,
+      "maxLength": 255
     },
     "context": {
       "$ref": "/schemas/core/context.json"

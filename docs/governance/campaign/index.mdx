@@ -103,7 +103,7 @@ The **[policy registry](/docs/governance/policy-registry)** is a community-maint
 Every seller interaction follows a before/after pattern:
 
 1. **Before**: The orchestrator calls `check_governance` with `binding: "proposed"`, the tool, and payload it intends to send. The governance agent returns a status.
-2. **Execute**: If approved, the orchestrator sends the action to the seller, including `plan_id` and `buyer_campaign_ref`.
+2. **Execute**: If approved, the orchestrator sends the action to the seller, including `plan_id` and `governance_context`.
 3. **Check**: If the account has `governance_agents`, the seller calls `check_governance` with `binding: "committed"` and its `planned_delivery` -- what it will actually run. The governance agent approves or denies.
 4. **After**: The orchestrator calls `report_plan_outcome` with the seller's response. The governance agent updates its state and flags any discrepancies.
 

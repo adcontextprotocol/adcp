@@ -75,7 +75,7 @@ Every media buy request involves three entities:
 
 - **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.
 
-- **`buyer_ref`**: Client-provided reference for idempotency. Orchestrators SHOULD include this to enable retry safety.
+- **`media_buy_id`**: Client-provided reference for idempotency. Orchestrators SHOULD include this to enable retry safety.
 
 ### Asynchronous Operations
 
@@ -164,7 +164,7 @@ Create a media buy from selected packages or execute a proposal.
 Modify an existing media buy's budget, targeting, or settings.
 
 **Requirements:**
-- Orchestrators MUST include either `media_buy_id` or `buyer_ref`
+- Orchestrators MUST include either `media_buy_id`
 - Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
 - Sales agents MUST reject updates to media buys with status `completed` with error code `INVALID_STATE`
 - Sales agents MUST return `affected_packages` containing the state of each directly modified package after the update is applied (or the proposed state if pending approval); an empty array is valid when only campaign-level fields (e.g., `paused`, `start_time`) are updated
@@ -207,14 +207,14 @@ Synchronize catalogs (products, inventory, stores, and vertical feeds) on a sell
 Retrieve operational media buy state, including package status, creative approvals, missing formats, and optional delivery snapshots.
 
 **Requirements:**
-- Orchestrators MAY filter by `account_id`, `media_buy_ids`, `buyer_refs`, and `status_filter`
+- Orchestrators MAY filter by `account_id`, `media_buy_ids`, `media_buy_ids`, and `status_filter`
 - Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
 - Sales agents MUST return current media buy status and package-level operational state for each matched media buy
 - Sales agents MUST include a media-buy currency and MUST denominate monetary fields consistently (`snapshot.currency` -> `package.currency` -> `media_buy.currency`)
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
 - If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
 - When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
-- Default `status_filter: ["active"]` applies only when `media_buy_ids` and `buyer_refs` are both omitted
+- Default `status_filter: ["active"]` applies only when `media_buy_ids` are both omitted
 
 ### get_media_buy_delivery
 
@@ -351,7 +351,7 @@ A conformant Media Buy Protocol orchestrator MUST:
 1. Authenticate with sales agents
 2. Include required fields as defined in request schemas
 3. Handle asynchronous responses (submitted, working, pending_approval)
-4. Use `media_buy_id` or `buyer_ref` to reference media buys in subsequent operations
+4. Use `media_buy_id` to reference media buys in subsequent operations
 5. Respect `creative_deadline` for creative uploads
 
 ## Implementation Notes
@@ -369,9 +369,9 @@ Sales agents SHOULD target the following response times:
 
 ### Idempotency
 
-Sales agents SHOULD support idempotent operations using `buyer_ref`:
+Sales agents SHOULD support idempotent operations using `media_buy_id`:
 
-- If a `buyer_ref` has been seen before, sales agents SHOULD return the existing resource
+- If a `media_buy_id` has been seen before, sales agents SHOULD return the existing resource
 - This enables safe retries without duplicate creation
 
 For mutation tasks (`update_media_buy`, `sync_creatives`), orchestrators MAY include an `idempotency_key` (8-255 characters) for safe retries. If a request fails without a response, resending with the same `idempotency_key` guarantees at-most-once execution.

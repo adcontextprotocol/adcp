@@ -29,6 +29,12 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference. When provided, the agent automatically applies appropriate rules based on brand characteristics (industry, target_audience, etc.). Resolved at execution time."
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate property list creation on retries.",
+      "minLength": 8,
+      "maxLength": 255
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

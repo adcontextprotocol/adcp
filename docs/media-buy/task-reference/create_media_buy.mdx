@@ -35,13 +35,11 @@ const endDate = new Date(tomorrow);
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'summer_campaign_' + Date.now(),
   brand: {
     domain: 'acmecorp.com'
   },
   packages: [
     {
-      buyer_ref: 'display_package_1',
       product_id: 'prod_d979b543',
       pricing_option_id: 'cpm_usd_auction',
       format_ids: [
@@ -54,7 +52,6 @@ const result = await testAgent.createMediaBuy({
       bid_price: 5.00
     },
     {
-      buyer_ref: 'display_package_2',
       product_id: 'prod_e8fd6012',
       pricing_option_id: 'cpm_usd_auction',
       format_ids: [
@@ -102,13 +99,11 @@ async def create_campaign():
     end_date = tomorrow + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        buyer_ref=f'summer_campaign_{int(time.time() * 1000)}',
         brand={
             'domain': 'acmecorp.com'
         },
         packages=[
             {
-                'buyer_ref': 'ctv_package',
                 'product_id': 'prod_d979b543',
                 'pricing_option_id': 'cpm_usd_auction',
                 'format_ids': [
@@ -121,7 +116,6 @@ async def create_campaign():
                 'bid_price': 5.00
             },
             {
-                'buyer_ref': 'audio_package',
                 'product_id': 'prod_e8fd6012',
                 'pricing_option_id': 'cpm_usd_auction',
                 'format_ids': [
@@ -153,7 +147,7 @@ asyncio.run(create_campaign())
 npx adcp \
   https://agenticadvertising.org/api/training-agent/mcp \
   create_media_buy \
-  '{"buyer_ref":"summer_campaign_2025","brand":{"domain":"acmecorp.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
+  '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -163,8 +157,6 @@ npx adcp \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buyer_ref` | string | Yes | Your reference identifier for this media buy |
-| `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
 | `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
@@ -188,7 +180,6 @@ npx adcp \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buyer_ref` | string | Yes | Your reference for this package |
 | `product_id` | string | Yes | Product ID from `get_products` |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
 | `format_ids` | FormatID[] | Yes | Format IDs that will be used - must be supported by product |
@@ -210,9 +201,7 @@ npx adcp \
 
 | Field | Description |
 |-------|-------------|
-| `media_buy_id` | Publisher's unique identifier |
-| `buyer_ref` | Your reference identifier |
-| `buyer_campaign_ref` | Buyer's campaign label (echoed from request) |
+| `media_buy_id` | Seller's unique identifier |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `packages` | Array of created packages with complete state |
 
@@ -241,12 +230,10 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'regional_campaign_' + Date.now(),
   brand: {
     domain: 'acmecorp.com'
   },
   packages: [{
-    buyer_ref: 'ctv_regional',
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_auction',
     format_ids: [{
@@ -292,12 +279,10 @@ async def create_targeted_campaign():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        buyer_ref=f'regional_campaign_{int(time.time() * 1000)}',
         brand={
             'domain': 'acmecorp.com'
         },
         packages=[{
-            'buyer_ref': 'ctv_regional',
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
@@ -342,12 +327,10 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'performance_campaign_' + Date.now(),
   brand: {
     domain: 'acmecorp.com'
   },
   packages: [{
-    buyer_ref: 'roas_package',
     product_id: 'prod_retail_sp',
     pricing_option_id: 'cpc_usd_auction',
     budget: 10000,
@@ -389,12 +372,10 @@ async def create_optimized_campaign():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        buyer_ref=f'performance_campaign_{int(time.time() * 1000)}',
         brand={
             'domain': 'acmecorp.com'
         },
         packages=[{
-            'buyer_ref': 'roas_package',
             'product_id': 'prod_retail_sp',
             'pricing_option_id': 'cpc_usd_auction',
             'budget': 10000,
@@ -432,10 +413,8 @@ Include the `catalogs` field in a package to make it catalog-driven. Each catalo
 
 ```json test=false
 {
-  "buyer_ref": "recruitment_q1",
   "brand": { "domain": "acme-restaurants.com" },
   "packages": [{
-    "buyer_ref": "chef_vacancies",
     "product_id": "prod_job_board",
     "pricing_option_id": "cpc_eur_auction",
     "budget": 5000,
@@ -454,10 +433,8 @@ Include the `catalogs` field in a package to make it catalog-driven. Each catalo
 
 ```json test=false
 {
-  "buyer_ref": "summer_promo",
   "brand": { "domain": "acmecorp.com" },
   "packages": [{
-    "buyer_ref": "sponsored_products",
     "product_id": "prod_retail_sp",
     "pricing_option_id": "cpc_usd_auction",
     "budget": 10000,
@@ -496,12 +473,10 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'campaign_with_creatives_' + Date.now(),
   brand: {
     domain: 'acmecorp.com'
   },
   packages: [{
-    buyer_ref: 'ctv_package',
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_auction',
     format_ids: [{
@@ -555,12 +530,10 @@ async def create_with_creatives():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        buyer_ref=f'campaign_with_creatives_{int(time.time() * 1000)}',
         brand={
             'domain': 'acmecorp.com'
         },
         packages=[{
-            'buyer_ref': 'ctv_package',
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
@@ -614,12 +587,10 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'campaign_with_reporting_' + Date.now(),
   brand: {
     domain: 'acmecorp.com'
   },
   packages: [{
-    buyer_ref: 'ctv_package',
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_auction',
     format_ids: [{
@@ -667,12 +638,10 @@ async def create_with_reporting():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        buyer_ref=f'campaign_with_reporting_{int(time.time() * 1000)}',
         brand={
             'domain': 'acmecorp.com'
         },
         packages=[{
-            'buyer_ref': 'ctv_package',
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
@@ -720,7 +689,6 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'swiss_campaign_' + Date.now(),
   proposal_id: 'swiss_balanced_v1',  // From get_products response
   total_budget: {
     amount: 50000,
@@ -760,7 +728,6 @@ async def execute_proposal():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        buyer_ref=f'swiss_campaign_{int(time.time() * 1000)}',
         proposal_id='swiss_balanced_v1',  # From get_products response
         total_budget={
             'amount': 50000,
@@ -955,11 +922,9 @@ The task completed synchronously. No async handling needed.
 **Request:**
 ```javascript test=false
 const response = await session.call('create_media_buy', {
-  buyer_ref: 'summer_campaign_2025',
   brand: { domain: 'acmecorp.com' },
   packages: [
     {
-      buyer_ref: 'ctv_package',
       product_id: 'prod_ctv_sports',
       pricing_option_id: 'cpm_fixed',
       budget: 50000
@@ -973,12 +938,10 @@ const response = await session.call('create_media_buy', {
 {
   "status": "completed",
   "media_buy_id": "mb_12345",
-  "buyer_ref": "summer_campaign_2025",
   "creative_deadline": "2025-06-15T23:59:59Z",
   "packages": [
     {
       "package_id": "pkg_001",
-      "buyer_ref": "ctv_package",
       "product_id": "prod_ctv_sports"
     }
   ]
@@ -993,11 +956,9 @@ The task is queued for manual approval. Configure a webhook to receive updates.
 ```javascript test=false
 const response = await session.call('create_media_buy',
   {
-    buyer_ref: 'enterprise_campaign',
     brand: { domain: 'acmecorp.com' },
     packages: [
       {
-        buyer_ref: 'premium_package',
         product_id: 'prod_premium_ctv',
         pricing_option_id: 'cpm_fixed',
         budget: 500000  // Large budget triggers approval
@@ -1035,12 +996,10 @@ const response = await session.call('create_media_buy',
   "message": "Media buy approved and created",
   "result": {
     "media_buy_id": "mb_67890",
-    "buyer_ref": "enterprise_campaign",
     "creative_deadline": "2025-06-20T23:59:59Z",
     "packages": [
       {
         "package_id": "pkg_002",
-        "buyer_ref": "premium_package"
       }
     ]
   }
@@ -1078,11 +1037,9 @@ const response = await a2a.send({
       data: {
         skill: 'create_media_buy',
         parameters: {
-          buyer_ref: 'summer_campaign_2025',
           brand: { domain: 'acmecorp.com' },
           packages: [
             {
-              buyer_ref: 'ctv_package',
               product_id: 'prod_ctv_sports',
               pricing_option_id: 'cpm_fixed',
               budget: 50000
@@ -1107,12 +1064,10 @@ const response = await a2a.send({
       {
         "data": {
           "media_buy_id": "mb_12345",
-          "buyer_ref": "summer_campaign_2025",
           "creative_deadline": "2025-06-15T23:59:59Z",
           "packages": [
             {
               "package_id": "pkg_001",
-              "buyer_ref": "ctv_package"
             }
           ]
         }
@@ -1167,7 +1122,6 @@ const response = await a2a.send({
       data: {
         skill: 'create_media_buy',
         parameters: {
-          buyer_ref: 'enterprise_campaign',
           packages: [{ budget: 500000 }]  // Triggers approval
         }
       }
@@ -1205,7 +1159,6 @@ const response = await a2a.send({
         {
           "data": {
             "media_buy_id": "mb_67890",
-            "buyer_ref": "enterprise_campaign",
             "packages": [{ "package_id": "pkg_002" }]
           }
         }
@@ -1290,8 +1243,7 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 ## Usage Notes
 
 - Total budget is distributed across packages based on individual `budget` values
-- Both media buys and packages have `buyer_ref` fields for tracking
-- Creative assets must be uploaded before deadline for campaign activation
+- - Creative assets must be uploaded before deadline for campaign activation
 - AXE segments enable advanced audience targeting
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow

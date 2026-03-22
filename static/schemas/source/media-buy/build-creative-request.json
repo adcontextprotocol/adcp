@@ -23,11 +23,11 @@
     },
     "media_buy_id": {
       "type": "string",
-      "description": "Buyer's media buy reference for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms). This is the buyer's reference — the same value used as buyer_ref in create_media_buy."
+      "description": "Media buy identifier for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms)."
     },
     "package_id": {
       "type": "string",
-      "description": "Buyer's package or line item reference within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package."
+      "description": "Package identifier within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package."
     },
     "target_format_id": {
       "$ref": "/schemas/core/format-id.json",
@@ -102,6 +102,12 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries.",
+      "minLength": 8,
+      "maxLength": 255
     },
     "context": {
       "$ref": "/schemas/core/context.json"

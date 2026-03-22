@@ -120,14 +120,12 @@ Priya picks two products and creates a media buy:
 
 ```javascript
 const buy = await novamind.createMediaBuy({
-  buyer_ref: "ridgeline-novamind-q2",
   account: { brand: { domain: "ridgelinegear.com" } },
   brand: { domain: "ridgelinegear.com" },
   start_time: "2026-04-01T00:00:00Z",
   end_time: "2026-06-30T23:59:59Z",
   packages: [
     {
-      buyer_ref: "pkg_sponsored_responses",
       product_id: "novamind_sponsored_outdoor",
       budget: 10000,
       pricing_option_id: "cpc_standard",
@@ -136,7 +134,6 @@ const buy = await novamind.createMediaBuy({
       ]
     },
     {
-      buyer_ref: "pkg_search_results",
       product_id: "novamind_search_hiking",
       budget: 5000,
       pricing_option_id: "cpc_keyword",

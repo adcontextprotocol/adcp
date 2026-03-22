@@ -13,9 +13,11 @@
       "type": "string",
       "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes."
     },
-    "buyer_campaign_ref": {
+    "idempotency_key": {
       "type": "string",
-      "description": "Campaign identifier."
+      "description": "Client-generated unique key for this request. Prevents duplicate outcome reports on retries.",
+      "minLength": 8,
+      "maxLength": 255
     },
     "outcome": {
       "$ref": "/schemas/enums/outcome-type.json",
@@ -28,10 +30,6 @@
         "media_buy_id": {
           "type": "string",
           "description": "Seller's media buy identifier."
-        },
-        "buyer_ref": {
-          "type": "string",
-          "description": "The buyer reference echoed back by the seller."
         },
         "committed_budget": {
           "type": "number",
@@ -76,10 +74,19 @@
           "type": "object",
           "description": "Start and end timestamps for the reporting window.",
           "properties": {
-            "start": { "type": "string", "format": "date-time" },
-            "end": { "type": "string", "format": "date-time" }
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
           },
-          "required": ["start", "end"],
+          "required": [
+            "start",
+            "end"
+          ],
           "additionalProperties": false
         },
         "impressions": {
@@ -120,8 +127,18 @@
         }
       },
       "additionalProperties": false
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque governance context from the check_governance response that authorized this action. Enables the governance agent to correlate the outcome to the original check.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
     }
   },
-  "required": ["plan_id", "buyer_campaign_ref", "outcome"],
+  "required": [
+    "plan_id",
+    "outcome"
+  ],
   "additionalProperties": false
 }

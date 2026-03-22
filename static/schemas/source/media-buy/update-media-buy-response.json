@@ -12,11 +12,7 @@
       "properties": {
         "media_buy_id": {
           "type": "string",
-          "description": "Publisher's identifier for the media buy"
-        },
-        "buyer_ref": {
-          "type": "string",
-          "description": "Buyer's reference identifier for the media buy"
+          "description": "Seller's identifier for the media buy"
         },
         "implementation_date": {
           "type": [
@@ -45,8 +41,7 @@
         }
       },
       "required": [
-        "media_buy_id",
-        "buyer_ref"
+        "media_buy_id"
       ],
       "additionalProperties": true,
       "not": {
@@ -84,11 +79,6 @@
           {
             "required": [
               "media_buy_id"
-            ]
-          },
-          {
-            "required": [
-              "buyer_ref"
             ]
           },
           {

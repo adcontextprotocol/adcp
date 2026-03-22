@@ -15,19 +15,25 @@
       "properties": {
         "countries_all": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "minItems": 1,
           "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
         },
         "channels_any": {
           "type": "array",
-          "items": { "$ref": "/schemas/enums/channels.json" },
+          "items": {
+            "$ref": "/schemas/enums/channels.json"
+          },
           "minItems": 1,
           "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
         },
         "languages_any": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "minItems": 1,
           "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
         },
@@ -39,7 +45,9 @@
     },
     "registry_policy_ids": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Registry policy IDs to use as the evaluation basis. When provided, the agent resolves policies from the registry and uses their policy text and exemplars as the evaluation criteria."
     },
     "policy": {
@@ -73,7 +81,10 @@
                     "description": "BCP 47 language tag for content at this URL"
                   }
                 },
-                "required": ["type", "value"]
+                "required": [
+                  "type",
+                  "value"
+                ]
               },
               {
                 "$ref": "/schemas/content-standards/artifact.json",
@@ -106,7 +117,10 @@
                     "description": "BCP 47 language tag for content at this URL"
                   }
                 },
-                "required": ["type", "value"]
+                "required": [
+                  "type",
+                  "value"
+                ]
               },
               {
                 "$ref": "/schemas/content-standards/artifact.json",
@@ -123,8 +137,16 @@
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. If a request with the same key has already been processed, the server returns the original response without re-processing.",
+      "minLength": 8,
+      "maxLength": 255
     }
   },
-  "required": ["standards_id"],
+  "required": [
+    "standards_id"
+  ],
   "additionalProperties": true
 }

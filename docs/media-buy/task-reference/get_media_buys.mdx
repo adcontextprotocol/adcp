@@ -19,14 +19,13 @@ Retrieve the current operational state of media buys: configuration, creative ap
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
-| `buyer_refs` | string[] | No* | Array of buyer reference IDs |
-| `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending_activation"`, `"paused"`, `"completed"`. Defaults to `["active"]` only when both `media_buy_ids` and `buyer_refs` are omitted. |
+| `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending_activation"`, `"paused"`, `"completed"`. Defaults to `["active"]` only when both `media_buy_ids` are omitted. |
 | `include_snapshot` | boolean | No | When true, include near-real-time delivery snapshots for each package. Defaults to `false`. |
 | `pagination` | object | No | Cursor-based pagination controls (`max_results`, `cursor`) for broad queries. |
 
-*Either `media_buy_ids` or `buyer_refs` can be provided. If neither is provided, the query is scope-based and uses `status_filter` + `pagination`.
+*Either `media_buy_ids` can be provided. If neither is provided, the query is scope-based and uses `status_filter` + `pagination`.
 
-When `media_buy_ids` or `buyer_refs` are provided, no implicit status filtering is applied. Pass `status_filter` explicitly if you want to filter identified buys by status.
+When `media_buy_ids` are provided, no implicit status filtering is applied. Pass `status_filter` explicitly if you want to filter identified buys by status.
 
 ## Response
 
@@ -42,9 +41,7 @@ Returns an array of media buys with current status, creative approval state, and
 
 | Field | Description |
 |-------|-------------|
-| `media_buy_id` | Publisher's media buy identifier |
-| `buyer_ref` | Buyer's reference identifier |
-| `buyer_campaign_ref` | Buyer campaign label echoed from `create_media_buy.buyer_campaign_ref` (when provided) |
+| `media_buy_id` | Seller's media buy identifier |
 | `status` | Current status (`pending_activation`, `active`, `paused`, `completed`) |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Total campaign budget (in `currency`) |
@@ -55,8 +52,7 @@ Returns an array of media buys with current status, creative approval state, and
 
 | Field | Description |
 |-------|-------------|
-| `package_id` | Publisher's package identifier |
-| `buyer_ref` | Buyer's reference for this package |
+| `package_id` | Seller's package identifier |
 | `currency` | Optional package-level currency override (defaults to media buy `currency`) |
 | `bid_price` | Current bid price for auction-based packages (in package `currency` if present, otherwise media buy `currency`) |
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
@@ -351,14 +347,13 @@ Use cursor pagination for broad status queries to avoid large payloads:
 
 - Request: set `pagination.max_results` (1-100, default 50) and optional `pagination.cursor`
 - Response: read `pagination.has_more`; when true, pass `pagination.cursor` into the next request
-- ID-targeted queries (`media_buy_ids`/`buyer_refs`) can omit pagination unless the ID set is very large
+- ID-targeted queries (`media_buy_ids`/`media_buy_ids`) can omit pagination unless the ID set is very large
 
 ## Error Handling
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `MEDIA_BUY_NOT_FOUND` | Media buy ID does not exist | Verify `media_buy_id` |
-| `BUYER_REF_NOT_FOUND` | Buyer reference does not map to an accessible media buy | Verify `buyer_ref` value and account scope |
 | `CONTEXT_REQUIRED` | No media buys found for the requested scope | Provide valid IDs/refs or broaden `status_filter`/pagination scope |
 | `AUTH_REQUIRED` | Authentication needed | Provide credentials |
 

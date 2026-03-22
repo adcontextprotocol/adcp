@@ -88,10 +88,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             operator: { type: 'string', description: 'Domain of the operating entity' },
           },
         },
-        buyer_campaign_ref: {
-          type: 'string',
-          description: "Buyer's campaign reference label for CRM correlation.",
-        },
         preferred_delivery_types: {
           type: 'array',
           items: { type: 'string', enum: ['guaranteed', 'non_guaranteed'] },
@@ -185,13 +181,9 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The sales agent URL (must be HTTPS)',
         },
-        buyer_ref: {
+        idempotency_key: {
           type: 'string',
-          description: 'Your unique identifier for this campaign',
-        },
-        buyer_campaign_ref: {
-          type: 'string',
-          description: "Buyer's campaign reference label for CRM correlation.",
+          description: 'Unique key for this request. Prevents duplicate media buys on retries.',
         },
         account: {
           type: 'object',
@@ -240,7 +232,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           items: {
             type: 'object',
             properties: {
-              buyer_ref: { type: 'string', description: 'Your identifier for this package' },
               product_id: { type: 'string', description: 'From get_products response' },
               pricing_option_id: { type: 'string', description: "From product's pricing_options" },
               budget: { type: 'number', description: 'Budget amount in dollars' },
@@ -252,7 +243,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
                 description: 'References to existing creatives',
               },
             },
-            required: ['buyer_ref', 'product_id', 'pricing_option_id', 'budget'],
+            required: ['product_id', 'pricing_option_id', 'budget'],
           },
         },
         start_time: {
@@ -289,7 +280,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'buyer_ref', 'brand', 'packages', 'start_time', 'end_time'],
+      required: ['agent_url', 'brand', 'packages', 'start_time', 'end_time'],
     },
   },
   {
@@ -659,11 +650,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           items: { type: 'string' },
           description: 'Array of publisher media buy IDs to get delivery data for.',
         },
-        buyer_refs: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Array of buyer reference IDs to get delivery data for.',
-        },
         status_filter: {
           type: 'string',
           description: 'Filter by media buy status. Can be a single status or array.',
@@ -711,11 +697,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         },
         media_buy_id: {
           type: 'string',
-          description: 'Publisher\'s media buy identifier to update (use this OR buyer_ref)',
-        },
-        buyer_ref: {
-          type: 'string',
-          description: 'Your reference for the media buy to update (use this OR media_buy_id)',
+          description: 'Media buy identifier to update',
         },
         start_time: {
           type: 'string',
@@ -735,8 +717,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           items: {
             type: 'object',
             properties: {
-              package_id: { type: 'string', description: 'Publisher\'s package ID (use this OR buyer_ref)' },
-              buyer_ref: { type: 'string', description: 'Your package reference (use this OR package_id)' },
+              package_id: { type: 'string', description: 'Package ID to update' },
               paused: { type: 'boolean', description: 'Pause/resume this package' },
               budget: { type: 'number', description: 'Updated budget' },
               bid_price: { type: 'number', description: 'Updated bid price (auction only)' },
@@ -843,13 +824,13 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The sales agent URL (must be HTTPS)',
         },
+        idempotency_key: {
+          type: 'string',
+          description: 'Client-generated key for at-most-once execution.',
+        },
         media_buy_id: {
           type: 'string',
           description: 'Publisher\'s media buy identifier',
-        },
-        buyer_ref: {
-          type: 'string',
-          description: "Buyer's reference for the media buy.",
         },
         measurement_period: {
           type: 'object',
@@ -909,6 +890,10 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         agent_url: {
           type: 'string',
           description: 'The creative agent URL (must be HTTPS)',
+        },
+        idempotency_key: {
+          type: 'string',
+          description: 'Client-generated key for at-most-once execution.',
         },
         message: {
           type: 'string',
@@ -1095,7 +1080,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
   {
     name: 'get_creative_delivery',
     description:
-      'Retrieve variant-level creative delivery data from a creative agent. Returns what was generated, served, and how each variant performed. Requires at least one scoping filter: media_buy_ids, media_buy_buyer_refs, or creative_ids.',
+      'Retrieve variant-level creative delivery data from a creative agent. Returns what was generated, served, and how each variant performed. Requires at least one scoping filter: media_buy_ids or creative_ids.',
     usage_hints:
       'use when the user wants to see what creative variants were generated or served, review delivery data for generative campaigns, review generation_context to understand what triggered each variant, see platform engagement metrics (likes, shares, comments) in the ext field, audit creative performance across media buys, aggregate delivery across multiple sellers, correlate variants using concept_id or creative_id, or build cross-agent dashboards. Also use when guiding a seller or creative agent implementer on how to expose delivery data via AdCP.',
     input_schema: {
@@ -1109,11 +1094,6 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           type: 'array',
           items: { type: 'string' },
           description: 'Filter to specific media buys by publisher ID.',
-        },
-        media_buy_buyer_refs: {
-          type: 'array',
-          items: { type: 'string' },
-          description: "Filter to specific media buys by buyer reference ID. Alternative to media_buy_ids when the buyer doesn't have the publisher's identifiers.",
         },
         creative_ids: {
           type: 'array',
@@ -2078,8 +2058,8 @@ export function createAdcpToolHandlers(
   // Pre-call validation for tools with mutual exclusivity constraints
   const PRE_VALIDATION: Record<string, (input: Record<string, unknown>) => string | null> = {
     update_media_buy: (input) => {
-      if (!input.media_buy_id && !input.buyer_ref) {
-        return 'Either media_buy_id or buyer_ref must be provided to identify the media buy to update.';
+      if (!input.media_buy_id) {
+        return 'media_buy_id is required to identify the media buy to update.';
       }
       return null;
     },

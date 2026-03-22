@@ -7,11 +7,7 @@
   "properties": {
     "package_id": {
       "type": "string",
-      "description": "Publisher's unique identifier for the package"
-    },
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
+      "description": "Seller's unique identifier for the package"
     },
     "product_id": {
       "type": "string",

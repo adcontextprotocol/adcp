@@ -125,13 +125,11 @@ Sam creates the media buy. One call per seller, same structure everywhere:
 
 ```javascript
 const buy = await seller.createMediaBuy({
-  buyer_ref: "acme-outdoor-q2-ctv",
   account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" },
   brand: { domain: "acmeoutdoor.com" },
   start_time: "2026-04-01T00:00:00Z",
   end_time: "2026-06-30T23:59:59Z",
   packages: [{
-    buyer_ref: "pkg_ctv_sports_preroll",
     product_id: "streamhaus_sports_preroll_q2",
     budget: 25000,
     pricing_option_id: "cpm_standard",
@@ -160,17 +158,15 @@ If the buy exceeds Sam's authority — say, if the total across all sellers hit 
 ```javascript
 const check = await governance.checkGovernance({
   plan_id: "acme-q2-trail-pro",
-  buyer_campaign_ref: "acme-q2-ctv",
   binding: "proposed",
   caller: "https://orchestrator.pinnacle-agency.example",
   tool: "create_media_buy",
   phase: "purchase",
-  payload: buy,
-  governance_context: {
-    total_budget: { amount: 50000, currency: "USD" },
-    seller_url: "https://streamhaus.example"
-  }
+  payload: buy
 });
+
+// Attach governance_context to the media buy envelope for the seller
+const governanceContext = check.governance_context;
 
 if (check.status === "denied" || check.status === "escalated") {
   // Escalate to human — don't proceed

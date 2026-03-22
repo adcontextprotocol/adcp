@@ -79,7 +79,6 @@ When the orchestrator is ready to buy, it calls `check_governance` before execut
 ```javascript
 const check = await governance.checkGovernance({
   plan_id: "acme-q2-trail-pro",
-  buyer_campaign_ref: "acme-q2-ctv",
   binding: "proposed",
   caller: "https://orchestrator.pinnacle-agency.example",
   tool: "create_media_buy",
@@ -126,7 +125,6 @@ The orchestrator escalates. Jordan receives the flagged plan with full context â
   "status": "escalated",
   "binding": "proposed",
   "plan_id": "acme-q2-trail-pro",
-  "buyer_campaign_ref": "acme-q2-ctv",
   "explanation": "Budget authority exceeded. Human approval required.",
   "findings": [
     {
@@ -172,7 +170,7 @@ First, the orchestrator reports that the seller accepted the purchase and commit
 ```javascript
 await governance.reportPlanOutcome({
   plan_id: "acme-q2-trail-pro",
-  buyer_campaign_ref: "acme-q2-ctv",
+  governance_context: check.governance_context,
   check_id: "chk-q2-ctv-001",
   outcome: "completed",
   seller_response: {
@@ -187,7 +185,7 @@ Then, as delivery data comes in, the orchestrator reports delivery outcomes so g
 ```javascript
 await governance.reportPlanOutcome({
   plan_id: "acme-q2-trail-pro",
-  buyer_campaign_ref: "acme-q2-ctv",
+  governance_context: check.governance_context,
   outcome: "delivery",
   delivery: {
     media_buy_id: "mb-streamhaus-001",

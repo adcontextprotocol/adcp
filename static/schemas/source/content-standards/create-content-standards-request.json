@@ -115,6 +115,12 @@
         }
       }
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate content standards creation on retries.",
+      "minLength": 8,
+      "maxLength": 255
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

@@ -5,13 +5,11 @@
   "description": "Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages array with explicit line item configurations, or (2) Proposal mode - provide proposal_id and total_budget to execute a proposal from get_products. One of packages or proposal_id must be provided.",
   "type": "object",
   "properties": {
-    "buyer_ref": {
+    "idempotency_key": {
       "type": "string",
-      "description": "Buyer's reference identifier for this media buy. Sellers SHOULD deduplicate requests with the same buyer_ref and account, returning the existing media buy rather than creating a duplicate."
-    },
-    "buyer_campaign_ref": {
-      "type": "string",
-      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
+      "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. Use a UUID or other unique identifier.",
+      "minLength": 8,
+      "maxLength": 255
     },
     "plan_id": {
       "type": "string",
@@ -71,7 +69,7 @@
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed). The client generates an operation_id and embeds it in the URL before sending — the publisher echoes it back in webhook payloads for correlation."
+      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed). The client generates an operation_id and embeds it in the URL before sending \u2014 the publisher echoes it back in webhook payloads for correlation."
     },
     "reporting_webhook": {
       "$ref": "/schemas/core/reporting-webhook.json",
@@ -155,7 +153,6 @@
     }
   },
   "required": [
-    "buyer_ref",
     "account",
     "brand",
     "start_time",

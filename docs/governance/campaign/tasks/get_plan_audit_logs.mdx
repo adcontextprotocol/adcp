@@ -16,13 +16,12 @@ Retrieve governance state and audit trail for a plan, multiple plans, or an enti
   "tool": "get_plan_audit_logs",
   "arguments": {
     "plan_ids": ["plan_q1_2026_launch"],
-    "buyer_campaign_ref": "q1-2026-spring-launch",
     "include_entries": true
   }
 }
 ```
 
-Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the plan.
+Results are grouped by `media_buy_id` within each plan.
 
 **Multiple plans** -- retrieve specific plans in one call:
 
@@ -69,12 +68,18 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
         "olv": { "committed": 275000, "pct": 55 },
         "display": { "committed": 150000, "pct": 30 }
       },
-      "campaigns": [
+      "media_buys": [
         {
-          "buyer_campaign_ref": "q1-2026-spring-launch",
+          "media_buy_id": "mb_seller_456",
           "status": "active",
-          "committed": 425000,
-          "active_media_buys": ["mb_seller_456", "mb_seller_789"]
+          "committed": 275000,
+          "check_count": 8
+        },
+        {
+          "media_buy_id": "mb_seller_789",
+          "status": "active",
+          "committed": 150000,
+          "check_count": 7
         }
       ],
       "summary": {
@@ -171,7 +176,6 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 |-------|------|----------|-------------|
 | `plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Plan IDs to retrieve. |
 | `portfolio_plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Portfolio plan IDs. Expanded to member plans. |
-| `buyer_campaign_ref` | string | No | Filter to a specific campaign. Omit for plan-level aggregate. |
 | `include_entries` | boolean | No | Include the full audit trail. Default: `false`. |
 
 ### Response
@@ -190,11 +194,11 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].channel_allocation` | object | Current channel mix. Keyed by channel ID. |
 | `plans[].channel_allocation[channel].committed` | number | Budget committed to this channel. |
 | `plans[].channel_allocation[channel].pct` | number | Channel's share of the authorized total budget. |
-| `plans[].campaigns` | array | Per-campaign breakdown. |
-| `plans[].campaigns[].buyer_campaign_ref` | string | Campaign identifier. |
-| `plans[].campaigns[].status` | enum | `active`, `suspended`, or `completed`. |
-| `plans[].campaigns[].committed` | number | Budget committed in this campaign. |
-| `plans[].campaigns[].active_media_buys` | array | Media buy IDs currently active. |
+| `plans[].media_buys` | array | Per-media-buy breakdown. |
+| `plans[].media_buys[].media_buy_id` | string | Seller-assigned media buy identifier. |
+| `plans[].media_buys[].status` | enum | `active`, `suspended`, or `completed`. |
+| `plans[].media_buys[].committed` | number | Budget committed for this media buy. |
+| `plans[].media_buys[].check_count` | integer | Number of governance checks performed. |
 | `plans[].summary` | object | Aggregate validation and outcome statistics. |
 | `plans[].summary.checks_performed` | number | Total governance checks performed. |
 | `plans[].summary.outcomes_reported` | number | Total outcomes reported. |

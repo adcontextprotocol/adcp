@@ -7,11 +7,7 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
-      "description": "Publisher's ID of the media buy to update"
-    },
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference for the media buy to update"
+      "description": "Seller's ID of the media buy to update"
     },
     "paused": {
       "type": "boolean",
@@ -54,17 +50,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "required": [
-        "media_buy_id"
-      ]
-    },
-    {
-      "required": [
-        "buyer_ref"
-      ]
-    }
+  "required": [
+    "media_buy_id"
   ],
   "additionalProperties": true
 }

@@ -11,15 +11,7 @@
     },
     "media_buy_ids": {
       "type": "array",
-      "description": "Array of publisher media buy IDs to retrieve. When omitted along with buyer_refs, returns a paginated set of accessible media buys matching status_filter.",
-      "items": {
-        "type": "string"
-      },
-      "minItems": 1
-    },
-    "buyer_refs": {
-      "type": "array",
-      "description": "Array of buyer reference IDs to retrieve",
+      "description": "Array of media buy IDs to retrieve. When omitted, returns a paginated set of accessible media buys matching status_filter.",
       "items": {
         "type": "string"
       },
@@ -38,7 +30,7 @@
           "minItems": 1
         }
       ],
-      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] only when media_buy_ids and buyer_refs are both omitted. When media_buy_ids or buyer_refs are provided, no implicit status filter is applied."
+      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] when media_buy_ids is omitted. When media_buy_ids is provided, no implicit status filter is applied."
     },
     "include_snapshot": {
       "type": "boolean",

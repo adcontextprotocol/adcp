@@ -194,7 +194,7 @@ If the plan has no `policy_ids` or `custom_policies`, the governance agent opera
 The governance agent tracks state at two levels:
 
 - **Plan level**: Total budget committed, channel allocation percentages, plan status
-- **Campaign level**: Per-`buyer_campaign_ref` committed budget, active media buy references, validation history
+- **Campaign level**: Per-`governance_context` committed budget, active media buy references, validation history
 
 A single plan can span multiple campaigns. When [`check_governance`](/docs/governance/campaign/tasks/check_governance) checks budget authority, it considers all campaigns tied to the plan. When [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) reports a seller confirmation, the governance agent commits the budget from the seller's actual amount -- not the requested amount.
 
@@ -364,14 +364,12 @@ Governance agents declare their Campaign Governance support in `get_adcp_capabil
 
 ## Integration with `create_media_buy`
 
-The buyer includes `plan_id` and `buyer_campaign_ref` as first-class fields on the `create_media_buy` request. These fields tell the seller which governance plan applies, enabling seller-side governance checks.
+The buyer includes `plan_id` on the `create_media_buy` request and `governance_context` on the protocol envelope. These fields tell the seller which governance plan applies, enabling seller-side governance checks.
 
 ```json
 {
   "tool": "create_media_buy",
   "arguments": {
-    "buyer_ref": "q1-launch-pinnacle-001",
-    "buyer_campaign_ref": "q1-2026-spring-launch",
     "plan_id": "plan_q1_2026_launch",
     "account": { "agent_url": "https://seller.example.com", "id": "acc_123" },
     "brand": { "domain": "acmecorp.com" },
@@ -387,8 +385,6 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 ```json
 {
   "media_buy_id": "mb_seller_456",
-  "buyer_ref": "q1-launch-pinnacle-001",
-  "buyer_campaign_ref": "q1-2026-spring-launch",
   "packages": ["..."],
   "planned_delivery": {
     "geo": { "countries": ["US"] },
@@ -465,13 +461,17 @@ In all modes, delegation violations, credential mismatches, and other authorizat
 
 ### Governance context
 
-The `payload` field in `check_governance` is opaque -- it carries the full tool arguments for whatever tool is being checked. Different tools use different field names and structures for the same concepts (budget, countries, channels, flight dates). Without a standard extraction point, every governance agent must implement multi-format heuristics to find these values.
+The `governance_context` field is an opaque string issued by the governance agent in the `check_governance` response. It enables lifecycle continuity — the governance agent encodes whatever internal state it needs (plan reference, budget snapshot, check history) into this value.
 
-The optional `governance_context` field solves this by providing a canonical shape for governance-relevant fields. The caller (orchestrator or seller) extracts budget, countries, channels, and flight dates from the tool payload into `governance_context` before calling `check_governance`. The governance agent validates against this known structure instead of parsing the payload directly.
+Callers MUST NOT interpret `governance_context`. They persist and forward it:
 
-When `governance_context` is present, the governance agent SHOULD use it for plan validation. When absent, the agent falls back to inspecting `payload`. Callers SHOULD include `governance_context` for `proposed` checks where the payload structure varies by tool. For `committed` checks, `planned_delivery` already provides a canonical structure and `governance_context` is not needed.
+- **Buyer**: receives `governance_context` from `check_governance` response, attaches it to the protocol envelope when sending the media buy to the seller.
+- **Seller**: receives `governance_context` in the envelope, stores it alongside the media buy, and includes it on all subsequent `check_governance` calls for that media buy's lifecycle.
+- **Governance agent**: uses `governance_context` to reconnect each lifecycle event to the original plan, campaign grouping, and budget state.
 
-The `governance_context` condition field paths use the prefix `governance_context.` (e.g., `governance_context.total_budget.amount`) so they remain stable regardless of the original payload structure.
+On the first `check_governance` call (before any context exists), the governance agent extracts what it needs from `payload` and `plan_id`. On subsequent calls, `governance_context` provides the continuity so the governance agent does not need to re-derive state from the payload.
+
+Governance agents SHOULD treat `governance_context` as a lookup key into server-side state or a signed token, not as a plain-text encoding of governance state. If state is encoded directly, it MUST be signed (e.g., HMAC) so tampering by intermediaries is detectable.
 
 ### Governance phases
 
@@ -580,11 +580,9 @@ The governance agent controls the reporting cadence through `next_check`. It can
   "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "buyer_campaign_ref": "q1-2026-spring-launch",
     "binding": "committed",
     "caller": "https://seller.example.com",
     "media_buy_id": "mb_seller_456",
-    "buyer_ref": "q1-launch-pinnacle-001",
     "phase": "purchase",
     "planned_delivery": {
       "geo": { "countries": ["US"] },
@@ -609,7 +607,6 @@ The governance agent controls the reporting cadence through `next_check`. It can
   "status": "approved",
   "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
-  "buyer_campaign_ref": "q1-2026-spring-launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z",
   "next_check": "2026-03-22T00:00:00Z"
@@ -626,7 +623,6 @@ The `next_check` field signals that the governance agent expects delivery report
   "status": "denied",
   "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
-  "buyer_campaign_ref": "q1-2026-spring-launch",
   "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
     {
@@ -650,7 +646,6 @@ The `next_check` field signals that the governance agent expects delivery report
   "status": "approved",
   "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
-  "buyer_campaign_ref": "q1-2026-spring-launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight.",
   "next_check": "2026-03-29T00:00:00Z"
 }

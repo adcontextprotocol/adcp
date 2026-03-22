@@ -366,10 +366,9 @@ When a task finishes, the server sends the full `Task` object with **task result
         "kind": "data",
         "data": {
           "media_buy_id": "mb_12345",
-          "buyer_ref": "nike_q1_campaign",
           "creative_deadline": "2024-01-30T23:59:59Z",
           "packages": [
-            { "package_id": "pkg_001", "buyer_ref": "nike_ctv_package" }
+            { "package_id": "pkg_001" }
           ]
         }
       }
@@ -512,7 +511,6 @@ app.post('/webhooks/a2a/:taskType/:operationId', async (req, res) => {
       if (adcpData?.media_buy_id) {
         await handleMediaBuyCreated({
           media_buy_id: adcpData.media_buy_id,
-          buyer_ref: adcpData.buyer_ref,
           packages: adcpData.packages
         });
       }

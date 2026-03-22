@@ -600,13 +600,11 @@ In-store digital screens     — Checkout lanes, end-caps, pharmacy waiting area
     <details class="protocol-detail">
       <summary>The media buy</summary>
       <pre><code>{
-  "buyer_ref": "summit_shopgrid_q4",
   "brand": { "domain": "summitfoods.example.com" },
   "start_time": "2026-10-01T00:00:00Z",
   "end_time": "2026-12-31T23:59:59Z",
   "packages": [
     {
-      "buyer_ref": "sponsored_products",
       "product_id": "sg_sponsored_grocery",
       "pricing_option_id": "cpc_standard",
       "budget": 45000,
@@ -616,7 +614,6 @@ In-store digital screens     — Checkout lanes, end-caps, pharmacy waiting area
       "performance_target": { "metric": "roas", "value": 3.0 }
     },
     {
-      "buyer_ref": "homepage_takeover",
       "product_id": "sg_homepage_premium",
       "pricing_option_id": "flat_weekly",
       "budget": 15000
@@ -643,7 +640,7 @@ In-store digital screens     — Checkout lanes, end-caps, pharmacy waiting area
     "post_view": { "interval": 1, "unit": "days" }
   },
   "by_package": [{
-    "buyer_ref": "sponsored_products",
+    "package_id": "pkg_sp_001",
     "impressions": 850000,
     "spend": 10350,
     "conversions": 2100,

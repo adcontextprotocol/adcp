@@ -7,13 +7,14 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
-      "description": "Publisher's media buy identifier",
+      "description": "Seller's media buy identifier",
       "minLength": 1
     },
-    "buyer_ref": {
+    "idempotency_key": {
       "type": "string",
-      "description": "Buyer's reference for the media buy",
-      "minLength": 1
+      "description": "Client-generated unique key for this request. Prevents duplicate feedback submissions on retries.",
+      "minLength": 8,
+      "maxLength": 255
     },
     "measurement_period": {
       "$ref": "/schemas/core/datetime-range.json",
@@ -51,21 +52,10 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "required": [
-        "media_buy_id",
-        "measurement_period",
-        "performance_index"
-      ]
-    },
-    {
-      "required": [
-        "buyer_ref",
-        "measurement_period",
-        "performance_index"
-      ]
-    }
+  "required": [
+    "media_buy_id",
+    "measurement_period",
+    "performance_index"
   ],
   "additionalProperties": true
 }

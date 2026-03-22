@@ -14,8 +14,16 @@
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. If a request with the same key has already been processed, the server returns the original response without re-processing.",
+      "minLength": 8,
+      "maxLength": 255
     }
   },
-  "required": ["list_id"],
+  "required": [
+    "list_id"
+  ],
   "additionalProperties": false
 }

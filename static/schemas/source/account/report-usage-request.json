@@ -15,7 +15,7 @@
     },
     "usage": {
       "type": "array",
-      "description": "One or more usage records. Each record is self-contained: it carries its own account and buyer_campaign_ref, allowing a single request to span multiple accounts and campaigns.",
+      "description": "One or more usage records. Each record is self-contained: it carries its own account, allowing a single request to span multiple accounts.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -23,10 +23,6 @@
           "account": {
             "$ref": "/schemas/core/account-ref.json",
             "description": "Account for this usage record."
-          },
-          "buyer_campaign_ref": {
-            "type": "string",
-            "description": "The buyer's campaign reference (e.g., a media_buy_id). Used to group records by campaign."
           },
           "vendor_cost": {
             "type": "number",
@@ -65,7 +61,11 @@
             "description": "Rights grant identifier from acquire_rights. Required for brand/rights agents. Links usage records to specific rights grants for cap tracking, billing verification, and overage calculation."
           }
         },
-        "required": ["account", "vendor_cost", "currency"],
+        "required": [
+          "account",
+          "vendor_cost",
+          "currency"
+        ],
         "additionalProperties": true
       }
     },
@@ -76,7 +76,10 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["reporting_period", "usage"],
+  "required": [
+    "reporting_period",
+    "usage"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -89,13 +92,14 @@
         },
         "usage": [
           {
-            "account": { "account_id": "acct_pinnacle_signals" },
-            "buyer_campaign_ref": "mb_spring_launch_001",
+            "account": {
+              "account_id": "acct_pinnacle_signals"
+            },
             "signal_agent_segment_id": "luxury_auto_intenders",
             "pricing_option_id": "po_lux_auto_cpm",
             "impressions": 4200000,
-            "media_spend": 21000.00,
-            "vendor_cost": 2100.00,
+            "media_spend": 21000.0,
+            "vendor_cost": 2100.0,
             "currency": "USD"
           }
         ]
@@ -110,21 +114,23 @@
         },
         "usage": [
           {
-            "account": { "account_id": "acct_pinnacle_signals" },
-            "buyer_campaign_ref": "mb_spring_q1_001",
+            "account": {
+              "account_id": "acct_pinnacle_signals"
+            },
             "signal_agent_segment_id": "luxury_auto_intenders",
             "pricing_option_id": "po_lux_auto_cpm",
             "impressions": 2100000,
-            "vendor_cost": 1050.00,
+            "vendor_cost": 1050.0,
             "currency": "USD"
           },
           {
-            "account": { "account_id": "acct_nova" },
-            "buyer_campaign_ref": "mb_summer_preview_002",
+            "account": {
+              "account_id": "acct_nova"
+            },
             "signal_agent_segment_id": "eco_conscious_shoppers",
             "pricing_option_id": "po_eco_cpm",
             "impressions": 800000,
-            "vendor_cost": 400.00,
+            "vendor_cost": 400.0,
             "currency": "USD"
           }
         ]

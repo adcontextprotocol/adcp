@@ -54,7 +54,6 @@ Include `push_notification_config` as a task argument, merged with the rest of y
 
 ```json
 {
-  "buyer_ref": "campaign_q1",
   "brand": { "brand_id": "acme" },
   "start_time": { "type": "date", "date": "2025-03-01" },
   "end_time": "2025-06-30T23:59:59Z",
@@ -81,7 +80,6 @@ For A2A, skill parameters stay in `message.parts[].data.parameters`. The push no
       "data": {
         "skill": "create_media_buy",
         "parameters": {
-          "buyer_ref": "campaign_q1",
           "packages": [...]
         }
       }
@@ -155,9 +153,8 @@ If the task completes synchronously (initial response is already `completed` or 
   "message": "Media buy created successfully",
   "result": {
     "media_buy_id": "mb_12345",
-    "buyer_ref": "campaign_q1",
     "packages": [
-      { "package_id": "pkg_001", "buyer_ref": "ctv_package" }
+      { "package_id": "pkg_001" }
     ]
   }
 }
@@ -181,9 +178,8 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
           "kind": "data",
           "data": {
             "media_buy_id": "mb_12345",
-            "buyer_ref": "campaign_q1",
             "packages": [
-              { "package_id": "pkg_001", "buyer_ref": "ctv_package" }
+              { "package_id": "pkg_001" }
             ]
           }
         }

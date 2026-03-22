@@ -21,7 +21,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "suspended", "completed"],
+            "enum": [
+              "active",
+              "suspended",
+              "completed"
+            ],
             "description": "Plan lifecycle status."
           },
           "budget": {
@@ -65,35 +69,6 @@
               "additionalProperties": false
             }
           },
-          "campaigns": {
-            "type": "array",
-            "description": "Per-campaign breakdown.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "buyer_campaign_ref": {
-                  "type": "string",
-                  "description": "Campaign identifier."
-                },
-                "status": {
-                  "type": "string",
-                  "enum": ["active", "suspended", "completed"],
-                  "description": "Campaign status."
-                },
-                "committed": {
-                  "type": "number",
-                  "description": "Budget committed in this campaign."
-                },
-                "active_media_buys": {
-                  "type": "array",
-                  "items": { "type": "string" },
-                  "description": "Media buy IDs currently active."
-                }
-              },
-              "required": ["buyer_campaign_ref", "status", "committed"],
-              "additionalProperties": false
-            }
-          },
           "summary": {
             "type": "object",
             "description": "Aggregate validation and outcome statistics.",
@@ -110,10 +85,18 @@
                 "type": "object",
                 "description": "Count of each governance check status.",
                 "properties": {
-                  "approved": { "type": "integer" },
-                  "denied": { "type": "integer" },
-                  "conditions": { "type": "integer" },
-                  "escalated": { "type": "integer" }
+                  "approved": {
+                    "type": "integer"
+                  },
+                  "denied": {
+                    "type": "integer"
+                  },
+                  "conditions": {
+                    "type": "integer"
+                  },
+                  "escalated": {
+                    "type": "integer"
+                  }
                 },
                 "additionalProperties": false
               },
@@ -145,7 +128,10 @@
                       "description": "ISO 8601 resolution timestamp."
                     }
                   },
-                  "required": ["check_id", "reason"],
+                  "required": [
+                    "check_id",
+                    "reason"
+                  ],
                   "additionalProperties": false
                 }
               },
@@ -161,7 +147,11 @@
                   },
                   "escalation_rate_trend": {
                     "type": "string",
-                    "enum": ["increasing", "stable", "declining"],
+                    "enum": [
+                      "increasing",
+                      "stable",
+                      "declining"
+                    ],
                     "description": "Direction of escalation rate over the plan's lifetime."
                   },
                   "auto_approval_rate": {
@@ -231,7 +221,10 @@
                 },
                 "type": {
                   "type": "string",
-                  "enum": ["check", "outcome"],
+                  "enum": [
+                    "check",
+                    "outcome"
+                  ],
                   "description": "Entry type."
                 },
                 "timestamp": {
@@ -254,12 +247,20 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": ["approved", "denied", "conditions", "escalated"],
+                  "enum": [
+                    "approved",
+                    "denied",
+                    "conditions",
+                    "escalated"
+                  ],
                   "description": "Governance check status (present for check entries)."
                 },
                 "binding": {
                   "type": "string",
-                  "enum": ["proposed", "committed"],
+                  "enum": [
+                    "proposed",
+                    "committed"
+                  ],
                   "description": "Whether the check was proposed or committed (present for check entries)."
                 },
                 "explanation": {
@@ -268,12 +269,16 @@
                 },
                 "policies_evaluated": {
                   "type": "array",
-                  "items": { "type": "string" },
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Registry policy IDs evaluated during this check (present for check entries)."
                 },
                 "categories_evaluated": {
                   "type": "array",
-                  "items": { "type": "string" },
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Governance categories evaluated (e.g., 'budget_authority', 'regulatory_compliance'). Present for check entries."
                 },
                 "findings": {
@@ -282,13 +287,29 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "category_id": { "type": "string" },
-                      "policy_id": { "type": "string" },
-                      "severity": { "$ref": "/schemas/enums/escalation-severity.json" },
-                      "explanation": { "type": "string" },
-                      "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+                      "category_id": {
+                        "type": "string"
+                      },
+                      "policy_id": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "$ref": "/schemas/enums/escalation-severity.json"
+                      },
+                      "explanation": {
+                        "type": "string"
+                      },
+                      "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
                     },
-                    "required": ["category_id", "severity", "explanation"],
+                    "required": [
+                      "category_id",
+                      "severity",
+                      "explanation"
+                    ],
                     "additionalProperties": false
                   }
                 },
@@ -309,16 +330,65 @@
                   "description": "Outcome status (present for outcome entries)."
                 }
               },
-              "required": ["id", "type", "timestamp"],
+              "required": [
+                "id",
+                "type",
+                "timestamp"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "media_buys": {
+            "type": "array",
+            "description": "Per-media-buy breakdown.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "media_buy_id": {
+                  "type": "string",
+                  "description": "Seller-assigned media buy identifier."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "suspended",
+                    "completed"
+                  ],
+                  "description": "Media buy status."
+                },
+                "committed": {
+                  "type": "number",
+                  "description": "Budget committed for this media buy."
+                },
+                "check_count": {
+                  "type": "integer",
+                  "description": "Number of governance checks performed for this media buy."
+                }
+              },
+              "required": [
+                "media_buy_id",
+                "status",
+                "committed"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["plan_id", "plan_version", "status", "budget", "campaigns", "summary"],
+        "required": [
+          "plan_id",
+          "plan_version",
+          "status",
+          "budget",
+          "media_buys",
+          "summary"
+        ],
         "additionalProperties": false
       }
     }
   },
-  "required": ["plans"],
+  "required": [
+    "plans"
+  ],
   "additionalProperties": false
 }

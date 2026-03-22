@@ -88,7 +88,7 @@ Plans originate in external systems -- an agency's planning tool, a brand's budg
 
 Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions.
 
-Multiple campaigns (identified by `buyer_campaign_ref` in `check_governance` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
+Multiple campaigns (identified by `governance_context` in `check_governance` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 
 The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. The governance agent resolves applicable policies from the brand's compliance configuration, but plans can also reference registry policies directly via `policy_ids` and include campaign-specific rules via `custom_policies`. This supports both centralized policy management (brand-level) and campaign-specific overrides when the buying team needs additional requirements for a particular campaign.
 

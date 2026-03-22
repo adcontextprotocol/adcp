@@ -76,7 +76,6 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 
 ```json
 {
-  "buyer_ref": "campaign_2024",
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
@@ -92,7 +91,6 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 **Or with HMAC signature (recommended for production):**
 ```json
 {
-  "buyer_ref": "campaign_2024",
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
@@ -182,7 +180,6 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_001",
-      "buyer_ref": "campaign_a",
       "status": "active",
       "totals": {
         "impressions": 125000,
@@ -511,9 +508,9 @@ One media buy delivery per line (newline-delimited JSON). Each line contains a s
 
 **Example JSONL file:**
 ```jsonl
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "buyer_ref": "campaign_b", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
-{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "buyer_ref": "campaign_c", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "media_buy_id": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "media_buy_id": "campaign_b", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "media_buy_id": "campaign_c", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
 ```
 
 #### CSV
@@ -524,7 +521,7 @@ CSV files require unnesting nested arrays. Each record should be unnested to the
 
 **Example CSV structure:**
 ```csv
-notification_type,sequence_number,next_expected_at,reporting_period_start,reporting_period_end,currency,media_buy_id,buyer_ref,status,totals_impressions,totals_spend,totals_clicks,totals_ctr,by_package_package_id,by_package_impressions,by_package_spend,by_package_clicks,by_package_pacing_index,by_package_pricing_model,by_package_rate,by_package_currency
+notification_type,sequence_number,next_expected_at,reporting_period_start,reporting_period_end,currency,media_buy_id,media_buy_id,status,totals_impressions,totals_spend,totals_clicks,totals_ctr,by_package_package_id,by_package_impressions,by_package_spend,by_package_clicks,by_package_pacing_index,by_package_pricing_model,by_package_rate,by_package_currency
 scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
 scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
 scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
@@ -556,7 +553,7 @@ Columnar format optimized for analytics workloads. Excellent compression ratios.
     }},
     {"name": "currency", "type": "string"},
     {"name": "media_buy_id", "type": "string"},
-    {"name": "buyer_ref", "type": "string"},
+    {"name": "media_buy_id", "type": "string"},
     {"name": "status", "type": "string"},
     {"name": "totals", "type": {
       "type": "record",

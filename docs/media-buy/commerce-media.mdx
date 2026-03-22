@@ -466,7 +466,6 @@ A single media buy can span multiple product types and retailers. Each package t
 
 ```json
 {
-  "buyer_ref": "summit_ketchup_q2",
   "account": { "account_id": "acct_summitfoods_shopgrid_001" },
   "brand": {
     "domain": "summitfoods.example.com"
@@ -475,7 +474,6 @@ A single media buy can span multiple product types and retailers. Each package t
   "end_time": "2026-04-30T23:59:59Z",
   "packages": [
     {
-      "buyer_ref": "sponsored_products",
       "product_id": "shopgrid_sponsored_products",
       "pricing_option_id": "sp_cpc",
       "budget": 15000,
@@ -491,14 +489,12 @@ A single media buy can span multiple product types and retailers. Each package t
       }]
     },
     {
-      "buyer_ref": "onsite_display",
       "product_id": "shopgrid_onsite_display",
       "pricing_option_id": "onsite_cpm",
       "budget": 25000,
       "pacing": "even"
     },
     {
-      "buyer_ref": "homepage_launch",
       "product_id": "shopgrid_homepage_takeover",
       "pricing_option_id": "takeover_flat",
       "budget": 50000
@@ -528,7 +524,6 @@ Commerce media delivery reports include attribution metrics that traditional med
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_shopgrid_001",
-      "buyer_ref": "summit_ketchup_q2",
       "status": "active",
       "totals": {
         "impressions": 850000,
@@ -537,7 +532,6 @@ Commerce media delivery reports include attribution metrics that traditional med
       "by_package": [
         {
           "package_id": "pkg_sp_001",
-          "buyer_ref": "sponsored_products",
           "pricing_model": "cpc",
           "rate": 0.92,
           "currency": "USD",

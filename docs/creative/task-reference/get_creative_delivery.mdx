@@ -14,28 +14,26 @@ This is a Creative Protocol task. Call it on any agent that declares `"creative"
 
 ## Request Parameters
 
-At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids`) is required.
+At least one scoping filter (`media_buy_ids` or `creative_ids`) is required.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Limits results to creatives within this account. |
 | `media_buy_ids` | string[] | Yes* | Filter to specific media buys by publisher ID |
-| `media_buy_buyer_refs` | string[] | Yes* | Filter to specific media buys by buyer reference ID |
 | `creative_ids` | string[] | Yes* | Filter to specific creatives by ID |
 | `start_date` | string | No | Start date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `end_date` | string | No | End date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `max_variants` | integer | No | Maximum variants to return per creative. Useful for generative creatives with large variant counts. |
 | `pagination` | object | No | Cursor-based pagination parameters (`max_results`, `cursor`) for the creatives array. When omitted, all matching creatives are returned. |
 
-\* At least one of `media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids` must be provided.
+\* At least one of `media_buy_ids` or `creative_ids` must be provided.
 
 ## Response
 
 | Field | Description |
 |-------|-------------|
 | `account_id` | Account identifier (present when scoped to a specific account) |
-| `media_buy_id` | Publisher's media buy identifier (present when request was scoped to a single buy) |
-| `media_buy_buyer_ref` | Buyer's reference for the media buy — echoed back so the buyer can correlate without mapping publisher IDs |
+| `media_buy_id` | Seller's media buy identifier (present when request was scoped to a single buy) |
 | `currency` | ISO 4217 currency code for monetary values (e.g., 'USD', 'EUR') |
 | `reporting_period` | Date range with start/end timestamps and `timezone` (IANA identifier — platforms report in their native timezone) |
 | `creatives` | Array of creative delivery data with variant breakdowns |
@@ -46,7 +44,7 @@ At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creati
 | Field | Description |
 |-------|-------------|
 | `creative_id` | Creative identifier |
-| `media_buy_id` | Publisher's media buy identifier (present when the request spanned multiple media buys) |
+| `media_buy_id` | Seller's media buy identifier (present when the request spanned multiple media buys) |
 | `format_id` | Format of this creative |
 | `totals` | Aggregate delivery metrics across all variants |
 | `variant_count` | Total number of variants (may exceed `variants` array length when `max_variants` is used) |

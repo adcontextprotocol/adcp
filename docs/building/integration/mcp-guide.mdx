@@ -264,7 +264,6 @@ const taskType = "create_media_buy";
 // Configure webhook with routing in URL
 const response = await session.call('create_media_buy',
   {
-    buyer_ref: "nike_q1_2025",
     packages: [...],
     budget: { total: 150000, currency: "USD" }
   },
@@ -295,7 +294,6 @@ if (response.status === 'submitted') {
   "timestamp": "2025-01-22T10:30:00Z",
   "result": {
     "media_buy_id": "mb_12345",
-    "buyer_ref": "nike_q1_2025",
     "packages": [...]
   }
 }
@@ -390,7 +388,6 @@ app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) =
       if (task_type === 'create_media_buy') {
         await handleMediaBuyCreated({
           media_buy_id: webhook.result.media_buy_id,
-          buyer_ref: webhook.result.buyer_ref,
           packages: webhook.result.packages
         });
       }
@@ -523,7 +520,6 @@ Configure a webhook URL and the server will POST updates to you directly. This i
 ```javascript
 const response = await session.call('create_media_buy',
   {
-    buyer_ref: "nike_q1_2025",
     packages: [...],
     budget: { total: 150000, currency: "USD" }
   },
@@ -548,7 +544,6 @@ See [Webhooks](/docs/building/implementation/webhooks) for webhook payload forma
 
 ```javascript
 const initial = await session.call('create_media_buy', {
-  buyer_ref: "nike_q1_2025",
   packages: [...],
   budget: { total: 100000, currency: "USD" }
 });

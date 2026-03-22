@@ -5,10 +5,6 @@
   "description": "Package configuration for media buy creation",
   "type": "object",
   "properties": {
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
-    },
     "product_id": {
       "type": "string",
       "description": "Product ID for this package"
@@ -99,7 +95,6 @@
     }
   },
   "required": [
-    "buyer_ref",
     "product_id",
     "budget",
     "pricing_option_id"

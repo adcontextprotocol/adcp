@@ -19,7 +19,6 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
-| `buyer_refs` | string[] | No* | Array of buyer reference IDs |
 | `status_filter` | string \| string[] | No | Status filter: `"pending_activation"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
 | `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
@@ -36,7 +35,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 | `2026-01-01` | `2026-02-01` | Full month of January (31 days) |
 | `2026-01-15` | `2026-01-16` | January 15th only (1 day) |
 
-*Either `media_buy_ids` or `buyer_refs` can be provided. If neither provided, returns all media buys in current session context.
+*Either `media_buy_ids` can be provided. If neither provided, returns all media buys in current session context.
 
 ## Response
 
@@ -55,8 +54,6 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
-| `buyer_ref` | Buyer's reference identifier |
-| `buyer_campaign_ref` | Buyer campaign label echoed from `create_media_buy.buyer_campaign_ref` (when provided) |
 | `status` | Current status (`pending_activation`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. |
 | `totals` | Aggregate metrics (impressions, spend, clicks, ctr, conversions, conversion_value, roas, new_to_brand_rate) |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
@@ -368,7 +365,7 @@ import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
 // Query by buyer reference instead of media buy ID
 const result = await testAgent.getMediaBuyDelivery({
-  buyer_refs: ['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
+  media_buy_ids: ['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
 });
 
 if (!result.success) {
@@ -389,7 +386,7 @@ console.log(`Total lifetime spend: $${validated.aggregated_totals.spend.toFixed(
 validated.media_buy_deliveries.forEach(delivery => {
   if (delivery.totals.impressions > 0) {
     const cpm = (delivery.totals.spend / delivery.totals.impressions) * 1000;
-    console.log(`${delivery.buyer_ref}: CPM $${cpm.toFixed(2)}, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
+    console.log(`${delivery.media_buy_id}: CPM $${cpm.toFixed(2)}, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
   }
 });
 ```
@@ -403,7 +400,7 @@ async def main():
     # Query by buyer reference instead of media buy ID
     result = await test_agent.get_media_buy_delivery(
         GetMediaBuyDeliveryRequest(
-            buyer_refs=['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
+            media_buy_ids=['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
         )
     )
 
@@ -418,7 +415,7 @@ async def main():
     for delivery in result.media_buy_deliveries:
         if delivery.totals.impressions > 0:
             cpm = (delivery.totals.spend / delivery.totals.impressions) * 1000
-            print(f"{delivery.buyer_ref}: CPM ${cpm:.2f}, CTR {delivery.totals.ctr * 100:.2f}%")
+            print(f"{delivery.media_buy_id}: CPM ${cpm:.2f}, CTR {delivery.totals.ctr * 100:.2f}%")
 
 asyncio.run(main())
 ```
@@ -503,7 +500,7 @@ asyncio.run(main())
 ## Query Behavior
 
 ### Context-Based Queries
-- If neither `media_buy_ids` nor `buyer_refs` provided, returns all media buys from current session context
+- If neither `media_buy_ids` nor `media_buy_ids` provided, returns all media buys from current session context
 - Context established by previous operations (e.g., `create_media_buy`)
 
 ### Status Filtering
@@ -544,7 +541,7 @@ asyncio.run(main())
 | `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
 | `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
 | `DATE_RANGE_NOT_SUPPORTED` | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
-| `CONTEXT_REQUIRED` | No media buys in context | Provide media_buy_ids or buyer_refs explicitly |
+| `CONTEXT_REQUIRED` | No media buys in context | Provide media_buy_idss explicitly |
 | `INVALID_STATUS_FILTER` | Invalid status value | Use valid status: pending_activation, active, paused, completed |
 
 ## Package-Level Metrics

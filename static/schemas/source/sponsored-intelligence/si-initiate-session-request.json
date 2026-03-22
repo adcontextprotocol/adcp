@@ -32,6 +32,12 @@
       "type": "string",
       "description": "Token from si_get_offering response for session continuity. Brand uses this to recall what products were shown to the user, enabling natural references like 'the second one' or 'that blue shoe'."
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate session creation on retries.",
+      "minLength": 8,
+      "maxLength": 255
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
