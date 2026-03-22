@@ -4,12 +4,71 @@
  * Each format is a schema-compliant object matching
  * static/schemas/source/core/format.json.
  */
+import type { Format, FormatID } from '@adcp/client';
+
+// The SDK's BaseIndividualAsset omits asset_type and requirements which are
+// part of the full protocol schema. We extend Format to include these fields
+// on assets so the training agent can declare complete format specifications.
+interface AssetRequirements {
+  mime_types?: string[];
+  max_file_size_bytes?: number;
+  min_width?: number;
+  min_height?: number;
+  max_length?: number;
+  min_length?: number;
+  url_type?: string;
+  vast_versions?: string[];
+  daast_versions?: string[];
+  min_bitrate_kbps?: number;
+  min_duration_ms?: number;
+  max_duration_ms?: number;
+  min_resolution_dpi?: number;
+  catalog_types?: string[];
+}
+
+interface IndividualAsset {
+  item_type: 'individual';
+  asset_id: string;
+  asset_type: string;
+  asset_role: string;
+  required: boolean;
+  requirements?: AssetRequirements;
+}
+
+interface GroupAsset {
+  asset_id: string;
+  asset_type: string;
+  required: boolean;
+  requirements?: AssetRequirements;
+}
+
+interface RepeatableGroup {
+  item_type: 'repeatable_group';
+  asset_group_id: string;
+  required: boolean;
+  min_count: number;
+  max_count: number;
+  selection_mode?: 'sequential' | 'optimize';
+  assets: GroupAsset[];
+}
+
+type FormatAsset = IndividualAsset | RepeatableGroup;
+
+interface TrainingFormat {
+  format_id: FormatID;
+  name: string;
+  description: string;
+  type?: Format['type'];
+  accepts_parameters?: string[];
+  renders: Array<Record<string, unknown>>;
+  assets: FormatAsset[];
+}
 
 /**
  * Build all format definitions for the given agent URL.
  * Called once at startup with the resolved base URL.
  */
-export function buildFormats(agentUrl: string): Record<string, unknown>[] {
+export function buildFormats(agentUrl: string): TrainingFormat[] {
   return [
     // ── Display ──────────────────────────────────────────────
     {

@@ -371,7 +371,7 @@ describe('NovaMind AI publisher', () => {
   it('has CPA pricing with agent_session event type', () => {
     const cpa = novamind.pricingTemplates.find(t => t.model === 'cpa');
     expect(cpa).toBeDefined();
-    expect(cpa!.eventType).toBe('agent_session');
+    expect(cpa!.eventType).toBe('custom');
     expect(cpa!.fixedPrice).toBeGreaterThan(0);
   });
 
@@ -1817,14 +1817,14 @@ describe('time pricing model', () => {
     const timePricing = streetlevel.pricingTemplates.find(t => t.model === 'time');
     expect(timePricing).toBeDefined();
     expect(timePricing!.timeParameters).toBeDefined();
-    expect(timePricing!.timeParameters!.unit).toBe('week');
+    expect(timePricing!.timeParameters!.time_unit).toBe('week');
   });
 
   it('Meridian Print has time pricing', () => {
     const meridian = PUBLISHERS.find(p => p.id === 'meridian_print')!;
     const timePricing = meridian.pricingTemplates.find(t => t.model === 'time');
     expect(timePricing).toBeDefined();
-    expect(timePricing!.timeParameters!.unit).toBe('month');
+    expect(timePricing!.timeParameters!.time_unit).toBe('month');
   });
 
   it('time pricing produces valid pricing options in products', () => {

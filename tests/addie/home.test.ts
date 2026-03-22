@@ -162,6 +162,7 @@ describe('renderHomeView', () => {
     content.stats = {
       memberSince: new Date('2024-01-01'),
       workingGroupCount: 3,
+      conversationActivity: null,
       slackActivity: {
         messages30d: 42,
         activeDays30d: 15,
@@ -245,6 +246,7 @@ function createMockHomeContent(): HomeContent {
     },
     alerts: [],
     quickActions: [],
+    suggestedPrompts: [],
     activity: [],
     stats: null,
     adminPanel: null,

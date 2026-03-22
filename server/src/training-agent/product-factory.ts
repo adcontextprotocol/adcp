@@ -5,104 +5,171 @@
  * combinations. Products reference formats from formats.ts via format_id.
  */
 
-import type { Product, FormatID } from '@adcp/client';
-
-/** Types re-declared locally — not exported from @adcp/client's public API. */
-type MediaChannel = string;
-type ReportingFrequency = string;
-type AvailableMetric = string;
-
-interface Episode {
-  episode_id: string;
-  show_id: string;
-  name: string;
-  status: string;
-  scheduled_at?: string;
-  duration_seconds?: number;
-  special?: {
-    name: string;
-    category?: string;
-    starts?: string;
-    ends?: string;
-  };
-}
-
-interface ShowSelector {
-  publisher_domain: string;
-  show_ids: string[];
-}
-
-interface ReportingCapabilities {
-  available_reporting_frequencies: ReportingFrequency[];
-  expected_delay_minutes: number;
-  timezone: string;
-  supports_webhooks: boolean;
-  available_metrics?: AvailableMetric[];
-  date_range_support: string;
-  supports_creative_breakdown: boolean;
-}
-
-interface ForecastPoint {
-  budget: number;
-  metrics: Record<string, { low: number; mid: number; high: number }>;
-}
-
-interface PublisherPropertySelector {
-  publisher_domain: string;
-  selection_type: 'all' | 'by_id';
-  property_ids?: string[];
-}
-import type { PublisherProfile, PricingTemplate, CatalogProduct } from './types.js';
+import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition, ShowResponse } from './types.js';
+import type {
+  Product,
+  Proposal,
+  FormatID,
+  CPAPricingOption,
+  CatalogType,
+} from '@adcp/client';
+// Derive structural types from Product's own fields — these types are defined in
+// core.generated but not re-exported from @adcp/client's main entry.
+type PricingOption = Product['pricing_options'][number];
+type PriceGuidance = NonNullable<Extract<PricingOption, { pricing_model: 'cpm' }>['price_guidance']>;
+type Episode = NonNullable<Product['episodes']>[number];
+type ShowSelector = NonNullable<Product['shows']>[number];
+type MediaChannel = NonNullable<Product['channels']>[number];
+type DeliveryType = Product['delivery_type'];
+type Exclusivity = NonNullable<Product['exclusivity']>;
+type PublisherPropertySelector = Product['publisher_properties'][number];
+type EpisodeStatus = NonNullable<Episode['status']>;
+type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
+type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
+import { createLogger } from '../logger.js';
 
-/** Pricing model identifiers from the AdCP spec. */
-type PricingModel = 'cpm' | 'vcpm' | 'cpc' | 'cpcv' | 'cpv' | 'cpp' | 'cpa' | 'flat_rate' | 'time';
+const logger = createLogger('training-agent-catalog');
 
-/** Shape built by the training agent for pricing options — covers all PricingOption union members. */
-interface TrainingPricingOption {
-  pricing_option_id: string;
-  pricing_model: PricingModel;
-  model: PricingModel; // #1525: alias for @adcp/client < 4.11.0
-  currency: string;
-  fixed_price?: number;
-  floor_price?: number;
-  price_guidance?: { p25: number; p50: number; p75: number; p90: number };
-  min_spend_per_package?: number;
-  parameters?: unknown;
-  event_type?: string;
+/**
+ * Parse ISO 8601 duration (e.g. "PT60M", "PT180M", "PT1H30M") to seconds.
+ */
+function parseDurationToSeconds(iso: string): number | null {
+  const match = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!match) return null;
+  const hours = parseInt(match[1] || '0', 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const seconds = parseInt(match[3] || '0', 10);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function buildPriceGuidance(template: PricingTemplate): PriceGuidance | undefined {
+  if (!template.priceGuidance) return undefined;
+  const { suggested, range } = template.priceGuidance;
+  return {
+    p25: range.min,
+    p50: suggested,
+    p75: Math.round((suggested + range.max) / 2 * 100) / 100,
+    p90: range.max,
+  };
 }
 
 function buildPricingOption(
   template: PricingTemplate,
   productId: string,
   index: number,
-): TrainingPricingOption {
-  const option: TrainingPricingOption = {
-    pricing_option_id: `${productId}_pricing_${index}`,
-    pricing_model: template.model,
-    model: template.model,
-    currency: template.currency,
-  };
-  if (template.fixedPrice !== undefined) option.fixed_price = template.fixedPrice;
-  if (template.floorPrice !== undefined) option.floor_price = template.floorPrice;
-  if (template.priceGuidance) {
-    const { suggested, range } = template.priceGuidance;
-    option.price_guidance = {
-      p25: range.min,
-      p50: suggested,
-      p75: Math.round((suggested + range.max) / 2 * 100) / 100,
-      p90: range.max,
-    };
+): PricingOption & { model: string } {
+  const id = `${productId}_pricing_${index}`;
+  const priceGuidance = buildPriceGuidance(template);
+
+  let option: PricingOption;
+  switch (template.model) {
+    case 'cpm':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'cpm',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'vcpm':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'vcpm',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'cpc':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'cpc',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'cpcv':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'cpcv',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'cpv':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'cpv',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        parameters: template.cpvParameters ?? { view_threshold: { duration_seconds: 30 } },
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'cpp':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'cpp',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        parameters: template.cppParameters ?? { demographic: 'P18-49' },
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'cpa':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'cpa',
+        currency: template.currency,
+        fixed_price: template.fixedPrice ?? 0,
+        event_type: template.eventType ?? 'purchase',
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'flat_rate':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'flat_rate',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        ...(template.doohParameters && { parameters: template.doohParameters as FlatRatePricingOption['parameters'] }),
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
+    case 'time':
+      option = {
+        pricing_option_id: id,
+        pricing_model: 'time',
+        currency: template.currency,
+        ...(template.fixedPrice !== undefined && { fixed_price: template.fixedPrice }),
+        ...(template.floorPrice !== undefined && { floor_price: template.floorPrice }),
+        ...(priceGuidance && { price_guidance: priceGuidance }),
+        parameters: template.timeParameters ?? { time_unit: 'day', min_duration: 1, max_duration: 30 },
+        ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
+      };
+      break;
   }
-  if (template.minSpendPerPackage !== undefined) option.min_spend_per_package = template.minSpendPerPackage;
-  if (template.doohParameters) option.parameters = template.doohParameters;
-  if (template.eventType) option.event_type = template.eventType;
-  if (template.cppParameters) option.parameters = template.cppParameters;
-  if (template.cpvParameters) option.parameters = template.cpvParameters;
-  if (template.timeParameters) option.parameters = template.timeParameters;
-  return option;
+  return { ...option, model: template.model };
 }
 
 function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] {
@@ -307,40 +374,10 @@ function buildProduct(
   // Fall back to all pricing if filter yields nothing
   const effectivePricing = pricingTemplates.length > 0 ? pricingTemplates : pub.pricingTemplates;
 
-  const product: Partial<Product> & Record<string, unknown> = {
-    product_id: productId,
-    name: template.name,
-    description: template.description,
-    publisher_properties: publisherPropertySelectors(pub, template.channels) as Product['publisher_properties'],
-    channels: template.channels as Product['channels'],
-    format_ids: formatIdsForChannels(template.channels, agentUrl),
-    delivery_type: template.deliveryType,
-    delivery_measurement: {
-      provider: pub.measurementProvider,
-      notes: pub.measurementNotes,
-    },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)) as unknown as Product['pricing_options'],
-  };
-
-  if (pub.reportingFrequencies || pub.reportingMetrics) {
-    product.reporting_capabilities = {
-      available_reporting_frequencies: (pub.reportingFrequencies || ['daily']) as ReportingFrequency[],
-      expected_delay_minutes: 240,
-      timezone: 'UTC',
-      supports_webhooks: false,
-      ...(pub.reportingMetrics && { available_metrics: pub.reportingMetrics as AvailableMetric[] }),
-      date_range_support: 'date_range' as const,
-      supports_creative_breakdown: true,
-    } as Product['reporting_capabilities'];
-  }
-
-  if (pub.catalogTypes?.length) {
-    product.catalog_types = pub.catalogTypes as Product['catalog_types'];
-  }
-
-  // Add metric optimization for non-guaranteed products with appropriate channels
+  // Build metric optimization for non-guaranteed products
+  type SupportedMetric = NonNullable<Product['metric_optimization']>['supported_metrics'][number];
+  let metricOptimization: Product['metric_optimization'];
   if (template.deliveryType === 'non_guaranteed') {
-    type SupportedMetric = NonNullable<Product['metric_optimization']>['supported_metrics'][number];
     const metrics: SupportedMetric[] = ['clicks'];
     if (template.channels.some(c => ['olv', 'ctv', 'social', 'gaming'].includes(c))) {
       metrics.push('views', 'completed_views');
@@ -349,105 +386,307 @@ function buildProduct(
       metrics.push('engagements', 'reach');
     }
     if (metrics.length > 0) {
-      product.metric_optimization = {
+      metricOptimization = {
         supported_metrics: metrics,
         supported_targets: ['cost_per'],
       };
     }
   }
 
-  // Add forecast for non-guaranteed products
+  // Build forecast for non-guaranteed products
+  let forecast: Product['forecast'];
   if (template.deliveryType === 'non_guaranteed') {
     const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
     const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
 
-    const forecastPoints: ForecastPoint[] = [
-      {
-        budget: 5000,
-        metrics: {
-          impressions: { low: impressionsPer1k * 4, mid: impressionsPer1k * 5, high: Math.round(impressionsPer1k * 5.5) },
-          reach: { low: Math.round(impressionsPer1k * 3), mid: Math.round(impressionsPer1k * 3.5), high: Math.round(impressionsPer1k * 4) },
+    forecast = {
+      points: [
+        {
+          budget: 5000,
+          metrics: {
+            impressions: { low: impressionsPer1k * 4, mid: impressionsPer1k * 5, high: Math.round(impressionsPer1k * 5.5) },
+            reach: { low: Math.round(impressionsPer1k * 3), mid: Math.round(impressionsPer1k * 3.5), high: Math.round(impressionsPer1k * 4) },
+          },
         },
-      },
-      {
-        budget: 25000,
-        metrics: {
-          impressions: { low: impressionsPer1k * 22, mid: impressionsPer1k * 25, high: impressionsPer1k * 27 },
-          reach: { low: Math.round(impressionsPer1k * 12), mid: Math.round(impressionsPer1k * 15), high: Math.round(impressionsPer1k * 17) },
+        {
+          budget: 25000,
+          metrics: {
+            impressions: { low: impressionsPer1k * 22, mid: impressionsPer1k * 25, high: impressionsPer1k * 27 },
+            reach: { low: Math.round(impressionsPer1k * 12), mid: Math.round(impressionsPer1k * 15), high: Math.round(impressionsPer1k * 17) },
+          },
         },
-      },
-    ];
-
-    product.forecast = {
-      points: forecastPoints,
+      ],
       method: 'modeled',
       currency: effectivePricing[0]?.currency || 'USD',
     };
   }
 
-  // Add conversion tracking for retail/social
+  // Build conversion tracking for retail/social
+  let conversionTracking: Product['conversion_tracking'];
   if (pub.catalogTypes?.includes('product') || template.channels.includes('social')) {
-    product.conversion_tracking = {
-      action_sources: ['website' as const],
-      supported_targets: ['cost_per' as const],
+    conversionTracking = {
+      action_sources: ['website'],
+      supported_targets: ['cost_per'],
       ...(pub.catalogTypes?.includes('product') && { platform_managed: true }),
     };
   }
 
-  // Attach shows whose channels overlap with this product's channels
+  // Build show/episode associations
+  let showSelectors: ShowSelector[] | undefined;
+  let exclusivity: Exclusivity | undefined;
+  let episodes: Episode[] | undefined;
+  let showTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
     const matchingShows = pub.shows.filter(s =>
       s.channels.some(c => template.channels.includes(c)),
     );
     if (matchingShows.length > 0) {
-      const showSelectors: ShowSelector[] = [{
+      showSelectors = [{
         publisher_domain: pub.domain,
         show_ids: matchingShows.map(s => s.showId),
       }];
-      product.shows = showSelectors;
-      // Guaranteed products with shows get exclusivity
       if (template.deliveryType === 'guaranteed') {
-        product.exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
+        exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
       }
-      // Multi-show non-guaranteed products allow show targeting
       if (matchingShows.length > 1 && template.deliveryType === 'non_guaranteed') {
-        product.show_targeting_allowed = true;
+        showTargetingAllowed = true;
       }
-      // Flatten episodes from matching shows
-      const episodes: Partial<Episode>[] = [];
+      const builtEpisodes: Episode[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const episode: Partial<Episode> = {
+          const episode: Episode = {
             episode_id: ep.episodeId,
             show_id: show.showId,
             name: ep.title,
-            status: ep.status as Episode['status'],
+            status: ep.status as EpisodeStatus,
+            ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
+            ...(ep.durationSeconds && { duration_seconds: ep.durationSeconds }),
+            ...(ep.special && {
+              special: {
+                name: ep.special.name,
+                category: ep.special.category,
+                starts: ep.special.starts,
+                ends: ep.special.ends,
+              } satisfies Episode['special'],
+            }),
           };
-          if (ep.scheduledAt) episode.scheduled_at = ep.scheduledAt;
-          if (ep.durationSeconds) episode.duration_seconds = ep.durationSeconds;
-          if (ep.special) {
-            episode.special = {
-              name: ep.special.name,
-              ...(ep.special.category && { category: ep.special.category }),
-              ...(ep.special.starts && { starts: ep.special.starts }),
-              ...(ep.special.ends && { ends: ep.special.ends }),
-            };
-          }
-          episodes.push(episode);
+          builtEpisodes.push(episode);
         }
       }
-      if (episodes.length > 0) {
-        product.episodes = episodes as unknown as NonNullable<Product['episodes']>;
+      if (builtEpisodes.length > 0) {
+        episodes = builtEpisodes;
       }
     }
   }
 
+  const product: Product = {
+    product_id: productId,
+    name: template.name,
+    description: template.description,
+    publisher_properties: publisherPropertySelectors(pub, template.channels),
+    channels: template.channels as MediaChannel[],
+    format_ids: formatIdsForChannels(template.channels, agentUrl),
+    delivery_type: template.deliveryType as DeliveryType,
+    delivery_measurement: {
+      provider: pub.measurementProvider,
+      notes: pub.measurementNotes,
+    },
+    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)),
+    ...((pub.reportingFrequencies || pub.reportingMetrics) && {
+      reporting_capabilities: {
+        available_reporting_frequencies: (pub.reportingFrequencies || ['daily']) as NonNullable<Product['reporting_capabilities']>['available_reporting_frequencies'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: (pub.reportingMetrics || []) as NonNullable<Product['reporting_capabilities']>['available_metrics'],
+        date_range_support: 'date_range' as const,
+        supports_creative_breakdown: true,
+      },
+    }),
+    ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
+    ...(metricOptimization && { metric_optimization: metricOptimization }),
+    ...(forecast && { forecast }),
+    ...(conversionTracking && { conversion_tracking: conversionTracking }),
+    ...(showSelectors && { shows: showSelectors }),
+    ...(exclusivity && { exclusivity }),
+    ...(episodes && { episodes }),
+    ...(showTargetingAllowed && { show_targeting_allowed: showTargetingAllowed }),
+  };
+
   return {
-    product: product as Partial<Product>,
+    product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
   };
+}
+
+function buildShowObject(show: ShowDefinition): ShowResponse {
+  return {
+    show_id: show.showId,
+    name: show.name,
+    genre: show.genre,
+    cadence: show.cadence,
+    status: show.status,
+    ...(show.description && { description: show.description }),
+    ...(show.contentRatings?.length && {
+      content_rating: show.contentRatings.map(r => ({
+        system: r.system,
+        rating: r.rating,
+      })),
+    }),
+    ...(show.talent?.length && {
+      talent: show.talent.map(t => ({
+        name: t.name,
+        role: t.role,
+      })),
+    }),
+    ...(show.distribution?.length && {
+      distribution: show.distribution.map(d => ({
+        publisher_domain: d.publisherDomain,
+        identifiers: d.identifiers.map(id => ({ type: id.type, value: id.value })),
+      })),
+    }),
+  };
+}
+
+/**
+ * Build the top-level shows array for a get_products response,
+ * scoped to only shows referenced by the given products.
+ */
+export function buildShowsForProducts(products: Product[]): ShowResponse[] {
+  const referencedIds = new Set<string>();
+  for (const p of products) {
+    if (p.shows) {
+      for (const selector of p.shows) {
+        selector.show_ids.forEach(id => referencedIds.add(id));
+      }
+    }
+  }
+  if (referencedIds.size === 0) return [];
+
+  const shows: ShowResponse[] = [];
+  for (const pub of PUBLISHERS) {
+    for (const show of pub.shows || []) {
+      if (referencedIds.has(show.showId)) {
+        shows.push(buildShowObject(show));
+      }
+    }
+  }
+  return shows;
+}
+
+/**
+ * Proposal definitions per publisher. Each maps a publisher ID to one or more
+ * proposals that bundle products from that publisher's catalog.
+ */
+interface ProposalDefinition {
+  publisherId: string;
+  proposalId: string;
+  name: string;
+  description: string;
+  briefAlignment: string;
+  budgetGuidance: { min: number; recommended: number; currency: string };
+  /** Product suffix → allocation percentage. Must sum to 100. */
+  allocations: Array<{
+    productSuffix: string;
+    percentage: number;
+    rationale: string;
+  }>;
+}
+
+const PROPOSAL_DEFINITIONS: ProposalDefinition[] = [
+  {
+    publisherId: 'pinnacle_news',
+    proposalId: 'pinnacle_cross_channel',
+    name: 'Pinnacle Cross-Channel News Reach',
+    description: 'Balanced video and display across Pinnacle News properties for maximum news audience coverage.',
+    briefAlignment: 'Covers CTV/OLV video and display with both guaranteed and auction pricing options.',
+    budgetGuidance: { min: 25000, recommended: 75000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'video_premium', percentage: 45, rationale: 'Premium video (CTV + OLV) for high-impact storytelling with guaranteed delivery' },
+      { productSuffix: 'video_standard', percentage: 30, rationale: 'Auction video for incremental reach at efficient CPMs' },
+      { productSuffix: 'display_standard', percentage: 25, rationale: 'Display retargeting and contextual reach across web and app' },
+    ],
+  },
+  {
+    publisherId: 'viewpoint_sports',
+    proposalId: 'viewpoint_multi_screen',
+    name: 'Viewpoint Sports Multi-Screen',
+    description: 'Live sports coverage across CTV, OLV, and linear TV with guaranteed placements around marquee events.',
+    briefAlignment: 'Premium sports video inventory across all screens with guaranteed delivery and Nielsen DAR measurement.',
+    budgetGuidance: { min: 75000, recommended: 200000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'video_premium', percentage: 100, rationale: 'All video inventory (CTV, OLV, linear TV) bundled for cross-screen sports reach' },
+    ],
+  },
+  {
+    publisherId: 'sparq_social',
+    proposalId: 'sparq_social_amplification',
+    name: 'Sparq Social Amplification',
+    description: 'Social engagement and display reach across Sparq platform — feed, stories, reels, and influencer-boosted placements.',
+    briefAlignment: 'Social-first strategy with display extension for audience scale. Non-guaranteed for optimization flexibility.',
+    budgetGuidance: { min: 10000, recommended: 50000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'social_standard', percentage: 60, rationale: 'Core social placements (feed, stories, reels) optimized for engagement' },
+      { productSuffix: 'display_standard', percentage: 40, rationale: 'Display companion for retargeting and broad reach' },
+    ],
+  },
+  {
+    publisherId: 'novamind',
+    proposalId: 'novamind_ai_audience',
+    name: 'NovaMind AI Audience Package',
+    description: 'Conversational ad placements across NovaMind AI assistant properties with guaranteed and performance tiers.',
+    briefAlignment: 'Split between guaranteed premium placement and performance-based optimization for conversational AI surfaces.',
+    budgetGuidance: { min: 50000, recommended: 100000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'premium', percentage: 40, rationale: 'Guaranteed placements for brand-safe, high-visibility conversational ads' },
+      { productSuffix: 'standard', percentage: 60, rationale: 'Performance-optimized placements with CPA/CPC efficiency' },
+    ],
+  },
+];
+
+/**
+ * Build proposals from the catalog. Proposals reference products by ID
+ * and provide allocation percentages for bundled media plans.
+ */
+export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
+  const proposals: Proposal[] = [];
+
+  for (const def of PROPOSAL_DEFINITIONS) {
+    const allocations: Proposal['allocations'] = [];
+    let valid = true;
+
+    for (const alloc of def.allocations) {
+      const productId = `${def.publisherId}_${alloc.productSuffix}`;
+      const found = catalog.find(cp => cp.product.product_id === productId);
+      if (!found) {
+        logger.warn(`Proposal "${def.proposalId}" references missing product "${productId}" — skipping proposal`);
+        valid = false;
+        break;
+      }
+      const firstPricing = found.product.pricing_options[0];
+      allocations.push({
+        product_id: productId,
+        allocation_percentage: alloc.percentage,
+        rationale: alloc.rationale,
+        ...(firstPricing && { pricing_option_id: firstPricing.pricing_option_id }),
+      });
+    }
+
+    if (!valid) continue;
+
+    proposals.push({
+      proposal_id: def.proposalId,
+      name: def.name,
+      description: def.description,
+      brief_alignment: def.briefAlignment,
+      total_budget_guidance: def.budgetGuidance,
+      allocations,
+    });
+  }
+
+  return proposals;
 }
 
 /**
