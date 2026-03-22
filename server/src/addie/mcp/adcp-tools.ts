@@ -1835,6 +1835,178 @@ export const ADCP_PROTOCOL_TOOLS: AddieTool[] = [
 ];
 
 // ============================================
+// BRAND PROTOCOL TOOLS
+// ============================================
+
+export const ADCP_BRAND_PROTOCOL_TOOLS: AddieTool[] = [
+  {
+    name: 'get_brand_identity',
+    description:
+      'Get brand identity data from a brand agent. Returns public data by default. Set authorized=true to simulate a linked account (sandbox) or use actual OAuth credentials (production) to see protected fields like colors, fonts, tone, voice synthesis, and rights.',
+    usage_hints:
+      'use when the user wants to look up a talent or brand\'s identity, creative guidelines, or available rights from a brand agent',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The brand agent URL (must be HTTPS)',
+        },
+        brand_id: {
+          type: 'string',
+          description: 'Brand identifier within the agent\'s roster',
+        },
+        fields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Sections to include: description, industry, keller_type, logos, colors, fonts, visual_guidelines, tone, tagline, voice_synthesis, assets, rights. Omit for all.',
+        },
+        use_case: {
+          type: 'string',
+          description: 'Intended use case: endorsement, voice_synthesis, likeness, creative_production, media_planning',
+        },
+        authorized: {
+          type: 'boolean',
+          description: 'Sandbox only: simulate authorized access to see protected fields. Real agents use OAuth credentials instead. Default false.',
+        },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url', 'brand_id'],
+    },
+  },
+  {
+    name: 'get_rights',
+    description:
+      'Search for licensable rights (talent, IP, content) from a brand agent. Returns matches with pricing options. Supports natural language queries. Set include_excluded=true to see filtered-out results with reasons.',
+    usage_hints:
+      'use when the user wants to find licensable talent, discover rights pricing, or search for IP available for campaigns',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The brand agent URL (must be HTTPS)',
+        },
+        query: {
+          type: 'string',
+          description: 'Natural language description of desired rights (e.g., "Dutch athlete for restaurant brand in Amsterdam, budget 400 EUR/month")',
+        },
+        uses: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Rights uses: likeness, voice, name, endorsement',
+        },
+        buyer_brand: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string' },
+            brand_id: { type: 'string' },
+          },
+          description: 'Buyer brand for compatibility filtering',
+        },
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Countries where rights are needed (ISO 3166-1 alpha-2)',
+        },
+        brand_id: {
+          type: 'string',
+          description: 'Search within a specific brand only',
+        },
+        include_excluded: {
+          type: 'boolean',
+          description: 'Include filtered-out results with reasons. Default false.',
+        },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url', 'query', 'uses'],
+    },
+  },
+  {
+    name: 'acquire_rights',
+    description:
+      'Acquire rights from a brand agent. Returns acquired (with generation credentials), pending_approval, or rejected based on campaign category and existing contracts.',
+    usage_hints:
+      'use when the user wants to acquire talent rights, license IP, or secure rights for a campaign',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The brand agent URL (must be HTTPS)',
+        },
+        rights_id: {
+          type: 'string',
+          description: 'Rights offering identifier from get_rights',
+        },
+        pricing_option_id: {
+          type: 'string',
+          description: 'Selected pricing option from the rights offering',
+        },
+        buyer: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string' },
+            brand_id: { type: 'string' },
+          },
+          required: ['domain'],
+          description: 'Buyer brand identity',
+        },
+        campaign: {
+          type: 'object',
+          properties: {
+            description: { type: 'string', description: 'How the rights will be used' },
+            uses: { type: 'array', items: { type: 'string' }, description: 'Rights uses for this campaign' },
+            countries: { type: 'array', items: { type: 'string' }, description: 'Campaign countries' },
+            estimated_impressions: { type: 'integer', description: 'Estimated total impressions' },
+            start_date: { type: 'string', description: 'Campaign start date (YYYY-MM-DD)' },
+            end_date: { type: 'string', description: 'Campaign end date (YYYY-MM-DD)' },
+          },
+          required: ['description', 'uses'],
+          description: 'Campaign details for rights clearance',
+        },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url', 'rights_id', 'pricing_option_id', 'buyer', 'campaign'],
+    },
+  },
+  {
+    name: 'update_rights',
+    description:
+      'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume.',
+    usage_hints:
+      'use when the user wants to extend a rights grant, change impression caps, or pause/resume an active license',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The brand agent URL (must be HTTPS)',
+        },
+        rights_id: {
+          type: 'string',
+          description: 'Rights grant identifier from acquire_rights',
+        },
+        end_date: {
+          type: 'string',
+          description: 'New end date (must be >= current end date)',
+        },
+        impression_cap: {
+          type: 'number',
+          description: 'New impression cap (must be >= current)',
+        },
+        paused: {
+          type: 'boolean',
+          description: 'Pause or resume the grant',
+        },
+        debug: { type: 'boolean' },
+      },
+      required: ['agent_url', 'rights_id'],
+    },
+  },
+];
+
+// ============================================
 // ALL ADCP TOOLS
 // ============================================
 
@@ -1845,6 +2017,7 @@ export const ADCP_TOOLS: AddieTool[] = [
   ...ADCP_GOVERNANCE_PROPERTY_TOOLS,
   ...ADCP_GOVERNANCE_CONTENT_TOOLS,
   ...ADCP_SI_TOOLS,
+  ...ADCP_BRAND_PROTOCOL_TOOLS,
   ...ADCP_PROTOCOL_TOOLS,
 ];
 
@@ -1953,7 +2126,8 @@ export function createAdcpToolHandlers(
     // In-process shortcut for training agent (avoids HTTP round-trip and localhost restrictions)
     try {
       const parsedUrl = new URL(agentUrl);
-      if (parsedUrl.pathname.startsWith('/api/training-agent')) {
+      const selfHost = new URL(getBaseUrl()).hostname;
+      if (parsedUrl.pathname.startsWith('/api/training-agent') && parsedUrl.hostname === selfHost) {
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const userId = memberContext?.workos_user?.workos_user_id;
         const ctx = { mode: 'training' as const, userId };
