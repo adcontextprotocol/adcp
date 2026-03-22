@@ -66,22 +66,22 @@
                   "type": "object",
                   "properties": {
                     "id_type": {
-                      "type": "string",
-                      "description": "Identifier type. One of the uid-type enum values (rampid, uid2, maid, etc.) or a hashed PII type (sha256_email, sha256_phone)."
+                      "$ref": "/schemas/enums/match-id-type.json",
+                      "description": "Identifier type. Combines hashed PII types (hashed_email, hashed_phone) with universal ID types (rampid, uid2, maid, etc.)."
                     },
                     "submitted": {
                       "type": "integer",
-                      "description": "Number of members submitted with this identifier type (cumulative across all syncs).",
+                      "description": "Cumulative number of members submitted with this identifier type across all syncs (matches total_uploaded_count semantics, not uploaded_count). Compare with matched to calculate per-type match rate.",
                       "minimum": 0
                     },
                     "matched": {
                       "type": "integer",
-                      "description": "Number of members matched via this identifier type.",
+                      "description": "Cumulative number of members matched via this identifier type across all syncs.",
                       "minimum": 0
                     },
                     "match_rate": {
                       "type": "number",
-                      "description": "Match rate for this identifier type (matched / submitted).",
+                      "description": "Match rate for this identifier type (matched / submitted). Server-authoritative — consumers should prefer this value over computing their own.",
                       "minimum": 0,
                       "maximum": 1
                     }
