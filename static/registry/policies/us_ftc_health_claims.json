@@ -1,0 +1,30 @@
+{
+  "policy_id": "us_ftc_health_claims",
+  "version": "1.0.0",
+  "name": "US FTC — Health and Wellness Claim Substantiation",
+  "description": "Requires competent and reliable scientific evidence for health-related advertising claims under FTC Act Section 5.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["health_wellness"],
+  "governance_domains": ["campaign", "content_standards"],
+  "effective_date": "1938-03-21",
+  "source_url": "https://www.ftc.gov/business-guidance/resources/health-products-compliance-guidance",
+  "source_name": "US Federal Trade Commission",
+  "policy": "Health and wellness advertising claims must be truthful, not misleading, and substantiated by competent and reliable scientific evidence.\n\nRequirements:\n1. Claims about treating, curing, preventing, or mitigating diseases require competent and reliable scientific evidence (typically randomized controlled trials).\n2. Structure/function claims (e.g., 'supports immune health') require a reasonable basis in evidence.\n3. Testimonials about health outcomes must reflect typical results, not exceptional cases, unless clearly disclosed.\n4. Targeting health-condition audiences with unsubstantiated treatment claims is particularly problematic as it exploits vulnerability.\n\nThe FTC has increased enforcement against health claims in digital advertising, including claims made through influencer marketing and social media.",
+  "guidance": "Governance agents should flag health and wellness campaigns that make disease-treatment claims or target audiences defined by health conditions. The combination of health_data restricted attributes and health_wellness policy category signals a campaign that requires heightened scrutiny of both targeting and creative content.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A supplement brand runs ads claiming 'supports immune health' with a disclosure linking to clinical evidence, using contextual targeting on health and fitness content.",
+        "explanation": "Structure/function claims with substantiation and contextual (not health-condition-based) targeting meet FTC requirements."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A supplement company targets audiences with 'diabetes interest' segments while claiming their product 'helps manage blood sugar levels' without clinical evidence.",
+        "explanation": "Targeting health-condition audiences with unsubstantiated disease-management claims violates FTC substantiation requirements and exploits consumer vulnerability."
+      }
+    ]
+  }
+}

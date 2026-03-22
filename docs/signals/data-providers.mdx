@@ -123,6 +123,8 @@ Each signal in the `signals` array describes a targetable segment:
 | `tags` | array | Tags for grouping (lowercase, alphanumeric: `^[a-z0-9_-]+$`) |
 | `allowed_values` | array | For categorical signals: valid values |
 | `range` | object | For numeric signals: `{ min, max, unit }` |
+| `restricted_attributes` | array | Restricted attribute categories this signal touches (e.g., `["health_data"]`). Enables structural governance matching. |
+| `policy_categories` | array | Policy categories this signal is sensitive for (e.g., `["children_directed"]`). Enables structural governance matching. |
 
 ## Signal Value Types
 
@@ -549,6 +551,60 @@ For categorical signals, always include `allowed_values`. For numeric signals, i
 ### 5. Keep Files Updated
 
 Update `last_updated` timestamp when signals change. Buyers cache these files - stale data causes authorization failures.
+
+## Declaring governance metadata
+
+Signal definitions support two optional fields that enable structural governance matching: `restricted_attributes` and `policy_categories`. When declared, governance agents can match signals against a campaign plan's restrictions deterministically instead of relying on semantic inference from signal names.
+
+### restricted_attributes
+
+Declare which GDPR Article 9 special categories of personal data a signal touches. Values: `racial_ethnic_origin`, `political_opinions`, `religious_beliefs`, `trade_union_membership`, `health_data`, `sex_life_sexual_orientation`, `genetic_data`, `biometric_data`.
+
+```json
+{
+  "id": "chronic_condition_hh",
+  "name": "Chronic Condition Households",
+  "description": "Households with modeled indicators of chronic health conditions",
+  "value_type": "binary",
+  "tags": ["health", "demographic"],
+  "restricted_attributes": ["health_data"]
+}
+```
+
+When a campaign plan declares `restricted_attributes: ["health_data"]`, a governance agent blocks this signal without needing to interpret the description.
+
+### policy_categories
+
+Declare which policy categories a signal is sensitive for. Policy categories group related regulatory regimes — `children_directed` covers COPPA, UK AADC, and GDPR Article 8. Values are registry-defined category IDs.
+
+```json
+{
+  "id": "kids_cartoon_fans",
+  "name": "Kids Cartoon Fans",
+  "description": "Children aged 6-12 who watch animated content",
+  "value_type": "binary",
+  "tags": ["entertainment", "children"],
+  "policy_categories": ["children_directed"]
+}
+```
+
+### Combining both fields
+
+A signal can declare both when it touches restricted personal data and is relevant to a specific regulatory regime:
+
+```json
+{
+  "id": "fertility_intent",
+  "name": "Fertility Intent",
+  "description": "Consumers researching fertility treatments",
+  "value_type": "binary",
+  "tags": ["health", "life_stage"],
+  "restricted_attributes": ["health_data"],
+  "policy_categories": ["pharmaceutical_advertising"]
+}
+```
+
+Without governance metadata, a governance agent must infer sensitivity from signal names — this is fragile and produces false positives. Declared attributes enable deterministic matching.
 
 ## Integration with get_adcp_capabilities
 

@@ -1,0 +1,30 @@
+{
+  "policy_id": "us_coppa_data_collection",
+  "version": "1.0.0",
+  "name": "US COPPA — Children's Data Collection Restrictions",
+  "description": "Restricts collection and use of personal information from children under 13 for advertising under COPPA (15 U.S.C. 6501-6506).",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["children_directed"],
+  "governance_domains": ["campaign"],
+  "effective_date": "2000-04-21",
+  "source_url": "https://www.law.cornell.edu/uscode/text/15/6502",
+  "source_name": "US Federal Trade Commission",
+  "policy": "Operators of websites or online services directed to children under 13, or that knowingly collect personal information from children under 13, must comply with COPPA.\n\nAdvertising restrictions:\n1. Behavioral targeting based on data collected from children under 13 is prohibited without verifiable parental consent.\n2. Persistent identifiers from children must not be used for targeted advertising across sites/services.\n3. Contextual advertising (based on page content, not user data) is permitted on children's content.\n4. First-party audience segments built from children's browsing behavior must not be activated for ad targeting.\n\nThe FTC's 2024 COPPA Rule updates strengthen restrictions on targeted advertising to children and expand the definition of personal information to include biometric identifiers.",
+  "guidance": "COPPA applies based on the audience of the content, not the advertiser's intent. If a campaign targets children's content or uses audience segments derived from children's data, COPPA applies regardless of the product being advertised. Governance agents should flag any campaign with children_directed policy category that uses behavioral targeting.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A toy brand runs contextual ads on a children's video platform, targeting by content category (animated shows) without using any user-level behavioral data.",
+        "explanation": "Contextual targeting based on content type, without collecting or using children's personal information, is permitted under COPPA."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A children's app developer uses behavioral audience segments (kids who play puzzle games) to target ads for a new game across multiple apps.",
+        "explanation": "Using behavioral data collected from children under 13 for cross-site targeted advertising violates COPPA. Persistent identifiers cannot be used for this purpose without verifiable parental consent."
+      }
+    ]
+  }
+}

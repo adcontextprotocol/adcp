@@ -1,7 +1,7 @@
 ---
 title: "S3: Signals and audiences"
 sidebarTitle: "S3: Signals"
-description: "AdCP specialist module S3: Signals and audiences. Signal discovery, activation, privacy controls, and optimization loops with sandbox data providers across six verticals."
+description: "AdCP specialist module S3: Signals and audiences. Signal discovery, activation, privacy controls, and optimization loops with sandbox data providers across six industries."
 "og:title": "AdCP — S3: Signals and audiences"
 ---
 
@@ -108,8 +108,10 @@ The previous exercises focus on the buyer side — discovering and activating si
 - At least one signal of each value type (`binary`, `categorical`, `numeric`)
 - Descriptive IDs, tags, and metadata following the [data provider guide](/docs/signals/data-providers)
 - An `authorized_agents` entry authorizing a signals agent to resell your catalog
+- `restricted_attributes` declarations on signals derived from sensitive personal data (e.g., `health_data`, `racial_ethnic_origin`)
+- `policy_categories` declarations on signals that carry regulatory implications (e.g., `children_directed`, `fair_housing`)
 
-Verify your catalog by checking that the signals appear correctly in `get_signals` results when queried by tag or description.
+Verify your catalog by checking that the signals appear correctly in `get_signals` results when queried by tag or description, and that governance attributes are preserved in the signal metadata.
 
 ## Assessment
 

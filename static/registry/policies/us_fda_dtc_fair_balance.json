@@ -1,0 +1,30 @@
+{
+  "policy_id": "us_fda_dtc_fair_balance",
+  "version": "1.0.0",
+  "name": "US FDA — DTC Pharmaceutical Advertising Fair Balance",
+  "description": "Requires fair balance of benefit and risk information in direct-to-consumer pharmaceutical advertising (21 CFR 202.1).",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["pharmaceutical_advertising"],
+  "governance_domains": ["campaign", "content_standards", "creative"],
+  "effective_date": "1997-08-12",
+  "source_url": "https://www.fda.gov/drugs/prescription-drug-advertising/prescription-drug-advertising-questions-and-answers",
+  "source_name": "US Food and Drug Administration",
+  "policy": "DTC pharmaceutical advertising must present a fair balance of information about the benefits and risks of a drug.\n\nRequirements:\n1. Product-claim ads must include the drug's established name, quantitative formula, and a brief summary of side effects, contraindications, and effectiveness.\n2. Risk information must be presented with comparable prominence to benefit claims.\n3. Reminder ads (name only, no claims) are exempt from fair balance but cannot make any efficacy claims.\n4. Help-seeking ads (condition awareness, no drug name) are not regulated as drug advertising.\n5. Audience targeting must not preferentially exclude demographics more likely to experience adverse effects.\n\nThe FDA can issue warning letters, require corrective advertising, and refer cases to DOJ for prosecution.",
+  "guidance": "Fair balance applies to the creative content, not just the targeting. However, governance agents should flag pharmaceutical campaigns that use audience exclusions based on health conditions or demographics that correlate with adverse effect profiles, as this could constitute selective exposure that undermines fair balance goals.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A pharmaceutical brand runs a product-claim video ad that presents efficacy data followed by a clear summary of common side effects, contraindications, and a link to full prescribing information.",
+        "explanation": "The ad presents risk information with comparable prominence to benefit claims, meeting fair balance requirements."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A pharmaceutical brand runs a product-claim ad emphasizing the drug's benefits while relegating side effect information to small text and fast-scrolling supers.",
+        "explanation": "Presenting risk information with significantly less prominence than benefit claims violates fair balance requirements."
+      }
+    ]
+  }
+}

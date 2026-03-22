@@ -74,7 +74,7 @@ Implement `get_brand_identity` to serve brand data from your DAM or brand portal
 
 ```typescript
 const FIELDS_ENUM = [
-  "description", "industry", "keller_type", "logos", "colors",
+  "description", "industries", "keller_type", "logos", "colors",
   "fonts", "visual_guidelines", "tone", "tagline",
   "voice_synthesis", "assets", "rights",
 ] as const;
@@ -110,7 +110,7 @@ server.tool(
 
 ## Public vs authorized data
 
-Every `get_brand_identity` response includes the public baseline: `brand_id`, `house`, `names`, `description`, `industry`, `keller_type`, basic `logos`, and `tagline`. No authentication required.
+Every `get_brand_identity` response includes the public baseline: `brand_id`, `house`, `names`, `description`, `industries`, `keller_type`, basic `logos`, and `tagline`. No authentication required.
 
 Authorized callers — linked via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) — get deeper data on top of that baseline: high-res assets, voice synthesis configs, tone guidelines, and rights availability.
 
@@ -124,7 +124,7 @@ function buildIdentityResponse(brand, { fields, use_case, isAuthorized }) {
   };
 
   // Determine which sections to include
-  const publicFields = ["description", "industry", "keller_type", "logos", "tagline"];
+  const publicFields = ["description", "industries", "keller_type", "logos", "tagline"];
   const authorizedFields = ["colors", "fonts", "visual_guidelines", "tone",
                             "voice_synthesis", "assets", "rights"];
 

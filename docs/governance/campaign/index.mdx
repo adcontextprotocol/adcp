@@ -96,7 +96,7 @@ The governance agent resolves applicable policies through the brand reference in
 5. The resolved policy set is what gets evaluated during `check_governance`
 6. Media buys targeting outside the authorized markets are denied regardless of policy compliance
 
-The **[policy registry](/docs/governance/policy-registry)** is a community-maintained library of standardized, machine-readable advertising compliance policies -- covering jurisdictions (UK HFSS restrictions, US COPPA, EU GDPR), verticals (alcohol, pharma, gambling, financial services), and brand safety baselines. Brands select applicable policies from the registry rather than writing their own.
+The **[policy registry](/docs/governance/policy-registry)** is a community-maintained library of standardized, machine-readable advertising compliance policies -- covering jurisdictions (UK HFSS restrictions, US COPPA, EU GDPR), policy categories (children directed, pharmaceutical, fair housing, fair employment), and brand safety baselines. Brands select applicable policies from the registry rather than writing their own.
 
 ## The governance loop
 
@@ -192,7 +192,7 @@ Each phase builds on context from earlier phases. During **purchase**, the gover
 |----------|---------------|
 | `budget_authority` | Spend within authorized limits, per-seller concentration, reallocation magnitude |
 | `strategic_alignment` | Channel mix, audience match, publisher quality tier, brief consistency |
-| `bias_fairness` | Protected category targeting, audience composition, disparate impact |
+| `bias_fairness` | Protected category targeting, audience composition, disparate impact. Matches audience selectors against `restricted_attributes` defined by the plan's `policy_categories` |
 | `regulatory_compliance` | Jurisdiction-specific regulations resolved from the brand's compliance configuration and the plan's authorized countries/regions |
 | `seller_verification` | Configuration accuracy, undisclosed changes, delivery plausibility |
 | `brand_policy` | Brand-level compliance policies resolved from the brand configuration and policy registry -- competitor separation, category adjacency, custom brand rules |

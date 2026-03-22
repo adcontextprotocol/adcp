@@ -14,7 +14,7 @@
       "summary": "Age Discrimination in Employment Act. Prohibits age-based targeting in employment advertising for workers over 40."
     }
   ],
-  "restricted_attributes": ["racial_ethnic_origin", "religious_beliefs", "sex_life_sexual_orientation"],
+  "restricted_attributes": ["racial_ethnic_origin", "religious_beliefs", "sex_life_sexual_orientation", "health_data", "genetic_data"],
   "industries": ["staffing", "recruitment"],
   "guidance": "Employment advertising restrictions apply to any company running job ads, not just staffing companies. A tech company posting engineering jobs must comply with EEOC rules. Age targeting is particularly scrutinized — the 2019 Facebook settlement specifically addressed age-restricted job ad targeting.",
   "related_categories": ["fair_housing", "fair_lending"]

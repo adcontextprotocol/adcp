@@ -1,0 +1,26 @@
+{
+  "category_id": "gambling_advertising",
+  "name": "Gambling Advertising",
+  "description": "Campaigns for sports betting, online casinos, lotteries, and other gambling products. Triggers jurisdiction-specific restrictions, self-exclusion compliance, responsible gambling messaging, and audience composition requirements beyond standard age-gating.",
+  "regulatory_frameworks": [
+    {
+      "name": "UK Gambling Commission",
+      "jurisdictions": ["GB"],
+      "summary": "Licence Conditions and Codes of Practice (LCCP). Prohibits targeting self-excluded individuals, requires responsible gambling messaging, restricts content that appeals to children or vulnerable persons."
+    },
+    {
+      "name": "US State Gambling Laws",
+      "jurisdictions": ["US"],
+      "summary": "State-by-state gambling advertising regulations. Geo-fencing to legal jurisdictions, self-exclusion list compliance, responsible gambling messaging. Requirements vary from permissive (NJ, PA) to restrictive (UT, HI ban gambling entirely)."
+    },
+    {
+      "name": "EU Member State Regulations",
+      "jurisdictions": ["EU"],
+      "summary": "Varies by member state. Italy bans all gambling advertising. Spain restricts to 1am-5am. Netherlands requires responsible gambling messaging and prohibits untargeted digital ads."
+    }
+  ],
+  "restricted_attributes": ["health_data"],
+  "industries": ["gambling", "sports_betting", "casino", "lottery"],
+  "guidance": "Gambling advertising has requirements distinct from general age-restricted products: self-exclusion list compliance (operators must not target individuals who have opted out), responsible gambling messaging, and jurisdiction-level legality (not just age). Health data is restricted because problem gambling indicators and addiction-related data must not be used for targeting. Governance agents must verify geo-targeting matches jurisdictions where the specific gambling product is legal.",
+  "related_categories": ["age_restricted"]
+}

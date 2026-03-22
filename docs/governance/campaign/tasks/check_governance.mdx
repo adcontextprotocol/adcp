@@ -216,7 +216,26 @@ When `governance_context` is present, the governance agent uses it for plan vali
       "cumulative_impressions": 850000,
       "geo_distribution": { "US": 100 },
       "channel_distribution": { "olv": 100 },
-      "pacing": "on_track"
+      "pacing": "on_track",
+      "audience_distribution": {
+        "baseline": "platform",
+        "indices": {
+          "age:18-24": 0.8,
+          "age:25-34": 1.4,
+          "age:35-44": 1.3,
+          "age:45-54": 1.1,
+          "gender:female": 1.05,
+          "gender:male": 0.95
+        },
+        "cumulative_indices": {
+          "age:18-24": 0.85,
+          "age:25-34": 1.35,
+          "age:35-44": 1.25,
+          "age:45-54": 1.1,
+          "gender:female": 1.03,
+          "gender:male": 0.97
+        }
+      }
     }
   }
 }
@@ -426,6 +445,11 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `phase` | enum | Committed | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Required for `committed` checks. |
 | `planned_delivery` | object | Committed | What will actually be delivered. Required for `committed` checks. See [planned delivery](/docs/governance/campaign/specification#integration-with-create_media_buy). |
 | `delivery_metrics` | object | Delivery | Actual delivery performance data. Required when `phase` is `delivery`. |
+| `delivery_metrics.audience_distribution` | object | No | Audience demographic composition relative to a baseline. Used for bias/fairness drift detection. |
+| `delivery_metrics.audience_distribution.baseline` | enum | Yes | Reference population: `census` (national population), `platform` (platform's user base), or `custom`. |
+| `delivery_metrics.audience_distribution.baseline_description` | string | No | Description of the baseline when `baseline` is `custom` (e.g., "US adults 18+ with broadband access"). |
+| `delivery_metrics.audience_distribution.indices` | object | Yes | Index values for the current reporting period. Key format: `{dimension}:{value}` (e.g., `age:25-34`, `gender:female`). Value of 1.0 = parity with baseline; >1.0 = over-indexed; <1.0 = under-indexed. |
+| `delivery_metrics.audience_distribution.cumulative_indices` | object | No | Index values across all reporting periods. Same format as `indices`. Helps governance agents detect trends vs. one-period noise. |
 | `modification_summary` | string | No | Human-readable summary of what changed. SHOULD be present for `modification` phase. |
 
 ### Delivery metrics
@@ -440,6 +464,7 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `geo_distribution` | object | Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages. |
 | `channel_distribution` | object | Actual channel distribution. Keys are values from the channels enum, values are percentages. |
 | `pacing` | enum | `ahead`, `on_track`, or `behind`. |
+| `audience_distribution` | object | Audience composition relative to a baseline. Contains `baseline` (enum), optional `baseline_description` (string, for custom baselines), `indices` (current period), and optional `cumulative_indices` (all periods). Keys are `{dimension}:{value}` strings, values are index numbers (1.0 = parity). |
 
 ### Response
 

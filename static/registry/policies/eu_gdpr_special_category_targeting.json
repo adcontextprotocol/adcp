@@ -1,0 +1,33 @@
+{
+  "policy_id": "eu_gdpr_special_category_targeting",
+  "version": "1.0.0",
+  "name": "EU GDPR — Special Category Data Targeting Restrictions",
+  "description": "Restricts processing of special categories of personal data for advertising targeting under GDPR Article 9.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
+  "region_aliases": {
+    "EU": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
+  },
+  "policy_categories": ["political_advertising", "fair_housing", "fair_lending", "fair_employment", "pharmaceutical_advertising", "health_wellness"],
+  "governance_domains": ["campaign"],
+  "effective_date": "2018-05-25",
+  "source_url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679",
+  "source_name": "European Parliament and Council",
+  "policy": "Processing of special categories of personal data for advertising targeting is prohibited unless an Article 9(2) exception applies. In practice, explicit consent (Article 9(2)(a)) is the only viable basis for ad targeting, and DPAs have ruled that such consent is rarely valid for programmatic advertising.\n\nSpecial categories (Article 9(1)):\n1. Racial or ethnic origin\n2. Political opinions\n3. Religious or philosophical beliefs\n4. Trade union membership\n5. Genetic data\n6. Biometric data for identification\n7. Health data\n8. Data concerning sex life or sexual orientation\n\nInferred special category data carries the same restrictions as directly collected data. An audience segment that infers health conditions from browsing behavior is still health data under GDPR.",
+  "guidance": "This is the foundational regulation for the restricted_attributes mechanism. All eight GDPR Article 9 categories map directly to the restricted-attribute enum. Governance agents should apply this policy to any EU-targeted campaign that references signals touching special category data. The CJEU and national DPAs have consistently held that inferred data receives the same protection as directly collected data.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "An advertiser targets EU audiences using contextual signals (content categories, language, time of day) and first-party purchase history without any special category data.",
+        "explanation": "Contextual and first-party behavioral targeting that does not process special category data complies with GDPR Article 9."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "An insurance company targets EU audiences using a health-interest segment that infers chronic conditions from pharmacy website visits.",
+        "explanation": "Inferred health data derived from browsing behavior constitutes special category data under GDPR. Processing it for ad targeting without explicit consent violates Article 9."
+      }
+    ]
+  }
+}

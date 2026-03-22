@@ -1,0 +1,33 @@
+{
+  "policy_id": "eu_rx_dtc_ban",
+  "version": "1.0.0",
+  "name": "EU — Prescription Drug DTC Advertising Ban",
+  "description": "Prohibits direct-to-consumer advertising of prescription medicines in the EU under Directive 2001/83/EC Article 88.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
+  "region_aliases": {
+    "EU": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
+  },
+  "policy_categories": ["pharmaceutical_advertising"],
+  "governance_domains": ["campaign", "content_standards"],
+  "effective_date": "2001-11-06",
+  "source_url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32001L0083",
+  "source_name": "European Parliament and Council",
+  "policy": "Direct-to-consumer advertising of prescription-only medicines is prohibited in all EU member states.\n\nSpecific prohibitions:\n1. No advertising of prescription medicines to the general public through any medium.\n2. Disease awareness campaigns that name or imply a specific prescription treatment are considered advertising and are prohibited.\n3. OTC (non-prescription) medicines may be advertised to consumers but must comply with Directive 2001/83/EC Articles 86-100.\n\nExceptions:\n1. Vaccination campaigns approved by national health authorities.\n2. Information provided to healthcare professionals (HCPs) through appropriate channels.",
+  "guidance": "This is a near-absolute prohibition with very narrow exceptions. Governance agents should deny any campaign in EU jurisdictions that promotes a prescription medicine to general audiences. Disease awareness campaigns require scrutiny — if they name or strongly imply a specific prescription treatment, they constitute prohibited DTC advertising. Only the US and New Zealand permit prescription DTC advertising globally.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A pharmaceutical company runs a general disease awareness campaign about diabetes management in Germany without mentioning any specific prescription product.",
+        "explanation": "Unbranded disease awareness campaigns that do not name or imply specific prescription treatments are not considered DTC advertising."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A pharmaceutical company runs consumer-facing ads in France for a branded prescription cancer treatment, targeting audiences interested in health topics.",
+        "explanation": "DTC advertising of prescription medicines is prohibited in all EU member states. This applies regardless of the targeting method or channel."
+      }
+    ]
+  }
+}

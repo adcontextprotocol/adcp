@@ -1,0 +1,30 @@
+{
+  "policy_id": "us_ecoa_targeting",
+  "version": "1.0.0",
+  "name": "US Equal Credit Opportunity Act — Targeting Restrictions",
+  "description": "Prohibits discriminatory targeting in credit and lending advertising under ECOA (15 U.S.C. 1691) and Regulation B.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["fair_lending"],
+  "governance_domains": ["campaign"],
+  "effective_date": "1974-10-28",
+  "source_url": "https://www.law.cornell.edu/uscode/text/15/1691",
+  "source_name": "US Consumer Financial Protection Bureau",
+  "policy": "Credit advertising must not discriminate on the basis of race, color, religion, national origin, sex, marital status, age (provided the applicant has the capacity to contract), receipt of public assistance income, or good faith exercise of rights under the Consumer Credit Protection Act.\n\nSpecific prohibitions:\n1. Audience segments that target or exclude by any protected basis must not be used in credit product advertising.\n2. Proxy targeting that effectively discriminates (e.g., targeting by neighborhoods that correlate with racial composition) is prohibited.\n3. Marketing credit products exclusively to demographics that correlate with higher interest rates or less favorable terms constitutes steering.\n\nCFPB enforcement actions have established that digital advertising targeting is subject to fair lending scrutiny.",
+  "guidance": "CFPB has signaled increased scrutiny of algorithmic targeting in financial services advertising. Governance agents should flag any demographic targeting in credit/lending campaigns. Income-based targeting requires careful evaluation — while income itself is not protected, it can serve as a proxy for race or national origin.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A bank advertises home equity loans using contextual targeting on financial planning websites with no demographic audience segments.",
+        "explanation": "Contextual targeting based on content relevance without demographic segmentation does not violate ECOA."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A credit card issuer targets its premium card offers exclusively to audiences profiled as 'affluent suburban households' while excluding urban areas with high minority populations.",
+        "explanation": "Geographic targeting that effectively excludes protected classes from credit offers constitutes discriminatory advertising under ECOA."
+      }
+    ]
+  }
+}

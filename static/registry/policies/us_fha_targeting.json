@@ -1,0 +1,38 @@
+{
+  "policy_id": "us_fha_targeting",
+  "version": "1.0.0",
+  "name": "US Fair Housing Act — Targeting Restrictions",
+  "description": "Prohibits targeting or exclusion by protected characteristics in housing advertising under the Fair Housing Act (42 U.S.C. 3604(c)).",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["fair_housing"],
+  "governance_domains": ["campaign"],
+  "effective_date": "1968-04-11",
+  "source_url": "https://www.law.cornell.edu/uscode/text/42/3604",
+  "source_name": "US Department of Housing and Urban Development",
+  "policy": "Housing advertisements must not indicate any preference, limitation, or discrimination based on race, color, religion, sex, disability, familial status, or national origin. This applies to the sale, rental, or financing of dwellings.\n\nSpecific prohibitions:\n1. Audience segments that target or exclude by race, color, national origin, religion, sex, familial status (presence of children under 18, pregnancy), or disability must not be used.\n2. Fine-grained geographic targeting (e.g., zip-code level) must be evaluated for discriminatory proxy effects, as residential segregation patterns can make geo-targeting function as racial targeting.\n3. Lookalike or similar audiences built from seeds that correlate with protected characteristics must not be used.\n4. Age targeting that excludes families with children is prohibited unless the housing qualifies for a statutory exemption (senior housing under 42 U.S.C. 3607(b)).\n\nViolations carry civil penalties up to $100,000+ and injunctive relief.",
+  "guidance": "The 2019 HUD v. Facebook settlement established that ad platforms bear responsibility for enabling discriminatory targeting in housing ads. Governance agents should treat any demographic or proxy-demographic targeting in a housing campaign as high-risk. Zip-code exclusions deserve particular scrutiny due to redlining history.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A rental company runs display ads for apartments using broad metro-area targeting with no demographic audience segments.",
+        "explanation": "Broad geographic targeting without demographic segmentation does not violate FHA targeting restrictions."
+      },
+      {
+        "scenario": "A senior living community targets adults 55+ with documentation of qualifying senior housing exemption under 42 U.S.C. 3607(b).",
+        "explanation": "The Housing for Older Persons Act exemption permits age-restricted targeting when the housing meets statutory requirements."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A landlord excludes audience segments associated with 'families with children' from rental advertising.",
+        "explanation": "Familial status is a protected class under FHA. Excluding families with children from housing ad targeting is prohibited."
+      },
+      {
+        "scenario": "A mortgage lender targets home loan ads only to zip codes with predominantly white populations while excluding majority-minority zip codes.",
+        "explanation": "Zip-code targeting that functions as a racial proxy violates FHA. Geographic exclusion patterns that correlate with racial demographics constitute discriminatory advertising."
+      }
+    ]
+  }
+}

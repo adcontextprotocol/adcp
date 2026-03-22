@@ -19,6 +19,12 @@ A named group of users uploaded by a buyer for targeted advertising. Distinct fr
 **Audience Member**
 A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the protocol never carries cleartext personal data. Providing multiple identifiers for the same person improves match rates. See [Hashed Identifier](#hashed-identifier) and [UID](#uid-universal-id).
 
+**Audience Constraints**
+Plan-level include/exclude rules that structurally prevent prohibited targeting patterns. Each constraint is an [Audience Selector](#audience-selector). The governance agent evaluates `check_governance` requests against these constraints to detect prohibited targeting before any ad is served.
+
+**Audience Selector**
+A discriminated union describing one targeting criterion — either a signal reference (pointing to a specific data provider signal) or a natural language description. Audience selectors appear in plan audience constraints, `governance_context.audience_targeting`, and `planned_delivery.audience_targeting`.
+
 **Action Source**
 Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `chat`, `email`, `offline`, `system_generated`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.
 
@@ -198,6 +204,9 @@ A specific advertising product within a media buy, representing a flight or line
 **Platform Account**
 Master account representing an advertising platform that can syndicate signals to multiple customers.
 
+**Policy Category**
+A regulatory regime that applies to a campaign plan (e.g., `children_directed`, `fair_housing`, `fair_lending`, `fair_employment`). Each policy category defines `restricted_attributes` — personal data types that must not be used for targeting when that category applies. Governance agents resolve policy categories from both the plan and the brand's compliance configuration.
+
 **Pricing Model**
 The method by which advertising inventory is priced and billed. AdCP supports CPM, CPC, CPCV, CPV, CPA, CPL, CPP, and flat rate models.
 
@@ -225,6 +234,9 @@ Milestones in video ad viewing: Q1 (25% viewed), Q2 (50% viewed), Q3 (75% viewed
 
 **Reach**
 The number or percentage of unique individuals exposed to an advertisement at least once during a campaign.
+
+**Restricted Attribute**
+A personal data category (e.g., `health_data`, `racial_ethnic_origin`) that must not be used for targeting under one or more policy categories. Restricted attributes are defined at the registry level (GDPR Article 9 categories) and self-declared on signal definitions. Governance agents match restricted attributes structurally — if a signal carries a restricted attribute that a plan's policy categories prohibit, targeting with that signal is denied.
 
 **Relevance Score**
 Numerical rating (0-1) indicating how well a signal matches the discovery prompt.
