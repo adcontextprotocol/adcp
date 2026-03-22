@@ -3225,6 +3225,7 @@
         if (!isAuthenticated) return;
 
         addieHomeContainer.classList.add('visible');
+        welcomeMessage.style.display = 'none';
         addieHomeLoading.style.display = 'block';
         addieHomeContent.innerHTML = '';
 
@@ -3242,9 +3243,6 @@
           // Inject HTML
           addieHomeContent.innerHTML = data.html;
           addieHomeLoading.style.display = 'none';
-
-          // Hide the generic welcome message since we have personalized content
-          welcomeMessage.style.display = 'none';
 
           // Wire up action buttons
           setupHomeActions();
