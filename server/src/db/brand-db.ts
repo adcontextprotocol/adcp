@@ -495,7 +495,7 @@ export class BrandDatabase {
       keller_type?: string;
       logo_url?: string;
       primary_color?: string;
-      industries?: string[];
+      industries: string[];
       sub_brand_count: number;
       employee_count: number;
     }>(

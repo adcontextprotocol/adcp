@@ -652,13 +652,13 @@ components:
               - DE
               - FR
               - IT
-        verticals:
+        policy_categories:
           type: array
           items:
             type: string
           example:
-            - finance
-            - healthcare
+            - age_restricted
+            - pharmaceutical_advertising
         channels:
           type:
             - array
@@ -719,7 +719,7 @@ components:
         - enforcement
         - jurisdictions
         - region_aliases
-        - verticals
+        - policy_categories
         - channels
         - governance_domains
         - effective_date
@@ -776,13 +776,13 @@ components:
               - DE
               - FR
               - IT
-        verticals:
+        policy_categories:
           type: array
           items:
             type: string
           example:
-            - finance
-            - healthcare
+            - age_restricted
+            - pharmaceutical_advertising
         channels:
           type:
             - array
@@ -888,7 +888,7 @@ components:
         - enforcement
         - jurisdictions
         - region_aliases
-        - verticals
+        - policy_categories
         - channels
         - governance_domains
         - effective_date
@@ -2585,7 +2585,7 @@ paths:
     get:
       operationId: listPolicies
       summary: List policies
-      description: Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, vertical, and governance domain.
+      description: Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, policy category, and governance domain.
       tags:
         - Policy Registry
       parameters:
@@ -2623,9 +2623,9 @@ paths:
           in: query
         - schema:
             type: string
-            example: finance
+            example: age_restricted
           required: false
-          name: vertical
+          name: policy_category
           in: query
         - schema:
             type: string
@@ -2886,7 +2886,7 @@ paths:
                     type: array
                     items:
                       type: string
-                verticals:
+                policy_categories:
                   type: array
                   items:
                     type: string
