@@ -2,8 +2,13 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/client.
  */
+import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
 
-import type { Product, FormatID } from '@adcp/client';
+// SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
+type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
+
+/** AccountReference from SDK — identifies an account on create_media_buy */
+type AccountReference = CreateMediaBuyRequest['account'];
 
 export interface TrainingContext {
   mode: 'open' | 'training';
@@ -15,7 +20,7 @@ export interface TrainingContext {
 
 export interface ShowSpecial {
   name: string;
-  category?: string;
+  category?: SpecialCategory;
   starts?: string;
   ends?: string;
 }
@@ -88,22 +93,47 @@ export interface PricingTemplate {
   priceGuidance?: { suggested: number; range: { min: number; max: number } };
   minSpendPerPackage?: number;
   /** For DOOH flat_rate with parameters */
-  doohParameters?: { type: 'dooh'; sov_percentage?: number; loop_duration_seconds?: number; min_plays_per_hour?: number; venue_package?: string; duration_hours?: number; daypart?: string; estimated_impressions?: number };
+  doohParameters?: {
+    type: 'dooh';
+    sov_percentage?: number;
+    loop_duration_seconds?: number;
+    min_plays_per_hour?: number;
+    venue_package?: string;
+    duration_hours?: number;
+    daypart?: string;
+    estimated_impressions?: number;
+  };
   /** For CPA: the event type that triggers billing */
-  eventType?: string;
+  eventType?: EventType;
   /** For CPP: demographic targeting parameters */
   cppParameters?: { demographic: string };
   /** For CPV: view threshold parameters */
-  cpvParameters?: { view_threshold: number | { type: string; value: number; unit: string } };
+  cpvParameters?: { view_threshold: number | { duration_seconds: number } };
   /** For time: the time unit and duration constraints */
-  timeParameters?: { unit: string; min_duration: number; max_duration: number };
+  timeParameters?: { time_unit: 'hour' | 'day' | 'week' | 'month'; min_duration: number; max_duration: number };
 }
 
 export interface CatalogProduct {
-  product: Partial<Product>;
+  product: import('@adcp/client').Product;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];
+}
+
+/** Show data included in get_products responses (not part of the AdCP schema — supplementary data) */
+export interface ShowResponse {
+  show_id: string;
+  name: string;
+  genre: string[];
+  cadence: string;
+  status: string;
+  description?: string;
+  content_rating?: Array<{ system: string; rating: string }>;
+  talent?: Array<{ name: string; role: string }>;
+  distribution?: Array<{
+    publisher_domain: string;
+    identifiers: Array<{ type: string; value: string }>;
+  }>;
 }
 
 export interface SessionState {
@@ -114,8 +144,8 @@ export interface SessionState {
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   lastGetProductsContext?: {
-    products: Partial<Product>[];
-    proposals?: Partial<Product>[];
+    products: Product[];
+    proposals?: Proposal[];
   };
   createdAt: Date;
   lastAccessedAt: Date;
@@ -193,7 +223,7 @@ export interface GovernancePlanState {
   planId: string;
   version: number;
   status: 'active' | 'suspended' | 'completed';
-  brand: BrandRef;
+  brand: BrandReference;
   objectives: string;
   budget: {
     total: number;

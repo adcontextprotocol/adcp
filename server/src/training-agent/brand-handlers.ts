@@ -1,16 +1,14 @@
 /**
- * Brand Protocol Sandbox Tools for Addie
+ * Brand protocol tool definitions and handlers for the training agent.
  *
- * Provides in-memory brand protocol task handlers (get_brand_identity,
- * get_rights, acquire_rights, update_rights) using fictional talent seed data.
- * Used during certification exercises to demonstrate the brand protocol.
+ * Implements get_brand_identity, get_rights, acquire_rights, and
+ * update_rights using fictional talent seed data from Loti Entertainment.
+ * Responses are deterministic — built from in-memory data, not LLM calls.
  */
 
-import type { AddieTool } from '../types.js';
+import type { TrainingContext } from './types.js';
 
-// =====================================================
-// TYPES
-// =====================================================
+// ── Types ─────────────────────────────────────────────────────────
 
 interface LocalizedName {
   [lang: string]: string;
@@ -98,9 +96,7 @@ interface TalentEntry {
   exclusion_reasons?: Record<string, string | { reason: string; suggestions?: string[] }>;
 }
 
-// =====================================================
-// SEED DATA
-// =====================================================
+// ── Seed data ─────────────────────────────────────────────────────
 
 const HOUSE: House = {
   domain: 'lotientertainment.com',
@@ -409,124 +405,69 @@ const TALENT: TalentEntry[] = [
 const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 
 // Fields that are always returned (public, not selectable)
-const CORE_FIELDS = ['brand_id', 'house', 'names'] as const;
-
-// Fields that are public (returned without auth)
 const PUBLIC_FIELDS = ['description', 'industry', 'keller_type', 'logos', 'tagline'] as const;
-
-// Fields that require authorization
 const AUTHORIZED_FIELDS = ['colors', 'fonts', 'visual_guidelines', 'tone', 'voice_synthesis', 'assets', 'rights'] as const;
-
-// All selectable fields
 const ALL_FIELDS = [...PUBLIC_FIELDS, ...AUTHORIZED_FIELDS] as const;
 
-// =====================================================
-// TOOL DEFINITIONS
-// =====================================================
+// ── Tool definitions ──────────────────────────────────────────────
 
-export const BRAND_SANDBOX_TOOLS: AddieTool[] = [
+export const BRAND_TOOLS = [
   {
-    name: 'sandbox_get_brand_identity',
-    description: 'Get brand identity data from the Loti Entertainment sandbox roster. Returns public data by default. Set authorized=true to simulate a linked account and see all fields. Available brands: daan_janssen, sofia_reyes, pieter_van_dijk, yuki_tanaka.',
-    usage_hints: 'use during certification brand protocol exercises to demonstrate get_brand_identity, public vs authorized data, available_fields',
-    input_schema: {
-      type: 'object',
+    name: 'get_brand_identity',
+    description: 'Get brand identity data from the talent roster. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: daan_janssen, sofia_reyes, pieter_van_dijk, yuki_tanaka.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
       properties: {
-        brand_id: {
-          type: 'string',
-          description: 'Brand identifier (e.g., daan_janssen, sofia_reyes, pieter_van_dijk, yuki_tanaka)',
-        },
-        fields: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Sections to include: description, industry, keller_type, logos, colors, fonts, visual_guidelines, tone, tagline, voice_synthesis, assets, rights. Omit for all.',
-        },
-        use_case: {
-          type: 'string',
-          description: 'Intended use case: endorsement, voice_synthesis, likeness, creative_production, media_planning',
-        },
-        authorized: {
-          type: 'boolean',
-          description: 'Simulate an authorized caller (linked via sync_accounts). Default false — returns public-only data.',
-        },
+        brand_id: { type: 'string', description: 'Brand identifier (e.g., daan_janssen, sofia_reyes)' },
+        fields: { type: 'array', items: { type: 'string' }, description: 'Sections to include. Omit for all.' },
+        use_case: { type: 'string', description: 'Intended use case: endorsement, voice_synthesis, likeness, creative_production, media_planning' },
+        authorized: { type: 'boolean', description: 'Simulate authorized caller (linked via sync_accounts). Default false.' },
       },
       required: ['brand_id'],
     },
   },
   {
-    name: 'sandbox_get_rights',
-    description: 'Search for licensable talent rights in the Loti Entertainment sandbox roster. Returns matches with pricing options. Supports natural language queries. Set include_excluded=true to see filtered-out talent with reasons.',
-    usage_hints: 'use during certification brand protocol exercises to demonstrate get_rights, rights discovery, pricing comparison',
-    input_schema: {
-      type: 'object',
+    name: 'get_rights',
+    description: 'Search for licensable talent rights. Returns matches with pricing options. Supports natural language queries — interprets intent, budget, and geography. Set include_excluded=true to see filtered-out talent with reasons.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
       properties: {
-        query: {
-          type: 'string',
-          description: 'Natural language description of desired rights (e.g., "Dutch athlete for restaurant brand in Amsterdam, budget 400 EUR/month")',
-        },
-        uses: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Rights uses: likeness, voice, name, endorsement',
-        },
-        buyer_brand: {
-          type: 'object',
-          properties: {
-            domain: { type: 'string' },
-            brand_id: { type: 'string' },
-          },
-          description: 'Buyer brand for compatibility filtering',
-        },
-        countries: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Countries where rights are needed (ISO 3166-1 alpha-2)',
-        },
-        brand_id: {
-          type: 'string',
-          description: 'Search within a specific brand only',
-        },
-        include_excluded: {
-          type: 'boolean',
-          description: 'Include filtered-out results with reasons. Default false.',
-        },
+        query: { type: 'string', description: 'Natural language description of desired rights' },
+        uses: { type: 'array', items: { type: 'string' }, description: 'Rights uses: likeness, voice, name, endorsement' },
+        buyer_brand: { type: 'object', description: 'Buyer brand for compatibility filtering' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'Countries where rights are needed (ISO 3166-1 alpha-2)' },
+        brand_id: { type: 'string', description: 'Search within a specific brand only' },
+        include_excluded: { type: 'boolean', description: 'Include filtered-out results with reasons. Default false.' },
       },
       required: ['query', 'uses'],
     },
   },
   {
-    name: 'sandbox_acquire_rights',
-    description: 'Acquire rights from the Loti Entertainment sandbox roster. Returns acquired (with generation credentials), pending_approval, or rejected based on campaign category and talent contracts.',
-    usage_hints: 'use during certification brand protocol exercises to demonstrate acquire_rights, rights clearance, generation credentials',
-    input_schema: {
-      type: 'object',
+    name: 'acquire_rights',
+    description: 'Acquire rights from the talent roster. Returns acquired (with generation credentials), pending_approval, or rejected based on campaign category and existing contracts.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    inputSchema: {
+      type: 'object' as const,
       properties: {
-        rights_id: {
-          type: 'string',
-          description: 'Rights offering identifier from sandbox_get_rights',
-        },
-        pricing_option_id: {
-          type: 'string',
-          description: 'Selected pricing option from the rights offering',
-        },
+        rights_id: { type: 'string', description: 'Rights offering identifier from get_rights' },
+        pricing_option_id: { type: 'string', description: 'Selected pricing option' },
         buyer: {
           type: 'object',
-          properties: {
-            domain: { type: 'string' },
-            brand_id: { type: 'string' },
-          },
+          properties: { domain: { type: 'string' }, brand_id: { type: 'string' } },
           required: ['domain'],
           description: 'Buyer brand identity',
         },
         campaign: {
           type: 'object',
           properties: {
-            description: { type: 'string', description: 'How the rights will be used' },
-            uses: { type: 'array', items: { type: 'string' }, description: 'Rights uses for this campaign' },
-            countries: { type: 'array', items: { type: 'string' }, description: 'Campaign countries' },
-            estimated_impressions: { type: 'integer', description: 'Estimated total impressions' },
-            start_date: { type: 'string', description: 'Campaign start date (YYYY-MM-DD)' },
-            end_date: { type: 'string', description: 'Campaign end date (YYYY-MM-DD)' },
+            description: { type: 'string' },
+            uses: { type: 'array', items: { type: 'string' } },
+            countries: { type: 'array', items: { type: 'string' } },
+            estimated_impressions: { type: 'integer' },
+            start_date: { type: 'string' },
+            end_date: { type: 'string' },
           },
           required: ['description', 'uses'],
           description: 'Campaign details for rights clearance',
@@ -536,13 +477,13 @@ export const BRAND_SANDBOX_TOOLS: AddieTool[] = [
     },
   },
   {
-    name: 'sandbox_update_rights',
-    description: 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume. Sandbox version for certification exercises.',
-    usage_hints: 'use during certification brand protocol exercises to demonstrate update_rights, rights lifecycle management',
-    input_schema: {
-      type: 'object',
+    name: 'update_rights',
+    description: 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    inputSchema: {
+      type: 'object' as const,
       properties: {
-        rights_id: { type: 'string', description: 'Rights grant identifier from sandbox_acquire_rights' },
+        rights_id: { type: 'string', description: 'Rights grant identifier from acquire_rights' },
         end_date: { type: 'string', description: 'New end date (must be >= current end date)' },
         impression_cap: { type: 'number', description: 'New impression cap (must be >= current)' },
         paused: { type: 'boolean', description: 'Pause or resume the grant' },
@@ -552,29 +493,30 @@ export const BRAND_SANDBOX_TOOLS: AddieTool[] = [
   },
 ];
 
-// =====================================================
-// HANDLERS
-// =====================================================
+// ── Handlers ──────────────────────────────────────────────────────
 
-type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+function getTalentName(talent: TalentEntry): string {
+  return talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id;
+}
 
-function handleGetBrandIdentity(args: Record<string, unknown>): string {
+export function handleGetBrandIdentity(
+  args: Record<string, unknown>,
+  _ctx: TrainingContext,
+): Record<string, unknown> {
   const brandId = args.brand_id as string;
   const fields = args.fields as string[] | undefined;
   const authorized = args.authorized as boolean ?? false;
 
   const talent = TALENT_MAP.get(brandId);
   if (!talent) {
-    return JSON.stringify({
-      errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }],
-    });
+    return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
   }
 
-  // Core fields always returned
   const response: Record<string, unknown> = {
     brand_id: talent.brand_id,
     house: talent.house,
     names: talent.names,
+    sandbox: true,
   };
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -593,7 +535,6 @@ function handleGetBrandIdentity(args: Record<string, unknown>): string {
           response[field] = value;
         }
       } else {
-        // Only list in available_fields if the talent actually has this data
         const value = (talent as unknown as Record<string, unknown>)[field];
         if (value !== undefined) {
           withheld.push(field);
@@ -606,11 +547,8 @@ function handleGetBrandIdentity(args: Record<string, unknown>): string {
     response.available_fields = withheld;
   }
 
-  return JSON.stringify(response);
+  return response;
 }
-
-// Keywords that indicate meat/steakhouse — used for van Dijk exclusion
-const MEAT_KEYWORDS = ['steakhouse', 'steak', 'meat', 'burger', 'bbq', 'barbecue', 'grill'];
 
 function computeMatchScore(
   talent: TalentEntry,
@@ -618,14 +556,12 @@ function computeMatchScore(
   requestedUses: string[],
   requestedCountries?: string[],
 ): number {
-  let score = 0.2; // base score
+  let score = 0.2;
 
-  // Country overlap
   if (requestedCountries && requestedCountries.length > 0) {
     const overlap = requestedCountries.filter(c => talent.rights.countries.includes(c));
     if (overlap.length > 0) score += 0.3;
   } else {
-    // Check query for country names/codes
     const countryHints: Record<string, string[]> = {
       NL: ['dutch', 'netherlands', 'amsterdam', 'rotterdam', 'nl'],
       MX: ['mexican', 'mexico', 'mx'],
@@ -640,14 +576,12 @@ function computeMatchScore(
     }
   }
 
-  // Use overlap
   const availableUses = talent.rights.available_uses;
   const useOverlap = requestedUses.filter(u => availableUses.includes(u));
   if (requestedUses.length > 0) {
     score += 0.3 * (useOverlap.length / requestedUses.length);
   }
 
-  // Budget fit — check if query mentions a budget and a flat_rate fits
   const budgetMatch = queryLower.match(/(\d+)\s*(eur|usd|€|\$)/);
   if (budgetMatch) {
     const budget = parseInt(budgetMatch[1], 10);
@@ -667,7 +601,6 @@ function buildMatchReasons(
 ): string[] {
   const reasons: string[] = [];
 
-  // Country match
   const countries = talent.rights.countries.join(', ');
   if (queryLower.includes('dutch') || queryLower.includes('netherlands') || queryLower.includes('amsterdam')) {
     if (talent.rights.countries.includes('NL')) {
@@ -681,14 +614,12 @@ function buildMatchReasons(
     reasons.push(`Available in ${countries}`);
   }
 
-  // Use match
   const availableUses = talent.rights.available_uses;
   const matched = requestedUses.filter(u => availableUses.includes(u));
   if (matched.length > 0) {
     reasons.push(`Supports requested uses: ${matched.join(', ')}`);
   }
 
-  // Budget fit
   const budgetMatch = queryLower.match(/(\d+)\s*(eur|usd|€|\$)/);
   if (budgetMatch) {
     const budget = parseInt(budgetMatch[1], 10);
@@ -698,7 +629,6 @@ function buildMatchReasons(
     }
   }
 
-  // Category relevance from query
   if (queryLower.includes('restaurant') || queryLower.includes('food') || queryLower.includes('steakhouse')) {
     reasons.push('Available for food/restaurant brands');
   }
@@ -709,7 +639,10 @@ function buildMatchReasons(
   return reasons;
 }
 
-function handleGetRights(args: Record<string, unknown>): string {
+export function handleGetRights(
+  args: Record<string, unknown>,
+  _ctx: TrainingContext,
+): Record<string, unknown> {
   const query = (args.query as string) || '';
   const uses = (args.uses as string[]) || [];
   const countries = args.countries as string[] | undefined;
@@ -718,27 +651,22 @@ function handleGetRights(args: Record<string, unknown>): string {
 
   const queryLower = query.toLowerCase();
 
-  // Filter talent
   let candidates = brandId ? TALENT.filter(t => t.brand_id === brandId) : [...TALENT];
 
-  // Filter by countries
   if (countries && countries.length > 0) {
     candidates = candidates.filter(t =>
       countries.some(c => t.rights.countries.includes(c))
     );
   }
 
-  // Filter by uses
   candidates = candidates.filter(t =>
     uses.some(u => t.rights.available_uses.includes(u))
   );
 
-  // Separate excluded (lifestyle conflicts based on query keywords)
-  const rights: unknown[] = [];
-  const excluded: unknown[] = [];
+  const rights: Record<string, unknown>[] = [];
+  const excluded: Record<string, unknown>[] = [];
 
   for (const talent of candidates) {
-    // Check if this talent should be excluded based on query keywords
     let excludeRule: { reason: string; suggestions?: string[] } | null = null;
     if (talent.exclusion_reasons) {
       for (const [keyword, rule] of Object.entries(talent.exclusion_reasons)) {
@@ -753,7 +681,7 @@ function handleGetRights(args: Record<string, unknown>): string {
       if (includeExcluded) {
         excluded.push({
           brand_id: talent.brand_id,
-          name: talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id,
+          name: getTalentName(talent),
           reason: excludeRule.reason,
           ...(excludeRule.suggestions ? { suggestions: excludeRule.suggestions } : {}),
         });
@@ -768,7 +696,7 @@ function handleGetRights(args: Record<string, unknown>): string {
       rights.push({
         rights_id: offering.rights_id,
         brand_id: talent.brand_id,
-        name: talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id,
+        name: getTalentName(talent),
         description: talent.description,
         right_type: offering.right_type,
         match_score: Math.round(matchScore * 100) / 100,
@@ -783,18 +711,20 @@ function handleGetRights(args: Record<string, unknown>): string {
     }
   }
 
-  // Sort by match score descending
-  (rights as Array<{ match_score: number }>).sort((a, b) => b.match_score - a.match_score);
+  rights.sort((a, b) => (b.match_score as number) - (a.match_score as number));
 
-  const response: Record<string, unknown> = { rights };
+  const response: Record<string, unknown> = { rights, sandbox: true };
   if (includeExcluded && excluded.length > 0) {
     response.excluded = excluded;
   }
 
-  return JSON.stringify(response);
+  return response;
 }
 
-function handleAcquireRights(args: Record<string, unknown>): string {
+export function handleAcquireRights(
+  args: Record<string, unknown>,
+  _ctx: TrainingContext,
+): Record<string, unknown> {
   const rightsId = args.rights_id as string;
   const pricingOptionId = args.pricing_option_id as string;
   const buyer = args.buyer as { domain: string; brand_id?: string } | undefined;
@@ -808,10 +738,9 @@ function handleAcquireRights(args: Record<string, unknown>): string {
   };
 
   if (!buyer) {
-    return JSON.stringify({ errors: [{ code: 'invalid_request', message: 'buyer is required' }] });
+    return { errors: [{ code: 'invalid_request', message: 'buyer is required' }] };
   }
 
-  // Find the talent and offering
   let talent: TalentEntry | undefined;
   let offering: RightsOffering | undefined;
   for (const t of TALENT) {
@@ -824,57 +753,50 @@ function handleAcquireRights(args: Record<string, unknown>): string {
   }
 
   if (!talent || !offering) {
-    return JSON.stringify({
-      errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'` }],
-    });
+    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'` }] };
   }
 
-  // Validate pricing option
   const pricingOption = offering.pricing_options.find(p => p.pricing_option_id === pricingOptionId);
   if (!pricingOption) {
-    return JSON.stringify({
-      errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }],
-    });
+    return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }
 
-  // Determine status from campaign description keywords
   const descLower = campaign.description.toLowerCase();
   const behavior = talent.acquire_behavior;
 
-  // Check rejected first
   for (const [keyword, rule] of Object.entries(behavior.rejected)) {
     if (descLower.includes(keyword)) {
       const isStructured = typeof rule === 'object';
-      return JSON.stringify({
+      return {
         rights_id: rightsId,
         status: 'rejected',
         brand_id: talent.brand_id,
         reason: isStructured ? rule.reason : rule,
         ...(isStructured && rule.suggestions ? { suggestions: rule.suggestions } : {}),
-      });
+        sandbox: true,
+      };
     }
   }
 
-  // Check pending_approval
   for (const keyword of behavior.pending_approval) {
     if (descLower.includes(keyword)) {
-      const talentName = talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id;
-      return JSON.stringify({
+      const talentName = getTalentName(talent);
+      return {
         rights_id: rightsId,
         status: 'pending_approval',
         brand_id: talent.brand_id,
         detail: `${talentName}'s management requires review for ${keyword} category campaigns. Request submitted for talent approval.`,
         estimated_response_time: '48h',
-      });
+        sandbox: true,
+      };
     }
   }
 
-  // Default: acquired
-  const talentName = talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id;
+  const talentName = getTalentName(talent);
   const startDate = campaign.start_date || '2026-04-01';
   const endDate = campaign.end_date || '2026-06-30';
 
-  const generationCredentials: unknown[] = [];
+  const generationCredentials: Record<string, unknown>[] = [];
   const campaignUses = campaign.uses || pricingOption.uses;
 
   if (campaignUses.includes('likeness')) {
@@ -895,7 +817,7 @@ function handleAcquireRights(args: Record<string, unknown>): string {
     });
   }
 
-  return JSON.stringify({
+  return {
     rights_id: rightsId,
     status: 'acquired',
     brand_id: talent.brand_id,
@@ -942,16 +864,19 @@ function handleAcquireRights(args: Record<string, unknown>): string {
       },
     },
     usage_reporting_url: `https://sandbox.lotientertainment.com/rights/${rightsId}/usage`,
-  });
+    sandbox: true,
+  };
 }
 
-function handleUpdateRights(args: Record<string, unknown>): string {
+export function handleUpdateRights(
+  args: Record<string, unknown>,
+  _ctx: TrainingContext,
+): Record<string, unknown> {
   const rightsId = args.rights_id as string;
   const endDate = args.end_date as string | undefined;
   const impressionCap = args.impression_cap as number | undefined;
   const paused = args.paused as boolean | undefined;
 
-  // Find the talent and offering by rights_id
   let talent: TalentEntry | undefined;
   let offering: RightsOffering | undefined;
   for (const t of TALENT) {
@@ -964,37 +889,28 @@ function handleUpdateRights(args: Record<string, unknown>): string {
   }
 
   if (!talent || !offering) {
-    return JSON.stringify({
-      errors: [{ code: 'rights_not_found', message: `No active grant with id '${rightsId}'` }],
-    });
+    return { errors: [{ code: 'rights_not_found', message: `No active grant with id '${rightsId}'` }] };
   }
 
-  // Validate end_date (sandbox assumes current end date is 2026-06-30, start is 2026-04-01)
   const currentEndDate = '2026-06-30';
   const currentStartDate = '2026-04-01';
   if (endDate && endDate < currentEndDate) {
-    return JSON.stringify({
-      errors: [{ code: 'invalid_update', message: 'New end_date must be >= current end_date' }],
-    });
+    return { errors: [{ code: 'invalid_update', message: 'New end_date must be >= current end_date' }] };
   }
 
-  // Validate impression_cap (simulate 50000 already delivered)
   const deliveredImpressions = 50000;
   if (impressionCap !== undefined && impressionCap < deliveredImpressions) {
-    return JSON.stringify({
-      errors: [{ code: 'invalid_update', message: `New impression_cap (${impressionCap}) must be >= impressions already delivered (${deliveredImpressions})` }],
-    });
+    return { errors: [{ code: 'invalid_update', message: `New impression_cap (${impressionCap}) must be >= impressions already delivered (${deliveredImpressions})` }] };
   }
 
   const pricingOption = offering.pricing_options[0];
   const effectiveEndDate = endDate || currentEndDate;
   const effectiveImpressionCap = impressionCap ?? pricingOption.impression_cap;
 
-  const talentName = talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id;
+  const talentName = getTalentName(talent);
   const campaignUses = pricingOption.uses;
 
-  // Build generation credentials (re-issued with updated expiration)
-  const generationCredentials: unknown[] = [];
+  const generationCredentials: Record<string, unknown>[] = [];
 
   if (campaignUses.includes('likeness')) {
     generationCredentials.push({
@@ -1044,26 +960,12 @@ function handleUpdateRights(args: Record<string, unknown>): string {
       verification_url: `https://sandbox.lotientertainment.com/rights/${rightsId}/verify`,
     },
     implementation_date: new Date().toISOString(),
+    sandbox: true,
   };
 
   if (paused !== undefined) {
     response.paused = paused;
   }
 
-  return JSON.stringify(response);
-}
-
-// =====================================================
-// EXPORTS
-// =====================================================
-
-export function createBrandSandboxToolHandlers(): Map<string, ToolHandler> {
-  const handlers = new Map<string, ToolHandler>();
-
-  handlers.set('sandbox_get_brand_identity', async (args) => handleGetBrandIdentity(args));
-  handlers.set('sandbox_get_rights', async (args) => handleGetRights(args));
-  handlers.set('sandbox_acquire_rights', async (args) => handleAcquireRights(args));
-  handlers.set('sandbox_update_rights', async (args) => handleUpdateRights(args));
-
-  return handlers;
+  return response;
 }
