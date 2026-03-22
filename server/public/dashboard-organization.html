@@ -256,6 +256,13 @@
       color: var(--color-text-muted);
     }
 
+    .achievement-unlocks {
+      font-size: var(--text-xs);
+      color: var(--color-brand);
+      font-weight: 500;
+      margin-top: 2px;
+    }
+
     .achievement-action {
       font-size: var(--text-xs);
       color: var(--color-brand);
@@ -683,16 +690,16 @@
       advocating:    'Championing the community externally',
     };
 
-    // What earns you the NEXT stage transition
+    // What earns you the NEXT stage transition — tied to milestone checks in journey-computation.ts
     const NEXT_LEVEL_REQUIREMENTS = {
-      aware:         'Complete your member profile to get started',
-      evaluating:    'Complete your member profile to get started',
-      joined:        'Set up your member profile to begin onboarding',
-      onboarding:    'Join a working group and complete your profile',
-      participating: 'Publish content or take on a leadership role',
-      contributing:  'Become a chair or vice-chair of a working group',
-      leading:       'Recruit other members and represent AAO externally',
-      advocating:    'You\'ve reached the highest level of engagement',
+      aware:         'Learn about AAO membership plans',
+      evaluating:    'Subscribe to a membership plan to join',
+      joined:        'Join a working group to become a Participant',
+      onboarding:    'Join a working group before your onboarding window closes',
+      participating: 'Propose or publish content to become a Contributor',
+      contributing:  'Become a working group chair or vice-chair to become a Leader',
+      leading:       'Introduce a colleague to AAO to become an Advocate',
+      advocating:    'Thank you for leading and growing the community',
     };
 
     const PERSONA_CFG = {
@@ -833,10 +840,10 @@
 
       const ms = milestones || {};
       const achievements = [
-        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',    desc: 'Joined at least one working group',     href: '/committees?type=working_group', action: 'Browse groups' },
-        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',     desc: 'Proposed or published an article',      href: '/my-content',              action: 'Propose content' },
-        { key: 'has_leadership',          icon: '⭐',  label: 'Group leader',            desc: 'Chair or vice-chair of a working group', href: '/committees?type=working_group', action: 'View openings' },
-        { key: 'has_recruiting_activity', icon: '📣',  label: 'Community advocate',      desc: 'Invited a colleague to join AAO',       href: '/community/people',             action: 'Invite a colleague' },
+        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',    desc: 'Joined at least one working group',      stage: 'Participant',   href: '/committees?type=working_group', action: 'Browse groups' },
+        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',     desc: 'Proposed or published content',           stage: 'Contributor',   href: '/my-content',              action: 'Propose content' },
+        { key: 'has_leadership',          icon: '⭐',  label: 'Group leader',            desc: 'Chair or vice-chair of a working group', stage: 'Leader',        href: '/committees?type=working_group', action: 'View openings' },
+        { key: 'has_recruiting_activity', icon: '📣',  label: 'Community advocate',      desc: 'Introduced a colleague to AAO',          stage: 'Advocate',      href: '/community/people',             action: 'Introduce a colleague' },
       ];
 
       const achHtml = achievements.map(a => {
@@ -847,6 +854,7 @@
             <div class="achievement-body">
               <div class="achievement-name">${a.label}</div>
               <div class="achievement-desc">${a.desc}</div>
+              ${!earned ? `<div class="achievement-unlocks">Unlocks: ${a.stage}</div>` : ''}
             </div>
             ${!earned ? `<a href="${a.href}" class="achievement-action">${a.action} →</a>` : ''}
           </div>`;
