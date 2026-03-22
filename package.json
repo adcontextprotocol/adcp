@@ -98,7 +98,7 @@
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.1.0",
-    "@types/node": "^20.19.26",
+    "@types/node": "^25.5.0",
     "@types/pg": "^8.18.0",
     "@types/supertest": "^7.2.0",
     "ajv": "^8.17.1",
