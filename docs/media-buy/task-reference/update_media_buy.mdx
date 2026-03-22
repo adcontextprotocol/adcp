@@ -140,7 +140,7 @@ asyncio.run(create_and_pause_campaign())
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
-*Either `media_buy_id` OR `media_buy_id` is required (not both)
+`media_buy_id` is required to identify the media buy to update.
 
 ### Reporting Webhook Object
 
@@ -178,7 +178,7 @@ Configure automated delivery reporting for this media buy:
 | `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
 
-*Either `package_id` OR `media_buy_id` is required for each package update
+`package_id` is required to identify the package to update.
 
 ## Response
 
@@ -227,7 +227,7 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
 }
 
-const pkg = validated.affected_packages?.find(p => p.=== 'ctv_package');
+const pkg = validated.affected_packages?.find(p => p.package_id === 'pkg_001');
 if (pkg) {
   console.log(`Package budget updated to ${pkg.budget}`);
 }
@@ -404,7 +404,7 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
 }
 
-const pkg = validated.affected_packages?.find(p => p.=== 'ctv_package');
+const pkg = validated.affected_packages?.find(p => p.package_id === 'pkg_001');
 const assignmentCount = pkg?.creative_assignments?.length || 0;
 console.log(`Assigned ${assignmentCount} creatives`);
 ```
