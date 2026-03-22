@@ -127,22 +127,7 @@
                 },
                 "action": {
                   "type": "string",
-                  "description": "What happened.",
-                  "enum": [
-                    "created",
-                    "activated",
-                    "paused",
-                    "resumed",
-                    "canceled",
-                    "rejected",
-                    "completed",
-                    "updated_budget",
-                    "updated_dates",
-                    "updated_packages",
-                    "package_canceled",
-                    "package_paused",
-                    "package_resumed"
-                  ]
+                  "description": "What happened. Standard actions: created, activated, paused, resumed, canceled, rejected, completed, updated_budget, updated_dates, updated_packages, package_canceled, package_paused, package_resumed. Sellers MAY use additional platform-specific actions (e.g., creative_approved, targeting_updated) — use ext on the history entry for structured metadata about custom actions."
                 },
                 "summary": {
                   "type": "string",

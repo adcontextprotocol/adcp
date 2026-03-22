@@ -132,7 +132,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 Packages follow the same pause/cancel pattern as media buys. Additionally:
 - Packages MAY have a `creative_deadline` — after this deadline, creative changes to the package are rejected with `CREATIVE_REJECTED`. When absent, the media buy's `creative_deadline` applies.
 - Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active.
-- When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sales agents MUST NOT auto-transition the media buy to `canceled`. Since `update_media_buy` does not currently support adding new packages, the buyer should cancel the media buy explicitly. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled.
+- When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Since `update_media_buy` does not currently support adding new packages, the buyer SHOULD explicitly cancel the media buy. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled. Sales agents MAY auto-transition the media buy to `canceled` after a seller-defined grace period if no new activity occurs.
 
 ## Tasks
 

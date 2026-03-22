@@ -337,7 +337,7 @@ Cancel a single package within an active media buy:
 
 - Cancellation is **irreversible** — canceled media buys and packages cannot be reactivated
 - Sellers MAY reject cancellation with error code `NOT_CANCELLABLE` (e.g., contractual obligations, in-production print orders)
-- A canceled package does not affect other packages in the same media buy
+- A canceled package does not affect other packages in the same media buy. When all packages are canceled, the buyer SHOULD explicitly cancel the media buy.
 - Sellers MAY cancel media buys or packages (e.g., policy violation, inventory withdrawal). Seller-initiated cancellations set `canceled_by: "seller"` and MUST trigger a webhook notification to the orchestrator.
 
 ### Package Lifecycle

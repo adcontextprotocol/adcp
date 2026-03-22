@@ -427,7 +427,7 @@ const TOOLS = [
         buyer_ref: { type: 'string' },
         revision: { type: 'integer', description: 'Expected revision for optimistic concurrency. Seller rejects with CONFLICT on mismatch.' },
         paused: { type: 'boolean', description: 'Pause (true) or resume (false) the entire media buy' },
-        canceled: { type: 'boolean', description: 'Cancel the entire media buy (irreversible, must be true)' },
+        canceled: { type: 'boolean', const: true, description: 'Cancel the entire media buy (irreversible). Only true is valid — cancellation cannot be undone.' } as Record<string, unknown>,
         cancellation_reason: { type: 'string', maxLength: 500, description: 'Reason for cancellation' },
         packages: { type: 'array' },
         end_time: { type: 'string' },
