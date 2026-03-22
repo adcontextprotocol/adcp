@@ -154,6 +154,12 @@ export interface MediaBuyState {
   packages: PackageState[];
   startTime: string;
   endTime: string;
+  confirmedAt: string;
+  revision: number;
+  canceledAt?: string;
+  canceledBy?: 'buyer' | 'seller';
+  cancellationReason?: string;
+  creativeDeadline?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -167,6 +173,11 @@ export interface PackageState {
   bidPrice?: number;
   impressions?: number;
   paused: boolean;
+  canceled?: boolean;
+  canceledAt?: string;
+  canceledBy?: 'buyer' | 'seller';
+  cancellationReason?: string;
+  creativeDeadline?: string;
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];

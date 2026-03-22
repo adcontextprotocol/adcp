@@ -196,12 +196,25 @@ const SYNONYM_MAP: Record<string, string[]> = {
 
 /** Derive lifecycle status from stored status and flight dates. */
 function deriveStatus(mb: MediaBuyState): string {
+  // Terminal states — no transitions out
+  if (mb.status === 'canceled' || mb.status === 'rejected' || mb.status === 'completed') {
+    return mb.status;
+  }
   const now = new Date();
   if (mb.status === 'active') {
     if (new Date(mb.endTime) < now) return 'completed';
     if (new Date(mb.startTime) > now) return 'pending_activation';
   }
   return mb.status;
+}
+
+function validActionsForStatus(status: string): string[] {
+  switch (status) {
+    case 'pending_activation': return ['cancel', 'sync_creatives'];
+    case 'active': return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'sync_creatives'];
+    case 'paused': return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'sync_creatives'];
+    default: return [];
+  }
 }
 
 // ── Cached catalog and formats (built once at first use) ──────────
@@ -584,7 +597,7 @@ interface PackageInput {
   format_ids?: FormatID[];
 }
 
-function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; status: string; packages: unknown[]; sandbox: boolean; buyer_campaign_ref?: string } | { errors: TaskError[] } {
+function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; status: string; confirmed_at: string; creative_deadline: string; revision: number; packages: unknown[]; sandbox: boolean; buyer_campaign_ref?: string } | { errors: TaskError[] } {
   const request = args as unknown as Partial<CreateMediaBuyRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
@@ -708,6 +721,11 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const mediaBuyId = `mb_${randomUUID().slice(0, 8)}`;
   const now = new Date().toISOString();
   const resolvedStart = args.start_time === 'asap' ? now : args.start_time as string;
+  // Creative deadline: 7 days before end or 3 days from now, whichever is earlier
+  const endDate = new Date(args.end_time as string);
+  const sevenBeforeEnd = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const creativeDeadline = (sevenBeforeEnd < threeDaysFromNow ? sevenBeforeEnd : threeDaysFromNow).toISOString();
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
@@ -720,6 +738,9 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     packages: createdPackages,
     startTime: resolvedStart,
     endTime: args.end_time as string,
+    confirmedAt: now,
+    revision: 1,
+    creativeDeadline,
     createdAt: now,
     updatedAt: now,
   };
@@ -730,6 +751,9 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     media_buy_id: mediaBuyId,
     buyer_ref: buyerRef,
     buyer_campaign_ref: mediaBuy.buyerCampaignRef,
+    confirmed_at: now,
+    creative_deadline: creativeDeadline,
+    revision: 1,
     status: deriveStatus(mediaBuy),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
@@ -761,29 +785,43 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
 
   return {
     media_buys: buys.map(mb => {
+      const status = deriveStatus(mb);
       return {
-      media_buy_id: mb.mediaBuyId,
-      buyer_ref: mb.buyerRef,
-      buyer_campaign_ref: mb.buyerCampaignRef,
-      status: deriveStatus(mb),
-      currency: mb.currency,
-      start_time: mb.startTime,
-      end_time: mb.endTime,
-      packages: mb.packages.map(pkg => ({
-        package_id: pkg.packageId,
-        buyer_ref: pkg.buyerRef,
-        product_id: pkg.productId,
-        budget: pkg.budget,
-        pricing_option_id: pkg.pricingOptionId,
-        paused: pkg.paused,
-        start_time: pkg.startTime,
-        end_time: pkg.endTime,
-        creative_approvals: pkg.creativeAssignments.map(cid => ({
-          creative_id: cid,
-          approval_status: 'approved',
+        media_buy_id: mb.mediaBuyId,
+        buyer_ref: mb.buyerRef,
+        buyer_campaign_ref: mb.buyerCampaignRef,
+        status,
+        currency: mb.currency,
+        total_budget: mb.packages.reduce((sum, p) => sum + p.budget, 0),
+        start_time: mb.startTime,
+        end_time: mb.endTime,
+        confirmed_at: mb.confirmedAt,
+        revision: mb.revision,
+        ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
+        ...(mb.canceledAt && { canceled_at: mb.canceledAt }),
+        ...(mb.canceledBy && { canceled_by: mb.canceledBy }),
+        ...(mb.cancellationReason && { cancellation_reason: mb.cancellationReason }),
+        valid_actions: validActionsForStatus(status),
+        packages: mb.packages.map(pkg => ({
+          package_id: pkg.packageId,
+          buyer_ref: pkg.buyerRef,
+          product_id: pkg.productId,
+          budget: pkg.budget,
+          pricing_option_id: pkg.pricingOptionId,
+          paused: pkg.paused,
+          ...(pkg.canceled && { canceled: pkg.canceled }),
+          ...(pkg.canceledAt && { canceled_at: pkg.canceledAt }),
+          ...(pkg.canceledBy && { canceled_by: pkg.canceledBy }),
+          ...(pkg.cancellationReason && { cancellation_reason: pkg.cancellationReason }),
+          ...(pkg.creativeDeadline && { creative_deadline: pkg.creativeDeadline }),
+          start_time: pkg.startTime,
+          end_time: pkg.endTime,
+          creative_approvals: pkg.creativeAssignments.map(cid => ({
+            creative_id: cid,
+            approval_status: 'approved',
+          })),
         })),
-      })),
-    };
+      };
     }),
     sandbox: true,
   };
@@ -1031,10 +1069,12 @@ interface PackageUpdate {
   buyer_ref?: string;
   budget?: number;
   paused?: boolean;
+  canceled?: boolean;
+  cancellation_reason?: string;
   end_time?: string;
 }
 
-function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } | { errors: TaskError[] } {
+function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; revision: number; sandbox: boolean; status?: string; implementation_date?: string; affected_packages?: unknown[] } | { errors: TaskError[] } {
   const request = args as unknown as Partial<UpdateMediaBuyRequest>;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = (args.media_buy_id || args.buyer_ref) as string;
@@ -1043,67 +1083,133 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   if (!mb) {
     return {
-      errors: [{ code: 'not_found', message: `Media buy not found: ${mediaBuyId}` }],
+      errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
     };
+  }
+
+  // Terminal state check
+  const currentStatus = deriveStatus(mb);
+  if (currentStatus === 'completed' || currentStatus === 'rejected' || currentStatus === 'canceled') {
+    return {
+      errors: [{ code: 'INVALID_STATE', message: `Media buy ${mb.mediaBuyId} is in terminal state '${currentStatus}' and cannot be modified` }],
+    };
+  }
+
+  // Optimistic concurrency check
+  const requestRevision = args.revision as number | undefined;
+  if (requestRevision !== undefined && requestRevision !== mb.revision) {
+    return {
+      errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${requestRevision}, current is ${mb.revision}. Re-read via get_media_buys and retry.` }],
+    };
+  }
+
+  // Handle media buy cancellation — takes precedence over all other fields
+  if (args.canceled === true) {
+    const now = new Date().toISOString();
+    mb.status = 'canceled';
+    mb.canceledAt = now;
+    mb.canceledBy = 'buyer';
+    mb.cancellationReason = (args.cancellation_reason as string) || undefined;
+    mb.revision++;
+    mb.updatedAt = now;
+    return {
+      media_buy_id: mb.mediaBuyId,
+      buyer_ref: mb.buyerRef,
+      status: 'canceled' as const,
+      revision: mb.revision,
+      implementation_date: now,
+      affected_packages: [],
+      sandbox: true,
+    };
+  }
+
+  // Handle pause/resume
+  if (args.paused !== undefined) {
+    mb.status = args.paused ? 'paused' : 'active';
   }
 
   // Update end_time with validation
   if (args.end_time) {
     const newEnd = args.end_time as string;
     if (isNaN(new Date(newEnd).getTime())) {
-      return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${newEnd}". Use ISO 8601 format.` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${newEnd}". Use ISO 8601 format.` }] };
     }
     mb.endTime = newEnd;
   }
 
   // Update packages
   const packageUpdates = args.packages as PackageUpdate[] | undefined;
-  const warnings: string[] = [];
+  const affectedPackages: unknown[] = [];
   if (packageUpdates?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
     for (const update of packageUpdates) {
       const pkgId = (update.package_id || update.buyer_ref) as string;
       const pkg = mb.packages.find(p => p.packageId === pkgId || p.buyerRef === pkgId);
       if (!pkg) {
-        warnings.push(`Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}`);
+        return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
+      }
+
+      // Check if package is already canceled
+      if (pkg.canceled) {
+        return { errors: [{ code: 'INVALID_STATE', message: `Package ${pkgId} is canceled and cannot be modified` }] };
+      }
+
+      // Package cancellation takes precedence
+      if (update.canceled === true) {
+        const now = new Date().toISOString();
+        pkg.canceled = true;
+        pkg.canceledAt = now;
+        pkg.canceledBy = 'buyer';
+        pkg.cancellationReason = (update.cancellation_reason as string) || undefined;
+        affectedPackages.push({
+          package_id: pkg.packageId,
+          buyer_ref: pkg.buyerRef,
+          canceled: true,
+          canceled_at: now,
+          canceled_by: 'buyer',
+          ...(pkg.cancellationReason && { cancellation_reason: pkg.cancellationReason }),
+        });
         continue;
       }
+
       if (update.budget !== undefined) {
         if (update.budget < 0) {
-          return { errors: [{ code: 'validation_error', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] as TaskError[] };
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
         }
         pkg.budget = update.budget;
       }
       if (update.paused !== undefined) pkg.paused = update.paused;
       if (update.end_time) {
         if (isNaN(new Date(update.end_time).getTime())) {
-          warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
-        } else {
-          pkg.endTime = update.end_time;
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time for package ${pkgId}: "${update.end_time}".` }] };
         }
+        pkg.endTime = update.end_time;
       }
+      affectedPackages.push({
+        package_id: pkg.packageId,
+        buyer_ref: pkg.buyerRef,
+        product_id: pkg.productId,
+        budget: pkg.budget,
+        paused: pkg.paused,
+        start_time: pkg.startTime,
+        end_time: pkg.endTime,
+      });
     }
   }
 
-  mb.updatedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  mb.revision++;
+  mb.updatedAt = now;
 
-  const result: { media_buy_id: string; buyer_ref: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } = {
+  return {
     media_buy_id: mb.mediaBuyId,
     buyer_ref: mb.buyerRef,
-    packages: mb.packages.map(pkg => ({
-      package_id: pkg.packageId,
-      buyer_ref: pkg.buyerRef,
-      product_id: pkg.productId,
-      budget: pkg.budget,
-      pricing_option_id: pkg.pricingOptionId,
-      paused: pkg.paused,
-      start_time: pkg.startTime,
-      end_time: pkg.endTime,
-    })),
+    ...(args.paused !== undefined || args.canceled !== undefined ? { status: deriveStatus(mb) } : {}),
+    revision: mb.revision,
+    implementation_date: now,
+    affected_packages: affectedPackages,
     sandbox: true,
   };
-  if (warnings.length) result.warnings = warnings;
-  return result;
 }
 
 function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
