@@ -49,6 +49,12 @@
       },
       "minItems": 1
     },
+    "policy_categories": {
+      "type": "array",
+      "description": "Policy categories this signal is sensitive for (e.g., a children's interest signal declares ['children_directed']). Governance agents match these against a plan's policy_categories to flag sensitive data usage.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
     "range": {
       "type": "object",
       "description": "For numeric signals, the valid value range",

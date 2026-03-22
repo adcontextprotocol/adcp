@@ -17,7 +17,7 @@
         "type": "string",
         "enum": [
           "description",
-          "vertical",
+          "industry",
           "keller_type",
           "logos",
           "colors",

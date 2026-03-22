@@ -240,12 +240,12 @@
           "type": "string",
           "description": "Brand description"
         },
-        "vertical": {
+        "industry": {
           "oneOf": [
             { "type": "string" },
             { "type": "array", "items": { "type": "string" }, "minItems": 1 }
           ],
-          "description": "Brand vertical(s). Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry (e.g., 'automotive', 'pharmaceutical'). Accepts a single string or an array when a brand operates in multiple verticals (e.g., a consumer health company is both 'pharmaceutical' and 'cpg'). Governance agents use this to auto-resolve verticals when a campaign plan does not explicitly declare them."
+          "description": "Brand industry or industries (e.g., 'automotive', 'pharmaceutical', or ['pharmaceutical', 'cpg'] for a consumer health company). Accepts a single string or an array. Describes what the company does — not what regulatory regimes apply (use policy_categories for that)."
         },
         "target_audience": {
           "type": "string",
@@ -1156,7 +1156,7 @@
           "url": "https://tide.com",
           "names": [{"en-US": "Tide"}, {"es-MX": "Tide"}, {"zh-CN": "汰渍"}],
           "keller_type": "master",
-          "vertical": "cpg",
+          "industry": "cpg",
           "description": "Laundry detergent brand",
           "logos": [
             {
@@ -1318,7 +1318,7 @@
           "url": "https://pampers.com",
           "names": [{"en-US": "Pampers"}],
           "keller_type": "master",
-          "vertical": "cpg",
+          "industry": "cpg",
           "logos": [
             {
               "url": "https://cdn.pg.com/pampers/logo.png",

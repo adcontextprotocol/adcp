@@ -1,0 +1,21 @@
+{
+  "category_id": "health_wellness",
+  "name": "Health and Wellness Claims",
+  "description": "Campaigns making health claims, wellness claims, or weight loss claims. Triggers substantiation requirements and restrictions on targeting vulnerable populations.",
+  "regulatory_frameworks": [
+    {
+      "name": "US FTC Health Claims",
+      "jurisdictions": ["US"],
+      "summary": "FTC requires competent and reliable scientific evidence for health claims in advertising. Active enforcement against unsubstantiated weight loss, supplement, and wellness claims."
+    },
+    {
+      "name": "UK ASA Health Claims",
+      "jurisdictions": ["GB"],
+      "summary": "Advertising Standards Authority enforces EU-derived nutrition and health claims regulations. Claims must be authorized and substantiated."
+    }
+  ],
+  "commonly_restricted_attributes": ["health_data"],
+  "industries": ["supplements", "fitness", "wellness", "cosmetics"],
+  "guidance": "Health and wellness claims face FTC scrutiny even for non-pharmaceutical products. Weight loss, supplement efficacy, and anti-aging claims are high-enforcement areas. Targeting people with health conditions to sell unproven treatments is a particular concern.",
+  "related_categories": ["pharmaceutical_advertising"]
+}

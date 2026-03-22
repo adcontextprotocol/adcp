@@ -1,9 +1,0 @@
-{
-  "vertical_id": "entertainment",
-  "name": "Entertainment & Media",
-  "description": "Film, television, streaming, music, gaming, sports, publishing, and live events.",
-  "regulatory_frameworks": [],
-  "commonly_restricted_attributes": [],
-  "guidance": "No vertical-specific advertising restrictions for general entertainment. Content rated for mature audiences may need age-gating — use the 'children' vertical if the campaign is directed at minors. Sports betting advertising should use the 'gambling' vertical.",
-  "related_verticals": ["children", "gambling"]
-}

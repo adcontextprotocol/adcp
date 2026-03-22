@@ -1,0 +1,20 @@
+{
+  "category_id": "firearms_weapons",
+  "name": "Firearms and Weapons",
+  "description": "Campaigns for firearms, ammunition, or weapons. Subject to platform restrictions and jurisdiction-specific advertising rules.",
+  "regulatory_frameworks": [
+    {
+      "name": "Platform-Specific Restrictions",
+      "summary": "Most major advertising platforms (Meta, Google, TikTok) prohibit or heavily restrict firearms advertising. Programmatic inventory for firearms is limited."
+    },
+    {
+      "name": "US State Laws",
+      "jurisdictions": ["US"],
+      "summary": "Some US states restrict firearms advertising, particularly to minors. Federal law prohibits advertising illegal weapons."
+    }
+  ],
+  "commonly_restricted_attributes": [],
+  "industries": ["firearms", "sporting_goods"],
+  "guidance": "Firearms advertising is primarily constrained by platform policies rather than regulation. Most programmatic inventory is unavailable. Governance agents should verify that seller inventory policies permit firearms advertising before approving media buys.",
+  "related_categories": ["age_restricted"]
+}

@@ -1,0 +1,31 @@
+{
+  "category_id": "age_restricted",
+  "name": "Age-Restricted Products",
+  "description": "Campaigns for products with legal minimum age requirements (alcohol, tobacco, gambling, cannabis). Triggers age-gating, time-of-day restrictions, and content placement rules.",
+  "regulatory_frameworks": [
+    {
+      "name": "US TTB Alcohol Advertising",
+      "jurisdictions": ["US"],
+      "summary": "Alcohol and Tobacco Tax and Trade Bureau regulations. No targeting of audiences where more than 28.4% are under legal drinking age."
+    },
+    {
+      "name": "UK ASA Alcohol Rules",
+      "jurisdictions": ["GB"],
+      "summary": "Advertising Standards Authority. Alcohol ads must not appeal to under-18s or be placed in media where 25%+ of the audience is under 18."
+    },
+    {
+      "name": "US State Gambling Laws",
+      "jurisdictions": ["US"],
+      "summary": "State-by-state gambling advertising regulations. Geo-fencing to legal jurisdictions, self-exclusion list compliance, responsible gambling messaging."
+    },
+    {
+      "name": "US State Cannabis Laws",
+      "jurisdictions": ["US"],
+      "summary": "State-level cannabis advertising rules. Typically require geo-restriction to legal states, age-gating, and health warnings."
+    }
+  ],
+  "commonly_restricted_attributes": [],
+  "industries": ["alcohol", "gambling", "cannabis", "tobacco"],
+  "guidance": "Age restriction rules vary significantly by jurisdiction and product type. Alcohol age is 21 in the US, 18 in the UK/EU. Gambling legality varies by US state. Cannabis is federally illegal in the US but permitted in some states. Governance agents must cross-reference plan.countries and plan.regions with product-specific age and legality requirements.",
+  "related_categories": ["children_directed"]
+}

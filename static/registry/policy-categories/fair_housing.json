@@ -1,0 +1,20 @@
+{
+  "category_id": "fair_housing",
+  "name": "Fair Housing",
+  "description": "Campaigns for housing sales, rentals, or related services. Triggers restrictions on demographic and geographic targeting to prevent housing discrimination.",
+  "regulatory_frameworks": [
+    {
+      "name": "US Fair Housing Act",
+      "jurisdictions": ["US"],
+      "summary": "Prohibits housing advertising that indicates preference, limitation, or discrimination based on race, color, religion, sex, disability, familial status, or national origin. Includes restrictions on zip-code-level geographic targeting that can serve as demographic proxy."
+    },
+    {
+      "name": "Meta/Google Special Ad Categories (Housing)",
+      "summary": "Platform implementations of FHA requirements. Restrict age, gender, and zip-code targeting for housing ads. Set industry precedent for ad tech compliance."
+    }
+  ],
+  "commonly_restricted_attributes": ["racial_ethnic_origin", "religious_beliefs", "sex_life_sexual_orientation"],
+  "industries": ["real_estate", "property_management", "mortgage"],
+  "guidance": "Fair housing is one of the most heavily enforced advertising categories in the US. The 2019 HUD v. Facebook settlement established that platforms (and by extension, ad tech) bear responsibility for discriminatory ad targeting. Zip code targeting at fine granularity can function as a racial proxy due to residential segregation patterns. Governance agents should flag fine-grained geo-targeting in combination with housing campaigns.",
+  "related_categories": ["fair_lending", "fair_employment"]
+}

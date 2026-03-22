@@ -1,9 +1,0 @@
-{
-  "vertical_id": "automotive",
-  "name": "Automotive",
-  "description": "Vehicle manufacturers, dealerships, auto parts, and automotive services. Includes electric vehicles, commercial vehicles, and aftermarket.",
-  "regulatory_frameworks": [],
-  "commonly_restricted_attributes": [],
-  "guidance": "No vertical-specific advertising restrictions. Standard governance rules apply. Luxury auto segments may correlate with income — governance agents should evaluate this against plan-level restricted_attributes if financial_status is restricted.",
-  "related_verticals": ["financial_services", "insurance"]
-}

@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/policy-category-definition.json",
+  "title": "Policy Category Definition",
+  "description": "Definition of a policy category in the registry. Policy categories group related regulatory regimes (e.g., 'children_directed' groups COPPA, UK AADC, GDPR Article 8). Used on campaign plans (plan.policy_categories), signal definitions (signal-definition.policy_categories), and policy entries (policy-entry.policy_categories) to connect campaigns and data to the right regulatory frameworks.",
+  "type": "object",
+  "properties": {
+    "category_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Unique identifier for this category. Used in plan.policy_categories, signal-definition.policy_categories, and policy-entry.policy_categories."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name (e.g., 'Children-Directed Content')."
+    },
+    "description": {
+      "type": "string",
+      "description": "What this category covers. Defines the boundary — what campaigns or data fall under this category."
+    },
+    "regulatory_frameworks": {
+      "type": "array",
+      "description": "Key regulations and standards grouped under this category. Governance agents use this to resolve specific policies from the registry.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the regulation or standard (e.g., 'US COPPA')."
+          },
+          "jurisdictions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "ISO 3166-1 alpha-2 codes where this framework applies."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Brief summary of what the framework requires or prohibits."
+          },
+          "policy_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Registry policy IDs that implement this framework."
+          }
+        },
+        "required": ["name", "summary"],
+        "additionalProperties": false
+      }
+    },
+    "commonly_restricted_attributes": {
+      "type": "array",
+      "description": "Restricted attribute categories that regulations in this category commonly prohibit. Informational — the plan's restricted_attributes field is authoritative.",
+      "items": {
+        "$ref": "/schemas/enums/restricted-attribute.json"
+      }
+    },
+    "industries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Industries where this category commonly applies (e.g., 'pharmaceutical' for age_restricted). Governance agents MAY suggest relevant categories when a plan's brand industry matches but no policy_categories are declared."
+    },
+    "guidance": {
+      "type": "string",
+      "description": "Implementation notes for governance agents. Edge cases, disambiguation, and common pitfalls."
+    },
+    "related_categories": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Categories that frequently co-occur (e.g., 'children_directed' often appears with 'age_restricted')."
+    }
+  },
+  "required": ["category_id", "name", "description"],
+  "additionalProperties": false
+}

@@ -43,12 +43,12 @@
           "type": "string",
           "description": "Brand description"
         },
-        "vertical": {
+        "industry": {
           "oneOf": [
             { "type": "string" },
             { "type": "array", "items": { "type": "string" }, "minItems": 1 }
           ],
-          "description": "Brand vertical(s). Same vocabulary as plan.vertical and policy-entry.verticals in the policy registry."
+          "description": "Brand industry or industries."
         },
         "keller_type": {
           "type": "string",
@@ -247,7 +247,7 @@
             "type": "string",
             "enum": [
               "description",
-              "vertical",
+              "industry",
               "keller_type",
               "logos",
               "colors",

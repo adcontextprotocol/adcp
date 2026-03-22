@@ -115,12 +115,11 @@
             "items": { "type": "string" },
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
-          "vertical": {
-            "oneOf": [
-              { "type": "string" },
-              { "type": "array", "items": { "type": "string" }, "minItems": 1 }
-            ],
-            "description": "Vertical(s) for this campaign. Same vocabulary as brand.vertical and policy-entry.verticals in the policy registry. Accepts a single string or an array when a campaign spans multiple verticals (e.g., a consumer health product is both 'pharmaceutical' and 'cpg'). When omitted, governance agents SHOULD resolve verticals from the plan's brand (brand.vertical). When present, overrides the brand's default. Governance agents apply rules for all declared verticals — the union of restrictions applies."
+          "policy_categories": {
+            "type": "array",
+            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industry and the plan's objectives.",
+            "items": { "type": "string" },
+            "minItems": 1
           },
           "audience": {
             "$ref": "/schemas/governance/audience-constraints.json",
@@ -128,7 +127,7 @@
           },
           "restricted_attributes": {
             "type": "array",
-            "description": "Personal data categories that must not be used for targeting in this campaign, regardless of vertical. Applies horizontally across all audience criteria. Used for EU DSA Article 26 compliance (prohibits targeting on GDPR Article 9 special categories) and similar regulations. The governance agent flags any audience targeting that references these attributes.",
+            "description": "Personal data categories that must not be used for targeting in this campaign. Applies horizontally across all audience criteria. Used for EU DSA Article 26 compliance (prohibits targeting on GDPR Article 9 special categories) and similar regulations. The governance agent flags any audience targeting that references these attributes.",
             "items": {
               "$ref": "/schemas/enums/restricted-attribute.json"
             },

@@ -1,0 +1,31 @@
+{
+  "category_id": "children_directed",
+  "name": "Children-Directed Content",
+  "description": "Campaigns for products or content directed at children. Triggers age-gating, data collection restrictions, and content appropriateness rules. This is about what the product is (toys, children's media), not who sees the ad incidentally.",
+  "regulatory_frameworks": [
+    {
+      "name": "US COPPA",
+      "jurisdictions": ["US"],
+      "summary": "Children's Online Privacy Protection Act. Restricts data collection from children under 13. Requires verifiable parental consent."
+    },
+    {
+      "name": "UK AADC",
+      "jurisdictions": ["GB"],
+      "summary": "Age Appropriate Design Code. Requires high privacy defaults for services likely accessed by children under 18."
+    },
+    {
+      "name": "GDPR Article 8",
+      "jurisdictions": ["EU"],
+      "summary": "Consent for information society services to children. Member states set age threshold between 13-16."
+    },
+    {
+      "name": "US CARU Guidelines",
+      "jurisdictions": ["US"],
+      "summary": "Children's Advertising Review Unit self-regulatory guidelines for advertising directed at children under 13."
+    }
+  ],
+  "commonly_restricted_attributes": [],
+  "industries": ["entertainment", "toys", "education", "food_beverage"],
+  "guidance": "The key distinction is product-directed vs. audience-incidental. A toy company advertising toys is children_directed. A car company whose ad happens to air during a family show is not. COPPA applies based on whether the service is 'directed to children' — the FTC uses a multi-factor test including subject matter, visual content, and the age of models.",
+  "related_categories": ["age_restricted"]
+}
