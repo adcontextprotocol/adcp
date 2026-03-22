@@ -127,7 +127,7 @@
       }
     }
 
-    const isStoriesActive = currentPath.startsWith('/stories') || currentPath.startsWith('/explore') || currentPath.startsWith('/perspectives') || currentPath.startsWith('/latest');
+    const isStoriesActive = currentPath.startsWith('/stories') || currentPath.startsWith('/perspectives') || currentPath.startsWith('/latest');
     const isCertificationActive = currentPath.startsWith('/academy') || currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
     const isCommunityActive = currentPath.startsWith('/community') || currentPath.startsWith('/events') || currentPath.startsWith('/committees') || currentPath.startsWith('/meetings');
     const isRegistryActive = currentPath === '/registry'
@@ -964,8 +964,7 @@
               <ul class="aao-footer__list">
                 <li><a href="${eventsUrl}">Events</a></li>
                 <li><a href="${committeesUrl}">Committees</a></li>
-                <li><a href="/stories">Perspectives</a></li>
-                <li><a href="/stories">Announcements</a></li>
+                <li><a href="/stories">Stories</a></li>
               </ul>
             </div>
           </div>
@@ -1356,8 +1355,8 @@
     const banner = document.getElementById('foundingBanner');
     if (!banner) return;
 
-    // Check if previously dismissed
-    if (localStorage.getItem('founding-banner-dismissed')) {
+    // Hide after deadline or if previously dismissed
+    if (new Date() > new Date('2026-04-01T00:00:00Z') || localStorage.getItem('founding-banner-dismissed')) {
       banner.remove();
       return;
     }
