@@ -38,7 +38,7 @@ import { adcpError } from '@adcp/client';
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
-import { buildCatalog, buildShowsForProducts } from './product-factory.js';
+import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
@@ -214,10 +214,16 @@ function deriveStatus(mb: MediaBuyState): string {
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: ReturnType<typeof buildFormats> | null = null;
+let cachedProposals: import('@adcp/client').Proposal[] | null = null;
 
 function getCatalog(): CatalogProduct[] {
   if (!cachedCatalog) cachedCatalog = buildCatalog();
   return cachedCatalog;
+}
+
+function getProposals(): import('@adcp/client').Proposal[] {
+  if (!cachedProposals) cachedProposals = buildProposals(getCatalog());
+  return cachedProposals;
 }
 
 function getFormats(): ReturnType<typeof buildFormats> {
@@ -231,7 +237,27 @@ function getFormats(): ReturnType<typeof buildFormats> {
 export function invalidateCache(): void {
   cachedCatalog = null;
   cachedFormats = null;
+  cachedProposals = null;
 }
+
+// ── Channel aliases for brief matching (module-scoped for perf) ──
+
+const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
+  'ctv': 'ctv', 'connected tv': 'ctv', 'ott': 'ctv',
+  'olv': 'olv', 'online video': 'olv', 'pre-roll': 'olv', 'preroll': 'olv',
+  'display': 'display', 'banner': 'display',
+  'social': 'social', 'social media': 'social',
+  'native': 'native',
+  'audio': 'streaming_audio', 'streaming audio': 'streaming_audio', 'podcast': 'podcast',
+  'search': 'search', 'sem': 'search',
+  'linear tv': 'linear_tv', 'linear': 'linear_tv',
+  'dooh': 'dooh', 'digital out of home': 'dooh',
+  'gaming': 'gaming', 'in-game': 'gaming',
+  'email': 'email', 'newsletter': 'email',
+  'print': 'print',
+  'influencer': 'influencer',
+  'radio': 'radio',
+};
 
 // ── Shared schema fragments ──────────────────────────────────────
 
@@ -483,23 +509,36 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     }
   }
 
-  // Brief mode: keyword matching
+  // Brief mode: channel-aware keyword matching
   if (buyingMode === 'brief' && req.brief) {
-    const terms = req.brief.toLowerCase().split(/\s+/);
+    const briefLower = req.brief.toLowerCase();
+    const terms = briefLower.split(/\s+/);
+
+    // Extract channel names mentioned in the brief — these get heavy weight
+    const briefChannels = new Set<string>();
+    for (const [alias, channel] of Object.entries(BRIEF_CHANNEL_ALIASES)) {
+      if (briefLower.includes(alias)) briefChannels.add(channel);
+    }
+
     const scored = products
       .map(p => {
         const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
-        const matchCount = terms.filter(t => text.includes(t)).length;
-        return matchCount > 0 ? { product: p, matchCount } : null;
+        const keywordScore = terms.filter(t => text.includes(t)).length;
+        // Channel match: +10 per matching channel (dominates keyword scoring)
+        const channelScore = briefChannels.size > 0
+          ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
+          : 0;
+        const totalScore = channelScore + keywordScore;
+        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore } : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
-      .sort((a, b) => b.matchCount - a.matchCount);
+      .sort((a, b) => b.totalScore - a.totalScore);
 
     // Cap at top 5 most relevant products so learners see brief mode as curated discovery
     const MAX_BRIEF_RESULTS = 5;
     products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => ({
       ...s.product,
-      brief_relevance: `Matches ${s.matchCount} of ${terms.length} brief terms. ${s.product.description}`,
+      brief_relevance: `Matches ${s.channelScore > 0 ? `${s.channelScore / 10} channel(s)` : 'keywords only'}. ${s.product.description}`,
     }));
 
     // If no keyword matches, return top products as suggestions
@@ -548,10 +587,38 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     }
   }
 
-  // Store context for refine
-  session.lastGetProductsContext = { products };
+  // Brief mode only: complete proposals by pulling in missing allocated products.
+  // This prevents keyword capping from accidentally breaking proposals.
+  const productIds = new Set(products.map(p => p.product_id));
+  if (buyingMode === 'brief') {
+    const catalogById = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    for (const proposal of getProposals()) {
+      const missing = proposal.allocations.filter(a => !productIds.has(a.product_id));
+      const present = proposal.allocations.filter(a => productIds.has(a.product_id));
+      if (present.length > 0 && missing.length > 0) {
+        for (const alloc of missing) {
+          const product = catalogById.get(alloc.product_id);
+          if (product) {
+            products.push({ ...product });
+            productIds.add(alloc.product_id);
+          }
+        }
+      }
+    }
+  }
 
-  return { products, sandbox: true };
+  const proposals = getProposals().filter(proposal =>
+    proposal.allocations.every(a => productIds.has(a.product_id)),
+  );
+
+  // Store context for refine
+  session.lastGetProductsContext = { products, proposals };
+
+  return {
+    products,
+    ...(proposals.length > 0 && { proposals }),
+    sandbox: true,
+  };
 }
 
 function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
@@ -583,6 +650,47 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+
+  // Proposal-based creation: expand proposal allocations into packages
+  if (req.proposal_id && !req.packages?.length) {
+    const proposal = getProposals().find(p => p.proposal_id === req.proposal_id);
+    if (!proposal) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
+      };
+    }
+    const totalBudget = req.total_budget?.amount;
+    if (!totalBudget) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'total_budget.amount is required when using proposal_id' }] as TaskError[],
+      };
+    }
+    // Expand proposal allocations into packages
+    req.packages = proposal.allocations.map((alloc, i) => {
+      const product = productMap.get(alloc.product_id);
+      const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
+      const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
+
+      // Auction pricing needs a bid_price — use price_guidance p50 or floor_price
+      let bidPrice: number | undefined;
+      if (pricing && pricing.pricing_model !== 'cpa') {
+        const po = pricing as unknown as Record<string, unknown>;
+        const hasFixed = po.fixed_price !== undefined;
+        if (!hasFixed) {
+          const pg = po.price_guidance as Record<string, number> | undefined;
+          bidPrice = pg?.p50 ?? (po.floor_price as number | undefined);
+        }
+      }
+
+      return {
+        product_id: alloc.product_id,
+        pricing_option_id: pricingOptionId,
+        budget: Math.round(totalBudget * alloc.allocation_percentage / 100),
+        buyer_ref: `proposal-${proposal.proposal_id}-${i + 1}`,
+        ...(bidPrice !== undefined && { bid_price: bidPrice }),
+      };
+    });
+  }
 
   if (!req.packages?.length) {
     return {

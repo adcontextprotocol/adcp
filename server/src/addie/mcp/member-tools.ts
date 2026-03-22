@@ -226,12 +226,44 @@ async function resolveAgentAuth(
  * Returns an error message if invalid, null if valid.
  */
 function validateAgentUrl(agentUrl: string): string | null {
+  let parsed: URL;
   try {
-    new URL(agentUrl);
-    return null;
+    parsed = new URL(agentUrl);
   } catch {
     return 'Invalid agent URL format.';
   }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return 'Agent URL must use HTTP or HTTPS.';
+  }
+
+  // Require HTTPS in production
+  if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
+    return 'Agent URL must use HTTPS.';
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Block cloud metadata endpoints
+  if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
+    return 'Agent URL points to a blocked address.';
+  }
+
+  // Block private/loopback addresses in production
+  if (process.env.NODE_ENV === 'production') {
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
+      return 'Agent URL cannot point to localhost in production.';
+    }
+    const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipMatch) {
+      const [, a, b] = ipMatch.map(Number);
+      if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
+        return 'Agent URL cannot point to a private IP address.';
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -249,6 +281,57 @@ function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: 
   }
 
   return { type: 'bearer', token: resolved.authToken };
+}
+
+// Channel alias map — normalize buyer language to AdCP channel identifiers
+const CHANNEL_ALIASES: Record<string, string> = {
+  'online video': 'olv', 'pre-roll': 'olv', 'mid-roll': 'olv',
+  'connected tv': 'ctv', 'ott': 'ctv',
+  'programmatic display': 'display', 'banner': 'display',
+  'digital audio': 'streaming_audio', 'streaming audio': 'streaming_audio',
+  'digital out of home': 'dooh', 'outdoor digital': 'dooh',
+  'newsletter': 'email',
+};
+
+const PRICING_ALIASES: Record<string, string> = {
+  'cost per thousand': 'cpm',
+  'cost per click': 'cpc',
+  'flat': 'flat_rate', 'flat rate': 'flat_rate', 'sponsorship': 'flat_rate',
+  'cost per view': 'cpv',
+  'cost per action': 'cpa', 'cost per acquisition': 'cpa',
+};
+
+function normalizeChannel(ch: string): string {
+  const key = ch.toLowerCase().trim();
+  return CHANNEL_ALIASES[key] ?? key;
+}
+
+function normalizePricingModel(pm: string): string {
+  const key = pm.toLowerCase().trim();
+  return PRICING_ALIASES[key] ?? key;
+}
+
+function compareRates(agentRate?: number, ioRate?: number): { label: string; context: string } {
+  if (agentRate == null || ioRate == null || ioRate === 0) {
+    return { label: 'no_comparison', context: 'Rate data unavailable for comparison.' };
+  }
+  const diff = (agentRate - ioRate) / ioRate;
+  if (diff > 0.2) {
+    return {
+      label: 'agent_higher',
+      context: `Agent floor $${agentRate} is ${Math.round(diff * 100)}% above IO rate $${ioRate}. Buyer agents cannot execute at this rate — lower the floor or negotiate a custom rate.`,
+    };
+  }
+  if (diff < -0.2) {
+    return {
+      label: 'agent_lower',
+      context: `Agent floor $${agentRate} is ${Math.round(Math.abs(diff) * 100)}% below IO rate $${ioRate}. Expected — IO rates are negotiated above rate card.`,
+    };
+  }
+  return {
+    label: 'aligned',
+    context: `Agent rate $${agentRate} is within 20% of IO rate $${ioRate}. Rates are aligned.`,
+  };
 }
 
 /**
@@ -663,8 +746,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'compare_media_kit',
     description:
-      'Compare a publisher\'s stated inventory (from their media kit or sample IO) against what their agent actually returns. Constructs briefs based on the publisher\'s verticals and channels, calls get_products, and identifies gaps — products, channels, formats, or buying modes the publisher sells but the agent doesn\'t expose. Extract the media_kit_summary from a PDF or description shared in conversation before calling this tool.',
-    usage_hints: 'use when publisher shares a media kit, rate card, or sample IO and wants to see how their agent compares. Parse the document first, then call this tool with the structured summary.',
+      '[DEPRECATED — use test_rfp_response or test_io_execution instead] Compare a publisher\'s stated inventory against what their agent returns. Prefer test_rfp_response (tests against real RFPs) or test_io_execution (tests whether IOs can execute through the agent).',
+    usage_hints: 'DEPRECATED: prefer test_rfp_response for discovery testing and test_io_execution for execution testing. Only use this for backward compatibility.',
     input_schema: {
       type: 'object',
       properties: {
@@ -677,6 +760,79 @@ export const MEMBER_TOOLS: AddieTool[] = [
         sample_io: { type: 'string', description: 'Text of a sample IO or RFP response for additional comparison' },
       },
       required: ['agent_url', 'media_kit_summary'],
+    },
+  },
+  {
+    name: 'test_rfp_response',
+    description:
+      'Test how a publisher\'s agent responds to a real RFP or campaign brief. Addie parses the RFP document first, then calls this tool with structured data. Calls get_products on the agent and returns gap analysis comparing what the agent surfaces vs what the RFP requests. The publisher\'s stated response (what they\'d normally propose) is the highest-value input — it lets you compare agent output to how the sales team actually responds.',
+    usage_hints: 'use when publisher shares an RFP, media brief, or campaign brief. IMPORTANT: before calling, ask the publisher what they would normally propose — that comparison is the most valuable output. Testing sequence: evaluate_agent_quality → test_rfp_response → test_io_execution.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'Agent URL to test against' },
+        rfp: {
+          type: 'object',
+          description: 'Structured RFP data extracted by Addie from the publisher\'s document',
+          properties: {
+            brief: { type: 'string', description: 'Natural language campaign brief extracted from the RFP. This becomes the brief field in get_products.' },
+            advertiser: { type: 'string', description: 'Advertiser name from the RFP' },
+            budget: {
+              type: 'object',
+              properties: { amount: { type: 'number' }, currency: { type: 'string' } },
+              description: 'Total budget from the RFP, if stated',
+            },
+            flight_dates: {
+              type: 'object',
+              properties: { start: { type: 'string' }, end: { type: 'string' } },
+              description: 'Campaign dates from the RFP',
+            },
+            channels: { type: 'array', items: { type: 'string' }, description: 'Channels the buyer is asking for (e.g., display, video, ctv, podcast)' },
+            formats: { type: 'array', items: { type: 'string' }, description: 'Specific format types requested (e.g., 300x250, pre-roll, mid-roll)' },
+            audience: { type: 'string', description: 'Target audience description from the RFP' },
+            kpis: { type: 'array', items: { type: 'string' }, description: 'Performance goals stated in the RFP (e.g., reach, CTR, completed views)' },
+            publisher_response: { type: 'string', description: 'What the publisher would normally propose for this RFP. This is the highest-value input — it lets Addie compare agent output to how the sales team actually responds.' },
+          },
+          required: ['brief'],
+        },
+      },
+      required: ['agent_url', 'rfp'],
+    },
+  },
+  {
+    name: 'test_io_execution',
+    description:
+      'Test whether a buyer agent can execute a real IO or proposal through the publisher\'s agent. Addie parses the IO document first, then calls this tool with structured line items. Maps each line item to agent products using deterministic scoring, constructs the exact create_media_buy JSON a buyer agent would send, and optionally dry-runs it.',
+    usage_hints: 'use when publisher shares an IO, insertion order, proposal, or media plan. Parse the document first to extract line items. The output includes the exact create_media_buy JSON — share it with the publisher so they can take it to their engineering team.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'Agent URL to test against' },
+        line_items: {
+          type: 'array',
+          description: 'Line items extracted from the IO or proposal by Addie',
+          items: {
+            type: 'object',
+            properties: {
+              description: { type: 'string', description: 'What this line item is (e.g., "Homepage takeover - 300x250 display, 1M impressions")' },
+              channel: { type: 'string', description: 'Channel if identifiable (display, video, audio, etc.)' },
+              format: { type: 'string', description: 'Format if specified (300x250, pre-roll, etc.)' },
+              pricing_model: { type: 'string', description: 'How it\'s priced (CPM, CPC, flat rate, etc.)' },
+              rate: { type: 'number', description: 'Unit price (e.g., $12 CPM). IO rates are often negotiated above rate card.' },
+              quantity: { type: 'number', description: 'Units (impressions, clicks, etc.)' },
+              budget: { type: 'number', description: 'Line item total spend' },
+              start_date: { type: 'string', description: 'Start date (ISO 8601)' },
+              end_date: { type: 'string', description: 'End date (ISO 8601)' },
+            },
+            required: ['description'],
+          },
+          minItems: 1,
+        },
+        advertiser: { type: 'string', description: 'Advertiser name from the IO' },
+        currency: { type: 'string', description: 'Currency for all line items (default: USD)' },
+        execute: { type: 'boolean', description: 'If true, actually call create_media_buy on the agent. If false (default), only construct the JSON.', default: false },
+      },
+      required: ['agent_url', 'line_items'],
     },
   },
   // ============================================
@@ -2588,6 +2744,605 @@ export function createMemberToolHandlers(
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
       return `Failed to compare media kit for ${resolved.resolvedUrl}: ${msg}`;
+    }
+  });
+
+  // ============================================
+  // BUYER ARTIFACT TESTING
+  // ============================================
+
+  handlers.set('test_rfp_response', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const rfp = input.rfp as Record<string, unknown>;
+    const brief = ((rfp.brief as string) || '').slice(0, 5000);
+    const advertiser = rfp.advertiser as string | undefined;
+    const rfpBudget = rfp.budget as { amount?: number; currency?: string } | undefined;
+    const flightDates = rfp.flight_dates as { start?: string; end?: string } | undefined;
+    const requestedChannels = (rfp.channels as string[] | undefined)?.slice(0, 20) ?? [];
+    const requestedFormats = (rfp.formats as string[] | undefined)?.slice(0, 20) ?? [];
+    const audience = rfp.audience as string | undefined;
+    const kpis = (rfp.kpis as string[] | undefined)?.slice(0, 10) ?? [];
+    const publisherResponse = (rfp.publisher_response as string | undefined)?.slice(0, 3000);
+
+    if (!brief) return '**Error:** rfp.brief is required.';
+
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
+
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+
+    try {
+      const { AdCPClient } = await import('@adcp/client');
+      const agentConfig = {
+        id: 'target', name: 'target',
+        agent_uri: resolved.resolvedUrl,
+        protocol: 'mcp' as const,
+        ...(resolved.authToken && resolved.authType === 'basic'
+          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
+          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+      };
+      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const client = multiClient.agent('target');
+
+      const result = await client.executeTask('get_products', {
+        buying_mode: 'brief',
+        brief,
+        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+      });
+
+      if (!result.success) {
+        const errMsg = (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)).slice(0, 500);
+        return `**Error:** Agent returned an error for get_products:\n\n<external_error>${errMsg}</external_error>`;
+      }
+
+      const data = result.data as unknown as Record<string, unknown>;
+      const products = (data.products as Array<Record<string, unknown>>) ?? [];
+      const proposals = (data.proposals as Array<Record<string, unknown>>) ?? [];
+
+      // Extract product details
+      const productDetails: Array<{
+        product_id: string; name: string; channels: string[]; format_ids: string[];
+        pricing_options: Array<{ pricing_option_id: string; pricing_model: string; price?: number; currency?: string; minimum_spend?: number }>;
+        delivery_type: string; brief_relevance?: string; has_forecast: boolean; has_audience_targeting: boolean;
+      }> = [];
+
+      const allChannels = new Set<string>();
+      const allFormats = new Set<string>();
+      const allPricingModels = new Set<string>();
+      let totalMinSpend = 0;
+      const supportedMeasurement = new Set<string>();
+
+      for (const p of products) {
+        const channels: string[] = [];
+        if (Array.isArray(p.channels)) {
+          for (const ch of p.channels) if (typeof ch === 'string') { channels.push(ch); allChannels.add(ch); }
+        }
+        const formatIds: string[] = [];
+        if (Array.isArray(p.format_ids)) {
+          for (const fid of p.format_ids) {
+            const f = fid as Record<string, unknown>;
+            if (typeof f.id === 'string') { formatIds.push(f.id); allFormats.add(f.id); }
+          }
+        }
+        const pricingOpts: Array<{ pricing_option_id: string; pricing_model: string; price?: number; currency?: string; minimum_spend?: number }> = [];
+        if (Array.isArray(p.pricing_options)) {
+          for (const po of p.pricing_options) {
+            const pricing = po as Record<string, unknown>;
+            const model = pricing.pricing_model as string;
+            if (model) allPricingModels.add(model);
+            const price = (pricing.fixed_price ?? pricing.floor_price) as number | undefined;
+            const minSpend = pricing.min_spend_per_package as number | undefined;
+            if (minSpend) totalMinSpend += minSpend;
+            pricingOpts.push({
+              pricing_option_id: pricing.pricing_option_id as string,
+              pricing_model: model,
+              price, currency: pricing.currency as string | undefined,
+              minimum_spend: minSpend,
+            });
+          }
+        }
+        // Check measurement capabilities
+        const metricOpt = p.metric_optimization as Record<string, unknown> | undefined;
+        if (metricOpt?.supported_metrics && Array.isArray(metricOpt.supported_metrics)) {
+          for (const m of metricOpt.supported_metrics) if (typeof m === 'string') supportedMeasurement.add(m);
+        }
+        const outcomeMeas = p.outcome_measurement as Record<string, unknown> | undefined;
+        if (outcomeMeas) {
+          if (outcomeMeas.provider) supportedMeasurement.add(`provider:${outcomeMeas.provider}`);
+        }
+
+        productDetails.push({
+          product_id: p.product_id as string, name: p.name as string, channels, format_ids: formatIds,
+          pricing_options: pricingOpts, delivery_type: (p.delivery_type as string) || 'unknown',
+          brief_relevance: p.brief_relevance as string | undefined,
+          has_forecast: !!p.forecast,
+          has_audience_targeting: !!(p.audience || p.targeting || p.audiences || p.data_provider_signals),
+        });
+      }
+
+      // Gap analysis
+      const normalizedFound = Array.from(allChannels).map(normalizeChannel);
+      const missingChannels = requestedChannels.filter(ch => !normalizedFound.includes(normalizeChannel(ch)));
+      const foundChannels = requestedChannels.filter(ch => normalizedFound.includes(normalizeChannel(ch)));
+
+      const normalizedFormatIds = Array.from(allFormats).map(f => f.toLowerCase());
+      const missingFormats = requestedFormats.filter(f =>
+        !normalizedFormatIds.some(fid => fid.includes(f.toLowerCase()))
+      );
+      const foundFormats = requestedFormats.filter(f =>
+        normalizedFormatIds.some(fid => fid.includes(f.toLowerCase()))
+      );
+
+      const budgetFeasible = rfpBudget?.amount != null
+        ? (totalMinSpend === 0 || rfpBudget.amount >= totalMinSpend)
+        : null;
+
+      const measurementArr = Array.from(supportedMeasurement);
+      const kpiGaps = kpis.filter(kpi =>
+        !measurementArr.some(m => m.toLowerCase().includes(kpi.toLowerCase()))
+      );
+
+      // Build output
+      let output = '';
+      if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+      else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
+      else if (resolved.source === 'public') output += '_Using public test agent credentials._\n\n';
+
+      output += `## RFP Response Test: ${resolved.resolvedUrl}\n\n`;
+      output += `**Brief:** ${brief.slice(0, 200)}${brief.length > 200 ? '...' : ''}\n`;
+      if (advertiser) output += `**Advertiser:** ${advertiser}\n`;
+      if (rfpBudget?.amount) output += `**Budget:** ${rfpBudget.currency || 'USD'} ${rfpBudget.amount.toLocaleString()}\n`;
+      if (flightDates?.start || flightDates?.end) output += `**Flight:** ${flightDates.start || '?'} to ${flightDates.end || '?'}\n`;
+      if (audience) output += `**Audience:** ${audience}\n`;
+      output += '\n';
+
+      output += `### Agent Response\n\n`;
+      output += `<external_agent_response>\n`;
+      output += `**Products returned:** ${products.length}\n`;
+      output += `**Channels found:** ${allChannels.size > 0 ? Array.from(allChannels).join(', ') : 'none'}\n`;
+      output += `**Formats found:** ${allFormats.size > 0 ? Array.from(allFormats).join(', ') : 'none'}\n`;
+      output += `**Pricing models:** ${allPricingModels.size > 0 ? Array.from(allPricingModels).join(', ') : 'none'}\n`;
+      output += `**Proposals:** ${proposals.length}\n`;
+      if (proposals.length > 0) {
+        for (const prop of proposals) {
+          const allocs = Array.isArray(prop.allocations) ? prop.allocations.length : 0;
+          const propName = String(prop.name || prop.proposal_id || '').slice(0, 200);
+          output += `  - ${propName}: ${allocs} product(s)\n`;
+        }
+      }
+      output += '\n';
+
+      for (const pd of productDetails) {
+        const safeName = pd.name.slice(0, 200);
+        output += `- **${safeName}** (${pd.product_id}): ${pd.channels.join(', ')} | ${pd.pricing_options.map(po => `${po.pricing_model}${po.price ? ` $${po.price}` : ''}`).join(', ')} | ${pd.delivery_type}`;
+        if (pd.brief_relevance) output += `\n  _${pd.brief_relevance.slice(0, 300)}_`;
+        output += '\n';
+      }
+      output += `</external_agent_response>\n\n`;
+
+      // Gap analysis section
+      if (requestedChannels.length > 0 || requestedFormats.length > 0 || rfpBudget?.amount || kpis.length > 0) {
+        output += `### Gap Analysis\n\n`;
+
+        if (requestedChannels.length > 0) {
+          output += `**Channels:** ${foundChannels.length}/${requestedChannels.length} covered\n`;
+          if (missingChannels.length > 0) output += `  Missing: ${missingChannels.join(', ')}\n`;
+        }
+        if (requestedFormats.length > 0) {
+          output += `**Formats:** ${foundFormats.length}/${requestedFormats.length} covered\n`;
+          if (missingFormats.length > 0) output += `  Missing: ${missingFormats.join(', ')}\n`;
+        }
+        if (rfpBudget?.amount != null) {
+          output += `**Budget:** RFP ${rfpBudget.currency || 'USD'} ${rfpBudget.amount.toLocaleString()}`;
+          if (totalMinSpend > 0) output += ` | Agent minimum spend: $${totalMinSpend.toLocaleString()}`;
+          output += ` | ${budgetFeasible === null ? 'unknown' : budgetFeasible ? 'feasible' : 'may exceed minimums'}\n`;
+        }
+        if (kpis.length > 0) {
+          output += `**KPIs:** ${kpis.length - kpiGaps.length}/${kpis.length} supported\n`;
+          if (kpiGaps.length > 0) output += `  Gaps: ${kpiGaps.join(', ')}\n`;
+          if (measurementArr.length > 0) output += `  Supported: ${measurementArr.join(', ')}\n`;
+        }
+        if (flightDates?.start || flightDates?.end) {
+          output += `**Dates:** ${flightDates.start || '?'} to ${flightDates.end || '?'} (noted — dates are validated during media buy creation, not discovery)\n`;
+        }
+        output += '\n';
+      }
+
+      // Publisher response comparison
+      if (publisherResponse) {
+        output += `### Publisher's Stated Response\n\n`;
+        output += `<user_provided_data>\n${publisherResponse}\n</user_provided_data>\n\n`;
+        output += `Compare the agent's response above to what the publisher said they would normally propose. Highlight specific differences — missing products, pricing discrepancies, channels the sales team includes but the agent doesn't surface.\n\n`;
+      } else {
+        output += `### No Publisher Response Provided\n\n`;
+        output += `The publisher hasn't shared what they would normally propose for this RFP. Ask them: "What would your sales team typically send back for this type of brief?" That comparison is the most valuable part of this test.\n\n`;
+      }
+
+      output += `Interpret these results for the publisher. Highlight what the agent surfaces well, identify the gaps between the RFP requirements and the agent's response, and suggest concrete fixes.`;
+
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl }, 'Addie: test_rfp_response failed');
+      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
+      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+        return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+      return `Failed to test RFP response for ${agentUrl}: <external_error>${msg}</external_error>`;
+    }
+  });
+
+  handlers.set('test_io_execution', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const lineItems = ((input.line_items as Array<Record<string, unknown>>) || []).slice(0, 20);
+    const advertiser = input.advertiser as string | undefined;
+    const currency = (input.currency as string) || 'USD';
+    const shouldExecute = (input.execute as boolean) || false;
+
+    if (!lineItems.length) return '**Error:** line_items array is required and must have at least one item.';
+
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
+
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+
+    try {
+      const { AdCPClient } = await import('@adcp/client');
+      const agentConfig = {
+        id: 'target', name: 'target',
+        agent_uri: resolved.resolvedUrl,
+        protocol: 'mcp' as const,
+        ...(resolved.authToken && resolved.authType === 'basic'
+          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
+          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+      };
+      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const client = multiClient.agent('target');
+
+      // Get full catalog via wholesale mode
+      const result = await client.executeTask('get_products', {
+        buying_mode: 'wholesale',
+        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+      });
+
+      if (!result.success) {
+        const errMsg = (typeof result.error === 'string' ? result.error : JSON.stringify(result.error)).slice(0, 500);
+        return `**Error:** Agent returned an error for get_products (wholesale):\n\n<external_error>${errMsg}</external_error>`;
+      }
+
+      const data = result.data as unknown as Record<string, unknown>;
+      const products = (data.products as Array<Record<string, unknown>>) ?? [];
+      const proposals = (data.proposals as Array<Record<string, unknown>>) ?? [];
+
+      // Catalog summary
+      const catalogChannels = new Set<string>();
+      const catalogPricingModels = new Set<string>();
+      for (const p of products) {
+        if (Array.isArray(p.channels)) for (const ch of p.channels) if (typeof ch === 'string') catalogChannels.add(ch);
+        if (Array.isArray(p.pricing_options)) for (const po of p.pricing_options) {
+          const pricing = po as Record<string, unknown>;
+          if (typeof pricing.pricing_model === 'string') catalogPricingModels.add(pricing.pricing_model);
+        }
+      }
+
+      // Match each line item
+      interface LineItemResult {
+        description: string;
+        status: 'mapped' | 'partial' | 'unmapped';
+        match_type?: 'proposal' | 'product';
+        matched_proposal?: { proposal_id: string; name?: string; match_reasons: string[] };
+        matched_product?: { product_id: string; name: string; match_quality: string; match_reasons: string[] };
+        matched_pricing?: { pricing_option_id: string; pricing_model: string; agent_rate?: number; io_rate?: number; rate_context: { label: string; context: string } };
+        unmapped_reasons?: string[];
+        proposed_package?: Record<string, unknown>;
+      }
+
+      const lineItemResults: LineItemResult[] = [];
+      let totalIoBudget = 0;
+      let mappableBudget = 0;
+
+      for (let i = 0; i < lineItems.length; i++) {
+        const li = lineItems[i];
+        const desc = ((li.description as string) || '').slice(0, 500);
+        const liChannel = li.channel as string | undefined;
+        const liFormat = li.format as string | undefined;
+        const liPricingModel = li.pricing_model as string | undefined;
+        const liRate = li.rate as number | undefined;
+        const liBudget = li.budget as number | undefined;
+        const liStartDate = li.start_date as string | undefined;
+        const liEndDate = li.end_date as string | undefined;
+
+        if (liBudget) totalIoBudget += liBudget;
+
+        // Try proposal match first
+        const descLower = desc.toLowerCase();
+        let proposalMatch: { proposal_id: string; name?: string } | null = null;
+        for (const prop of proposals) {
+          const propName = ((prop.name as string) || '').toLowerCase();
+          const propDesc = ((prop.description as string) || '').toLowerCase();
+          if (propName && (descLower.includes(propName) || propName.includes(descLower))) {
+            proposalMatch = { proposal_id: prop.proposal_id as string, name: prop.name as string };
+            break;
+          }
+          if (propDesc && (descLower.includes(propDesc) || propDesc.includes(descLower))) {
+            proposalMatch = { proposal_id: prop.proposal_id as string, name: prop.name as string };
+            break;
+          }
+        }
+
+        if (proposalMatch) {
+          if (liBudget) mappableBudget += liBudget;
+          lineItemResults.push({
+            description: desc, status: 'mapped', match_type: 'proposal',
+            matched_proposal: { ...proposalMatch, match_reasons: ['proposal name/description match'] },
+          });
+          continue;
+        }
+
+        // Score each product
+        let bestProduct: Record<string, unknown> | null = null;
+        let bestScore = 0;
+        const bestReasons: string[] = [];
+
+        for (const p of products) {
+          let score = 0;
+          const reasons: string[] = [];
+
+          // Channel match (+3)
+          if (liChannel && Array.isArray(p.channels)) {
+            const normalizedLiChannel = normalizeChannel(liChannel);
+            const productChannels = (p.channels as string[]).map(normalizeChannel);
+            if (productChannels.includes(normalizedLiChannel)) {
+              score += 3;
+              reasons.push(`channel:${liChannel}`);
+            }
+          }
+
+          // Format match (+2)
+          if (liFormat && Array.isArray(p.format_ids)) {
+            const liFormatLower = liFormat.toLowerCase();
+            const matched = (p.format_ids as Array<Record<string, unknown>>).some(fid =>
+              ((fid.id as string) || '').toLowerCase().includes(liFormatLower)
+            );
+            if (matched) {
+              score += 2;
+              reasons.push(`format:${liFormat}`);
+            }
+          }
+
+          // Pricing model match (+2)
+          if (liPricingModel && Array.isArray(p.pricing_options)) {
+            const normalizedLiPricing = normalizePricingModel(liPricingModel);
+            const matched = (p.pricing_options as Array<Record<string, unknown>>).some(po =>
+              (po.pricing_model as string) === normalizedLiPricing
+            );
+            if (matched) {
+              score += 2;
+              reasons.push(`pricing:${liPricingModel}`);
+            }
+          }
+
+          // Delivery type match (+1)
+          if (liPricingModel) {
+            const normalizedPm = normalizePricingModel(liPricingModel);
+            const impliedDelivery = (normalizedPm === 'flat_rate' || normalizedPm === 'sponsorship') ? 'guaranteed' : 'non_guaranteed';
+            if (p.delivery_type === impliedDelivery) {
+              score += 1;
+              reasons.push(`delivery:${impliedDelivery}`);
+            }
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestProduct = p;
+            bestReasons.length = 0;
+            bestReasons.push(...reasons);
+          }
+        }
+
+        if (bestScore === 0 || !bestProduct) {
+          const reasons: string[] = [];
+          if (liChannel) reasons.push(`no product with channel:${liChannel}`);
+          if (liFormat) reasons.push(`no format matching:${liFormat}`);
+          if (liPricingModel) reasons.push(`no ${liPricingModel} pricing option`);
+          if (reasons.length === 0) reasons.push('no matching criteria provided');
+          lineItemResults.push({ description: desc, status: 'unmapped', unmapped_reasons: reasons });
+          continue;
+        }
+
+        const matchQuality = bestScore >= 5 ? 'exact' : bestScore >= 3 ? 'close' : 'weak';
+
+        // Find best pricing option
+        let bestPricing: { pricing_option_id: string; pricing_model: string; agent_rate?: number; io_rate?: number; rate_context: { label: string; context: string } } | undefined;
+        if (Array.isArray(bestProduct.pricing_options)) {
+          const normalizedLiPricing = liPricingModel ? normalizePricingModel(liPricingModel) : null;
+          for (const po of bestProduct.pricing_options as Array<Record<string, unknown>>) {
+            const poModel = po.pricing_model as string;
+            if (normalizedLiPricing && poModel !== normalizedLiPricing) continue;
+            const agentRate = (po.fixed_price ?? po.floor_price) as number | undefined;
+            bestPricing = {
+              pricing_option_id: po.pricing_option_id as string,
+              pricing_model: poModel,
+              agent_rate: agentRate,
+              io_rate: liRate,
+              rate_context: compareRates(agentRate, liRate),
+            };
+            break;
+          }
+          // Fallback to first pricing option if no model match
+          if (!bestPricing && (bestProduct.pricing_options as Array<Record<string, unknown>>).length > 0) {
+            const po = (bestProduct.pricing_options as Array<Record<string, unknown>>)[0];
+            const agentRate = (po.fixed_price ?? po.floor_price) as number | undefined;
+            bestPricing = {
+              pricing_option_id: po.pricing_option_id as string,
+              pricing_model: po.pricing_model as string,
+              agent_rate: agentRate,
+              io_rate: liRate,
+              rate_context: compareRates(agentRate, liRate),
+            };
+          }
+        }
+
+        const status = bestPricing ? (matchQuality === 'weak' ? 'partial' : 'mapped') : 'partial';
+        if (liBudget && (status === 'mapped' || status === 'partial')) mappableBudget += liBudget;
+
+        const proposedPackage = bestPricing ? {
+          buyer_ref: `line-${i + 1}`,
+          product_id: bestProduct.product_id,
+          pricing_option_id: bestPricing.pricing_option_id,
+          budget: liBudget || 0,
+          ...(bestPricing.pricing_model !== 'flat_rate' && liRate ? { bid_price: liRate } : {}),
+          ...(liStartDate ? { start_time: liStartDate } : {}),
+          ...(liEndDate ? { end_time: liEndDate } : {}),
+        } : undefined;
+
+        lineItemResults.push({
+          description: desc, status, match_type: 'product',
+          matched_product: { product_id: bestProduct.product_id as string, name: bestProduct.name as string, match_quality: matchQuality, match_reasons: bestReasons },
+          matched_pricing: bestPricing,
+          ...(matchQuality === 'weak' ? { unmapped_reasons: ['weak match — only partial criteria matched'] } : {}),
+          proposed_package: proposedPackage,
+        });
+      }
+
+      // Build proposed create_media_buy request
+      const mappedPackages = lineItemResults
+        .filter(r => r.proposed_package)
+        .map(r => r.proposed_package!);
+
+      const allStartDates = lineItems.map(li => li.start_date as string).filter(Boolean);
+      const allEndDates = lineItems.map(li => li.end_date as string).filter(Boolean);
+      const earliestStart = allStartDates.length > 0 ? allStartDates.sort()[0] : new Date().toISOString();
+      const latestEnd = allEndDates.length > 0 ? allEndDates.sort().reverse()[0] : new Date(Date.now() + 30 * 86400000).toISOString();
+
+      const proposedRequest = mappedPackages.length > 0 ? {
+        buyer_ref: `io-test-${Date.now()}`,
+        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+        account: { account_id: advertiser || 'test-account' },
+        start_time: earliestStart,
+        end_time: latestEnd,
+        packages: mappedPackages,
+      } : null;
+
+      // Execute against agent if requested
+      let executeResult: { success: boolean; media_buy_id?: string; status?: string; packages_created?: number; error?: string } | undefined;
+      if (shouldExecute && proposedRequest && mappedPackages.length > 0) {
+        try {
+          const mbResult = await client.executeTask('create_media_buy', proposedRequest);
+          if (mbResult.success) {
+            const mbData = mbResult.data as unknown as Record<string, unknown>;
+            executeResult = {
+              success: true,
+              media_buy_id: mbData.media_buy_id as string,
+              status: mbData.status as string,
+              packages_created: Array.isArray(mbData.packages) ? mbData.packages.length : undefined,
+            };
+          } else {
+            executeResult = {
+              success: false,
+              error: typeof mbResult.error === 'string' ? mbResult.error : JSON.stringify(mbResult.error),
+            };
+          }
+        } catch (err) {
+          executeResult = { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+        }
+      }
+
+      // Summary stats
+      const mapped = lineItemResults.filter(r => r.status === 'mapped').length;
+      const partial = lineItemResults.filter(r => r.status === 'partial').length;
+      const unmapped = lineItemResults.filter(r => r.status === 'unmapped').length;
+      const budgetCoverage = totalIoBudget > 0 ? Math.round((mappableBudget / totalIoBudget) * 100) : 0;
+
+      // Build output
+      let output = '';
+      if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+      else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
+      else if (resolved.source === 'public') output += '_Using public test agent credentials._\n\n';
+
+      output += `## IO Execution Test: ${resolved.resolvedUrl}\n\n`;
+
+      output += `### Catalog\n\n`;
+      output += `<external_agent_response>\n`;
+      output += `**Products:** ${products.length} | **Proposals:** ${proposals.length}\n`;
+      output += `**Channels:** ${catalogChannels.size > 0 ? Array.from(catalogChannels).join(', ') : 'none'}\n`;
+      output += `**Pricing models:** ${catalogPricingModels.size > 0 ? Array.from(catalogPricingModels).join(', ') : 'none'}\n`;
+      output += `</external_agent_response>\n\n`;
+
+      output += `### Line Item Results\n\n`;
+      output += `| # | Description | Status | Match | Pricing | Rate |\n`;
+      output += `|---|-------------|--------|-------|---------|------|\n`;
+      for (let i = 0; i < lineItemResults.length; i++) {
+        const r = lineItemResults[i];
+        const descShort = r.description.slice(0, 40) + (r.description.length > 40 ? '...' : '');
+        const statusIcon = r.status === 'mapped' ? 'mapped' : r.status === 'partial' ? 'partial' : 'unmapped';
+        let matchCol = '';
+        if (r.matched_proposal) matchCol = `proposal: ${(r.matched_proposal.name || r.matched_proposal.proposal_id).slice(0, 60)}`;
+        else if (r.matched_product) matchCol = `${r.matched_product.name.slice(0, 60)} (${r.matched_product.match_quality})`;
+        else if (r.unmapped_reasons) matchCol = r.unmapped_reasons.join('; ');
+        let pricingCol = r.matched_pricing ? r.matched_pricing.pricing_model : '';
+        let rateCol = '';
+        if (r.matched_pricing) {
+          if (r.matched_pricing.agent_rate != null) rateCol += `agent:$${r.matched_pricing.agent_rate}`;
+          if (r.matched_pricing.io_rate != null) rateCol += ` io:$${r.matched_pricing.io_rate}`;
+          rateCol += ` (${r.matched_pricing.rate_context.label})`;
+        }
+        output += `| ${i + 1} | ${descShort} | ${statusIcon} | ${matchCol} | ${pricingCol} | ${rateCol} |\n`;
+      }
+      output += '\n';
+
+      // Rate context details for items with rate issues
+      const rateIssues = lineItemResults.filter(r =>
+        r.matched_pricing?.rate_context.label === 'agent_higher' || r.matched_pricing?.rate_context.label === 'agent_lower',
+      );
+      if (rateIssues.length > 0) {
+        output += `### Rate Analysis\n\n`;
+        for (const r of rateIssues) {
+          output += `- **Line ${lineItemResults.indexOf(r) + 1}** (${r.description.slice(0, 40)}): ${r.matched_pricing!.rate_context.context}\n`;
+        }
+        output += '\n';
+      }
+
+      output += `### Summary\n\n`;
+      output += `**Mapped:** ${mapped} | **Partial:** ${partial} | **Unmapped:** ${unmapped} | **Total:** ${lineItemResults.length}\n`;
+      output += `**IO Budget:** ${currency} ${totalIoBudget.toLocaleString()} | **Mappable:** ${currency} ${mappableBudget.toLocaleString()} (${budgetCoverage}%)\n\n`;
+
+      if (proposedRequest) {
+        output += `### Proposed create_media_buy Request\n\n`;
+        output += `This is the exact JSON a buyer agent would send to execute the mapped line items:\n\n`;
+        output += '```json\n' + JSON.stringify(proposedRequest, null, 2) + '\n```\n\n';
+      }
+
+      if (executeResult) {
+        output += `### Execution Result\n\n`;
+        if (executeResult.success) {
+          output += `**Success** — Media buy created: ${executeResult.media_buy_id}\n`;
+          output += `**Status:** ${executeResult.status} | **Packages:** ${executeResult.packages_created}\n\n`;
+        } else {
+          output += `**Failed** — ${executeResult.error}\n\n`;
+        }
+      }
+
+      const unmappedItems = lineItemResults.filter(r => r.status === 'unmapped');
+      if (unmappedItems.length > 0) {
+        output += `### Unmapped Line Items\n\n`;
+        for (const r of unmappedItems) {
+          output += `- **${r.description}**: ${r.unmapped_reasons?.join(', ') || 'no matching products'}\n`;
+        }
+        output += '\n';
+      }
+
+      output += `Interpret these results for the publisher. For mapped items, confirm the match makes sense. For unmapped items, explain what the publisher would need to add to their agent. For rate differences, explain that IO rates are often negotiated above rate card — agent rates being lower is expected.`;
+
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl }, 'Addie: test_io_execution failed');
+      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
+      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+        return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+      return `Failed to test IO execution for ${agentUrl}: <external_error>${msg}</external_error>`;
     }
   });
 

@@ -8,6 +8,7 @@
 import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition, ShowResponse } from './types.js';
 import type {
   Product,
+  Proposal,
   FormatID,
   CPAPricingOption,
   CatalogType,
@@ -570,6 +571,119 @@ export function buildShowsForProducts(products: Product[]): ShowResponse[] {
     }
   }
   return shows;
+}
+
+/**
+ * Proposal definitions per publisher. Each maps a publisher ID to one or more
+ * proposals that bundle products from that publisher's catalog.
+ */
+interface ProposalDefinition {
+  publisherId: string;
+  proposalId: string;
+  name: string;
+  description: string;
+  briefAlignment: string;
+  budgetGuidance: { min: number; recommended: number; currency: string };
+  /** Product suffix → allocation percentage. Must sum to 100. */
+  allocations: Array<{
+    productSuffix: string;
+    percentage: number;
+    rationale: string;
+  }>;
+}
+
+const PROPOSAL_DEFINITIONS: ProposalDefinition[] = [
+  {
+    publisherId: 'pinnacle_news',
+    proposalId: 'pinnacle_cross_channel',
+    name: 'Pinnacle Cross-Channel News Reach',
+    description: 'Balanced video and display across Pinnacle News properties for maximum news audience coverage.',
+    briefAlignment: 'Covers CTV/OLV video and display with both guaranteed and auction pricing options.',
+    budgetGuidance: { min: 25000, recommended: 75000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'video_premium', percentage: 45, rationale: 'Premium video (CTV + OLV) for high-impact storytelling with guaranteed delivery' },
+      { productSuffix: 'video_standard', percentage: 30, rationale: 'Auction video for incremental reach at efficient CPMs' },
+      { productSuffix: 'display_standard', percentage: 25, rationale: 'Display retargeting and contextual reach across web and app' },
+    ],
+  },
+  {
+    publisherId: 'viewpoint_sports',
+    proposalId: 'viewpoint_multi_screen',
+    name: 'Viewpoint Sports Multi-Screen',
+    description: 'Live sports coverage across CTV, OLV, and linear TV with guaranteed placements around marquee events.',
+    briefAlignment: 'Premium sports video inventory across all screens with guaranteed delivery and Nielsen DAR measurement.',
+    budgetGuidance: { min: 75000, recommended: 200000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'video_premium', percentage: 100, rationale: 'All video inventory (CTV, OLV, linear TV) bundled for cross-screen sports reach' },
+    ],
+  },
+  {
+    publisherId: 'sparq_social',
+    proposalId: 'sparq_social_amplification',
+    name: 'Sparq Social Amplification',
+    description: 'Social engagement and display reach across Sparq platform — feed, stories, reels, and influencer-boosted placements.',
+    briefAlignment: 'Social-first strategy with display extension for audience scale. Non-guaranteed for optimization flexibility.',
+    budgetGuidance: { min: 10000, recommended: 50000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'social_standard', percentage: 60, rationale: 'Core social placements (feed, stories, reels) optimized for engagement' },
+      { productSuffix: 'display_standard', percentage: 40, rationale: 'Display companion for retargeting and broad reach' },
+    ],
+  },
+  {
+    publisherId: 'novamind',
+    proposalId: 'novamind_ai_audience',
+    name: 'NovaMind AI Audience Package',
+    description: 'Conversational ad placements across NovaMind AI assistant properties with guaranteed and performance tiers.',
+    briefAlignment: 'Split between guaranteed premium placement and performance-based optimization for conversational AI surfaces.',
+    budgetGuidance: { min: 50000, recommended: 100000, currency: 'USD' },
+    allocations: [
+      { productSuffix: 'premium', percentage: 40, rationale: 'Guaranteed placements for brand-safe, high-visibility conversational ads' },
+      { productSuffix: 'standard', percentage: 60, rationale: 'Performance-optimized placements with CPA/CPC efficiency' },
+    ],
+  },
+];
+
+/**
+ * Build proposals from the catalog. Proposals reference products by ID
+ * and provide allocation percentages for bundled media plans.
+ */
+export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
+  const proposals: Proposal[] = [];
+
+  for (const def of PROPOSAL_DEFINITIONS) {
+    const allocations: Proposal['allocations'] = [];
+    let valid = true;
+
+    for (const alloc of def.allocations) {
+      const productId = `${def.publisherId}_${alloc.productSuffix}`;
+      const found = catalog.find(cp => cp.product.product_id === productId);
+      if (!found) {
+        console.warn(`[training-agent] Proposal "${def.proposalId}" references missing product "${productId}" — skipping proposal`);
+        valid = false;
+        break;
+      }
+      const firstPricing = found.product.pricing_options[0];
+      allocations.push({
+        product_id: productId,
+        allocation_percentage: alloc.percentage,
+        rationale: alloc.rationale,
+        ...(firstPricing && { pricing_option_id: firstPricing.pricing_option_id }),
+      });
+    }
+
+    if (!valid) continue;
+
+    proposals.push({
+      proposal_id: def.proposalId,
+      name: def.name,
+      description: def.description,
+      brief_alignment: def.briefAlignment,
+      total_budget_guidance: def.budgetGuidance,
+      allocations,
+    });
+  }
+
+  return proposals;
 }
 
 /**
