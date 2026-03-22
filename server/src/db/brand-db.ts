@@ -473,7 +473,7 @@ export class BrandDatabase {
     keller_type?: string;
     logo_url?: string;
     primary_color?: string;
-    industry?: string;
+    industries?: string[];
     sub_brand_count: number;
     employee_count: number;
   }>> {
@@ -495,7 +495,7 @@ export class BrandDatabase {
       keller_type?: string;
       logo_url?: string;
       primary_color?: string;
-      industry?: string;
+      industries?: string[];
       sub_brand_count: number;
       employee_count: number;
     }>(
@@ -510,7 +510,7 @@ export class BrandDatabase {
         COALESCE(db.keller_type, 'master') as keller_type,
         COALESCE(brand_json->'logos'->0->>'url', brand_json->'brands'->0->'logos'->0->>'url') as logo_url,
         COALESCE(brand_json->'colors'->>'primary', brand_json->'brands'->0->'colors'->>'primary') as primary_color,
-        COALESCE(brand_json->'company'->>'industry', brand_json->'brands'->0->>'industry') as industry,
+        COALESCE(brand_json->'company'->'industries', brand_json->'brands'->0->'industries', '[]'::jsonb) as industries,
         (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count,
         COALESCE(CASE WHEN brand_json->'company'->>'employees' ~ '^\d+$' THEN (brand_json->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM hosted_brands
@@ -530,7 +530,7 @@ export class BrandDatabase {
         keller_type,
         brand_manifest->'logos'->0->>'url' as logo_url,
         brand_manifest->'colors'->>'primary' as primary_color,
-        brand_manifest->'company'->>'industry' as industry,
+        COALESCE(brand_manifest->'company'->'industries', '[]'::jsonb) as industries,
         (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count,
         COALESCE(CASE WHEN brand_manifest->'company'->>'employees' ~ '^\d+$' THEN (brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM discovered_brands

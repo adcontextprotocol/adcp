@@ -56,7 +56,7 @@ export const BRAND_TOOLS: AddieTool[] = [
   {
     name: 'save_brand',
     description: 'Save a brand to the registry as a community brand. Use for manually adding brands (not needed after research_brand, which auto-saves). Preserves any existing enrichment data when manifest is not provided.',
-    usage_hints: 'Use to add a new community brand by name/domain. Not needed after research_brand — enrichment is auto-saved. Use industry to set or update the brand\'s industry classification.',
+    usage_hints: 'Use to add a new community brand by name/domain. Not needed after research_brand — enrichment is auto-saved. Use industries to set or update the brand\'s industry classifications.',
     input_schema: {
       type: 'object',
       properties: {
@@ -68,9 +68,10 @@ export const BRAND_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Brand name',
         },
-        industry: {
-          type: 'string',
-          description: 'Industry classification (e.g., "Technology", "Retail", "Healthcare")',
+        industries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Industry classifications (e.g., ["Technology"], ["Retail", "E-commerce"])',
         },
         brand_manifest: {
           type: 'object',
@@ -328,11 +329,13 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
   handlers.set('save_brand', async (args) => {
     const domain = args.domain as string;
     const brandName = args.brand_name as string;
-    const rawIndustry = typeof args.industry === 'string' ? args.industry.trim() : undefined;
-    if (rawIndustry !== undefined && (rawIndustry.length === 0 || rawIndustry.length > 200)) {
-      return JSON.stringify({ error: 'industry must be 1-200 characters' });
+    const rawIndustries = Array.isArray(args.industries)
+      ? (args.industries as string[]).map(s => typeof s === 'string' ? s.trim() : '').filter(s => s.length > 0)
+      : undefined;
+    if (rawIndustries !== undefined && rawIndustries.length === 0) {
+      return JSON.stringify({ error: 'industries must contain at least one non-empty string' });
     }
-    const industry = rawIndustry;
+    const industries = rawIndustries;
     const brandManifest = args.brand_manifest as Record<string, unknown> | undefined;
     const sourceType = (args.source_type as string) || 'community';
 
@@ -343,12 +346,11 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       return JSON.stringify({ error: 'brand_name is required' });
     }
 
-    // Helper: merge industry into a manifest's company.industry field
-    function applyIndustry(manifest: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-      if (!industry) return manifest;
+    function applyIndustries(manifest: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+      if (!industries) return manifest;
       const base = manifest ?? {};
       const company = (base.company as Record<string, unknown>) ?? {};
-      return { ...base, company: { ...company, industry } };
+      return { ...base, company: { ...company, industries } };
     }
 
     // Check if brand already exists
@@ -372,10 +374,9 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
         editor_email: 'addie@agenticadvertising.org',
         editor_name: 'Addie',
       };
-      if (brandManifest !== undefined || industry) {
-        // When only industry is provided (no manifest), merge into existing manifest
+      if (brandManifest !== undefined || industries) {
         const baseManifest = brandManifest ?? (existing.brand_manifest as Record<string, unknown> | undefined);
-        const merged = applyIndustry(baseManifest);
+        const merged = applyIndustries(baseManifest);
         if (merged) {
           editInput.brand_manifest = merged;
           editInput.has_brand_manifest = true;
@@ -395,7 +396,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
 
     // New brand: upsert directly (Addie is trusted, no pending review)
     // Preserve any existing enrichment data (e.g., from research_brand cache)
-    const finalManifest = applyIndustry(brandManifest);
+    const finalManifest = applyIndustries(brandManifest);
     const saved = await brandDb.upsertDiscoveredBrand({
       domain,
       brand_name: brandName,

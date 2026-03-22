@@ -78,7 +78,7 @@ interface TalentEntry {
   house: House;
   names: LocalizedName[];
   description: string;
-  industry: string;
+  industries: string[];
   keller_type: string;
   tagline: string;
   logos: Logo[];
@@ -113,7 +113,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Daan Janssen' }],
     description: 'Dutch Olympic speed skater, 2x gold medalist',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Speed is a choice',
     logos: [
@@ -192,7 +192,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Sofia Reyes' }, { es: 'Sofia Reyes' }],
     description: 'Mexican freestyle swimmer, Pan American gold medalist',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Every stroke counts',
     logos: [
@@ -255,7 +255,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Pieter van Dijk' }, { nl: 'Pieter van Dijk' }],
     description: 'Dutch professional cyclist and vegan lifestyle advocate',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Fueled by plants',
     logos: [
@@ -333,7 +333,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Yuki Tanaka' }, { ja: '田中ゆき' }],
     description: 'Japanese figure skater, World Championship silver medalist',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Grace under pressure',
     logos: [
@@ -703,7 +703,7 @@ function buildMatchReasons(
     reasons.push('Available for food/restaurant brands');
   }
   if (queryLower.includes('athlete') || queryLower.includes('sport')) {
-    reasons.push(`${talent.industry} talent`);
+    reasons.push(`${talent.industries.join('/')} talent`);
   }
 
   return reasons;
