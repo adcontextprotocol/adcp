@@ -467,7 +467,7 @@ function buildProduct(
                 category: ep.special.category,
                 starts: ep.special.starts,
                 ends: ep.special.ends,
-              } as Record<string, unknown>,
+              } as unknown as Episode extends { special?: infer S } ? S : never,
             }),
           };
           builtEpisodes.push(episode);
