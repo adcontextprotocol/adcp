@@ -690,6 +690,27 @@ async function buildRequestContext(
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
         certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
+        // If no module is in progress, inject a strong reminder to call start_certification_module.
+        // Without this, Addie can teach certification content in a guardrail-free zone where
+        // demonstrations aren't tracked and no progress is recorded.
+        if (inProgress.length === 0) {
+          const noModuleWarning = [
+            '⚠️ [CERTIFICATION — NO MODULE ACTIVE] ⚠️',
+            'No certification module is currently in progress for this learner.',
+            '',
+            'MANDATORY: If the learner wants to learn about AdCP, start any module, or asks about agentic advertising in the context of certification:',
+            '1. Call start_certification_module with the appropriate module_id IMMEDIATELY',
+            '2. Do NOT teach, explain, demo, or discuss module content before calling it',
+            '3. Do NOT say "the module is active" or "we are already in the module" — that is FALSE unless you have called start_certification_module in THIS conversation and received a success response',
+            '4. Do NOT call get_products, list_creative_formats, get_signals, or any AdCP demo tool for teaching purposes before starting a module',
+            '',
+            'The ONLY pre-module conversation allowed is helping the learner choose WHICH module to start.',
+            'Once they indicate any module (or say "start certification" / "start A1" / "I want to learn"), call the tool FIRST.',
+          ].join('\n');
+          certContextText = certContextText
+            ? `${noModuleWarning}\n\n${certContextText}`
+            : noModuleWarning;
+        }
       } catch (error) {
         logger.warn({ error }, 'Addie Bolt: Failed to get certification progress for context');
       }
