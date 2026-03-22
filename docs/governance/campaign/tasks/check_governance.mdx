@@ -448,7 +448,7 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `delivery_metrics.audience_distribution` | object | No | Audience demographic composition relative to a baseline. Used for bias/fairness drift detection. |
 | `delivery_metrics.audience_distribution.baseline` | enum | Yes | Reference population: `census` (national population), `platform` (platform's user base), or `custom`. |
 | `delivery_metrics.audience_distribution.baseline_description` | string | No | Description of the baseline when `baseline` is `custom` (e.g., "US adults 18+ with broadband access"). |
-| `delivery_metrics.audience_distribution.indices` | object | Yes | Index values for the current reporting period. Key format: `{dimension}:{value}` (e.g., `age:25-34`, `gender:female`). Value of 1.0 = parity with baseline; >1.0 = over-indexed; <1.0 = under-indexed. |
+| `delivery_metrics.audience_distribution.indices` | object | Yes | Index values for the current reporting period. Key format: `dimension:value` (e.g., `age:25-34`, `gender:female`). Value of 1.0 means parity with baseline; above 1.0 means over-indexed; below 1.0 means under-indexed. |
 | `delivery_metrics.audience_distribution.cumulative_indices` | object | No | Index values across all reporting periods. Same format as `indices`. Helps governance agents detect trends vs. one-period noise. |
 | `modification_summary` | string | No | Human-readable summary of what changed. SHOULD be present for `modification` phase. |
 
@@ -464,7 +464,7 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `geo_distribution` | object | Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages. |
 | `channel_distribution` | object | Actual channel distribution. Keys are values from the channels enum, values are percentages. |
 | `pacing` | enum | `ahead`, `on_track`, or `behind`. |
-| `audience_distribution` | object | Audience composition relative to a baseline. Contains `baseline` (enum), optional `baseline_description` (string, for custom baselines), `indices` (current period), and optional `cumulative_indices` (all periods). Keys are `{dimension}:{value}` strings, values are index numbers (1.0 = parity). |
+| `audience_distribution` | object | Audience composition relative to a baseline. Contains `baseline` (enum), optional `baseline_description` (string, for custom baselines), `indices` (current period), and optional `cumulative_indices` (all periods). Keys are `dimension:value` strings, values are index numbers (1.0 means parity). |
 
 ### Response
 
