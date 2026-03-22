@@ -625,9 +625,11 @@ export interface OrgCertificationSummary {
  * Get certification summary for all members of an organization.
  */
 export async function getOrgCertificationSummary(orgId: string): Promise<OrgCertificationSummary> {
-  // Get all org members
+  // Get all org members — prefer users.name, fall back to org_membership.name, then email
   const membersResult = await query<{ workos_user_id: string; first_name: string; last_name: string }>(
-    `SELECT om.workos_user_id, u.first_name, u.last_name
+    `SELECT om.workos_user_id,
+       COALESCE(NULLIF(u.first_name, ''), NULLIF(om.first_name, '')) AS first_name,
+       COALESCE(NULLIF(u.last_name, ''), NULLIF(om.last_name, ''), u.email) AS last_name
      FROM organization_memberships om
      JOIN users u ON u.workos_user_id = om.workos_user_id
      WHERE om.workos_organization_id = $1`,
@@ -1314,4 +1316,121 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
     credentials: credsResult.rows,
     checkpoints: checkpointsResult.rows,
   };
+}
+
+// =====================================================
+// CERTIFICATION GOALS
+// =====================================================
+
+export interface CertGoal {
+  id: string;
+  workos_organization_id: string;
+  credential_id: string;
+  target_count: number;
+  deadline: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  credential_name?: string;
+  credential_tier?: number;
+  current_count?: number;
+}
+
+/**
+ * Create or update a certification goal for an organization.
+ */
+export async function createOrUpdateCertGoal(
+  orgId: string,
+  credentialId: string,
+  targetCount: number,
+  deadline: string | null,
+  createdBy: string,
+): Promise<CertGoal> {
+  const result = await query<CertGoal>(
+    `INSERT INTO certification_goals (workos_organization_id, credential_id, target_count, deadline, created_by)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (workos_organization_id, credential_id) DO UPDATE
+       SET target_count = EXCLUDED.target_count,
+           deadline = EXCLUDED.deadline,
+           updated_at = NOW()
+     RETURNING *`,
+    [orgId, credentialId, targetCount, deadline, createdBy]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get all certification goals for an org with current progress.
+ */
+export async function getCertGoals(orgId: string): Promise<CertGoal[]> {
+  const result = await query<CertGoal>(
+    `SELECT cg.*, cc.name AS credential_name, cc.tier AS credential_tier,
+       (SELECT COUNT(DISTINCT uc.workos_user_id)
+        FROM user_credentials uc
+        JOIN organization_memberships om ON om.workos_user_id = uc.workos_user_id
+        WHERE om.workos_organization_id = cg.workos_organization_id
+          AND uc.credential_id = cg.credential_id
+       )::int AS current_count
+     FROM certification_goals cg
+     JOIN certification_credentials cc ON cc.id = cg.credential_id
+     WHERE cg.workos_organization_id = $1
+     ORDER BY cc.tier, cc.sort_order`,
+    [orgId]
+  );
+  return result.rows;
+}
+
+/**
+ * Delete a certification goal.
+ */
+export async function deleteCertGoal(id: string, orgId: string): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM certification_goals WHERE id = $1 AND workos_organization_id = $2`,
+    [id, orgId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Get stalled learners for an org: users with expectations (joined/started)
+ * who have no module progress update in the last 14 days.
+ */
+export async function getStalledLearners(orgId: string): Promise<Array<{
+  workos_user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  status: string;
+  last_activity: string | null;
+}>> {
+  const result = await query<{
+    workos_user_id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    status: string;
+    last_activity: string | null;
+  }>(
+    `SELECT ce.workos_user_id, ce.email, u.first_name, u.last_name, ce.status,
+       (SELECT MAX(COALESCE(lp.completed_at, lp.started_at))
+        FROM learner_progress lp
+        WHERE lp.workos_user_id = ce.workos_user_id
+       ) AS last_activity
+     FROM certification_expectations ce
+     LEFT JOIN users u ON u.workos_user_id = ce.workos_user_id
+     WHERE ce.workos_organization_id = $1
+       AND ce.status IN ('joined', 'started')
+       AND ce.workos_user_id IS NOT NULL
+       AND (ce.snooze_until IS NULL OR ce.snooze_until < NOW())
+       AND NOT EXISTS (
+         SELECT 1 FROM learner_progress lp
+         WHERE lp.workos_user_id = ce.workos_user_id
+           AND (lp.completed_at > NOW() - INTERVAL '14 days'
+                OR lp.started_at > NOW() - INTERVAL '14 days')
+       )
+     ORDER BY ce.status, ce.invited_at`,
+    [orgId]
+  );
+  return result.rows;
 }

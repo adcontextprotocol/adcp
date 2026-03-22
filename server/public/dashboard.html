@@ -3279,10 +3279,13 @@
               : alreadyResent
                 ? `<span style="font-size: var(--text-xs); color: var(--color-text-muted); margin-left: var(--space-2);">Resent</span>`
                 : '';
+            const credTarget = e.credential_target
+              ? `<span style="font-size: 11px; padding: 1px 6px; background: var(--color-info-50); color: var(--color-info-700); border-radius: 4px;">${escapeHtml(e.credential_target)}</span>`
+              : '<span style="color: var(--color-text-muted);">--</span>';
             return `
             <tr>
               <td style="color: var(--color-text-secondary);">${escapeHtml(e.email)}</td>
-              <td><span style="color: var(--color-text-muted);">--</span></td>
+              <td>${credTarget}</td>
               <td>--</td>
               <td><span class="cert-team-status cert-team-status--${statusCls}">${statusLabel}</span> ${resendBtn}</td>
             </tr>`;
@@ -3321,6 +3324,14 @@
               Email addresses (one per line or comma-separated)
             </label>
             <textarea id="certInviteEmails" placeholder="colleague@company.com, another@company.com"></textarea>
+            <div style="margin-top: var(--space-2);">
+              <label style="font-size: var(--text-sm); font-weight: var(--font-medium); display: block; margin-bottom: var(--space-1);">
+                Recommended credential (optional)
+              </label>
+              <select id="certInviteCredential" style="padding: var(--space-1) var(--space-2); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-sm); background: var(--color-bg-card);">
+                <option value="">None — let them choose</option>
+              </select>
+            </div>
             <div class="cert-team-invite-actions">
               <button class="cert-team-invite-btn" onclick="sendCertInvites()">Send invites</button>
               <button class="cert-team-invite-cancel" onclick="toggleCertInviteForm()">Cancel</button>
@@ -3328,11 +3339,33 @@
             </div>
             <div id="certInviteResult" style="display: none;" class="cert-team-invite-result"></div>
           </div>
+          <div id="certGoalsSection"></div>
           ${statsHtml}
           ${barsHtml}
           ${tableHtml}
+          <div id="certNudgeSection" style="margin-top: var(--space-3);"></div>
         `;
         teamCard.style.display = '';
+
+        // Populate credential dropdown for invites
+        try {
+          const credResp = await fetch('/api/certification/credentials');
+          if (credResp.ok) {
+            const credData = await credResp.json();
+            const select = document.getElementById('certInviteCredential');
+            if (select && credData.credentials) {
+              credData.credentials.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                select.appendChild(opt);
+              });
+            }
+          }
+        } catch (e) { /* credential list is optional */ }
+
+        // Load goals and nudge sections
+        loadCertGoalsAndNudge();
 
         // Attach resend handlers via event delegation
         teamCard.querySelectorAll('.cert-team-resend[data-expectation-id]').forEach(btn => {
@@ -3401,7 +3434,10 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ emails }),
+          body: JSON.stringify({
+            emails,
+            credential_target: document.getElementById('certInviteCredential')?.value || undefined,
+          }),
         });
 
         const data = await resp.json();
@@ -3482,6 +3518,173 @@
         btn.textContent = 'Copied!';
         setTimeout(() => { btn.textContent = original; }, 2000);
       });
+    }
+
+    // Load certification goals and nudge section
+    async function loadCertGoalsAndNudge() {
+      if (!currentOrg) return;
+      const goalsEl = document.getElementById('certGoalsSection');
+      const nudgeEl = document.getElementById('certNudgeSection');
+      if (!goalsEl && !nudgeEl) return;
+
+      // Load goals
+      if (goalsEl) {
+        try {
+          const resp = await fetch(`/api/organizations/${currentOrg.id}/certification-goals`, { credentials: 'include' });
+          if (resp.ok) {
+            const data = await resp.json();
+            const goals = data.goals || [];
+            if (goals.length > 0) {
+              const goalRows = goals.map(g => {
+                const pct = g.target_count > 0 ? Math.min(100, Math.round((g.current_count / g.target_count) * 100)) : 0;
+                const deadlineStr = g.deadline ? ` by ${new Date(g.deadline).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : '';
+                const isOverdue = g.deadline && new Date(g.deadline) < new Date() && g.current_count < g.target_count;
+                return `
+                  <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2);">
+                    <div style="flex: 1;">
+                      <div style="font-size: var(--text-sm); font-weight: var(--font-medium);">${escapeHtml(g.credential_name || g.credential_id)}${deadlineStr}</div>
+                      <div style="height: 6px; background: var(--color-gray-100); border-radius: 3px; margin-top: 4px; overflow: hidden;">
+                        <div style="height: 100%; width: ${pct}%; background: ${isOverdue ? 'var(--color-warning-500)' : 'var(--color-brand)'}; border-radius: 3px; transition: width 0.3s;"></div>
+                      </div>
+                    </div>
+                    <div style="font-size: var(--text-sm); color: var(--color-text-secondary); white-space: nowrap;">${g.current_count} / ${g.target_count}</div>
+                    <button class="cert-goal-delete" data-goal-id="${escapeHtml(g.id)}" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; font-size: var(--text-xs); padding: 2px;" title="Remove goal">&times;</button>
+                  </div>`;
+              }).join('');
+              goalsEl.innerHTML = `
+                <div style="margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); margin-bottom: var(--space-2);">Team goals</div>
+                  ${goalRows}
+                  <button onclick="toggleGoalForm()" style="font-size: var(--text-xs); color: var(--color-brand); background: none; border: none; cursor: pointer; margin-top: var(--space-1);">+ Add goal</button>
+                  <div id="certGoalForm" style="display: none; margin-top: var(--space-2);"></div>
+                </div>`;
+              // Attach delete handlers via event delegation
+              goalsEl.querySelectorAll('.cert-goal-delete[data-goal-id]').forEach(btn => {
+                btn.addEventListener('click', () => deleteCertGoal(btn.dataset.goalId));
+              });
+            } else {
+              goalsEl.innerHTML = `
+                <div style="margin-bottom: var(--space-3);">
+                  <button onclick="toggleGoalForm()" style="font-size: var(--text-sm); color: var(--color-brand); background: none; border: none; cursor: pointer;">+ Set a team certification goal</button>
+                  <div id="certGoalForm" style="display: none; margin-top: var(--space-2);"></div>
+                </div>`;
+            }
+          }
+        } catch (e) { /* goals are optional */ }
+      }
+
+      // Load stalled learners for nudge — use the server-side stalled count
+      if (nudgeEl) {
+        try {
+          const resp = await fetch(`/api/organizations/${currentOrg.id}/certification-stalled`, { credentials: 'include' });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.count > 0) {
+              nudgeEl.innerHTML = `
+                <button id="certNudgeBtn" onclick="sendCertNudge()" style="font-size: var(--text-sm); color: var(--color-warning-600); background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-3); cursor: pointer;">
+                  Nudge ${data.count} stalled learner${data.count !== 1 ? 's' : ''}
+                </button>
+                <span id="certNudgeResult" style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-left: var(--space-2);"></span>`;
+            }
+          }
+        } catch (e) { /* nudge is optional */ }
+      }
+    }
+
+    async function toggleGoalForm() {
+      const form = document.getElementById('certGoalForm');
+      if (!form) return;
+      if (form.style.display !== 'none') { form.style.display = 'none'; return; }
+
+      // Fetch credentials for dropdown
+      let credOptions = '';
+      try {
+        const resp = await fetch('/api/certification/credentials');
+        if (resp.ok) {
+          const data = await resp.json();
+          credOptions = (data.credentials || []).map(c =>
+            `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`
+          ).join('');
+        }
+      } catch (e) { /* fallback to empty */ }
+
+      form.innerHTML = `
+        <div style="display: flex; gap: var(--space-2); align-items: end; flex-wrap: wrap;">
+          <div>
+            <label style="font-size: var(--text-xs); display: block; margin-bottom: 2px;">Credential</label>
+            <select id="goalCredential" style="padding: var(--space-1); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-sm);">
+              ${credOptions}
+            </select>
+          </div>
+          <div>
+            <label style="font-size: var(--text-xs); display: block; margin-bottom: 2px;">Target count</label>
+            <input id="goalCount" type="number" min="1" value="5" style="width: 60px; padding: var(--space-1); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-sm);">
+          </div>
+          <div>
+            <label style="font-size: var(--text-xs); display: block; margin-bottom: 2px;">Deadline (optional)</label>
+            <input id="goalDeadline" type="date" style="padding: var(--space-1); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-sm);">
+          </div>
+          <button onclick="saveCertGoal()" style="padding: var(--space-1) var(--space-3); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-sm); font-size: var(--text-sm); cursor: pointer;">Save</button>
+        </div>`;
+      form.style.display = 'block';
+    }
+
+    async function saveCertGoal() {
+      if (!currentOrg) return;
+      const credId = document.getElementById('goalCredential')?.value;
+      const count = parseInt(document.getElementById('goalCount')?.value || '0');
+      const deadline = document.getElementById('goalDeadline')?.value || null;
+      if (!credId || count < 1) return;
+
+      try {
+        const resp = await fetch(`/api/organizations/${currentOrg.id}/certification-goals`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ credential_id: credId, target_count: count, deadline }),
+        });
+        if (resp.ok) {
+          loadCertGoalsAndNudge();
+        }
+      } catch (e) { /* silently fail */ }
+    }
+
+    async function deleteCertGoal(goalId) {
+      if (!currentOrg) return;
+      try {
+        await fetch(`/api/organizations/${currentOrg.id}/certification-goals/${goalId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        loadCertGoalsAndNudge();
+      } catch (e) { /* silently fail */ }
+    }
+
+    async function sendCertNudge() {
+      if (!currentOrg) return;
+      const btn = document.getElementById('certNudgeBtn');
+      const result = document.getElementById('certNudgeResult');
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+
+      try {
+        const resp = await fetch(`/api/organizations/${currentOrg.id}/certification-nudge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({}),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          if (result) result.textContent = `Sent to ${data.nudged} learner${data.nudged !== 1 ? 's' : ''}`;
+          if (btn) btn.style.display = 'none';
+        } else {
+          if (result) result.textContent = data.error || 'Failed';
+          if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+        }
+      } catch (e) {
+        if (result) result.textContent = 'Network error';
+        if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      }
     }
 
     // Load member profile preview (full preview for prominent display)

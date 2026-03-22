@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin, optionalAuth, isDevModeEnabled } from '../mi
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
+import { notifyUser } from '../notifications/notification-service.js';
 
 const logger = createLogger('certification-routes');
 
@@ -304,26 +305,43 @@ export function createCertificationRouters() {
     res.status(410).json({ error: 'Exam completion is conducted through Addie. Start a chat and ask to take the capstone.' });
   });
 
-  // GET /api/me/certification/expectation — get current user's cert expectation
+  // GET /api/me/certification/expectation — get current user's cert expectation + org social proof
   userRouter.get('/certification/expectation', async (req, res) => {
     try {
       const userId = req.user!.id;
-      const orgResult = await query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+      const orgResult = await query<{ workos_organization_id: string; name: string }>(
+        `SELECT om.workos_organization_id, o.name
+         FROM organization_memberships om
+         JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+         WHERE om.workos_user_id = $1 AND o.is_personal = false
+         LIMIT 1`,
         [userId]
       );
       const orgId = orgResult.rows[0]?.workos_organization_id;
-      if (!orgId) return res.json({ expectation: null });
+      const orgName = orgResult.rows[0]?.name;
+      if (!orgId) return res.json({ expectation: null, org_stats: null });
 
-      const expectation = await certDb.getCertExpectationForUser(orgId, userId);
-      if (!expectation || expectation.status === 'completed' || expectation.status === 'declined') {
-        return res.json({ expectation: null });
+      const [expectation, orgCertProgress] = await Promise.all([
+        certDb.getCertExpectationForUser(orgId, userId),
+        certDb.getOrgCertProgress(orgId),
+      ]);
+
+      let expectationResponse = null;
+      if (expectation && expectation.status !== 'completed' && expectation.status !== 'declined') {
+        // Suppress banner while snoozed
+        if (!expectation.snooze_until || new Date(expectation.snooze_until) <= new Date()) {
+          expectationResponse = { status: expectation.status };
+        }
       }
-      // Suppress banner while snoozed
-      if (expectation.snooze_until && new Date(expectation.snooze_until) > new Date()) {
-        return res.json({ expectation: null });
-      }
-      res.json({ expectation: { status: expectation.status } });
+
+      res.json({
+        expectation: expectationResponse,
+        org_stats: orgCertProgress.total > 1 ? {
+          certified: orgCertProgress.certified,
+          total: orgCertProgress.total,
+          org_name: orgName,
+        } : null,
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to get certification expectation');
       res.status(500).json({ error: 'Internal server error' });
@@ -370,15 +388,15 @@ export function createCertificationRouters() {
       }
 
       // Progressive backoff: first snooze = 7 days, second = 30 days, third = auto-decline
-      const previouslySnooozed = existing.snooze_until !== null;
-      if (previouslySnooozed && existing.snooze_until && new Date(existing.snooze_until) < new Date()) {
+      const previouslySnoozed = existing.snooze_until !== null;
+      if (previouslySnoozed && existing.snooze_until && new Date(existing.snooze_until) < new Date()) {
         // They've snoozed before and it expired — this is the second+ snooze
         // Auto-decline instead of snoozeing indefinitely
         await certDb.declineCertExpectation(orgId, userId);
         return res.json({ status: 'declined', message: 'No worries — certification is always available if you change your mind.' });
       }
 
-      const days = previouslySnooozed ? 30 : 7;
+      const days = previouslySnoozed ? 30 : 7;
       const result = await certDb.snoozeCertExpectation(orgId, userId, days);
       if (!result) return res.status(404).json({ error: 'No active expectation found' });
 
@@ -430,6 +448,7 @@ export function createCertificationRouters() {
           id: e.id,
           email: e.email,
           status: e.status,
+          credential_target: e.credential_target,
           invited_at: e.invited_at,
           invited_by_name: e.invited_by_name,
           last_resent_at: e.last_resent_at,
@@ -455,13 +474,19 @@ export function createCertificationRouters() {
     try {
       const userId = req.user!.id;
       const { orgId } = req.params;
-      const { emails } = req.body;
+      const { emails, credential_target } = req.body;
 
       if (!Array.isArray(emails) || emails.length === 0) {
         return res.status(400).json({ error: 'emails array is required' });
       }
       if (emails.length > 50) {
         return res.status(400).json({ error: 'Maximum 50 emails per request' });
+      }
+      if (credential_target) {
+        const cred = await certDb.getCredential(credential_target);
+        if (!cred) {
+          return res.status(400).json({ error: 'Invalid credential_target' });
+        }
       }
 
       // Verify user is an admin of this org (only admins can send invitations)
@@ -515,6 +540,7 @@ export function createCertificationRouters() {
             await certDb.createCertExpectation(orgId, email, userId, {
               status: 'joined',
               workosUserId: memberCheck.rows[0].workos_user_id,
+              credentialTarget: credential_target,
             });
             alreadyMember++;
           } else {
@@ -530,7 +556,9 @@ export function createCertificationRouters() {
                 throw inviteErr;
               }
             }
-            await certDb.createCertExpectation(orgId, email, userId);
+            await certDb.createCertExpectation(orgId, email, userId, {
+              credentialTarget: credential_target,
+            });
             invited++;
           }
           existingEmails.add(email);
@@ -591,6 +619,168 @@ export function createCertificationRouters() {
       res.json({ status: 'resent', email: updated.email });
     } catch (error) {
       logger.error({ error, orgId: req.params.orgId, id: req.params.id }, 'Failed to resend certification invite');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =====================================================
+  // ORG ROUTES — Certification Goals
+  // =====================================================
+
+  // GET /api/organizations/:orgId/certification-goals — list goals with progress
+  orgRouter.get('/:orgId/certification-goals', requireAuth, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { orgId } = req.params;
+
+      if (!await isOrgMember(userId, orgId)) {
+        return res.status(403).json({ error: 'You are not a member of this organization' });
+      }
+
+      const goals = await certDb.getCertGoals(orgId);
+      res.json({ goals });
+    } catch (error) {
+      logger.error({ error, orgId: req.params.orgId }, 'Failed to get certification goals');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/organizations/:orgId/certification-goals — create/update a goal (admin only)
+  orgRouter.post('/:orgId/certification-goals', requireAuth, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { orgId } = req.params;
+      const { credential_id, target_count, deadline } = req.body;
+
+      if (!credential_id || typeof credential_id !== 'string' || !Number.isInteger(target_count) || target_count < 1 || target_count > 10000) {
+        return res.status(400).json({ error: 'credential_id (string) and target_count (integer 1-10000) are required' });
+      }
+
+      // Validate deadline format
+      let parsedDeadline: string | null = null;
+      if (deadline) {
+        const d = new Date(deadline);
+        if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid deadline date' });
+        parsedDeadline = d.toISOString().split('T')[0];
+      }
+
+      // Verify credential exists
+      const credential = await certDb.getCredential(credential_id);
+      if (!credential) {
+        return res.status(400).json({ error: 'Invalid credential_id' });
+      }
+
+      // Verify admin role
+      const membershipResult = await query<{ role: string }>(
+        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [userId, orgId]
+      );
+      if (!membershipResult.rows[0] || membershipResult.rows[0].role !== 'admin') {
+        return res.status(403).json({ error: 'Only organization admins can set certification goals' });
+      }
+
+      const goal = await certDb.createOrUpdateCertGoal(orgId, credential_id, target_count, parsedDeadline, userId);
+      res.json({ goal });
+    } catch (error) {
+      logger.error({ error, orgId: req.params.orgId }, 'Failed to create certification goal');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/organizations/:orgId/certification-goals/:id — remove a goal (admin only)
+  orgRouter.delete('/:orgId/certification-goals/:id', requireAuth, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { orgId, id } = req.params;
+
+      const membershipResult = await query<{ role: string }>(
+        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [userId, orgId]
+      );
+      if (!membershipResult.rows[0] || membershipResult.rows[0].role !== 'admin') {
+        return res.status(403).json({ error: 'Only organization admins can delete certification goals' });
+      }
+
+      const deleted = await certDb.deleteCertGoal(id, orgId);
+      if (!deleted) return res.status(404).json({ error: 'Goal not found' });
+
+      res.json({ status: 'deleted' });
+    } catch (error) {
+      logger.error({ error, orgId: req.params.orgId }, 'Failed to delete certification goal');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =====================================================
+  // ORG ROUTES — Certification Nudge
+  // =====================================================
+
+  // GET /api/organizations/:orgId/certification-stalled — count of stalled learners
+  orgRouter.get('/:orgId/certification-stalled', requireAuth, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { orgId } = req.params;
+
+      if (!await isOrgMember(userId, orgId)) {
+        return res.status(403).json({ error: 'You are not a member of this organization' });
+      }
+
+      const stalled = await certDb.getStalledLearners(orgId);
+      res.json({ count: stalled.length });
+    } catch (error) {
+      logger.error({ error, orgId: req.params.orgId }, 'Failed to get stalled learner count');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/organizations/:orgId/certification-nudge — nudge stalled learners
+  orgRouter.post('/:orgId/certification-nudge', requireAuth, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { orgId } = req.params;
+      const { user_ids } = req.body;
+
+      // Verify admin role
+      const membershipResult = await query<{ role: string }>(
+        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [userId, orgId]
+      );
+      if (!membershipResult.rows[0] || membershipResult.rows[0].role !== 'admin') {
+        return res.status(403).json({ error: 'Only organization admins can send certification nudges' });
+      }
+
+      let stalledLearners = await certDb.getStalledLearners(orgId);
+
+      // Filter to specific users if provided
+      if (Array.isArray(user_ids) && user_ids.length > 0) {
+        if (!user_ids.every(id => typeof id === 'string')) {
+          return res.status(400).json({ error: 'user_ids must be an array of strings' });
+        }
+        const targetSet = new Set(user_ids);
+        stalledLearners = stalledLearners.filter(l => targetSet.has(l.workos_user_id));
+      }
+
+      let nudged = 0;
+      for (const learner of stalledLearners) {
+        try {
+          await notifyUser({
+            recipientUserId: learner.workos_user_id,
+            actorUserId: userId,
+            type: 'certification_nudge',
+            title: 'Your team is working toward certification — pick up where you left off',
+            url: '/certification',
+          });
+          // Snooze for 7 days to prevent re-nudging
+          await certDb.snoozeCertExpectation(orgId, learner.workos_user_id, 7);
+          nudged++;
+        } catch (err) {
+          logger.error({ error: err, userId: learner.workos_user_id }, 'Failed to send cert nudge');
+        }
+      }
+
+      res.json({ nudged, total_stalled: stalledLearners.length });
+    } catch (error) {
+      logger.error({ error, orgId: req.params.orgId }, 'Failed to send certification nudges');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
