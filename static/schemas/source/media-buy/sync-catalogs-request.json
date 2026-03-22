@@ -46,6 +46,12 @@
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Optional webhook configuration for async sync notifications. Publisher will send webhook when sync completes if operation takes longer than immediate response time (common for large feeds requiring platform review)."
     },
+    "buyer_context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "seller_context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

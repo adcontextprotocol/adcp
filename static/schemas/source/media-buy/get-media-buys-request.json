@@ -49,6 +49,12 @@
       "$ref": "/schemas/core/pagination-request.json",
       "description": "Cursor-based pagination controls. Strongly recommended when querying broad scopes (for example, all active media buys in an account)."
     },
+    "buyer_context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "seller_context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

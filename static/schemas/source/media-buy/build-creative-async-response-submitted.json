@@ -5,6 +5,12 @@
   "description": "Payload acknowledging the build_creative task is queued.",
   "type": "object",
   "properties": {
+    "buyer_context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "seller_context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

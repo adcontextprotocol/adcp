@@ -54,6 +54,12 @@
       "type": "boolean",
       "description": "When true, this response contains simulated data from sandbox mode."
     },
+    "buyer_context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "seller_context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

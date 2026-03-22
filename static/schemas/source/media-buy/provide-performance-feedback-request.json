@@ -44,6 +44,12 @@
       "description": "Source of the performance data",
       "default": "buyer_attribution"
     },
+    "buyer_context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "seller_context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

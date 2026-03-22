@@ -52,6 +52,12 @@
       "default": false,
       "description": "When true, event sources not included in this sync will be removed"
     },
+    "buyer_context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "seller_context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

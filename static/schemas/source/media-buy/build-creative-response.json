@@ -99,6 +99,12 @@
           "$ref": "/schemas/core/error.json",
           "description": "When include_preview was true in the request but preview generation failed. Uses the standard error structure with code, message, and recovery classification. Distinguishes 'agent does not support inline preview' (preview and preview_error both absent) from 'preview generation failed' (preview absent, preview_error present). Omitted when preview succeeded or was not requested."
         },
+        "buyer_context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "seller_context": {
+          "$ref": "/schemas/core/context.json"
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -214,6 +220,12 @@
           "$ref": "/schemas/core/error.json",
           "description": "When include_preview was true in the request but preview generation failed. Uses the standard error structure with code, message, and recovery classification. Omitted when preview succeeded or was not requested."
         },
+        "buyer_context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "seller_context": {
+          "$ref": "/schemas/core/context.json"
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -238,6 +250,12 @@
             "$ref": "/schemas/core/error.json"
           },
           "minItems": 1
+        },
+        "buyer_context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "seller_context": {
+          "$ref": "/schemas/core/context.json"
         },
         "context": {
           "$ref": "/schemas/core/context.json"

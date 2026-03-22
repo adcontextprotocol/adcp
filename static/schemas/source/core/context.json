@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/context.json",
   "title": "Context Object",
-  "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+  "description": "Opaque correlation data echoed unchanged in responses, used to maintain context for both buyers and sellers—for example internal tracking, UI session IDs, trace IDs, and other party-specific identifiers that do not affect protocol behavior. Context data is never parsed by AdCP agents; it is simply preserved and returned.",
   "type": "object",
   "additionalProperties": true
 }

@@ -103,6 +103,12 @@
         "type": "string"
       }
     },
+    "buyer_context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "seller_context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -110,5 +116,15 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "oneOf": [
+    {
+      "required": ["target_format_id"],
+      "properties": { "target_format_ids": false }
+    },
+    {
+      "required": ["target_format_ids"],
+      "properties": { "target_format_id": false }
+    }
+  ],
   "additionalProperties": true
 }
