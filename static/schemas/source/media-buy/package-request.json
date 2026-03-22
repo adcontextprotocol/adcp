@@ -90,6 +90,9 @@
       "minItems": 1,
       "maxItems": 100
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

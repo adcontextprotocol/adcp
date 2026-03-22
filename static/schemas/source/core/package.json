@@ -90,6 +90,9 @@
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
     },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
