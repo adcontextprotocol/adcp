@@ -419,6 +419,30 @@ export async function setOptedOut(personId: string, optedOut: boolean): Promise<
   );
 }
 
+/** Set outreach cadence (opted_out + next_contact_after) in a single transaction. */
+export async function setCadence(
+  personId: string,
+  optedOut: boolean,
+  nextContactAfter: Date | null,
+): Promise<void> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE person_relationships
+       SET opted_out = $2, next_contact_after = $3, updated_at = NOW()
+       WHERE id = $1`,
+      [personId, optedOut, nextContactAfter]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /** Update the sentiment trend for a person. */
 export async function updateSentiment(personId: string, sentiment: SentimentTrend): Promise<void> {
   await query(

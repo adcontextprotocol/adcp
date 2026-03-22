@@ -127,6 +127,10 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'probe_adcp_agent',
       'check_publisher_authorization',
       'test_adcp_agent',
+      'evaluate_agent_quality',
+      'compare_media_kit',
+      'test_rfp_response',
+      'test_io_execution',
       'validate_agent',
       'resolve_property',
       'save_property',
@@ -174,6 +178,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'si_send_message',
       'si_get_offering',
       'si_terminate_session',
+      // Brand Protocol
+      'get_brand_identity',
+      'get_rights',
+      'acquire_rights',
+      'update_rights',
       // Protocol
       'get_adcp_capabilities',
       // Agent management
@@ -292,6 +301,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'suggest_prospects',
       'set_reminder',
       'my_upcoming_tasks',
+      'complete_task',
       'log_conversation',
       'get_insight_summary',
       'get_member_search_analytics',
@@ -350,11 +360,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'test_out_modules',
       'start_certification_exam',
       'complete_certification_exam',
-      // Brand sandbox tools for certification exercises
-      'sandbox_get_brand_identity',
-      'sandbox_get_rights',
-      'sandbox_acquire_rights',
-      'sandbox_update_rights',
+      // Brand protocol tools (route to training agent during certification)
+      'get_brand_identity',
+      'get_rights',
+      'acquire_rights',
+      'update_rights',
     ],
   },
 };

@@ -416,44 +416,83 @@ export async function addAttendeeToSeries(
 }
 
 /**
- * Handle Zoom recording completed webhook
- * Stores transcript and fetches Zoom AI Companion summary
+ * Look up a meeting by Zoom meeting ID
+ */
+async function findMeetingByZoomId(zoomMeetingId?: string): Promise<Meeting | null> {
+  if (!zoomMeetingId) return null;
+  return meetingsDb.getMeetingByZoomId(zoomMeetingId);
+}
+
+/**
+ * Handle Zoom recording.completed webhook
+ * Fetches the AI Companion meeting summary (available once recording finishes)
  */
 export async function handleRecordingCompleted(meetingUuid: string, zoomMeetingId?: string): Promise<void> {
   logger.info({ meetingUuid, zoomMeetingId }, 'Processing recording completed');
 
-  // Find meeting in database - try zoom_meeting_id first (numeric ID), fall back to UUID lookup
-  let meeting: Meeting | null = null;
-  if (zoomMeetingId) {
-    meeting = await meetingsDb.getMeetingByZoomId(zoomMeetingId);
-  }
-
+  const meeting = await findMeetingByZoomId(zoomMeetingId);
   if (!meeting) {
-    logger.warn({ meetingUuid, zoomMeetingId }, 'Meeting not found in database - transcript will not be stored');
+    logger.warn({ meetingUuid, zoomMeetingId: zoomMeetingId ?? 'none' }, 'Meeting not found in database - cannot store summary');
     return;
   }
 
   const meetingCtx = { meetingId: meeting.id, meetingTitle: meeting.title, zoomMeetingId, meetingUuid };
 
-  // Get transcript
-  const transcriptText = await zoom.getTranscriptText(meetingUuid);
-  let hadTranscript = false;
-  if (transcriptText) {
-    const plainText = zoom.parseVttToText(transcriptText);
-    await meetingsDb.updateMeeting(meeting.id, { transcript_text: plainText });
-    hadTranscript = true;
+  if (meeting.summary) {
+    logger.info(meetingCtx, 'Meeting summary already stored, skipping');
+    return;
   }
 
-  // Fetch Zoom AI Companion meeting summary (getMeetingSummary handles errors internally and returns null)
-  let hadSummary = false;
   const zoomSummary = await zoom.getMeetingSummary(meetingUuid);
   if (zoomSummary) {
     const summary = zoom.formatMeetingSummaryAsMarkdown(zoomSummary);
     await meetingsDb.updateMeeting(meeting.id, { summary });
-    hadSummary = true;
+    logger.info(meetingCtx, 'Stored meeting summary');
+  } else {
+    logger.info(meetingCtx, 'No meeting summary available');
+  }
+}
+
+/**
+ * Handle Zoom recording.transcript_completed webhook
+ * Fetches the transcript (available once Zoom finishes transcription)
+ * Also fetches the meeting summary if not already stored
+ */
+export async function handleTranscriptCompleted(meetingUuid: string, zoomMeetingId?: string): Promise<void> {
+  logger.info({ meetingUuid, zoomMeetingId }, 'Processing transcript completed');
+
+  const meeting = await findMeetingByZoomId(zoomMeetingId);
+  if (!meeting) {
+    logger.warn({ meetingUuid, zoomMeetingId: zoomMeetingId ?? 'none' }, 'Meeting not found in database - cannot store transcript');
+    return;
   }
 
-  logger.info({ ...meetingCtx, hadTranscript, hadSummary }, 'Recording processing completed');
+  const meetingCtx = { meetingId: meeting.id, meetingTitle: meeting.title, zoomMeetingId, meetingUuid };
+
+  // Build updates in a single DB write
+  const updates: { transcript_text?: string; summary?: string } = {};
+  let hadTranscript = false;
+  let hadSummary = false;
+
+  const transcriptText = await zoom.getTranscriptText(meetingUuid);
+  if (transcriptText) {
+    updates.transcript_text = zoom.parseVttToText(transcriptText);
+    hadTranscript = true;
+  }
+
+  if (!meeting.summary) {
+    const zoomSummary = await zoom.getMeetingSummary(meetingUuid);
+    if (zoomSummary) {
+      updates.summary = zoom.formatMeetingSummaryAsMarkdown(zoomSummary);
+      hadSummary = true;
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await meetingsDb.updateMeeting(meeting.id, updates);
+  }
+
+  logger.info({ ...meetingCtx, hadTranscript, hadSummary }, 'Transcript processing completed');
 }
 
 /**

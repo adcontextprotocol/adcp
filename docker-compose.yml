@@ -32,6 +32,20 @@ services:
       - DEV_USER_EMAIL=dev@example.com
       - DEV_USER_ID=dev-user-123
       - AGENT_TOKEN_ENCRYPTION_SECRET=local-dev-encryption-key-32chars!
+      # Override .env.local keys with dummy values (satisfies module guards, dev mode bypasses auth)
+      - WORKOS_API_KEY=sk_test_dummy_local_dev_00000000000
+      - WORKOS_CLIENT_ID=client_dummy_local_dev_00000000
+      - WORKOS_COOKIE_PASSWORD=local-dev-cookie-password-that-is-at-least-32-chars-long
+      # Disable Stripe to avoid sync hanging on startup
+      - STRIPE_SECRET_KEY=
+      - STRIPE_PUBLISHABLE_KEY=
+      # Disable Slack/Addie Bolt to avoid sync (override both naming conventions)
+      - SLACK_BOT_TOKEN=
+      - SLACK_SIGNING_SECRET=
+      - ADDIE_BOT_TOKEN=
+      - ADDIE_SIGNING_SECRET=
+      # Skip git fetch for pre-cloned repos (avoids execSync blocking the event loop on startup)
+      - SKIP_REPO_SYNC=true
     volumes:
       # Mount public directory for hot reloading static files
       - ./server/public:/app/server/public:ro

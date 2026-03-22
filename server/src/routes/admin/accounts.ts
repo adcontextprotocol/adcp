@@ -52,11 +52,6 @@ export function setupAccountRoutes(
 ): void {
   const workos = config?.workos ?? null;
 
-  // Redirect to manage accounts page
-  pageRouter.get("/accounts", requireAuth, (req, res) => {
-    res.redirect(301, "/admin/accounts");
-  });
-
   // Page route for domain discovery tool
   pageRouter.get(
     "/tools/domain-discovery",
@@ -83,19 +78,11 @@ export function setupAccountRoutes(
     }
   );
 
-  // Redirect account detail to manage
-  pageRouter.get(
-    "/accounts/:orgId",
-    requireAuth,
-    (req, res) => {
-      res.redirect(301, `/admin/accounts/${req.params.orgId}`);
-    }
-  );
-
-  // Redirect old URL to new
+  // Redirect old /admin/organizations URL to /admin/accounts
   pageRouter.get(
     "/organizations/:orgId",
     requireAuth,
+    requireAdmin,
     (req, res) => {
       res.redirect(301, `/admin/accounts/${req.params.orgId}`);
     }
@@ -709,8 +696,13 @@ export function setupAccountRoutes(
               }
             : null,
 
-          // Pricing & discount
+          // Pricing & discount (flat fields for invoice/payment-link modals)
           revenue_tier: org.revenue_tier,
+          discount_percent: org.discount_percent ?? null,
+          discount_amount_cents: org.discount_amount_cents ?? null,
+          stripe_coupon_id: org.stripe_coupon_id || null,
+          stripe_promotion_code: org.stripe_promotion_code || null,
+          // Nested discount object for pricing display
           discount: org.discount_percent || org.discount_amount_cents
             ? {
                 percent: org.discount_percent,
@@ -2406,7 +2398,9 @@ export function setupAccountRoutes(
         }
 
         const org = orgResult.rows[0];
-        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+        // Only fall back to org coupon if coupon_id was not provided;
+        // explicit null means the admin opted out of the discount
+        const effectiveCouponId = coupon_id !== undefined ? coupon_id : org.stripe_coupon_id;
 
         const result = await createAndSendInvoice({
           lookupKey: lookup_key,

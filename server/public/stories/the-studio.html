@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Studio — Find Your Story — AgenticAdvertising.org</title>
+  <meta name="description" content="A creator studio builds one agentic storefront to sell everything — sponsorships, placements, audience data, talent rights. Issue 01 of Find Your Story.">
+  <meta property="og:title" content="The Studio — Find Your Story">
+  <meta property="og:description" content="A creator studio builds one agentic storefront to sell everything — sponsorships, placements, audience data, talent rights.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://agenticadvertising.org/stories/the-studio">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/layout.css">
+  <style>
+    .story-hero {
+      text-align: center;
+      padding: var(--space-20) var(--space-6) var(--space-12);
+      background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #e94560 100%);
+      color: #fff;
+    }
+
+    .story-hero-issue {
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: var(--space-3);
+    }
+
+    .story-hero h1 {
+      font-size: var(--text-5xl);
+      font-weight: var(--font-extrabold);
+      letter-spacing: var(--tracking-tight);
+      line-height: var(--leading-tight);
+      margin-bottom: var(--space-4);
+    }
+
+    .story-hero p {
+      font-size: var(--text-xl);
+      color: rgba(255, 255, 255, 0.85);
+      max-width: 640px;
+      margin: 0 auto;
+      line-height: var(--leading-relaxed);
+    }
+
+    .story-hero-characters {
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Story content */
+    .story-content {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: var(--space-16) var(--space-6);
+    }
+
+    .story-content h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: var(--space-12) 0 var(--space-4) 0;
+      line-height: var(--leading-tight);
+    }
+
+    .story-content h2:first-child {
+      margin-top: 0;
+    }
+
+    .story-content h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin: var(--space-8) 0 var(--space-3) 0;
+    }
+
+    .story-content p {
+      font-size: var(--text-lg);
+      color: var(--color-gray-700);
+      line-height: var(--leading-loose);
+      margin-bottom: var(--space-4);
+    }
+
+    .story-content ul {
+      margin: var(--space-4) 0;
+      padding-left: var(--space-6);
+    }
+
+    .story-content li {
+      font-size: var(--text-lg);
+      color: var(--color-gray-700);
+      line-height: var(--leading-loose);
+      margin-bottom: var(--space-2);
+    }
+
+    .story-content strong {
+      color: var(--color-text-heading);
+    }
+
+    .story-content em {
+      font-style: italic;
+    }
+
+    .story-img {
+      width: 100%;
+      border-radius: var(--radius-lg);
+      margin: var(--space-8) 0;
+    }
+
+    /* Callout boxes */
+    .callout {
+      background: var(--color-primary-50);
+      border-left: 4px solid var(--color-brand);
+      border-radius: var(--radius-md);
+      padding: var(--space-4) var(--space-6);
+      margin: var(--space-6) 0;
+    }
+
+    .callout p {
+      font-size: var(--text-base);
+      color: var(--color-gray-700);
+      margin: 0;
+    }
+
+    .callout a {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
+
+    /* Protocol detail toggles */
+    .protocol-detail {
+      margin: var(--space-4) 0;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .protocol-detail summary {
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-gray-600);
+      cursor: pointer;
+      background: var(--color-gray-50);
+      border-bottom: 1px solid transparent;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .protocol-detail summary::before {
+      content: '\25B6';
+      font-size: 10px;
+      transition: transform 0.2s ease;
+    }
+
+    .protocol-detail[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    .protocol-detail[open] summary {
+      border-bottom-color: var(--color-border);
+    }
+
+    .protocol-detail pre {
+      margin: 0;
+      padding: var(--space-4);
+      background: var(--color-gray-900);
+      color: #e2e8f0;
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+      overflow-x: auto;
+    }
+
+    .protocol-detail code {
+      font-family: var(--font-mono);
+    }
+
+    /* Reference table */
+    .ref-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-6) 0;
+      font-size: var(--text-sm);
+    }
+
+    .ref-table th {
+      text-align: left;
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-gray-50);
+      border-bottom: 2px solid var(--color-border);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+
+    .ref-table td {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-gray-700);
+      vertical-align: top;
+    }
+
+    .ref-table a {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
+
+    /* Summary table */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-6) 0;
+    }
+
+    .summary-table td {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+      font-size: var(--text-base);
+      color: var(--color-gray-700);
+      vertical-align: top;
+    }
+
+    .summary-table td:first-child {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      width: 45%;
+    }
+
+    /* CTA section */
+    .story-cta {
+      background: var(--color-gray-50);
+      padding: var(--space-16) var(--space-6);
+      text-align: center;
+    }
+
+    .story-cta h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-4);
+    }
+
+    .story-cta p {
+      font-size: var(--text-lg);
+      color: var(--color-gray-600);
+      max-width: 560px;
+      margin: 0 auto var(--space-6) auto;
+      line-height: var(--leading-relaxed);
+    }
+
+    .story-cta-links {
+      display: flex;
+      gap: var(--space-4);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .story-cta-links a {
+      display: inline-block;
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-md);
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      text-decoration: none;
+      transition: background 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: var(--color-brand);
+      border: 1px solid var(--color-border-strong);
+    }
+
+    .btn-secondary:hover {
+      background: var(--color-gray-50);
+    }
+
+    /* Back link */
+    .story-back {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: var(--space-6) var(--space-6) 0;
+    }
+
+    .story-back a {
+      font-size: var(--text-sm);
+      color: var(--color-gray-500);
+      text-decoration: none;
+    }
+
+    .story-back a:hover {
+      color: var(--color-brand);
+    }
+
+    /* Share buttons */
+    .story-share {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-6);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      border-top: 1px solid var(--color-border);
+    }
+    .story-share-label { font-size: var(--text-sm); color: var(--color-text-muted); }
+    .story-share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 8px;
+      border: 1px solid var(--color-border); background: white;
+      color: var(--color-text-heading); cursor: pointer;
+      transition: all 0.15s; text-decoration: none;
+    }
+    .story-share-btn:hover { background: var(--color-gray-100); border-color: var(--color-primary-600); color: var(--color-primary-600); }
+    .story-share-btn svg { width: 18px; height: 18px; }
+    .story-share-btn.copied { background: #047857; border-color: #047857; color: white; }
+
+    /* Partners section */
+    .story-partners {
+      background: var(--color-gray-50);
+      padding: var(--space-16) var(--space-6);
+    }
+
+    .story-partners-inner {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .story-partners h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .story-partners > .story-partners-inner > p {
+      font-size: var(--text-lg);
+      color: var(--color-gray-600);
+      margin-bottom: var(--space-8);
+      line-height: var(--leading-relaxed);
+    }
+
+    .partner-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-4);
+      margin-bottom: var(--space-8);
+    }
+
+    .partner-card {
+      background: #fff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+    }
+
+    .partner-card h3 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .partner-card p {
+      font-size: var(--text-sm);
+      color: var(--color-gray-600);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-3);
+    }
+
+    .partner-names {
+      font-size: var(--text-xs);
+      color: var(--color-brand);
+      font-weight: var(--font-semibold);
+    }
+
+    .partner-cta {
+      display: flex;
+      gap: var(--space-4);
+      justify-content: center;
+    }
+
+    /* Cross-story links */
+    .story-crosslinks {
+      padding: var(--space-16) var(--space-6);
+    }
+
+    .story-crosslinks-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .story-crosslinks h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-6);
+    }
+
+    .crosslink-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-4);
+    }
+
+    .crosslink-card {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      padding: var(--space-5);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      text-decoration: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .crosslink-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.1);
+    }
+
+    .crosslink-issue {
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-gray-400);
+    }
+
+    .crosslink-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+
+    .crosslink-desc {
+      font-size: var(--text-sm);
+      color: var(--color-gray-600);
+      line-height: var(--leading-relaxed);
+    }
+    .crosslink-card--walkthrough {
+      border-left: 3px solid #14b8a6;
+    }
+    .crosslink-card--walkthrough:hover {
+      border-color: #14b8a6;
+      box-shadow: 0 4px 12px rgba(20, 184, 166, 0.12);
+    }
+    .crosslink-card--walkthrough .crosslink-issue {
+      color: #047857;
+    }
+
+    @media (max-width: 900px) {
+      .partner-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .story-hero h1 {
+        font-size: var(--text-3xl);
+      }
+      .partner-grid {
+        grid-template-columns: 1fr;
+      }
+      .crosslink-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <section class="story-hero">
+    <div class="story-hero-issue">Issue 01</div>
+    <h1>The Studio</h1>
+    <p>A creator studio builds one agentic storefront to sell everything — sponsorships, placements, audience data, talent rights.</p>
+    <div class="story-hero-characters">Featuring Ren Castillo & Juno Park of Halfmoon Studios</div>
+  </section>
+
+  <div class="story-back"><a href="/stories">Stories</a> / <a href="/stories?topic=content">Content &amp; Creator</a></div>
+
+  <div class="story-content">
+
+    <p>You get 100,000 subscribers and YouTube sends you a silver play button. You film yourself unboxing it. A million subscribers and you get a gold one. You film that too. Ten million and you get diamond. You film that, and millions of people watch you film it.</p>
+
+    <p>Somewhere along the way, the power dynamic flips. You start as YouTube's product. You end as YouTube's customer. Or competitor.</p>
+
+    <img src="/images/stories/play-button-progression.png" alt="A creator's journey from filming alone in a bedroom with a silver play button to commanding a media empire with a ruby play button" class="story-img">
+
+    <p>And then the real challenge starts — not making the content, but running the business.</p>
+
+    <h2>Six revenue streams, zero unified view</h2>
+
+    <p>Meet Ren Castillo. He runs operations at Halfmoon Studios, the 15-person team behind Juno Park — a food and travel creator with about 8 million subscribers across YouTube, TikTok, and a growing CTV presence. Juno makes the content. Ren runs the business.</p>
+
+    <img src="/images/stories/ren-tuesday.png" alt="Ren Castillo overwhelmed at his desk — multiple screens showing emails, spreadsheets, DMs, and analytics, a studio visible through the glass wall behind him" class="story-img">
+
+    <p>Here's Ren's Tuesday:</p>
+
+    <ul>
+      <li>A snack brand wants to sponsor next season of <em>The Juno Table</em>. Their agency sent a brief. Ren's negotiating over email.</li>
+      <li>A kitchen appliance company wants a branded integration in this week's <em>Quick Fire</em> episode. That's in Juno's DMs, forwarded to Ren at midnight.</li>
+      <li>YouTube is selling pre-roll and mid-roll around all of Juno's content. Ren has no say and no visibility into the pricing.</li>
+      <li>Juno's Pantry — their DTC hot sauce line — is buying ads on Instagram and TikTok, the same platforms where Juno's content runs.</li>
+      <li>A talent agency Ren's never heard of wants to license Juno's likeness for AI-generated display ads.</li>
+      <li>StreamHaus just added <em>The Juno Table</em> to three new CTV apps, which changes Halfmoon's available ad inventory overnight.</li>
+    </ul>
+
+    <p>Six revenue streams. Six different workflows. Six different counterparties. No unified view.</p>
+
+    <p>Ren's leaving money on the table because he can't see the table.</p>
+
+    <p>The root cause: a creator studio collapses four ad tech roles into one entity. Halfmoon is the <strong>publisher</strong> (Juno's shows run on YouTube, TikTok, and StreamHaus CTV). They are the <strong>advertiser</strong> (Juno's Pantry buys media on those same platforms). Juno is the <strong>talent</strong> (her likeness has commercial value independent of any specific show). And Halfmoon is the <strong>data company</strong> (200K opted-in fans with verified demographics, plus deterministic purchase data from the DTC business).</p>
+
+    <p>Traditional ad tech has a separate stack for each of those roles. Ren needs one stack for all of them.</p>
+
+    <img src="/images/stories/convergence.png" alt="A creator stands at the center of four overlapping colored spotlights — publisher, advertiser, talent, data company — all converging into one person" class="story-img">
+
+    <h2>The agentic storefront</h2>
+
+    <p>Ren builds one AdCP sales agent — a single storefront that knows Halfmoon's entire inventory and speaks to any buyer agent that shows up.</p>
+
+    <p>He starts by mapping everything Halfmoon sells into one system: the shows and their episodes, the sponsorship tiers, the branded integration slots, the audience segments, Juno's talent rights. For the first time, Ren can see the entire business in one place — and so can any buyer agent that shows up.</p>
+
+    <img src="/images/stories/ren-configuring.png" alt="Ren Castillo standing at a large touchscreen, confidently arranging shows and products into a connected storefront" class="story-img">
+
+    <p>The storefront exposes everything through one protocol. Buyer agents arrive with campaign briefs. Ren's agent matches them to the right products at the right price, without Ren triple-selling the same premiere episode or underpricing Juno's audience data because he forgot he had it.</p>
+
+    <p>Now Ren can focus on what matters — helping Juno make great content and growing the business — while agents handle the mechanics of ads, sponsorships, and product placements.</p>
+
+    <img src="/images/stories/juno-creating.png" alt="Juno Park in her element — filming herself cooking with flames and a robotic camera arm, her hot sauce bottles visible on the counter" class="story-img">
+
+    <p>Here's what that looks like when a buyer shows up.</p>
+
+    <h3>A buyer agent sends a brief</h3>
+
+    <p>Sam Adeyemi at Pinnacle Agency is running a campaign for a snack brand. His buyer agent discovers Halfmoon's sales agent through the <a href="https://agenticadvertising.org/registry">registry</a> and sends a brief via <a href="https://docs.adcontextprotocol.org/docs/media-buy/task-reference/get_products">get_products</a>:</p>
+
+    <details class="protocol-detail">
+      <summary>The brief Sam's agent sends</summary>
+      <pre><code>{
+  "buying_mode": "brief",
+  "brief": "Snack brand targeting Gen Z foodies. Looking for creator content
+           with branded integration and high engagement. Q4 2026.",
+  "brand": { "domain": "snackco.example.com" },
+  "filters": {
+    "channels": ["product_placement"],
+    "start_date": "2026-10-01",
+    "end_date": "2026-12-31"
+  }
+}</code></pre>
+    </details>
+
+    <p>Ren's agent evaluates the brief against Halfmoon's catalog and returns only what matches — a season sponsorship on <em>The Juno Table</em> and branded integrations on <em>Quick Fire</em>. Not a dump of everything in inventory. A curated response to what the buyer actually asked for.</p>
+
+    <p>The response includes the shows those products reference, so Sam's agent understands the content, the distribution footprint, the talent, and the pricing — all from one call.</p>
+
+    <h3>Sam's agent validates the audience</h3>
+
+    <p>Before committing budget, Sam's agent calls <a href="https://docs.adcontextprotocol.org/docs/signals/tasks/get_signals">get_signals</a> to check Halfmoon's first-party audience data:</p>
+
+    <details class="protocol-detail">
+      <summary>The signals conversation</summary>
+      <pre><code>// Request
+{
+  "signal_spec": "Gen Z foodies with high engagement, interested in
+                  cooking and food products"
+}
+
+// Response — two owned segments with deployment details
+{
+  "signals": [
+    {
+      "signal_agent_segment_id": "verified_fans_18_24",
+      "name": "Verified Fans — 18-24",
+      "signal_type": "owned",
+      "data_provider": "Halfmoon Studios",
+      "coverage_percentage": 65,
+      "deployments": [{
+        "type": "agent",
+        "agent_url": "https://sales.halfmoonstudios.example.com",
+        "is_live": true,
+        "activation_key": { "type": "segment_id", "segment_id": "hm_fans_18_24" }
+      }],
+      "pricing_options": [
+        { "pricing_option_id": "fans_cpm", "model": "cpm", "cpm": 8.50, "currency": "USD" }
+      ]
+    },
+    {
+      "signal_agent_segment_id": "pantry_purchasers",
+      "name": "Juno's Pantry Purchasers",
+      "signal_type": "owned",
+      "data_provider": "Halfmoon Studios",
+      "coverage_percentage": 12,
+      "deployments": [{
+        "type": "agent",
+        "agent_url": "https://sales.halfmoonstudios.example.com",
+        "is_live": true,
+        "activation_key": { "type": "segment_id", "segment_id": "hm_purchasers" }
+      }],
+      "pricing_options": [
+        { "pricing_option_id": "purchasers_cpm", "model": "cpm", "cpm": 12.00, "currency": "USD" }
+      ]
+    }
+  ]
+}</code></pre>
+    </details>
+
+    <p>The Pantry purchaser segment is what closes the deal. Halfmoon has closed the loop between content and commerce — they know not just who watches Juno, but who buys her products. That's deterministic purchase data, not modeled lookalikes.</p>
+
+    <h3>Sam's agent checks talent rights</h3>
+
+    <p>The snack brand wants Juno in their ads, not just ads around her content. Sam's agent calls <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/tasks/get_rights">get_rights</a> on Juno's brand agent to discover available rights:</p>
+
+    <details class="protocol-detail">
+      <summary>The rights conversation</summary>
+      <pre><code>// Request
+{
+  "query": "Creator likeness for AI-generated social ads promoting
+            snack products in the US, 3-month term",
+  "uses": ["likeness"],
+  "buyer_brand": { "domain": "snackco.example.com" },
+  "countries": ["US"]
+}
+
+// Response — compatibility checked, pricing attached
+{
+  "rights": [{
+    "rights_id": "juno_likeness_social",
+    "brand_id": "juno_park",
+    "name": "Juno Park",
+    "right_type": "talent",
+    "match_score": 0.91,
+    "match_reasons": [
+      "Available for food/snack brands in US",
+      "Within typical budget range",
+      "Brand alignment: food products fit creator's existing partnerships"
+    ],
+    "available_uses": ["likeness", "voice", "name"],
+    "countries": ["US", "CA"],
+    "pricing_options": [{
+      "pricing_option_id": "monthly_likeness",
+      "model": "flat_rate",
+      "price": 4500,
+      "currency": "USD",
+      "period": "monthly",
+      "uses": ["likeness"],
+      "impression_cap": 500000,
+      "overage_cpm": 5.00
+    }],
+    "content_restrictions": ["approval_required"]
+  }]
+}</code></pre>
+    </details>
+
+    <p>Ren configured the pricing, geographic limits, and approval requirements. The protocol handles discovery and matching. When Sam's agent is ready, it calls <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/tasks/acquire_rights">acquire_rights</a> and gets back generation credentials — scoped keys that authorize specific AI providers to create content featuring Juno.</p>
+
+    <div class="callout">
+      <p>A brand can sponsor <em>The Juno Table</em> (media buy through Halfmoon's sales agent) <strong>and</strong> license Juno's likeness for AI-generated display ads (rights acquisition through Brand Protocol). Two revenue streams, one conversation.</p>
+    </div>
+
+    <h3>Sam's agent books the deal</h3>
+
+    <p>Everything discovered, validated, and priced. Sam's agent calls <a href="https://docs.adcontextprotocol.org/docs/media-buy/task-reference/create_media_buy">create_media_buy</a> to book a combined deal — season sponsorship plus scatter — in a single call.</p>
+
+    <details class="protocol-detail">
+      <summary>The media buy</summary>
+      <pre><code>{
+  "buyer_ref": "snackco_halfmoon_q4",
+  "brand": { "domain": "snackco.example.com" },
+  "start_time": "2026-10-01T00:00:00Z",
+  "end_time": "2026-12-31T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "juno_table_sponsor",
+      "product_id": "jt_s4_title_sponsor",
+      "pricing_option_id": "season_flat",
+      "budget": 180000
+    },
+    {
+      "buyer_ref": "quick_fire_scatter",
+      "product_id": "qf_scatter",
+      "pricing_option_id": "ros_cpm",
+      "budget": 25000,
+      "bid_price": 38.00,
+      "pacing": "even"
+    }
+  ]
+}</code></pre>
+    </details>
+
+    <p>From brief to booked. Ren didn't touch a spreadsheet. Sam didn't send an email. The agents had a structured conversation, and every response was machine-readable, validated against schemas, and ready to execute.</p>
+
+    <img src="/images/stories/ren-deal-closing.png" alt="Ren leaning back with a quiet smile as his monitor shows two agents completing a deal — the office calm, the studio running in the background" class="story-img">
+
+    <p>Ren gets a notification: a $205K Q4 deal just closed, combining a season sponsorship with scatter and a talent rights license. He didn't draft a proposal, he didn't negotiate terms, he didn't chase down a signature. He set the rules once. The agents did the rest.</p>
+
+    <h2>What the protocol does</h2>
+
+    <table class="summary-table">
+      <tr>
+        <td>Buyer discovered Halfmoon's agent</td>
+        <td>No more cold outreach or missed inbound leads</td>
+      </tr>
+      <tr>
+        <td>Agent matched the brief to the right products</td>
+        <td>Curated response to each buyer's needs, not generic rate cards</td>
+      </tr>
+      <tr>
+        <td>Buyer validated the audience before committing</td>
+        <td>First-party data becomes a selling point, not an afterthought</td>
+      </tr>
+      <tr>
+        <td>Buyer checked talent availability and pricing</td>
+        <td>Rights are discoverable — no back-and-forth needed</td>
+      </tr>
+      <tr>
+        <td>Buyer booked a multi-product deal in one call</td>
+        <td>No more stitching together deals across email threads</td>
+      </tr>
+    </table>
+
+    <p>And this happens with every buyer agent that shows up. Ren set up the storefront once. It handles the next hundred conversations the same way.</p>
+
+    <h2>What the storefront sells</h2>
+
+    <img src="/images/stories/content-commerce-creative.png" alt="Overhead view of a workspace where content tools, commerce products, and creative materials flow together toward a central glowing laptop" class="story-img">
+
+    <h3>Shows, episodes, and sponsorships</h3>
+
+    <p>Ren's sales agent declares Halfmoon's shows with cross-platform <a href="https://docs.adcontextprotocol.org/docs/media-buy/product-discovery/shows-and-episodes">distribution</a>, schedules episodes with temporal status, and offers products at multiple commitment levels — season sponsorships, episode-specific deals, branded integrations, run-of-show scatter, and back-catalog.</p>
+
+    <p>A <code>tentative</code> episode with a <code>valid_until</code> date tells buyer agents: this might happen, but check back before committing budget. An <code>upcoming</code> show means inventory exists for reservation before production starts.</p>
+
+    <p>Meanwhile, StreamHaus (where Priya Nair runs ad products) sells programmatic pre-roll and mid-roll around the same <em>Juno Table</em> episodes on CTV. Same content, different agents, different commercial models — the protocol handles both.</p>
+
+    <img src="/images/stories/episode-products.png" alt="A director's chair at center with five glowing paths radiating to different screens — one episode becoming five products" class="story-img">
+
+    <p>A single episode generates an entire product portfolio. The full episode airs on CTV. A highlight reel goes to YouTube Shorts. Behind-the-scenes goes to the secondary channel. A trailer drops on TikTok. The protocol links clips to their source episode (inheriting brand safety context) and connects companion content to the main show.</p>
+
+    <h3>Audience data</h3>
+
+    <p>Ren's 200K opted-in fans and Juno's Pantry purchase data are products in their own right. The <a href="https://docs.adcontextprotocol.org/docs/signals/overview">Signals protocol</a> exposes them with real deployment details, activation keys, and pricing.</p>
+
+    <p>The key distinction: this isn't platform analytics. YouTube doesn't share subscriber-level data with creators. The signals Ren exposes are data Halfmoon actually owns — from their community platform, their e-commerce store, their mobile app. Studios that have built this infrastructure sit on some of the most valuable first-party data in media.</p>
+
+    <h3>Talent rights</h3>
+
+    <p>Juno's face, voice, and likeness have commercial value independent of any specific show. The <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/for-rights-holders">Brand Protocol</a> lets buyer agents discover and license talent. Ren sets the rules — pricing, geographic limits, content restrictions, approval requirements.</p>
+
+    <p>AI-generated creative using licensed talent likeness is an emerging market. The protocol provides the infrastructure so that when a brand wants Juno in their ad, there's a machine-readable path from discovery to generation credentials.</p>
+
+    <h3>DTC brand (as a buyer)</h3>
+
+    <p>Juno's Pantry buys media on Instagram and TikTok using its own buyer agent. Halfmoon is simultaneously a seller (of Juno's shows and audience) and a buyer (of ads for the hot sauce line). One protocol in both directions.</p>
+
+    <h2>How the storefront grows with you</h2>
+
+    <img src="/images/stories/three-stages.png" alt="Three connected panels showing a creator's power shift: dwarfed by a platform shadow, then negotiating as equals, then towering over platforms at the head of a boardroom" class="story-img">
+
+    <h3>Starting out: you are the metadata</h3>
+
+    <p>You create content on other people's platforms. They own the ad sales. You get a revenue share. At this stage, the <strong>platform</strong> runs the sales agent. Your content appears as a talent entry on a show object. You control one thing: your <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json">brand.json</a>, which establishes your identity and declares your likeness as licensable. That brand URL is the seed.</p>
+
+    <h3>Growing up: you run the storefront</h3>
+
+    <p>The audience follows you, not the platform. Your manager or MCN runs an AdCP sales agent on your behalf, alongside the platform's. You sell guaranteed sponsorships while the platform sells scatter. Same show, same episodes, different products from different agents. This is where Ren is today.</p>
+
+    <h3>At scale: you are the platform</h3>
+
+    <p>You own the distribution, the audience data, the ad sales, the commerce. Your storefront is the primary sales channel. Buyer agents come to you. The protocol doesn't care whether you're a media conglomerate or a person with a camera. The primitives are the same. That's the point.</p>
+
+    <h2>So you launch a storefront. Then what?</h2>
+
+    <img src="/images/stories/storefront-live.png" alt="An agentic storefront going live — glowing teal icon at center with dozens of luminous connection lines radiating to buyer agent nodes" class="story-img">
+
+    <p>The moment Ren's sales agent goes live, Halfmoon's inventory is one prompt away from every media buyer in the world.</p>
+
+    <p>An agency strategist asks their planning tool: "Find me food creators with branded integration inventory and first-party purchase data for Q4." Halfmoon shows up — not because Ren pitched them, not because someone forwarded a deck, but because the storefront is discoverable through the <a href="https://agenticadvertising.org/registry">registry</a> and speaks the same protocol as every buyer agent.</p>
+
+    <p>A small DTC brand without an agency asks their AI assistant: "I sell hot sauce and I want to sponsor a cooking show. What's available under $50K?" Ren's agent responds with <em>Quick Fire</em> scatter packages — a deal that never would have happened through traditional sales channels, because no one at Halfmoon would have taken that call.</p>
+
+    <p>This is the shift. In traditional media sales, your reach is limited by your sales team's rolodex. With an agentic storefront, your reach is limited by the quality of your content.</p>
+
+    <p>Agentic marketplaces will emerge to make this even more powerful — matching the right brands with the right creators based on audience fit, brand alignment, and campaign objectives. Some will be built by platforms. Some by agencies. Some by organizations like the <a href="https://agenticadvertising.org">Agentic Advertising Organization</a>. But they all speak AdCP, and they all connect to your storefront.</p>
+
+    <p>Ren's job stops being "find buyers and negotiate deals." It becomes: help Juno build an incredible content brand that buyers want to be part of. The agents handle the rest.</p>
+
+    <img src="/images/stories/ren-strategic.png" alt="Ren and Juno planning together at a whiteboard — sketching new show concepts, freed from operational chaos to focus on what matters" class="story-img">
+
+    <p>On a Tuesday afternoon, Ren and Juno stand at a whiteboard sketching out Season 5. New show concepts, new markets, new product lines. On the table behind them, prototype bottles of three new Pantry flavors. Ren's phone is quiet. The storefront is handling four buyer conversations simultaneously, and Ren will review the terms tonight. But right now, his job is this: helping Juno figure out what to create next.</p>
+
+    <p>That's the storefront. Not a piece of software. A shift in what your job is.</p>
+
+  </div>
+
+  <div class="story-share">
+    <span class="story-share-label">Share:</span>
+    <a class="story-share-btn" href="#" id="shareTwitter" target="_blank" rel="noopener" title="Share on X">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    </a>
+    <a class="story-share-btn" href="#" id="shareLinkedIn" target="_blank" rel="noopener" title="Share on LinkedIn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+    </a>
+    <button class="story-share-btn" onclick="(function(b){navigator.clipboard.writeText(window.location.href);b.classList.add('copied');setTimeout(function(){b.classList.remove('copied')},2000)})(this)" title="Copy link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    </button>
+  </div>
+  <script>
+    (function() {
+      var url = encodeURIComponent(window.location.href);
+      var title = encodeURIComponent(document.title);
+      var tw = document.getElementById('shareTwitter');
+      var li = document.getElementById('shareLinkedIn');
+      if (tw) tw.href = 'https://twitter.com/intent/tweet?url=' + url + '&text=' + title;
+      if (li) li.href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + url;
+    })();
+  </script>
+
+  <section class="story-partners">
+    <div class="story-partners-inner">
+      <h2>Who builds this?</h2>
+      <p>AAO members are already building the tools and infrastructure for agentic advertising. Here's who can help a creator studio like Halfmoon get started.</p>
+
+      <div class="partner-grid">
+        <div class="partner-card">
+          <h3>Ad operations & sales tools</h3>
+          <p>Build and manage the sales agent that powers your storefront.</p>
+          <div class="partner-names">Operative, Mediaocean, Celtra, ResponsiveAds</div>
+        </div>
+        <div class="partner-card">
+          <h3>Identity & audience data</h3>
+          <p>Enrich your first-party data with identity resolution and cross-device reach.</p>
+          <div class="partner-names">LiveRamp, MetaRouter, Utiq, Evorra, AdFixus</div>
+        </div>
+        <div class="partner-card">
+          <h3>Measurement & verification</h3>
+          <p>Prove the value of your audience and content to buyer agents.</p>
+          <div class="partner-names">iSpot, Adelaide, Skyrise, mFilterIt, Boltive</div>
+        </div>
+        <div class="partner-card">
+          <h3>Streaming & distribution</h3>
+          <p>Distribute content across CTV, audio, and digital platforms.</p>
+          <div class="partner-names">Pluto TV, ShowHeroes, IRIS.TV, Broadsign, VIOOH</div>
+        </div>
+        <div class="partner-card">
+          <h3>Programmatic infrastructure</h3>
+          <p>Connect your storefront to programmatic demand.</p>
+          <div class="partner-names">StackAdapt, Cognitiv, Media.net, Sabio, Venatus</div>
+        </div>
+        <div class="partner-card">
+          <h3>Creative & AI</h3>
+          <p>Generate compliant creative using licensed talent and brand guidelines.</p>
+          <div class="partner-names">Celtra, Connected-Stories, Camcorder AI, HyperMindZ.ai</div>
+        </div>
+      </div>
+
+      <div class="partner-cta">
+        <a href="/registry" class="btn-secondary">Browse the full registry</a>
+        <a href="/membership" class="btn-secondary">Find a partner</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="story-crosslinks">
+    <div class="story-crosslinks-inner">
+      <h2>Characters you met here appear in other stories</h2>
+      <div class="crosslink-grid">
+        <a href="/stories" class="crosslink-card">
+          <span class="crosslink-issue">Issue 02</span>
+          <span class="crosslink-title">The Brief</span>
+          <span class="crosslink-desc">Sam Adeyemi is the buyer in this story. In <em>The Brief</em>, follow his side — one brief, a hundred storefronts.</span>
+        </a>
+        <a href="/stories" class="crosslink-card">
+          <span class="crosslink-issue">Issue 03</span>
+          <span class="crosslink-title">The Signal</span>
+          <span class="crosslink-desc">Priya Nair at StreamHaus sells pre-roll around Juno's CTV content. In <em>The Signal</em>, she turns audience intelligence into a product.</span>
+        </a>
+        <a href="https://docs.adcontextprotocol.org/docs/building/implementation/seller-integration" class="crosslink-card crosslink-card--walkthrough">
+          <span class="crosslink-issue">Protocol walkthrough</span>
+          <span class="crosslink-title">Seller integration guide</span>
+          <span class="crosslink-desc">Ren uses the seller integration guide to set up Halfmoon's ad inventory and configure the storefront.</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="story-cta">
+    <h2>Build your storefront</h2>
+    <p>If you run a creator studio — or want to build tools for one — here's where to start.</p>
+    <div class="story-cta-links">
+      <a href="/chat?topic=I just read The Studio. How would a seller integration work for my business?" class="btn-primary">Discuss with Addie</a>
+      <a href="/academy" class="btn-secondary">Learn how storefronts work</a>
+      <a href="/stories" class="btn-secondary">More stories</a>
+    </div>
+  </section>
+
+  <div id="adcp-footer"></div>
+  <script src="/nav.js"></script>
+</body>
+</html>

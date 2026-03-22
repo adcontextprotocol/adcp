@@ -1,0 +1,17 @@
+[
+  {
+    "filename": "server/public/images/stories/ren-configuring.png",
+    "prompt": "The same young man from before (Ren Castillo, late 20s, creative professional) is now standing at a large touchscreen display in a modern office, actively designing something. The screen shows a clean, organized interface — a grid of content cards (shows, episodes, products) being arranged and connected with glowing teal lines. His posture is completely different from the overwhelmed desk scene — he's leaning forward with energy, one hand dragging something on screen, the other holding coffee. His expression is focused and confident. The cluttered desk from before is visible in the background but the post-it notes are gone, replaced by a single clean monitor. The hot sauce bottles are still there. Through the glass wall, the studio is lit and active. The mood is taking control — this person has found the tool that lets him see the whole picture. Cool teal light from the screen mixes with warm office light. Do not include any text, words, or labels in the image.",
+    "alt_text": "Ren Castillo standing at a large touchscreen, confidently arranging shows and products into a connected storefront — his desk now clean, his posture transformed from overwhelmed to in control"
+  },
+  {
+    "filename": "server/public/images/stories/ren-deal-closing.png",
+    "prompt": "The same young man (Ren Castillo) sits back in his chair with a quiet smile, hands behind his head, watching a single monitor. On the screen, a clean visualization shows two agent icons exchanging messages — small teal and amber dots flowing back and forth like a conversation, culminating in a handshake icon. A notification banner at the top glows green. His phone is on the desk, silent. The office around him is calm — no chaos, no stacked papers, just clean surfaces and good light. Through the glass wall behind him, the studio is running — you can see camera lights on, someone moving. But Ren isn't in there. He doesn't need to be. The agents are handling it. The mood is quiet triumph — the system works. Late afternoon golden light through windows. Do not include any text, words, or labels in the image.",
+    "alt_text": "Ren leaning back with a quiet smile as his monitor shows two agents completing a deal — the office calm, the studio running in the background, everything working without him"
+  },
+  {
+    "filename": "server/public/images/stories/ren-strategic.png",
+    "prompt": "The same young man (Ren Castillo) in a bright, open meeting room with the young woman from before (Juno Park, food creator). They're standing at a whiteboard together, planning something. On the whiteboard are rough sketches of new show concepts, content calendars, brand partnerships. Juno is animated, gesturing at an idea. Ren is nodding, making notes on a tablet. The energy between them is creative collaboration — equals planning the next chapter. No screens showing deals or agent dashboards. This is about the content now, not the business mechanics. The room has good natural light and plants. On the table behind them are prototype hot sauce bottles in new flavors — the business is growing. The mood is forward-looking and optimistic — two people building something together, freed from operational chaos. Do not include any text, words, or labels in the image.",
+    "alt_text": "Ren and Juno planning together at a whiteboard — sketching new show concepts, new product flavors on the table behind them, freed from operational chaos to focus on what matters"
+  }
+]

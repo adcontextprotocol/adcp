@@ -99,7 +99,9 @@
                     "pages": [
                       "docs/building/understanding/index",
                       "docs/building/understanding/protocol-comparison",
-                      "docs/building/understanding/adcp-vs-openrtb"
+                      "docs/building/understanding/adcp-vs-openrtb",
+                      "docs/building/understanding/how-agents-communicate",
+                      "docs/building/understanding/industry-landscape"
                     ]
                   },
                   "docs/building/schemas-and-sdks",
@@ -128,7 +130,8 @@
                       "docs/building/implementation/orchestrator-design",
                       "docs/building/implementation/error-handling",
                       "docs/building/implementation/transport-errors",
-                      "docs/building/implementation/security"
+                      "docs/building/implementation/security",
+                      "docs/building/implementation/seller-integration"
                     ]
                   },
                   {
@@ -145,19 +148,6 @@
                 ]
               },
               {
-                "group": "Industry Guides",
-                "expanded": false,
-                "pages": [
-                  "docs/guides/index",
-                  "docs/guides/monetizing-ai",
-                  "docs/guides/commerce-media",
-                  "docs/guides/seller-integration",
-                  "docs/guides/how-agents-communicate",
-                  "docs/guides/signals-ecosystem",
-                  "docs/guides/industry-landscape"
-                ]
-              },
-              {
                 "group": "Protocol",
                 "expanded": false,
                 "pages": [
@@ -166,6 +156,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/media-buy/index",
+                      "docs/media-buy/commerce-media",
                       {
                         "group": "Concepts",
                         "pages": [
@@ -361,6 +352,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/sponsored-intelligence/overview",
+                      "docs/sponsored-intelligence/monetizing-ai",
                       {
                         "group": "Concepts",
                         "pages": [
@@ -420,6 +412,7 @@
                     "pages": [
                       "docs/signals/overview",
                       "docs/signals/key-concepts",
+                      "docs/signals/ecosystem",
                       "docs/signals/data-providers",
                       {
                         "group": "Reference",
@@ -548,7 +541,9 @@
                 "pages": [
                   "docs/building/understanding/index",
                   "docs/building/understanding/protocol-comparison",
-                  "docs/building/understanding/adcp-vs-openrtb"
+                  "docs/building/understanding/adcp-vs-openrtb",
+                  "docs/building/understanding/how-agents-communicate",
+                  "docs/building/understanding/industry-landscape"
                 ]
               },
               "docs/building/schemas-and-sdks",
@@ -577,7 +572,8 @@
                   "docs/building/implementation/orchestrator-design",
                   "docs/building/implementation/error-handling",
                   "docs/building/implementation/transport-errors",
-                  "docs/building/implementation/security"
+                  "docs/building/implementation/security",
+                  "docs/building/implementation/seller-integration"
                 ]
               },
               {
@@ -594,19 +590,6 @@
             ]
           },
           {
-            "group": "Industry Guides",
-            "expanded": false,
-            "pages": [
-              "docs/guides/index",
-              "docs/guides/monetizing-ai",
-              "docs/guides/commerce-media",
-              "docs/guides/seller-integration",
-              "docs/guides/how-agents-communicate",
-              "docs/guides/signals-ecosystem",
-              "docs/guides/industry-landscape"
-            ]
-          },
-          {
             "group": "Protocol",
             "expanded": false,
             "pages": [
@@ -615,6 +598,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/media-buy/index",
+                  "docs/media-buy/commerce-media",
                   {
                     "group": "Concepts",
                     "pages": [
@@ -810,6 +794,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/sponsored-intelligence/overview",
+                  "docs/sponsored-intelligence/monetizing-ai",
                   {
                     "group": "Concepts",
                     "pages": [
@@ -869,6 +854,7 @@
                 "pages": [
                   "docs/signals/overview",
                   "docs/signals/key-concepts",
+                  "docs/signals/ecosystem",
                   "docs/signals/data-providers",
                   {
                     "group": "Reference",
@@ -1245,7 +1231,7 @@
     },
     {
       "source": "/docs/guides/buying-ai-media",
-      "destination": "/docs/guides/monetizing-ai"
+      "destination": "/docs/sponsored-intelligence/monetizing-ai"
     },
     {
       "source": "/docs/guides/ai-media-buying",
@@ -1258,6 +1244,38 @@
     {
       "source": "/docs/guides/agent-based-media-buying",
       "destination": "/docs/media-buy/index"
+    },
+    {
+      "source": "/docs/guides/monetizing-ai",
+      "destination": "/docs/sponsored-intelligence/monetizing-ai"
+    },
+    {
+      "source": "/docs/guides/commerce-media",
+      "destination": "/docs/media-buy/commerce-media"
+    },
+    {
+      "source": "/docs/guides/seller-integration",
+      "destination": "/docs/building/implementation/seller-integration"
+    },
+    {
+      "source": "/docs/guides/how-agents-communicate",
+      "destination": "/docs/building/understanding/how-agents-communicate"
+    },
+    {
+      "source": "/docs/guides/signals-ecosystem",
+      "destination": "/docs/signals/ecosystem"
+    },
+    {
+      "source": "/docs/guides/industry-landscape",
+      "destination": "/docs/building/understanding/industry-landscape"
+    },
+    {
+      "source": "/docs/guides/index",
+      "destination": "/docs/intro"
+    },
+    {
+      "source": "/docs/guides/creator-studios",
+      "destination": "/docs/media-buy/commerce-media"
     }
   ],
   "modeToggle": {

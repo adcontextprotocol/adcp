@@ -378,6 +378,10 @@ function syncRepo(repo: ExternalRepo): string | null {
 
   try {
     if (fs.existsSync(path.join(repoPath, '.git'))) {
+      // Repo exists — skip network fetch if SKIP_REPO_SYNC is set (e.g. Docker with pre-cloned repos)
+      if (process.env.SKIP_REPO_SYNC === 'true') {
+        return repoPath;
+      }
       // Repo exists, pull latest
       logger.debug({ repoId: repo.id }, 'Addie External Repos: Pulling latest');
       execSync(`git -C "${repoPath}" fetch origin ${branch} --depth=1 2>/dev/null`, {
@@ -739,6 +743,13 @@ function indexRepo(
 export async function initializeExternalRepos(): Promise<void> {
   if (initialized) {
     logger.debug('Addie External Repos: Already initialized');
+    return;
+  }
+
+  // Skip all repo syncing/cloning when SKIP_REPO_SYNC is set (Docker dev mode)
+  if (process.env.SKIP_REPO_SYNC === 'true') {
+    logger.info('Addie External Repos: SKIP_REPO_SYNC=true, skipping external repo indexing');
+    initialized = true;
     return;
   }
 

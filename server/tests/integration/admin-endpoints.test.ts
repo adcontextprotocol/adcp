@@ -576,4 +576,31 @@ describe('Admin Endpoints Integration Tests', () => {
       expect(response.body.errors).toEqual([]);
     });
   });
+
+  describe('Admin page routes (redirect regression)', () => {
+    it('GET /admin/accounts should serve HTML, not redirect', async () => {
+      const response = await request(app)
+        .get('/admin/accounts');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/html/);
+    });
+
+    it('GET /admin/accounts/:orgId should serve HTML, not redirect', async () => {
+      const response = await request(app)
+        .get(`/admin/accounts/${TEST_ORG_ID}`);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/html/);
+    });
+
+    it('GET /admin/organizations/:orgId should redirect to /admin/accounts/:orgId', async () => {
+      const response = await request(app)
+        .get(`/admin/organizations/${TEST_ORG_ID}`)
+        .redirects(0);
+
+      expect(response.status).toBe(301);
+      expect(response.headers.location).toBe(`/admin/accounts/${TEST_ORG_ID}`);
+    });
+  });
 });

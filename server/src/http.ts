@@ -22,6 +22,7 @@ import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
+import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -3127,29 +3128,17 @@ export class HTTPServer {
               eventType: event.type,
             }, 'Processing subscription event');
 
+            // Resolve org once for all subscription event types
+            const customerId = subscription.customer as string;
+            const org = await resolveOrgForStripeCustomer({
+              customerId,
+              stripe,
+              orgDb,
+              subscription,
+            });
+
             // For subscription created, record agreement acceptance atomically
             if (event.type === 'customer.subscription.created') {
-              const customerId = subscription.customer as string;
-
-              // Try to find org by stripe_customer_id first
-              let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
-              // If not found, look up by workos_organization_id in Stripe customer metadata
-              if (!org) {
-                logger.info({ customerId }, 'Org not found by customer ID, checking Stripe metadata');
-                const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-                const workosOrgId = customer.metadata?.workos_organization_id;
-
-                if (workosOrgId) {
-                  org = await orgDb.getOrganization(workosOrgId);
-                  if (org) {
-                    // Link the Stripe customer ID to the organization
-                    await orgDb.setStripeCustomerId(workosOrgId, customerId);
-                    logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization');
-                  }
-                }
-              }
-
               if (org) {
                 // Get agreement info from organization's pending fields
                 // (set when user checked the agreement checkbox)
@@ -3360,15 +3349,12 @@ export class HTTPServer {
             // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
-              const customerId = subscription.customer as string;
-              const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
               if (org) {
                 // Calculate period end from subscription or invoice
                 let periodEnd: Date | null = null;
 
-                if ((subscription as any).current_period_end) {
-                  periodEnd = new Date((subscription as any).current_period_end * 1000);
+                if (subscription.current_period_end) {
+                  periodEnd = new Date(subscription.current_period_end * 1000);
                 }
 
                 // Extract pricing details from subscription items
@@ -3513,24 +3499,12 @@ export class HTTPServer {
             // Get organization from customer ID
             const customerId = invoice.customer as string;
 
-            // Try to find org by stripe_customer_id first
-            let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
-            // If not found, look up by workos_organization_id in Stripe customer metadata
-            if (!org) {
-              logger.info({ customerId, invoiceId: invoice.id }, 'Org not found by customer ID, checking Stripe metadata');
-              const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-              const workosOrgId = customer.metadata?.workos_organization_id;
-
-              if (workosOrgId) {
-                org = await orgDb.getOrganization(workosOrgId);
-                if (org) {
-                  // Link the Stripe customer ID to the organization
-                  await orgDb.setStripeCustomerId(workosOrgId, customerId);
-                  logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization from invoice webhook');
-                }
-              }
-            }
+            let org = await resolveOrgForStripeCustomer({
+              customerId,
+              stripe,
+              orgDb,
+              invoice,
+            });
 
             if (!org) {
               logger.warn({
@@ -4005,10 +3979,10 @@ export class HTTPServer {
               // Ensure the Stripe customer has org metadata so that subsequent
               // subscription and invoice webhooks can find the org.
               try {
-                const customer = await stripe.customers.retrieve(customerId);
-                if ('deleted' in customer && customer.deleted) {
+                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
+                if ('deleted' in customerRaw && customerRaw.deleted) {
                   logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
-                } else if (!customer.metadata?.workos_organization_id) {
+                } else if (!(customerRaw as Stripe.Customer).metadata?.workos_organization_id) {
                   await stripe.customers.update(customerId, {
                     metadata: { workos_organization_id: workosOrgId },
                   });
@@ -4035,7 +4009,7 @@ export class HTTPServer {
     // Admin sub-pages (accounts, referrals, analytics, geo)
     this.app.get('/admin/referrals', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-referrals.html'));
-    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/admin/accounts'));
+    this.app.get('/admin/prospects', requireAuth, requireAdmin, (req, res) => res.redirect(301, '/admin/accounts'));
     this.app.get('/admin/accounts', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-accounts.html'));
     this.app.get('/admin/accounts/:orgId', requireAuth, requireAdmin, (req, res) =>
@@ -4732,7 +4706,7 @@ export class HTTPServer {
         // Static pages with their priorities and change frequencies
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
-          { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/stories', priority: '0.9', changefreq: 'daily' },
           { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
@@ -6168,6 +6142,7 @@ Disallow: /api/admin/
             // If org has no admin/owner yet, promote this user to owner
             const existingMembers = await workos!.userManagement.listOrganizationMemberships({
               organizationId: organization_id,
+              statuses: ['active', 'inactive', 'pending'],
               limit: 100,
             });
             const hasAdmin = existingMembers.data.some((m) => {
@@ -6299,6 +6274,7 @@ Disallow: /api/admin/
         // Check if org has any existing members
         const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
           organizationId: organization_id,
+          statuses: ['active', 'inactive', 'pending'],
         });
 
         // If org has no members (e.g., prospect org) AND user's email domain matches,
@@ -7248,6 +7224,7 @@ Disallow: /api/admin/
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+
     await runMigrations();
 
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)

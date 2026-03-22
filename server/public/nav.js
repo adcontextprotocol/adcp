@@ -111,6 +111,7 @@
             <div class="navbar__dropdown" id="accountDropdown">
               <div class="navbar__dropdown-header">${escapeHtml(user.email)}</div>
               <a href="${authBaseUrl}/dashboard" class="navbar__dropdown-item">Dashboard</a>
+              <a href="${authBaseUrl}/community/profile/edit" class="navbar__dropdown-item">Edit profile</a>
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>

@@ -11,7 +11,9 @@
     "cast",
     "narrator",
     "producer",
-    "correspondent"
+    "correspondent",
+    "commentator",
+    "analyst"
   ],
   "enumDescriptions": {
     "host": "Primary host or anchor of the show",
@@ -20,6 +22,8 @@
     "cast": "Regular or recurring cast member",
     "narrator": "Narrator or voiceover",
     "producer": "Executive or lead producer with on-screen presence",
-    "correspondent": "Reporter or field correspondent"
+    "correspondent": "Reporter or field correspondent",
+    "commentator": "Play-by-play or event commentator",
+    "analyst": "Color commentator or subject matter analyst"
   }
 }

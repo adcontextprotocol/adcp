@@ -31,6 +31,7 @@ async function roleForNewMember(orgId: string): Promise<'owner' | 'member'> {
   try {
     const memberships = await workos.userManagement.listOrganizationMemberships({
       organizationId: orgId,
+      statuses: ['active', 'inactive', 'pending'],
       limit: 100,
     });
     const hasAdmin = memberships.data.some((m) => {
@@ -848,6 +849,7 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
       do {
         const memberships = await workos.userManagement.listOrganizationMemberships({
           organizationId: orgId,
+          statuses: ['active', 'inactive', 'pending'],
           limit: 100,
           after,
         });

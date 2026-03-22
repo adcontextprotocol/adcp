@@ -15,6 +15,7 @@ import { ModelConfig } from '../config/models.js';
 import { verifyWebhookSignature as verifyZoomSignature } from '../integrations/zoom.js';
 import {
   handleRecordingCompleted,
+  handleTranscriptCompleted,
   handleMeetingStarted,
   handleMeetingEnded,
 } from '../services/meeting-service.js';
@@ -1527,15 +1528,24 @@ export function createWebhooksRouter(): Router {
 
         // Handle different event types
         switch (body.event) {
-          case 'recording.completed':
+          case 'recording.completed': {
+            const recUuid = body.payload?.object?.uuid;
+            const recId = body.payload?.object?.id;
+            if (recUuid && typeof recUuid === 'string' && recUuid.length < 256) {
+              await handleRecordingCompleted(recUuid, recId?.toString());
+            } else if (recUuid) {
+              logger.warn({ meetingUuidType: typeof recUuid }, 'Invalid meetingUuid format');
+            }
+            break;
+          }
+
           case 'recording.transcript_completed': {
-            const meetingUuid = body.payload?.object?.uuid;
-            const meetingId = body.payload?.object?.id;
-            if (meetingUuid && typeof meetingUuid === 'string' && meetingUuid.length < 256) {
-              // Pass both UUID and numeric ID - we store the numeric ID in our DB
-              await handleRecordingCompleted(meetingUuid, meetingId?.toString());
-            } else if (meetingUuid) {
-              logger.warn({ meetingUuidType: typeof meetingUuid }, 'Invalid meetingUuid format');
+            const txUuid = body.payload?.object?.uuid;
+            const txId = body.payload?.object?.id;
+            if (txUuid && typeof txUuid === 'string' && txUuid.length < 256) {
+              await handleTranscriptCompleted(txUuid, txId?.toString());
+            } else if (txUuid) {
+              logger.warn({ meetingUuidType: typeof txUuid }, 'Invalid meetingUuid format');
             }
             break;
           }

@@ -371,7 +371,7 @@ describe('NovaMind AI publisher', () => {
   it('has CPA pricing with agent_session event type', () => {
     const cpa = novamind.pricingTemplates.find(t => t.model === 'cpa');
     expect(cpa).toBeDefined();
-    expect(cpa!.eventType).toBe('agent_session');
+    expect(cpa!.eventType).toBe('custom');
     expect(cpa!.fixedPrice).toBeGreaterThan(0);
   });
 
@@ -702,8 +702,12 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('check_governance');
     expect(toolNames).toContain('report_plan_outcome');
     expect(toolNames).toContain('get_plan_audit_logs');
+    expect(toolNames).toContain('get_brand_identity');
+    expect(toolNames).toContain('get_rights');
+    expect(toolNames).toContain('acquire_rights');
+    expect(toolNames).toContain('update_rights');
     expect(toolNames).toContain('get_adcp_capabilities');
-    expect(toolNames).toHaveLength(16);
+    expect(toolNames).toHaveLength(20);
   });
 
   it('returns error for unknown tool', async () => {
@@ -1813,14 +1817,14 @@ describe('time pricing model', () => {
     const timePricing = streetlevel.pricingTemplates.find(t => t.model === 'time');
     expect(timePricing).toBeDefined();
     expect(timePricing!.timeParameters).toBeDefined();
-    expect(timePricing!.timeParameters!.unit).toBe('week');
+    expect(timePricing!.timeParameters!.time_unit).toBe('week');
   });
 
   it('Meridian Print has time pricing', () => {
     const meridian = PUBLISHERS.find(p => p.id === 'meridian_print')!;
     const timePricing = meridian.pricingTemplates.find(t => t.model === 'time');
     expect(timePricing).toBeDefined();
-    expect(timePricing!.timeParameters!.unit).toBe('month');
+    expect(timePricing!.timeParameters!.time_unit).toBe('month');
   });
 
   it('time pricing produces valid pricing options in products', () => {

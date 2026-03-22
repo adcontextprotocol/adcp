@@ -59,6 +59,14 @@
         "$ref": "/schemas/core/talent.json"
       }
     },
+    "special": {
+      "$ref": "/schemas/core/special.json",
+      "description": "When present, this show is a special — content anchored to a real-world event or occasion. Individual episodes may override with their own event context."
+    },
+    "limited_series": {
+      "$ref": "/schemas/core/limited-series.json",
+      "description": "When present, this show is a limited series — a bounded run with a defined arc, episode count, and end date."
+    },
     "distribution": {
       "type": "array",
       "description": "Where this show is distributed. Each entry maps the show to a publisher platform with platform-specific identifiers. Shows SHOULD include at least one platform-independent identifier (imdb_id, gracenote_id, eidr_id) when available.",

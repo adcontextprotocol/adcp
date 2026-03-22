@@ -53,7 +53,7 @@ export class PropertiesService {
       const result = await client.executeTask("list_authorized_properties", {});
 
       if (result.success && result.data) {
-        const response = result.data;
+        const response = result.data as Record<string, unknown>;
 
         // Handle different response formats:
         // 1. Array of properties directly
@@ -72,7 +72,7 @@ export class PropertiesService {
             country: response.primary_countries ?
               (Array.isArray(response.primary_countries) ? response.primary_countries[0] : response.primary_countries)
               : undefined,
-            description: response.portfolio_description,
+            description: response.portfolio_description as string | undefined,
           }));
         }
         // 3. Any object - try to coerce to PropertyInfo
