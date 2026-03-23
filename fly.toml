@@ -19,6 +19,10 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
+  # Use pre-cloned repos from Docker build, skip runtime git fetch.
+  # Production image has no git binary — unsetting this degrades gracefully
+  # (repos skip indexing) but does not crash.
+  SKIP_REPO_SYNC = "true"
 
 [http_service]
   internal_port = 8080
@@ -31,7 +35,7 @@ primary_region = 'iad'
   [[http_service.checks]]
     interval = "15s"
     timeout = "5s"
-    grace_period = "120s"
+    grace_period = "300s"
     method = "GET"
     path = "/health"
     protocol = "http"
