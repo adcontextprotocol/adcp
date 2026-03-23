@@ -80,6 +80,15 @@ interface CreativeAssignmentInput {
   media_buy_id: string;
 }
 
+// Proposal lifecycle fields not yet in @adcp/client — remove after client update
+interface ProposalLifecycle {
+  proposal_status?: 'draft' | 'committed';
+  insertion_order?: { io_id: string; requires_signature: boolean; terms?: Record<string, unknown> };
+}
+function proposalLifecycle(proposal: unknown): ProposalLifecycle {
+  return proposal as ProposalLifecycle;
+}
+
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
@@ -656,16 +665,19 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     }
   }
 
-  // Refine mode: apply include/omit/more_like_this
+  // Refine mode: apply include/omit/more_like_this/finalize
+  const refinementApplied: Array<{ status: string; notes?: string }> = [];
+  const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
     const previousProducts = session.lastGetProductsContext?.products || products;
+    const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
 
     for (const op of req.refine) {
       if (op.scope === 'product') {
-        if (op.action === 'omit') omitIds.add(op.id);
-        else if (op.action === 'include') includeIds.add(op.id);
+        if (op.action === 'omit') { omitIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
+        else if (op.action === 'include') { includeIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
         // more_like_this: include the product plus similar channel products
         else if (op.action === 'more_like_this') {
           includeIds.add(op.id);
@@ -678,11 +690,82 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
               }
             }
           }
+          refinementApplied.push({ status: 'applied' });
         }
+      } else if (op.scope === 'proposal') {
+        const proposalOp = op as { scope: 'proposal'; id: string; action: string; ask?: string };
+        const proposal = previousProposals.find(p => p.proposal_id === proposalOp.id);
+        if (!proposal) {
+          refinementApplied.push({ status: 'unable', notes: `Proposal not found: ${proposalOp.id}` });
+          continue;
+        }
+        if (proposalOp.action === 'omit') {
+          proposalOmitIds.add(proposalOp.id);
+          refinementApplied.push({ status: 'applied' });
+        } else if (proposalOp.action === 'include') {
+          // Include is a no-op for proposals already in the response
+          refinementApplied.push({ status: 'applied' });
+        } else if (proposalOp.action === 'finalize') {
+          const status = proposalLifecycle(proposal).proposal_status;
+          if (status === 'committed') {
+            refinementApplied.push({ status: 'applied', notes: 'Proposal already committed' });
+          } else if (status === 'draft') {
+            // Transition draft → committed: firm pricing, inventory hold, IO
+            const committed = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
+            committed.proposal_status = 'committed';
+            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h hold
+
+            // Attach insertion order for proposals with guaranteed products
+            const hasGuaranteed = proposal.allocations.some(alloc => {
+              const cp = getCatalog().find(c => c.product.product_id === alloc.product_id);
+              return cp?.product.delivery_type === 'guaranteed';
+            });
+            if (hasGuaranteed) {
+              const publisherCp = getCatalog().find(c => c.product.product_id === proposal.allocations[0].product_id);
+              const accountBrand = (req as unknown as Record<string, unknown>).account as Record<string, unknown> | undefined;
+              const brandDomain = ((accountBrand?.brand as Record<string, unknown>)?.domain as string) || 'advertiser.example';
+              committed.insertion_order = {
+                io_id: `io_${randomUUID().replace(/-/g, '')}`,
+                terms: {
+                  advertiser: brandDomain,
+                  publisher: publisherCp?.publisherId || 'unknown',
+                  total_budget: {
+                    amount: proposal.total_budget_guidance?.recommended ?? 0,
+                    currency: proposal.total_budget_guidance?.currency ?? 'USD',
+                  },
+                  flight_start: new Date().toISOString(),
+                  flight_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                  payment_terms: 'net_30',
+                },
+                requires_signature: true,
+              };
+            }
+
+            // Update proposal in session context
+            const sessionProposals = session.lastGetProductsContext?.proposals || [];
+            const idx = sessionProposals.findIndex(p => p.proposal_id === proposalOp.id);
+            const updatedProposal = committed as unknown as import('@adcp/client').Proposal;
+            if (idx >= 0) {
+              sessionProposals[idx] = updatedProposal;
+            } else {
+              sessionProposals.push(updatedProposal);
+            }
+            if (session.lastGetProductsContext) {
+              session.lastGetProductsContext.proposals = sessionProposals;
+            }
+
+            refinementApplied.push({ status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
+          } else {
+            // No proposal_status means already ready to buy — finalize is a no-op
+            refinementApplied.push({ status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
+          }
+        }
+      } else if (op.scope === 'request') {
+        refinementApplied.push({ status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
       }
     }
 
-    // Apply includes first (expand), then omits (filter)
+    // Apply includes first (expand), then omits (filter) for products
     if (includeIds.size > 0) {
       products = getCatalog()
         .filter(cp => includeIds.has(cp.product.product_id))
@@ -713,8 +796,14 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     }
   }
 
-  const proposals = getProposals().filter(proposal =>
-    proposal.allocations.every(a => productIds.has(a.product_id)),
+  // In refine mode, use session proposals (which may include finalized versions)
+  const sourceProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
+    ? session.lastGetProductsContext.proposals
+    : getProposals();
+
+  const proposals = sourceProposals.filter(proposal =>
+    proposal.allocations.every(a => productIds.has(a.product_id)) &&
+    !proposalOmitIds.has(proposal.proposal_id),
   );
 
   // Store context for refine
@@ -723,6 +812,7 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   return {
     products,
     ...(proposals.length > 0 && { proposals }),
+    ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
     sandbox: true,
   };
 }
@@ -759,12 +849,44 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
-    const proposal = getProposals().find(p => p.proposal_id === req.proposal_id);
+    // Check session proposals first (may have finalized versions), then global catalog
+    const proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
+      || getProposals().find(p => p.proposal_id === req.proposal_id);
     if (!proposal) {
       return {
         errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
       };
     }
+
+    // Enforce proposal lifecycle: draft proposals cannot be purchased directly
+    const proposalStatus = proposalLifecycle(proposal).proposal_status;
+    if (proposalStatus === 'draft') {
+      return {
+        errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" has draft status — finalize it first using get_products with buying_mode "refine" and action "finalize".` }] as TaskError[],
+      };
+    }
+
+    // Enforce proposal expiry
+    if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
+      return {
+        errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Re-discover with get_products to get a fresh proposal.` }] as TaskError[],
+      };
+    }
+
+    // Enforce IO acceptance when required
+    const insertionOrder = proposalLifecycle(proposal).insertion_order;
+    const ioAcceptance = (req as unknown as Record<string, unknown>).io_acceptance as { io_id: string; accepted_at: string; signatory: string } | undefined;
+    if (insertionOrder?.requires_signature && !ioAcceptance) {
+      return {
+        errors: [{ code: 'IO_REQUIRED', message: `Proposal "${req.proposal_id}" requires a signed insertion order. Include io_acceptance with io_id "${insertionOrder.io_id}" on create_media_buy.` }] as TaskError[],
+      };
+    }
+    if (ioAcceptance && insertionOrder && ioAcceptance.io_id !== insertionOrder.io_id) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: `io_acceptance.io_id "${ioAcceptance.io_id}" does not match proposal insertion order io_id "${insertionOrder.io_id}".` }] as TaskError[],
+      };
+    }
+
     const totalBudget = req.total_budget?.amount;
     if (!totalBudget) {
       return {
@@ -837,6 +959,12 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     const product = productMap.get(pkg.product_id);
     if (!product) {
       errors.push({ code: 'PRODUCT_NOT_FOUND', message: `${pkgLabel}: Product not found: ${pkg.product_id}` });
+      continue;
+    }
+
+    // Enforce product expiry
+    if (product.expires_at && new Date(product.expires_at) < new Date()) {
+      errors.push({ code: 'PRODUCT_EXPIRED', message: `${pkgLabel}: Product "${pkg.product_id}" expired at ${product.expires_at}. Re-discover with get_products.` });
       continue;
     }
 

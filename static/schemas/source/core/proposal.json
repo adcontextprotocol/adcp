@@ -25,10 +25,18 @@
       },
       "minItems": 1
     },
+    "proposal_status": {
+      "$ref": "/schemas/enums/proposal-status.json",
+      "description": "Lifecycle status of this proposal. When absent, the proposal is ready to buy (backward compatible). 'draft' means indicative pricing — finalize via refine before purchasing. 'committed' means firm pricing with inventory reserved until expires_at."
+    },
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this proposal expires and can no longer be executed. After expiration, referenced products or pricing may no longer be available."
+      "description": "When this proposal expires and can no longer be executed. For draft proposals, indicates when indicative pricing becomes stale. For committed proposals, indicates when the inventory hold lapses — the buyer must call create_media_buy before this time."
+    },
+    "insertion_order": {
+      "$ref": "/schemas/core/insertion-order.json",
+      "description": "Formal insertion order attached to a committed proposal. Present when the seller requires a signed agreement before the media buy can proceed. The buyer references the io_id in io_acceptance on create_media_buy."
     },
     "total_budget_guidance": {
       "type": "object",

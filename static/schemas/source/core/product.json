@@ -244,7 +244,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Expiration timestamp for custom products"
+      "description": "Expiration timestamp. After this time, the product may no longer be available for purchase and create_media_buy may reject packages referencing it."
     },
     "product_card": {
       "type": "object",
