@@ -163,10 +163,42 @@ Providing multiple identifiers for the same person improves match rates. Composi
 | `action` | `created`, `updated`, `unchanged`, `deleted`, or `failed` |
 | `status` | `processing`, `ready`, or `too_small`. Present when action is `created`, `updated`, or `unchanged`; absent when action is `deleted` or `failed`. |
 | `uploaded_count` | Members submitted in this sync operation (delta, not cumulative). 0 for discovery-only calls. |
+| `total_uploaded_count` | Cumulative members uploaded across all syncs. Compare with `matched_count` to calculate match rate. |
 | `matched_count` | Total members matched to platform users across all syncs (cumulative). Populated when `status: "ready"`. |
+| `effective_match_rate` | Deduplicated match rate across all identifier types (0–1). A single number for reach estimation. Populated when `status: "ready"`. |
+| `match_breakdown` | Per-identifier-type match results. Shows which ID types resolve and at what rate. See [match breakdown](#match-breakdown). |
 | `last_synced_at` | ISO 8601 timestamp of the most recent sync. Omitted if the seller does not track this. |
 | `minimum_size` | Minimum matched audience size for targeting on this platform. Populated when `status: "too_small"`. |
 | `errors` | Per-audience errors (only when `action: "failed"`) |
+
+## Match breakdown
+
+When a seller supports per-identifier-type reporting, the response includes `match_breakdown` — an array showing which identity types are resolving and at what rate. This helps buyers decide which identifiers to prioritize in future uploads.
+
+```json
+{
+  "audience_id": "existing_customers",
+  "action": "updated",
+  "status": "ready",
+  "uploaded_count": 5000,
+  "total_uploaded_count": 25000,
+  "matched_count": 18750,
+  "effective_match_rate": 0.75,
+  "match_breakdown": [
+    { "id_type": "hashed_email", "submitted": 25000, "matched": 17500, "match_rate": 0.70 },
+    { "id_type": "hashed_phone", "submitted": 15000, "matched": 12000, "match_rate": 0.80 },
+    { "id_type": "rampid", "submitted": 8000, "matched": 7200, "match_rate": 0.90 }
+  ]
+}
+```
+
+Key semantics:
+- **`submitted` and `matched` are cumulative** across all syncs, matching `total_uploaded_count` semantics (not `uploaded_count`).
+- **`effective_match_rate` is deduplicated** — a member matched via both email and phone counts once. It will be less than or equal to the sum of per-type match rates.
+- **`match_rate` is server-authoritative** — consumers should prefer this value over computing their own from submitted/matched.
+- **`id_type` values** combine hashed PII types (`hashed_email`, `hashed_phone`) with universal ID types (`rampid`, `uid2`, `id5`, `euid`, `pairid`, `maid`).
+
+Sellers that only support aggregate match counts omit `match_breakdown` entirely.
 
 ## Common Scenarios
 

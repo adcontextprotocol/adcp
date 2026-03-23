@@ -1,0 +1,40 @@
+{
+  "attribute_id": "health_data",
+  "name": "Health Data",
+  "description": "Health status, medical conditions, disability, and health-related behavioral data. Includes both declared health information and health conditions inferred from behavioral signals.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Health data is a special category of personal data. Processing requires explicit consent or another Article 9(2) legal basis."
+    },
+    {
+      "name": "US ADA",
+      "jurisdictions": ["US"],
+      "summary": "Disability status is a protected class. Advertising targeting or exclusion based on disability is restricted in employment, housing, and public accommodations."
+    },
+    {
+      "name": "US HIPAA",
+      "jurisdictions": ["US"],
+      "summary": "Health information used in advertising must comply with HIPAA when sourced from covered entities. Increasingly applied to inferred health data."
+    }
+  ],
+  "includes": [
+    "Medical conditions and diagnoses",
+    "Disability status",
+    "Prescription history and medication use",
+    "Health insurance status",
+    "Inferred health conditions from behavioral signals (e.g., visiting diabetes websites)",
+    "Fitness and wellness data when linked to health conditions",
+    "Mental health status"
+  ],
+  "excludes": [
+    "General fitness interests (e.g., 'gym member') without health condition inference",
+    "Dietary preferences (e.g., 'vegan') unless linked to medical necessity",
+    "Age — covered separately by age-related regulations, not health data"
+  ],
+  "signal_patterns": [
+    "health:", "condition_", "diagnosis_", "medical_", "disability_", "prescription_", "patient_"
+  ],
+  "guidance": "The boundary between general wellness interest and health data inference is the key edge case. A signal for 'yoga enthusiasts' is not health data; a signal for 'chronic pain management seekers' is. When in doubt, data providers should declare health_data and let governance agents evaluate."
+}

@@ -1,0 +1,30 @@
+{
+  "policy_id": "platform_special_ad_categories",
+  "version": "1.0.0",
+  "name": "Platform Special Ad Categories (Housing, Employment, Credit)",
+  "description": "Platform-enforced restrictions on audience targeting for ads related to housing, employment, and credit, following the Meta/DOJ settlement model.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["fair_housing", "fair_lending", "fair_employment"],
+  "governance_domains": ["campaign"],
+  "effective_date": "2019-03-19",
+  "source_url": "https://www.justice.gov/crt/case-document/file/1648091/download",
+  "source_name": "Industry — Major Platform Policies",
+  "policy": "Ads in housing, employment, and credit (HEC) categories must use restricted targeting options as established by platform consent decrees and voluntary policies.\n\nCommon restrictions across major platforms:\n1. Age, gender, and zip-code targeting are disabled for HEC ads.\n2. Detailed targeting options related to protected characteristics are unavailable.\n3. Lookalike/similar audiences are restricted or unavailable.\n4. Geographic targeting minimum radius is typically 15 miles (no zip-code or hyper-local targeting).\n5. Advertisers must self-declare the HEC category before running ads.\n\nThese restrictions apply regardless of whether the advertiser's targeting intent is discriminatory, as a preventive measure.",
+  "guidance": "Platform special ad categories are distinct from but complementary to FHA/ECOA/EEOC regulations. Even if a platform enforces these restrictions at the ad platform level, governance agents should validate that the orchestrator's targeting intent respects these constraints before sending to the seller. This provides defense-in-depth. Governance agents should flag campaigns that match fair_housing, fair_lending, or fair_employment policy categories but do not use platform HEC category declarations.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A real estate company declares the housing special ad category and runs ads with 25-mile radius geographic targeting around a metro area, with no age, gender, or zip-code targeting.",
+        "explanation": "Proper HEC category declaration with compliant geographic targeting meets platform special ad category requirements."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A recruiting firm runs employment ads without declaring the employment special ad category, using age-targeted audiences (25-40) and zip-code exclusions.",
+        "explanation": "Employment ads must declare the special ad category and cannot use age targeting or zip-code exclusions. Both the missing declaration and the restricted targeting options violate platform HEC policies."
+      }
+    ]
+  }
+}

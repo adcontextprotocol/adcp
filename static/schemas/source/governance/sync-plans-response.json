@@ -46,7 +46,7 @@
           },
           "resolved_policies": {
             "type": "array",
-            "description": "Policies the governance agent will enforce for this plan. Includes explicitly referenced policies from the brand compliance configuration and auto-applied policies matched by jurisdiction or vertical. Present when the governance agent supports policy resolution.",
+            "description": "Policies the governance agent will enforce for this plan. Includes explicitly referenced policies from the brand compliance configuration and auto-applied policies matched by jurisdiction or policy category. Present when the governance agent supports policy resolution.",
             "items": {
               "type": "object",
               "properties": {
@@ -57,7 +57,7 @@
                 "source": {
                   "type": "string",
                   "enum": ["explicit", "auto_applied"],
-                  "description": "How this policy was included. 'explicit': referenced in the brand compliance configuration. 'auto_applied': matched automatically by jurisdiction, vertical, or category."
+                  "description": "How this policy was included. 'explicit': referenced in the brand compliance configuration. 'auto_applied': matched automatically by jurisdiction or policy category."
                 },
                 "enforcement": {
                   "$ref": "/schemas/enums/policy-enforcement.json",
@@ -65,7 +65,7 @@
                 },
                 "reason": {
                   "type": "string",
-                  "description": "Why this policy was included (e.g., 'Matched jurisdiction US and vertical pharmaceutical')."
+                  "description": "Why this policy was included (e.g., 'Matched jurisdiction US and policy category pharmaceutical_advertising')."
                 }
               },
               "required": ["policy_id", "source", "enforcement"],

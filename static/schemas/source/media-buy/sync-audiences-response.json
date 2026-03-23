@@ -53,6 +53,44 @@
                 "description": "Total members matched to platform users across all syncs (cumulative, not just this call). Populated when status is 'ready'.",
                 "minimum": 0
               },
+              "effective_match_rate": {
+                "type": "number",
+                "description": "Deduplicated match rate across all identifier types (matched_count / total_uploaded_count after deduplication). A single number for reach estimation. Populated when status is 'ready'.",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "match_breakdown": {
+                "type": "array",
+                "description": "Per-identifier-type match results. Shows which ID types are resolving and at what rate. Helps buyers decide which identifiers to prioritize. Populated when the seller can report per-type matching. Omitted when the seller only supports aggregate match counts.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id_type": {
+                      "$ref": "/schemas/enums/match-id-type.json",
+                      "description": "Identifier type. Combines hashed PII types (hashed_email, hashed_phone) with universal ID types (rampid, uid2, maid, etc.)."
+                    },
+                    "submitted": {
+                      "type": "integer",
+                      "description": "Cumulative number of members submitted with this identifier type across all syncs (matches total_uploaded_count semantics, not uploaded_count). Compare with matched to calculate per-type match rate.",
+                      "minimum": 0
+                    },
+                    "matched": {
+                      "type": "integer",
+                      "description": "Cumulative number of members matched via this identifier type across all syncs.",
+                      "minimum": 0
+                    },
+                    "match_rate": {
+                      "type": "number",
+                      "description": "Match rate for this identifier type (matched / submitted). Server-authoritative — consumers should prefer this value over computing their own.",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": ["id_type", "submitted", "matched", "match_rate"],
+                  "additionalProperties": true
+                },
+                "minItems": 1
+              },
               "last_synced_at": {
                 "type": "string",
                 "format": "date-time",

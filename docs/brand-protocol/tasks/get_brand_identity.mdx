@@ -21,7 +21,7 @@ Typically under 2 seconds for identity data. Authorized responses with large ass
 
 ## Public by default
 
-Brand identity is public data. Any agent can call `get_brand_identity` without a linked account and receive the brand's core identity: house, names, description, industry, and basic logos. This is the same data available in `brand.json` — `get_brand_identity` provides it via MCP for agents that prefer a structured call over fetching and parsing the file.
+Brand identity is public data. Any agent can call `get_brand_identity` without a linked account and receive the brand's core identity: house, names, description, industries, and basic logos. This is the same data available in `brand.json` — `get_brand_identity` provides it via MCP for agents that prefer a structured call over fetching and parsing the file.
 
 The registry enforces this: every brand indexed from `brand.json` is publicly discoverable. You can always find out what house a brand belongs to, what it's called, and what it does.
 
@@ -31,7 +31,7 @@ Account linking is a one-time setup: a buyer agent calls [`sync_accounts`](/docs
 
 | Level | What you get |
 |-------|-------------|
-| **Public** (no linked account) | House, names, description, industry, keller_type, basic logos, tagline |
+| **Public** (no linked account) | House, names, description, industries, keller_type, basic logos, tagline |
 | **Authorized** (linked via `sync_accounts`) | Everything above, plus: high-res assets, voice synthesis, tone guidelines, content restrictions, rights availability |
 
 If a request includes `fields` that require authorization the caller does not have, those fields are silently omitted. The response includes `available_fields` listing what sections exist but were not returned, so the caller knows what they would gain by linking their account.
@@ -51,7 +51,7 @@ If a request includes `fields` that require authorization the caller does not ha
   "house": { "domain": "lotientertainment.com", "name": "Loti Entertainment" },
   "names": [{"en": "Daan Janssen"}],
   "description": "Dutch Olympic speed skater, 2x gold medalist",
-  "industry": "sports",
+  "industries": ["sports"],
   "keller_type": "independent",
   "logos": [
     { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "variant": "primary" }
@@ -154,7 +154,7 @@ If a request includes `fields` that require authorization the caller does not ha
 | `fields` | string[] | No | Optional sections to include (e.g., `logos`, `colors`, `fonts`, `visual_guidelines`, `tone`). Omit for all authorized sections. Core fields (`brand_id`, `house`, `names`) are always returned and do not need to be requested. |
 | `use_case` | string | No | Intended use case (e.g., "endorsement", "voice_synthesis", "likeness"). Agent tailors content within the returned sections — a "likeness" use case returns action photos, a "voice_synthesis" use case returns voice configs. Does not override `fields`. |
 
-Valid `fields` values: `description`, `industry`, `keller_type`, `logos`, `colors`, `fonts`, `visual_guidelines`, `tone`, `tagline`, `voice_synthesis`, `assets`, `rights`
+Valid `fields` values: `description`, `industries`, `keller_type`, `logos`, `colors`, `fonts`, `visual_guidelines`, `tone`, `tagline`, `voice_synthesis`, `assets`, `rights`
 
 Recommended `use_case` values:
 
@@ -178,7 +178,7 @@ The response mirrors the brand.json brand definition, extended with dynamic data
 | `house` | object | Yes | House (corporate entity): `domain` and `name` |
 | `names` | object[] | Yes | Localized names |
 | `description` | string | No | Brand description |
-| `industry` | string | No | Industry or category |
+| `industries` | string[] | No | Industries or categories |
 | `keller_type` | string | No | Brand architecture type: `master`, `sub_brand`, `endorsed`, `independent` |
 | `logos` | object[] | No | Brand logos (matches brand.json logo shape: `url`, `variant`, `orientation`, `background`, `tags`) |
 | `colors` | object | No | Brand color palette with structured roles (`primary`, `secondary`, `accent`, `background`, `text`) |

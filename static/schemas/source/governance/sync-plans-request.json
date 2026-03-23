@@ -115,6 +115,37 @@
             "items": { "type": "string" },
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
+          "policy_categories": {
+            "type": "array",
+            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum — new categories are added as regulations evolve).",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "audience": {
+            "$ref": "/schemas/governance/audience-constraints.json",
+            "description": "Audience targeting constraints. Defines who the campaign should reach (include) and must not reach (exclude). The governance agent evaluates seller targeting against these constraints."
+          },
+          "restricted_attributes": {
+            "type": "array",
+            "description": "Personal data categories that must not be used for targeting in this campaign. Applies horizontally across all audience criteria. Used for EU DSA Article 26 compliance (prohibits targeting on GDPR Article 9 special categories) and similar regulations. The governance agent flags any audience targeting that references these attributes.",
+            "items": {
+              "$ref": "/schemas/enums/restricted-attribute.json"
+            },
+            "minItems": 1
+          },
+          "restricted_attributes_custom": {
+            "type": "array",
+            "description": "Additional restricted attributes not covered by the restricted-attribute enum. Freeform strings for jurisdiction-specific or brand-specific restrictions beyond GDPR Article 9 categories (e.g., 'financial_status', 'immigration_status'). Governance agents use semantic matching for these.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "min_audience_size": {
+            "type": "integer",
+            "description": "Minimum audience segment size. Prevents micro-targeting by ensuring segments meet a k-anonymity threshold. Applies to the estimated combined (intersection) audience when multiple criteria are used, not just individual criterion sizes. The governance agent validates this by querying signal catalog metadata or seller-reported segment sizes. When segment size data is unavailable, the governance agent SHOULD produce a finding with reduced confidence rather than silently passing.",
+            "minimum": 1
+          },
           "custom_policies": {
             "type": "array",
             "items": { "type": "string" },

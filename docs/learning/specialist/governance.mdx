@@ -25,6 +25,8 @@ Passing earns the **AdCP specialist — Governance** credential.
 - Use the policy registry to resolve and apply compliance policies
 - Interpret audit logs and reason about drift metrics
 - Explain how governance domains compose — campaign, property, content standards, creative
+- Configure audience constraints on a campaign plan using policy categories and restricted attributes
+- Validate that `check_governance` correctly denies targeting that violates audience constraints
 
 ## Prerequisite reading
 
@@ -112,6 +114,8 @@ Passing earns the **AdCP specialist — Governance** credential.
 4. **Compliance verification** — Verify that sandbox campaign deliveries meet governance requirements
 5. **Campaign governance lifecycle** — Create a campaign plan, validate actions (proposed + committed), handle denials and conditions, report outcomes, and review audit logs
 6. **Policy resolution and compliance** — Resolve policies from the registry, configure jurisdiction-scoped enforcement, verify that violations are caught
+7. **Audience governance** — Configure a plan with `policy_categories` (e.g., `fair_housing`) that carry `restricted_attributes`. Submit `check_governance` requests with audience selectors that use restricted signals and verify the governance agent denies them. Then submit compliant targeting and confirm approval.
+8. **Audience drift detection** — Run a series of delivery-phase governance checks with `audience_distribution` indices that gradually shift from baseline parity. Observe how cumulative indices reveal sustained bias patterns that single-period noise obscures, and how governance findings escalate when drift exceeds thresholds.
 
 ## Assessment
 

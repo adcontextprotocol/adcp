@@ -76,7 +76,7 @@ interface TalentEntry {
   house: House;
   names: LocalizedName[];
   description: string;
-  industry: string;
+  industries: string[];
   keller_type: string;
   tagline: string;
   logos: Logo[];
@@ -109,7 +109,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Daan Janssen' }],
     description: 'Dutch Olympic speed skater, 2x gold medalist',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Speed is a choice',
     logos: [
@@ -188,7 +188,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Sofia Reyes' }, { es: 'Sofia Reyes' }],
     description: 'Mexican freestyle swimmer, Pan American gold medalist',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Every stroke counts',
     logos: [
@@ -251,7 +251,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Pieter van Dijk' }, { nl: 'Pieter van Dijk' }],
     description: 'Dutch professional cyclist and vegan lifestyle advocate',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Fueled by plants',
     logos: [
@@ -329,7 +329,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Yuki Tanaka' }, { ja: '田中ゆき' }],
     description: 'Japanese figure skater, World Championship silver medalist',
-    industry: 'sports',
+    industries: ['sports'],
     keller_type: 'independent',
     tagline: 'Grace under pressure',
     logos: [
@@ -405,7 +405,7 @@ const TALENT: TalentEntry[] = [
 const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 
 // Fields that are always returned (public, not selectable)
-const PUBLIC_FIELDS = ['description', 'industry', 'keller_type', 'logos', 'tagline'] as const;
+const PUBLIC_FIELDS = ['description', 'industries', 'keller_type', 'logos', 'tagline'] as const;
 const AUTHORIZED_FIELDS = ['colors', 'fonts', 'visual_guidelines', 'tone', 'voice_synthesis', 'assets', 'rights'] as const;
 const ALL_FIELDS = [...PUBLIC_FIELDS, ...AUTHORIZED_FIELDS] as const;
 
@@ -420,7 +420,7 @@ export const BRAND_TOOLS = [
       type: 'object' as const,
       properties: {
         brand_id: { type: 'string', description: 'Brand identifier (e.g., daan_janssen, sofia_reyes)' },
-        fields: { type: 'array', items: { type: 'string' }, description: 'Sections to include. Omit for all.' },
+        fields: { type: 'array', items: { type: 'string' }, description: 'Sections to include: description, industries, keller_type, logos, colors, fonts, visual_guidelines, tone, tagline, voice_synthesis, assets, rights. Omit for all.' },
         use_case: { type: 'string', description: 'Intended use case: endorsement, voice_synthesis, likeness, creative_production, media_planning' },
         authorized: { type: 'boolean', description: 'Simulate authorized caller (linked via sync_accounts). Default false.' },
       },
@@ -633,7 +633,7 @@ function buildMatchReasons(
     reasons.push('Available for food/restaurant brands');
   }
   if (queryLower.includes('athlete') || queryLower.includes('sport')) {
-    reasons.push(`${talent.industry} talent`);
+    reasons.push(`${talent.industries.join('/')} talent`);
   }
 
   return reasons;
