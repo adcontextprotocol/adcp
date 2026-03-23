@@ -67,7 +67,7 @@ All parameters are optional. An empty request returns all accounts.
 |-----------|------|----------|-------------|
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only production accounts. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
-| `account_governance` | object | No | Per-account governance agent registration. Keys are `account_id` values; values contain `governance_agents` to register for that account. See [governance agents](#governance-agents). |
+| `account_governance` | array | No | Per-account governance agent registration. Each entry pairs an [account reference](/docs/building/integration/accounts-and-agents) with governance agents to register. See [governance agents](#governance-agents). |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response
@@ -95,9 +95,9 @@ All parameters are optional. An empty request returns all accounts.
 
 ## Governance Agents
 
-On explicit-account sellers (`require_operator_auth: true`), accounts are pre-created on the seller's platform. The buyer discovers them via `list_accounts` but cannot provision them via `sync_accounts`. Pass `account_governance` in the request to register governance endpoints against specific accounts.
+Pass `account_governance` in the request to register governance endpoints against specific accounts. Each entry pairs an account reference with the governance agents to register. Account references support both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`).
 
-The `account_governance` object maps `account_id` values to their governance agent configuration, mirroring the per-account `governance_agents` pattern from `sync_accounts`. This uses **replace semantics** — each call replaces any previously registered agents on the specified accounts. Accounts not included in `account_governance` keep their existing registrations. Omitting `account_governance` entirely leaves all registrations unchanged.
+This uses **replace semantics** — each call replaces any previously registered agents on the specified accounts. Accounts not included in `account_governance` keep their existing registrations. Omitting `account_governance` entirely leaves all registrations unchanged.
 
 The seller calls the registered agents for approval during media buy lifecycle events (via `check_governance`). Each governance agent entry requires a `url` and `authentication`, and can optionally be scoped to specific `categories`. A successful response confirms the governance agents were registered — the returned accounts will include the `governance_agents` field reflecting the persisted configuration.
 
@@ -107,15 +107,15 @@ The seller calls the registered agents for approval during media buy lifecycle e
 import { testAgent } from "@adcp/client/testing";
 import { ListAccountsResponseSchema } from "@adcp/client";
 
-// First, discover accounts
+// Discover accounts, then register governance agents per account
 const discovery = await testAgent.listAccounts({});
 if (!discovery.success) throw new Error(`Request failed: ${discovery.error}`);
 const accounts = ListAccountsResponseSchema.parse(discovery.data);
 
-// Then, register governance agents per account
 const result = await testAgent.listAccounts({
-  account_governance: {
-    [accounts.accounts[0].account_id]: {
+  account_governance: [
+    {
+      account: { account_id: accounts.accounts[0].account_id },
       governance_agents: [
         {
           url: "https://governance.pinnacle-media.com/budget",
@@ -127,7 +127,8 @@ const result = await testAgent.listAccounts({
         }
       ]
     },
-    [accounts.accounts[1].account_id]: {
+    {
+      account: { account_id: accounts.accounts[1].account_id },
       governance_agents: [
         {
           url: "https://governance.pinnacle-media.com/compliance",
@@ -139,7 +140,7 @@ const result = await testAgent.listAccounts({
         }
       ]
     }
-  }
+  ]
 });
 
 if (!result.success) {
@@ -162,14 +163,14 @@ import asyncio
 from adcp.testing import test_agent
 
 async def main():
-    # First, discover accounts
+    # Discover accounts, then register governance agents per account
     discovery = await test_agent.simple.list_accounts()
     account_ids = [a.account_id for a in discovery.accounts]
 
-    # Then, register governance agents per account
     result = await test_agent.simple.list_accounts(
-        account_governance={
-            account_ids[0]: {
+        account_governance=[
+            {
+                "account": {"account_id": account_ids[0]},
                 "governance_agents": [
                     {
                         "url": "https://governance.pinnacle-media.com/budget",
@@ -181,7 +182,8 @@ async def main():
                     }
                 ]
             },
-            account_ids[1]: {
+            {
+                "account": {"account_id": account_ids[1]},
                 "governance_agents": [
                     {
                         "url": "https://governance.pinnacle-media.com/compliance",
@@ -193,7 +195,7 @@ async def main():
                     }
                 ]
             }
-        }
+        ]
     )
 
     if hasattr(result, 'errors') and result.errors:
@@ -208,11 +210,12 @@ asyncio.run(main())
 
 </CodeGroup>
 
-```json Request example
+```json Explicit accounts (by account_id)
 {
   "$schema": "https://adcontextprotocol.org/schemas/latest/account/list-accounts-request.json",
-  "account_governance": {
-    "acct-social-001": {
+  "account_governance": [
+    {
+      "account": { "account_id": "acct-social-001" },
       "governance_agents": [
         {
           "url": "https://governance.pinnacle-media.com/budget",
@@ -223,8 +226,20 @@ asyncio.run(main())
           "categories": ["budget_authority"]
         }
       ]
-    },
-    "acct-social-002": {
+    }
+  ]
+}
+```
+
+```json Implicit accounts (by brand + operator)
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/list-accounts-request.json",
+  "account_governance": [
+    {
+      "account": {
+        "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+        "operator": "pinnacle-media.com"
+      },
       "governance_agents": [
         {
           "url": "https://governance.pinnacle-media.com/compliance",
@@ -236,7 +251,7 @@ asyncio.run(main())
         }
       ]
     }
-  }
+  ]
 }
 ```
 
