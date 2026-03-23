@@ -67,6 +67,7 @@ All parameters are optional. An empty request returns all accounts.
 |-----------|------|----------|-------------|
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only production accounts. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
+| `governance_agents` | array | No | Governance agent endpoints to register against the returned accounts. The seller persists these and calls them during media buy lifecycle events. See [governance agents](#governance-agents). |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response
@@ -89,7 +90,96 @@ All parameters are optional. An empty request returns all accounts.
 | `billing` | Billing model in effect: `operator` or `agent` |
 | `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
 | `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. Binding for all invoices when the account is active. |
+| `governance_agents` | Governance agent endpoints registered on this account. Present when governance agents have been configured via `list_accounts` or `sync_accounts`. |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
+
+## Governance Agents
+
+On explicit-account sellers (`require_operator_auth: true`), accounts are pre-created on the seller's platform. The buyer discovers them via `list_accounts` but cannot provision them via `sync_accounts`. Pass `governance_agents` in the request to register governance endpoints against the returned accounts.
+
+When `governance_agents` is included, the call has a write side-effect: the seller persists the provided governance configuration against the returned accounts. This uses **replace semantics** — each call with `governance_agents` replaces any previously registered agents on those accounts. Calls without `governance_agents` leave existing registrations unchanged.
+
+The seller calls the registered agents for approval during media buy lifecycle events (via `check_governance`). Each governance agent entry requires a `url` and `authentication`, and can optionally be scoped to specific `categories`. A successful response confirms the governance agents were registered — the returned accounts will include the `governance_agents` field reflecting the persisted configuration.
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { ListAccountsResponseSchema } from "@adcp/client";
+
+const result = await testAgent.listAccounts({
+  governance_agents: [
+    {
+      url: "https://governance.pinnacle-media.com/mcp",
+      authentication: {
+        schemes: ["Bearer"],
+        credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      categories: ["budget_authority", "geo_compliance"]
+    }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const account of validated.accounts) {
+  console.log(`${account.account_id}: ${account.governance_agents?.length ?? 0} governance agents`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.list_accounts(
+        governance_agents=[
+            {
+                "url": "https://governance.pinnacle-media.com/mcp",
+                "authentication": {
+                    "schemes": ["Bearer"],
+                    "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                },
+                "categories": ["budget_authority", "geo_compliance"]
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        agent_count = len(account.governance_agents) if account.governance_agents else 0
+        print(f"{account.account_id}: {agent_count} governance agents")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+```json Request example
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/list-accounts-request.json",
+  "governance_agents": [
+    {
+      "url": "https://governance.pinnacle-media.com/mcp",
+      "authentication": {
+        "schemes": ["Bearer"],
+        "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "categories": ["budget_authority", "geo_compliance"]
+    }
+  ]
+}
+```
 
 ## Common Scenarios
 

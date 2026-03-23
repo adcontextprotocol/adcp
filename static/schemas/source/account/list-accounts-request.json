@@ -24,6 +24,49 @@
       "type": "boolean",
       "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with explicit accounts (require_operator_auth: true) where sandbox accounts are pre-existing test accounts on the platform."
     },
+    "governance_agents": {
+      "type": "array",
+      "description": "Governance agent endpoints to register against the returned accounts. The seller persists these governance agents and calls them for approval during media buy lifecycle events. Use this on explicit-account sellers (require_operator_auth: true) where accounts are pre-created and sync_accounts is not used.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Governance agent endpoint URL."
+          },
+          "authentication": {
+            "type": "object",
+            "description": "Authentication the seller presents when calling this governance agent.",
+            "properties": {
+              "schemes": {
+                "type": "array",
+                "items": { "$ref": "/schemas/enums/auth-scheme.json" },
+                "minItems": 1,
+                "maxItems": 1
+              },
+              "credentials": {
+                "type": "string",
+                "description": "Authentication credential (e.g., Bearer token).",
+                "minLength": 32
+              }
+            },
+            "required": ["schemes", "credentials"],
+            "additionalProperties": false
+          },
+          "categories": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 64 },
+            "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories.",
+            "maxItems": 20
+          }
+        },
+        "required": ["url", "authentication"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
