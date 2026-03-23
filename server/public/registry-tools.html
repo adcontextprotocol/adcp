@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Registry tools | AgenticAdvertising.org</title>
-  <meta name="description" content="Builder and validation workflows for brand.json, adagents.json, and other AdCP implementation tasks.">
+  <title>Tools &amp; standards | AgenticAdvertising.org</title>
+  <meta name="description" content="Standards specifications, builder tools, and developer resources for the Ad Context Protocol ecosystem.">
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
@@ -13,44 +13,149 @@
       padding-top: var(--nav-height);
     }
 
-    .tool-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--space-6);
-      margin-top: var(--space-8);
+    .tools-container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: 0 var(--space-4) var(--space-10);
     }
 
-    .tool-card {
-      height: 100%;
+    /* Standard section: spec overview + action links */
+    .standard-section {
+      margin-bottom: var(--space-8);
     }
-
-    .tool-card .meta {
-      display: block;
-      font-size: var(--text-sm);
-      color: var(--color-text-muted);
-      margin-bottom: var(--space-2);
+    .standard-section__label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
       text-transform: uppercase;
       letter-spacing: var(--tracking-wider);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-3);
+    }
+    .standard-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--space-6);
+      align-items: start;
+    }
+    .standard-card:hover {
+      border-color: var(--color-primary-200);
+    }
+    .standard-card__body h3 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+    .standard-card__body h3 code {
+      font-family: var(--font-mono);
+      font-weight: var(--font-bold);
+      font-size: var(--text-lg);
+    }
+    .standard-card__body p {
+      font-size: var(--text-base);
+      color: var(--color-gray-600);
+      line-height: var(--leading-relaxed);
+      max-width: 600px;
+    }
+    .standard-card__actions {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      min-width: 160px;
+    }
+    .standard-card__actions a {
+      display: block;
+      padding: 10px 20px;
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
       font-weight: var(--font-semibold);
-    }
-
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-2);
-      color: var(--color-brand);
       text-decoration: none;
-      font-weight: var(--font-medium);
-      margin-bottom: var(--space-4);
+      text-align: center;
+      transition: var(--transition-colors);
     }
-
-    .back-link:hover {
+    .action-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .action-primary:hover {
+      background: var(--color-brand-hover);
+    }
+    .action-secondary {
+      background: var(--color-bg-card);
+      color: var(--color-brand);
+      border: 1px solid var(--color-primary-200);
+    }
+    .action-secondary:hover {
+      border-color: var(--color-brand);
+    }
+    .action-ghost {
+      color: var(--color-brand);
+      padding: 10px 20px;
+    }
+    .action-ghost:hover {
       text-decoration: underline;
     }
 
+    /* Resource links grid */
+    .resources-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--space-5);
+    }
+    .resource-card {
+      padding: var(--space-5);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      text-decoration: none;
+      color: inherit;
+      display: block;
+      transition: border-color 0.15s ease;
+    }
+    .resource-card:hover {
+      border-color: var(--color-brand);
+    }
+    .resource-card h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+    .resource-card p {
+      font-size: var(--text-sm);
+      color: var(--color-gray-600);
+      line-height: var(--leading-relaxed);
+      margin: 0;
+    }
+    .resource-card__arrow {
+      display: inline-block;
+      margin-top: var(--space-3);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-brand);
+    }
+
+    .section-heading {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-widest);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-5);
+    }
+
     @media (max-width: 768px) {
-      .tool-grid {
+      .standard-card {
         grid-template-columns: 1fr;
+      }
+      .standard-card__actions {
+        flex-direction: row;
+        flex-wrap: wrap;
+        min-width: 0;
       }
     }
   </style>
@@ -61,64 +166,63 @@
   <script src="/registry-nav.js"></script>
 
   <header class="page-header">
-    <h1>Registry tools</h1>
-    <p>Create and validate the files that agents use for discovery, identity, and authorization</p>
+    <h1>Tools &amp; standards</h1>
+    <p>Standards specifications and builder tools for the AdCP ecosystem</p>
   </header>
 
-  <section>
-    <div class="panel panel-wide">
-
-      <div class="tool-grid">
-        <div class="cta-card tool-card">
-          <span class="meta">Brand protocol</span>
-          <h3>brand.json builder</h3>
-          <p>Create and validate a hosted brand identity file, then publish or update it through the registry.</p>
-          <a href="/brand/builder">Open builder</a>
+  <div class="tools-container">
+    <!-- brand.json -->
+    <div class="standard-section">
+      <div class="standard-section__label">Well-known file standard</div>
+      <div class="standard-card">
+        <div class="standard-card__body">
+          <h3><code>brand.json</code></h3>
+          <p>A machine-readable brand identity file at <code>/.well-known/brand.json</code> that tells AI agents who your brand is, what it looks like, and how it wants to be represented in advertising.</p>
         </div>
-
-        <div class="cta-card tool-card">
-          <span class="meta">Property governance</span>
-          <h3>adagents.json builder</h3>
-          <p>Validate publisher declarations, generate compliant payloads, and check referenced agent cards.</p>
-          <a href="/adagents/builder">Open builder</a>
+        <div class="standard-card__actions">
+          <a href="/brand/builder" class="action-primary">Open builder</a>
+          <a href="/brand" class="action-secondary">About the spec</a>
+          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json" class="action-ghost">Docs &rarr;</a>
         </div>
       </div>
     </div>
-  </section>
 
-  <section class="bg-subtle">
-    <div class="panel panel-wide">
-      <div class="tool-grid">
-        <div class="cta-card tool-card">
-          <span class="meta">Specification</span>
-          <h3>brand.json docs</h3>
-          <p>Reference for the brand identity file format, its variants, and associated rights workflows.</p>
-          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json">View docs</a>
+    <!-- adagents.json -->
+    <div class="standard-section">
+      <div class="standard-section__label">Well-known file standard</div>
+      <div class="standard-card">
+        <div class="standard-card__body">
+          <h3><code>adagents.json</code></h3>
+          <p>A publisher declaration file that tells AI advertising agents what inventory is available, which agents are authorized to sell it, and what governance policies apply.</p>
         </div>
-
-        <div class="cta-card tool-card">
-          <span class="meta">Specification</span>
-          <h3>adagents.json docs</h3>
-          <p>Reference for publisher authorization declarations and how governance agents consume them.</p>
-          <a href="https://docs.adcontextprotocol.org/docs/governance/property/adagents">View docs</a>
-        </div>
-
-        <div class="cta-card tool-card">
-          <span class="meta">API reference</span>
-          <h3>Registry API</h3>
-          <p>Endpoint reference for brand resolution, property lookup, agent discovery, and authorization.</p>
-          <a href="https://docs.adcontextprotocol.org/docs/registry/index">View API docs</a>
-        </div>
-
-        <div class="cta-card tool-card">
-          <span class="meta">Guide</span>
-          <h3>Building with AdCP</h3>
-          <p>Architecture, implementation patterns, authentication, sessions, and transport guidance.</p>
-          <a href="https://docs.adcontextprotocol.org/docs/building/index">View guide</a>
+        <div class="standard-card__actions">
+          <a href="/adagents/builder" class="action-primary">Open builder</a>
+          <a href="/adagents" class="action-secondary">About the spec</a>
+          <a href="https://docs.adcontextprotocol.org/docs/governance/property/adagents" class="action-ghost">Docs &rarr;</a>
         </div>
       </div>
     </div>
-  </section>
+
+    <!-- Developer resources -->
+    <h2 class="section-heading">Developer resources</h2>
+    <div class="resources-grid">
+      <a href="https://docs.adcontextprotocol.org/docs/registry/index" class="resource-card">
+        <h4>Registry API</h4>
+        <p>Endpoint reference for brand resolution, property lookup, agent discovery, and authorization.</p>
+        <span class="resource-card__arrow">View API docs &rarr;</span>
+      </a>
+      <a href="https://docs.adcontextprotocol.org/docs/building/index" class="resource-card">
+        <h4>Building with AdCP</h4>
+        <p>Architecture, implementation patterns, authentication, sessions, and transport guidance.</p>
+        <span class="resource-card__arrow">View guide &rarr;</span>
+      </a>
+      <a href="https://docs.adcontextprotocol.org/docs/reference/schema-versioning" class="resource-card">
+        <h4>Schema reference</h4>
+        <p>Versioned JSON schemas for all AdCP message types, with validation and migration guidance.</p>
+        <span class="resource-card__arrow">View schemas &rarr;</span>
+      </a>
+    </div>
+  </div>
 
   <div id="adcp-footer"></div>
 </body>
