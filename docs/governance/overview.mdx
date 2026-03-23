@@ -32,6 +32,10 @@ AdCP governance works because humans define the boundaries and no single party c
 
 The agent that spends money isn't the agent that sets the rules. This isn't three agents checking each other — it's a structure designed so that human-defined policies govern every transaction, and no agent can act outside the authority a human granted it.
 
+## Step 0: Sync governance agents
+
+Before registering the plan, the buyer syncs governance agents with the seller via [`sync_governance`](/docs/accounts/tasks/sync_governance). This gives the seller the endpoints and credentials needed to call `check_governance` independently when processing media buys.
+
 ## Step 1: Register the plan
 
 <img src="/images/walkthrough/governance-02-plan-synced.png" alt="A buying robot creates a glowing campaign plan document that floats across to a governance robot sitting behind a security desk with a shield emblem — the governance robot examines it carefully" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />

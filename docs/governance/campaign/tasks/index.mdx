@@ -18,3 +18,5 @@ Campaign Governance has four tasks.
 | [`get_plan_audit_logs`](./get_plan_audit_logs) | Orchestrator → Gov | Read governance state, budget burn, and audit trail |
 
 `sync_plans` configures the rules. `check_governance` is the universal governance gate — both the orchestrator (proposed) and the seller (committed) call it to validate actions against the plan. `report_plan_outcome` closes the loop after execution. `get_plan_audit_logs` is read-only, for monitoring and reporting.
+
+**Setup prerequisite:** [`sync_governance`](/docs/accounts/tasks/sync_governance) syncs governance agent endpoints to accounts. This must be done before sellers can call `check_governance` with `binding: "committed"`.

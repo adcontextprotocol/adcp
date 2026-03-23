@@ -39,7 +39,7 @@
                     },
                     "categories": {
                       "type": "array",
-                      "items": { "type": "string", "maxLength": 64 },
+                      "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$" },
                       "description": "Governance categories this agent handles.",
                       "maxItems": 20
                     }

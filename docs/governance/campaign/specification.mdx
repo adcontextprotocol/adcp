@@ -483,7 +483,7 @@ The seller stores these endpoints and presents the credentials when calling `che
 
 ### Governance modes
 
-The governance agent's operating mode can be set per-plan via the `mode` field in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), defaulting to `enforce`. Mode is not exposed to sellers via `sync_accounts` -- the seller calls `check_governance` and acts on the response status. It does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
+The governance agent's operating mode can be set per-plan via the `mode` field in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), defaulting to `enforce`. Mode is not exposed to sellers -- the seller calls `check_governance` and acts on the response status. It does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
 
 | Mode | Behavior | Use case |
 |------|----------|----------|

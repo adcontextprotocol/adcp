@@ -145,7 +145,7 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Signals framework** — `get_signals` and `activate_signal` replace fragmented measurement vendor integrations
 - **Audience handling** — `sync_audiences` for accepting buyer audience data
 - **Account management** — `sync_accounts`, `list_accounts` for managing buyer relationships
-- **Seller-side governance** — when a buyer account has `governance_agents`, call `check_governance` with binding `committed` before confirming media buys
+- **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with binding `committed` before confirming media buys
 - **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
 
 <Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
