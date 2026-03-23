@@ -67,7 +67,7 @@ All parameters are optional. An empty request returns all accounts.
 |-----------|------|----------|-------------|
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only production accounts. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
-| `governance_agents` | array | No | Governance agent endpoints to register against the returned accounts. The seller persists these and calls them during media buy lifecycle events. See [governance agents](#governance-agents). |
+| `account_governance` | object | No | Per-account governance agent registration. Keys are `account_id` values; values contain `governance_agents` to register for that account. See [governance agents](#governance-agents). |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response
@@ -95,9 +95,9 @@ All parameters are optional. An empty request returns all accounts.
 
 ## Governance Agents
 
-On explicit-account sellers (`require_operator_auth: true`), accounts are pre-created on the seller's platform. The buyer discovers them via `list_accounts` but cannot provision them via `sync_accounts`. Pass `governance_agents` in the request to register governance endpoints against the returned accounts.
+On explicit-account sellers (`require_operator_auth: true`), accounts are pre-created on the seller's platform. The buyer discovers them via `list_accounts` but cannot provision them via `sync_accounts`. Pass `account_governance` in the request to register governance endpoints against specific accounts.
 
-When `governance_agents` is included, the call has a write side-effect: the seller persists the provided governance configuration against the returned accounts. This uses **replace semantics** — each call with `governance_agents` replaces any previously registered agents on those accounts. Calls without `governance_agents` leave existing registrations unchanged.
+The `account_governance` object maps `account_id` values to their governance agent configuration, mirroring the per-account `governance_agents` pattern from `sync_accounts`. This uses **replace semantics** — each call replaces any previously registered agents on the specified accounts. Accounts not included in `account_governance` keep their existing registrations. Omitting `account_governance` entirely leaves all registrations unchanged.
 
 The seller calls the registered agents for approval during media buy lifecycle events (via `check_governance`). Each governance agent entry requires a `url` and `authentication`, and can optionally be scoped to specific `categories`. A successful response confirms the governance agents were registered — the returned accounts will include the `governance_agents` field reflecting the persisted configuration.
 
@@ -107,17 +107,39 @@ The seller calls the registered agents for approval during media buy lifecycle e
 import { testAgent } from "@adcp/client/testing";
 import { ListAccountsResponseSchema } from "@adcp/client";
 
+// First, discover accounts
+const discovery = await testAgent.listAccounts({});
+if (!discovery.success) throw new Error(`Request failed: ${discovery.error}`);
+const accounts = ListAccountsResponseSchema.parse(discovery.data);
+
+// Then, register governance agents per account
 const result = await testAgent.listAccounts({
-  governance_agents: [
-    {
-      url: "https://governance.pinnacle-media.com/mcp",
-      authentication: {
-        schemes: ["Bearer"],
-        credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-      },
-      categories: ["budget_authority", "geo_compliance"]
+  account_governance: {
+    [accounts.accounts[0].account_id]: {
+      governance_agents: [
+        {
+          url: "https://governance.pinnacle-media.com/budget",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          categories: ["budget_authority"]
+        }
+      ]
+    },
+    [accounts.accounts[1].account_id]: {
+      governance_agents: [
+        {
+          url: "https://governance.pinnacle-media.com/compliance",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          },
+          categories: ["geo_compliance"]
+        }
+      ]
     }
-  ]
+  }
 });
 
 if (!result.success) {
@@ -140,17 +162,38 @@ import asyncio
 from adcp.testing import test_agent
 
 async def main():
+    # First, discover accounts
+    discovery = await test_agent.simple.list_accounts()
+    account_ids = [a.account_id for a in discovery.accounts]
+
+    # Then, register governance agents per account
     result = await test_agent.simple.list_accounts(
-        governance_agents=[
-            {
-                "url": "https://governance.pinnacle-media.com/mcp",
-                "authentication": {
-                    "schemes": ["Bearer"],
-                    "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                },
-                "categories": ["budget_authority", "geo_compliance"]
+        account_governance={
+            account_ids[0]: {
+                "governance_agents": [
+                    {
+                        "url": "https://governance.pinnacle-media.com/budget",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        },
+                        "categories": ["budget_authority"]
+                    }
+                ]
+            },
+            account_ids[1]: {
+                "governance_agents": [
+                    {
+                        "url": "https://governance.pinnacle-media.com/compliance",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+                        },
+                        "categories": ["geo_compliance"]
+                    }
+                ]
             }
-        ]
+        }
     )
 
     if hasattr(result, 'errors') and result.errors:
@@ -168,16 +211,32 @@ asyncio.run(main())
 ```json Request example
 {
   "$schema": "https://adcontextprotocol.org/schemas/latest/account/list-accounts-request.json",
-  "governance_agents": [
-    {
-      "url": "https://governance.pinnacle-media.com/mcp",
-      "authentication": {
-        "schemes": ["Bearer"],
-        "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-      },
-      "categories": ["budget_authority", "geo_compliance"]
+  "account_governance": {
+    "acct-social-001": {
+      "governance_agents": [
+        {
+          "url": "https://governance.pinnacle-media.com/budget",
+          "authentication": {
+            "schemes": ["Bearer"],
+            "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          "categories": ["budget_authority"]
+        }
+      ]
+    },
+    "acct-social-002": {
+      "governance_agents": [
+        {
+          "url": "https://governance.pinnacle-media.com/compliance",
+          "authentication": {
+            "schemes": ["Bearer"],
+            "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          },
+          "categories": ["geo_compliance"]
+        }
+      ]
     }
-  ]
+  }
 }
 ```
 
