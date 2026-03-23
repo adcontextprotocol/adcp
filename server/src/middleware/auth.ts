@@ -1076,6 +1076,69 @@ export function createRequireWorkingGroupLeader(
 }
 
 /**
+ * Factory function to create middleware that requires working group membership (member or leader)
+ * Must be used after requireAuth
+ * Checks if user is a member or leader of the specified working group, OR a site admin
+ */
+export function createRequireWorkingGroupMember(
+  workingGroupDb: {
+    getWorkingGroupBySlug: (slug: string) => Promise<{ id: string; leaders?: Array<{ user_id: string }> } | null>;
+    isLeader: (workingGroupId: string, userId: string) => Promise<boolean>;
+    isMember: (workingGroupId: string, userId: string) => Promise<boolean>;
+  }
+) {
+  return async function requireWorkingGroupMember(req: Request, res: Response, next: NextFunction) {
+    if (!req.user) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please log in to access this resource',
+      });
+    }
+
+    const slug = req.params.slug;
+    if (!slug) {
+      return res.status(400).json({
+        error: 'Missing working group slug',
+        message: 'Working group slug is required',
+      });
+    }
+
+    // Check if user is a site admin first
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+    const isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+
+    if (isAdmin) {
+      logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
+      return next();
+    }
+
+    const workingGroup = await workingGroupDb.getWorkingGroupBySlug(slug);
+    if (!workingGroup) {
+      return res.status(404).json({
+        error: 'Working group not found',
+        message: `No working group found with slug '${slug}'`,
+      });
+    }
+
+    const isLeader = await workingGroupDb.isLeader(workingGroup.id, req.user.id);
+    const isMember = isLeader || await workingGroupDb.isMember(workingGroup.id, req.user.id);
+
+    if (!isMember) {
+      logger.warn({ userId: req.user.id, slug }, 'Non-member user attempted to access working group member endpoint');
+      return res.status(403).json({
+        error: 'Working group membership required',
+        message: 'This resource is only accessible to members of this working group',
+      });
+    }
+
+    (req as Request & { workingGroup: typeof workingGroup }).workingGroup = workingGroup;
+
+    logger.debug({ userId: req.user.id, slug }, 'Working group member access granted');
+    next();
+  };
+}
+
+/**
  * Extract sealed session from request
  * Supports both cookie-based auth (web) and Authorization header (native apps)
  * Native apps send: Authorization: Bearer <sealed-session>

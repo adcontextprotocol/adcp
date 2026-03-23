@@ -1477,8 +1477,40 @@ export class WorkingGroupDatabase {
    * Create a new committee document
    */
   async createDocument(input: CreateCommitteeDocumentInput): Promise<CommitteeDocument> {
-    // Detect document type from URL if not provided
-    const documentType = input.document_type || this.detectDocumentType(input.document_url);
+    // Detect document type from URL or file name
+    const documentType = input.document_type
+      || (input.document_url ? this.detectDocumentType(input.document_url) : null)
+      || (input.file_name ? this.detectDocumentTypeFromFilename(input.file_name) : null)
+      || 'other';
+
+    if (input.file_data) {
+      // Uploaded file: store binary data directly
+      const result = await query<CommitteeDocument>(
+        `INSERT INTO committee_documents (
+          working_group_id, title, description, document_url, document_type,
+          display_order, is_featured, added_by_user_id,
+          file_data, file_name, file_mime_type
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id, working_group_id, title, description, document_url, document_type,
+          display_order, is_featured, content_hash, last_content, last_indexed_at,
+          last_modified_at, document_summary, summary_generated_at, index_status,
+          index_error, added_by_user_id, file_name, file_mime_type, created_at, updated_at`,
+        [
+          input.working_group_id,
+          input.title,
+          input.description || null,
+          input.document_url || null,
+          documentType,
+          input.display_order ?? 0,
+          input.is_featured ?? false,
+          input.added_by_user_id || null,
+          input.file_data,
+          input.file_name || null,
+          input.file_mime_type || null,
+        ]
+      );
+      return result.rows[0];
+    }
 
     const result = await query<CommitteeDocument>(
       `INSERT INTO committee_documents (
@@ -1490,7 +1522,7 @@ export class WorkingGroupDatabase {
         input.working_group_id,
         input.title,
         input.description || null,
-        input.document_url,
+        input.document_url || null,
         documentType,
         input.display_order ?? 0,
         input.is_featured ?? false,
@@ -1499,6 +1531,17 @@ export class WorkingGroupDatabase {
     );
 
     return result.rows[0];
+  }
+
+  /**
+   * Get the raw file data for an uploaded document
+   */
+  async getDocumentFileData(id: string, workingGroupId: string): Promise<{ file_data: Buffer; file_mime_type: string; file_name: string } | null> {
+    const result = await query<{ file_data: Buffer; file_mime_type: string; file_name: string }>(
+      `SELECT file_data, file_mime_type, file_name FROM committee_documents WHERE id = $1 AND working_group_id = $2 AND file_data IS NOT NULL`,
+      [id, workingGroupId]
+    );
+    return result.rows[0] || null;
   }
 
   /**
@@ -1521,11 +1564,26 @@ export class WorkingGroupDatabase {
   }
 
   /**
+   * Detect document type from filename
+   */
+  private detectDocumentTypeFromFilename(filename: string): string {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith('.pdf')) return 'pdf';
+    if (lower.endsWith('.pptx')) return 'pptx';
+    return 'other';
+  }
+
+  /**
    * Get document by ID
    */
-  async getDocumentById(id: string): Promise<CommitteeDocument | null> {
-    const result = await query<CommitteeDocument>(
-      'SELECT * FROM committee_documents WHERE id = $1',
+  async getDocumentById(id: string): Promise<(CommitteeDocument & { has_file_data: boolean }) | null> {
+    const result = await query<CommitteeDocument & { has_file_data: boolean }>(
+      `SELECT id, working_group_id, title, description, document_url, document_type,
+              display_order, is_featured, content_hash, last_content, last_indexed_at,
+              last_modified_at, document_summary, summary_generated_at, index_status,
+              index_error, added_by_user_id, file_name, file_mime_type, created_at, updated_at,
+              (file_data IS NOT NULL) AS has_file_data
+       FROM committee_documents WHERE id = $1`,
       [id]
     );
     return result.rows[0] || null;
@@ -1537,7 +1595,12 @@ export class WorkingGroupDatabase {
    */
   async getIndexedDocumentsWithContent(): Promise<Array<CommitteeDocument & { working_group_name: string; working_group_slug: string }>> {
     const result = await query<CommitteeDocument & { working_group_name: string; working_group_slug: string }>(
-      `SELECT cd.*, wg.name AS working_group_name, wg.slug AS working_group_slug
+      `SELECT cd.id, cd.working_group_id, cd.title, cd.description, cd.document_url,
+              cd.document_type, cd.display_order, cd.is_featured, cd.content_hash,
+              cd.last_content, cd.last_indexed_at, cd.last_modified_at, cd.document_summary,
+              cd.summary_generated_at, cd.index_status, cd.index_error, cd.added_by_user_id,
+              cd.file_name, cd.file_mime_type, cd.created_at, cd.updated_at,
+              wg.name AS working_group_name, wg.slug AS working_group_slug
        FROM committee_documents cd
        JOIN working_groups wg ON wg.id = cd.working_group_id
        WHERE cd.index_status = 'success'
@@ -1555,7 +1618,11 @@ export class WorkingGroupDatabase {
    */
   async getDocumentsByWorkingGroup(workingGroupId: string): Promise<CommitteeDocument[]> {
     const result = await query<CommitteeDocument>(
-      `SELECT * FROM committee_documents
+      `SELECT id, working_group_id, title, description, document_url, document_type,
+              display_order, is_featured, content_hash, last_content, last_indexed_at,
+              last_modified_at, document_summary, summary_generated_at, index_status,
+              index_error, added_by_user_id, file_name, file_mime_type, created_at, updated_at
+       FROM committee_documents
        WHERE working_group_id = $1
        ORDER BY is_featured DESC, display_order ASC, created_at DESC`,
       [workingGroupId]
@@ -1566,9 +1633,15 @@ export class WorkingGroupDatabase {
   /**
    * Get documents that need indexing (pending or due for refresh)
    */
-  async getDocumentsPendingIndex(limit = 50): Promise<CommitteeDocument[]> {
-    const result = await query<CommitteeDocument>(
-      `SELECT cd.* FROM committee_documents cd
+  async getDocumentsPendingIndex(limit = 50): Promise<(CommitteeDocument & { has_file_data: boolean })[]> {
+    const result = await query<CommitteeDocument & { has_file_data: boolean }>(
+      `SELECT cd.id, cd.working_group_id, cd.title, cd.description, cd.document_url,
+              cd.document_type, cd.display_order, cd.is_featured, cd.content_hash,
+              cd.last_content, cd.last_indexed_at, cd.last_modified_at, cd.document_summary,
+              cd.summary_generated_at, cd.index_status, cd.index_error, cd.added_by_user_id,
+              cd.file_name, cd.file_mime_type, cd.created_at, cd.updated_at,
+              (cd.file_data IS NOT NULL) AS has_file_data
+       FROM committee_documents cd
        JOIN working_groups wg ON wg.id = cd.working_group_id
        WHERE wg.status = 'active'
          AND cd.document_type IN ('google_doc', 'google_sheet', 'pdf', 'pptx')

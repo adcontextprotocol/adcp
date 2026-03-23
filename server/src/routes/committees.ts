@@ -9,7 +9,7 @@ import { Router, Request, Response } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
-import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeader } from "../middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeader, createRequireWorkingGroupMember } from "../middleware/auth.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
@@ -21,8 +21,23 @@ import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, isSlackConfigured } from "../slack/client.js";
 import { CommunityDatabase } from "../db/community-db.js";
+import multer from 'multer';
 
 const logger = createLogger("committee-routes");
+
+// File upload config for working group documents (PDF/PPTX only, 50MB limit)
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and PPTX files are accepted'));
+    }
+  },
+});
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -201,6 +216,7 @@ export function createCommitteeRouters(): {
 
   const workingGroupDb = new WorkingGroupDatabase();
   const requireWorkingGroupLeader = createRequireWorkingGroupLeader(workingGroupDb);
+  const requireWorkingGroupMember = createRequireWorkingGroupMember(workingGroupDb);
 
   // =========================================================================
   // ADMIN API ROUTES (/api/admin/working-groups)
@@ -1639,8 +1655,8 @@ export function createCommitteeRouters(): {
     }
   });
 
-  // POST /api/working-groups/:slug/documents - Add a document (leaders only)
-  publicApiRouter.post('/:slug/documents', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+  // POST /api/working-groups/:slug/documents - Add a document (members and leaders)
+  publicApiRouter.post('/:slug/documents', requireAuth, requireWorkingGroupMember, async (req: Request, res: Response) => {
     try {
       const { slug } = req.params;
       const { title, description, document_url, document_type, display_order, is_featured } = req.body;
@@ -1733,8 +1749,151 @@ export function createCommitteeRouters(): {
     }
   });
 
-  // PUT /api/working-groups/:slug/documents/:documentId - Update a document (leaders only)
-  publicApiRouter.put('/:slug/documents/:documentId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+  // POST /api/working-groups/:slug/documents/upload - Upload a file as a document (members and leaders)
+  // Multer middleware is wrapped to handle file validation errors in the route
+  publicApiRouter.post('/:slug/documents/upload', requireAuth, requireWorkingGroupMember, (req: Request, res: Response, next: Function) => {
+    documentUpload.single('file')(req, res, (err: any) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'File too large', message: 'Maximum file size is 50MB' });
+        }
+        return res.status(400).json({ error: 'Upload error', message: err.message });
+      }
+      if (err) {
+        return res.status(400).json({ error: 'Invalid file type', message: err.message });
+      }
+      next();
+    });
+  }, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const user = req.user!;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({
+          error: 'Missing file',
+          message: 'A PDF or PPTX file is required',
+        });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const sanitizedFilename = file.originalname.replace(/[^\w.\-() ]/g, '_').slice(0, 200);
+      const title = (req.body.title || sanitizedFilename.replace(/\.(pdf|pptx)$/i, '')).slice(0, 500);
+      const description = req.body.description || null;
+      const displayOrder = parseInt(req.body.display_order) || 0;
+      const isFeatured = req.body.is_featured === 'true';
+
+      const document = await workingGroupDb.createDocument({
+        working_group_id: group.id,
+        title,
+        description,
+        file_data: file.buffer,
+        file_name: sanitizedFilename,
+        file_mime_type: file.mimetype,
+        display_order: displayOrder,
+        is_featured: isFeatured,
+        added_by_user_id: user.id,
+      });
+
+      logger.info({ documentId: document.id, groupSlug: slug, userId: user.id, fileName: file.originalname }, 'Committee document uploaded');
+
+      // Notify the working group's Slack channel
+      if (group.slack_channel_id && isSlackConfigured()) {
+        const userName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email || 'A working group leader';
+        const appUrl = process.env.APP_URL || 'https://agenticadvertising.org';
+        const groupUrl = `${appUrl}/working-groups/${slug}`;
+        const safeTitle = title.replace(/[|<>]/g, '-');
+        const safeDescription = description ? description.replace(/[|<>]/g, '-') : '';
+
+        sendChannelMessage(group.slack_channel_id, {
+          text: `📄 New file uploaded to ${group.name}: ${title}`,
+          blocks: [
+            {
+              type: 'header',
+              text: {
+                type: 'plain_text' as const,
+                text: '📄 New File Uploaded',
+                emoji: true,
+              },
+            },
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn' as const,
+                text: `*${safeTitle}* (${file.originalname.replace(/[|<>]/g, '-')})${safeDescription ? `\n${safeDescription}` : ''}`,
+              },
+            },
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn' as const,
+                text: `Added by ${userName} · <${groupUrl}|View all ${group.name} resources>`,
+              },
+            },
+          ],
+        }).catch(err => {
+          logger.warn({ err, groupSlug: slug, documentId: document.id }, 'Failed to send Slack notification for uploaded document');
+        });
+      }
+
+      res.status(201).json({ document });
+    } catch (error) {
+      logger.error({ err: error }, 'Upload committee document error');
+      res.status(500).json({
+        error: 'Failed to upload document',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/documents/:documentId/file - Download uploaded file
+  publicApiRouter.get('/:slug/documents/:documentId/file', async (req: Request, res: Response) => {
+    try {
+      const { slug, documentId } = req.params;
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({ error: 'Invalid document ID' });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({ error: 'Committee not found' });
+      }
+
+      const fileData = await workingGroupDb.getDocumentFileData(documentId, group.id);
+      if (!fileData) {
+        return res.status(404).json({ error: 'No file data available' });
+      }
+
+      const SAFE_SERVE_TYPES: Record<string, string> = {
+        'application/pdf': 'application/pdf',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      };
+      res.setHeader('Content-Type', SAFE_SERVE_TYPES[fileData.file_mime_type] || 'application/octet-stream');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'");
+      res.setHeader('Cache-Control', 'private, no-cache');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileData.file_name)}"`);
+      res.setHeader('Content-Length', fileData.file_data.length);
+      res.send(fileData.file_data);
+    } catch (error) {
+      logger.error({ err: error }, 'Serve committee document file error');
+      res.status(500).json({ error: 'Failed to serve file' });
+    }
+  });
+
+  // PUT /api/working-groups/:slug/documents/:documentId - Update a document (members and leaders)
+  publicApiRouter.put('/:slug/documents/:documentId', requireAuth, requireWorkingGroupMember, async (req: Request, res: Response) => {
     try {
       const { slug, documentId } = req.params;
       const { title, description, document_url, document_type, display_order, is_featured } = req.body;
@@ -1788,8 +1947,8 @@ export function createCommitteeRouters(): {
     }
   });
 
-  // POST /api/working-groups/:slug/documents/:documentId/reindex - Trigger reindex (leaders only)
-  publicApiRouter.post('/:slug/documents/:documentId/reindex', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+  // POST /api/working-groups/:slug/documents/:documentId/reindex - Trigger reindex (members and leaders)
+  publicApiRouter.post('/:slug/documents/:documentId/reindex', requireAuth, requireWorkingGroupMember, async (req: Request, res: Response) => {
     try {
       const { slug, documentId } = req.params;
       const user = req.user!;
