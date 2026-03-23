@@ -710,21 +710,38 @@ export class HTTPServer {
         return next();
       }
 
-      // Determine the file path to check
+      // Sanitize input: split into segments, reject traversal and
+      // non-allowlisted characters. Reconstructing from validated segments
+      // breaks taint propagation from req.path.
+      const segments = urlPath.split('/').filter(Boolean);
+      if (segments.some(s => s === '..' || s === '.' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(s))) {
+        return next();
+      }
+
+      // Determine which file to look for
+      const lastSegment = segments[segments.length - 1] || '';
       let filePath: string;
-      if (urlPath.endsWith('.html')) {
-        filePath = path.join(publicPath, urlPath);
-      } else if (!urlPath.includes('.')) {
-        // Extensionless path - check if .html version exists
-        filePath = path.join(publicPath, urlPath + '.html');
+      if (lastSegment.endsWith('.html')) {
+        filePath = path.join(publicPath, ...segments);
+      } else if (!lastSegment.includes('.')) {
+        // Extensionless path - try .html version
+        filePath = path.join(publicPath, ...segments.slice(0, -1), lastSegment + '.html');
       } else {
-        // Has an extension but not .html - skip
         return next();
       }
 
       try {
-        // Check if file exists
-        await fs.access(filePath);
+        // Read HTML file; for extensionless paths, also try /index.html
+        let html: string;
+        try {
+          html = await fs.readFile(filePath, 'utf-8');
+        } catch {
+          if (lastSegment.endsWith('.html')) {
+            throw new Error('not found');
+          }
+          filePath = path.join(publicPath, ...segments, 'index.html');
+          html = await fs.readFile(filePath, 'utf-8');
+        }
 
         // Cross-domain session bridge: if on AdCP without a session cookie,
         // redirect through AAO to pick up the session (if one exists).
@@ -734,8 +751,7 @@ export class HTTPServer {
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
 
-        // Read and inject config
-        let html = await fs.readFile(filePath, 'utf-8');
+        // Inject config
         const configScript = getAppConfigScript(user);
 
         // Inject before </head>
