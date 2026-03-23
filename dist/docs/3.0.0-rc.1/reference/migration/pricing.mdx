@@ -1,0 +1,203 @@
+---
+title: "Migrating pricing"
+description: Step-by-step guide to migrating pricing options from v2 to v3, including field renames and the hard constraint vs soft hint distinction
+testable: true
+---
+
+# Migrating pricing
+
+AdCP v3 renames pricing fields for clarity and separates hard constraints (prices the publisher enforces) from soft hints (historical data to help buyers bid).
+
+## What changed
+
+| v2 field | v3 field | Change type |
+|----------|----------|-------------|
+| `fixed_rate` | `fixed_price` | Renamed |
+| `price_guidance.floor` | `floor_price` | Moved to top level |
+
+The `pricing_model`, `currency`, `pricing_option_id`, and `price_guidance` percentiles (`p25`, `p50`, `p75`, `p90`) are unchanged.
+
+## Hard constraints vs soft hints
+
+v3 makes an explicit semantic distinction:
+
+**Hard constraints** — publisher-enforced prices that cause bid rejection if violated:
+- `fixed_price` — the exact price per unit (fixed-price deals)
+- `floor_price` — minimum acceptable bid (auction pricing)
+
+These are mutually exclusive. A pricing option has either `fixed_price` (guaranteed rate) or `floor_price` (auction with minimum), never both.
+
+**Soft hints** — historical percentiles to help buyers calibrate bids:
+- `price_guidance.p25` — 25th percentile of recent winning bids
+- `price_guidance.p50` — median of recent winning bids
+- `price_guidance.p75` — 75th percentile of recent winning bids
+- `price_guidance.p90` — 90th percentile of recent winning bids
+
+## Deal type mapping
+
+These fields map to standard programmatic deal types:
+
+| Deal type | AdCP field | Description |
+|-----------|-----------|-------------|
+| Programmatic Guaranteed (PG) | `fixed_price` | Fixed CPM, guaranteed delivery |
+| Preferred Deal | `fixed_price` | Fixed CPM, non-guaranteed (buyer has first look) |
+| Private Marketplace (PMP) | `floor_price` | Auction with minimum bid |
+| Open Auction | Neither | No floor or fixed price — open bidding |
+
+PG and Preferred Deals both use `fixed_price`. The distinction between them is in delivery commitment, not pricing — PG guarantees delivery volume while Preferred Deals offer first-look access without volume guarantees.
+
+## Fixed-price deals
+
+**v2:**
+```json
+{
+  "pricing_option_id": "cpm_usd_fixed",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "fixed_rate": 25.00
+}
+```
+
+**v3:**
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
+  "pricing_option_id": "cpm_usd_fixed",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "fixed_price": 25.00
+}
+```
+
+Rename `fixed_rate` to `fixed_price`. No structural changes.
+
+## Auction pricing
+
+**v2:**
+```json
+{
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "price_guidance": {
+    "floor": 10.00,
+    "p50": 15.00,
+    "p75": 18.00
+  }
+}
+```
+
+**v3:**
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "floor_price": 10.00,
+  "price_guidance": {
+    "p50": 15.00,
+    "p75": 18.00
+  }
+}
+```
+
+Two changes:
+1. `price_guidance.floor` moves to top-level `floor_price`
+2. `price_guidance` retains only the percentile hints
+
+## Price guidance object
+
+The v3 `price_guidance` object contains only statistical percentiles:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/price-guidance.json",
+  "p25": 8.50,
+  "p50": 15.00,
+  "p75": 18.00,
+  "p90": 22.00
+}
+```
+
+All fields are optional. Publishers include whichever percentiles they can provide.
+
+## Flat-rate pricing
+
+Flat-rate pricing (DOOH, sponsorships, time-based) follows the same pattern:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
+  "pricing_option_id": "dooh_times_square",
+  "pricing_model": "flat_rate",
+  "currency": "USD",
+  "fixed_price": 50000.00,
+  "parameters": {
+    "duration_hours": 24,
+    "sov_percentage": 100,
+    "estimated_impressions": 1500000
+  }
+}
+```
+
+The `parameters` object is specific to flat-rate pricing and is unchanged from v2. Note that `fixed_price` is optional on flat-rate options — when absent, the flat-rate is auction-based (uncommon but valid for some DOOH inventory).
+
+## Minimum spend
+
+v3 adds an optional `min_spend_per_package` field to all pricing options:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
+  "pricing_option_id": "cpm_usd_premium",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "floor_price": 15.00,
+  "min_spend_per_package": 5000.00,
+  "price_guidance": {
+    "p50": 22.00,
+    "p75": 28.00
+  }
+}
+```
+
+This lets publishers declare minimum spend requirements per package.
+
+## Transition period handling
+
+During migration, readers may encounter both old and new field names. Consider checking for both:
+
+```javascript test=false
+const price = option.fixed_price ?? option.fixed_rate;
+const floor = option.floor_price ?? option.price_guidance?.floor;
+```
+
+v3 writers should only emit the new field names. Old field names (`fixed_rate`, `price_guidance.floor`) are not recognized by v3 schema validation. Remove the v2 fallback once all upstream sellers have migrated to v3 schemas.
+
+## Migration steps
+
+<Steps>
+  <Step title="Rename fixed_rate">
+    Rename `fixed_rate` to `fixed_price` in all pricing options.
+  </Step>
+  <Step title="Move floor">
+    Move `floor` from inside `price_guidance` to top-level `floor_price`.
+  </Step>
+  <Step title="Clean up price_guidance">
+    Remove `floor` from `price_guidance` objects (only percentiles remain).
+  </Step>
+  <Step title="Update readers">
+    Update code to look for new field names. Consider temporary fallback for both during transition.
+  </Step>
+  <Step title="Test auction bids">
+    Verify floor enforcement works with the new field location.
+  </Step>
+  <Step title="Validate against schemas">
+    Each pricing model has its own schema in `/schemas/v3/pricing-options/`.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Channels](/dist/docs/3.0.0-rc.1/reference/migration/channels) | [Geo targeting](/dist/docs/3.0.0-rc.1/reference/migration/geo-targeting) | [Creatives](/dist/docs/3.0.0-rc.1/reference/migration/creatives) | [Catalogs](/dist/docs/3.0.0-rc.1/reference/migration/catalogs) | [Attribution](/dist/docs/3.0.0-rc.1/reference/migration/attribution) | [AdCP v3 overview](/dist/docs/3.0.0-rc.1/reference/whats-new-in-v3)

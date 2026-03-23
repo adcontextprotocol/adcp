@@ -1,0 +1,172 @@
+---
+title: get_creative_features
+---
+
+# get_creative_features
+
+<Info>
+**AdCP 3.0 Proposal** - This task is under development for AdCP 3.0.
+</Info>
+
+Evaluates a creative manifest and returns feature values from a creative governance agent. The creative analog of `get_property_features`.
+
+## Use cases
+
+- **Security scanning**: Detect malware, auto-redirects, credential harvesting, cloaking
+- **Creative quality**: Evaluate brand consistency, platform optimization, guideline adherence
+- **Content categorization**: Classify creative content against IAB Content Taxonomy or other standards
+- **Accessibility**: Check WCAG compliance, screen reader compatibility
+
+## Request
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/creative/get-creative-features-request.json",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "html5-display-300x250"
+    },
+    "assets": {
+      "creative_html": {
+        "url": "https://cdn.agency.com/creative/abc123.html"
+      }
+    }
+  },
+  "feature_ids": ["auto_redirect", "credential_harvest", "cloaking"]
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `creative_manifest` | object | Yes | Creative manifest with `format_id` and `assets` |
+| `feature_ids` | string[] | No | Filter to specific features. If omitted, evaluates all features the agent supports. |
+
+## Response
+
+<CodeGroup>
+```json Security scanner (clean)
+{
+  "$schema": "/schemas/3.0.0-rc.1/creative/get-creative-features-response.json",
+  "results": [
+    { "feature_id": "auto_redirect", "value": false },
+    { "feature_id": "credential_harvest", "value": false },
+    { "feature_id": "cloaking", "value": false }
+  ],
+  "detail_url": "https://scanner.example.com/reports/ctx_abc123"
+}
+```
+
+```json Security scanner (threat detected)
+{
+  "$schema": "/schemas/3.0.0-rc.1/creative/get-creative-features-response.json",
+  "results": [
+    { "feature_id": "auto_redirect", "value": true, "confidence": 0.97 },
+    { "feature_id": "credential_harvest", "value": true, "confidence": 0.91 },
+    { "feature_id": "cloaking", "value": false }
+  ],
+  "detail_url": "https://scanner.example.com/reports/ctx_def456"
+}
+```
+
+```json Creative quality platform
+{
+  "$schema": "/schemas/3.0.0-rc.1/creative/get-creative-features-response.json",
+  "results": [
+    { "feature_id": "brand_consistency", "value": 87, "unit": "percentage" },
+    { "feature_id": "platform_optimized", "value": true },
+    { "feature_id": "creative_quality_score", "value": 92, "unit": "score" }
+  ],
+  "detail_url": "https://quality.example.com/reports/ctx_ghi789"
+}
+```
+
+```json Content categorizer
+{
+  "$schema": "/schemas/3.0.0-rc.1/creative/get-creative-features-response.json",
+  "results": [
+    { "feature_id": "iab_casinos_gambling", "value": true, "confidence": 0.95 },
+    { "feature_id": "iab_automotive", "value": false, "confidence": 0.12 }
+  ],
+  "detail_url": "https://categorizer.example.com/reports/ctx_jkl012"
+}
+```
+</CodeGroup>
+
+### Response fields
+
+| Field | Description |
+|-------|-------------|
+| `results` | Array of feature evaluation results |
+| `results[].feature_id` | Which feature was evaluated |
+| `results[].value` | Feature value: boolean (binary), number (quantitative), or string (categorical) |
+| `results[].confidence` | Confidence score (0-1), when applicable |
+| `results[].unit` | Unit for quantitative values (e.g., `percentage`, `score`) |
+| `results[].expires_at` | When this evaluation expires and should be refreshed |
+| `results[].measured_at` | When this feature was evaluated |
+| `results[].methodology_version` | Version of methodology used |
+| `results[].details` | Vendor-specific details |
+| `detail_url` | URL to vendor's full assessment. Access-controlled by the vendor. |
+
+### Error response
+
+```json
+{
+  "errors": [
+    {
+      "code": "CREATIVE_INACCESSIBLE",
+      "message": "Could not retrieve creative assets for evaluation"
+    }
+  ]
+}
+```
+
+## Async evaluation
+
+Some evaluations (e.g., sandboxed malware scanning) take time. The agent returns `status: "working"` and delivers results via webhook when complete. This uses the standard [async task pattern](/dist/docs/3.0.0-rc.1/building/implementation/async-operations) — no custom status values needed.
+
+## Orchestrator logic
+
+The orchestrator applies feature requirements on the client side, the same way property list feature requirements work:
+
+```javascript
+const result = await agent.getCreativeFeatures({
+  creative_manifest: manifest
+});
+
+if (result.errors) {
+  // Handle error - reject or retry
+  return;
+}
+
+// Apply security requirements
+const threats = result.results.filter(
+  f => ['auto_redirect', 'credential_harvest', 'cloaking'].includes(f.feature_id)
+    && f.value === true
+);
+if (threats.length > 0) {
+  // Reject - security threat detected
+  return;
+}
+
+// Apply quality requirements
+const quality = result.results.find(f => f.feature_id === 'brand_consistency');
+if (quality && quality.value < 80) {
+  // Reject - below quality threshold
+  return;
+}
+```
+
+## Relationship to property governance
+
+Creative governance follows the same pattern as property governance:
+
+| Concept | Property governance | Creative governance |
+|---------|-------------------|-------------------|
+| **What's evaluated** | Properties (websites, apps) | Creatives (manifests) |
+| **Feature declarations** | `governance.property_features` | `governance.creative_features` |
+| **Evaluation task** | `get_property_features` | `get_creative_features` |
+| **Feature values** | `property-feature-value` schema | Same fields (value, confidence, expires_at, etc.) |
+| **Detailed intelligence** | Behind `detail_url` / `methodology_url` | Behind `detail_url` / `methodology_url` |

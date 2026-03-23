@@ -1,0 +1,230 @@
+---
+title: calibrate_content
+---
+
+# calibrate_content
+
+Collaborative calibration task for aligning on content standards interpretation. Used during setup to help sellers understand and internalize a buyer's content policies before campaign execution.
+
+Unlike high-volume runtime evaluation, calibration is a **dialogue-based process** where parties exchange examples and explanations until aligned.
+
+## When to Use
+
+- **Seller onboarding**: When a seller first receives content standards from a buyer
+- **Policy clarification**: When a seller needs to understand why specific content passes or fails
+- **Model training**: When building a local model to run against the standards
+- **Drift detection**: Periodic re-calibration to ensure continued alignment
+
+## Request
+
+**Schema**: [calibrate-content-request.json](https://adcontextprotocol.org/schemas/v3/content-standards/calibrate-content-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Standards configuration to calibrate against |
+| `artifact` | artifact | Yes | Artifact to evaluate |
+
+### Artifact
+
+**Schema**: [artifact.json](https://adcontextprotocol.org/schemas/v3/content-standards/artifact.json)
+
+An artifact represents content context where ad placements occur - identified by `property_id` + `artifact_id` and represented as a collection of assets:
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/content-standards/artifact.json",
+  "property_id": {"type": "domain", "value": "reddit.com"},
+  "artifact_id": "r_fitness_abc123",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
+    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources for recovery", "language": "en"},
+    {"type": "text", "role": "paragraph", "content": "I've been lifting for 6 months and want to optimize my diet.", "language": "en"},
+    {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
+  ]
+}
+```
+
+## Response
+
+**Schema**: [calibrate-content-response.json](https://adcontextprotocol.org/schemas/v3/content-standards/calibrate-content-response.json)
+
+### Passing Response
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/content-standards/calibrate-content-response.json",
+  "verdict": "pass",
+  "explanation": "This content aligns well with the brand's fitness-focused positioning. Health and fitness content is explicitly marked as 'ideal' in the policy. The discussion is constructive and educational.",
+  "features": [
+    {
+      "feature_id": "brand_safety",
+      "status": "passed",
+      "explanation": "No safety concerns. Content is user-generated but constructive fitness discussion."
+    },
+    {
+      "feature_id": "brand_suitability",
+      "status": "passed",
+      "explanation": "Fitness content matches brand's athletic positioning."
+    }
+  ]
+}
+```
+
+### Failing Response with Detailed Explanation
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/content-standards/calibrate-content-response.json",
+  "verdict": "fail",
+  "explanation": "This content discusses political topics which the policy explicitly excludes. While the article itself is balanced journalism, the brand has requested to avoid all controversial political content regardless of tone.",
+  "features": [
+    {
+      "feature_id": "brand_safety",
+      "status": "passed",
+      "explanation": "No hate speech, illegal content, or explicit material."
+    },
+    {
+      "feature_id": "brand_suitability",
+      "status": "failed",
+      "explanation": "Political content is excluded by brand policy, even when balanced."
+    }
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `verdict` | Yes | Overall `pass` or `fail` decision |
+| `explanation` | No | Detailed natural language explanation of the decision |
+| `features` | No | Per-feature breakdown with explanations |
+| `confidence` | No | Model confidence in the verdict (0-1), when available |
+
+## Dialogue Flow
+
+Calibration supports back-and-forth dialogue using the protocol's conversation management. The seller sends content, the verification agent responds with an evaluation and explanation, and the seller can respond with questions or try different content - all within the same conversation context.
+
+### A2A Example
+
+```javascript
+// Seller sends artifact to evaluate
+const response1 = await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "calibrate_content",
+        parameters: {
+          standards_id: "nike_brand_safety",
+          artifact: {
+            property_id: { type: "domain", value: "reddit.com" },
+            artifact_id: "r_news_politics_123",
+            assets: [
+              { type: "text", role: "title", content: "Political News Article" }
+            ]
+          }
+        }
+      }
+    }]
+  }
+});
+// Response: verdict=fail with feature breakdown
+
+// Seller asks follow-up question about the decision
+const response2 = await a2a.send({
+  contextId: response1.contextId,
+  message: {
+    parts: [{
+      kind: "text",
+      text: "This is factual news, not opinion. Should balanced journalism be excluded?"
+    }]
+  }
+});
+// Verification agent clarifies that brand policy excludes ALL political content
+
+// Seller tries different artifact
+const response3 = await a2a.send({
+  contextId: response1.contextId,
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "calibrate_content",
+        parameters: {
+          standards_id: "nike_brand_safety",
+          artifact: {
+            property_id: { type: "domain", value: "reddit.com" },
+            artifact_id: "r_running_tips_456",
+            assets: [
+              { type: "text", role: "title", content: "Running Tips" }
+            ]
+          }
+        }
+      }
+    }]
+  }
+});
+// Response: verdict=pass - now seller understands the boundaries
+```
+
+### MCP Example
+
+```javascript
+// Initial calibration request
+const response1 = await mcp.call('calibrate_content', {
+  standards_id: "nike_brand_safety",
+  artifact: {
+    property_id: { type: "domain", value: "reddit.com" },
+    artifact_id: "r_news_politics_123",
+    assets: [
+      { type: "text", role: "title", content: "Political News Article" }
+    ]
+  }
+});
+// Response includes context_id for conversation continuity
+
+// Continue dialogue with follow-up question
+const response2 = await mcp.call('calibrate_content', {
+  context_id: response1.context_id,
+  standards_id: "nike_brand_safety",
+  artifact: {
+    property_id: { type: "domain", value: "reddit.com" },
+    artifact_id: "r_news_politics_123",
+    assets: [
+      { type: "text", role: "title", content: "Political News Article" }
+    ]
+  }
+});
+// Include text message in the protocol envelope asking about balanced journalism
+
+// Try different artifact in same conversation
+const response3 = await mcp.call('calibrate_content', {
+  context_id: response1.context_id,
+  standards_id: "nike_brand_safety",
+  artifact: {
+    property_id: { type: "domain", value: "reddit.com" },
+    artifact_id: "r_running_tips_456",
+    assets: [
+      { type: "text", role: "title", content: "Running Tips" }
+    ]
+  }
+});
+```
+
+The key insight is that the dialogue happens at the **protocol layer**, not the task layer. The verification agent maintains conversation context and can respond to follow-up questions, disagreements, or requests for clarification - just like any agent-to-agent conversation.
+
+## Calibration vs Runtime
+
+| Aspect | calibrate_content | Runtime (local model) |
+|--------|-------------------|----------------------|
+| **Purpose** | Alignment & understanding | High-volume decisioning |
+| **Volume** | Low (setup/periodic) | High (every impression) |
+| **Response** | Verbose explanations | Pass/fail only |
+| **Latency** | Seconds acceptable | Milliseconds required |
+| **Dialogue** | Multi-turn conversation | Stateless |
+
+## Related Tasks
+
+- [get_content_standards](./get_content_standards) - Retrieve the policies being calibrated against
+- [validate_content_delivery](./validate_content_delivery) - Post-campaign delivery validation

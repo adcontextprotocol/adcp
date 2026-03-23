@@ -1,0 +1,429 @@
+---
+title: Error Handling
+description: Error categories, standard error codes, recovery strategies, and retry logic for AdCP
+---
+
+AdCP uses a consistent error handling approach across all operations. Understanding error categories and implementing proper recovery strategies is essential for building robust integrations.
+
+## Error Categories
+
+### 1. Protocol Errors
+
+Transport/connection issues not related to AdCP business logic:
+
+- Network timeouts
+- Connection refused
+- TLS/SSL errors
+- JSON parsing errors
+
+**Handling:** Retry with exponential backoff.
+
+### 2. Task Errors
+
+Business logic failures returned as `status: "failed"`:
+
+- Insufficient inventory
+- Invalid targeting
+- Budget validation failures
+- Resource not found
+
+**Handling:** Display error to user, may require different request.
+
+### 3. Validation Errors
+
+Malformed requests that fail schema validation:
+
+- Missing required fields
+- Invalid field types
+- Out-of-range values
+
+**Handling:** Fix request format and retry. Usually development-time issues.
+
+## Error Response Format
+
+Failed operations return status `failed` with error details at the top level:
+
+```json
+{
+  "status": "failed",
+  "message": "Unable to create media buy: Insufficient inventory available for your targeting criteria",
+  "context_id": "ctx-123",
+  "error_code": "insufficient_inventory",
+  "recovery": "correctable",
+  "requested_impressions": 10000000,
+  "available_impressions": 2500000,
+  "suggestions": [
+    "Expand geographic targeting",
+    "Increase CPM bid",
+    "Adjust date range"
+  ]
+}
+```
+
+### Error Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `status` | Always `"failed"` for errors |
+| `message` | Human-readable error description |
+| `error_code` | Machine-readable error code |
+| `suggestions` | Optional recovery suggestions |
+| `field` | Field path for validation errors |
+| `retry_after` | Seconds to wait before retry (rate limits) |
+| `details` | Additional context-specific information |
+| `recovery` | Agent recovery classification: `transient` (retry after delay), `correctable` (fix the request and resend), `terminal` (requires human action) |
+
+## Standard Error Codes
+
+### Authentication Errors
+
+| Code | Description | Resolution |
+|------|-------------|------------|
+| `INVALID_CREDENTIALS` | Invalid or malformed authentication credentials | Verify API key is correct and active |
+| `TOKEN_EXPIRED` | Authentication token has expired | Refresh OAuth token or re-authenticate |
+| `INSUFFICIENT_PERMISSIONS` | Account lacks required permissions | Contact administrator to upgrade permissions |
+
+### Validation Errors
+
+| Code | Description | Resolution |
+|------|-------------|------------|
+| `MISSING_REQUIRED_FIELD` | Required parameter is missing | Include all required fields |
+| `INVALID_FIELD_VALUE` | Field value doesn't meet requirements | Provide valid values per specification |
+| `INVALID_FIELD_FORMAT` | Field format is incorrect | Use correct format as specified |
+
+### Resource Errors
+
+| Code | Description | Resolution |
+|------|-------------|------------|
+| `RESOURCE_NOT_FOUND` | Requested resource doesn't exist | Verify ID is correct and current |
+| `PRODUCT_NOT_FOUND` | Product ID doesn't exist | Use `get_products` to find valid IDs |
+| `CREATIVE_NOT_FOUND` | Creative ID doesn't exist | Use `list_creatives` to find valid IDs |
+
+### Operation Errors
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `INSUFFICIENT_INVENTORY` | correctable | Not enough inventory for request | Expand targeting or reduce impressions |
+| `BUDGET_EXCEEDED` | correctable | Request exceeds budget limits | Reduce budget or request limit increase |
+| `BUDGET_TOO_LOW` | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
+| `INVALID_TARGETING` | correctable | Targeting criteria is invalid | Adjust targeting parameters |
+| `CREATIVE_REJECTED` | correctable | Creative failed policy validation | Revise creative per seller's `advertising_policies` |
+| `PRODUCT_UNAVAILABLE` | correctable | Product sold out or no longer available | Choose a different product |
+| `PROPOSAL_EXPIRED` | correctable | Referenced proposal has expired | Run `get_products` to get a fresh proposal |
+| `UNSUPPORTED_FEATURE` | correctable | Requested feature not supported | Check `get_adcp_capabilities` and remove unsupported fields |
+| `AUDIENCE_TOO_SMALL` | correctable | Audience below minimum size | Broaden targeting or upload more audience members |
+
+### Account Errors
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
+| `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
+| `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
+
+### Rate Limiting Errors
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `RATE_LIMITED` | transient | Too many requests | Wait for `retry_after` seconds |
+
+### System Errors
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `INTERNAL_SERVER_ERROR` | transient | Unexpected server error | Retry request, contact support if persistent |
+| `SERVICE_UNAVAILABLE` | transient | External service temporarily down | Wait and retry |
+| `TIMEOUT` | transient | Request exceeded processing time | Retry with smaller request or contact support |
+
+## Retry Logic
+
+### Exponential Backoff
+
+Implement exponential backoff for retryable errors:
+
+```javascript
+async function retryWithBackoff(fn, options = {}) {
+  const {
+    maxRetries = 3,
+    baseDelay = 1000,
+    maxDelay = 60000
+  } = options;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!isRetryable(error) || attempt === maxRetries) {
+        throw error;
+      }
+
+      // Check for retry_after header/field
+      const retryAfter = error.retry_after ||
+        Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+
+      // Add jitter to prevent thundering herd
+      const jitter = retryAfter * (0.75 + Math.random() * 0.5);
+      await sleep(jitter);
+    }
+  }
+}
+```
+
+### Error Categorization
+
+Use the `recovery` field to determine how to handle errors:
+
+| Recovery | Meaning | Action |
+|----------|---------|--------|
+| `transient` | Temporary failure (rate limit, service unavailable, timeout) | Retry after `retry_after` or with exponential backoff |
+| `correctable` | Request can be fixed and resent (invalid field, budget too low, creative rejected) | Modify the request and retry |
+| `terminal` | Requires human action (account suspended, payment required) | Escalate to a human operator |
+
+```javascript
+function isRetryable(error) {
+  // Use recovery field when available
+  if (error.recovery) {
+    return error.recovery === 'transient';
+  }
+
+  // Network errors are retryable
+  if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+    return true;
+  }
+
+  // Fall back to error code matching
+  return ['RATE_LIMITED', 'SERVICE_UNAVAILABLE'].includes(error.error_code);
+}
+```
+
+### Rate Limit Handling
+
+```javascript
+async function handleRateLimit(error, retryFn) {
+  if (error.recovery !== 'transient' &&
+      error.error_code !== 'RATE_LIMITED') {
+    throw error;
+  }
+
+  const retryAfter = error.retry_after || 60;
+  console.log(`Rate limited. Waiting ${retryAfter} seconds...`);
+
+  await sleep(retryAfter * 1000);
+  return retryFn();
+}
+```
+
+## Error Handling Patterns
+
+### Basic Error Handler
+
+```javascript
+async function handleAdcpError(error) {
+  // Use recovery classification when available
+  switch (error.recovery) {
+    case 'transient':
+      // Retry after delay
+      const delay = error.retry_after
+        ? error.retry_after * 1000
+        : 5000;
+      await sleep(delay);
+      return retry();
+
+    case 'correctable':
+      // Show suggestions so the request can be fixed
+      return showSuggestions(error.suggestions);
+
+    case 'terminal':
+      // Requires human intervention
+      console.error('Terminal error:', error.message);
+      throw error;
+  }
+
+  // Fall back to error_code matching
+  switch (error.error_code) {
+    case 'INVALID_CREDENTIALS':
+    case 'TOKEN_EXPIRED':
+      await refreshCredentials();
+      return retry();
+
+    case 'MISSING_REQUIRED_FIELD':
+    case 'INVALID_FIELD_VALUE':
+      console.error('Validation error:', error);
+      throw error;
+
+    default:
+      console.error('AdCP error:', error);
+      throw error;
+  }
+}
+```
+
+### User-Friendly Messages
+
+Convert technical errors to user-friendly messages:
+
+```javascript
+const USER_MESSAGES = {
+  'INSUFFICIENT_INVENTORY': 'There isn\'t enough inventory for your targeting. Try expanding your audience or dates.',
+  'RATE_LIMITED': 'Too many requests. Please wait a moment and try again.',
+  'INSUFFICIENT_PERMISSIONS': 'Your account doesn\'t have permission for this. Contact your administrator.',
+  'RESOURCE_NOT_FOUND': 'This item no longer exists or has been removed.',
+  'BUDGET_TOO_LOW': 'This is below the seller\'s minimum budget. Increase your budget.',
+  'ACCOUNT_SUSPENDED': 'Your account has been suspended. Contact the seller to resolve.',
+  'SERVICE_UNAVAILABLE': 'The service is temporarily unavailable. Please try again in a few minutes.'
+};
+
+function getUserMessage(errorCode, fallbackMessage) {
+  return USER_MESSAGES[errorCode] || fallbackMessage || 'An unexpected error occurred. Please try again.';
+}
+```
+
+### Structured Error Logging
+
+Log errors with context for debugging:
+
+```javascript
+function logError(error, context = {}) {
+  console.error('AdCP Error:', {
+    error_code: error.error_code,
+    message: error.message,
+    timestamp: new Date().toISOString(),
+    context_id: error.context_id,
+    task_id: error.task_id,
+    ...context,
+    // Don't log sensitive data
+    // NO: credentials, briefs, PII
+  });
+}
+```
+
+## Webhook Error Handling
+
+### Failed Webhook Delivery
+
+When webhook delivery fails, fall back to polling:
+
+```javascript
+class WebhookErrorHandler {
+  async onDeliveryFailure(taskId, error) {
+    console.warn(`Webhook delivery failed for ${taskId}:`, error);
+
+    // Start polling as fallback
+    this.startPolling(taskId);
+
+    // Track failure for monitoring
+    this.metrics.incrementCounter('webhook_failures');
+  }
+
+  async startPolling(taskId) {
+    const response = await adcp.call('tasks/get', {
+      task_id: taskId,
+      include_result: true
+    });
+
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      await this.processResult(taskId, response);
+    } else {
+      // Schedule next poll
+      setTimeout(() => this.startPolling(taskId), 30000);
+    }
+  }
+}
+```
+
+### Webhook Handler Errors
+
+Handle errors in your webhook endpoint gracefully:
+
+```javascript
+app.post('/webhooks/adcp', async (req, res) => {
+  try {
+    // Always respond quickly
+    res.status(200).json({ status: 'received' });
+
+    // Process asynchronously
+    await processWebhookAsync(req.body);
+  } catch (error) {
+    // Log error but don't fail the response
+    console.error('Webhook processing error:', error);
+
+    // Move to dead letter queue for investigation
+    await deadLetterQueue.add(req.body, error);
+  }
+});
+```
+
+## Recovery Strategies
+
+### Context Recovery
+
+If context expires, start a new conversation:
+
+```javascript
+async function callWithContextRecovery(request) {
+  try {
+    return await adcp.call(request);
+  } catch (error) {
+    if (error.error_code === 'CONTEXT_EXPIRED' ||
+        error.message?.includes('context not found')) {
+      // Clear stale context and retry
+      delete request.context_id;
+      return await adcp.call(request);
+    }
+    throw error;
+  }
+}
+```
+
+### Partial Success Handling
+
+Some operations may partially succeed:
+
+```json
+{
+  "status": "completed",
+  "message": "Created media buy with warnings",
+  "media_buy_id": "mb_123",
+  "errors": [
+    {
+      "code": "CREATIVE_SIZE_MISMATCH",
+      "message": "Creative dimensions don't match all placements",
+      "field": "creatives[0]",
+      "suggestion": "Upload additional sizes for full coverage"
+    }
+  ]
+}
+```
+
+Handle partial success:
+
+```javascript
+function handlePartialSuccess(response) {
+  if (response.status === 'completed' && response.errors?.length) {
+    // Show warnings to user
+    for (const warning of response.errors) {
+      showWarning(warning.message, warning.suggestion);
+    }
+  }
+
+  // Continue with successful result
+  return response;
+}
+```
+
+## Best Practices
+
+1. **Categorize errors** - Different errors need different handling
+2. **Implement retries** - Use exponential backoff for transient errors
+3. **Respect rate limits** - Honor `retry_after` values
+4. **Log with context** - Include relevant IDs for debugging
+5. **User-friendly messages** - Convert technical errors for users
+6. **Fallback strategies** - Always have a backup (e.g., polling for webhooks)
+7. **Don't retry permanent errors** - Validation errors need code fixes
+8. **Handle partial success** - Process warnings in successful responses
+
+## Next Steps
+
+- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.0-rc.1/building/implementation/task-lifecycle) for status handling
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.0-rc.1/building/implementation/webhooks) for webhook error handling
+- **Security**: See [Security](/dist/docs/3.0.0-rc.1/building/implementation/security) for authentication errors

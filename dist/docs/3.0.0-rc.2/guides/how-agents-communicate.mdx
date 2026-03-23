@@ -1,0 +1,178 @@
+---
+title: How AI agents communicate ad specs across platforms
+sidebarTitle: How agents communicate
+description: "How AI advertising agents discover inventory, exchange campaign data, and execute buys across platforms using AdCP's standardized task schemas and MCP transport."
+"og:title": "AdCP — How AI agents communicate ad specs across platforms"
+---
+
+When an AI agent manages a campaign across multiple platforms, it needs to do the same things on each one: find available inventory, submit a buy, provide creatives, and check delivery. The challenge is that every platform describes these operations differently.
+
+AdCP solves this by defining a standard set of tasks — each with a fixed request schema and response schema — that agents use regardless of which platform they're talking to.
+
+## The communication problem
+
+Consider a buyer agent managing campaigns across three platforms:
+
+| Operation | Platform A | Platform B | Platform C |
+|---|---|---|---|
+| Find inventory | `GET /api/products` | `POST /inventory/search` | `GET /catalogue` |
+| Execute a buy | `POST /api/campaigns` | `PUT /orders/new` | `POST /media-buys` |
+| Check delivery | `GET /api/reports` | `POST /analytics/query` | `GET /stats/{id}` |
+
+Without a standard, the agent needs custom code for each platform — different endpoints, different field names, different response formats. This limits how many platforms an agent can work with.
+
+With AdCP, the agent uses the same tasks everywhere:
+
+| Operation | AdCP task |
+|---|---|
+| Find inventory | `get_products` |
+| Execute a buy | `create_media_buy` |
+| Check delivery | `get_media_buy_delivery` |
+
+The schemas are identical across platforms. Only the transport connection differs.
+
+## Two transport protocols
+
+AdCP tasks travel over two protocols, depending on the integration type:
+
+### MCP (Model Context Protocol)
+
+MCP is how AI assistants call external tools. An AdCP MCP server exposes tasks as tools that Claude, Cursor, or any MCP-compatible client can call.
+
+```
+AI Assistant → MCP Client → AdCP MCP Server → Platform
+```
+
+The agent calls `get_products` as a tool. The MCP server translates the request to the platform's internal API and returns a standardized response.
+
+**Best for:** Human-in-the-loop workflows where an AI assistant helps a media buyer interact with platforms.
+
+### A2A (Agent-to-Agent Protocol)
+
+A2A is how autonomous agents communicate with each other. A buyer agent sends structured messages to a seller agent, which processes them and returns results — potentially over long-running operations.
+
+```
+Buyer Agent → A2A Client → Seller Agent → Platform
+```
+
+The buyer agent sends a `create_media_buy` task as a message. The seller agent processes it (which might take seconds or hours), streaming status updates back.
+
+**Best for:** Automated workflows where agents operate independently, with human approval at key checkpoints.
+
+### Same tasks, different transport
+
+The critical point: AdCP task definitions are transport-agnostic. A `get_products` request has the same fields whether it travels over MCP or A2A. A platform implements the domain logic once and serves it over both transports.
+
+## What agents exchange
+
+AdCP defines tasks across several domains. Here's what agents actually send back and forth in a typical campaign:
+
+### Product discovery
+
+The buyer agent asks "what can I buy?" and gets back a structured catalog of media products — each with pricing, formats, targeting options, and delivery types.
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Premium video inventory on sports content for Q2"
+}
+```
+
+The response includes product IDs, pricing models (CPM, CPC, flat rate), available creative formats, and audience reach estimates. The agent can compare products across platforms because the schema is the same everywhere.
+
+### Creative specs
+
+Before submitting creatives, the agent checks what formats the platform accepts by calling `list_creative_formats`. The response includes structured format objects with dimensions, accepted file types, and rendering roles:
+
+```json
+{
+  "formats": [
+    {
+      "format_id": {
+        "agent_url": "https://ads.publisher.example.com",
+        "id": "video_preroll_16x9"
+      },
+      "name": "Pre-roll video (16:9)",
+      "renders": [{
+        "role": "primary",
+        "dimensions": { "width": 1920, "height": 1080, "unit": "px" }
+      }]
+    }
+  ]
+}
+```
+
+The agent then submits matching creatives via `build_creative`, which generates or adapts ads to the platform's requirements.
+
+### Audience data
+
+Agents exchange audience signals — targeting segments, contextual data, first-party data — through `get_signals`. The buyer describes what they need, and the data provider returns matching segments with reach estimates and pricing, which the agent can evaluate before activating via `activate_signal`.
+
+### Campaign execution
+
+The agent creates a media buy with budget, schedule, and brand identity:
+
+```json
+{
+  "buyer_ref": "pinnacle-sports-q2",
+  "account": { "account_id": "acct-12345" },
+  "brand": { "brand_id": "nova-electronics" },
+  "proposal_id": "prop-sports-video",
+  "total_budget": { "amount": 25000, "currency": "USD" },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-06-30T23:59:59Z"
+}
+```
+
+The platform can process this immediately or asynchronously. AdCP's status system (`completed`, `working`, `submitted`, `input-required`) communicates progress back to the agent.
+
+### Delivery reporting
+
+The agent calls `get_media_buy_delivery` to pull performance data — impressions, clicks, spend, and conversion events — in a standardized format. Because the delivery schema is the same across platforms, the agent can aggregate and compare performance without reconciling different metric names or calculation methods.
+
+## A worked example
+
+Pinnacle Media, a fictional agency, runs a campaign for a consumer electronics brand across three AdCP-enabled platforms.
+
+<Steps>
+
+### Discover agents
+
+The buyer agent checks `adagents.json` on each publisher's domain to find their sales agents and supported protocols.
+
+### Compare inventory
+
+The agent calls `get_products` on all three platforms in parallel. It receives structured product catalogs and compares pricing, formats, and reach — all in the same schema.
+
+### Check creative requirements
+
+The agent calls `list_creative_formats` on each platform and identifies common formats across all three, reducing creative production to a shared set.
+
+### Execute buys
+
+The agent calls `create_media_buy` on each platform with budget allocations based on its comparison analysis. Some platforms confirm immediately; others return `working` status and confirm later.
+
+### Monitor delivery
+
+The agent polls `get_media_buy_delivery` across all three platforms daily, aggregating results into a unified performance view for the agency's planning team.
+
+</Steps>
+
+The agency's team sets strategy and reviews results. The agent handles the cross-platform execution, format negotiation, and unified reporting.
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card title="Protocol comparison" icon="code-compare" href="/dist/docs/3.0.0-rc.2/building/understanding/protocol-comparison">
+    Detailed technical comparison of MCP and A2A as AdCP transports.
+  </Card>
+  <Card title="Quickstart guide" icon="rocket" href="/dist/docs/3.0.0-rc.2/quickstart">
+    Get a working implementation in 5 minutes with code examples.
+  </Card>
+  <Card title="AI media buying guide" icon="robot" href="/dist/docs/3.0.0-rc.2/guides/ai-media-buying">
+    The buyer-side perspective: how agents automate media buying across platforms.
+  </Card>
+  <Card title="Seller integration" icon="store" href="/dist/docs/3.0.0-rc.2/guides/seller-integration">
+    How platforms expose their inventory to AI buyer agents.
+  </Card>
+</CardGroup>

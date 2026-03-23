@@ -1,0 +1,121 @@
+---
+title: Product Roadmap
+description: AdCP protocol development roadmap and upcoming features
+keywords: [roadmap, upcoming features, future plans, releases]
+---
+
+
+This roadmap outlines the planned evolution of the AdCP protocol. All dates are targets and subject to change based on community feedback and working group progress.
+
+---
+
+## Version 2.5.0 - Shipped ✅
+
+**Released:** November 2025 | [View Release Notes](./release-notes#version-250)
+
+Version 2.5.0 delivered developer experience and API refinement improvements including:
+- **Type Safety & Code Generation** - Discriminator fields throughout for excellent TypeScript/Python type inference
+- **Batch Creative Previews** - Preview up to 50 creatives in a single call (5-10x faster)
+- **Schema Infrastructure** - Build-time versioning with semantic paths (`/schemas/v2.5/`)
+- **Agent Cards** - AdCP extension schema for capability discovery
+- **Brand Manifest** - Standardized brand information for creative generation
+- **Template Formats** - Dynamic creative sizing via `accepts_parameters` (dimensions, duration, etc.)
+- **Inline Creative Updates** - `sync_creatives` task for updating creatives in existing campaigns
+- **Enhanced Product Filtering** - Structured filters with date ranges, budget ranges, countries, and channels
+- **Explicit Extension Support** - Formal extension mechanism via agent cards
+
+### Through End of 2025
+
+From December 2025 through year end:
+- **Patch releases only** for bug fixes and critical issues
+- No new features or breaking changes
+- Focus on stability and production readiness
+
+---
+
+## Version 3.0.0 - Major Update
+
+**Current Status:** rc.1 released | [View Release Notes](./release-notes#version-300-rc1)
+
+Version 3.0 is a major evolution of the protocol. Three beta releases and a release candidate have shipped:
+
+- **beta.1** - Media Channel Taxonomy (19 channels), Governance Protocol, Sponsored Intelligence, `get_adcp_capabilities`, creative assignment weighting, global geo targeting
+- **beta.2** - Accounts & Agents, property targeting, A2UI for Sponsored Intelligence, CTV/streaming constraints, creative protocol discovery
+- **beta.3** - Delivery forecasting, brand protocol, account management, commerce media, creative delivery reporting, CPA & TIME pricing, conversion tracking, signal catalog, cursor-based pagination, accessibility, targeting restrictions
+- **rc.1** - AI provenance and disclosure, creative compliance, structured error recovery, keyword targeting, optimization goals redesign, signal pricing models, dimension breakdowns, reach optimization, device type targeting, typed refinement with seller acknowledgment, agent ergonomics, manifest unification, signal deactivation
+
+### Remaining for GA
+
+- Namespace management for custom capabilities
+- Final migration guide review and schema freeze
+
+---
+
+## Future Work (No Target Date)
+
+The following features are in the working group planning stages:
+
+### Private Marketplace (PMP) Support
+- Deal ID integration
+- Programmatic guaranteed workflows
+
+---
+
+## Get Involved
+
+AdCP is developed in the open with active working groups on Slack. We strongly encourage participation in these discussions!
+
+### Join the Community
+
+- **Slack Community** - [Join the AgenticAds Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- **GitHub Discussions** - [Protocol Discussions](https://github.com/adcontextprotocol/adcp/discussions)
+- **Working Groups** - See [Working Group](../community/working-group) for active initiatives
+
+### Working Group Focus Areas
+
+Current working groups are focusing on:
+- **Creative Protocol** - Hosted sets and inline updates
+- **Registry Architecture** - Property and agent discovery
+- **Extensions Framework** - Protocol extensibility design
+- **Governance Model** - Multi-party workflow design
+- **PMP Integration** - Programmatic deal support
+
+### How to Contribute
+
+1. **Join discussions** on Slack in relevant channels
+2. **Review proposals** in GitHub Discussions
+3. **Share feedback** on draft specifications
+4. **Test implementations** in your environment
+5. **Submit issues** for bugs or feature requests
+
+---
+
+## Release Principles
+
+AdCP follows these principles for releases:
+
+### Version Planning
+- **Major versions** (3.0, 4.0) - Breaking changes, major new capabilities
+- **Minor versions** (3.1, 3.2) - New features, backward-compatible additions
+- **Patch versions** (3.0.1, 3.0.2) - Bug fixes, documentation updates
+
+### Community Input
+- Working group proposals drive feature development
+- Public comment periods before major changes
+- Reference implementations validate design decisions
+- Beta releases for testing before final release
+
+### Backward Compatibility
+- Breaking changes only in major versions
+- 6-month deprecation period for removed features
+- Migration guides for all breaking changes
+- Support for previous major version during transition
+
+---
+
+## Additional Resources
+
+- **Current Release Notes** - [Release Notes](./release-notes)
+- **Technical Changelog** - [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md)
+- **GitHub Releases** - [Release Archive](https://github.com/adcontextprotocol/adcp/releases)
+- **Schemas and SDKs** - [Schemas and SDKs Guide](/dist/docs/3.0.0-rc.1/building/schemas-and-sdks)

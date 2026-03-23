@@ -1,0 +1,184 @@
+---
+title: Social and feed-native
+description: "Social and feed-native ad formats in AdCP define buyer-provided assets that platforms wrap in their own UI as promoted posts and sponsored content."
+"og:title": "AdCP — Social and feed-native"
+---
+
+This guide covers how AdCP represents advertising that renders as native content within a platform's feed — promoted posts, sponsored listings, boosted content, and other formats where the platform wraps buyer assets in its own chrome.
+
+Feed-native ads differ from standard display in a fundamental way: the buyer provides content assets (text, images, links), but the platform controls the visual presentation. The ad inherits the platform's UI — avatar, engagement buttons, community badges, dark mode — and appears alongside organic content.
+
+## How feed-native formats work in AdCP
+
+A platform that hosts feed-native ads implements a creative agent with formats that define buyer-provided assets only. The platform handles rendering at preview and serve time, wrapping the buyer's content in its UI.
+
+### Format definition
+
+The format specifies what the buyer provides. Everything else — layout, typography, engagement UI — is the platform's responsibility:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.socialplatform.example",
+    "id": "promoted_post"
+  },
+  "name": "Promoted post",
+  "type": "native",
+  "description": "Sponsored content that appears in the feed alongside organic posts. Renders with platform chrome (user avatar, engagement buttons, community badge).",
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": { "max_length": 300 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "body",
+      "asset_type": "text",
+      "required": false,
+      "requirements": { "max_length": 1000 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "image",
+      "asset_type": "image",
+      "required": false,
+      "requirements": { "max_width": 1200, "max_height": 628, "accepted_types": ["image/jpeg", "image/png"] }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "click_url",
+      "asset_type": "url",
+      "required": true,
+      "requirements": {}
+    }
+  ]
+}
+```
+
+The `renders` array is optional for feed-native formats because the platform determines the visual dimensions at render time based on device, feed context, and layout rules.
+
+### Preview with platform chrome
+
+When a buyer calls `preview_creative`, the platform renders a preview that includes the full feed experience — not just the buyer's assets in isolation:
+
+```json
+{
+  "request_type": "single",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.socialplatform.example",
+      "id": "promoted_post"
+    },
+    "assets": {
+      "headline": { "content": "Introducing our new trail running collection" },
+      "body": { "content": "Built for the mountains. Tested on every terrain." },
+      "image": { "url": "https://cdn.acme-example.com/trail-hero.jpg", "width": 1200, "height": 628 },
+      "click_url": { "url": "https://acme-example.com/trail-running" }
+    }
+  },
+  "inputs": [
+    { "name": "Running community", "context_description": "Appears in r/trailrunning feed between user posts" },
+    { "name": "General feed", "context_description": "Appears in home feed between mixed content" }
+  ]
+}
+```
+
+The `inputs` let the buyer see how the ad looks in different community contexts — the platform's rendering may change based on community theme, content density, or feed position.
+
+## Community guidelines and creative review
+
+Social platforms enforce content policies beyond standard ad policy — community standards, category restrictions, and promoted content guidelines. These are surfaced through the standard creative review flow:
+
+- `rejection_reason` in `list_creatives` or `get_media_buys` explains which policy was violated
+- Community-specific rejections reference the community's rules, not just the platform's global policy
+- Re-submission after fixing the issue follows the same `sync_creatives` upsert pattern
+
+See [Creative review](/dist/docs/3.0.0-rc.2/creative/sales-agent-creative-capabilities#creative-review) for the full review flow.
+
+## Engagement and interaction models
+
+Feed-native formats often support platform-specific interactions that go beyond click-through:
+
+| Interaction | How it maps to AdCP |
+|---|---|
+| Like / upvote / reaction | Platform-tracked engagement, not an AdCP creative asset |
+| Comment / reply | Platform-managed, may appear in `get_creative_delivery` variant data |
+| Share / repost | Platform-tracked, included in delivery metrics |
+| Save / bookmark | Platform-tracked |
+| Click-through | Standard `click_url` asset |
+| Poll / quiz | Additional format assets (e.g., `poll_options` text array) |
+
+Platforms that expose engagement metrics include them in `get_creative_delivery` via the `ext` field on each variant, since engagement types vary by platform.
+
+## Carousel and multi-card formats
+
+Many social platforms support carousel or multi-card promoted posts. These use the `asset_group` pattern:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.socialplatform.example",
+    "id": "promoted_carousel"
+  },
+  "name": "Promoted carousel",
+  "type": "native",
+  "description": "Multi-card swipeable promoted content with 2-10 cards.",
+  "assets": [
+    {
+      "item_type": "group",
+      "asset_id": "cards",
+      "min_items": 2,
+      "max_items": 10,
+      "assets": [
+        {
+          "item_type": "individual",
+          "asset_id": "card_image",
+          "asset_type": "image",
+          "required": true,
+          "requirements": { "min_width": 600, "min_height": 600, "aspect_ratio": "1:1" }
+        },
+        {
+          "item_type": "individual",
+          "asset_id": "card_headline",
+          "asset_type": "text",
+          "required": true,
+          "requirements": { "max_length": 100 }
+        },
+        {
+          "item_type": "individual",
+          "asset_id": "card_click_url",
+          "asset_type": "url",
+          "required": true
+        }
+      ]
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": { "max_length": 300 }
+    }
+  ]
+}
+```
+
+See [Carousels](/dist/docs/3.0.0-rc.2/creative/channels/carousels) for carousel-specific guidance on card ordering, aspect ratios, and swipe behavior.
+
+## Generative feed-native
+
+Platforms with AI-powered ad generation can offer generative feed-native formats. The buyer provides a brief, and the platform generates feed-native content that matches the community's voice and visual style.
+
+This follows the [brief-in-media-buy](/dist/docs/3.0.0-rc.2/creative/generative-creative#seller-side-generation-brief-in-media-buy) pattern. The key difference from standard generative creative: the platform has deep context about its community (trending topics, content style, audience behavior) that informs generation. A generative feed-native ad on a cooking community looks and sounds different from the same brief on a tech community.
+
+Preview with `context_description` inputs to see how the platform adapts the brief to different community contexts before launch.
+
+## Related documentation
+
+- [Implementing creative agents — Pattern 4: feed-native](/dist/docs/3.0.0-rc.2/creative/implementing-creative-agents#pattern-4-feed-nativesocial-format-agent) — Implementation guide for feed-native format agents
+- [Carousels](/dist/docs/3.0.0-rc.2/creative/channels/carousels) — Multi-card format specifications
+- [Creative review](/dist/docs/3.0.0-rc.2/creative/sales-agent-creative-capabilities#creative-review) — Approval flow including community guidelines
+- [Generative creative](/dist/docs/3.0.0-rc.2/creative/generative-creative) — AI-powered creative generation workflows

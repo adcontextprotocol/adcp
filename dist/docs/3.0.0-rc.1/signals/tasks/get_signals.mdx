@@ -1,0 +1,785 @@
+---
+title: get_signals
+---
+
+
+**Task**: Discover signals based on description, with details about where they are deployed.
+
+**Response Time**: ~60 seconds (inference/RAG with back-end systems)
+
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json)
+
+The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `signal_spec` | string | Conditional | Natural language description of the desired signals. Required unless `signal_ids` is provided. |
+| `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required unless `signal_spec` is provided. |
+| `account` | [AccountRef](/dist/docs/3.0.0-rc.1/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. |
+| `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
+| `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
+| `filters` | Filters | No | Filters to refine results (see Filters Object below) |
+| `max_results` | number | No | Maximum number of results to return |
+| `pagination` | object | No | Pagination: `cursor` (opaque cursor from previous response) for paging through large result sets |
+
+### Destination Object
+
+Each deployment target uses a `type` field to discriminate between platform-based and agent-based deployments:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | Yes | Discriminator: "platform" for DSPs, "agent" for sales agents |
+| `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp'). Required when type="platform" |
+| `agent_url` | string (URI) | Conditional* | URL identifying the sales agent. Required when type="agent" |
+| `account` | string | No | Account identifier on the platform or agent |
+
+*`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
+
+**Destination filtering**: Signals are returned if they are available on *any* of the requested destinations (OR semantics). Destinations where a signal is not available are omitted from that signal's response `deployments` array. A `PARTIAL_COVERAGE` warning may be included when some destinations don't support the signal.
+
+**Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` fields in the response for those deployments (when `is_live: true`).
+
+**Permission Model**: The signal agent determines key inclusion based on the caller's authentication and authorization. For example:
+- A sales agent receives keys for deployments matching its `agent_url`
+- A buyer with credentials for multiple DSP platforms receives keys for all those deployments
+- Access is determined by the signal agent's permission system, not by flags in the request
+
+### Filters Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `catalog_types` | string[] | No | Filter by catalog type ("marketplace", "custom", "owned") |
+| `data_providers` | string[] | No | Filter by specific data providers |
+| `max_cpm` | number | No | Maximum CPM price filter. Excludes signals where all CPM-based pricing options exceed this value. Signals without CPM-based pricing options are not affected by this filter. |
+| `min_coverage_percentage` | number | No | Minimum coverage requirement |
+
+## Response Structure
+
+All AdCP responses include:
+- **message**: Human-readable summary of the operation result
+- **context_id**: Session continuity identifier for follow-up requests  
+- **data**: Task-specific payload (see Response Data below)
+
+The response structure is identical across protocols, with only the transport wrapper differing:
+- **MCP**: Returns complete response as flat JSON
+- **A2A**: Returns as artifacts with message in text part, data in data part
+
+## Response Data
+
+```json
+{
+  "signals": [
+    {
+      "signal_agent_segment_id": "string",
+      "name": "string",
+      "description": "string",
+      "signal_type": "string",
+      "data_provider": "string",
+      "coverage_percentage": "number",
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "string",
+          "account": "string",
+          "is_live": "boolean",
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "string"
+          },
+          "estimated_activation_duration_minutes": "number"
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "string",
+          "model": "cpm | percent_of_media | flat_fee",
+          "...": "..."
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Field Descriptions
+
+- **signals**: Array of matching signals
+  - **signal_agent_segment_id**: Unique identifier for the signal
+  - **name**: Human-readable signal name
+  - **description**: Detailed signal description
+  - **signal_type**: Type of signal (marketplace, custom, owned)
+  - **data_provider**: Name of the data provider
+  - **coverage_percentage**: Percentage of audience coverage
+  - **deployments**: Array of destination deployments
+    - **agent_url**: URL identifying the destination agent
+    - **account**: Account identifier if applicable
+    - **is_live**: Whether signal is currently active on this deployment
+    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present when `is_live=true` and the authenticated caller has access to this deployment.**
+    - **estimated_activation_duration_minutes**: Time to activate if not live
+  - **pricing_options**: Array of pricing options for this signal. Pass the selected `pricing_option_id` in `report_usage` for billing verification.
+    - **pricing_option_id**: Unique identifier for this pricing option
+    - **model**: Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+    - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
+    - `model: "percent_of_media"` — `percent` (0–100), `currency` (ISO 4217), `max_cpm` (optional CPM cap: effective charge = `min(percent × media_spend_per_mille, max_cpm)`)
+    - `model: "flat_fee"` — `amount` (fixed charge), `currency` (ISO 4217), `period` (`monthly`, `quarterly`, `annual`, or `campaign`)
+
+Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
+
+### Activation Key Object
+
+The activation key represents how to use the signal on a deployment target. It can be either a segment ID or a key-value pair:
+
+**Segment ID format:**
+```json
+{
+  "type": "segment_id",
+  "segment_id": "ttd_segment_12345"
+}
+```
+
+**Key-Value format:**
+```json
+{
+  "type": "key_value",
+  "key": "audience_segment",
+  "value": "luxury_auto_intenders"
+}
+```
+
+## Protocol-Specific Examples
+
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### MCP Request - Sales Agent Requesting Signals
+
+A sales agent querying for signals. Because the authenticated caller is wonderstruck.salesagents.com, the signal agent will include activation keys in the response:
+
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    "signal_spec": "High-income households interested in luxury goods",
+    "destinations": [
+      {
+        "type": "agent",
+        "agent_url": "https://wonderstruck.salesagents.com"
+      }
+    ],
+    "countries": ["US"],
+    "filters": {
+      "max_cpm": 5.0,
+      "catalog_types": ["marketplace"]
+    },
+    "max_results": 5
+  }
+}
+```
+
+### MCP Response - With Activation Key
+
+Because the authenticated caller matches the deployment target, the response includes the activation key:
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-response.json",
+  "message": "Found 1 luxury segment matching your criteria. Already activated for your sales agent.",
+  "context_id": "ctx-signals-123",
+  "signals": [
+    {
+      "signal_agent_segment_id": "luxury_auto_intenders",
+      "name": "Luxury Automotive Intenders",
+      "description": "High-income individuals researching luxury vehicles",
+      "signal_type": "marketplace",
+      "data_provider": "Experian",
+      "coverage_percentage": 12,
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "activation_key": {
+            "type": "key_value",
+            "key": "audience_segment",
+            "value": "luxury_auto_intenders_v2"
+          }
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### MCP Response - Multiple Pricing Options
+
+Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in `report_usage`:
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-response.json",
+  "message": "Found 1 segment matching your criteria. Three pricing options are available: CPM at $3.50, 15% of media spend, or $5,000/month flat fee.",
+  "context_id": "ctx-signals-456",
+  "signals": [
+    {
+      "signal_agent_segment_id": "eco_conscious_shoppers",
+      "name": "Eco-Conscious Shoppers",
+      "description": "Users with demonstrated interest in sustainable and eco-friendly products",
+      "signal_type": "marketplace",
+      "data_provider": "Acme Data",
+      "coverage_percentage": 18,
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "eco_seg_789"
+          }
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_eco_cpm",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        },
+        {
+          "pricing_option_id": "po_eco_pom",
+          "model": "percent_of_media",
+          "percent": 15,
+          "max_cpm": 1.50,
+          "currency": "USD"
+        },
+        {
+          "pricing_option_id": "po_eco_flat",
+          "model": "flat_fee",
+          "amount": 5000,
+          "period": "monthly",
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### MCP Request - Buyer Querying Multiple DSP Platforms
+
+A buyer checking availability across multiple DSP platforms:
+
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    "signal_spec": "High-income households interested in luxury goods",
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "the-trade-desk",
+        "account": "agency-123"
+      },
+      {
+        "type": "platform",
+        "platform": "amazon-dsp"
+      }
+    ],
+    "countries": ["US"],
+    "filters": {
+      "max_cpm": 5.0,
+      "catalog_types": ["marketplace"]
+    },
+    "max_results": 5
+  }
+}
+```
+
+### MCP Response - Buyer With Multi-Platform Access
+
+A buyer with credentials for both The Trade Desk and Amazon DSP receives keys for both platforms:
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-response.json",
+  "message": "Found 1 luxury segment matching your criteria. Already activated on The Trade Desk, pending activation on Amazon DSP.",
+  "context_id": "ctx-signals-123",
+  "signals": [
+    {
+      "signal_agent_segment_id": "luxury_auto_intenders",
+      "name": "Luxury Automotive Intenders",
+      "description": "High-income individuals researching luxury vehicles",
+      "signal_type": "marketplace",
+      "data_provider": "Experian",
+      "coverage_percentage": 12,
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "the-trade-desk",
+          "account": "agency-123",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ttd_agency123_exp_lux_auto"
+          }
+        },
+        {
+          "type": "platform",
+          "platform": "amazon-dsp",
+          "is_live": false,
+          "estimated_activation_duration_minutes": 60
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### A2A Request
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Find me signals for high-income households interested in luxury goods that can be deployed on The Trade Desk and Amazon DSP in the US, with a maximum CPM of $5.00."
+    }]
+  }
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "get_signals",
+        parameters: {
+          signal_spec: "High-income households interested in luxury goods",
+          destinations: [
+            {
+              type: "agent",
+              agent_url: "https://thetradedesk.com",
+              account: "agency-123"
+            },
+            {
+              type: "agent",
+              agent_url: "https://advertising.amazon.com/dsp"
+            }
+          ],
+          countries: ["US"],
+          filters: {
+            max_cpm: 5.0,
+            catalog_types: ["marketplace"]
+          },
+          max_results: 5
+        }
+      }
+    }]
+  }
+});
+```
+
+### A2A Response
+A2A returns results as artifacts with the same data structure:
+```json
+{
+  "artifacts": [{
+      "artifactId": "artifact-signal-discovery-def456",
+      "name": "signal_discovery_result",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Found 1 luxury segment matching your criteria. Available on The Trade Desk, pending activation on Amazon DSP."
+        },
+        {
+          "kind": "data",
+          "data": {
+            "context_id": "ctx-signals-123",
+            "signals": [
+              {
+                "signal_agent_segment_id": "luxury_auto_intenders",
+                "name": "Luxury Automotive Intenders",
+                "description": "High-income individuals researching luxury vehicles",
+                "signal_type": "marketplace",
+                "data_provider": "Experian",
+                "coverage_percentage": 12,
+                "deployments": [
+                  {
+                    "type": "agent",
+                    "agent_url": "https://thetradedesk.com",
+                    "account": "agency-123",
+                    "is_live": true
+                  },
+                  {
+                    "type": "agent",
+                    "agent_url": "https://advertising.amazon.com/dsp",
+                    "is_live": false,
+                    "estimated_activation_duration_minutes": 60
+                  }
+                ],
+                "pricing_options": [
+                  {
+                    "pricing_option_id": "po_cpm_usd",
+                    "model": "cpm",
+                    "cpm": 3.50,
+                    "currency": "USD"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }]
+}
+```
+
+### Protocol Transport
+- **MCP**: Direct tool call with arguments, returns complete response as flat JSON
+- **A2A**: Skill invocation with input, returns structured artifacts with message and data separated
+- **Data Consistency**: Both protocols contain identical AdCP data structures and version information
+
+## Scenarios
+
+### All Platforms Discovery
+
+Discover all available deployments across platforms:
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-request.json",
+  "signal_spec": "Contextual segments for luxury automotive content",
+  "destinations": [
+    { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
+    { "type": "platform", "platform": "openx" },
+    { "type": "platform", "platform": "pubmatic", "account": "brand-456-pm" }
+  ],
+  "countries": ["US"],
+  "filters": {
+    "data_providers": ["Peer39"],
+    "catalog_types": ["marketplace"]
+  }
+}
+```
+
+### Response
+
+**Message**: "Found luxury automotive contextual segment from Peer39 with 15% coverage. Live on Index Exchange and OpenX, pending activation on Pubmatic."
+
+**Payload**:
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-response.json",
+  "signals": [{
+    "signal_agent_segment_id": "peer39_luxury_auto",
+    "name": "Luxury Automotive Context",
+    "description": "Pages with luxury automotive content and high viewability",
+    "signal_type": "marketplace",
+    "data_provider": "Peer39",
+    "coverage_percentage": 15,
+    "deployments": [
+      {
+        "type": "platform",
+        "platform": "index-exchange",
+        "account": "agency-123-ix",
+        "is_live": true,
+        "scope": "account-specific",
+        "decisioning_platform_segment_id": "ix_agency123_peer39_lux_auto"
+      },
+      {
+        "type": "platform",
+        "platform": "index-exchange",
+        "is_live": true,
+        "scope": "platform-wide",
+        "decisioning_platform_segment_id": "ix_peer39_luxury_auto_gen"
+      },
+      {
+        "type": "platform",
+        "platform": "openx",
+        "is_live": true,
+        "scope": "platform-wide",
+        "decisioning_platform_segment_id": "ox_peer39_lux_auto_456"
+      },
+      {
+        "type": "platform",
+        "platform": "pubmatic",
+        "account": "brand-456-pm",
+        "is_live": false,
+        "scope": "account-specific",
+        "estimated_activation_duration_minutes": 60
+      }
+    ],
+    "pricing_options": [
+      {
+        "pricing_option_id": "po_cpm_usd",
+        "model": "cpm",
+        "cpm": 2.50,
+        "currency": "USD"
+      }
+    ]
+  }]
+}
+```
+
+### Response Fields
+
+- **context_id** (string): Context identifier for session persistence
+- **signals** (array): Array of matching signals
+  - **signal_agent_segment_id** (string): Universal identifier for the signal
+  - **name** (string): Human-readable signal name
+  - **description** (string): Detailed signal description
+  - **signal_type** (string): Type of signal (marketplace, custom, owned)
+  - **data_provider** (string): Provider of the signal data
+  - **coverage_percentage** (number): Estimated reach percentage
+  - **deployments** (array): Platform-specific deployment information
+    - **platform** (string): Target platform name
+    - **account** (string, nullable): Specific account if account-specific
+    - **is_live** (boolean): Whether signal is currently active
+    - **scope** (string): "platform-wide" or "account-specific"
+    - **decisioning_platform_segment_id** (string): Platform-specific ID to use
+    - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
+  - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
+    - **pricing_option_id** (string): Unique identifier for this pricing option
+    - **model** (string): Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+
+## Error Codes
+
+### Discovery Errors
+- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
+- `AGENT_NOT_FOUND`: Private signal agent not visible to this principal
+- `AGENT_ACCESS_DENIED`: Principal not authorized for this signal agent
+
+### Discovery Warnings
+- `PRICING_UNAVAILABLE`: Pricing data temporarily unavailable for one or more platforms
+- `PARTIAL_COVERAGE`: Some requested platforms don't support this signal type
+- `STALE_DATA`: Some signal metadata may be outdated due to provider refresh delays
+
+## Usage Notes
+
+1. **Authentication-Based Keys**: Activation keys are only returned when the authenticated caller matches one of the deployment targets
+2. **Permission Security**: The signal agent determines key inclusion based on caller identity, not request flags
+3. **Deployment Status**: Check `is_live` to determine if activation is needed
+4. **Multiple Deployments**: Query multiple deployment targets to check availability across platforms
+5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
+6. **The message field** provides a quick summary of the most relevant findings
+
+## Iterative refinement
+
+`get_signals` supports iterative refinement without a separate mode flag. The combination of `signal_spec` and `signal_ids` determines the operation:
+
+| Fields provided | Behavior |
+|----------------|----------|
+| `signal_spec` only | Discovery — find signals matching the description |
+| `signal_ids` only | Exact lookup — return specific signals by ID |
+| `signal_ids` + `signal_spec` | Refinement — start from known signals, adjust per the spec |
+
+To refine previous results, pass back the `signal_id` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-request.json",
+  "signal_spec": "Same audience but with broader coverage, ideally above 20%",
+  "signal_ids": [
+    {
+      "source": "catalog",
+      "data_provider_domain": "experian.com",
+      "id": "luxury_auto_intenders"
+    }
+  ],
+  "destinations": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com"
+    }
+  ],
+  "countries": ["US"]
+}
+```
+
+The signal agent uses the provided IDs as a starting point and the spec as adjustment guidance, returning signals that reflect both the original selection and the requested changes (e.g., broader segments from the same provider, or comparable segments from alternative providers with higher coverage).
+
+### Response - Multiple Signals Found
+
+```json
+{
+  "message": "I found 3 signals matching your luxury goods criteria. The best option is 'Affluent Shoppers' with 22% coverage, already live across all requested platforms. 'High Income Households' offers broader reach (35%) but requires activation on OpenX. All signals are priced between $2-4 CPM.",
+  "context_id": "ctx-signals-abc123",
+  "signals": [
+    {
+      "signal_agent_segment_id": "acme_affluent_shoppers",
+      "name": "Affluent Shoppers",
+      "description": "Users with demonstrated luxury purchase behavior",
+      "signal_type": "marketplace",
+      "data_provider": "Acme Data",
+      "coverage_percentage": 22,
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "index-exchange",
+          "account": "agency-123-ix",
+          "is_live": true,
+          "scope": "account-specific",
+          "decisioning_platform_segment_id": "ix_agency123_acme_aff_shop"
+        },
+        {
+          "type": "platform",
+          "platform": "openx",
+          "account": "agency-123-ox",
+          "is_live": true,
+          "scope": "account-specific",
+          "decisioning_platform_segment_id": "ox_agency123_affluent_789"
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        }
+      ]
+    }
+    // ... more signals
+  ]
+}
+```
+
+### Response - Partial Success with Warnings
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-response.json",
+  "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
+  "context_id": "ctx-signals-abc123",
+  "signals": [
+    {
+      "signal_agent_segment_id": "premium_auto_shoppers",
+      "name": "Premium Auto Shoppers",
+      "description": "High-value automotive purchase intenders",
+      "signal_type": "marketplace",
+      "data_provider": "Experian",
+      "coverage_percentage": 8,
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "the-trade-desk",
+          "is_live": true,
+          "scope": "platform-wide",
+          "decisioning_platform_segment_id": "ttd_exp_auto_premium"
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 4.50,
+          "currency": "USD"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "PRICING_UNAVAILABLE",
+      "message": "Pricing data temporarily unavailable for The Trade Desk platform",
+      "field": "signals[0].pricing_options",
+      "suggestion": "Retry in 15-30 minutes when platform pricing feed updates",
+      "details": {
+        "affected_platform": "the-trade-desk",
+        "last_updated": "2025-01-15T12:00:00Z",
+        "retry_after": 1800
+      }
+    },
+    {
+      "code": "PRICING_UNAVAILABLE", 
+      "message": "Pricing data temporarily unavailable for Amazon DSP",
+      "field": "filters.platforms",
+      "suggestion": "Pricing will be available during activation, or try again later",
+      "details": {
+        "affected_platform": "amazon-dsp",
+        "retry_after": 1800
+      }
+    }
+  ]
+}
+```
+
+### Response - No Signals Found
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/signals/get-signals-response.json",
+  "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
+  "context_id": "ctx-signals-abc123",
+  "signals": []
+}
+```
+
+## Implementation Guide
+
+### Generating Signal Messages
+
+The `message` field should provide actionable insights:
+
+```python
+def generate_signals_message(signals, request):
+    if not signals:
+        return generate_no_signals_message(request.signal_spec)
+
+    best_signal = find_best_signal(signals)
+
+    if len(signals) == 1:
+        signal = signals[0]
+        deployment_status = get_deployment_summary(signal, request.destinations)
+        pricing = signal.pricing_options[0] if signal.pricing_options else None
+        if pricing:
+            p = pricing.pricing
+            if p.model == "cpm":
+                price_commentary = f"Priced at ${p.cpm:.2f} CPM {p.currency}."
+            elif p.model == "percent_of_media":
+                cap = f", capped at ${p.max_cpm:.2f} CPM" if getattr(p, "max_cpm", None) else ""
+                price_commentary = f"Priced at {p.percent}% of media spend{cap}."
+            elif p.model == "flat_fee":
+                price_commentary = f"Flat fee of {p.amount} {p.currency} per {p.period}."
+            else:
+                price_commentary = ""
+        else:
+            price_commentary = ""
+        return f"I found a perfect match: '{signal.name}' from {signal.data_provider} with {signal.coverage_percentage}% coverage. {deployment_status} {price_commentary}"
+    else:
+        return f"I found {len(signals)} signals matching your {extract_key_criteria(request.signal_spec)} criteria. {describe_best_option(best_signal)} {get_pricing_range(signals)}."
+
+def get_deployment_summary(signal, requested_deployments):
+    live = [d for d in signal.deployments if d.is_live]
+    pending = [d for d in signal.deployments if not d.is_live]
+
+    if not pending:
+        return "Already live on all requested deployments, ready to use immediately."
+    elif live:
+        activation_time = max((d.estimated_activation_duration_minutes or 0) for d in pending)
+        return f"Live on {len(live)} deployment(s). Activation on {len(pending)} more would take about {activation_time} minutes."
+    else:
+        return "Requires activation on all deployments, which typically takes 1-2 hours."
+```

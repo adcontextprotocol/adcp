@@ -1,0 +1,243 @@
+---
+title: report_plan_outcome
+description: "report_plan_outcome sends action results to the AdCP governance agent so it can update budget tracking, state, and compliance records."
+"og:title": "AdCP — report_plan_outcome"
+---
+
+
+# report_plan_outcome
+
+Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the "after" half of the governance loop -- it tells the governance agent what actually happened so it can update its state and flag any issues.
+
+Sellers do not call this task. They report delivery data via [`check_governance`](./check_governance) with `phase: "delivery"`.
+
+## Seller response (after `create_media_buy`)
+
+```json
+{
+  "tool": "report_plan_outcome",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "check_id": "chk_xyz789",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "outcome": "completed",
+    "seller_response": {
+      "media_buy_id": "mb_seller_456",
+      "buyer_ref": "q1-launch-pinnacle-001",
+      "packages": [
+        {
+          "package_id": "pkg_001",
+          "product_id": "premium_video_300k",
+          "budget": 150000,
+          "targeting_overlay": {
+            "geo": { "include": [{ "type": "country", "code": "US" }] },
+            "viewability": { "standard": "mrc", "threshold": 50 }
+          }
+        }
+      ],
+      "planned_delivery": {
+        "geo": { "countries": ["US"] },
+        "channels": ["olv"],
+        "start_time": "2026-03-15T00:00:00Z",
+        "end_time": "2026-06-15T00:00:00Z",
+        "total_budget": 150000,
+        "currency": "USD"
+      },
+      "creative_deadline": "2026-03-20T00:00:00Z"
+    }
+  }
+}
+```
+
+### Response (no issues)
+
+```json
+{
+  "outcome_id": "out_001",
+  "status": "accepted",
+  "committed_budget": 150000,
+  "plan_summary": {
+    "total_committed": 425000,
+    "budget_remaining": 75000
+  }
+}
+```
+
+The governance agent updates its state: budget is now committed based on the seller's confirmed amount, and the media buy is tracked.
+
+### Response (discrepancy found)
+
+In this alternative scenario for the same action, the seller modified the request:
+
+```json
+{
+  "outcome_id": "out_002",
+  "status": "findings",
+  "committed_budget": 120000,
+  "findings": [
+    {
+      "category_id": "seller_verification",
+      "severity": "warning",
+      "explanation": "Seller reduced budget from $150,000 to $120,000 and added geo targeting for CA that was not requested.",
+      "details": {
+        "discrepancies": [
+          { "field": "packages[0].budget", "requested": 150000, "received": 120000 },
+          { "field": "packages[0].targeting_overlay.geo.include", "requested": ["US"], "received": ["US", "CA"] }
+        ]
+      }
+    }
+  ],
+  "plan_summary": {
+    "total_committed": 395000,
+    "budget_remaining": 105000
+  }
+}
+```
+
+The governance agent still commits the seller's actual amount ($120K, not the requested $150K) but returns findings for the orchestrator to act on.
+
+## Delivery data (periodic reporting)
+
+```json
+{
+  "tool": "report_plan_outcome",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "outcome": "delivery",
+    "delivery": {
+      "media_buy_id": "mb_seller_456",
+      "reporting_period": {
+        "start": "2026-03-15T00:00:00Z",
+        "end": "2026-03-22T00:00:00Z"
+      },
+      "impressions": 1250000,
+      "spend": 18750,
+      "cpm": 15.00,
+      "viewability_rate": 0.72,
+      "completion_rate": 0.65
+    }
+  }
+}
+```
+
+### Response (on track)
+
+```json
+{
+  "outcome_id": "out_del_001",
+  "status": "accepted"
+}
+```
+
+### Response (anomaly detected)
+
+```json
+{
+  "outcome_id": "out_del_002",
+  "status": "findings",
+  "findings": [
+    {
+      "category_id": "budget_authority",
+      "severity": "warning",
+      "explanation": "Spend is pacing 62% above plan. At current rate, budget will be exhausted 5 weeks early.",
+      "details": {
+        "planned_weekly_spend": 11538,
+        "actual_weekly_spend": 18750,
+        "overpace_pct": 62,
+        "projected_exhaustion": "2026-05-03T00:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+## Failed actions
+
+If the seller rejected the request, report it so the governance agent can update plan state:
+
+```json
+{
+  "tool": "report_plan_outcome",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "check_id": "chk_xyz789",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "outcome": "failed",
+    "error": {
+      "code": "PRODUCT_UNAVAILABLE",
+      "message": "Product premium_video_300k is no longer available."
+    }
+  }
+}
+```
+
+```json
+{
+  "outcome_id": "out_003",
+  "status": "accepted",
+  "committed_budget": 0,
+  "plan_summary": {
+    "total_committed": 275000,
+    "budget_remaining": 225000
+  }
+}
+```
+
+## Fields
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plan_id` | string | Yes | The plan this outcome is for. |
+| `check_id` | string | Conditional | The `check_id` from `check_governance`. Links the outcome to the governance check that authorized it. Required for `completed` and `failed` outcomes. |
+| `buyer_campaign_ref` | string | Yes | Campaign identifier. |
+| `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
+| `seller_response` | object | No | The seller's full response. Required when outcome is `completed`. |
+| `seller_response.media_buy_id` | string | No | Seller's media buy identifier. |
+| `seller_response.buyer_ref` | string | No | The buyer reference echoed back by the seller. |
+| `seller_response.committed_budget` | number | No | Total budget committed across all confirmed packages. When present, the governance agent uses this directly instead of summing individual package budgets. |
+| `seller_response.packages` | array | No | Confirmed packages with actual budget and targeting. |
+| `seller_response.planned_delivery` | object | No | What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters. |
+| `seller_response.creative_deadline` | string | No | ISO 8601 deadline for creative submission. |
+| `delivery` | object | No | Delivery metrics. Required when outcome is `delivery`. |
+| `delivery.media_buy_id` | string | No | The media buy being reported on. |
+| `delivery.reporting_period` | object | No | Start and end timestamps for the reporting window. |
+| `delivery.impressions` | integer | No | Impressions delivered in the period. |
+| `delivery.spend` | number | No | Spend in the period. |
+| `delivery.cpm` | number | No | Effective CPM for the period. |
+| `delivery.viewability_rate` | number | No | Viewability rate (0-1). |
+| `delivery.completion_rate` | number | No | Video completion rate (0-1). |
+| `error` | object | No | Error details. Required when outcome is `failed`. |
+| `error.code` | string | No | Error code from the seller. |
+| `error.message` | string | No | Human-readable error description. |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome_id` | string | Unique identifier for this outcome record. |
+| `status` | enum | `accepted` (state updated, no issues) or `findings` (issues detected). |
+| `committed_budget` | number | Budget committed from this outcome (present for `completed`/`failed` outcomes). |
+| `findings` | array | Present only when status is `findings`. |
+| `findings[].category_id` | string | Which validation category flagged the issue. |
+| `findings[].severity` | enum | `info`, `warning`, or `critical`. |
+| `findings[].explanation` | string | Human-readable description of the issue. |
+| `findings[].details` | object | Structured details for programmatic consumption. |
+| `plan_summary` | object | Updated plan budget state (present for `completed`/`failed` outcomes). |
+
+## Error codes
+
+| Code | Recovery | Description |
+|------|----------|-------------|
+| `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
+| `CHECK_NOT_FOUND` | correctable | No governance check with this `check_id`. |
+| `CAMPAIGN_NOT_FOUND` | correctable | No campaign with this `buyer_campaign_ref` in the plan. |
+| `CAMPAIGN_SUSPENDED` | correctable | Plan is suspended pending human review. Outcome reporting is blocked until the escalation is resolved. |
+
+## Related tasks
+
+- [`check_governance`](./check_governance) -- The governance check that authorized the action
+- [`sync_plans`](./sync_plans) -- Push or update the plan
+- [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail

@@ -1,0 +1,87 @@
+---
+title: AdCP and OpenRTB
+sidebarTitle: AdCP vs OpenRTB
+description: "AdCP vs OpenRTB: how they differ and work together. AdCP handles agent-level campaign workflows; OpenRTB handles impression-level bidding. Complementary standards, not competing."
+"og:title": "AdCP — AdCP and OpenRTB"
+---
+
+AdCP and OpenRTB are complementary standards that operate at different layers of the advertising stack. They are not competing — a platform can (and often will) implement both.
+
+## What each standard does
+
+| | OpenRTB | AdCP |
+|---|---------|------|
+| **Layer** | Impression-level transactions | Agent-level workflows |
+| **Core operation** | Real-time bid request/response | Task-based campaign management |
+| **Participants** | DSPs and SSPs | AI agents and advertising platforms |
+| **Timing** | Real-time (milliseconds) | Asynchronous (seconds to days) |
+| **Scope** | Single impression auction | End-to-end campaign lifecycle |
+| **Maintained by** | IAB Tech Lab | AgenticAdvertising.org |
+| **Maturity** | Production (v2.6) | Release candidate (v3.0-rc) |
+| **Transport** | HTTP POST | MCP (tool calling) or A2A (agent-to-agent) |
+
+## Where they overlap
+
+Both standards touch media buying, but at different granularities:
+
+- **OpenRTB** handles individual impression decisions: "Should I bid on this impression, and how much?"
+- **AdCP** handles campaign-level decisions: "What inventory is available? Execute this campaign with this budget and targeting."
+
+A single AdCP `create_media_buy` task might result in thousands of OpenRTB bid requests over the campaign's lifetime.
+
+## Where they're different
+
+**Scope.** OpenRTB is focused on the auction — bid requests, bid responses, win notifications, and billing events. AdCP covers the full campaign lifecycle: product discovery, creative management, audience activation, campaign execution, and delivery reporting.
+
+**Communication model.** OpenRTB uses synchronous HTTP: a bid request arrives, and the bidder must respond within a few hundred milliseconds. AdCP is asynchronous: an agent submits a `create_media_buy` task, and the platform processes it on its own timeline, returning status updates.
+
+**Participants.** OpenRTB connects demand-side platforms (DSPs) to supply-side platforms (SSPs) in automated auctions. AdCP connects AI agents to any advertising platform — including but not limited to DSPs and SSPs.
+
+**Data model.** OpenRTB defines impression objects, bid objects, and deal objects. AdCP defines media products, media buys, creative formats, audience signals, and brand governance rules.
+
+## How they work together
+
+A typical integration uses both standards at different layers:
+
+1. A **buyer agent** uses AdCP to discover available products on a publisher's platform (`get_products`)
+2. The agent creates a campaign via AdCP (`create_media_buy`) with budget, targeting, and scheduling
+3. The **publisher's ad server** executes the campaign by sending OpenRTB bid requests to the buyer's DSP for individual impressions
+4. The buyer agent checks delivery via AdCP (`get_media_buy_delivery`) to monitor overall campaign performance
+
+In this model, AdCP handles the strategic layer (what to buy, how much to spend, who to target) and OpenRTB handles the tactical layer (which specific impressions to win).
+
+## Other standards in the ecosystem
+
+AdCP and OpenRTB exist alongside several other standards:
+
+| Standard | Purpose | Maintained by |
+|----------|---------|---------------|
+| **MCP** (Model Context Protocol) | AI tool calling — how an AI model calls external tools | Anthropic |
+| **A2A** (Agent-to-Agent Protocol) | Multi-agent collaboration — how autonomous agents communicate | Google |
+| **VAST** / **VPAID** | Video ad serving and interactive video | IAB Tech Lab |
+| **ads.txt** / **sellers.json** | Supply chain transparency and authorized seller verification | IAB Tech Lab |
+| **Open Measurement SDK** | Viewability and attention measurement | IAB Tech Lab |
+
+AdCP uses MCP and A2A as transport layers. It references IAB content taxonomies and audience segment standards where applicable.
+
+## Frequently asked questions
+
+<AccordionGroup>
+
+<Accordion title="Does AdCP replace OpenRTB?">
+No. They serve different purposes. OpenRTB handles real-time impression auctions. AdCP handles campaign-level agent workflows. A platform can implement both.
+</Accordion>
+
+<Accordion title="Do I need to implement OpenRTB to use AdCP?">
+No. AdCP works independently. A platform that doesn't use real-time bidding (for example, a direct-sold publisher or a commerce media network) can implement AdCP without any OpenRTB integration.
+</Accordion>
+
+<Accordion title="Can an AdCP agent trigger OpenRTB transactions?">
+Yes. When a buyer agent creates a media buy via AdCP, the sell-side platform can use any internal mechanism to fulfill the order — including OpenRTB auctions, direct insertion orders, or private marketplace deals.
+</Accordion>
+
+<Accordion title="Is AgenticAdvertising.org part of IAB Tech Lab?">
+No. AgenticAdvertising.org is an independent member organization. It is not a subsidiary, working group, or affiliate of IAB Tech Lab. However, AdCP is designed to be compatible with IAB standards.
+</Accordion>
+
+</AccordionGroup>

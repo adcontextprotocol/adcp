@@ -1,0 +1,749 @@
+---
+title: brand.json Specification
+description: "brand.json specification for AdCP. File format, variants (portfolio, redirect, agent, authoritative location), brand definition fields, visual guidelines, colorways, type scale, restrictions, and resolution algorithm."
+"og:title": "AdCP — brand.json Specification"
+---
+
+The `brand.json` file provides a standardized way for brands to claim their identity and establish discoverable brand information. It supports four mutually exclusive variants to accommodate different use cases.
+
+<Info>
+`brand.json` is the canonical source of brand identity data. The brand object defined here (logos, colors, tone, tagline) is the single brand definition used across AdCP. Tasks reference brands by domain and brand_id — the system resolves full identity from `brand.json` or the [registry](/dist/docs/3.0.0-rc.2/registry/index).
+</Info>
+
+## File location
+
+Brands host the `brand.json` file at:
+
+```
+https://example.com/.well-known/brand.json
+```
+
+Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known URI conventions.
+
+## Variants
+
+The brand.json file supports four mutually exclusive variants:
+
+### 1. Authoritative Location Redirect
+
+Points to a hosted brand.json at another URL:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "authoritative_location": "https://adcontextprotocol.org/brand/abc123/brand.json"
+}
+```
+
+Use this when:
+- Brand.json is hosted centrally (e.g., by a service provider)
+- CDN distribution is needed
+- Managed brand services
+
+### 2. House Redirect
+
+Points to the house domain that contains the full brand portfolio:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": "nikeinc.com",
+  "note": "Regional site - see house for brand portfolio"
+}
+```
+
+Optional fields:
+- `region`: ISO 3166-1 alpha-2 country code (e.g., "CN")
+- `note`: Explanation text
+
+Use this when:
+- Brand domain is owned by a larger house
+- Regional/localized domains point to main house
+- Legacy domains redirect to canonical
+
+### 3. Brand Agent
+
+Designates an MCP agent that provides brand information:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "brand_agent": {
+    "url": "https://agent.acme.com/mcp",
+    "id": "acme_brand_agent"
+  }
+}
+```
+
+Optional fields:
+- `contact`: Contact information
+
+When a brand has an agent, the agent is the authoritative source for brand identity data.
+
+### 4. House Portfolio
+
+Contains the full brand hierarchy with all brands and properties:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "nikeinc.com",
+    "name": "Nike, Inc.",
+    "architecture": "hybrid"
+  },
+  "brands": [
+    {
+      "id": "nike",
+      "names": [{"en": "Nike"}],
+      "keller_type": "master",
+      "properties": [
+        {"type": "website", "identifier": "nike.com", "primary": true}
+      ]
+    }
+  ]
+}
+```
+
+## House definition
+
+The house object represents the corporate entity:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | string | Yes | House's primary domain |
+| `name` | string | Yes | Display name |
+| `names` | array | No | Localized names |
+| `architecture` | enum | No | `branded_house`, `house_of_brands`, or `hybrid` |
+
+## Brand definition
+
+Each brand in the `brands` array:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Brand identifier (lowercase alphanumeric with underscores) |
+| `names` | array | Yes | Localized names (see below) |
+| `keller_type` | enum | No | `master`, `sub_brand`, `endorsed`, `independent` |
+| `parent_brand` | string | No | Parent brand's id |
+| `properties` | array | No | Digital properties owned by brand |
+| `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
+| `rights_agent` | object | No | Rights licensing agent `{ url, id, available_uses, right_types, countries }` |
+| `logos` | array | No | Brand logo assets |
+| `colors` | object | No | Brand color palette |
+| `fonts` | object | No | Brand typography |
+| `tone` | object | No | Brand voice and messaging guidelines (`voice`, `attributes`, `dos`, `donts`) |
+| `tagline` | string | No | Brand tagline or slogan |
+| `visual_guidelines` | object | No | Structured visual rules for generative creative systems |
+
+### Names Array
+
+Names are localized with language codes:
+
+```json
+{
+  "names": [
+    {"en": "Nike"},
+    {"en": "The Swoosh"},
+    {"zh": "耐克"},
+    {"ja": "ナイキ"}
+  ]
+}
+```
+
+Multiple entries per language are allowed (for aliases).
+
+### Keller Types
+
+Brand architecture classifications from marketing theory:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `master` | Primary brand of house | Nike for Nike, Inc. |
+| `sub_brand` | Carries parent brand name | Nike SB |
+| `endorsed` | Independent identity, endorsed by parent | Air Jordan "by Nike" |
+| `independent` | Operates separately from house | Converse |
+
+## Visual guidelines
+
+The `visual_guidelines` object provides structured rules that generative creative systems can use to produce on-brand assets consistently. These are brand constants — they don't change campaign to campaign.
+
+<Info>
+Visual guidelines complement the basic identity fields (`colors`, `fonts`, `logos`). Colors define *what* the brand palette is; visual guidelines define *how* to use it. Fonts define font families; visual guidelines define the type scale.
+</Info>
+
+### Photography
+
+Controls how brand photography should look when selected or generated:
+
+```json
+{
+  "photography": {
+    "realism": "natural",
+    "lighting": "soft daylight",
+    "color_temperature": "warm",
+    "contrast": "medium",
+    "depth_of_field": "medium",
+    "subject": {
+      "people": {
+        "age_range": "25-45",
+        "diversity": "mixed",
+        "mood": ["confident", "relaxed"]
+      },
+      "product_focus": "in-use",
+      "setting": "outdoor"
+    },
+    "framing": {
+      "subject_position": "center-left",
+      "crop_style": "waist-up",
+      "perspective": "eye-level"
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `realism` | enum | `natural`, `stylized`, `hyperreal`, `abstract` |
+| `lighting` | string | Lighting style description |
+| `color_temperature` | enum | `warm`, `neutral`, `cool` |
+| `contrast` | enum | `low`, `medium`, `high` |
+| `depth_of_field` | enum | `shallow`, `medium`, `deep` |
+| `subject` | object | Subject matter guidelines (people, product focus, setting) |
+| `framing` | object | Camera framing rules (position, crop, perspective) |
+| `preferred_aspect_ratios` | array | Preferred aspect ratios (e.g., `["16:9", "4:5", "1:1"]`) |
+| `tags` | array | Additional style descriptors |
+
+### Graphic style
+
+Defines the visual language for brand graphics and illustrations:
+
+```json
+{
+  "graphic_style": {
+    "style_type": "flat_illustration",
+    "stroke_style": "rounded",
+    "stroke_weight": "2px",
+    "corner_radius": "12px"
+  }
+}
+```
+
+Style types: `flat_illustration`, `geometric`, `gradient_mesh`, `editorial_collage`, `hand_drawn`, `minimal_line_art`, `3d_render`, `isometric`, `photographic_composite`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `style_type` | enum | `flat_illustration`, `geometric`, `gradient_mesh`, `editorial_collage`, `hand_drawn`, `minimal_line_art`, `3d_render`, `isometric`, `photographic_composite` |
+| `stroke_style` | enum | `rounded`, `square`, `mixed`, `none` |
+| `stroke_weight` | string | Stroke weight (e.g., `2px`) |
+| `corner_radius` | string | Corner radius for rounded elements (e.g., `12px`) |
+| `tags` | array | Additional style descriptors |
+
+### Shapes
+
+Brand shapes used as part of visual identity:
+
+```json
+{
+  "shapes": {
+    "primary_shape": "circle",
+    "secondary_shapes": ["rounded_rectangle", "diagonal_wave"],
+    "usage": {
+      "max_per_layout": 2,
+      "overlap_allowed": true
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `primary_shape` | string | Primary brand shape (e.g., `circle`, `rounded_rectangle`, `hexagon`) |
+| `secondary_shapes` | array | Secondary shapes in the brand vocabulary |
+| `usage.max_per_layout` | integer | Maximum distinct shapes per layout |
+| `usage.overlap_allowed` | boolean | Whether shapes may overlap |
+
+### Iconography
+
+Icon style system and usage rules:
+
+```json
+{
+  "iconography": {
+    "style": "outline",
+    "stroke_weight": "2px",
+    "corner_style": "rounded",
+    "usage": {
+      "max_per_frame": 3,
+      "size_ratio": "1:8"
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `style` | enum | `outline`, `filled`, `duotone`, `flat`, `glyph`, `hand_drawn` |
+| `stroke_weight` | string | Icon stroke weight (e.g., `2px`) |
+| `corner_style` | enum | `rounded`, `square`, `mixed` |
+| `usage.max_per_frame` | integer | Maximum icons per creative frame |
+| `usage.size_ratio` | string | Icon-to-layout size ratio (e.g., `1:8`) |
+
+### Composition
+
+Layout rules for overlays, textures, and backgrounds:
+
+```json
+{
+  "composition": {
+    "overlays": {
+      "gradient_style": "linear",
+      "gradient_direction": "45deg",
+      "opacity": "70%"
+    },
+    "texture": {
+      "style": "subtle_grain",
+      "intensity": "low"
+    },
+    "backgrounds": {
+      "types_allowed": ["solid_color", "gradient", "image"]
+    }
+  }
+}
+```
+
+Texture styles: `none`, `subtle_grain`, `noise`, `paper`, `fabric`, `concrete`. Intensity: `low`, `medium`, `high`.
+
+Background types: `solid_color`, `gradient`, `blurred_photo`, `image`, `video`, `pattern`, `transparent`.
+
+### Graphic elements
+
+Reusable decorative or structural visual elements that are part of the brand identity — torn paper edges, watermarks, dividers, background patterns:
+
+```json
+{
+  "graphic_elements": [
+    {
+      "name": "Paper Tear",
+      "type": "frame",
+      "description": "Torn paper edge used as section dividers and photo frames. Use primarily vertical orientation.",
+      "orientation": "vertical",
+      "colors": ["#a75230", "#f6f1f1", "#fba007"],
+      "max_per_layout": 2
+    },
+    {
+      "name": "Location Sketch Watermark",
+      "type": "watermark",
+      "description": "Light hand-drawn building sketch behind content, visible through the logo area",
+      "colors": ["#a75230"]
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Element name |
+| `type` | enum | No | `border`, `divider`, `frame`, `watermark`, `pattern`, `texture_overlay`, `decorative` |
+| `description` | string | No | How the element is used in layouts |
+| `orientation` | enum | No | `horizontal`, `vertical`, `any` |
+| `colors` | array | No | Colors this element may appear in |
+| `max_per_layout` | integer | No | Maximum instances per layout |
+
+### Motion
+
+Motion and animation rules for video, animated display, and interactive formats:
+
+```json
+{
+  "motion": {
+    "transition_style": "dissolve",
+    "animation_speed": "moderate",
+    "easing": "ease-in-out",
+    "text_entrance": "fade",
+    "pacing": "lingering",
+    "kinetic_typography": false
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `transition_style` | enum | `cut`, `dissolve`, `slide`, `wipe`, `zoom`, `fade` |
+| `animation_speed` | enum | `slow`, `moderate`, `fast` |
+| `easing` | string | Default easing function (e.g., `ease-in-out`, `spring`, `linear`) |
+| `text_entrance` | enum | `fade`, `typewriter`, `slide_up`, `slide_left`, `scale`, `none` |
+| `pacing` | enum | `lingering`, `moderate`, `fast_cuts` |
+| `kinetic_typography` | boolean | Whether animated/kinetic typography is allowed |
+| `tags` | array | Additional motion style descriptors |
+
+### Logo placement
+
+Logo placement and clear space rules for automated creative production:
+
+```json
+{
+  "logo_placement": {
+    "preferred_position": "bottom-left",
+    "min_clear_space": "0.5x",
+    "min_height": "40px",
+    "background_contrast": "any"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `preferred_position` | enum | `top-left`, `top-center`, `top-right`, `bottom-left`, `bottom-center`, `bottom-right`, `center` |
+| `min_clear_space` | string | Minimum clear space as a multiple of logo height (e.g., `0.5x`, `1x`) or fixed value (e.g., `16px`) |
+| `min_height` | string | Minimum logo height for legibility (e.g., `40px`) |
+| `background_contrast` | enum | `light_only`, `dark_only`, `any` |
+
+### Colorways
+
+Named color pairings that define how colors work together. Allows a creative brief to reference "use my primary colorway" without specifying every color:
+
+```json
+{
+  "colorways": [
+    {
+      "name": "primary",
+      "foreground": "#FFFFFF",
+      "background": "#FF6600",
+      "accent": "#0066CC",
+      "cta_foreground": "#FFFFFF",
+      "cta_background": "#0066CC"
+    },
+    {
+      "name": "inverted",
+      "foreground": "#FF6600",
+      "background": "#FFFFFF",
+      "accent": "#0066CC",
+      "border": "#FF6600"
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Colorway name (e.g., `"primary"`, `"inverted"`, `"dark"`) |
+| `foreground` | hex color | Yes | Text/foreground color |
+| `background` | hex color | Yes | Background color |
+| `accent` | hex color | No | Accent color |
+| `cta_foreground` | hex color | No | Call-to-action text color |
+| `cta_background` | hex color | No | Call-to-action button color |
+| `border` | hex color | No | Border color |
+| `channels` | array | No | Channels where this colorway applies (e.g., `["online"]`, `["print", "pos"]`). Omit for universal colorways. |
+
+### Type scale
+
+Typography scale defining sizes and weights for different text roles:
+
+```json
+{
+  "type_scale": {
+    "base_width": "1080px",
+    "heading": {
+      "font": "primary",
+      "size": "48px",
+      "weight": "700",
+      "line_height": "1.1"
+    },
+    "subheading": {
+      "font": "primary",
+      "size": "24px",
+      "weight": "600",
+      "line_height": "1.3"
+    },
+    "body": {
+      "font": "secondary",
+      "size": "16px",
+      "weight": "400",
+      "line_height": "1.5"
+    },
+    "caption": {
+      "font": "secondary",
+      "size": "12px",
+      "weight": "400",
+      "line_height": "1.4"
+    },
+    "cta": {
+      "font": "primary",
+      "size": "18px",
+      "weight": "700",
+      "text_transform": "uppercase",
+      "letter_spacing": "0.05em"
+    }
+  }
+}
+```
+
+The `font` field references font roles defined in the brand's `fonts` object (`"primary"`, `"secondary"`), or can specify a font family name directly.
+
+When sizes are in pixels, use `base_width` to indicate the reference canvas these sizes were designed for. Generative systems should scale proportionally for other canvas sizes — a `48px` heading designed for `1080px` width would scale to `14px` on a `320px` mobile leaderboard.
+
+### Asset libraries
+
+References to managed asset libraries (icon sets, illustration systems, image collections). URLs are for human access — a brand portal, press kit, or DAM landing page that a person can open in a browser.
+
+```json
+{
+  "asset_libraries": [
+    {
+      "name": "Brand Illustrations v2",
+      "type": "illustration_system",
+      "url": "https://brand.example.com/illustrations",
+      "description": "Flat illustration system with defined color guide",
+      "color_guide": {
+        "roles": ["base", "shadow_1", "shadow_2", "highlight_1", "highlight_2", "stroke"],
+        "palettes": [
+          {
+            "name": "orange",
+            "colors": {
+              "base": "#FF6600",
+              "shadow_1": "#CC5200",
+              "shadow_2": "#993D00",
+              "highlight_1": "#FF8533",
+              "highlight_2": "#FFB380",
+              "stroke": "#662900"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Display name of the asset library |
+| `type` | enum | Recommended | `icon_set`, `illustration_system`, `image_library`, `video_library`, `template_library` |
+| `url` | string (URI) | Yes | URL to the asset library (for human access) |
+| `description` | string | No | Description of library contents and usage |
+| `color_guide` | object | No | Color roles and palettes used in the library |
+
+The `color_guide` provides generative systems with the color palettes used in the library — useful for producing on-brand illustrations or icons without accessing the library itself.
+
+### Restrictions
+
+Visual prohibitions and guardrails — the visual equivalent of `tone.donts`. These tell generative systems what to avoid:
+
+```json
+{
+  "restrictions": [
+    "Never place text over the product",
+    "Do not use black backgrounds",
+    "No stock photography of people on phones",
+    "No split-screen layouts"
+  ]
+}
+```
+
+## Property definition
+
+Properties are digital touchpoints owned by brands:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | enum | Yes | Property type (see below) |
+| `identifier` | string | Yes | Domain or app ID |
+| `store` | enum | No | App store (`apple`, `google`, etc.) |
+| `region` | string | No | ISO country code or `global` |
+| `primary` | boolean | No | Is this the primary property? |
+
+### Property Types
+
+Matches AdCP property-type enum:
+- `website`
+- `mobile_app`
+- `ctv_app`
+- `desktop_app`
+- `dooh`
+- `podcast`
+- `radio`
+- `streaming_audio`
+
+## Resolution algorithm
+
+To resolve a domain to a canonical brand:
+
+1. Fetch `https://{domain}/.well-known/brand.json`
+2. Check variant:
+   - **authoritative_location**: Fetch from that URL, continue from step 2
+   - **house** (string): Fetch from house domain, continue from step 2
+   - **brand_agent**: Return agent URL (agent provides brand info)
+   - **house** (object) + **brands**: Search for domain in properties
+3. For house portfolio, find the brand whose properties contain the query domain
+4. Return canonical brand information
+
+Maximum redirect depth: 3 hops.
+
+## Complete examples
+
+### Small Business
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "bobsburgers.com",
+    "name": "Bob's Burgers LLC"
+  },
+  "brands": [
+    {
+      "id": "bobs_burgers",
+      "names": [{"en": "Bob's Burgers"}],
+      "keller_type": "master",
+      "properties": [
+        {"type": "website", "identifier": "bobsburgers.com", "primary": true}
+      ],
+      "logos": [
+        { "url": "https://bobsburgers.com/logo.svg", "tags": ["icon"] }
+      ],
+      "colors": { "primary": "#FF6B35" }
+    }
+  ]
+}
+```
+
+### Enterprise with Agent
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "brand_agent": {
+    "url": "https://brand-agent.enterprise.com/mcp",
+    "id": "enterprise_brand_agent"
+  },
+  "contact": {
+    "name": "Enterprise Brand Team",
+    "email": "brand@enterprise.com"
+  }
+}
+```
+
+### Multi-Brand Portfolio
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "nikeinc.com",
+    "name": "Nike, Inc.",
+    "architecture": "hybrid"
+  },
+  "brands": [
+    {
+      "id": "nike",
+      "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
+      "keller_type": "master",
+      "properties": [
+        {"type": "website", "identifier": "nike.com", "primary": true},
+        {"type": "website", "identifier": "nike.cn", "region": "CN"},
+        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+      ]
+    },
+    {
+      "id": "air_jordan",
+      "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
+      "keller_type": "endorsed",
+      "parent_brand": "nike",
+      "properties": [
+        {"type": "website", "identifier": "jordan.com", "primary": true},
+        {"type": "website", "identifier": "jumpman23.com"},
+        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.snkrs"}
+      ]
+    },
+    {
+      "id": "converse",
+      "names": [{"en": "Converse"}],
+      "keller_type": "independent",
+      "properties": [
+        {"type": "website", "identifier": "converse.com", "primary": true}
+      ]
+    }
+  ],
+  "contact": {
+    "name": "Nike Brand Team",
+    "email": "brand@nike.com"
+  }
+}
+```
+
+### Talent Agency with Rights
+
+A talent agency managing athlete brands with licensable rights:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "lotientertainment.com",
+    "name": "Loti Entertainment",
+    "architecture": "house_of_brands"
+  },
+  "brands": [
+    {
+      "id": "daan_janssen",
+      "names": [{"en": "Daan Janssen"}],
+      "description": "Dutch Olympic speed skater, 2x gold medalist",
+      "industry": "sports",
+      "logos": [
+        {
+          "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+          "variant": "primary"
+        }
+      ],
+      "brand_agent": {
+        "url": "https://rights.lotientertainment.com/mcp",
+        "id": "loti_entertainment"
+      },
+      "rights_agent": {
+        "url": "https://rights.lotientertainment.com/mcp",
+        "id": "loti_entertainment",
+        "available_uses": ["likeness", "voice", "endorsement"],
+        "right_types": ["talent"],
+        "countries": ["NL", "BE", "DE"]
+      }
+    }
+  ]
+}
+```
+
+The `rights_agent` field tells crawlers what's licensable without any MCP calls — available uses, rights type, and countries. Buyer agents can search the registry for "Dutch athletes available for voice licensing" and find matches from the indexed brand.json data.
+
+### Regional Domain Redirect
+
+On `nike.cn/.well-known/brand.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": "nikeinc.com",
+  "region": "CN"
+}
+```
+
+## Caching
+
+Recommended cache TTLs:
+- Canonical files: 24 hours
+- Redirect files: 24 hours
+- Failed lookups: 1 hour
+
+## Best practices
+
+1. **Start simple**: Begin with minimal brand.json and add complexity as needed
+2. **Use redirects for subsidiaries**: Point brand domains to house domain
+3. **List all properties**: Include regional domains, apps, and legacy domains
+4. **Keep names current**: Include localized names and common aliases
+5. **Visual guidelines are optional**: Add them when you need generative systems to produce on-brand assets consistently. Start with colorways and restrictions — they have the highest immediate impact.
+6. **Keep portfolios lean**: For house portfolios with many brands, include visual guidelines only on brands that need them. Full visual guidelines on every brand in a large portfolio increases file size significantly.

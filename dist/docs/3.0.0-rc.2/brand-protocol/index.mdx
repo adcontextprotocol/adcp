@@ -1,0 +1,107 @@
+---
+title: Brand protocol
+sidebarTitle: Overview
+"og:image": /images/walkthrough/brand-before-after.png
+description: "brand.json is the open standard that tells AI agents how to use your brand correctly. Publish logos, colors, tone, and restrictions in one machine-readable file that every agent in the AdCP ecosystem obeys."
+"og:title": "AdCP — Brand protocol"
+---
+
+AI agents are generating content for your brand right now. Creative tools are picking logo variants, choosing color palettes, and writing copy in what they think is your voice. They pull this from wherever they can find it — cached web pages, scraped style guides, outdated press kits.
+
+You have no control over what they find. You have no way to tell them what not to do.
+
+## How it works
+
+You publish a single set of brand rules that every AI agent in the advertising ecosystem can read — your logos, colors, tone of voice, and what they must never do. The format is called `brand.json`, and it lives on your domain.
+
+A creative agent gets a brief: "Lunch promotion for Bistro Oranje, two-course menu, EUR 18.50."
+
+<img src="/images/walkthrough/brand-before-after.png" alt="Split panel: left side shows an AI agent frantically scraping mismatched brand elements, producing an off-brand ad with wrong colors and text over food imagery; right side shows the same agent calmly reading brand.json and producing a clean, on-brand ad with correct logo, palette, and layout" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+**Without brand.json**, the agent scrapes the website, finds an old logo, guesses at colors from the website, and puts a headline over the hero food shot. Close enough — until the brand team sees it.
+
+**With brand.json**, the agent fetches the file, pulls the correct wordmark, applies the exact palette, reads the warm tone, and sees the restriction against text over food imagery. It generates a food-forward composition with the headline below the image. No guessing. No corrections.
+
+The brand team did not brief the creative agent on any of this. The file did it for them.
+
+Every brand system in the world can serve a logo. Almost none of them can say "never place text over food imagery" in a way that an AI agent actually obeys. `brand.json` can — because restrictions are machine-readable rules, not guidelines buried in a PDF.
+
+## See what agents know about your brand
+
+Enter any domain on the [AgenticAdvertising.org brand registry](https://agenticadvertising.org/brands) to see what AI agents find for that brand today. Most brands return nothing — which means agents are guessing. Brands with `brand.json` show exactly what agents see.
+
+## Two tiers: public and authorized
+
+Not everything belongs in a public file. `brand.json` handles this with two access levels:
+
+| Level | What it includes | Who sees it |
+|-------|-----------------|-------------|
+| **Public** | Name, logo, colors, tagline, basic tone | Any AI agent |
+| **Authorized** | High-res assets, voice synthesis, detailed guidelines | Partners you approve |
+
+The public tier contains what is already on your website. The authorized tier is for the assets and guidelines you share only with agencies and partners. You decide who gets access by linking accounts — no data leaks to agents you have not approved.
+
+## One file, many uses
+
+Brands exist in hierarchies — a holding company, its brands, their sub-brands and franchise locations. `brand.json` handles this: start at any domain and the protocol finds the canonical brand identity. The buy side gets the same structured identity that publishers already have on the sell side.
+
+- **License real talent through the same file.** Your `brand.json` can declare which celebrity likenesses and voices are available, and on what terms. A buyer agent finds talent, negotiates pricing, and gets authorization for AI creative tools — without a single email. [Follow the full rights licensing story →](/dist/docs/3.0.0-rc.2/brand-protocol/walkthrough-rights-licensing)
+- **Keep every sub-brand consistent.** A franchise domain points to the parent brand in two lines. Every location inherits the full identity — logos, colors, tone, restrictions — with no separate configuration.
+- **Let the supply chain verify in real time.** Before serving an ad, any participant can confirm the talent license is still active and covers the right geography.
+
+## Start simple
+
+The smallest useful `brand.json` is just a name and a logo:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "house": { "domain": "novabrands.com", "name": "Nova Brands" },
+  "brands": [{
+    "id": "nova",
+    "names": [{"en": "Nova Brands"}],
+    "logos": [{"url": "https://novabrands.com/logo.svg"}]
+  }]
+}
+```
+
+Add colors when you are ready. Add tone guidelines later. Add visual restrictions when you see AI getting it wrong. The file grows with your needs.
+
+## Ecosystem support
+
+`brand.json` feeds into a growing ecosystem of agentic tools that read and act on your brand data:
+
+- **Buyer agents** that comply with AdCP reference your `brand.json` during campaign planning to ensure media buys align with your brand guidelines
+- **Creative agents** pull your colors, logos, restrictions, and tone of voice when generating on-brand assets
+- **The AgenticAdvertising.org registry** indexes published `brand.json` files so buyer and seller agents can discover your brand programmatically
+- **Any MCP-compatible AI tool** that implements the brand protocol can read your `brand.json` — the format is open and not locked to a single platform
+
+The more tools that adopt the protocol, the more value your `brand.json` delivers without any additional work on your part.
+
+## Go deeper
+
+**For brand teams:**
+
+<CardGroup cols={2}>
+  <Card title="For advertisers" icon="bullhorn" href="/dist/docs/3.0.0-rc.2/brand-protocol/for-advertisers">
+    How to license real talent for AI-generated campaigns.
+  </Card>
+  <Card title="For rights holders" icon="shield-halved" href="/dist/docs/3.0.0-rc.2/brand-protocol/for-rights-holders">
+    How AdCP protects and monetizes talent rights.
+  </Card>
+  <Card title="Rights licensing" icon="film" href="/dist/docs/3.0.0-rc.2/brand-protocol/walkthrough-rights-licensing">
+    Follow a buyer from talent discovery through acquisition and revocation.
+  </Card>
+</CardGroup>
+
+**For developers:**
+
+<CardGroup cols={2}>
+  <Card title="brand.json spec" icon="code" href="/dist/docs/3.0.0-rc.2/brand-protocol/brand-json">
+    Full technical specification for the file format.
+  </Card>
+  <Card title="Building a brand agent" icon="robot" href="/dist/docs/3.0.0-rc.2/brand-protocol/building-a-brand-agent">
+    Implement a brand agent that serves identity and rights.
+  </Card>
+</CardGroup>

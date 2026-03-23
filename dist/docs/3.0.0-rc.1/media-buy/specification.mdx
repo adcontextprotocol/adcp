@@ -1,0 +1,419 @@
+---
+title: Media Buy Specification
+sidebarTitle: Specification
+---
+
+<Info>
+**AdCP 3.0 Proposal** - This specification is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Info>
+
+**Status**: Request for Comments
+**Last Updated**: February 2026
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Abstract
+
+The Media Buy Protocol defines a standard interface for AI-powered advertising automation. This protocol enables AI agents to discover advertising inventory, create and manage campaigns, synchronize creative assets, and track performance through natural language interactions.
+
+## Protocol Overview
+
+The Media Buy Protocol provides:
+
+- Natural language inventory discovery based on campaign briefs
+- Campaign creation with package-level budget and targeting
+- Creative asset management and synchronization
+- Performance tracking and optimization feedback
+- Human-in-the-loop approval workflows
+
+## Transport Requirements
+
+Sales agents MUST support at least one of the following transports:
+
+| Transport | Protocol | Description |
+|-----------|----------|-------------|
+| MCP | Model Context Protocol | Tool-based interaction via JSON-RPC |
+| A2A | Agent-to-Agent | Message-based interaction |
+
+Sales agents SHOULD support MCP as the preferred transport.
+
+Sales agents MUST declare Media Buy Protocol support via `get_adcp_capabilities`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["media_buy"]
+}
+```
+
+## Core Concepts
+
+### Request Roles
+
+Every media buy request involves three entities:
+
+- **Orchestrator**: The platform making the API request (e.g., DSP, trading desk)
+- **Account**: The billing relationship—who gets billed and what rates apply (identified by `account_id`)
+- **Agent**: The entity placing the buy (identified by authentication token)
+
+### Sales Agent Types
+
+**Publisher Sales Agents** — represent a single publisher's inventory:
+- Sales agents MUST only return products for inventory they are authorized to sell
+- Sales agents MUST validate authorization via `adagents.json` when applicable
+
+**Aggregator Sales Agents** — represent multiple publishers:
+- Sales agents MUST clearly identify the source publisher for each product
+- Sales agents MUST NOT misrepresent inventory provenance
+
+### Identifiers
+
+- **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy.
+
+- **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.
+
+- **`buyer_ref`**: Client-provided reference for idempotency. Orchestrators SHOULD include this to enable retry safety.
+
+### Asynchronous Operations
+
+The Media Buy Protocol is asynchronous by design. Operations MAY return immediately or MAY require extended processing:
+
+- **Synchronous responses**: Sales agents MAY return completed results immediately
+- **Asynchronous responses**: Sales agents MAY return `status: "submitted"` or `status: "working"` with a task reference
+- **Human-in-the-loop**: Sales agents MAY require manual approval, indicated by `status: "pending_approval"`
+- **Rejection**: Sales agents MAY decline a media buy after creation, indicated by `status: "rejected"`. Orchestrators MUST treat `rejected` as a terminal state.
+
+Orchestrators MUST handle all response types and MUST NOT assume synchronous completion.
+
+## Tasks
+
+The Media Buy Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
+
+### get_products
+
+**Schema**: [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json) / [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
+
+**Reference**: [`get_products` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/get_products)
+
+Discover advertising inventory using natural language briefs or explicit wholesale intent.
+
+**Requirements:**
+- Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, or `"refine"`
+- Orchestrators MUST include `brief` when `buying_mode` is `"brief"`
+- Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"` or `"refine"`
+- Orchestrators MUST include `refine` when `buying_mode` is `"refine"`
+- Orchestrators MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
+- Orchestrators MUST provide `scope`, `id`, and `action` for each product and proposal entry in `refine`
+- Orchestrators MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
+- Sales agents MUST return products matching the brief criteria when a brief is provided
+- Sales agents MUST include `product_id` and `pricing_options` for each product
+- Sales agents SHOULD include relevance scoring when multiple products match
+
+**Refinement requirements:**
+
+Each `get_products` request with `buying_mode: "refine"` is self-contained — sales agents MUST NOT depend on transport-level session state. The `refine` array and `filters` on each request fully specify the refinement intent. Sellers maintain their own product and proposal registries; "stateless" means the protocol exchange carries no implicit state between calls. This enables stateless implementations and safe retries.
+
+- Sales agents MUST omit products with `action: "omit"` from the response
+- Sales agents MUST omit proposals with `action: "omit"` from the response
+- Sales agents MUST return products with `action: "include"`, with updated pricing
+- Sales agents SHOULD fulfill the `ask` on product entries with `action: "include"`
+- Sales agents SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product
+- Sales agents SHOULD consider request-level asks (`scope: "request"`) when composing the response — this MAY result in additional products beyond those explicitly referenced. Per-product actions take precedence over request-level direction.
+- Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
+- Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
+- Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
+
+### list_creative_formats
+
+**Schema**: [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) / [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json)
+
+**Reference**: [`list_creative_formats` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/list_creative_formats)
+
+Discover creative format requirements and specifications.
+
+**Requirements:**
+- Sales agents MUST return all supported creative formats
+- Sales agents MUST include technical specifications for each format
+- Sales agents SHOULD reference standard format IDs from the Creative Protocol when applicable
+
+### create_media_buy
+
+**Schema**: [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-request.json) / [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json)
+
+**Reference**: [`create_media_buy` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/create_media_buy)
+
+Create a media buy from selected packages or execute a proposal.
+
+**Requirements:**
+- Orchestrators MUST include either `packages` array or `proposal_id`
+- Orchestrators MUST include `start_time` and `end_time` for the campaign
+- Sales agents MUST return `media_buy_id` on successful creation
+- Sales agents MUST return `creative_deadline` indicating when creatives must be uploaded
+- Sales agents MUST validate budget against pricing options
+- On validation failure, sales agents MUST return an `errors` array
+
+### update_media_buy
+
+**Schema**: [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json) / [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json)
+
+**Reference**: [`update_media_buy` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/update_media_buy)
+
+Modify an existing media buy's budget, targeting, or settings.
+
+**Requirements:**
+- Orchestrators MUST include either `media_buy_id` or `buyer_ref`
+- Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
+- Sales agents MUST reject updates to media buys with status `completed` with error code `INVALID_STATE`
+- Sales agents MUST return `affected_packages` containing the state of each directly modified package after the update is applied (or the proposed state if pending approval); an empty array is valid when only campaign-level fields (e.g., `paused`, `start_time`) are updated
+- When manual approval is required, sales agents MUST persist the pending update request, MUST return `implementation_date: null`, and MUST NOT return empty `affected_packages`
+- Sales agents SHOULD return the updated media buy state
+
+### sync_catalogs
+
+**Schema**: [`media-buy/sync-catalogs-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-request.json) / [`media-buy/sync-catalogs-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-response.json)
+
+**Reference**: [`sync_catalogs` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/sync_catalogs)
+
+Synchronize catalogs (products, inventory, stores, and vertical feeds) on a seller account.
+
+**Requirements:**
+- Orchestrators MUST include `account_id`
+- When `catalogs` is provided, it MUST contain at least one catalog
+- When `catalogs` is omitted, the call is discovery-only and returns existing catalogs without modification
+- Sales agents MUST return per-catalog outcomes, including what action was taken and any item-level issues
+- Sales agents SHOULD support `dry_run` for validation without applying changes
+
+### list_creatives
+
+**Schema**: [`media-buy/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-request.json) / [`media-buy/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-response.json)
+
+**Reference**: [`list_creatives` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/list_creatives)
+
+Browse and filter creative assets in the library.
+
+**Requirements:**
+- Sales agents MUST return creatives accessible to the authenticated account
+- Sales agents MUST include approval status for each creative
+- Sales agents SHOULD support filtering by format, status, and date range
+
+### sync_creatives
+
+**Schema**: [`media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-request.json) / [`media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json)
+
+**Reference**: [`sync_creatives` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/sync_creatives)
+
+Upload and synchronize creative assets.
+
+**Requirements:**
+- Orchestrators MUST include creative manifest references or inline assets
+- Sales agents MUST validate creatives against format specifications
+- Sales agents MUST return validation errors for non-compliant creatives
+- Sales agents MAY require approval before creatives are available for use
+
+### get_media_buys
+
+**Schema**: [`media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-request.json) / [`media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-response.json)
+
+**Reference**: [`get_media_buys` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/get_media_buys)
+
+Retrieve operational media buy state, including package status, creative approvals, missing formats, and optional delivery snapshots.
+
+**Requirements:**
+- Orchestrators MAY filter by `account_id`, `media_buy_ids`, `buyer_refs`, and `status_filter`
+- Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
+- Sales agents MUST return current media buy status and package-level operational state for each matched media buy
+- Sales agents MUST include a media-buy currency and MUST denominate monetary fields consistently (`snapshot.currency` -> `package.currency` -> `media_buy.currency`)
+- Sales agents SHOULD include creative approval outcomes and pending format requirements when available
+- If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
+- When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
+- Default `status_filter: ["active"]` applies only when `media_buy_ids` and `buyer_refs` are both omitted
+
+### get_media_buy_delivery
+
+**Schema**: [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json) / [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json)
+
+**Reference**: [`get_media_buy_delivery` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/get_media_buy_delivery)
+
+Track performance metrics and campaign delivery.
+
+**Requirements:**
+- Orchestrators MUST include `media_buy_id`
+- Sales agents MUST return delivery metrics at the package level
+- Sales agents SHOULD include dimensional breakdowns when requested
+- Sales agents MUST include `as_of` timestamp indicating data freshness
+
+### provide_performance_feedback
+
+**Schema**: [`media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json) / [`media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json)
+
+**Reference**: [`provide_performance_feedback` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/provide_performance_feedback)
+
+Submit performance signals to enable publisher optimization.
+
+**Requirements:**
+- Orchestrators MUST include `media_buy_id` and performance metrics
+- Sales agents MUST acknowledge receipt of feedback
+- Sales agents SHOULD use feedback to optimize delivery within campaign constraints
+
+### sync_event_sources
+
+**Schema**: [`media-buy/sync-event-sources-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json) / [`media-buy/sync-event-sources-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
+
+**Reference**: [`sync_event_sources` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/sync_event_sources)
+
+Configure event sources on a seller account for conversion tracking with upsert semantics.
+
+**Requirements:**
+- Orchestrators MUST include `account_id`
+- When `event_sources` is provided, it MUST contain at least one event source
+- When `event_sources` is omitted, the call is discovery-only and returns all event sources on the account without modification
+- Sales agents MUST return per-source results with `action` indicating what happened
+- Sales agents MUST include seller-managed event sources in the response when present
+- Sales agents SHOULD return `setup` instructions for newly created event sources
+- Sales agents MAY include `seller_id` for cross-referencing in the seller's platform
+
+### log_event
+
+**Schema**: [`media-buy/log-event-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json) / [`media-buy/log-event-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/log-event-response.json)
+
+**Reference**: [`log_event` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/log_event)
+
+Send conversion or marketing events for attribution and optimization.
+
+**Requirements:**
+- Orchestrators MUST include `event_source_id` referencing a configured event source
+- Orchestrators MUST include at least one event with `event_id`, `event_type`, and `event_time`
+- Sales agents MUST return `events_received` and `events_processed` counts
+- Sales agents MUST deduplicate events by `event_id` + `event_type` + `event_source_id`
+- Sales agents SHOULD report `partial_failures` for individually failed events
+- Sales agents SHOULD return `match_quality` score when user matching is attempted
+
+### sync_audiences
+
+{/* Using latest because sync-audiences schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json) / [`media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-response.json)
+
+**Reference**: [`sync_audiences` task](/dist/docs/3.0.0-rc.1/media-buy/task-reference/sync_audiences)
+
+Manage first-party CRM audiences on a seller account. Upload hashed customer lists, check matching status, and reference the resulting audiences in targeting overlays.
+
+**Requirements:**
+- Orchestrators MUST include `account_id`
+- Orchestrators MUST include at least one audience with hashed member data
+- Sales agents MUST return per-audience outcomes with matching status
+- Sales agents SHOULD support `push_notification_config` for async matching completion
+- Sales agents MUST accept SHA-256 hashed identifiers for privacy compliance
+
+## Error Handling
+
+Sales agents MUST return errors using the [standard AdCP error schema](/dist/docs/3.0.0-rc.1/building/implementation/error-handling).
+
+Common error codes:
+
+- `MEDIA_BUY_NOT_FOUND`: Referenced media buy does not exist
+- `PACKAGE_NOT_FOUND`: Referenced package does not exist
+- `PRODUCT_NOT_FOUND`: Referenced product does not exist
+- `BUDGET_EXCEEDED`: Operation would exceed allocated budget
+- `CREATIVE_REJECTED`: Creative failed validation or approval
+- `INVALID_STATE`: Operation is not permitted for the media buy's current status (e.g., updating a completed media buy)
+- `VALIDATION_ERROR`: Request format or parameter errors
+- `UNAUTHORIZED`: Insufficient permissions for the operation
+
+## Security Considerations
+
+### Transport Security
+
+All Media Buy Protocol communications MUST use HTTPS with TLS 1.2 or higher.
+
+### Authentication
+
+- Orchestrators MUST authenticate with sales agents using valid credentials
+- Sales agents MUST validate credentials before processing requests
+- Sales agents MUST use account context to determine inventory access
+
+### Budget Authorization
+
+- Sales agents MUST validate that accounts are authorized for requested budget levels
+- Sales agents MUST NOT exceed authorized budget limits without explicit approval
+
+### Creative Security
+
+- Sales agents MUST validate creative content for policy compliance
+- Sales agents SHOULD scan creatives for malware and malicious content
+- Sales agents MUST NOT serve creatives that fail security validation
+
+## Conformance
+
+### Sales Agent Conformance
+
+A conformant Media Buy Protocol sales agent MUST:
+
+1. Support at least one specified transport (MCP or A2A)
+2. Implement all tasks per their schemas
+3. Return required fields as defined in response schemas
+4. Use specified error codes
+5. Handle asynchronous operations appropriately
+6. Enforce authentication and authorization
+
+### Orchestrator Conformance
+
+A conformant Media Buy Protocol orchestrator MUST:
+
+1. Authenticate with sales agents
+2. Include required fields as defined in request schemas
+3. Handle asynchronous responses (submitted, working, pending_approval)
+4. Use `media_buy_id` or `buyer_ref` to reference media buys in subsequent operations
+5. Respect `creative_deadline` for creative uploads
+
+## Implementation Notes
+
+### Response Time Expectations
+
+Sales agents SHOULD target the following response times:
+
+| Operation Type | Target Latency |
+|----------------|----------------|
+| Simple lookups (list_creative_formats, list_creatives) | < 1 second |
+| Discovery with AI/LLM (get_products) | < 60 seconds |
+| Reporting queries (get_media_buy_delivery) | < 60 seconds |
+| Campaign operations (create, update, sync) | Async acceptable |
+
+### Idempotency
+
+Sales agents SHOULD support idempotent operations using `buyer_ref`:
+
+- If a `buyer_ref` has been seen before, sales agents SHOULD return the existing resource
+- This enables safe retries without duplicate creation
+
+For mutation tasks (`update_media_buy`, `sync_creatives`), orchestrators MAY include an `idempotency_key` (8-255 characters) for safe retries. If a request fails without a response, resending with the same `idempotency_key` guarantees at-most-once execution.
+
+### Human-in-the-Loop
+
+Sales agents MAY require human approval for any operation. When approval is required:
+
+- Sales agents MUST return `status: "pending_approval"`
+- Sales agents SHOULD provide an estimated approval timeline
+- Orchestrators SHOULD implement webhook handlers for status updates
+
+## Schema Reference
+
+| Schema | Description |
+|--------|-------------|
+| [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json) | get_products request |
+| [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json) | get_products response |
+| [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-request.json) | create_media_buy request |
+| [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json) | create_media_buy response |
+| [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json) | update_media_buy request |
+| [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json) | update_media_buy response |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) | list_creative_formats request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`media-buy/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-request.json) | list_creatives request |
+| [`media-buy/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-response.json) | list_creatives response |
+| [`media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-request.json) | sync_creatives request |
+| [`media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json) | sync_creatives response |
+| [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json) | get_media_buy_delivery request |
+| [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json) | get_media_buy_delivery response |
+| [`media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json) | provide_performance_feedback request |
+| [`media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json) | provide_performance_feedback response |

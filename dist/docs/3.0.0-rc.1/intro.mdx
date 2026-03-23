@@ -1,0 +1,161 @@
+---
+title: Introduction to AdCP
+sidebarTitle: Introduction
+description: AdCP is an open standard for advertising automation that works over MCP and A2A protocols. Learn how to integrate AI-powered advertising workflows.
+keywords: [advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API]
+---
+
+<Warning>
+**AdCP 3.0 Release Candidate**
+
+You're viewing the v3 release candidate documentation. This release adds AI provenance and disclosure, creative compliance, search and retail media, and 27 other features. See [what's new in 3.0](/dist/docs/3.0.0-rc.1/reference/release-notes#version-300-rc1) and the [AdCP v3 overview](/dist/docs/3.0.0-rc.1/reference/whats-new-in-v3). For production use, switch to version 2.5 using the version selector above.
+</Warning>
+
+# Introduction to AdCP
+
+Every advertising platform has its own tools, APIs, and workflows. Scaling to more partners means scaling your team — more integrations, more dashboards, more manual coordination. The operational cost of working with 15 platforms is fundamentally different from working with 3.
+
+AdCP (Ad Context Protocol) is an open standard that gives AI agents a shared language for advertising. An agent using AdCP can discover inventory, buy media, build creatives, activate audiences, verify AI provenance, enforce brand suitability, resolve brand identity, and manage accounts — across any platform that implements the protocol.
+
+You set the strategy. Agents handle the execution. You approve what matters.
+
+## How it works
+
+AdCP defines **tasks** — discrete advertising operations like `get_products`, `create_media_buy`, or `activate_signal`. Each task has a JSON Schema-defined request and response. Agents call tasks through two transport protocols:
+
+- **MCP (Model Context Protocol)** — Direct integration with AI assistants. An MCP server exposes AdCP tasks as tools that any MCP-compatible client can call.
+- **A2A (Agent-to-Agent Protocol)** — Multi-agent workflows where specialized agents (media buying, creative, signals) collaborate on complex campaigns.
+
+The same task definitions work over both transports. Build once, serve both.
+
+## Protocol domains
+
+AdCP v3 covers eight domains:
+
+| Domain | What it does | Key tasks | Access |
+|--------|-------------|-----------|--------|
+| **Accounts** | Commercial identity and billing | `sync_accounts`, `list_accounts` | MCP / A2A |
+| **Media Buy** | Inventory discovery and campaign execution | `get_products`, `create_media_buy` | MCP / A2A |
+| **Creative** | Creative generation, catalogs, and AI provenance | `build_creative`, `sync_creatives`, `sync_catalogs` | MCP / A2A |
+| **Signals** | Audience and targeting data | `get_signals`, `activate_signal` | MCP / A2A |
+| **Governance** | Brand suitability, compliance, and provenance verification | `create_property_list`, `calibrate_content` | MCP / A2A |
+| **Sponsored Intelligence** | Conversational brand experiences | `si_initiate_session`, `si_send_message` | MCP / A2A |
+| **Brand Protocol** | Brand identity and discovery | `brand.json` resolution | HTTP / MCP |
+| **Registry** | Entity resolution and agent discovery | `/api/brands/resolve`, `/api/registry/agents` | REST API |
+
+These domains work together. A typical workflow: resolve a brand via **Brand Protocol**, establish billing via **Accounts**, discover inventory via **Media Buy**, find audiences via **Signals**, check brand suitability via **Governance**, build ads via **Creative**, and execute across platforms.
+
+<Card title="Protocol architecture" icon="sitemap" href="/dist/docs/3.0.0-rc.1/protocol/architecture">
+  How the layers fit together: identity, transaction domains, governance, and technical execution.
+</Card>
+
+## Quick start
+
+<CardGroup cols={2}>
+  <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">
+    Ask questions about AdCP, explore the protocol, and test tasks — no code required
+  </Card>
+  <Card title="Quickstart guide" icon="rocket" href="/dist/docs/3.0.0-rc.1/quickstart">
+    Get started in 5 minutes with code examples
+  </Card>
+  <Card title="Brand.json builder" icon="palette" href="https://adcontextprotocol.org/brand-builder">
+    Create and validate your brand's brand.json file
+  </Card>
+  <Card title="AdAgents.json builder" icon="hammer" href="https://adcontextprotocol.org/adagents">
+    Validate or create your publisher's adagents.json file
+  </Card>
+  <Card title="Registry" icon="magnifying-glass" href="https://adcontextprotocol.org/registry">
+    Browse registered agents, brands, and publishers
+  </Card>
+  <Card title="Building with AdCP" icon="code" href="/dist/docs/3.0.0-rc.1/building">
+    Choose between MCP and A2A, learn implementation patterns
+  </Card>
+</CardGroup>
+
+## Examples
+
+### Discover and buy media
+
+> "Find premium video inventory on sports publishers for a Q2 campaign with a $50,000 budget."
+
+The agent discovers products from connected sales agents, evaluates proposals with delivery forecasts, applies governance property lists to filter for brand-suitable inventory, and creates a media buy — all through standard AdCP tasks.
+
+### Activate audience signals
+
+> "Find high-intent athletic footwear audiences and activate them for our campaign."
+
+The agent queries connected signals agents with a natural language brief, evaluates pricing options, and activates chosen signals on the decisioning platform.
+
+### Generate creatives from brand identity
+
+> "Build display and video creatives for our new trail running shoe using our brand guidelines and product catalog."
+
+The agent resolves brand identity via `brand.json`, retrieves brand assets (logos, colors, tone), discovers available formats from creative agents, syncs the product catalog, and generates on-brand creatives.
+
+### Engage users conversationally
+
+> "A user in our AI assistant is asking about running shoes. Connect them with the brand's agent for a personalized experience."
+
+The host initiates a Sponsored Intelligence session. The brand agent engages conversationally with product recommendations and UI components, and the session can hand off to commerce checkout.
+
+### Verify AI creative compliance
+
+> "Check that all creatives for our campaign carry valid provenance metadata and meet EU AI Act disclosure requirements before they go live."
+
+The agent evaluates provenance claims on each creative via `get_creative_features`, checks for required disclosure positions and jurisdictions against the brief's compliance requirements, and flags gaps before the campaign launches. Governance agents can independently verify AI content claims using third-party detection services.
+
+## For platform providers
+
+AI is buying ads. Make sure it can buy yours.
+
+If you operate a DSP, SSP, publisher, data platform, creative platform, governance service, or any ad tech solution, AdCP lets AI agents discover and transact with your platform. To get started:
+
+1. **Implement an AdCP agent** — Expose your platform's capabilities as AdCP tasks over MCP or A2A. Start with `get_adcp_capabilities`.
+2. **Publish your adagents.json** — Declare your properties and authorized agents so buyers can discover you.
+3. **Test your implementation** — Validate with [Addie](https://adcontextprotocol.org/chat), the [client SDKs](/dist/docs/3.0.0-rc.1/building/schemas-and-sdks), or the [CLI](/dist/docs/3.0.0-rc.1/quickstart).
+
+Implement the protocol domains relevant to your business:
+- **Publishers and SSPs**: [Media Buy](/dist/docs/3.0.0-rc.1/media-buy) and [adagents.json](/dist/docs/3.0.0-rc.1/governance/property)
+- **Data providers**: [Signals](/dist/docs/3.0.0-rc.1/signals/overview) and [data provider guide](/dist/docs/3.0.0-rc.1/signals/data-providers)
+- **Creative platforms**: [Creative](/dist/docs/3.0.0-rc.1/creative)
+- **Governance vendors**: [Governance protocol](/dist/docs/3.0.0-rc.1/governance/overview)
+- **Brands**: [Brand Protocol](/dist/docs/3.0.0-rc.1/brand-protocol) and [brand.json](/dist/docs/3.0.0-rc.1/brand-protocol/brand-json)
+
+## For advertisers and agencies
+
+Run campaigns across more platforms without scaling your team.
+
+AdCP-enabled agents work across all your media partners through a single interface — the same tasks buy CTV inventory, activate audience data, and manage creatives regardless of which platform you're working with.
+
+1. **Check platform support** — See which of your media partners support AdCP, or browse the [registry](/dist/docs/3.0.0-rc.1/registry).
+2. **Try it with Addie** — [Ask Addie](https://adcontextprotocol.org/chat) to walk you through the protocol — no code required.
+3. **Connect with your team** — Share the [quickstart guide](/dist/docs/3.0.0-rc.1/quickstart) with your technical team to integrate client libraries.
+
+### Client libraries
+
+<CodeGroup>
+```bash JavaScript/TypeScript
+npm install @adcp/client
+```
+```bash Python
+pip install adcp
+```
+</CodeGroup>
+
+- **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
+- **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-python)
+
+## Reference implementations
+
+- [Signals Agent](https://github.com/adcontextprotocol/signals-agent)
+- [Sales Agent](https://github.com/adcontextprotocol/salesagent)
+
+## Organization
+
+AdCP is a project of [AgenticAdvertising.org](https://agenticadvertising.org), an industry organization of publishers, platforms, agencies, and technology providers advancing open standards for AI-powered advertising. Members join AgenticAdvertising.org to develop and adopt the protocol.
+
+## Need help?
+
+- Browse the documentation
+- Ask in [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- Email: support@adcontextprotocol.org

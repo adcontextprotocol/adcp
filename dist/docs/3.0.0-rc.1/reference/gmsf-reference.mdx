@@ -1,0 +1,166 @@
+---
+title: GMSF Reference
+description: Global Media Sustainability Framework essentials for AI agents
+---
+
+# GMSF Reference
+
+Token-efficient reference for the Global Media Sustainability Framework. Designed for AI agents discussing advertising sustainability.
+
+## What is GMSF?
+
+The **Global Media Sustainability Framework (GMSF)** is an industry standard for measuring and reducing carbon emissions from media and advertising. Developed by Ad Net Zero and industry stakeholders.
+
+**Goal**: Standardized carbon measurement across the advertising supply chain.
+
+## Key Organizations
+
+| Organization | Role |
+|--------------|------|
+| **Ad Net Zero** | Industry coalition leading sustainability initiatives |
+| **WFA** | World Federation of Advertisers - coordinates brand commitments |
+| **IAB** | Provides technical standards and implementation guidance |
+| **Scope3** | Carbon measurement platform for media |
+
+## Carbon Emission Sources in Ad Tech
+
+### By Supply Chain Stage
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CAMPAIGN CREATION                        │
+│ Creative production, asset hosting, transcoding             │
+│ Carbon: Medium                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    AD DECISIONING                           │
+│ Bid requests, auction processing, ML inference              │
+│ Carbon: HIGH (biggest contributor in programmatic)          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    AD DELIVERY                              │
+│ CDN distribution, ad rendering, tracking pixels             │
+│ Carbon: Medium-High                                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    MEASUREMENT                              │
+│ Attribution, reporting, analytics                           │
+│ Carbon: Low-Medium                                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Programmatic Waste Points
+
+| Issue | Carbon Impact | Description |
+|-------|---------------|-------------|
+| **Bid requests** | Very High | Billions of requests, most fail to win |
+| **Header bidding** | High | Multiple SSPs = multiplied requests |
+| **Reselling** | High | Same impression sold multiple times |
+| **MFA sites** | High | Made-for-advertising sites with low value |
+| **Invalid traffic** | High | Bots generating worthless impressions |
+
+## GMSF Measurement Framework
+
+### Scope Categories
+
+| Scope | Definition | Examples in Ad Tech |
+|-------|------------|---------------------|
+| **Scope 1** | Direct emissions | Office HVAC, company vehicles |
+| **Scope 2** | Indirect from energy | Data center electricity |
+| **Scope 3** | Value chain emissions | Media buying, creative production |
+
+**Note**: Most advertising carbon is Scope 3 (downstream supply chain).
+
+### Key Metrics
+
+| Metric | Definition | Target |
+|--------|------------|--------|
+| **gCO2e/impression** | Grams CO2 equivalent per ad impression | Lower is better |
+| **gCO2e/1000 impressions** | Per-mille carbon | Industry benchmarks |
+| **Supply path carbon** | Emissions from intermediaries | Minimize hops |
+
+### Typical Carbon Values
+
+| Channel | gCO2e per 1000 impressions | Notes |
+|---------|---------------------------|-------|
+| Direct sold | 50-150 | Shortest path |
+| Programmatic display | 200-400 | Many intermediaries |
+| Programmatic video | 400-800 | Larger files + auctions |
+| CTV programmatic | 300-600 | Depends on supply path |
+
+*Values are approximate and vary by measurement methodology.*
+
+## How AdCP Reduces Carbon
+
+| Programmatic Problem | AdCP Solution | Carbon Reduction |
+|---------------------|---------------|------------------|
+| Billions of bid requests | Direct negotiation | 90%+ fewer requests |
+| Multi-hop supply paths | Publisher-direct | Eliminated intermediaries |
+| Real-time auctions | Asynchronous decisions | Reduced server compute |
+| Cookie syncing | Context-based matching | Eliminated sync traffic |
+| Speculative bidding | Intent-based buying | Only requested inventory |
+
+### Quantified Benefits
+
+```
+Traditional Programmatic:
+1 impression = 50+ bid requests × 10+ SSPs = 500+ server calls
+
+AdCP Agentic:
+1 impression = 1 request to sales agent = 1 server call
+
+Reduction: ~99% fewer server calls
+```
+
+## Sustainability Best Practices
+
+### For Buyers
+
+| Practice | Impact |
+|----------|--------|
+| Reduce supply chain hops | -30-50% carbon |
+| Use direct deals over open auction | -40-60% carbon |
+| Avoid MFA inventory | -20-40% carbon |
+| Choose green-certified publishers | Variable |
+| Optimize creative file sizes | -10-20% carbon |
+
+### For Publishers
+
+| Practice | Impact |
+|----------|--------|
+| Reduce header bidding partners | -20-40% carbon |
+| Implement lazy loading | -15-25% carbon |
+| Optimize ad refresh frequency | -10-30% carbon |
+| Use renewable energy hosting | -50-90% carbon |
+| Enable agentic/direct channels | -60-90% carbon |
+
+## GMSF Resources
+
+| Resource | URL |
+|----------|-----|
+| Ad Net Zero | [adnetzero.com](https://adnetzero.com) |
+| GMSF Documentation | [wfanet.org/gmsf](https://wfanet.org/leadership/gmsf) |
+| Scope3 | [scope3.com](https://scope3.com) |
+| IAB Sustainability | [iab.com/sustainability](https://www.iab.com/topics/sustainability/) |
+
+## Key Terms
+
+| Term | Definition |
+|------|------------|
+| **Carbon offset** | Compensating emissions by funding carbon removal |
+| **Carbon neutral** | Net zero emissions (offsets allowed) |
+| **Net zero** | Actual zero emissions (no offsets) |
+| **Science-based targets** | Reduction goals aligned with climate science |
+| **GHG Protocol** | Standard for measuring greenhouse gases |
+| **MFA** | Made-for-advertising (low-quality sites) |
+| **SPO** | Supply path optimization |
+
+---
+
+*This is a placeholder document. Content will be enhanced with more detail and citations in future updates.*

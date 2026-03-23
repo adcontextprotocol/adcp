@@ -1,0 +1,322 @@
+---
+title: Creative libraries and concepts
+description: "Creative libraries in AdCP let buyers browse, organize, and track approval status for creatives across ad servers and management platforms."
+"og:title": "AdCP — Creative libraries and concepts"
+---
+
+
+Creative libraries let buyers manage creatives through AdCP — browsing existing assets, uploading new ones, assigning them to campaigns, and tracking approval status. A creative library is hosted by any agent that declares `has_creative_library: true` in its capabilities: ad servers (CM360, Flashtalking), creative management platforms (Celtra), or sales agents with [inline creative management](/dist/docs/3.0.0-rc.2/creative/sales-agent-creative-capabilities).
+
+## The model
+
+A creative library organizes assets at three levels:
+
+| Level | AdCP equivalent | Examples |
+|---|---|---|
+| Account | Account (via [accounts protocol](/dist/docs/3.0.0-rc.2/accounts/overview)) | Advertiser in CM360, brand workspace in Celtra |
+| Concept | `concept_id` / `concept_name` | Flashtalking concept, CM360 creative group, Celtra campaign folder |
+| Creative | Creative item with `creative_id`, `format_id`, `assets` | A 300x250 display ad, a 30s video spot |
+
+**Concepts** group related creatives across sizes and formats. A "Holiday 2026" concept might contain a 300x250 banner, a 728x90 leaderboard, and a 30s video — all expressing the same campaign idea. Use `concept_id` to filter and manage them as a group.
+
+## Connecting to a library
+
+Establish account access before querying:
+
+```json
+{
+  "accounts": [{
+    "account_id": "acct_acme_2026",
+    "account_name": "Acme Corp",
+    "credentials": {
+      "api_key": "..."
+    }
+  }]
+}
+```
+
+The account setup is the same whether the library is on a standalone creative agent or a sales agent. See [accounts protocol](/dist/docs/3.0.0-rc.2/accounts/overview) for details.
+
+## Browsing creatives
+
+Use [`list_creatives`](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creatives) to browse the library. Filter by concept, format, status, tags, or date range:
+
+```json
+{
+  "filters": {
+    "concept_ids": ["concept_holiday_2026"],
+    "statuses": ["approved"],
+    "format_ids": [{
+      "agent_url": "https://ads.flashtalking-example.com",
+      "id": "display_300x250"
+    }]
+  },
+  "include": {
+    "variables": true,
+    "assignments": true
+  }
+}
+```
+
+Each creative in the response includes:
+
+```json
+{
+  "creative_id": "ft_88201",
+  "name": "Holiday 2026 - Medium Rectangle",
+  "format_id": {
+    "agent_url": "https://ads.flashtalking-example.com",
+    "id": "display_300x250"
+  },
+  "status": "approved",
+  "concept_id": "concept_holiday_2026",
+  "concept_name": "Holiday 2026 Campaign",
+  "created_date": "2026-10-15T14:00:00Z",
+  "updated_date": "2026-11-20T09:30:00Z",
+  "tags": ["holiday_2026", "display"],
+  "variables": [
+    {
+      "variable_id": "headline",
+      "name": "Headline text",
+      "type": "text",
+      "default_value": "Holiday Sale — Up to 40% Off"
+    }
+  ],
+  "assignments": [
+    { "package_id": "pkg_premium_display", "weight": 100 }
+  ]
+}
+```
+
+The `status` field reflects the creative's current state in the library: `processing`, `pending_review`, `approved`, `rejected`, or `archived`. See [creative review](/dist/docs/3.0.0-rc.2/creative/sales-agent-creative-capabilities#creative-review) for how status transitions work.
+
+## Uploading creatives
+
+Use [`sync_creatives`](/dist/docs/3.0.0-rc.2/creative/task-reference/sync_creatives) to upload new creatives or update existing ones. The operation uses upsert semantics — if a `creative_id` already exists, it updates; otherwise it creates.
+
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "acme_video_001",
+      "name": "Holiday Sale 30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_standard_30s"
+      },
+      "assets": {
+        "video": {
+          "url": "https://cdn.acme-example.com/holiday-sale-30s.mp4",
+          "width": 1920,
+          "height": 1080,
+          "duration_ms": 30000
+        },
+        "click_url": {
+          "url": "https://acme-example.com/holiday-sale"
+        }
+      }
+    }
+  ]
+}
+```
+
+The response tells you what happened to each creative:
+
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "acme_video_001",
+      "action": "created"
+    }
+  ]
+}
+```
+
+After upload, the creative enters the library's review process. Check `list_creatives` to see when it transitions from `pending_review` to `approved`.
+
+### Uploading with assignments
+
+Assign creatives to packages in the same call:
+
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "acme_video_001",
+      "name": "Holiday Sale 30s",
+      "format_id": { "agent_url": "...", "id": "video_standard_30s" },
+      "assets": { "...": "..." }
+    }
+  ],
+  "assignments": [
+    {
+      "creative_id": "acme_video_001",
+      "package_id": "pkg_premium_video"
+    }
+  ]
+}
+```
+
+## Generating tags from library creatives
+
+When you need a serving tag for a creative in the library, use [`build_creative`](/dist/docs/3.0.0-rc.2/creative/task-reference/build_creative) with `creative_id` instead of a manifest:
+
+```json
+{
+  "creative_id": "ft_88201",
+  "concept_id": "concept_holiday_2026",
+  "target_format_id": {
+    "agent_url": "https://ads.flashtalking-example.com",
+    "id": "display_300x250"
+  }
+}
+```
+
+The creative agent resolves the `creative_id` from its library and returns a manifest with the serving tag. The tag format depends on the platform:
+
+- **Flashtalking, Celtra**: Universal tags that adapt to any environment. No placement context needed.
+- **CM360**: Placement-level tags that require trafficking context. Pass `media_buy_id` and `package_id`:
+
+```json
+{
+  "creative_id": "cm360_creative_12345",
+  "target_format_id": {
+    "agent_url": "https://ads.cm360-example.com",
+    "id": "display_300x250"
+  },
+  "media_buy_id": "buy_holiday_q4",
+  "package_id": "pkg_premium_display"
+}
+```
+
+See [tag generation models](/dist/docs/3.0.0-rc.2/creative/implementing-creative-agents#tag-generation-models) for the full breakdown.
+
+## Assigning creatives to campaigns
+
+There are two paths for attaching library creatives to a media buy:
+
+### Path 1: Creative assignments on the package
+
+Reference library creatives by ID when creating the media buy:
+
+```json
+{
+  "packages": [{
+    "buyer_ref": "pkg_premium_display",
+    "product_id": "premium_display",
+    "creative_assignments": [
+      { "creative_id": "ft_88201", "weight": 60 },
+      { "creative_id": "ft_88202", "weight": 40 }
+    ]
+  }]
+}
+```
+
+This works when the creative is already in the agent's library (via `sync_creatives` or the platform's own upload flow).
+
+### Path 2: Inline creatives on the package
+
+Upload the creative directly with the media buy — no separate sync step:
+
+```json
+{
+  "packages": [{
+    "buyer_ref": "pkg_premium_display",
+    "product_id": "premium_display",
+    "creatives": [{
+      "creative_id": "acme_banner_001",
+      "name": "Holiday banner",
+      "format_id": { "agent_url": "...", "id": "display_300x250" },
+      "assets": { "...": "..." }
+    }]
+  }]
+}
+```
+
+The agent adds the creative to its library and assigns it to the package in one operation. See [inline creative management](/dist/docs/3.0.0-rc.2/creative/sales-agent-creative-capabilities) for details.
+
+### Multi-seller distribution
+
+When you work with multiple sellers, build creatives once and distribute them:
+
+1. **Build** on your creative agent:
+```json
+{
+  "message": "Create a holiday promotion banner",
+  "target_format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" }
+  ]
+}
+```
+
+2. **Sync** to each seller's library:
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "holiday_2026_300x250",
+      "name": "Holiday 2026 - Medium Rectangle",
+      "concept_id": "concept_holiday_2026",
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+      "assets": { }
+    }
+  ]
+}
+```
+
+Call `sync_creatives` on each sales agent separately. Use the same `creative_id` and `concept_id` across sellers so you can correlate the same creative and campaign concept across your media buys. See [Multi-agent creative orchestration](/dist/docs/3.0.0-rc.2/creative/multi-agent-orchestration) for the full pattern.
+
+3. **Track approval** per seller — each seller reviews independently. Poll `list_creatives` on each agent to check status. A creative may be `approved` on one seller and `rejected` on another based on their policies.
+
+## Tracking approval status
+
+Creative approval operates at two levels:
+
+**Library level**: The `status` field on each creative in [`list_creatives`](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creatives) — `processing`, `pending_review`, `approved`, `rejected`, or `archived`.
+
+**Package level**: The `approval_status` on each creative in [`get_media_buys`](/dist/docs/3.0.0-rc.2/media-buy/task-reference/get_media_buys) — `pending_review`, `approved`, or `rejected` with `rejection_reason`.
+
+A creative can be `approved` in the library but `rejected` at the package level if it violates placement-specific policies. Poll both after syncing or submitting a media buy with new creatives.
+
+## Dynamic creative optimization (DCO)
+
+Creatives with dynamic content variables appear in the library with a `variables` array when you request `include: { variables: true }`. Each variable defines a slot that the ad server fills at serve time:
+
+```json
+{
+  "variables": [
+    {
+      "variable_id": "headline",
+      "name": "Headline text",
+      "type": "text",
+      "default_value": "Holiday Sale — Up to 40% Off"
+    },
+    {
+      "variable_id": "product_image",
+      "name": "Product image",
+      "type": "image",
+      "default_value": "https://cdn.acme-example.com/hero.jpg"
+    },
+    {
+      "variable_id": "cta_color",
+      "name": "CTA button color",
+      "type": "color",
+      "default_value": "#FF6600"
+    }
+  ]
+}
+```
+
+Use `has_variables: true` in `list_creatives` filters to find DCO creatives. Variable types match common platform patterns: `text`, `color`, `image`, `video`, `number`, `boolean`.
+
+How the ad server uses these variables at serve time (data feeds, targeting rules, optimization algorithms) is outside AdCP's scope. AdCP models the variable *slots*, not the optimization logic.
+
+## Next steps
+
+- [Generative creative](/dist/docs/3.0.0-rc.2/creative/generative-creative) — AI-powered creative generation and brief-in-media-buy workflows
+- [Creative capabilities on sales agents](/dist/docs/3.0.0-rc.2/creative/sales-agent-creative-capabilities) — When the seller manages both media and creative
+- [Implementing creative agents](/dist/docs/3.0.0-rc.2/creative/implementing-creative-agents) — Building an AdCP creative agent around your platform
+- [sync_creatives reference](/dist/docs/3.0.0-rc.2/creative/task-reference/sync_creatives) — Upload API details
+- [list_creatives reference](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creatives) — Query API details with full filtering options

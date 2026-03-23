@@ -1,0 +1,208 @@
+---
+title: si_send_message
+---
+
+Send a message within an active SI session. The host invokes this task to relay user messages and action responses to the brand agent.
+
+## Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `session_id` | string | Yes | Session ID from `si_initiate_session` |
+| `message` | string | No | User's text message |
+| `action_response` | object | No | Response to a UI action (button click, form submit) |
+
+At least one of `message` or `action_response` must be provided.
+
+### Action Response Object
+
+When the user interacts with a UI element:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | Yes | The action identifier from the UI element |
+| `element_id` | string | No | ID of the specific UI element |
+| `payload` | object | No | Additional data from the interaction |
+
+## Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | Confirms the active session |
+| `response` | object | Brand agent's response |
+| `session_status` | string | Current session state |
+| `handoff` | object | Present when session_status is "pending_handoff" |
+
+### Session Status Values
+
+| Status | Description |
+|--------|-------------|
+| `active` | Session continues normally |
+| `pending_handoff` | Brand agent signals readiness to hand off |
+| `complete` | Conversation is done |
+
+### Handoff Object
+
+When `session_status` is `pending_handoff`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | "transaction" or "complete" |
+| `intent` | object | For transactions: what the user wants to buy |
+| `context_for_checkout` | object | Summary for ACP handoff |
+
+## Examples
+
+### Simple Message Exchange
+
+**Request:**
+
+```json
+{
+  "session_id": "sess_abc123",
+  "message": "Do you have any earlier flights?"
+}
+```
+
+**Response:**
+
+```json
+{
+  "session_id": "sess_abc123",
+  "response": {
+    "message": "Yes! There's DL628 departing at 5:30 AM. It's a bit earlier but also qualifies for the Premium Economy upgrade.",
+    "ui_elements": [
+      {
+        "type": "carousel",
+        "data": {
+          "items": [
+            {
+              "title": "DL628 - 5:30 AM",
+              "subtitle": "Arrives 8:57 AM",
+              "price": "$199",
+              "badge": "Free Upgrade"
+            },
+            {
+              "title": "DL632 - 6:15 AM",
+              "subtitle": "Arrives 9:42 AM",
+              "price": "$199",
+              "badge": "Free Upgrade"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "session_status": "active"
+}
+```
+
+### Action Response (Button Click)
+
+**Request:**
+
+```json
+{
+  "session_id": "sess_abc123",
+  "action_response": {
+    "action": "select_flight",
+    "payload": {
+      "flight_number": "DL628",
+      "departure_time": "05:30"
+    }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "session_id": "sess_abc123",
+  "response": {
+    "message": "Great choice! DL628 is confirmed with your Premium Economy upgrade. Ready to book?",
+    "ui_elements": [
+      {
+        "type": "product_card",
+        "data": {
+          "title": "DL628 to Boston",
+          "subtitle": "Tue Jan 27, 5:30 AM → 8:57 AM",
+          "price": "$199",
+          "badge": "Premium Economy",
+          "cta": { "label": "Book Now", "action": "checkout" }
+        }
+      }
+    ]
+  },
+  "session_status": "active"
+}
+```
+
+### Transaction Handoff
+
+When the user is ready to purchase:
+
+**Request:**
+
+```json
+{
+  "session_id": "sess_abc123",
+  "action_response": {
+    "action": "checkout"
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "session_id": "sess_abc123",
+  "response": {
+    "message": "Perfect! I'll hand you back to complete the booking."
+  },
+  "session_status": "pending_handoff",
+  "handoff": {
+    "type": "transaction",
+    "intent": {
+      "action": "purchase",
+      "product": {
+        "type": "flight",
+        "flight_number": "DL628",
+        "departure": "2026-01-27T05:30:00-05:00",
+        "arrival": "2026-01-27T08:57:00-05:00",
+        "origin": "JFK",
+        "destination": "BOS",
+        "class": "premium_economy"
+      },
+      "price": {
+        "amount": 199,
+        "currency": "USD"
+      }
+    },
+    "context_for_checkout": {
+      "conversation_summary": "Jane selected DL628 JFK→BOS on Jan 27 with free Premium Economy upgrade via campaign offer",
+      "applied_offers": ["delta_chatgpt_3313"]
+    }
+  }
+}
+```
+
+## Handling Handoffs
+
+When you receive `session_status: "pending_handoff"`:
+
+1. **For `type: "transaction"`** - Initiate ACP checkout with the provided intent and context
+2. **For `type: "complete"`** - The conversation is done; return to normal chat
+
+The host should call `si_terminate_session` after handling the handoff to properly close the session.
+
+## Key Points
+
+1. **Message or action_response** - Each request needs at least one. Users can type messages or interact with UI elements.
+
+2. **Session status drives flow** - Check `session_status` on every response to know if the conversation continues or needs handoff.
+
+3. **Handoff preserves context** - The `context_for_checkout` object gives ACP everything needed for a seamless purchase experience.
+
+4. **UI elements are optional** - Brand agent decides when to include cards, carousels, etc. based on the conversation.

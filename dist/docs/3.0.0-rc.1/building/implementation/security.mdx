@@ -1,0 +1,388 @@
+---
+title: Security
+description: Security considerations for AdCP integrations including webhook verification, replay prevention, and access control
+---
+
+<Warning>
+**Critical for Production Use**
+
+AdCP handles financial commitments and potentially sensitive campaign data. Implementations managing real advertising budgets must implement the security controls outlined in this document.
+</Warning>
+
+## Overview
+
+AdCP operates in a high-stakes environment where:
+- **Financial transactions** involve real advertising spend
+- **Multi-party trust** requires coordination between Principals, Publishers, and Orchestrators
+- **Sensitive data** includes first-party signals, pre-launch creatives, and competitive targeting strategies
+- **Asynchronous operations** span multiple systems and protocols
+
+## Risk Classification
+
+### High-Risk Operations (Financial)
+
+These operations commit real advertising budgets:
+
+| Operation | Risk | Primary Threat |
+|-----------|------|----------------|
+| `create_media_buy` | Creates financial commitments | Budget fraud, credential theft |
+| `update_media_buy` | Modifies budgets and campaign parameters | Unauthorized modifications |
+
+**Requirements:**
+- Short-lived credentials (tokens expiring in ≤15 minutes)
+- Request signing for transaction integrity
+- Multi-factor authentication or approval workflows for large budgets
+- Full audit trail with immutable logging
+
+### Medium-Risk Operations (Data Access)
+
+These operations access sensitive business data:
+
+| Operation | Risk |
+|-----------|------|
+| `get_media_buy_delivery` | Exposes performance metrics and spend data |
+| `list_creatives` | Access to creative assets |
+| `sync_creatives` | Uploads potentially sensitive creative content |
+
+### Low-Risk Operations (Discovery)
+
+These operations are publicly accessible:
+
+| Operation | Risk |
+|-----------|------|
+| `get_adcp_capabilities` | Agent capability discovery |
+| `get_products` | Public inventory discovery |
+| `list_creative_formats` | Public format catalog |
+
+## Webhook Security
+
+### Signature Verification
+
+Always verify webhook authenticity:
+
+```javascript
+function verifyWebhookSignature(payload, signature, secret) {
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(`sha256=${expectedSignature}`)
+  );
+}
+
+app.post('/webhooks/adcp', (req, res) => {
+  const signature = req.headers['x-adcp-signature'];
+  const payload = JSON.stringify(req.body);
+
+  if (!verifyWebhookSignature(payload, signature, process.env.WEBHOOK_SECRET)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Process webhook...
+});
+```
+
+### Replay Attack Prevention
+
+Use timestamps and event IDs to prevent replay attacks:
+
+```javascript
+async function isReplayAttack(timestamp, eventId) {
+  const eventTime = new Date(timestamp);
+  const now = new Date();
+  const fiveMinutes = 5 * 60 * 1000;
+
+  // Reject events older than 5 minutes
+  if (now - eventTime > fiveMinutes) {
+    console.warn(`Rejecting old webhook event ${eventId}`);
+    return true;
+  }
+
+  // Check if we've seen this event ID before
+  const seen = await db.hasSeenWebhookEvent(eventId);
+  if (seen) {
+    console.warn(`Rejecting duplicate webhook event ${eventId}`);
+    return true;
+  }
+
+  // Record this event ID
+  await db.recordWebhookEvent(eventId, timestamp);
+  return false;
+}
+```
+
+## Authentication Best Practices
+
+### Credential Storage
+
+```javascript
+// Use secure key management systems
+// Never commit credentials to version control
+// Use environment variables or secret managers
+
+// Example: Secure credential retrieval
+async function getCredentials(principalId) {
+  // Retrieve from secure storage (AWS KMS, Vault, etc.)
+  const encrypted = await secretManager.get(`principal/${principalId}/apiKey`);
+  return decrypt(encrypted);
+}
+```
+
+### Token Expiration
+
+Use short-lived tokens for high-risk operations:
+
+```javascript
+const TOKEN_LIFETIMES = {
+  discovery: 3600,     // 1 hour for read operations
+  financial: 900,      // 15 minutes for financial operations
+  refresh: 86400       // 24 hours for refresh tokens
+};
+
+function validateToken(token, operationType) {
+  const decoded = jwt.verify(token, secret);
+  const maxAge = TOKEN_LIFETIMES[operationType] || TOKEN_LIFETIMES.discovery;
+
+  if (Date.now() - decoded.iat > maxAge * 1000) {
+    throw new Error('Token expired for this operation type');
+  }
+
+  return decoded;
+}
+```
+
+## Principal Isolation
+
+### Multi-Tenant Security
+
+Orchestrators managing multiple principals must enforce strict isolation:
+
+```javascript
+// ALWAYS filter by principal_id - never query without it
+async function getMediaBuy(mediaBuyId, principalId) {
+  const mediaBuy = await db.mediaBuys.findOne({
+    id: mediaBuyId,
+    principal_id: principalId  // Critical: prevents cross-principal access
+  });
+
+  if (!mediaBuy) {
+    // Generic error - don't reveal if campaign exists for another principal
+    throw new NotFoundError("Media buy not found");
+  }
+
+  return mediaBuy;
+}
+```
+
+### Row-Level Security
+
+Implement row-level security in your database:
+
+```sql
+-- PostgreSQL example
+CREATE POLICY principal_isolation ON media_buys
+  USING (principal_id = current_setting('app.current_principal')::uuid);
+
+ALTER TABLE media_buys ENABLE ROW LEVEL SECURITY;
+```
+
+## Financial Transaction Safety
+
+### Idempotency
+
+All state-changing operations must support idempotency:
+
+```javascript
+async function createMediaBuy(request) {
+  const { idempotency_key } = request;
+
+  // Check if this idempotency key was already processed
+  const existing = await db.findByIdempotencyKey(idempotency_key);
+  if (existing) {
+    // Return existing result, don't charge again
+    return existing;
+  }
+
+  // Process new request atomically
+  return db.transaction(async (tx) => {
+    const result = await processMediaBuy(tx, request);
+    await tx.idempotencyKeys.insert({ key: idempotency_key, result });
+    return result;
+  });
+}
+```
+
+### Budget Validation
+
+Validate budgets before committing:
+
+```javascript
+async function validateBudget(request, principal) {
+  const { budget } = request;
+
+  // Check positive amount
+  if (budget.amount <= 0) {
+    throw new ValidationError('Budget must be positive');
+  }
+
+  // Check against account limits
+  const limits = await getAccountLimits(principal.id);
+  if (budget.amount > limits.daily_spend_limit) {
+    throw new BudgetError('Exceeds daily spend limit');
+  }
+
+  // Check available balance
+  const balance = await getAvailableBalance(principal.id);
+  if (budget.amount > balance) {
+    throw new BudgetError('Insufficient balance');
+  }
+}
+```
+
+## Transport Security
+
+### HTTPS Requirements
+
+- All AdCP communications must use HTTPS with TLS 1.3+ (TLS 1.2 minimum)
+- Validate SSL certificates (no self-signed certificates in production)
+- Implement HTTP Strict Transport Security (HSTS) headers
+
+```javascript
+app.use((req, res, next) => {
+  // HSTS header
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
+  // Prevent clickjacking
+  res.setHeader('X-Frame-Options', 'DENY');
+
+  // Prevent MIME sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  next();
+});
+```
+
+## Input Validation
+
+### Request Validation
+
+Validate all user-provided input:
+
+```javascript
+const INPUT_LIMITS = {
+  targeting_brief_max_length: 5000,
+  creative_upload_max_size: 100 * 1024 * 1024, // 100MB
+  max_formats_per_request: 50,
+  max_products_per_query: 100
+};
+
+function validateRequest(request) {
+  // Check string lengths
+  if (request.brief?.length > INPUT_LIMITS.targeting_brief_max_length) {
+    throw new ValidationError('Brief exceeds maximum length');
+  }
+
+  // Validate IDs are proper UUIDs
+  if (request.product_id && !isValidUUID(request.product_id)) {
+    throw new ValidationError('Invalid product_id format');
+  }
+
+  // Reject unexpected fields
+  const allowedFields = ['brief', 'product_id', 'budget', 'context_id'];
+  for (const field of Object.keys(request)) {
+    if (!allowedFields.includes(field)) {
+      throw new ValidationError(`Unexpected field: ${field}`);
+    }
+  }
+}
+```
+
+### SQL Injection Prevention
+
+Always use parameterized queries:
+
+```javascript
+// GOOD: Parameterized query
+const result = await db.query(
+  'SELECT * FROM media_buys WHERE id = $1 AND principal_id = $2',
+  [mediaBuyId, principalId]
+);
+
+// BAD: String concatenation (NEVER do this)
+// const result = await db.query(
+//   `SELECT * FROM media_buys WHERE id = '${mediaBuyId}'`
+// );
+```
+
+## Audit Logging
+
+### Required Log Events
+
+Log all security-relevant events:
+
+```javascript
+const LOG_EVENTS = {
+  AUTH_SUCCESS: 'auth_success',
+  AUTH_FAILURE: 'auth_failure',
+  BUDGET_COMMIT: 'budget_commit',
+  BUDGET_MODIFY: 'budget_modify',
+  ACCESS_DENIED: 'access_denied',
+  WEBHOOK_VERIFIED: 'webhook_verified',
+  WEBHOOK_REJECTED: 'webhook_rejected'
+};
+
+function logSecurityEvent(eventType, details) {
+  console.log(JSON.stringify({
+    event: eventType,
+    timestamp: new Date().toISOString(),
+    principal_id: details.principalId,
+    ip_address: details.ipAddress,
+    resource: details.resource,
+    outcome: details.outcome,
+    // NEVER log: credentials, PII, targeting briefs
+  }));
+}
+```
+
+### Log Retention
+
+- Security logs: 90 days minimum (365 days recommended)
+- Financial logs: 7 years (compliance requirement)
+- Access logs: 30 days minimum
+
+## Security Checklist
+
+### For Publishers (AdCP Servers)
+
+- [ ] Implement strong authentication (OAuth 2.0, API keys, or mTLS)
+- [ ] Enforce principal isolation in all database queries
+- [ ] Implement idempotency for financial operations
+- [ ] Validate all input with strict schema validation
+- [ ] Use TLS 1.3+ for all communications
+- [ ] Verify webhook signatures cryptographically
+- [ ] Log all security events immutably
+
+### For Principals (AdCP Clients)
+
+- [ ] Store credentials in secure key management system
+- [ ] Rotate credentials every 90 days
+- [ ] Use HTTPS for all AdCP communications
+- [ ] Validate responses from publishers
+- [ ] Implement alerts for unusual spending patterns
+
+### For Orchestrators (Multi-Principal Agents)
+
+- [ ] Store each principal's credentials separately (encrypted)
+- [ ] Enforce principal_id filtering in ALL queries
+- [ ] Use row-level security in databases
+- [ ] Log all operations with principal identity
+- [ ] Implement per-principal rate limiting
+
+## Next Steps
+
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.0-rc.1/building/implementation/webhooks) for webhook security patterns
+- **Error Handling**: See [Error Handling](/dist/docs/3.0.0-rc.1/building/implementation/error-handling) for authentication errors
+- **Orchestrator Design**: See [Orchestrator Design](/dist/docs/3.0.0-rc.1/building/implementation/orchestrator-design) for multi-tenant security

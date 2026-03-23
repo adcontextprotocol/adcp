@@ -1,0 +1,486 @@
+---
+title: Implementing Creative Agents
+description: "How to build an AdCP creative agent that defines formats, validates manifests, generates previews, and hosts a creative library."
+"og:title": "AdCP — Implementing Creative Agents"
+---
+
+
+This guide explains how to implement a creative agent that defines and manages creative formats.
+
+## What is a creative agent?
+
+A creative agent is a service that:
+- **Defines formats** - Specifies what assets are required and how they should be structured
+- **Validates manifests** - Ensures creative manifests meet format requirements
+- **Generates previews** - Shows how creatives will render
+- **Builds creatives** (optional) - Generates manifests from natural language briefs or retrieves them from a library
+- **Hosts a creative library** (optional) - Lets buyers browse and filter existing creatives
+
+An ad server (CM360, Flashtalking), creative management platform, creative agency, publisher, or sales agent can implement a creative agent. Sales agents that implement the Creative Protocol alongside the Media Buy Protocol serve both roles from a single endpoint — see [Creative capabilities on sales agents](/dist/docs/3.0.0-rc.2/creative/sales-agent-creative-capabilities).
+
+## Core requirements
+
+### 1. Format ID namespacing
+
+Every format you define must use structured format IDs with your agent URL to prevent conflicts:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://youragency.com",
+    "id": "video_story_15s"
+  }
+}
+```
+
+**Rules:**
+- `agent_url` must match your agent's URL
+- `id` should be descriptive and unique within your namespace
+- Use lowercase with underscores for consistency
+
+### 2. Format validation
+
+When formats reference your agent_url, you are the authority for:
+- Format specifications
+- Asset validation rules
+- Technical requirements
+- Preview generation
+
+**Format definition example:**
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://youragency.com",
+    "id": "story_sequence_5frame"
+  },
+  "name": "5-Frame Story Sequence",
+  "type": "display",
+  "min_frames": 5,
+  "max_frames": 5,
+  "frame_schema": {
+    "assets": [
+      {
+        "asset_type": "image",
+        "asset_role": "frame_image",
+        "required": true,
+        "requirements": {
+          "width": 1080,
+          "height": 1920,
+          "file_types": ["jpg", "png", "webp"],
+          "max_file_size_kb": 500
+        }
+      },
+      {
+        "asset_type": "text",
+        "asset_role": "caption",
+        "required": false,
+        "requirements": {
+          "max_length": 100
+        }
+      }
+    ]
+  },
+  "global_assets": [
+    {
+      "asset_type": "image",
+      "asset_role": "brand_logo",
+      "required": true,
+      "requirements": {
+        "width": 200,
+        "height": 200,
+        "transparency_required": true
+      }
+    }
+  ]
+}
+```
+
+## Required tasks
+
+Creative agents must implement these two tasks:
+
+### list_creative_formats
+
+Return all formats your agent defines. This is how buyers discover what creative formats you support.
+
+**Key responsibilities:**
+- Return complete format definitions with all `assets` (both required and optional)
+- Include your `agent_url` in each format
+- Use proper namespacing for `format_id` values
+
+See [list_creative_formats task reference](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creative_formats) for complete API specification.
+
+### preview_creative
+
+Generate a visual preview showing how a creative manifest will render in your format.
+
+**Key responsibilities:**
+- Validate manifest against format requirements
+- Return validation errors if manifest is invalid
+- Generate visual representation (URL, image, or HTML)
+- Preview should be accessible for at least 24 hours
+
+See [preview_creative task reference](/dist/docs/3.0.0-rc.2/creative/task-reference/preview_creative) for complete API specification.
+
+## Optional tasks
+
+### build_creative
+
+Generate a creative manifest from a natural language brief, transform an existing manifest to a new format, or retrieve a library creative as a delivery-ready manifest.
+
+**Key responsibilities:**
+- Parse natural language brief or resolve a `creative_id` from your library
+- Generate or source appropriate assets
+- Return valid manifest for the target format
+- Substitute `macro_values` into serving tags when provided
+- Optionally return preview URL
+
+See [build_creative task reference](/dist/docs/3.0.0-rc.2/creative/task-reference/build_creative) for complete API specification.
+
+### list_creatives
+
+Browse and filter creatives in your library. Implement this if your platform hosts a creative library that buyers need to query.
+
+**Key responsibilities:**
+- Return creatives accessible to the authenticated account
+- Support filtering by format, status, tags, and date range
+- Support pagination for large libraries
+- Optionally include dynamic creative optimization (DCO) variable definitions per creative
+
+See [list_creatives task reference](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creatives) for complete API specification.
+
+### sync_creatives
+
+Accept creative asset uploads into your library. Implement this if your platform allows buyers to push assets.
+
+**Key responsibilities:**
+- Validate creatives against format specifications
+- Return per-creative results with platform-assigned IDs
+- Support upsert semantics (create or update by `creative_id`)
+- Optionally support bulk package assignments (for agents that also manage media buys)
+- Optionally support async approval workflows for brand safety review
+
+See [sync_creatives task reference](/dist/docs/3.0.0-rc.2/creative/task-reference/sync_creatives) for complete API specification.
+
+## Validation best practices
+
+### Manifest validation
+
+When validating manifests:
+
+1. **Check format_id** - Ensure it references your agent
+2. **Validate required assets** - All required assets must be present
+3. **Check asset types** - Assets must match specified types
+4. **Validate requirements** - Dimensions, file types, sizes, etc.
+5. **URL accessibility** - Verify asset URLs are accessible (optional but recommended)
+
+**Example validation errors:**
+
+```json
+{
+  "status": "error",
+  "error": "validation_failed",
+  "validation_errors": [
+    {
+      "asset_id": "frame_1_image",
+      "error": "missing_required_asset",
+      "message": "Required asset 'frame_1_image' is missing"
+    },
+    {
+      "asset_id": "brand_logo",
+      "error": "invalid_dimensions",
+      "message": "Logo must be 200x200px, got 150x150px"
+    }
+  ]
+}
+```
+
+### Disclosure requirements
+
+When a creative brief includes `compliance.required_disclosures`, creative agents must ensure each disclosure appears in the generated creative. The workflow:
+
+1. **Check format support** — Compare each `required_disclosures[].position` against the format's `supported_disclosure_positions` or `disclosure_capabilities`. If a required position is not supported by the format, return a validation error rather than silently dropping it. When `disclosure_capabilities` is present, use it for persistence-aware matching — verify that the format supports both the required position and the required persistence mode.
+
+2. **Respect persistence** — When the brief specifies `persistence` on a required disclosure, the creative agent must satisfy it using a position that supports that persistence mode in the format's `disclosure_capabilities`. For example, if a brief requires `"continuous"` persistence for an EU AI Act disclosure, the format must declare that position with `"continuous"` in its `disclosure_capabilities`. When the brief omits `persistence`, use the most restrictive persistence mode the format supports for that position.
+
+3. **Render disclosures** — For positions your format supports:
+   - `footer`, `overlay`, `end_card`, `prominent`: Render the disclosure `text` into the creative at the specified position
+   - `audio`, `pre_roll`: Include disclosure as spoken audio. Respect `min_duration_ms` if specified.
+   - `subtitle`: Include as a text track within the video creative
+   - `companion`: Deliver in the companion ad unit alongside the primary creative
+
+4. **Respect jurisdiction scoping** — A disclosure with `jurisdictions: ["US"]` is legally required only in the US. Creative agents that produce a single creative per brief should include all jurisdictional disclosures. If your agent can produce jurisdiction-specific variants, filter disclosures by their `jurisdictions` field.
+
+5. **Propagate into provenance** — When the brief specifies `persistence` and `position` on a required disclosure, propagate these into `provenance.disclosure.jurisdictions[].render_guidance` on the creative manifest. The brief is a creation-time document; at serve time, the publisher has the creative and its provenance, not the brief. If the creative agent does not propagate persistence into provenance render guidance, the publisher has no way to know what persistence the regulation requires.
+
+6. **Preserve through regeneration** — When regenerating or resizing a creative, carry forward all disclosures from the `BriefAsset` attached to the manifest. A `BriefAsset` is a `brief`-typed asset in the format's `assets` array that carries the creative brief through the manifest, ensuring disclosures survive format adaptation.
+
+**Example:** A brief requires `"KI-generiert"` disclosure at `overlay` position with `persistence: "continuous"` for `eu_ai_act_article_50`. Your format declares `disclosure_capabilities: [{ "position": "overlay", "persistence": ["continuous", "initial"] }]`. The format supports continuous overlay, so the creative agent renders the disclosure as a persistent overlay visible throughout the content. The agent also propagates `render_guidance: { "persistence": "continuous", "positions": ["overlay"] }` into the EU jurisdiction entry in `provenance.disclosure.jurisdictions[]`.
+
+### Format evolution
+
+When updating format definitions:
+
+- **Additive changes** (new optional assets with `required: false` in `assets`) are safe
+- **Breaking changes** (removing assets, changing requirements) require new format_id
+- Consider versioning: `youragency.com:format_name_v2`
+- Maintain backward compatibility when possible
+
+## Deployment checklist
+
+Before launching your creative agent:
+
+- [ ] MCP and/or A2A endpoints are accessible
+- [ ] All format_ids use proper namespacing (`domain:id`)
+- [ ] Domain in format_id matches your `agent_url` domain
+- [ ] `list_creative_formats` returns all your formats
+- [ ] `preview_creative` validates manifests and generates previews
+- [ ] Format definitions include complete asset requirements
+- [ ] Documentation available for your custom formats
+
+## Integration patterns
+
+### Pattern 1: creative agency
+
+You're a creative agency building custom formats for brands:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://brandstudio.com",
+    "id": "hero_video_package"
+  },
+  "name": "Hero Video Package",
+  "type": "video",
+  "description": "Premium video creative with multiple aspect ratios",
+  "assets": [
+    {"asset_role": "hero_video_16x9", ...},
+    {"asset_role": "hero_video_9x16", ...},
+    {"asset_role": "hero_video_1x1", ...}
+  ]
+}
+```
+
+### Pattern 2: platform-specific formats
+
+You're a platform defining specialized formats:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://platform.com",
+    "id": "interactive_quiz"
+  },
+  "name": "Interactive Quiz Ad",
+  "type": "rich_media",
+  "description": "Engagement-driven quiz format",
+  "assets": [
+    {"asset_role": "question_1", "asset_type": "text", ...},
+    {"asset_role": "answer_1a", "asset_type": "text", ...},
+    // ... quiz structure
+  ]
+}
+```
+
+### Pattern 3: format extension service
+
+You provide enhanced versions of standard formats:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://enhanced.com",
+    "id": "video_30s_optimized"
+  },
+  "name": "Optimized 30s Video",
+  "type": "video",
+  "extends": "creative.adcontextprotocol.org:video_30s",
+  "description": "Standard 30s video with automatic optimization",
+  "assets": [
+    // Same requirements as standard format
+  ],
+  "enhancements": {
+    "auto_transcode": true,
+    "quality_optimization": true,
+    "format_variants": ["mp4", "webm", "hls"]
+  }
+}
+```
+
+### Pattern 4: feed-native/social format agent
+
+You host ad formats that render as native content within your platform's feed:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.socialplatform.com",
+    "id": "promoted_post"
+  },
+  "name": "Promoted post",
+  "type": "native",
+  "description": "Sponsored content that appears in the feed alongside organic posts. Renders with platform chrome (user avatar, engagement buttons, community badge).",
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": { "max_length": 300 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "body",
+      "asset_type": "text",
+      "required": false,
+      "requirements": { "max_length": 1000 }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "image",
+      "asset_type": "image",
+      "required": false,
+      "requirements": { "max_width": 1200, "max_height": 628, "accepted_types": ["image/jpeg", "image/png"] }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "click_url",
+      "asset_type": "url",
+      "required": true,
+      "requirements": {}
+    }
+  ]
+}
+```
+
+Platform-specific rendering (dark mode, community context, engagement UI) is handled by the agent at preview and serve time — the format definition specifies only the buyer-provided assets. The agent wraps these assets in the platform's native chrome.
+
+When a buyer calls `preview_creative` for a feed-native format, the preview renders the buyer's assets inside the platform's UI — avatar, engagement buttons, community badge, and all:
+
+```json
+{
+  "request_type": "single",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://ads.socialplatform.com",
+      "id": "promoted_post"
+    },
+    "assets": {
+      "headline": { "content": "Introducing our new trail running collection" },
+      "body": { "content": "Built for the mountains. Tested on every terrain." },
+      "image": { "url": "https://cdn.acme-example.com/trail-hero.jpg", "width": 1200, "height": 628 },
+      "click_url": { "url": "https://acme-example.com/trail-running" }
+    }
+  },
+  "inputs": [
+    { "name": "Running community", "context_description": "Appears in r/trailrunning feed between user posts" },
+    { "name": "General feed", "context_description": "Appears in home feed between mixed content" }
+  ]
+}
+```
+
+The preview response shows how the ad looks in each context — including community-specific chrome that the buyer cannot preview elsewhere. This is why platforms should implement `preview_creative` even for simple formats: the platform chrome is the differentiator.
+
+## Platform mapping
+
+If you're wrapping an existing ad server or creative management platform, this section shows how common platform concepts map to the creative protocol.
+
+### Concept mapping
+
+| Platform concept | AdCP equivalent | Notes |
+|---|---|---|
+| Advertiser / account | Account (via [accounts protocol](/dist/docs/3.0.0-rc.2/accounts/overview)) | Buyer establishes access before querying the library |
+| Creative concept / group / template folder | `concept_id` in `list_creatives` | Groups related creatives across sizes/formats (Flashtalking concepts, Celtra campaign folders, CM360 creative groups) |
+| Creative | Creative item in `list_creatives` response | |
+| Creative type + size | `format_id` (structured object with `agent_url`, `id`, dimensions) | AdCP combines type and size into a single format reference |
+| Template (Celtra's term) | Format (via `list_creative_formats`) | Celtra templates define structure and available properties; AdCP formats define structure and available assets |
+| Template object properties (Celtra) | `variables` array | Named slots with types (text, color, image, video, number, boolean) — near-exact match |
+| Active / archived / pending | `status` field | |
+| Ad tag / serving tag | Asset in a creative manifest (`html`, `javascript`, or `vast` type) | Tags are just assets — no special concept |
+| Placement / ad unit | Package within a media buy | The buy context where a creative is assigned |
+| DCO variables / dynamic fields | `variables` array (via `include_variables=true`) | Named slots with types and defaults |
+| Data feed / targeting rules | Not modeled | AdCP models the variable *slots*, not the optimization rules |
+| CTV/OTT ad server (Innovid, Brightcove) | Same as ad server, plus VAST/SSAI delivery model | VAST tags in `vast`-type assets; companion ads via multi-render formats |
+
+### Tag generation models
+
+Ad servers differ in how they produce serving tags. The creative protocol's `build_creative` accommodates all common models through the combination of `creative_id`, `target_format_id`, and optional `media_buy_id`/`package_id`:
+
+**Universal tags** (Celtra, Flashtalking) — A single tag that adapts to multiple environments (web, in-app). No placement context is needed — `build_creative(creative_id, target_format_id)` produces a tag that works wherever it's trafficked. Best for agency/programmatic use cases where the final destination is unpredictable, reducing trafficking errors.
+
+**Single-placement tags** (Celtra, Flashtalking, CM360) — A tag scoped to one specific size and placement. The `target_format_id` specifies the exact dimensions (e.g., 300x250 web). For publisher template use cases where the destination is known, this is the most common choice.
+
+**Multi-placement tags** (Celtra) — A tag covering multiple sizes within one environment. The `target_format_id` references a format whose `renders` array defines the supported sizes. Useful for publisher templates that need several sizes (e.g., 300x250 + 320x50 + 728x90 web) but want a single tag to traffic.
+
+**Placement-level tags** (CM360) — The platform generates tags per placement, not per creative. The caller passes `media_buy_id` and optionally `package_id` to provide the trafficking context. A CM360 adapter uses the media buy context to produce a tag scoped to the target format.
+
+The choice between these models is often a campaign context decision, not a platform constraint. The same creative agent may produce different tag types depending on the caller's needs:
+
+| Use case | Tag type | `build_creative` parameters |
+|---|---|---|
+| Agency/programmatic (unknown destination) | Universal | `creative_id` + `target_format_id` (universal format) |
+| Publisher template (known placement) | Single placement | `creative_id` + `target_format_id` (specific size) |
+| Publisher template (multiple sizes) | Multi-placement | `creative_id` + `target_format_id` (multi-render format) |
+| Ad server with trafficking context | Placement-level | `creative_id` + `target_format_id` + `media_buy_id` + `package_id` |
+
+In all cases the output is the same: a creative manifest with the serving code in an `html` or `javascript` asset.
+
+### Variable models
+
+Platforms represent dynamic content differently. The creative protocol's `variables` array accommodates the common patterns:
+
+**Named variable slots** (Flashtalking) — Each creative has explicit variables with IDs, names, and types. Maps directly to `creative-variable.json`.
+
+**Template object properties** (Celtra) — Templates define `templateObjects` with typed `properties` (text, color, image, video, percentage, hidden) scoped to specific components and size variants. A Celtra adapter flattens these into the `variables` array, using the template object label and property label to construct `variable_id` and `name`.
+
+**Rule-based asset selection** (CM360) — Dynamic creatives use `dynamicAssetSelection` with targeting rules, fed by data feeds. This model is not variable-based — CM360 adapters would typically not populate the `variables` array, and `has_variables` filtering would not apply.
+
+### Macro handling
+
+Platforms use their own macro syntax internally. The `macro_values` parameter in `build_creative` lets the caller pass universal macro values (e.g., `CLICK_URL`) that the creative agent substitutes into the output tag using whatever syntax the platform expects.
+
+| Universal macro | CM360 equivalent | Flashtalking equivalent |
+|---|---|---|
+| `CLICK_URL` | `%c` | `[clickTag]` |
+| `CACHEBUSTER` | `%n` | `[timestamp]` |
+| `TIMESTAMP` | `%t` | `[timestamp]` |
+
+The creative agent handles translation — callers always use universal macros.
+
+### Re-submission after rejection
+
+When `sync_creatives` or creative review results in a rejection, the fix-and-resubmit flow uses upsert semantics:
+
+1. Check rejection reason via `list_creatives` (library `status: "rejected"`) or `get_media_buys` (package `approval_status: "rejected"` with `rejection_reason`)
+2. Fix the creative (update assets, adjust copy, replace media)
+3. Re-submit via `sync_creatives` with the same `creative_id` — the agent updates the existing creative and re-triggers review
+4. Poll `list_creatives` until `status` transitions from `pending_review` to `approved` or `rejected`
+
+Re-submission resets the review clock. The agent treats the updated creative as a new submission for review purposes.
+
+### Which tasks to implement
+
+The creative protocol requires `list_creative_formats` and `preview_creative` from all creative agents. The table below shows which additional tasks and capabilities each platform type should implement.
+
+| Platform type | Core tasks | Recommended tasks | Capabilities |
+|---|---|---|---|
+| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true` |
+| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
+| Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_generation: true` |
+| Format conversion service | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_transformation: true` |
+| Sales agent with creative capabilities | `list_creative_formats`, `preview_creative` | `sync_creatives` (with `assignments`), `get_creative_delivery`, `build_creative` | `supports_generation: true` or `has_creative_library: true` |
+
+Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/dist/docs/3.0.0-rc.2/creative/specification#interaction-models) in the spec.
+
+Platforms with a creative library should also implement the [accounts protocol](/dist/docs/3.0.0-rc.2/accounts/overview) so buyers can establish access before querying. This is the same accounts protocol used by sales agents for media buys.
+
+## Related
+
+- [Creative Formats](/dist/docs/3.0.0-rc.2/creative/formats) - Understanding format structure
+- [Creative Manifests](/dist/docs/3.0.0-rc.2/creative/creative-manifests) - How manifests work
+- [Asset Types](/dist/docs/3.0.0-rc.2/creative/asset-types) - Asset specifications
+- [list_creative_formats task](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creative_formats) - Format discovery API reference
+- [list_creatives task](/dist/docs/3.0.0-rc.2/creative/task-reference/list_creatives) - Creative library API reference
+- [build_creative task](/dist/docs/3.0.0-rc.2/creative/task-reference/build_creative) - Manifest generation API reference
+- [preview_creative task](/dist/docs/3.0.0-rc.2/creative/task-reference/preview_creative) - Preview rendering API reference

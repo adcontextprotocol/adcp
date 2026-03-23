@@ -1,0 +1,400 @@
+---
+title: sync_event_sources
+testable: false
+---
+
+
+Configure event sources on a seller account for conversion tracking. Supports upsert semantics, seller-managed sources, and setup instructions.
+
+**Response Time**: ~1s (synchronous configuration)
+
+**Request Schema**: [`/schemas/v3/media-buy/sync-event-sources-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/sync-event-sources-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
+
+## Quick Start
+
+Configure an event source for purchase tracking:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncEventSources({
+  account: { account_id: "acct_12345" },
+  event_sources: [
+    {
+      event_source_id: "website_pixel",
+      name: "Main Website Pixel",
+      event_types: ["purchase", "lead", "add_to_cart"],
+      allowed_domains: ["www.example.com", "shop.example.com"],
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = SyncEventSourcesResponseSchema.parse(result.data);
+
+// Check for operation-level errors first (discriminated union)
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("event_sources" in validated) {
+  for (const source of validated.event_sources) {
+    console.log(`${source.event_source_id}: ${source.action}`);
+    if (source.setup?.snippet) {
+      console.log(`  Install: ${source.setup.snippet_type}`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_event_sources(
+        account={'account_id': 'acct_12345'},
+        event_sources=[{
+            'event_source_id': 'website_pixel',
+            'name': 'Main Website Pixel',
+            'event_types': ['purchase', 'lead', 'add_to_cart'],
+            'allowed_domains': ['www.example.com', 'shop.example.com']
+        }]
+    )
+
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for source in result.event_sources:
+        print(f"{source.event_source_id}: {source.action}")
+        if source.setup and source.setup.snippet:
+            print(f"  Install: {source.setup.snippet_type}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account` | [account-ref](/dist/docs/3.0.0-rc.1/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
+| `event_sources` | [EventSource](/dist/docs/3.0.0-rc.1/media-buy/conversion-tracking/#event-source)[] | No | Event sources to sync. When omitted, the call is discovery-only and returns all existing event sources without modification. |
+| `delete_missing` | boolean | No | When true, buyer-managed event sources on the account not in this request are removed (default: false) |
+
+### Event Source Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `event_source_id` | string | Yes | Unique identifier for this event source |
+| `name` | string | No | Human-readable name |
+| `event_types` | [EventType](/dist/docs/3.0.0-rc.1/media-buy/conversion-tracking/#event-types)[] | No | Event types this source handles. If omitted, accepts all event types. |
+| `allowed_domains` | string[] | No | Domains authorized to send events for this source |
+
+## Response
+
+**Success Response:**
+
+- `event_sources` - Results for each event source, including both synced and seller-managed sources on the account
+
+**Error Response:**
+
+- `errors` - Array of operation-level errors (auth failure, account not found)
+
+**Note:** Responses use discriminated unions - you get either success fields OR errors, never both.
+
+**Each event source in success response includes:**
+
+- All request fields
+- `seller_id` - Seller-assigned identifier for this event source
+- `action` - What happened: `created`, `updated`, `unchanged`, `deleted`, `failed`
+- `action_source` - Type of event source (website pixel, app SDK, etc.)
+- `managed_by` - Who manages this source: `buyer` or `seller`
+- `setup` - Implementation details (snippet, instructions)
+- `errors` - Per-source errors (only when `action: "failed"`)
+
+**See schema for complete field list**: [sync-event-sources-response.json](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
+
+## Common Scenarios
+
+### Discovery Only
+
+Discover all event sources on an account (including seller-managed sources) without making changes. Useful for platform-managed conversion tracking where the seller provides always-on attribution:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncEventSources({
+  account: { account_id: "acct_12345" },
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncEventSourcesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("event_sources" in validated) {
+  for (const source of validated.event_sources) {
+    console.log(`${source.event_source_id} (${source.managed_by}): ${source.name}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_event_sources(
+        account={'account_id': 'acct_12345'}
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for source in result.event_sources:
+        print(f"{source.event_source_id} ({source.managed_by}): {source.name}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Multiple Event Sources
+
+Configure separate sources for website and app:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncEventSources({
+  account: { account_id: "acct_12345" },
+  event_sources: [
+    {
+      event_source_id: "web_pixel",
+      name: "Website Pixel",
+      event_types: ["purchase", "lead", "add_to_cart", "view_content"],
+      allowed_domains: ["www.example.com"],
+    },
+    {
+      event_source_id: "app_sdk",
+      name: "Mobile App SDK",
+      event_types: ["purchase", "app_install", "app_launch"],
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncEventSourcesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("event_sources" in validated) {
+  for (const source of validated.event_sources) {
+    console.log(`${source.event_source_id} (${source.managed_by}): ${source.action}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_event_sources(
+        account={'account_id': 'acct_12345'},
+        event_sources=[
+            {
+                'event_source_id': 'web_pixel',
+                'name': 'Website Pixel',
+                'event_types': ['purchase', 'lead', 'add_to_cart', 'view_content'],
+                'allowed_domains': ['www.example.com']
+            },
+            {
+                'event_source_id': 'app_sdk',
+                'name': 'Mobile App SDK',
+                'event_types': ['purchase', 'app_install', 'app_launch']
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for source in result.event_sources:
+        print(f"{source.event_source_id} ({source.managed_by}): {source.action}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Discovering Seller-Managed Sources
+
+Sellers may provide always-on event sources (e.g. Amazon sales attribution). These appear in the response with `managed_by: "seller"` alongside your buyer-managed sources:
+
+```json test=false
+{
+  "event_sources": [
+    {
+      "event_source_id": "web_pixel",
+      "name": "Website Pixel",
+      "seller_id": "px_abc123",
+      "action": "created",
+      "managed_by": "buyer",
+      "setup": {
+        "snippet": "<script src=\"https://seller.example/pixel/px_abc123.js\"></script>",
+        "snippet_type": "javascript",
+        "instructions": "Place this tag in the <head> of all pages where you want to track events."
+      }
+    },
+    {
+      "event_source_id": "seller_sales_attribution",
+      "name": "Sales Attribution",
+      "seller_id": "internal_attr",
+      "action": "unchanged",
+      "managed_by": "seller",
+      "action_source": "in_store"
+    }
+  ]
+}
+```
+
+Products with `conversion_tracking.platform_managed: true` indicate the seller provides these sources.
+
+### Clean Sync with delete_missing
+
+Replace all buyer-managed event sources on the account:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncEventSources({
+  account: { account_id: "acct_12345" },
+  delete_missing: true,
+  event_sources: [
+    {
+      event_source_id: "unified_pixel",
+      name: "Unified Tracking Pixel",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncEventSourcesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("event_sources" in validated) {
+  for (const source of validated.event_sources) {
+    if (source.action === "deleted") {
+      console.log(`Removed: ${source.event_source_id}`);
+    } else {
+      console.log(`Active: ${source.event_source_id} (${source.action})`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_event_sources(
+        account={'account_id': 'acct_12345'},
+        delete_missing=True,
+        event_sources=[{
+            'event_source_id': 'unified_pixel',
+            'name': 'Unified Tracking Pixel'
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for source in result.event_sources:
+        if source.action == 'deleted':
+            print(f"Removed: {source.event_source_id}")
+        else:
+            print(f"Active: {source.event_source_id} ({source.action})")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Setup Instructions
+
+The response includes setup details for each event source. The `setup` object tells you how to activate the source:
+
+| `snippet_type` | Description | Action Required |
+|-----------------|-------------|-----------------|
+| `javascript` | JavaScript tag for website pages | Place in `<head>` of tracked pages |
+| `html` | HTML pixel/iframe | Place before `</body>` |
+| `pixel_url` | URL that fires on events | Send GET request on each event |
+| `server_only` | No client-side tag needed | Use `log_event` API directly |
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` from account setup |
+| `INVALID_EVENT_TYPE` | Unrecognized event type | Check seller's `supported_event_types` in `get_adcp_capabilities` |
+| `DUPLICATE_EVENT_SOURCE_ID` | Multiple sources with same ID in request | Use unique `event_source_id` values |
+| `RATE_LIMITED` | Too many sync requests | Wait and retry with exponential backoff |
+
+## Best Practices
+
+1. **Sync before logging** - Always configure event sources before sending events via `log_event`. Events sent to unconfigured sources will be rejected.
+
+2. **Use descriptive IDs** - Choose `event_source_id` values that are meaningful (e.g. `web_pixel`, `app_sdk`, `crm_import`) rather than opaque identifiers.
+
+3. **Specify event_types** - Restrict each source to relevant event types for better validation and debugging.
+
+4. **Check seller capabilities** - Use `get_adcp_capabilities` to discover supported event types, UID types, and action sources before configuring event sources.
+
+5. **Install setup snippets** - When the response includes `setup` instructions, install the provided snippet before logging events. Server-only sources (`snippet_type: "server_only"`) skip this step.
+
+6. **Handle seller-managed sources** - The response may include sources with `managed_by: "seller"` that you didn't configure. These are always-on and provide additional attribution data.
+
+## Next Steps
+
+- [Conversion Tracking](/dist/docs/3.0.0-rc.1/media-buy/conversion-tracking/) - Data model, optimization goals, and the end-to-end flow
+- [log_event](/dist/docs/3.0.0-rc.1/media-buy/task-reference/log_event) - Send marketing events to configured event sources
+- [create_media_buy](/dist/docs/3.0.0-rc.1/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization) - Set optimization goals on packages referencing event sources
+- [get_media_buy_delivery](/dist/docs/3.0.0-rc.1/media-buy/task-reference/get_media_buy_delivery) - Monitor conversion metrics in delivery reports
