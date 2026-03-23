@@ -64,7 +64,13 @@ Print formats differ from digital in several ways:
         "bleed": { "uniform": 0.125 },
         "color_space": "cmyk",
         "formats": ["pdf", "tiff", "eps"]
-      }
+      },
+      "overlays": [
+        { "id": "safe_left", "description": "Left trim margin — keep headlines, logos, and CTAs inside", "bounds": { "x": 0, "y": 0, "width": 0.25, "height": 10.875, "unit": "inches" } },
+        { "id": "safe_right", "description": "Right trim margin", "bounds": { "x": 8.125, "y": 0, "width": 0.25, "height": 10.875, "unit": "inches" } },
+        { "id": "safe_top", "description": "Top trim margin", "bounds": { "x": 0, "y": 0, "width": 8.375, "height": 0.25, "unit": "inches" } },
+        { "id": "safe_bottom", "description": "Bottom trim margin", "bounds": { "x": 0, "y": 10.625, "width": 8.375, "height": 0.25, "unit": "inches" } }
+      ]
     }
   ]
 }
@@ -402,9 +408,26 @@ Print production requires CMYK color separation. Digital images in RGB must be c
 | `tiff` | Rasterized artwork, lossless |
 | `eps` | Vector artwork with embedded fonts |
 
+### Safe area (trim margins)
+
+Print production trims pages to their final size, and the cut can shift slightly. Critical content (headlines, logos, CTAs) placed too close to the trim edge risks being cut off.
+
+Publishers declare trim margins using the standard [overlay](/docs/creative/formats#overlays) pattern — the same mechanism used for CTV player controls and DOOH bezels. Each overlay marks a zone where creative agents should avoid placing important content:
+
+```json
+"overlays": [
+  { "id": "safe_left", "description": "Left trim margin", "bounds": { "x": 0, "y": 0, "width": 6, "height": 185, "unit": "mm" } },
+  { "id": "safe_right", "bounds": { "x": 124, "y": 0, "width": 6, "height": 185, "unit": "mm" } },
+  { "id": "safe_top", "bounds": { "x": 0, "y": 0, "width": 130, "height": 6, "unit": "mm" } },
+  { "id": "safe_bottom", "bounds": { "x": 0, "y": 179, "width": 130, "height": 6, "unit": "mm" } }
+]
+```
+
+A 6mm margin is standard for European newspaper production. Overlay bounds support physical units (`mm`, `cm`, `inches`) alongside `px` and `fraction`, so publishers can express safe areas in whichever unit their prepress workflow uses.
+
 ## Deadlines beyond print
 
-Episode deadlines are not print-specific. Any channel with advance material requirements uses the same pattern. See [collections and installments](/docs/media-buy/product-discovery/collections-and-installments) for deadlines on podcasts, influencer host reads, and live events.
+Installment deadlines are not print-specific. Any channel with advance material requirements uses the same pattern. See [collections and installments](/docs/media-buy/product-discovery/collections-and-installments) for deadlines on podcasts, influencer host reads, and live events.
 
 ## Related documentation
 

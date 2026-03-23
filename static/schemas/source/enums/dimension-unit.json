@@ -9,6 +9,7 @@
     "dp",
     "inches",
     "cm",
-    "mm"
+    "mm",
+    "pt"
   ]
 }
