@@ -87,6 +87,7 @@ import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
+import { createPublicAvatarRouter, createAvatarUserRouter } from "./routes/avatar.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
@@ -1012,6 +1013,10 @@ export class HTTPServer {
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
+
+    // Mount avatar routes
+    this.app.use('/api/avatars', createPublicAvatarRouter());
+    this.app.use('/api/me', createAvatarUserRouter());
 
     // Mount community routes
     const communityDb = new CommunityDatabase();

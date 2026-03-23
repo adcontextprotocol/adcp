@@ -134,6 +134,89 @@
       margin-top: var(--space-1);
     }
 
+    /* Avatar upload */
+    .avatar-upload {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .avatar-preview {
+      width: 72px;
+      height: 72px;
+      border-radius: var(--radius-full);
+      background: var(--color-bg-subtle);
+      border: var(--border-2) solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+      color: var(--color-text-muted);
+      font-size: var(--text-2xl);
+    }
+
+    .avatar-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .avatar-actions {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .avatar-upload-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-brand);
+      background: transparent;
+      border: var(--border-1) solid var(--color-brand);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background var(--duration-normal) var(--ease-in-out);
+    }
+
+    .avatar-upload-btn:hover {
+      background: var(--color-primary-50);
+    }
+
+    .avatar-remove-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: var(--space-1) 0;
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .avatar-remove-btn:hover {
+      color: var(--color-error-600);
+    }
+
+    .avatar-remove-btn[hidden] {
+      display: none;
+    }
+
+    .avatar-status {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+
+    .avatar-status--error {
+      color: var(--color-error-600);
+    }
+
     /* Toggle switch */
     .toggle-row {
       display: flex;
@@ -498,8 +581,19 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="field-avatar-url">Avatar URL</label>
-            <input type="url" id="field-avatar-url" class="form-input" placeholder="https://example.com/photo.jpg">
+            <label class="form-label">Profile photo</label>
+            <div class="avatar-upload">
+              <div class="avatar-preview" id="avatar-preview" role="img" aria-label="Profile photo">
+                <span id="avatar-placeholder">?</span>
+              </div>
+              <div class="avatar-actions">
+                <input type="file" id="avatar-file-input" accept="image/jpeg,image/png" style="display: none;">
+                <button type="button" class="avatar-upload-btn" id="avatar-upload-btn">Upload photo</button>
+                <button type="button" class="avatar-remove-btn" id="avatar-remove-btn" hidden>Remove photo</button>
+                <div class="avatar-status" id="avatar-status">JPEG or PNG, max 2 MB</div>
+              </div>
+            </div>
+            <input type="hidden" id="field-avatar-url">
           </div>
 
           <div class="form-group">
@@ -759,6 +853,7 @@
       updateCharCount();
       document.getElementById('field-bio').value = profile.bio || '';
       document.getElementById('field-avatar-url').value = profile.avatar_url || '';
+      showAvatarPreview(profile.avatar_url);
 
       expertiseTags = (profile.expertise || []).slice();
       interestsTags = (profile.interests || []).slice();
@@ -860,6 +955,87 @@
       counter.className = len > 255 ? 'form-char-count form-char-count--over' : 'form-char-count';
     }
 
+    // Avatar upload
+    function showAvatarPreview(url) {
+      const preview = document.getElementById('avatar-preview');
+      const removeBtn = document.getElementById('avatar-remove-btn');
+
+      preview.innerHTML = '';
+      if (url) {
+        const src = url.startsWith('/api/avatars/') ? url + '?t=' + Date.now() : url;
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = 'Avatar';
+        preview.appendChild(img);
+        removeBtn.hidden = false;
+      } else {
+        const span = document.createElement('span');
+        span.id = 'avatar-placeholder';
+        span.textContent = '?';
+        preview.appendChild(span);
+        removeBtn.hidden = true;
+      }
+    }
+
+    document.getElementById('avatar-upload-btn').addEventListener('click', () => {
+      document.getElementById('avatar-file-input').click();
+    });
+
+    document.getElementById('avatar-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      if (file.size > 2 * 1024 * 1024) {
+        document.getElementById('avatar-status').textContent = 'File too large (max 2 MB)';
+        document.getElementById('avatar-status').className = 'avatar-status avatar-status--error';
+        return;
+      }
+
+      const statusEl = document.getElementById('avatar-status');
+      statusEl.textContent = 'Uploading...';
+      statusEl.className = 'avatar-status';
+
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      try {
+        const resp = await fetch('/api/me/avatar', { method: 'POST', body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || 'Upload failed');
+        }
+        const data = await resp.json();
+        document.getElementById('field-avatar-url').value = data.avatar_url;
+        showAvatarPreview(data.avatar_url);
+        statusEl.textContent = 'Photo uploaded';
+        statusEl.className = 'avatar-status';
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'avatar-status avatar-status--error';
+      }
+
+      // Reset file input so re-selecting the same file triggers change
+      e.target.value = '';
+    });
+
+    document.getElementById('avatar-remove-btn').addEventListener('click', async () => {
+      const statusEl = document.getElementById('avatar-status');
+      statusEl.textContent = 'Removing...';
+
+      try {
+        const resp = await fetch('/api/me/avatar', { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Remove failed');
+
+        document.getElementById('field-avatar-url').value = '';
+        showAvatarPreview(null);
+        statusEl.textContent = 'JPEG or PNG, max 2 MB';
+        statusEl.className = 'avatar-status';
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'avatar-status avatar-status--error';
+      }
+    });
+
     // Form submission
     async function handleSubmit(e) {
       e.preventDefault();
@@ -873,7 +1049,7 @@
         slug: document.getElementById('field-slug').value.trim() || undefined,
         headline: document.getElementById('field-headline').value.trim() || undefined,
         bio: document.getElementById('field-bio').value.trim() || undefined,
-        avatar_url: document.getElementById('field-avatar-url').value.trim() || undefined,
+        avatar_url: document.getElementById('field-avatar-url').value.trim() || null,
         expertise: expertiseTags,
         interests: interestsTags,
         city: document.getElementById('field-city').value.trim() || undefined,
