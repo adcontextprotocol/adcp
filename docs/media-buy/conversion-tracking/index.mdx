@@ -234,25 +234,37 @@ The `status` field is the AdCP-standardized score — comparable across all sell
 
 | Status | Meaning |
 |--------|---------|
-| `insufficient` | Source is not firing or event volume is too low for optimization |
-| `minimum` | Source works but data quality limits optimization effectiveness |
-| `good` | Source meets quality thresholds for most optimization goals |
-| `excellent` | Source exceeds quality thresholds across all dimensions |
+| `insufficient` | Not firing, volume too low, or setup incomplete — optimization cannot run |
+| `minimum` | Functional but data quality limits optimization effectiveness |
+| `good` | Meets quality thresholds for most optimization goals |
+| `excellent` | Exceeds quality thresholds across all dimensions |
 
 Buyer agents should key decisions off `status`, not `detail`. The optional `detail` object contains seller-specific scoring (e.g., Snap's 0-10 EQS, Meta's 0-10 EMQ) for human dashboards or advanced diagnostics, but scales vary by seller and cannot be compared across platforms.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `status` | string | AdCP-standardized health level. Use for cross-seller decisions. |
-| `detail` | object | Seller-specific `score`, `max_score`, `label`. Supplementary. |
-| `match_rate` | number | Fraction of events matched to ad interactions (0.0-1.0). Low rates indicate weak user_match identifiers. |
+| `detail` | object | Seller-specific `score`, `max_score`, and optional `label`. Only present when the seller has a native quality score. |
+| `match_rate` | number | Fraction of events matched to ad interactions (0.0-1.0). Low rates indicate weak user_match identifiers. Only available from sellers that compute match rates (Snap, Meta). |
 | `last_event_at` | date-time | Timestamp of the most recent event received. |
-| `events_received_24h` | integer | Events received in the last 24 hours |
-| `issues` | array | Actionable problems with `severity` and `message`. Sellers should limit to the top 3-5 most actionable items. |
+| `evaluated_at` | date-time | When this health assessment was computed. Use to detect stale assessments. |
+| `events_received_24h` | integer | Events received in the last 24 hours. |
+| `issues` | array | Actionable problems with `severity` and `message`. Sellers should limit to the top 3-5 most actionable items. Buyer agents should sort by severity rather than relying on array position. |
 
 Health is reported per event source, not per account. A buyer with a healthy website pixel and a broken app SDK will see different health on each.
 
 **When `health` is absent**, the seller does not evaluate event source quality. Buyer agents should proceed without health gating — the seller handles quality internally. Do not treat absent health as `insufficient`.
+
+### How sellers compute health
+
+Sellers with native API-accessible quality scores (Snap EQS, Meta EMQ) relay them directly in `status` and `detail`. Most sellers do not have native scores — they derive `status` from operational metrics:
+
+- **`insufficient`**: tag inactive, or `events_received_24h` is 0
+- **`minimum`**: tag active, low volume or high error rate
+- **`good`**: firing steadily, reasonable volume, core event types covered
+- **`excellent`**: high volume, low errors, enhanced matching enabled
+
+When sellers compute health from reporting data, the `evaluated_at` timestamp tells the buyer how fresh the assessment is. The `detail` object is absent for these sellers — there is no native score to relay.
 
 **Schema**: [`/schemas/latest/core/event-source-health.json`](https://adcontextprotocol.org/schemas/latest/core/event-source-health.json)
 
@@ -262,7 +274,6 @@ Products that support event-based optimization can include a `measurement_readin
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `ready` | boolean | Whether the buyer's setup meets minimum requirements |
 | `status` | string | AdCP-standardized level: `insufficient`, `minimum`, `good`, `excellent` |
 | `required_event_types` | EventType[] | Event types this product needs |
 | `missing_event_types` | EventType[] | Required types the buyer hasn't configured |
@@ -282,7 +293,7 @@ A buyer agent talking to multiple sellers writes one set of rules that works eve
 for (const seller of sellers) {
   const sources = await seller.syncEventSources({ account: seller.account });
 
-  // Surface issues from any seller
+  // Surface issues from any seller — sort by severity, don't rely on array position
   for (const source of sources.event_sources) {
     if (source.health?.status === "insufficient") {
       surfaceIssues(source.health.issues);
@@ -297,9 +308,21 @@ for (const seller of sellers) {
 
   for (const product of products.products) {
     const mr = product.measurement_readiness;
+
     // Absent = no event-based optimization needed (CTV, awareness), treat as viable
-    if (!mr || mr.ready) {
+    if (!mr) {
       viable.push(product);
+      continue;
+    }
+
+    // For DR products, require good or better
+    if (campaign.goal === "conversions" && mr.status === "minimum") {
+      warnings.push({ product, reason: "Event setup is functional but limits optimization" });
+      viable.push(product); // Still viable, but flag it
+    } else if (mr.status !== "insufficient") {
+      viable.push(product);
+    } else {
+      skipped.push({ product, issues: mr.issues });
     }
   }
 }

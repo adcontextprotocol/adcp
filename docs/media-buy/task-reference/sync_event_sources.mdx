@@ -135,11 +135,12 @@ Sellers that evaluate event source quality include a `health` object on each sou
 | Field | Type | Description |
 |-------|------|-------------|
 | `status` | string | AdCP-standardized health level: `insufficient`, `minimum`, `good`, `excellent`. Use this for cross-seller decisions. |
-| `detail` | object | Seller-specific scoring (optional). Contains `score`, `max_score`, and `label`. Supplementary — don't use for cross-seller logic. |
+| `detail` | object | Seller-specific scoring (optional). Contains `score`, `max_score`, and optional `label`. Only present when the seller has a native quality score. |
 | `match_rate` | number | Fraction of events matched to ad interactions (0.0-1.0). |
 | `last_event_at` | date-time | Timestamp of the most recent event received. |
-| `events_received_24h` | integer | Events received in the last 24 hours (0 = not firing) |
-| `issues` | array | Actionable problems with severity (`error`, `warning`, `info`) and message |
+| `evaluated_at` | date-time | When this health assessment was computed. Stale for sellers computing from reporting data. |
+| `events_received_24h` | integer | Events received in the last 24 hours (0 = not firing). |
+| `issues` | array | Actionable problems with severity (`error`, `warning`, `info`) and message. Sort by severity — don't rely on array position. |
 
 ```json test=false
 {
@@ -153,6 +154,7 @@ Sellers that evaluate event source quality include a `health` object on each sou
         "detail": { "score": 7.2, "max_score": 10, "label": "Event Match Quality" },
         "match_rate": 0.72,
         "last_event_at": "2026-03-23T14:22:00Z",
+        "evaluated_at": "2026-03-23T14:30:00Z",
         "events_received_24h": 14200,
         "issues": [
           {

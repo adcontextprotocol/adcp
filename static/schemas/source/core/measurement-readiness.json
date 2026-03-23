@@ -5,13 +5,9 @@
   "description": "Per-product assessment of whether the buyer's event source setup is sufficient for the product's optimization capabilities. Sellers evaluate this in the context of the buyer's account — the same product may show different readiness for different buyers depending on their event source configuration.",
   "type": "object",
   "properties": {
-    "ready": {
-      "type": "boolean",
-      "description": "Whether the buyer's event setup meets the minimum requirements for this product to optimize effectively. When false, the buyer can still purchase the product but optimization will be limited."
-    },
     "status": {
-      "$ref": "/schemas/enums/event-source-health-status.json",
-      "description": "Overall measurement readiness level for this product given the buyer's event setup."
+      "$ref": "/schemas/enums/assessment-status.json",
+      "description": "Overall measurement readiness level for this product given the buyer's event setup. 'insufficient' means the product cannot optimize effectively with the current setup."
     },
     "required_event_types": {
       "type": "array",
@@ -30,7 +26,7 @@
     },
     "issues": {
       "type": "array",
-      "description": "Actionable issues preventing full measurement readiness. Ordered by severity. Sellers should limit to the top 3-5 most actionable items.",
+      "description": "Actionable issues preventing full measurement readiness. Sellers should limit to the top 3-5 most actionable items. Buyer agents should sort by severity rather than relying on array position.",
       "items": {
         "$ref": "/schemas/core/diagnostic-issue.json"
       }
@@ -40,6 +36,6 @@
       "description": "Seller explanation of the readiness assessment, recommendations for improvement, or context about what the buyer needs to change."
     }
   },
-  "required": ["ready", "status"],
+  "required": ["status"],
   "additionalProperties": true
 }
