@@ -9,13 +9,18 @@ export function isPrivateHostname(hostname: string): boolean {
   if (!hostname || hostname === 'localhost') return true;
   if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
 
+  // IPv4-mapped IPv6 (e.g., ::ffff:127.0.0.1)
+  const v4mapped = hostname.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (v4mapped) return isPrivateHostname(v4mapped[1]);
+
   // IPv4 private/reserved ranges
-  if (/^127\./.test(hostname)) return true;
-  if (/^10\./.test(hostname)) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true;
-  if (/^192\.168\./.test(hostname)) return true;
-  if (/^169\.254\./.test(hostname)) return true;
-  if (hostname === '0.0.0.0') return true;
+  if (/^0\./.test(hostname)) return true;           // 0.0.0.0/8 (routes to localhost on many systems)
+  if (/^127\./.test(hostname)) return true;          // 127.0.0.0/8 loopback
+  if (/^10\./.test(hostname)) return true;           // 10.0.0.0/8 private
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true; // 172.16.0.0/12 private
+  if (/^192\.168\./.test(hostname)) return true;     // 192.168.0.0/16 private
+  if (/^169\.254\./.test(hostname)) return true;     // 169.254.0.0/16 link-local
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(hostname)) return true; // 100.64.0.0/10 CGNAT
 
   // IPv6 loopback and private
   if (hostname === '::1' || hostname === '::') return true;
@@ -28,8 +33,8 @@ export function isPrivateHostname(hostname: string): boolean {
 }
 
 /**
- * Resolve a hostname to an IP and verify it doesn't point to a private network.
- * Prevents DNS rebinding attacks where a hostname resolves to an internal IP.
+ * Resolve a hostname and verify none of its addresses point to a private network.
+ * Checks all A and AAAA records to prevent multi-record bypass attacks.
  */
 export async function validateHostResolution(hostname: string): Promise<void> {
   if (isPrivateHostname(hostname)) {
@@ -39,10 +44,25 @@ export async function validateHostResolution(hostname: string): Promise<void> {
   // If already an IP literal, the string check above is sufficient
   if (isIP(hostname)) return;
 
-  // Resolve DNS and check the actual IP
-  const { address } = await dns.lookup(hostname);
-  if (isPrivateHostname(address)) {
-    throw new Error('URL resolved to a private or internal IP address');
+  // Resolve all DNS records and check every address
+  const [ipv4Result, ipv6Result] = await Promise.allSettled([
+    dns.resolve4(hostname),
+    dns.resolve6(hostname),
+  ]);
+
+  const allAddresses = [
+    ...(ipv4Result.status === 'fulfilled' ? ipv4Result.value : []),
+    ...(ipv6Result.status === 'fulfilled' ? ipv6Result.value : []),
+  ];
+
+  if (allAddresses.length === 0) {
+    throw new Error('Could not resolve hostname');
+  }
+
+  for (const address of allAddresses) {
+    if (isPrivateHostname(address)) {
+      throw new Error('URL resolved to a private or internal IP address');
+    }
   }
 }
 
@@ -55,4 +75,17 @@ export async function validateFetchUrl(url: URL): Promise<void> {
     throw new Error('Only http and https URLs are supported');
   }
   await validateHostResolution(url.hostname);
+}
+
+/**
+ * Validate a redirect target URL for SSRF safety.
+ * Used when manually following redirects to prevent redirect-to-internal bypasses.
+ */
+export async function validateRedirectTarget(
+  location: string,
+  baseUrl: string | URL,
+): Promise<URL> {
+  const redirectUrl = new URL(location, baseUrl);
+  await validateFetchUrl(redirectUrl);
+  return redirectUrl;
 }

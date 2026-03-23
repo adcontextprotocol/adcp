@@ -18,7 +18,7 @@ import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack }
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
-import { validateHostResolution } from "../utils/url-security.js";
+import { validateFetchUrl, validateRedirectTarget } from "../utils/url-security.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, isSlackConfigured } from "../slack/client.js";
 import { CommunityDatabase } from "../db/community-db.js";
@@ -137,23 +137,34 @@ const workos = AUTH_ENABLED
  * Fetch and extract metadata from a URL (for link posts)
  */
 async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: string; site_name: string }> {
-  // Validate URL protocol and hostname to prevent SSRF
   const parsedUrl = new URL(url);
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error('Only http and https URLs are supported');
-  }
-  await validateHostResolution(parsedUrl.hostname);
+  await validateFetchUrl(parsedUrl);
 
-  // Authenticated endpoint, URL validated above: protocol allowlisted,
-  // hostname checked against private IP ranges, DNS resolved to verify
-  // target is not internal
-  const response = await fetch(url, { // lgtm[js/request-forgery]
+  let response = await fetch(parsedUrl.toString(), {
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
     },
-    redirect: 'follow',
+    redirect: 'manual',
   });
+
+  // Follow up to 3 redirects with SSRF validation on each target
+  for (let i = 0; i < 3 && [301, 302, 303, 307, 308].includes(response.status); i++) {
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Redirect with no location header');
+    const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+    response = await fetch(redirectUrl.toString(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      redirect: 'manual',
+    });
+  }
+
+  if (!response.ok && [301, 302, 303, 307, 308].includes(response.status)) {
+    throw new Error('Too many redirects');
+  }
 
   if (!response.ok) {
     throw new Error(`Failed to fetch URL: ${response.status}`);

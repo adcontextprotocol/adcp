@@ -9,7 +9,7 @@
  */
 
 import { logger } from '../../logger.js';
-import { validateFetchUrl } from '../../utils/url-security.js';
+import { validateFetchUrl, validateRedirectTarget } from '../../utils/url-security.js';
 import type { AddieTool } from '../types.js';
 
 // Maximum content size to prevent memory issues (500KB for text, 20MB for images/PDFs)
@@ -163,14 +163,29 @@ async function fetchUrlContent(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(parsedUrl.toString(), {
+    let response = await fetch(parsedUrl.toString(), {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Addie/1.0 (AgenticAdvertising.org AI Assistant)',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
       },
-      redirect: 'follow',
+      redirect: 'manual',
     });
+
+    // Follow up to 3 redirects with SSRF validation on each target
+    for (let i = 0; i < 3 && [301, 302, 303, 307, 308].includes(response.status); i++) {
+      const location = response.headers.get('location');
+      if (!location) break;
+      const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+      response = await fetch(redirectUrl.toString(), {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Addie/1.0 (AgenticAdvertising.org AI Assistant)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
+        },
+        redirect: 'manual',
+      });
+    }
 
     clearTimeout(timeout);
 
