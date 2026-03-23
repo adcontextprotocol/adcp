@@ -579,9 +579,9 @@ body {
   background: var(--color-gray-200);
 }
 .ds-pill.active {
-  color: var(--color-warning-800, #92400e);
-  background: var(--color-warning-100, #fef3c7);
-  border-color: var(--color-warning-300, #fcd34d);
+  color: var(--color-warning-700);
+  background: var(--color-warning-100);
+  border-color: var(--color-warning-500);
 }
 
 /* -----------------------------------------------------------------------------

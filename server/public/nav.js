@@ -1394,6 +1394,14 @@
     }
   }
 
+  function setAvatarImage(el, url) {
+    var img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    el.textContent = '';
+    el.appendChild(img);
+  }
+
   function loadNavAvatar() {
     var el = document.getElementById('accountAvatar');
     if (!el) return;
@@ -1403,7 +1411,7 @@
       .then(function(res) { return res.ok ? res.json() : null; })
       .then(function(data) {
         if (data && data.portrait && isSafeImageUrl(data.portrait.image_url)) {
-          el.innerHTML = '<img src="' + escapeHtml(data.portrait.image_url) + '" alt="">';
+          setAvatarImage(el, data.portrait.image_url);
           return;
         }
         // No portrait — try community profile avatar
@@ -1413,7 +1421,7 @@
             if (!hubData) return;
             var url = hubData.profile && hubData.profile.avatar_url;
             if (isSafeImageUrl(url)) {
-              el.innerHTML = '<img src="' + escapeHtml(url) + '" alt="">';
+              setAvatarImage(el, url);
             }
           });
       })

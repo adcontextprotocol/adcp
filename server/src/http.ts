@@ -709,11 +709,7 @@ export class HTTPServer {
         return next();
       }
 
-      // Sanitize urlPath: normalize and reject any traversal above root
       const safePath = path.posix.normalize(urlPath);
-      if (safePath.startsWith('..') || safePath.includes('/../')) {
-        return next();
-      }
 
       let filePath: string;
       if (safePath.endsWith('.html')) {
@@ -728,7 +724,8 @@ export class HTTPServer {
 
       // Verify the resolved path stays within publicPath
       const resolvedPublic = path.resolve(publicPath);
-      if (!path.resolve(filePath).startsWith(resolvedPublic + path.sep)) {
+      const resolvedFile = path.resolve(filePath);
+      if (resolvedFile !== resolvedPublic && !resolvedFile.startsWith(resolvedPublic + path.sep)) {
         return next();
       }
 
@@ -742,7 +739,8 @@ export class HTTPServer {
             throw new Error('not found');
           }
           const indexPath = path.join(publicPath, safePath, 'index.html');
-          if (!path.resolve(indexPath).startsWith(resolvedPublic + path.sep)) {
+          const resolvedIndex = path.resolve(indexPath);
+          if (resolvedIndex !== resolvedPublic && !resolvedIndex.startsWith(resolvedPublic + path.sep)) {
             throw new Error('not found');
           }
           filePath = indexPath;
