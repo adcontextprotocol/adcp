@@ -710,41 +710,36 @@ export class HTTPServer {
         return next();
       }
 
-      const safePath = path.posix.normalize(urlPath);
-
-      let filePath: string;
-      if (safePath.endsWith('.html')) {
-        filePath = path.join(publicPath, safePath);
-      } else if (!safePath.includes('.')) {
-        // Extensionless path - check if .html version exists
-        filePath = path.join(publicPath, safePath + '.html');
-      } else {
-        // Has an extension but not .html - skip
+      // Sanitize input: split into segments, reject traversal and
+      // non-allowlisted characters. Reconstructing from validated segments
+      // breaks taint propagation from req.path.
+      const segments = urlPath.split('/').filter(Boolean);
+      if (segments.some(s => s === '..' || s === '.' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(s))) {
         return next();
       }
 
-      // Verify the resolved path stays within publicPath
-      const resolvedPublic = path.resolve(publicPath);
-      const resolvedFile = path.resolve(filePath);
-      if (resolvedFile !== resolvedPublic && !resolvedFile.startsWith(resolvedPublic + path.sep)) {
+      // Determine which file to look for
+      const lastSegment = segments[segments.length - 1] || '';
+      let filePath: string;
+      if (lastSegment.endsWith('.html')) {
+        filePath = path.join(publicPath, ...segments);
+      } else if (!lastSegment.includes('.')) {
+        // Extensionless path - try .html version
+        filePath = path.join(publicPath, ...segments.slice(0, -1), lastSegment + '.html');
+      } else {
         return next();
       }
 
       try {
-        // Read HTML file directly; for extensionless paths, also try /index.html
+        // Read HTML file; for extensionless paths, also try /index.html
         let html: string;
         try {
           html = await fs.readFile(filePath, 'utf-8');
         } catch {
-          if (safePath.endsWith('.html')) {
+          if (lastSegment.endsWith('.html')) {
             throw new Error('not found');
           }
-          const indexPath = path.join(publicPath, safePath, 'index.html');
-          const resolvedIndex = path.resolve(indexPath);
-          if (resolvedIndex !== resolvedPublic && !resolvedIndex.startsWith(resolvedPublic + path.sep)) {
-            throw new Error('not found');
-          }
-          filePath = indexPath;
+          filePath = path.join(publicPath, ...segments, 'index.html');
           html = await fs.readFile(filePath, 'utf-8');
         }
 
