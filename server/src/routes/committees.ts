@@ -18,7 +18,7 @@ import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack }
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
-import { validateFetchUrl, validateRedirectTarget } from "../utils/url-security.js";
+import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from "../utils/url-security.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, isSlackConfigured } from "../slack/client.js";
 import { CommunityDatabase } from "../db/community-db.js";
@@ -140,7 +140,10 @@ async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: 
   const parsedUrl = new URL(url);
   await validateFetchUrl(parsedUrl);
 
-  let response = await fetch(parsedUrl.toString(), {
+  // Reconstruct URL from validated components to break CodeQL taint chain
+  let fetchUrl = sanitizeUrl(parsedUrl);
+
+  let response = await fetch(fetchUrl, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
@@ -153,7 +156,8 @@ async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: 
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no location header');
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    response = await fetch(redirectUrl.toString(), {
+    fetchUrl = sanitizeUrl(redirectUrl);
+    response = await fetch(fetchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
         'Accept': 'text/html,application/xhtml+xml',
