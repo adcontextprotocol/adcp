@@ -93,7 +93,7 @@
     },
     "governance_agents": {
       "type": "array",
-      "description": "Governance agent endpoints for this account. When present, the seller MUST call these agents for governance approval before confirming media buy requests. Each agent can be scoped to specific validation categories. All applicable agents must approve for the action to proceed (unanimous approval).",
+      "description": "Governance agent endpoints registered on this account. Authentication credentials are write-only and not included in responses — use register_governance to set or update credentials.",
       "items": {
         "type": "object",
         "properties": {
@@ -103,24 +103,6 @@
             "pattern": "^https://",
             "description": "Governance agent endpoint URL. Must use HTTPS."
           },
-          "authentication": {
-            "type": "object",
-            "properties": {
-              "schemes": {
-                "type": "array",
-                "items": { "$ref": "/schemas/enums/auth-scheme.json" },
-                "minItems": 1,
-                "maxItems": 1
-              },
-              "credentials": {
-                "type": "string",
-                "description": "Authentication credential (e.g., Bearer token).",
-                "minLength": 32
-              }
-            },
-            "required": ["schemes", "credentials"],
-            "additionalProperties": false
-          },
           "categories": {
             "type": "array",
             "items": { "type": "string", "maxLength": 64 },
@@ -128,10 +110,9 @@
             "maxItems": 20
           }
         },
-        "required": ["url", "authentication"],
+        "required": ["url"],
         "additionalProperties": false
       },
-      "minItems": 1,
       "maxItems": 10
     },
     "sandbox": {

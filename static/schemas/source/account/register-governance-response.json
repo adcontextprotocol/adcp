@@ -45,7 +45,7 @@
                     }
                   },
                   "required": ["url"],
-                  "additionalProperties": true
+                  "additionalProperties": false
                 }
               },
               "errors": {
