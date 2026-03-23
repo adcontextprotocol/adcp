@@ -69,6 +69,10 @@
                 "enum": ["created", "updated", "unchanged", "deleted", "failed"],
                 "description": "Action taken for this event source"
               },
+              "health": {
+                "$ref": "/schemas/core/event-source-health.json",
+                "description": "Health assessment for this event source. Reflects event volume, data quality, and parameter completeness. Sellers that support health scoring include this on every source (buyer-managed and seller-managed). Absent when the seller does not evaluate event source health."
+              },
               "errors": {
                 "type": "array",
                 "description": "Errors for this event source (only present when action='failed')",
