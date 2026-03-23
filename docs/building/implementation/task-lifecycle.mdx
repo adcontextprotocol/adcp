@@ -6,6 +6,13 @@ description: "AdCP task lifecycle: status values (submitted, working, input-requ
 
 Every AdCP response includes a `status` field that tells you exactly what state the operation is in and what action you should take next. This is the foundation for handling any AdCP operation.
 
+:::note Transport-specific task management
+The status values and lifecycle described here are transport-independent — they apply regardless of how you access AdCP. The *mechanism* for tracking async tasks varies by transport:
+- **MCP**: Use [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) — the client polls via `tasks/get` and retrieves results via `tasks/result` at the protocol level. See [MCP Guide](/docs/building/integration/mcp-guide#async-operations-via-mcp-tasks).
+- **A2A**: Use native A2A task lifecycle with SSE streaming. See [A2A Guide](/docs/building/integration/a2a-guide).
+- **REST**: Use AdCP's `task_id` with polling or [push notifications](/docs/building/implementation/webhooks).
+:::
+
 ## Status Values
 
 AdCP uses the same status values as the [A2A protocol's TaskState enum](https://a2a-protocol.org/dev/specification/#63-taskstate-enum):
@@ -148,9 +155,10 @@ Async operations start with `working` or `submitted` and provide updates:
 }
 ```
 
-**Protocol-specific polling:**
-- **MCP**: Poll with context_id for updates
+**Transport-specific task tracking:**
+- **MCP**: Use [MCP Tasks](/docs/building/integration/mcp-guide#async-operations-via-mcp-tasks) — poll via `tasks/get` with `taskId`, retrieve result via `tasks/result`
 - **A2A**: Subscribe to SSE stream for real-time updates
+- **REST**: Poll with `task_id`, or use [push notifications](/docs/building/implementation/webhooks)
 
 ## Status Progression
 

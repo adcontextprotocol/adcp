@@ -133,9 +133,12 @@ asyncio.run(create_and_pause_campaign())
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `media_buy_id` | string | Yes* | Seller's media buy identifier to update |
+| `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with `CONFLICT` on mismatch. Obtain from `get_media_buys` or the most recent response. |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
+| `canceled` | boolean | No | Cancel the entire media buy (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | No | Reason for cancellation |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
@@ -163,6 +166,8 @@ Configure automated delivery reporting for this media buy:
 |-----------|------|-------------|
 | `package_id` | string | Seller's package identifier to update |
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
+| `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | Reason for canceling this package |
 | `budget` | number | Updated budget allocation |
 | `impressions` | number | Updated impression goal for this package |
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
@@ -188,6 +193,8 @@ Configure automated delivery reporting for this media buy:
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
+| `status` | Media buy status after the update (present when status changes, e.g., cancellation) |
+| `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `affected_packages` | Array of full Package objects showing complete state after update |
 
@@ -511,13 +518,75 @@ asyncio.run(update_multiple_packages())
 
 </CodeGroup>
 
+### Cancel a Media Buy
+
+Cancel an entire media buy:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "canceled": true,
+  "cancellation_reason": "Campaign strategy changed"
+}
+```
+
+**Success response:**
+```json
+{
+  "media_buy_id": "mb_12345",
+  "status": "canceled",
+  "revision": 4,
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": []
+}
+```
+
+**`NOT_CANCELLABLE` error response:**
+```json
+{
+  "errors": [{
+    "code": "NOT_CANCELLABLE",
+    "message": "Media buy mb_12345 has contractual obligations preventing cancellation",
+    "suggestion": "Contact seller to discuss cancellation options"
+  }]
+}
+```
+
+**`INVALID_STATE` error response** (e.g., trying to update a completed media buy):
+```json
+{
+  "errors": [{
+    "code": "INVALID_STATE",
+    "message": "Media buy mb_12345 is in terminal state 'completed' and cannot be modified",
+    "suggestion": "Check current status via get_media_buys and adjust request"
+  }]
+}
+```
+
+### Cancel a Package
+
+Cancel a single package while the media buy remains active:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "packages": [
+    {
+      "package_id": "pkg_67890",
+      "canceled": true,
+      "cancellation_reason": "Underperforming — reallocating budget"
+    }
+  ]
+}
+```
+
 ## What Can Be Updated
 
 ### Campaign-Level Updates
 
 ✅ **Can update:**
 - Start/end times (subject to seller approval)
-- Campaign status (active/paused)
+- Campaign status (active/paused/canceled)
 - Reporting webhook configuration (URL, frequency, metrics)
 
 ❌ **Cannot update:**
@@ -534,8 +603,9 @@ asyncio.run(update_multiple_packages())
 - Optimization goal (event source, event type, target ROAS/CPA)
 - Targeting overlays
 - Creative assignments
-- Package status (active/paused)
+- Package status (active/paused/canceled)
 - Catalog reference (replace the catalog a catalog-driven package promotes)
+- Creative assignments (before the package's `creative_deadline`)
 
 ❌ **Cannot update:**
 - Package ID
@@ -554,15 +624,21 @@ Common errors and resolutions:
 | `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
-| `INVALID_STATE` | Operation not allowed in current state | Check campaign status |
+| `INVALID_STATE` | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
+| `NOT_CANCELLABLE` | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
+| `CREATIVE_REJECTED` | Creative failed content policy review | Revise the creative per the seller's advertising policies |
+| `CREATIVE_DEADLINE_EXCEEDED` | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
+| `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
+| `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
+| `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 
 Example error response:
 
 ```json
 {
   "errors": [{
-    "code": "UPDATE_NOT_ALLOWED",
+    "code": "UNSUPPORTED_FEATURE",
     "message": "Cannot change product_id for existing package",
     "field": "packages[0].product_id",
     "suggestion": "Create a new package with the desired product instead"

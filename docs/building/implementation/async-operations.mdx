@@ -6,6 +6,10 @@ description: "AdCP async operations guide: handling synchronous, asynchronous, a
 
 AdCP operations can take seconds, hours, or days. This guide covers how to handle each type of operation and design for asynchronous-first workflows.
 
+:::note MCP transport
+If you're using MCP, long-running operations are handled via [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) — the client manages polling at the protocol level, outside the LLM loop. See [MCP Guide](/docs/building/integration/mcp-guide#async-operations-via-mcp-tasks). The patterns below apply to REST integrations and generic orchestrators.
+:::
+
 ## Operation Types
 
 AdCP operations fall into three categories:

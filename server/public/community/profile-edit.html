@@ -498,8 +498,17 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="field-avatar-url">Avatar URL</label>
-            <input type="url" id="field-avatar-url" class="form-input" placeholder="https://example.com/photo.jpg">
+            <label class="form-label">Profile Photo</label>
+            <div id="avatar-display" style="display: flex; align-items: center; gap: var(--space-4);">
+              <div id="avatar-preview" style="width: 64px; height: 64px; border-radius: var(--radius-full); overflow: hidden; flex-shrink: 0; background: var(--color-gray-100); display: flex; align-items: center; justify-content: center;">
+                <span id="avatar-placeholder" style="font-size: var(--text-xl); color: var(--color-text-muted);">?</span>
+              </div>
+              <div>
+                <p id="avatar-info" style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0;">
+                  Your profile photo is set from your member portrait. Ask Addie to generate or update it.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div class="form-group">
@@ -758,7 +767,16 @@
       document.getElementById('field-headline').value = profile.headline || '';
       updateCharCount();
       document.getElementById('field-bio').value = profile.bio || '';
-      document.getElementById('field-avatar-url').value = profile.avatar_url || '';
+      // Show avatar preview
+      const avatarPreview = document.getElementById('avatar-preview');
+      const avatarInfo = document.getElementById('avatar-info');
+      if (profile.avatar_url) {
+        avatarPreview.innerHTML = `<img src="${escapeHtml(profile.avatar_url)}" alt="Profile photo" style="width: 100%; height: 100%; object-fit: cover;">`;
+        avatarInfo.innerHTML = 'Your profile photo is set from your member portrait. Ask Addie to generate or update it.';
+      } else {
+        avatarPreview.innerHTML = '<span style="font-size: var(--text-xl); color: var(--color-text-muted);">?</span>';
+        avatarInfo.innerHTML = 'No profile photo yet. Ask Addie to generate a portrait for you.';
+      }
 
       expertiseTags = (profile.expertise || []).slice();
       interestsTags = (profile.interests || []).slice();
@@ -873,7 +891,6 @@
         slug: document.getElementById('field-slug').value.trim() || undefined,
         headline: document.getElementById('field-headline').value.trim() || undefined,
         bio: document.getElementById('field-bio').value.trim() || undefined,
-        avatar_url: document.getElementById('field-avatar-url').value.trim() || undefined,
         expertise: expertiseTags,
         interests: interestsTags,
         city: document.getElementById('field-city').value.trim() || undefined,

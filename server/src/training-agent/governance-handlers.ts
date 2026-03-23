@@ -25,6 +25,7 @@ export const GOVERNANCE_TOOLS = [
     name: 'sync_plans',
     description: 'Push campaign governance plans. A plan defines authorized parameters for a campaign — budget limits, channels, flight dates, and authorized markets. Call this before check_governance.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -95,6 +96,7 @@ export const GOVERNANCE_TOOLS = [
     name: 'check_governance',
     description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending to a seller (proposed) or by the seller before executing (committed). Returns approved, denied, conditions, or escalated.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -118,6 +120,7 @@ export const GOVERNANCE_TOOLS = [
     name: 'report_plan_outcome',
     description: 'Report the outcome of an action to the governance agent. Called by the orchestrator after a seller responds. Links outcomes to the governance check that authorized them.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -136,6 +139,7 @@ export const GOVERNANCE_TOOLS = [
     name: 'get_plan_audit_logs',
     description: 'Retrieve governance state and audit trail for one or more plans. Returns budget utilization, channel allocation, campaign breakdown, and drift metrics.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {

@@ -12,6 +12,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState } from './types.js';
 import type {
@@ -63,6 +65,33 @@ import {
   handleUpdateRights,
 } from './brand-handlers.js';
 import { PUBLISHERS } from './publishers.js';
+
+// ── MCP Tasks store (SDK-managed) ─────────────────────────────────
+
+/**
+ * Shared task store across per-request Server instances. The SDK's
+ * InMemoryTaskStore handles TTL cleanup, task ID generation, and
+ * result storage. Passing this to the Server constructor auto-registers
+ * handlers for tasks/get, tasks/result, tasks/list, and tasks/cancel.
+ *
+ * Note: no session isolation — any session can see/cancel tasks from
+ * another. This is intentional for the training agent where all sessions
+ * are sandboxed. Production servers should scope tasks by sessionId.
+ */
+let sdkTaskStore = new InMemoryTaskStore();
+
+/** Look up which tools allow task augmentation. */
+function toolSupportsTask(toolName: string): boolean {
+  const tool = TOOLS.find(t => t.name === toolName);
+  const support = tool?.execution?.taskSupport as string | undefined;
+  return support === 'optional' || support === 'required';
+}
+
+/** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
+export function clearTaskStore(): void {
+  sdkTaskStore.cleanup();
+  sdkTaskStore = new InMemoryTaskStore();
+}
 
 /** Wire-format error shared by all training agent responses. */
 interface TaskError {
@@ -214,12 +243,29 @@ const SYNONYM_MAP: Record<string, string[]> = {
 
 /** Derive lifecycle status from stored status and flight dates. */
 function deriveStatus(mb: MediaBuyState): string {
+  if (mb.canceledAt) return 'canceled';
+  if (mb.status === 'rejected') return 'rejected';
   const now = new Date();
-  if (mb.status === 'active') {
+  if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
     if (new Date(mb.startTime) > now) return 'pending_activation';
   }
+  if (mb.status === 'paused') return 'paused';
   return mb.status;
+}
+
+/** Map lifecycle status to valid buyer actions. */
+function validActionsForStatus(status: string): string[] {
+  switch (status) {
+    case 'pending_activation':
+      return ['cancel', 'sync_creatives'];
+    case 'active':
+      return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+    case 'paused':
+      return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+    default:
+      return [];
+  }
 }
 
 // ── Cached catalog and formats (built once at first use) ──────────
@@ -294,6 +340,7 @@ const TOOLS = [
     name: 'get_products',
     description: 'Discover available advertising products. Supports brief (curated discovery), wholesale (raw catalog), and refine (iterate on previous results) buying modes. Use this before create_media_buy to find valid product_id and pricing_option_id values. Not for checking delivery or managing existing buys. Returns sandbox catalog data.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -312,6 +359,7 @@ const TOOLS = [
     name: 'list_creative_formats',
     description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Filter by channels to see formats relevant to specific media types. Not for uploading creatives (use sync_creatives) or checking creative status.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -324,6 +372,7 @@ const TOOLS = [
     name: 'create_media_buy',
     description: 'Create a media buy with one or more packages targeting specific products. Requires valid product_id and pricing_option_id from get_products. Not for updating existing buys (use update_media_buy). Cannot add packages to an existing buy after creation.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -363,11 +412,14 @@ const TOOLS = [
     name: 'get_media_buys',
     description: 'List media buys for the current session/account. Returns buy configuration and status only — not delivery metrics (use get_media_buy_delivery for that). Only returns buys created in the current session; buys from other sessions are not visible.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
+        status_filter: { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
+        include_history: { type: 'integer', minimum: 0, maximum: 1000, description: 'Include the last N revision history entries per media buy. 0 or omit to exclude. Recommended: 5-10 for monitoring, 50+ for audit.' },
         include_snapshot: { type: 'boolean', description: 'Include full media buy snapshot in response' },
       },
     },
@@ -376,6 +428,7 @@ const TOOLS = [
     name: 'get_media_buy_delivery',
     description: 'Get delivery metrics for a media buy including impressions, spend, and clicks by package. Requires a media_buy_id from create_media_buy. Returns simulated metrics proportional to elapsed flight time. Not for creating or updating buys.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -390,6 +443,7 @@ const TOOLS = [
     name: 'sync_creatives',
     description: 'Upload or update creative assets and optionally assign them to packages. Validates format_id against list_creative_formats. Not for listing existing creatives (use list_creatives). Creative content is not validated — only format_id is checked.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -404,6 +458,7 @@ const TOOLS = [
     name: 'list_creatives',
     description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. Not for uploading or updating creatives (use sync_creatives). Only returns creatives from the current session.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -417,6 +472,7 @@ const TOOLS = [
     name: 'get_creative_delivery',
     description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids or creative_ids.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -429,14 +485,20 @@ const TOOLS = [
   },
   {
     name: 'update_media_buy',
-    description: 'Update an existing media buy. Supports changing package budget, paused state, and end_time. Cannot add new packages or change product_id/pricing_option_id — only update existing package fields. Not for creating new buys (use create_media_buy).',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    description: 'Update an existing media buy. Supports changing package budget, paused state, end_time, cancellation, and adding new packages. Requires revision for optimistic concurrency. Not for creating new buys (use create_media_buy).',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
+        revision: { type: 'number', description: 'Current revision for optimistic concurrency control' },
+        paused: { type: 'boolean', description: 'Pause (true) or resume (false) the media buy' },
+        canceled: { type: 'boolean', const: true, description: 'Cancel the media buy (one-way, cannot be undone)' },
+        cancellation_reason: { type: 'string', description: 'Reason for cancellation' },
         packages: { type: 'array' },
+        new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
         end_time: { type: 'string' },
       },
       required: ['media_buy_id'] as const,
@@ -446,6 +508,7 @@ const TOOLS = [
     name: 'get_signals',
     description: 'Discover signals matching campaign criteria. Supports natural language discovery via signal_spec or exact lookup via signal_ids. Returns signals with deployment status, pricing, and activation keys. Use this to find targetable audiences, contextual categories, geographic regions, and other data attributes.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -464,6 +527,7 @@ const TOOLS = [
     name: 'activate_signal',
     description: 'Activate a signal for use on a specific platform or agent. Requires signal_agent_segment_id from get_signals and at least one destination. Returns deployment status with activation keys.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -485,6 +549,7 @@ const TOOLS = [
     name: 'get_adcp_capabilities',
     description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -705,7 +770,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   if (session.mediaBuys.size >= MAX_MEDIA_BUYS_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
+      errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_MEDIA_BUYS_PER_SESSION} media buys). Start a new session.` }] as TaskError[],
     };
   }
 
@@ -757,10 +822,10 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       && !('fixed_price' in pricing && (pricing as unknown as Record<string, unknown>).fixed_price !== undefined);
 
     if (isAuction && pkg.bid_price === undefined) {
-      errors.push({
-        code: 'INVALID_REQUEST',
-        message: `${pkgLabel}: bid_price is required for auction pricing (${pricing.pricing_model}, option ${pkg.pricing_option_id})`,
-      });
+      // Auto-assign bid from price guidance (training agent convenience)
+      const guidance = (pricing as unknown as Record<string, unknown>).price_guidance as Record<string, number> | undefined;
+      const autoBid = guidance?.p50 ?? (floorPrice ? floorPrice * 1.2 : 10);
+      (pkg as Record<string, unknown>).bid_price = autoBid;
     }
 
     if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice) {
@@ -827,15 +892,22 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     packages: createdPackages,
     startTime: resolvedStart,
     endTime: buyEnd,
+    revision: 1,
+    confirmedAt: now,
     createdAt: now,
     updatedAt: now,
+    history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Media buy created with ${createdPackages.length} package(s)` }],
   };
 
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
+  const status = deriveStatus(mediaBuy);
   return {
     media_buy_id: mediaBuyId,
-    status: deriveStatus(mediaBuy),
+    status,
+    revision: mediaBuy.revision,
+    confirmed_at: mediaBuy.confirmedAt,
+    valid_actions: validActionsForStatus(status),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -879,16 +951,40 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
     }
   }
 
+  // Apply status_filter (default to ['active'] when no IDs provided)
+  const statusFilter = (args as Record<string, unknown>).status_filter as string[] | undefined;
+  if (!filterIds?.length) {
+    const effectiveFilter = statusFilter || ['active'];
+    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb)));
+  } else if (statusFilter?.length) {
+    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb)));
+  }
+
   const includeSnapshot = (args as Record<string, unknown>).include_snapshot === true;
+  const includeHistory = Number((args as Record<string, unknown>).include_history) || 0;
 
   return {
     media_buys: buys.map(mb => {
+      const status = deriveStatus(mb);
       const buy: Record<string, unknown> = {
         media_buy_id: mb.mediaBuyId,
-        status: deriveStatus(mb),
+        status,
+        revision: mb.revision,
+        confirmed_at: mb.confirmedAt,
+        created_at: mb.createdAt,
+        updated_at: mb.updatedAt,
+        valid_actions: validActionsForStatus(status),
         currency: mb.currency,
         start_time: mb.startTime,
         end_time: mb.endTime,
+        ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
+        ...(mb.canceledAt && {
+          cancellation: {
+            canceled_at: mb.canceledAt,
+            canceled_by: mb.canceledBy,
+            reason: mb.cancellationReason,
+          },
+        }),
         packages: mb.packages.map(pkg => {
           const pkgData: Record<string, unknown> = {
             package_id: pkg.packageId,
@@ -902,6 +998,13 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
               creative_id: cid,
               approval_status: 'approved',
             })),
+            ...(pkg.canceledAt && {
+              cancellation: {
+                canceled_at: pkg.canceledAt,
+                canceled_by: pkg.canceledBy,
+                reason: pkg.cancellationReason,
+              },
+            }),
           };
           if (includeSnapshot) {
             pkgData.snapshot_unavailable_reason = 'Sandbox training agent does not track real delivery';
@@ -909,6 +1012,16 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
           return pkgData;
         }),
       };
+      if (includeHistory > 0 && mb.history?.length) {
+        buy.history = mb.history.slice(-includeHistory).reverse().map(h => ({
+          revision: h.revision,
+          timestamp: h.timestamp,
+          actor: h.actor,
+          action: h.action,
+          summary: h.summary,
+          ...(h.packageId && { package_id: h.packageId }),
+        }));
+      }
       return buy;
     }),
     sandbox: true,
@@ -934,7 +1047,7 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
 
   if (!mb) {
     return {
-      errors: [{ code: 'not_found', message: `Media buy not found: ${mediaBuyId}` }],
+      errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
     };
   }
 
@@ -952,8 +1065,8 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   let totalClicks = 0;
 
   const byPackage = mb.packages.map(pkg => {
-    // Paused packages stop accruing delivery
-    if (pkg.paused) {
+    // Paused or canceled packages stop accruing delivery
+    if (pkg.paused || pkg.canceled) {
       const { model, rate } = derivePricing(pkg, productMap);
       return {
         package_id: pkg.packageId,
@@ -1050,7 +1163,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
 
   if (session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
     return {
-      errors: [{ code: 'limit_exceeded', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
+      errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
   }
 
@@ -1172,37 +1285,104 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   }
 
   if (!mb) {
+    return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
+  }
+
+  // Terminal state check
+  const currentStatus = deriveStatus(mb);
+  if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
+    return { errors: [{ code: 'INVALID_STATE', message: `Media buy is ${currentStatus} and cannot be updated` }] };
+  }
+
+  // Revision check for optimistic concurrency
+  const reqRevision = (args as Record<string, unknown>).revision as number | undefined;
+  if (reqRevision !== undefined && reqRevision !== mb.revision) {
+    return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
+  }
+
+  const now = new Date().toISOString();
+
+  // Increment revision once before mutations
+  mb.revision += 1;
+
+  // Media buy cancellation
+  const isCanceled = (args as Record<string, unknown>).canceled === true;
+  if (isCanceled) {
+    const reason = (args as Record<string, unknown>).cancellation_reason as string | undefined;
+    mb.canceledAt = now;
+    mb.canceledBy = 'buyer';
+    mb.cancellationReason = reason;
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'canceled', summary: reason || 'Media buy canceled by buyer' });
+    mb.updatedAt = now;
+
+    const status = deriveStatus(mb);
     return {
-      errors: [{ code: 'not_found', message: `Media buy not found: ${mediaBuyId}` }],
+      media_buy_id: mb.mediaBuyId,
+      status,
+      revision: mb.revision,
+      valid_actions: validActionsForStatus(status),
+      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+      sandbox: true,
     };
+  }
+
+  // Pause/resume at media buy level
+  const pausedValue = (args as Record<string, unknown>).paused;
+  if (pausedValue === true) {
+    mb.status = 'paused';
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'paused', summary: 'Media buy paused' });
+  } else if (pausedValue === false && mb.status === 'paused') {
+    mb.status = 'active';
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'resumed', summary: 'Media buy resumed' });
   }
 
   // Update end_time with validation
   if (req.end_time) {
     if (isNaN(new Date(req.end_time).getTime())) {
-      return { errors: [{ code: 'INVALID_REQUEST', message: `Invalid end_time: "${req.end_time}". Use ISO 8601 format.` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${req.end_time}". Use ISO 8601 format.` }] };
     }
+    const oldEnd = mb.endTime;
     mb.endTime = req.end_time;
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'end_time_updated', summary: `End time changed from ${oldEnd} to ${req.end_time}` });
   }
 
   // Update packages
   const warnings: string[] = [];
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
-    for (const update of req.packages as PackageUpdate[]) {
+    for (const update of req.packages as (PackageUpdate & { canceled?: boolean; cancellation_reason?: string })[]) {
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) {
-        warnings.push(`Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}`);
+        return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
+      }
+
+      // Package cancellation
+      if ((update as Record<string, unknown>).canceled === true) {
+        pkg.canceled = true;
+        pkg.canceledAt = now;
+        pkg.canceledBy = 'buyer';
+        pkg.cancellationReason = (update as Record<string, unknown>).cancellation_reason as string | undefined;
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
         continue;
       }
+
+      // Package pause/resume
+      if (update.paused !== undefined && update.paused !== pkg.paused) {
+        pkg.paused = update.paused;
+        const action = update.paused ? 'package_paused' : 'package_resumed';
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary: `Package ${pkgId} ${update.paused ? 'paused' : 'resumed'}`, packageId: pkgId });
+      }
+
       if (update.budget !== undefined) {
         if (update.budget < 0) {
-          return { errors: [{ code: 'INVALID_REQUEST', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
         }
+        const oldBudget = pkg.budget;
         pkg.budget = update.budget;
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget changed from ${oldBudget} to ${update.budget}`, packageId: pkgId });
       }
-      if (update.paused !== undefined) pkg.paused = update.paused;
+
       if (update.end_time) {
         if (isNaN(new Date(update.end_time).getTime())) {
           warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
@@ -1213,10 +1393,50 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     }
   }
 
-  mb.updatedAt = new Date().toISOString();
+  // Add new packages
+  const newPackages = (args as Record<string, unknown>).new_packages as Array<Record<string, unknown>> | undefined;
+  if (newPackages?.length) {
+    const catalog = getCatalog();
+    const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 
-  const result: { media_buy_id: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } = {
+    for (let i = 0; i < newPackages.length; i++) {
+      const npkg = newPackages[i];
+      const productId = npkg.product_id as string;
+      const product = productMap.get(productId);
+      if (!product) {
+        return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
+      }
+
+      const pkgId = `pkg_${randomUUID().slice(0, 8)}`;
+      const newPkg: PackageState = {
+        packageId: pkgId,
+        productId,
+        budget: npkg.budget as number,
+        pricingOptionId: npkg.pricing_option_id as string,
+        bidPrice: npkg.bid_price as number | undefined,
+        impressions: npkg.impressions as number | undefined,
+        paused: (npkg.paused as boolean) || false,
+        startTime: (npkg.start_time as string) || mb.startTime,
+        endTime: (npkg.end_time as string) || mb.endTime,
+        formatIds: npkg.format_ids as FormatID[] | undefined,
+        creativeAssignments: [],
+      };
+      mb.packages.push(newPkg);
+      mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
+    }
+  }
+
+  mb.updatedAt = now;
+
+  const status = deriveStatus(mb);
+  const result: Record<string, unknown> = {
     media_buy_id: mb.mediaBuyId,
+    status,
+    revision: mb.revision,
+    valid_actions: validActionsForStatus(status),
+    ...(mb.canceledAt && {
+      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+    }),
     packages: mb.packages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -1225,6 +1445,9 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
+      ...(pkg.canceledAt && {
+        cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
+      }),
     })),
     sandbox: true,
   };
@@ -1687,16 +1910,27 @@ export function executeTrainingAgentTool(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
+  const taskStore = sdkTaskStore;
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: {
+        tools: {},
+        tasks: {
+          list: {},
+          cancel: {},
+          requests: { tools: { call: {} } },
+        },
+      },
+      taskStore,
+    },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return { tools: TOOLS };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name: string; arguments?: Record<string, unknown> } }) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     const handler = HANDLER_MAP[name];
 
@@ -1704,29 +1938,80 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` });
     }
 
+    // Check for task-augmented request (explicit `task` field in params)
+    const taskField = (request.params as { task?: { ttl?: number } }).task;
+    const isTaskRequest = taskField !== undefined;
+    if (isTaskRequest && !toolSupportsTask(name)) {
+      throw new Error(`Tool "${name}" does not support task augmentation`);
+    }
+
+    // Execute the tool handler
+    let toolResult: CallToolResult;
+    let isError = false;
     try {
       const result = handler((args as Record<string, unknown>) || {}, ctx);
       const hasErrors = result && 'errors' in result && Array.isArray(result.errors) && result.errors.length > 0;
       if (hasErrors) {
+        isError = true;
         const firstError = (result as { errors: Array<{ code: string; message: string }> }).errors[0];
-        return adcpError(firstError.code, {
+        toolResult = adcpError(firstError.code, {
           message: firstError.message,
           details: (result as { errors: Array<unknown> }).errors.length > 1
             ? { all_errors: (result as { errors: Array<unknown> }).errors }
             : undefined,
         });
+      } else {
+        toolResult = {
+          content: [{ type: 'text', text: JSON.stringify(result) }],
+        };
       }
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-      };
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
-      return adcpError('SERVICE_UNAVAILABLE', {
+      isError = true;
+      toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
       });
     }
+
+    // If not task-augmented, return result directly
+    if (!isTaskRequest) {
+      return toolResult;
+    }
+
+    // Clamp TTL to prevent unbounded task lifetime / memory exhaustion
+    const MAX_TASK_TTL = 24 * 60 * 60 * 1000; // 24 hours
+    const DEFAULT_TASK_TTL = 60 * 60 * 1000;  // 1 hour
+    const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
+
+    // Task-augmented: prefer extra.taskStore (SDK wrapper that sends
+    // notifications/tasks/status and propagates session IDs). Falls back
+    // to the raw module-level store for test harness calls with empty extra.
+    const terminalStatus: 'completed' | 'failed' = isError ? 'failed' : 'completed';
+    let task;
+    if (extra.taskStore) {
+      task = await extra.taskStore.createTask({ ttl: clampedTtl });
+      await extra.taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
+      task = await extra.taskStore.getTask(task.taskId);
+    } else {
+      task = await taskStore.createTask(
+        { ttl: clampedTtl },
+        0,
+        request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
+      );
+      await taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
+      task = await taskStore.getTask(task.taskId);
+    }
+    if (!task) {
+      throw new Error(`Task disappeared after creation for tool "${name}"`);
+    }
+    logger.info({ taskId: task.taskId, tool: name, status: terminalStatus }, 'Created MCP task');
+
+    return { task } as Record<string, unknown>;
   });
+
+  // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered
+  // by the SDK when taskStore is provided to the Server constructor.
 
   return server;
 }

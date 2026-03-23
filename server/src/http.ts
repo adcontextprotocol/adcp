@@ -76,6 +76,7 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
@@ -1033,6 +1034,11 @@ export class HTTPServer {
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
+
+    // Mount portrait routes
+    this.app.use('/api/portraits', createPublicPortraitRouter());
+    this.app.use('/api/me/portrait', createPortraitRouter({ memberDb, orgDb, invalidateMemberContextCache }));
+    this.app.use('/api/admin/portraits', createAdminPortraitRouter());
 
     // Mount community routes
     const communityDb = new CommunityDatabase();
