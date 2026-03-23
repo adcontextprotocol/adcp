@@ -44,6 +44,29 @@ describe("approvePortrait", () => {
     // The avatar_url update should be inside the transaction
     expect(approveSection).toContain("UPDATE users SET avatar_url");
   });
+
+  it("aborts if the portrait does not belong to the profile", () => {
+    const approveSection = portraitDbSource.slice(
+      portraitDbSource.indexOf("async function approvePortrait"),
+      portraitDbSource.indexOf("return getPortraitById(portraitId)")
+    );
+    expect(approveSection).toContain("rowCount");
+    expect(approveSection).toContain("return null");
+  });
+
+  it("does not overwrite external avatars", () => {
+    const approveSection = portraitDbSource.slice(
+      portraitDbSource.indexOf("async function approvePortrait"),
+      portraitDbSource.indexOf("return getPortraitById(portraitId)")
+    );
+    expect(approveSection).toContain("avatar_url LIKE '/api/portraits/%'");
+  });
+});
+
+describe("getPortraitData", () => {
+  it("only serves approved portraits", () => {
+    expect(portraitDbSource).toContain("WHERE id = $1 AND status = 'approved'");
+  });
 });
 
 describe("removeFromProfile", () => {
@@ -66,6 +89,19 @@ describe("removeFromProfile", () => {
     expect(removeSection).toContain("BEGIN");
     expect(removeSection).toContain("COMMIT");
     expect(removeSection).toContain("ROLLBACK");
+  });
+});
+
+describe("community profile API", () => {
+  const communityRoutesPath = resolve(__dirname, "../../src/routes/community.ts");
+  const communitySource = readFileSync(communityRoutesPath, "utf-8");
+
+  it("does not allow avatar_url in profile update allowedFields", () => {
+    const updateSection = communitySource.slice(
+      communitySource.indexOf("const allowedFields"),
+      communitySource.indexOf("const updates")
+    );
+    expect(updateSection).not.toContain("avatar_url");
   });
 });
 

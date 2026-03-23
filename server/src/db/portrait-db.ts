@@ -40,7 +40,7 @@ export async function getPortraitById(id: string): Promise<PortraitMetadata | nu
 /** Get portrait binary data for serving */
 export async function getPortraitData(id: string): Promise<{ portrait_data: Buffer | null; image_url: string } | null> {
   const result = await query<{ portrait_data: Buffer | null; image_url: string }>(
-    `SELECT portrait_data, image_url FROM member_portraits WHERE id = $1`,
+    `SELECT portrait_data, image_url FROM member_portraits WHERE id = $1 AND status = 'approved'`,
     [id]
   );
   return result.rows[0] || null;
@@ -103,16 +103,21 @@ export async function approvePortrait(portraitId: string, profileId: string): Pr
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
-    await client.query(
+    const updateResult = await client.query(
       `UPDATE member_portraits SET status = 'approved', approved_at = NOW(), updated_at = NOW()
        WHERE id = $1 AND member_profile_id = $2`,
       [portraitId, profileId]
     );
+    if ((updateResult.rowCount ?? 0) === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
     await client.query(
       `UPDATE member_profiles SET portrait_id = $1, updated_at = NOW() WHERE id = $2`,
       [portraitId, profileId]
     );
-    // Set the portrait as the community avatar for all users in this org
+    // Set the portrait as the community avatar for users in this org
+    // Only overwrite if they have no avatar or already have a portrait-based one
     await client.query(
       `UPDATE users SET avatar_url = $1
        WHERE workos_user_id IN (
@@ -120,7 +125,8 @@ export async function approvePortrait(portraitId: string, profileId: string): Pr
          FROM member_profiles mp
          JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
          WHERE mp.id = $2
-       )`,
+       )
+       AND (avatar_url IS NULL OR avatar_url = '' OR avatar_url LIKE '/api/portraits/%')`,
       [portraitUrl, profileId]
     );
     await client.query('COMMIT');
