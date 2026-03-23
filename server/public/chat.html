@@ -214,11 +214,25 @@
     }
 
     /* Image support */
+    .message-content .chat-image-wrap {
+      display: block;
+      max-width: 100%;
+      margin: 8px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--color-bg-subtle);
+      min-height: 200px;
+    }
+
+    .message-content .chat-image-wrap.loaded {
+      min-height: 0;
+      background: none;
+    }
+
     .message-content img {
       max-width: 100%;
       height: auto;
       border-radius: 8px;
-      margin: 8px 0;
       display: block;
     }
 
@@ -3514,8 +3528,8 @@
           if (!safeHref) return '';
           const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
           const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
-          // Make images clickable to open in new tab
-          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
+          // Wrap in container to reserve space and prevent layout shift while loading
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="chat-image-wrap"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
         };
 
         let html = DOMPurify.sanitize(marked.parse(processedText, { renderer }));
@@ -3534,6 +3548,26 @@
         });
 
         return html;
+      }
+
+      // Attach load handlers to chat images to remove placeholder and re-scroll
+      function setupChatImages(container) {
+        container.querySelectorAll('.chat-image-wrap:not(.loaded)').forEach(wrap => {
+          const img = wrap.querySelector('img');
+          if (!img) return;
+          if (img.complete) {
+            wrap.classList.add('loaded');
+          } else {
+            img.addEventListener('load', () => {
+              wrap.classList.add('loaded');
+              const scrollParent = wrap.closest('.messages');
+              if (scrollParent) scrollParent.scrollTop = scrollParent.scrollHeight;
+            }, { once: true });
+            img.addEventListener('error', () => {
+              wrap.classList.add('loaded');
+            }, { once: true });
+          }
+        });
       }
 
       // Render creative preview (iframe or HTML)
@@ -3588,6 +3622,7 @@
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
         contentDiv.innerHTML = renderMessage(content);
+        setupChatImages(contentDiv);
 
         // Add feedback controls for assistant messages
         if (role === 'assistant' && messageId) {
@@ -3952,6 +3987,7 @@
           contentDiv.innerHTML = renderedParagraphs.join('') +
             (escapedRemainder ? '<p>' + escapedRemainder + '<span class="streaming-cursor">|</span></p>' : '<span class="streaming-cursor">|</span>');
         }
+        setupChatImages(contentDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
       }
 
@@ -3959,6 +3995,7 @@
       function finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId) {
         // Remove cursor and render final content
         contentDiv.innerHTML = renderMessage(fullContent);
+        setupChatImages(contentDiv);
 
         // Add feedback controls
         if (messageId) {
