@@ -106,7 +106,7 @@ describe("community profile API", () => {
 });
 
 describe("backfill migration", () => {
-  const migrationPath = resolve(__dirname, "../../src/db/migrations/323_backfill_portrait_avatars.sql");
+  const migrationPath = resolve(__dirname, "../../src/db/migrations/324_backfill_portrait_avatars.sql");
   const migration = readFileSync(migrationPath, "utf-8");
 
   it("only backfills users without an existing avatar", () => {
