@@ -452,23 +452,24 @@ The seller POSTs to the buyer's `governance_agents` URLs when media buy events o
 
 ### Setup
 
-The buyer registers `governance_agents` when syncing accounts with the seller. Each agent includes authentication credentials so the governance agent can verify the seller's identity:
+The buyer registers governance agents via [`register_governance`](/docs/accounts/tasks/register_governance), pairing each account with the governance agent endpoints to call. Each agent includes authentication credentials so the governance agent can verify the seller's identity:
 
 ```json
 {
-  "tool": "sync_accounts",
+  "tool": "register_governance",
   "arguments": {
     "accounts": [
       {
-        "brand": { "domain": "acmecorp.com" },
-        "operator": "pinnacle-media.com",
-        "billing": "operator",
+        "account": {
+          "brand": { "domain": "acmecorp.com" },
+          "operator": "pinnacle-media.com"
+        },
         "governance_agents": [
           {
             "url": "https://governance.pinnacle-media.com",
             "authentication": {
               "schemes": ["Bearer"],
-              "credentials": "gov_token_acme_pinnacle_2026_xyz..."
+              "credentials": "gov_token_acme_pinnacle_2026_xyzxyzxyz..."
             }
           }
         ]
@@ -714,7 +715,7 @@ The seller calls each governance agent at its registered URL using MCP over HTTP
 
 ### Multi-agent composition
 
-Accounts MAY register multiple governance agents via the `governance_agents` array on `sync_accounts`, each responsible for different validation categories. For example, one agent handles budget authority and strategic alignment while another handles regulatory compliance and brand policy.
+Accounts MAY register multiple governance agents via [`register_governance`](/docs/accounts/tasks/register_governance), each responsible for different validation categories. For example, one agent handles budget authority and strategic alignment while another handles regulatory compliance and brand policy.
 
 When multiple governance agents are registered, the seller MUST call each agent whose `categories` overlap with the action being validated. All applicable agents must approve for the action to proceed (unanimous approval). If any agent returns `denied` or `escalated`, the action is blocked.
 

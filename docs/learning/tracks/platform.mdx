@@ -102,7 +102,7 @@ Cryptographic signatures for supply chain verification. How platforms validate a
 - **Agent identity verification** — domain ownership, cryptographic signatures, organizational registration
 - **Supply path transparency** — full visibility into which agents handled each transaction
 - **ads.cert relationship** — extending cryptographic verification from RTB to agent-to-agent interactions
-- **Campaign governance architecture** — implement three-party validation: store `governance_agents` from `sync_accounts`, call `check_governance` before executing, handle all statuses
+- **Campaign governance architecture** — implement three-party validation: register governance agents via `register_governance`, call `check_governance` before executing, handle all statuses
 - **Policy registry integration** — resolve policies by ID, integrate natural language policy text and exemplars into governance agent evaluation
 
 <Card title="Start D2 with Addie" icon="play" href="https://agenticadvertising.org/chat">
