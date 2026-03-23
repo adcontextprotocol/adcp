@@ -33,6 +33,7 @@ import { runSocialPostIdeasJob } from './social-post-ideas.js';
 import { runConversationInsightsJob } from './conversation-insights.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { runCredentialDigestJob } from './credential-digest.js';
+import { runWgDigestJob } from './wg-digest.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -257,6 +258,16 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.generated || r.sent > 0,
   });
 
+  // WG digest - biweekly per-group email to working group members
+  jobScheduler.register({
+    name: 'wg-digest',
+    description: 'Biweekly working group digest emails',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 9, unit: 'minutes' },
+    runner: runWgDigestJob,
+    shouldLogResult: (r) => r.groupsChecked > 0,
+  });
+
   // Credential digest - weekly summary of certification awards to Slack
   jobScheduler.register({
     name: 'credential-digest',
@@ -399,6 +410,7 @@ export const JOB_NAMES = {
   PROSPECT_TRIAGE: 'prospect-triage',
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
+  WG_DIGEST: 'wg-digest',
   CREDENTIAL_DIGEST: 'credential-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',

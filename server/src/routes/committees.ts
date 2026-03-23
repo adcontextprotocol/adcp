@@ -20,8 +20,10 @@ import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from "../utils/url-security.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
-import { createChannel, setChannelPurpose, sendChannelMessage, isSlackConfigured } from "../slack/client.js";
+import { createChannel, setChannelPurpose, sendChannelMessage, inviteToChannel, isSlackConfigured } from "../slack/client.js";
+import { SlackDatabase } from "../db/slack-db.js";
 import { CommunityDatabase } from "../db/community-db.js";
+import { sendWgWelcomeMessage } from "../addie/services/wg-welcome.js";
 
 const logger = createLogger("committee-routes");
 
@@ -1007,22 +1009,68 @@ export function createCommitteeRouters(): {
         logger.error({ err, userId: user.id }, 'Failed to check WG badges');
       });
 
-      // Notify group leaders (fire-and-forget)
+      // Notify group leaders with joiner context (fire-and-forget)
       const joinerName = user.firstName && user.lastName
         ? `${user.firstName} ${user.lastName}` : user.email;
+
       if (group.leaders) {
-        for (const leader of group.leaders) {
-          notifyUser({
-            recipientUserId: leader.canonical_user_id,
-            actorUserId: user.id,
-            type: 'wg_member_joined',
-            referenceId: group.id,
-            referenceType: 'working_group',
-            title: `${joinerName} joined ${group.name}`,
-            url: `/working-groups/${group.slug}`,
-          }).catch(err => logger.error({ err }, 'Failed to send WG join notification'));
-        }
+        // Escape Slack mrkdwn special chars in external data
+        const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        (async () => {
+          // Gather joiner's other WG memberships for context
+          const otherWgNames: string[] = [];
+          try {
+            const joinerGroups = await workingGroupDb.getWorkingGroupsForUser(user.id);
+            for (const g of joinerGroups) {
+              if (g.id !== group.id) otherWgNames.push(g.name);
+            }
+          } catch {
+            // Non-critical — proceed without other WG context
+          }
+
+          const orgContext = orgName ? ` (${esc(orgName)})` : '';
+          const wgContext = otherWgNames.length > 0
+            ? `. Also active in ${otherWgNames.map(esc).join(', ')}`
+            : '';
+
+          for (const leader of group.leaders!) {
+            notifyUser({
+              recipientUserId: leader.canonical_user_id,
+              actorUserId: user.id,
+              type: 'wg_member_joined',
+              referenceId: group.id,
+              referenceType: 'working_group',
+              title: `${esc(joinerName)}${orgContext} joined ${esc(group.name)}${wgContext}`,
+              url: `/working-groups/${group.slug}`,
+            }).catch(err => logger.error({ err }, 'Failed to send WG join notification'));
+          }
+        })().catch(err => logger.error({ err }, 'Failed to build WG join notification context'));
       }
+
+      // Auto-invite joiner to the group's Slack channel (fire-and-forget)
+      if (group.slack_channel_id) {
+        const slackDb = new SlackDatabase();
+        slackDb.getByWorkosUserId(user.id).then(mapping => {
+          if (mapping?.slack_user_id) {
+            return inviteToChannel(group.slack_channel_id!, [mapping.slack_user_id]);
+          }
+        }).catch(err => {
+          logger.error({ err, userId: user.id, channelId: group.slack_channel_id }, 'Failed to auto-invite to Slack channel');
+        });
+      }
+
+      // Send Addie welcome message with group context (fire-and-forget)
+      sendWgWelcomeMessage({
+        userId: user.id,
+        userEmail: user.email,
+        userName: joinerName,
+        workingGroupId: group.id,
+        workingGroupSlug: group.slug,
+        workingGroupName: group.name,
+      }).catch(err => {
+        logger.error({ err, userId: user.id }, 'Failed to send WG welcome message');
+      });
 
       res.status(201).json({ success: true, membership });
     } catch (error) {
