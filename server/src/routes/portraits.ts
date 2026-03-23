@@ -6,7 +6,6 @@
  */
 
 import { Router } from 'express';
-// @ts-expect-error - multer lacks type declarations in this project
 import multer from 'multer';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin, isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -21,7 +20,7 @@ const logger = createLogger('portrait-routes');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (_req: any, file: any, cb: any) => {
+  fileFilter: (_req, file, cb) => {
     if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
       cb(null, true);
     } else {
@@ -199,8 +198,8 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
       }
 
       const vibe = (req.body.vibe as string) || 'casual';
-      const photoBuffer = (req as any).file?.buffer;
-      const photoMimeType = (req as any).file?.mimetype;
+      const photoBuffer = req.file?.buffer;
+      const photoMimeType = req.file?.mimetype;
 
       const result = await generatePortrait({
         photoBuffer,
