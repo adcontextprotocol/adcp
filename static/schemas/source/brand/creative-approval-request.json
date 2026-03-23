@@ -34,7 +34,7 @@
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response.",
-      "minLength": 8,
+      "minLength": 16,
       "maxLength": 255
     },
     "context": {
@@ -44,6 +44,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["rights_id", "creative_url"],
+  "required": [
+    "rights_id",
+    "creative_url"
+  ],
   "additionalProperties": true
 }

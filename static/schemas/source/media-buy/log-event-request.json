@@ -25,7 +25,7 @@
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. Prevents duplicate event logging on retries.",
-      "minLength": 8,
+      "minLength": 16,
       "maxLength": 255
     },
     "context": {

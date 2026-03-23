@@ -35,13 +35,16 @@
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. Prevents duplicate session creation on retries.",
-      "minLength": 8,
+      "minLength": 16,
       "maxLength": 255
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["context", "identity"],
+  "required": [
+    "context",
+    "identity"
+  ],
   "additionalProperties": true
 }

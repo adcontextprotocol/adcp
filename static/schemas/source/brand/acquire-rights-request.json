@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/acquire-rights-request.json",
   "title": "Acquire Rights Request",
-  "description": "Binding contractual request to acquire rights from a brand agent. Parallels create_media_buy — the buyer selects a pricing_option_id from a get_rights response and provides campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure requirements.",
+  "description": "Binding contractual request to acquire rights from a brand agent. Parallels create_media_buy \u2014 the buyer selects a pricing_option_id from a get_rights response and provides campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure requirements.",
   "type": "object",
   "properties": {
     "rights_id": {
@@ -28,7 +28,9 @@
         "uses": {
           "type": "array",
           "description": "Specific rights uses for this campaign",
-          "items": { "$ref": "/schemas/enums/right-use.json" },
+          "items": {
+            "$ref": "/schemas/enums/right-use.json"
+          },
           "minItems": 1
         },
         "countries": {
@@ -42,7 +44,9 @@
         "format_ids": {
           "type": "array",
           "description": "Creative formats that will be produced",
-          "items": { "$ref": "/schemas/core/format-id.json" }
+          "items": {
+            "$ref": "/schemas/core/format-id.json"
+          }
         },
         "estimated_impressions": {
           "type": "integer",
@@ -60,7 +64,10 @@
           "description": "Campaign end date (ISO 8601)"
         }
       },
-      "required": ["description", "uses"],
+      "required": [
+        "description",
+        "uses"
+      ],
       "additionalProperties": true
     },
     "revocation_webhook": {
@@ -74,7 +81,7 @@
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response rather than creating a duplicate acquisition.",
-      "minLength": 8,
+      "minLength": 16,
       "maxLength": 255
     },
     "context": {
@@ -84,6 +91,12 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["rights_id", "pricing_option_id", "buyer", "campaign", "revocation_webhook"],
+  "required": [
+    "rights_id",
+    "pricing_option_id",
+    "buyer",
+    "campaign",
+    "revocation_webhook"
+  ],
   "additionalProperties": true
 }
