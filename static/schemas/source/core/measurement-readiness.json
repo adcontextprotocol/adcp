@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/measurement-readiness.json",
+  "title": "Measurement Readiness",
+  "description": "Per-product assessment of whether the buyer's event source setup is sufficient for the product's optimization capabilities. Sellers evaluate this in the context of the buyer's account — the same product may show different readiness for different buyers depending on their event source configuration.",
+  "type": "object",
+  "properties": {
+    "ready": {
+      "type": "boolean",
+      "description": "Whether the buyer's event setup meets the minimum requirements for this product to optimize effectively. When false, the buyer can still purchase the product but optimization will be limited."
+    },
+    "status": {
+      "$ref": "/schemas/enums/event-source-health-status.json",
+      "description": "Overall measurement readiness level for this product given the buyer's event setup."
+    },
+    "required_event_types": {
+      "type": "array",
+      "description": "Event types this product needs for effective optimization. Buyers should ensure their event sources cover these types.",
+      "items": {
+        "$ref": "/schemas/enums/event-type.json"
+      },
+      "minItems": 1
+    },
+    "missing_event_types": {
+      "type": "array",
+      "description": "Event types this product requires that the buyer has not configured. Empty or absent when all required types are covered.",
+      "items": {
+        "$ref": "/schemas/enums/event-type.json"
+      }
+    },
+    "issues": {
+      "type": "array",
+      "description": "Actionable issues preventing full measurement readiness. Ordered by severity. Sellers should limit to the top 3-5 most actionable items.",
+      "items": {
+        "$ref": "/schemas/core/diagnostic-issue.json"
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Seller explanation of the readiness assessment, recommendations for improvement, or context about what the buyer needs to change."
+    }
+  },
+  "required": ["ready", "status"],
+  "additionalProperties": true
+}

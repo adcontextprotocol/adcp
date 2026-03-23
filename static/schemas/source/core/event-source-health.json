@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/event-source-health.json",
+  "title": "Event Source Health",
+  "description": "Health assessment for a configured event source. Sellers evaluate the quality, completeness, and volume of events received from this source. Analogous to Snap's Event Quality Score (EQS) or Meta's Event Match Quality (EMQ).",
+  "type": "object",
+  "properties": {
+    "status": {
+      "$ref": "/schemas/enums/event-source-health-status.json",
+      "description": "Overall health status. Use this for cross-seller decisions — do not rely on detail.score for comparability."
+    },
+    "detail": {
+      "type": "object",
+      "description": "Seller-specific scoring detail. Buyer agents should use status (not detail) for cross-seller decisions. Detail is supplementary context for human review or advanced diagnostics.",
+      "properties": {
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seller-defined quality score. Scale varies by seller — only compare within the same seller."
+        },
+        "max_score": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Maximum possible score on this seller's scale."
+        },
+        "label": {
+          "type": "string",
+          "description": "Seller's name for this score (e.g., 'Event Quality Score', 'Event Match Quality')."
+        }
+      },
+      "required": ["score", "max_score", "label"],
+      "additionalProperties": true
+    },
+    "match_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Fraction of events from this source that the seller successfully matched to ad interactions (0.0-1.0). Low match rates indicate weak user_match identifiers. Absent when the seller does not compute match rates."
+    },
+    "last_event_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the most recent event received from this source. Absent when no events have been received."
+    },
+    "events_received_24h": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of events received from this source in the last 24 hours. Zero indicates the source is configured but not firing."
+    },
+    "issues": {
+      "type": "array",
+      "description": "Actionable issues detected with this event source. Ordered by severity (most severe first). Sellers should limit to the top 3-5 most actionable items.",
+      "items": {
+        "$ref": "/schemas/core/diagnostic-issue.json"
+      }
+    }
+  },
+  "required": ["status"],
+  "additionalProperties": true
+}
