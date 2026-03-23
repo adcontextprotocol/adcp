@@ -249,7 +249,7 @@ export async function enrichBrands(options: {
 } = {}): Promise<BulkEnrichmentResult> {
   const source = options.source || 'all';
   const limit = Math.min(Math.max(1, options.limit || 25), 50);
-  const delayMs = Math.max(0, options.delayMs ?? 1000);
+  const delayMs = Math.min(Math.max(0, options.delayMs ?? 1000), 10000);
 
   const candidates = await getEnrichmentCandidates({ source, limit });
 
@@ -347,7 +347,7 @@ export async function migrateLogosToHosted(options: {
   delayMs?: number;
 } = {}): Promise<{ total: number; migrated: number; failed: number; skipped: number }> {
   const limit = Math.min(Math.max(1, options.limit || 50), 200);
-  const delayMs = Math.max(0, options.delayMs ?? 500);
+  const delayMs = Math.min(Math.max(0, options.delayMs ?? 500), 10000);
 
   const result = await query<{ domain: string; brand_manifest: Record<string, unknown> }>(
     `SELECT domain, brand_manifest FROM discovered_brands
@@ -476,7 +476,7 @@ export async function expandHouse(houseDomain: string, options: {
   failed: number;
   brands: Array<{ domain: string; brand_name: string; status: string }>;
 }> {
-  const delayMs = options.delayMs ?? 1000;
+  const delayMs = Math.min(Math.max(0, options.delayMs ?? 1000), 10000);
   const enrichAfterSeed = options.enrichAfterSeed ?? true;
 
   // Look up the house brand

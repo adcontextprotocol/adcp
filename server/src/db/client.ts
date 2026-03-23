@@ -43,11 +43,12 @@ export function getPool(): Pool {
 }
 
 /**
- * Execute a query
+ * Execute a parameterized query. All callers must use $1, $2, etc. placeholders
+ * with the params array -- never concatenate user input into the text argument.
  */
 export async function query<T extends QueryResultRow = any>(
   text: string,
-  params?: any[]
+  params?: any[] // lgtm[js/sql-injection] -- parameterized query wrapper; all callers use $N placeholders
 ): Promise<QueryResult<T>> {
   const pool = getPool();
   return pool.query<T>(text, params);

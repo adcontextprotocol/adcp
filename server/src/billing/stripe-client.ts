@@ -423,12 +423,13 @@ export async function getStripeSubscriptionInfo(
 
 /**
  * Find or create a Stripe customer for an organization.
- * Checks for existing customer by email first to avoid duplicates.
+ * Checks for existing customer by org ID first, then by email, to avoid duplicates.
  */
 export async function createStripeCustomer(data: {
   email: string;
   name: string;
   metadata?: Record<string, string>;
+  updateEmail?: boolean;
 }): Promise<string | null> {
   if (!stripe) {
     logger.warn('Stripe not initialized - cannot create customer');
@@ -448,13 +449,14 @@ export async function createStripeCustomer(data: {
       if (searchResult.data.length > 0) {
         const existing = searchResult.data[0];
         await stripe.customers.update(existing.id, {
+          ...(data.updateEmail && { email: data.email }),
           name: data.name,
           metadata: {
             ...existing.metadata,
             ...data.metadata,
           },
         });
-        logger.info({ customerId: existing.id, orgId, email: data.email }, 'Found existing Stripe customer by org ID');
+        logger.info({ customerId: existing.id, orgId, email: data.email }, 'Updated existing Stripe customer found by org ID');
         return existing.id;
       }
     }
@@ -852,6 +854,7 @@ export async function createAndSendInvoice(
     const customerId = await createStripeCustomer({
       email: data.contactEmail,
       name: data.companyName,
+      updateEmail: true,
       metadata: {
         contact_name: data.contactName,
         invoice_request: 'true',

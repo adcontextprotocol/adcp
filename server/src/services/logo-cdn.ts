@@ -31,14 +31,19 @@ export function getLogoUrl(domain: string, idx: number): string {
 }
 
 export function isBrandfetchUrl(url: string): boolean {
-  return url.includes('cdn.brandfetch.io') || url.includes('brandfetch.io');
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'cdn.brandfetch.io' || parsed.hostname.endsWith('.brandfetch.io') || parsed.hostname === 'brandfetch.io';
+  } catch {
+    return false;
+  }
 }
 
 function isSafeLogoUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-    if (!parsed.hostname.endsWith('brandfetch.io')) return false;
+    if (parsed.hostname !== 'brandfetch.io' && !parsed.hostname.endsWith('.brandfetch.io')) return false;
     return true;
   } catch {
     return false;

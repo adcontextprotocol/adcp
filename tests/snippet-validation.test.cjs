@@ -238,6 +238,7 @@ async function testJavaScriptSnippet(snippet) {
 
     // Execute with Node.js from project root to access node_modules
     // Set auth token env var - the SDK looks for env var named by auth_token_env value
+    // lgtm[js/shell-command-injection-from-environment] -- tempFile is constructed from __dirname and Date.now(), not from environment input
     const { stdout, stderr } = await execAsync(`node ${tempFile}`, {
       timeout: 60000, // 60 second timeout (API calls can take time)
       cwd: path.join(__dirname, '..'), // Run from project root
@@ -426,6 +427,7 @@ async function testPythonSnippet(snippet) {
       : `python3 ${tempFile}`;
 
     // Execute from project root
+    // lgtm[js/shell-command-injection-from-environment] -- pythonCommand is built from __dirname and Date.now(), not from environment input
     const { stdout, stderr } = await execAsync(pythonCommand, {
       timeout: 60000, // 60 second timeout (API calls can take time)
       cwd: path.join(__dirname, '..') // Run from project root

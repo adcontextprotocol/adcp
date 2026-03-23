@@ -1922,7 +1922,8 @@ export function createMemberToolHandlers(
         document_url: documentUrl,
         description,
         is_featured: isFeatured || false,
-        document_type: documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc',
+        // CodeQL: substring check is for document type categorization, not URL validation
+        document_type: documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc', // lgtm[js/incomplete-url-substring-sanitization]
       }
     );
 
@@ -2029,7 +2030,8 @@ export function createMemberToolHandlers(
     if (description !== undefined) updateData.description = description;
     if (documentUrl !== undefined) {
       updateData.document_url = documentUrl;
-      updateData.document_type = documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc';
+      // CodeQL: substring check is for document type categorization, not URL validation
+      updateData.document_type = documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc'; // lgtm[js/incomplete-url-substring-sanitization]
     }
     if (isFeatured !== undefined) updateData.is_featured = isFeatured;
 

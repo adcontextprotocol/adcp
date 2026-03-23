@@ -4722,11 +4722,18 @@
       const productSelect = document.getElementById('invoice-product');
 
       try {
-        const response = await fetch('/api/products');
+        const isPersonal = currentOrg?.is_personal || currentOrg?.billing?.is_personal || false;
+        const customerType = isPersonal ? 'individual' : 'company';
+        const url = new URL('/api/billing-products', window.location.origin);
+        url.searchParams.set('invoiceable_only', 'true');
+        url.searchParams.set('customer_type', customerType);
+        url.searchParams.set('category', 'membership');
+
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load products');
 
         const data = await response.json();
-        invoiceProducts = (data.products || []).filter(p => p.billing_type === 'subscription' && p.is_invoiceable);
+        invoiceProducts = (data.products || []).filter(p => p.billing_type === 'subscription');
 
         // Sort by price
         invoiceProducts.sort((a, b) => (a.amount_cents || 0) - (b.amount_cents || 0));
@@ -4833,7 +4840,7 @@
       if (addressLine2) addressParts.push(addressLine2);
       addressParts.push(`${city}, ${state} ${postalCode}`);
       addressParts.push(country);
-      const fullAddress = addressParts.filter(Boolean).join('<br>');
+      const fullAddress = addressParts.filter(Boolean).map(p => escapeHtml(p)).join('<br>');
 
       // Populate draft review content
       document.getElementById('invoiceDraftReviewContent').innerHTML = `

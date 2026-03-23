@@ -208,6 +208,8 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error('\n❌ Error:', err.message);
+  // Sanitize error message to prevent log injection (strip control characters)
+  const safeMessage = String(err.message).replace(/[\x00-\x1f\x7f]/g, '');
+  console.error('\n❌ Error:', safeMessage);
   process.exit(1);
 });

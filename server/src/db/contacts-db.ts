@@ -43,13 +43,13 @@ export function parseEmailAddress(emailStr: string): {
 } {
   // Match: "Display Name" <email@domain> or Display Name <email@domain>
   const withBracketsMatch = emailStr.match(
-    /^(?:"?([^"<]+)"?\s*)?<([^>]+@([^>]+))>$/
+    /^(?:"([^"]+)"\s*|([^<]+?)\s+)?<([^>]+@([^>]+))>$/
   );
   if (withBracketsMatch) {
     return {
-      displayName: withBracketsMatch[1]?.trim() || null,
-      email: withBracketsMatch[2].toLowerCase(),
-      domain: withBracketsMatch[3].toLowerCase(),
+      displayName: withBracketsMatch[1]?.trim() || withBracketsMatch[2]?.trim() || null,
+      email: withBracketsMatch[3].toLowerCase(),
+      domain: withBracketsMatch[4].toLowerCase(),
     };
   }
 

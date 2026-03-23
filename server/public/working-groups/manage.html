@@ -1040,7 +1040,7 @@
           if (currentGroup.committee_type === 'chapter' && currentGroup.region) {
             const cityField = document.getElementById('eventVenueCity');
             if (cityField && !cityField.value) {
-              cityField.value = currentGroup.region.replace(' Chapter', '').replace(' chapter', '').trim();
+              cityField.value = currentGroup.region.replaceAll(' Chapter', '').replaceAll(' chapter', '').trim();
             }
           }
         }
@@ -1437,7 +1437,7 @@
 
       listDiv.innerHTML = events.map(event => {
         const statusBadge = `<span class="badge badge-${event.status}">${event.status}</span>`;
-        const formatBadge = event.event_format ? `<span class="badge badge-${event.event_format}">${event.event_format.replace('_', ' ')}</span>` : '';
+        const formatBadge = event.event_format ? `<span class="badge badge-${event.event_format}">${event.event_format.replaceAll('_', ' ')}</span>` : '';
         const eventTimezone = event.timezone || 'America/New_York';
         const date = event.start_time
           ? new Date(event.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: eventTimezone })
@@ -1476,7 +1476,7 @@
 
       // Pre-fill city from chapter region
       if (currentGroup?.region) {
-        document.getElementById('eventVenueCity').value = currentGroup.region.replace(' Chapter', '').replace(' chapter', '').trim();
+        document.getElementById('eventVenueCity').value = currentGroup.region.replaceAll(' Chapter', '').replaceAll(' chapter', '').trim();
       }
 
       updateEventFormatFields();
@@ -1689,7 +1689,7 @@
       }
 
       listDiv.innerHTML = documents.map(doc => {
-        const typeBadge = `<span class="badge badge-${doc.document_type}">${doc.document_type.replace('_', ' ')}</span>`;
+        const typeBadge = `<span class="badge badge-${doc.document_type}">${doc.document_type.replaceAll('_', ' ')}</span>`;
         const statusBadge = doc.index_status !== 'success'
           ? `<span class="badge badge-${doc.index_status}">${doc.index_status}</span>`
           : '';

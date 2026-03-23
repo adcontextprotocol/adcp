@@ -732,7 +732,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Basic email format validation
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
       if (!emailRegex.test(email)) {
         return res.status(400).json({
           error: 'Invalid email format',

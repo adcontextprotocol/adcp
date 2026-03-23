@@ -579,7 +579,7 @@ export function createWorkOSWebhooksRouter(): Router {
 
         if (!WORKOS_WEBHOOK_SECRET) {
           logger.error('WORKOS_WEBHOOK_SECRET not configured — rejecting webhook');
-          return res.status(500).json({ error: 'Webhook secret not configured' });
+          return res.status(401).json({ error: 'Webhook verification unavailable' });
         }
 
         if (!sigHeader) {
