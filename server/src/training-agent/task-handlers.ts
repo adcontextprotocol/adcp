@@ -13,28 +13,40 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState } from './types.js';
 import type {
   Product,
   FormatID,
   Format,
-  GetProductsRequest,
   CreateMediaBuyRequest,
   UpdateMediaBuyRequest,
-  SyncCreativesRequest,
+  GetProductsRequest,
+  GetMediaBuysRequest,
   GetMediaBuyDeliveryRequest,
+  ListCreativeFormatsRequest,
+  SyncCreativesRequest,
+  ListCreativesRequest,
   GetSignalsRequest,
   ActivateSignalRequest,
-  ListCreativeFormatsRequest,
-  ListCreativesRequest,
-  GetAdCPCapabilitiesRequest,
-  GetMediaBuysRequest,
   GetCreativeDeliveryRequest,
+  GetAdCPCapabilitiesRequest,
 } from '@adcp/client';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, AccountRef, BrandRef } from './types.js';
+/** Build a structured MCP error response for tool calls. */
+function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string }) {
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: JSON.stringify({ code, ...opts }) }],
+  };
+}
+
+// Derive types from SDK request types that aren't re-exported from main entry
+type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
+type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
+type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
-import { getSession, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
+import { getSession, getAllSessions, sessionKeyFromArgs, MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION } from './state.js';
 import { getAgentUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -103,7 +115,6 @@ interface SignalPricingOption {
 /** Package delivery metrics in get_media_buy_delivery response. */
 interface PackageDeliveryMetrics {
   package_id: string;
-  buyer_ref: string;
   spend: number;
   impressions: number;
   clicks: number;
@@ -203,30 +214,34 @@ const SYNONYM_MAP: Record<string, string[]> = {
 
 /** Derive lifecycle status from stored status and flight dates. */
 function deriveStatus(mb: MediaBuyState): string {
-  // Terminal states — no transitions out
-  if (mb.status === 'canceled' || mb.status === 'rejected' || mb.status === 'completed') {
-    return mb.status;
-  }
+  if (mb.canceledAt) return 'canceled';
+  if (mb.status === 'rejected') return 'rejected';
   const now = new Date();
-  if (mb.status === 'active') {
+  if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
     if (new Date(mb.startTime) > now) return 'pending_activation';
   }
+  if (mb.status === 'paused') return 'paused';
   return mb.status;
 }
 
+/** Map lifecycle status to valid buyer actions. */
 function validActionsForStatus(status: string): string[] {
   switch (status) {
-    case 'pending_activation': return ['cancel', 'sync_creatives'];
-    case 'active': return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
-    case 'paused': return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
-    default: return [];
+    case 'pending_activation':
+      return ['cancel', 'sync_creatives'];
+    case 'active':
+      return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+    case 'paused':
+      return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+    default:
+      return [];
   }
 }
 
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
-let cachedFormats: Partial<Format>[] | null = null;
+let cachedFormats: ReturnType<typeof buildFormats> | null = null;
 let cachedProposals: import('@adcp/client').Proposal[] | null = null;
 
 function getCatalog(): CatalogProduct[] {
@@ -234,16 +249,16 @@ function getCatalog(): CatalogProduct[] {
   return cachedCatalog;
 }
 
-function getFormats(): Partial<Format>[] {
-  if (!cachedFormats) {
-    cachedFormats = buildFormats(getAgentUrl()) as Partial<Format>[];
-  }
-  return cachedFormats;
-}
-
 function getProposals(): import('@adcp/client').Proposal[] {
   if (!cachedProposals) cachedProposals = buildProposals(getCatalog());
   return cachedProposals;
+}
+
+function getFormats(): ReturnType<typeof buildFormats> {
+  if (!cachedFormats) {
+    cachedFormats = buildFormats(getAgentUrl());
+  }
+  return cachedFormats;
 }
 
 /** Invalidate cached catalog/formats (for tests or hot-reload) */
@@ -252,6 +267,25 @@ export function invalidateCache(): void {
   cachedFormats = null;
   cachedProposals = null;
 }
+
+// ── Channel aliases for brief matching (module-scoped for perf) ──
+
+const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
+  'ctv': 'ctv', 'connected tv': 'ctv', 'ott': 'ctv',
+  'olv': 'olv', 'online video': 'olv', 'pre-roll': 'olv', 'preroll': 'olv',
+  'display': 'display', 'banner': 'display',
+  'social': 'social', 'social media': 'social',
+  'native': 'native',
+  'audio': 'streaming_audio', 'streaming audio': 'streaming_audio', 'podcast': 'podcast',
+  'search': 'search', 'sem': 'search',
+  'linear tv': 'linear_tv', 'linear': 'linear_tv',
+  'dooh': 'dooh', 'digital out of home': 'dooh',
+  'gaming': 'gaming', 'in-game': 'gaming',
+  'email': 'email', 'newsletter': 'email',
+  'print': 'print',
+  'influencer': 'influencer',
+  'radio': 'radio',
+};
 
 // ── Shared schema fragments ──────────────────────────────────────
 
@@ -287,7 +321,6 @@ const TOOLS = [
         brand: { type: 'object' },
         filters: { type: 'object' },
         fields: { type: 'array', items: { type: 'string' } },
-        buyer_campaign_ref: { type: 'string' },
       },
       required: ['buying_mode'],
     },
@@ -311,8 +344,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        buyer_ref: { type: 'string' },
-        buyer_campaign_ref: { type: 'string' },
+        idempotency_key: { type: 'string' },
         account: ACCOUNT_REF_SCHEMA,
         brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
         packages: {
@@ -323,7 +355,6 @@ const TOOLS = [
               product_id: { type: 'string' },
               pricing_option_id: { type: 'string' },
               budget: { type: 'number' },
-              buyer_ref: { type: 'string' },
               bid_price: { type: 'number' },
               impressions: { type: 'number' },
               paused: { type: 'boolean' },
@@ -342,27 +373,22 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
       },
-      required: ['buyer_ref', 'account', 'brand', 'start_time', 'end_time'],
+      required: ['account', 'brand', 'start_time', 'end_time'],
     },
   },
   {
     name: 'get_media_buys',
-    description: 'List media buys for the current session/account. Returns status, valid_actions, creative approvals, and configuration. Not for delivery metrics (use get_media_buy_delivery). Only returns buys from the current session.',
+    description: 'List media buys for the current session/account. Returns buy configuration and status only — not delivery metrics (use get_media_buy_delivery for that). Only returns buys created in the current session; buys from other sessions are not visible.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
-        media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Filter to specific media buy IDs' },
-        buyer_refs: { type: 'array', items: { type: 'string' }, description: 'Filter to specific buyer references' },
-        include_history: { type: 'integer', minimum: 0, maximum: 1000, description: 'Include the last N revision history entries per media buy. 0 or omit to exclude.' },
-        status_filter: {
-          description: 'Filter by status. Defaults to ["active"] when no IDs provided.',
-          oneOf: [
-            { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] },
-            { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] } },
-          ],
-        },
+        media_buy_ids: { type: 'array', items: { type: 'string' } },
+        buyer_refs: { type: 'array', items: { type: 'string' }, description: 'Filter by buyer reference IDs' },
+        status_filter: { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
+        include_history: { type: 'boolean', description: 'Include revision history entries' },
+        include_snapshot: { type: 'boolean', description: 'Include full media buy snapshot in response' },
       },
     },
   },
@@ -375,7 +401,7 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
-        buyer_ref: { type: 'string' },
+        media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Plural form (SDK)' },
       },
       required: ['media_buy_id'] as const,
     },
@@ -409,14 +435,13 @@ const TOOLS = [
   },
   {
     name: 'get_creative_delivery',
-    description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids, media_buy_buyer_refs, or creative_ids.',
+    description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids or creative_ids.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
-        media_buy_buyer_refs: { type: 'array', items: { type: 'string' } },
         creative_ids: { type: 'array', items: { type: 'string' } },
         max_variants: { type: 'number' },
       },
@@ -424,21 +449,19 @@ const TOOLS = [
   },
   {
     name: 'update_media_buy',
-    description: 'Update an existing media buy. Supports pause/resume, cancellation (media buy or individual packages), budget, end_time, and optimistic concurrency via revision. Cannot add new packages or change product_id/pricing_option_id.',
+    description: 'Update an existing media buy. Supports changing package budget, paused state, end_time, cancellation, and adding new packages. Requires revision for optimistic concurrency. Not for creating new buys (use create_media_buy).',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     inputSchema: {
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
-        buyer_ref: { type: 'string' },
-        revision: { type: 'integer', description: 'Expected revision for optimistic concurrency. Seller rejects with CONFLICT on mismatch.' },
-        paused: { type: 'boolean', description: 'Pause (true) or resume (false) the entire media buy' },
-        // Cast: MCP SDK ToolInput type doesn't support JSON Schema `const`
-        canceled: { type: 'boolean', const: true, description: 'Cancel the entire media buy (irreversible). Only true is valid — cancellation cannot be undone.' } as Record<string, unknown>,
-        cancellation_reason: { type: 'string', maxLength: 500, description: 'Reason for cancellation' },
-        packages: { type: 'array', description: 'Updates to existing packages' },
-        new_packages: { type: 'array', description: 'New packages to add (same shape as create_media_buy packages)' },
+        revision: { type: 'number', description: 'Current revision for optimistic concurrency control' },
+        paused: { type: 'boolean', description: 'Pause (true) or resume (false) the media buy' },
+        canceled: { type: 'boolean', const: true, description: 'Cancel the media buy (one-way, cannot be undone)' },
+        cancellation_reason: { type: 'string', description: 'Reason for cancellation' },
+        packages: { type: 'array' },
+        new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
         end_time: { type: 'string' },
       },
       required: ['media_buy_id'] as const,
@@ -452,6 +475,7 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         signal_spec: { type: 'string', description: 'Natural language description of desired signals' },
+        brief: { type: 'string', description: 'Alias for signal_spec (SDK compatibility)' },
         signal_ids: { type: 'array', items: { type: 'object' }, description: 'Specific signals to look up by ID' },
         account: ACCOUNT_REF_SCHEMA,
         destinations: { type: 'array', items: { type: 'object' }, description: 'Filter to specific deployment targets' },
@@ -469,12 +493,15 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         signal_agent_segment_id: { type: 'string' },
+        signal_id: { type: 'string', description: 'Alias for signal_agent_segment_id (SDK compatibility)' },
         action: { type: 'string', enum: ['activate', 'deactivate'] },
         destinations: { type: 'array', items: { type: 'object' } },
+        destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
+        options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
         account: ACCOUNT_REF_SCHEMA,
       },
-      required: ['signal_agent_segment_id', 'destinations'] as const,
+      required: [] as const,
     },
   },
   ...GOVERNANCE_TOOLS,
@@ -492,46 +519,57 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext): { products: Partial<Product>[]; sandbox: boolean } {
-  const request = args as unknown as Partial<GetProductsRequest>;
-  const buyingMode = args.buying_mode as string || 'brief';
-  const brief = args.brief as string | undefined;
-  const filters = args.filters as { channels?: string[]; delivery_type?: string } | undefined;
+function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as GetProductsRequest;
+  const buyingMode = req.buying_mode || 'brief';
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
   // Apply filters
-  if (filters) {
-    const channelFilter = filters.channels;
+  if (req.filters) {
+    const channelFilter = req.filters.channels;
     if (channelFilter?.length) {
-      products = products.filter(p => {
-        return p.channels?.some(c => channelFilter.includes(c));
-      });
+      products = products.filter(p =>
+        p.channels?.some(c => (channelFilter as string[]).includes(c)),
+      );
     }
-    const deliveryTypeFilter = filters.delivery_type;
+    const deliveryTypeFilter = req.filters.delivery_type;
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
     }
   }
 
-  // Brief mode: keyword matching
-  if (buyingMode === 'brief' && brief) {
-    const terms = brief.toLowerCase().split(/\s+/);
+  // Brief mode: channel-aware keyword matching
+  if (buyingMode === 'brief' && req.brief) {
+    const briefLower = req.brief.toLowerCase();
+    const terms = briefLower.split(/\s+/);
+
+    // Extract channel names mentioned in the brief — these get heavy weight
+    const briefChannels = new Set<string>();
+    for (const [alias, channel] of Object.entries(BRIEF_CHANNEL_ALIASES)) {
+      if (briefLower.includes(alias)) briefChannels.add(channel);
+    }
+
     const scored = products
       .map(p => {
         const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
-        const matchCount = terms.filter(t => text.includes(t)).length;
-        return matchCount > 0 ? { product: p, matchCount } : null;
+        const keywordScore = terms.filter(t => text.includes(t)).length;
+        // Channel match: +10 per matching channel (dominates keyword scoring)
+        const channelScore = briefChannels.size > 0
+          ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
+          : 0;
+        const totalScore = channelScore + keywordScore;
+        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore } : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
-      .sort((a, b) => b.matchCount - a.matchCount);
+      .sort((a, b) => b.totalScore - a.totalScore);
 
     // Cap at top 5 most relevant products so learners see brief mode as curated discovery
     const MAX_BRIEF_RESULTS = 5;
     products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => ({
       ...s.product,
-      brief_relevance: `Matches ${s.matchCount} of ${terms.length} brief terms. ${s.product.description}`,
+      brief_relevance: `Matches ${s.channelScore > 0 ? `${s.channelScore / 10} channel(s)` : 'keywords only'}. ${s.product.description}`,
     }));
 
     // If no keyword matches, return top products as suggestions
@@ -544,25 +582,24 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   }
 
   // Refine mode: apply include/omit/more_like_this
-  if (buyingMode === 'refine' && args.refine) {
-    const refineOps = args.refine as Array<{ scope?: string; action?: string; id?: string }>;
+  if (buyingMode === 'refine' && req.refine) {
     const previousProducts = session.lastGetProductsContext?.products || products;
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
 
-    for (const op of refineOps) {
+    for (const op of req.refine) {
       if (op.scope === 'product') {
-        if (op.action === 'omit' && op.id) omitIds.add(op.id);
-        else if (op.action === 'include' && op.id) includeIds.add(op.id);
+        if (op.action === 'omit') omitIds.add(op.id);
+        else if (op.action === 'include') includeIds.add(op.id);
         // more_like_this: include the product plus similar channel products
-        else if (op.action === 'more_like_this' && op.id) {
+        else if (op.action === 'more_like_this') {
           includeIds.add(op.id);
           const source = previousProducts.find(p => p.product_id === op.id);
           if (source) {
             const sourceChannels = source.channels;
             for (const p of getCatalog()) {
               if (p.product.channels?.some(c => sourceChannels?.includes(c))) {
-                if (p.product.product_id) includeIds.add(p.product.product_id);
+                includeIds.add(p.product.product_id);
               }
             }
           }
@@ -573,11 +610,11 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     // Apply includes first (expand), then omits (filter)
     if (includeIds.size > 0) {
       products = getCatalog()
-        .filter(cp => cp.product.product_id && includeIds.has(cp.product.product_id))
+        .filter(cp => includeIds.has(cp.product.product_id))
         .map(cp => ({ ...cp.product }));
     }
     if (omitIds.size > 0) {
-      products = products.filter(p => !p.product_id || !omitIds.has(p.product_id));
+      products = products.filter(p => !omitIds.has(p.product_id));
     }
   }
 
@@ -615,73 +652,57 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   };
 }
 
-function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): { formats: Partial<Format>[]; sandbox: boolean } {
-  const request = args as unknown as Partial<ListCreativeFormatsRequest>;
+function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
   let formats = getFormats();
 
   // Filter by channels
-  const channels = args.channels as string[] | undefined;
-  if (channels?.length) {
+  if (req.channels?.length) {
     const validIds = new Set<string>();
     for (const [fmtId, fmtChannels] of Object.entries(FORMAT_CHANNEL_MAP)) {
-      if (fmtChannels.some(c => channels.includes(c))) {
+      if (fmtChannels.some(c => req.channels!.includes(c))) {
         validIds.add(fmtId);
       }
     }
-    formats = formats.filter(f => f.format_id?.id && validIds.has(f.format_id.id));
+    formats = formats.filter(f => validIds.has(f.format_id.id));
   }
 
   // Filter by format_ids
-  const formatIdFilter = args.format_ids as Array<{ id: string }> | undefined;
-  if (formatIdFilter?.length) {
-    const requestedIds = new Set(formatIdFilter.map(f => f.id));
-    formats = formats.filter(f => f.format_id?.id && requestedIds.has(f.format_id.id));
+  if (req.format_ids?.length) {
+    const requestedIds = new Set(req.format_ids.map(f => f.id));
+    formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
   return { formats, sandbox: true };
 }
 
-/** Input shape for a package in create_media_buy. */
-interface PackageInput {
-  product_id: string;
-  pricing_option_id: string;
-  budget: number;
-  buyer_ref?: string;
-  bid_price?: number;
-  impressions?: number;
-  paused?: boolean;
-  start_time?: string;
-  end_time?: string;
-  format_ids?: FormatID[];
-}
-
-function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; status: string; confirmed_at: string; creative_deadline: string; revision: number; valid_actions: string[]; packages: unknown[]; sandbox: boolean; buyer_campaign_ref?: string } | { errors: TaskError[] } {
-  const request = args as unknown as Partial<CreateMediaBuyRequest>;
+function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as CreateMediaBuyRequest;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
-  const productMap = new Map(catalog.map(cp => [cp.product.product_id!, cp.product]));
-
-  const req = request as Record<string, unknown> & Partial<CreateMediaBuyRequest>;
+  const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
     const proposal = getProposals().find(p => p.proposal_id === req.proposal_id);
     if (!proposal) {
       return {
-        errors: [{ code: 'VALIDATION_ERROR', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
+        errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
       };
     }
-    const totalBudget = (req as Record<string, unknown> & { total_budget?: { amount?: number } }).total_budget?.amount;
+    const totalBudget = req.total_budget?.amount;
     if (!totalBudget) {
       return {
-        errors: [{ code: 'VALIDATION_ERROR', message: 'total_budget.amount is required when using proposal_id' }] as TaskError[],
+        errors: [{ code: 'INVALID_REQUEST', message: 'total_budget.amount is required when using proposal_id' }] as TaskError[],
       };
     }
-    req.packages = proposal.allocations.map((alloc, i) => {
+    // Expand proposal allocations into packages
+    (req as unknown as Record<string, unknown>).packages = proposal.allocations.map((alloc, i) => {
       const product = productMap.get(alloc.product_id);
       const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
       const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
 
+      // Auction pricing needs a bid_price — use price_guidance p50 or floor_price
       let bidPrice: number | undefined;
       if (pricing && pricing.pricing_model !== 'cpa') {
         const po = pricing as unknown as Record<string, unknown>;
@@ -696,18 +717,14 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         product_id: alloc.product_id,
         pricing_option_id: pricingOptionId,
         budget: Math.round(totalBudget * alloc.allocation_percentage / 100),
-        buyer_ref: `proposal-${proposal.proposal_id}-${i + 1}`,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
       };
-    }) as unknown as typeof req.packages;
+    });
   }
 
-  const buyerRef = args.buyer_ref as string;
-  const packages = (req.packages || args.packages) as PackageInput[] | undefined;
-
-  if (!packages?.length) {
+  if (!req.packages?.length) {
     return {
-      errors: [{ code: 'VALIDATION_ERROR', message: 'packages array is required and must have at least one item' }] as TaskError[],
+      errors: [{ code: 'INVALID_REQUEST', message: 'packages array is required and must have at least one item' }] as TaskError[],
     };
   }
 
@@ -718,78 +735,84 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   }
 
   // Validate dates
-  const buyStart = args.start_time as string;
-  const buyEnd = args.end_time as string;
+  const buyStart = req.start_time;
+  const buyEnd = req.end_time;
   if (buyStart !== 'asap' && isNaN(new Date(buyStart).getTime())) {
-    return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] as TaskError[] };
   }
   if (isNaN(new Date(buyEnd).getTime())) {
-    return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] as TaskError[] };
   }
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
-    return { errors: [{ code: 'VALIDATION_ERROR', message: 'start_time must be before end_time' }] as TaskError[] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must be before end_time' }] as TaskError[] };
   }
 
   // Validate all packages and collect errors before returning
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
-  for (let i = 0; i < packages.length; i++) {
-    const pkg = packages[i];
-    const pkgLabel = pkg.buyer_ref ? `Package "${pkg.buyer_ref}"` : `Package ${i}`;
+  for (let i = 0; i < req.packages.length; i++) {
+    const pkg = req.packages[i] as unknown as { product_id: string; pricing_option_id: string; budget: number; bid_price?: number; impressions?: number; paused?: boolean; start_time?: string; end_time?: string; format_ids?: FormatID[] };
+    const pkgLabel = `Package ${i}`;
 
-    const productId = pkg.product_id;
-    const product = productMap.get(productId);
-    if (!product) {
-      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Product not found: ${productId}` });
+    // Check negative budget before product lookup (budget is always validatable)
+    if (pkg.budget < 0) {
+      errors.push({ code: 'BUDGET_TOO_LOW', message: `${pkgLabel}: Budget must be non-negative, got ${pkg.budget}` });
       continue;
     }
 
-    const pricingOptionId = pkg.pricing_option_id;
-    const pricingOptions = product.pricing_options as Array<{ pricing_option_id: string; floor_price?: number; min_spend_per_package?: number }> | undefined;
-    const pricing = pricingOptions?.find(po => po.pricing_option_id === pricingOptionId);
+    const product = productMap.get(pkg.product_id);
+    if (!product) {
+      errors.push({ code: 'PRODUCT_NOT_FOUND', message: `${pkgLabel}: Product not found: ${pkg.product_id}` });
+      continue;
+    }
+
+    const pricingOptions = product.pricing_options;
+    const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricing_option_id);
     if (!pricing) {
       errors.push({
-        code: 'VALIDATION_ERROR',
-        message: `${pkgLabel}: Pricing option not found: ${pricingOptionId}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: Pricing option not found: ${pkg.pricing_option_id}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
       });
       continue;
     }
 
-    const budget = pkg.budget;
+    // Check bid vs floor price (floor_price exists on all pricing models except CPA)
+    const floorPrice = pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined;
+    const isAuction = pricing.pricing_model !== 'cpa'
+      && !('fixed_price' in pricing && (pricing as unknown as Record<string, unknown>).fixed_price !== undefined);
 
-    // Check negative budget
-    if (budget < 0) {
-      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Budget must be non-negative, got ${budget}` });
+    if (isAuction && pkg.bid_price === undefined) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: bid_price is required for auction pricing (${pricing.pricing_model}, option ${pkg.pricing_option_id})`,
+      });
     }
 
-    // Check bid vs floor price
-    const floorPrice = pricing.floor_price;
-    const bidPrice = pkg.bid_price;
-    if (floorPrice !== undefined && bidPrice !== undefined && bidPrice < floorPrice) {
+    if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice) {
       errors.push({
-        code: 'VALIDATION_ERROR',
-        message: `${pkgLabel}: Bid price $${bidPrice} is below floor price of $${floorPrice} for pricing option ${pricingOptionId}`,
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: Bid price $${pkg.bid_price} is below floor price of $${floorPrice} for pricing option ${pkg.pricing_option_id}`,
       });
     }
 
     // Check min spend
     const minSpend = pricing.min_spend_per_package;
-    if (minSpend && budget < minSpend) {
+    if (minSpend && pkg.budget < minSpend) {
       errors.push({
-        code: 'VALIDATION_ERROR',
-        message: `${pkgLabel}: Budget $${budget} is below minimum spend of $${minSpend} for pricing option ${pricingOptionId}`,
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: Budget $${pkg.budget} is below minimum spend of $${minSpend} for pricing option ${pkg.pricing_option_id}`,
       });
     }
 
-    const startTime = (pkg.start_time || args.start_time) as string;
-    const endTime = (pkg.end_time || args.end_time) as string;
+    const startTime = pkg.start_time || buyStart;
+    const endTime = pkg.end_time || buyEnd;
 
     // Validate package-level dates if overridden
     if (pkg.start_time && startTime !== 'asap' && isNaN(new Date(startTime).getTime())) {
-      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Invalid start_time: "${startTime}". Use ISO 8601 format or "asap".` });
+      errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid start_time: "${startTime}". Use ISO 8601 format or "asap".` });
     }
     if (pkg.end_time && isNaN(new Date(endTime).getTime())) {
-      errors.push({ code: 'VALIDATION_ERROR', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
+      errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
     // Don't build package state if there are any validation errors (atomic create)
@@ -799,10 +822,9 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     createdPackages.push({
       packageId: `pkg_${randomUUID().slice(0, 8)}`,
-      buyerRef: pkg.buyer_ref || '',
-      productId,
-      budget,
-      pricingOptionId,
+      productId: pkg.product_id,
+      budget: pkg.budget,
+      pricingOptionId: pkg.pricing_option_id,
       bidPrice: pkg.bid_price,
       impressions: pkg.impressions,
       paused: pkg.paused || false,
@@ -819,46 +841,35 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   const mediaBuyId = `mb_${randomUUID().slice(0, 8)}`;
   const now = new Date().toISOString();
-  const resolvedStart = args.start_time === 'asap' ? now : args.start_time as string;
-  // Creative deadline: 7 days before end or 3 days from now, whichever is earlier
-  const endDate = new Date(args.end_time as string);
-  const sevenBeforeEnd = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  const creativeDeadline = (sevenBeforeEnd < threeDaysFromNow ? sevenBeforeEnd : threeDaysFromNow).toISOString();
+  const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
-    buyerRef,
-    buyerCampaignRef: args.buyer_campaign_ref as string | undefined,
-    accountRef: request.account as MediaBuyState['accountRef'],
-    brandRef: request.brand as MediaBuyState['brandRef'],
+    accountRef: req.account,
+    brandRef: req.brand,
     status: 'active',
     currency: 'USD',
     packages: createdPackages,
     startTime: resolvedStart,
-    endTime: args.end_time as string,
-    confirmedAt: now,
+    endTime: buyEnd,
     revision: 1,
-    creativeDeadline,
-    history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Created with ${createdPackages.length} package(s), budget $${createdPackages.reduce((s, p) => s + p.budget, 0)}` }],
+    confirmedAt: now,
     createdAt: now,
     updatedAt: now,
+    history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Media buy created with ${createdPackages.length} package(s)` }],
   };
 
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
+  const status = deriveStatus(mediaBuy);
   return {
     media_buy_id: mediaBuyId,
-    buyer_ref: buyerRef,
-    buyer_campaign_ref: mediaBuy.buyerCampaignRef,
-    confirmed_at: now,
-    creative_deadline: creativeDeadline,
-    revision: 1,
-    status: deriveStatus(mediaBuy),
-    valid_actions: validActionsForStatus(deriveStatus(mediaBuy)),
+    status,
+    revision: mediaBuy.revision,
+    confirmed_at: mediaBuy.confirmedAt,
+    valid_actions: validActionsForStatus(status),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
-      buyer_ref: pkg.buyerRef,
       product_id: pkg.productId,
       budget: pkg.budget,
       pricing_option_id: pkg.pricingOptionId,
@@ -874,94 +885,125 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   };
 }
 
-function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext): { media_buys: unknown[]; sandbox: boolean } {
-  const request = args as unknown as Partial<GetMediaBuysRequest>;
+function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as GetMediaBuysRequest;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const filterIds = args.media_buy_ids as string[] | undefined;
-  const buyerRefs = args.buyer_refs as string[] | undefined;
-  const rawStatusFilter = args.status_filter as string | string[] | undefined;
-  const statusFilter = rawStatusFilter
-    ? (Array.isArray(rawStatusFilter) ? rawStatusFilter : [rawStatusFilter])
-    : (!filterIds?.length && !buyerRefs?.length ? ['active'] : undefined);
-  const includeHistory = (args.include_history as number | undefined) || 0;
+  const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
+    // If explicit IDs requested but not found in this session, search all sessions.
+    // Mirrors real seller behavior where media_buy_ids is a global lookup.
+    if (buys.length < filterIds.length) {
+      const foundIds = new Set(buys.map(b => b.mediaBuyId));
+      const missing = filterIds.filter(id => !foundIds.has(id));
+      for (const [, s] of getAllSessions()) {
+        if (s === session) continue;
+        for (const mb of s.mediaBuys.values()) {
+          if (missing.includes(mb.mediaBuyId)) {
+            buys.push(mb);
+            missing.splice(missing.indexOf(mb.mediaBuyId), 1);
+          }
+        }
+        if (missing.length === 0) break;
+      }
+    }
   }
-  if (buyerRefs?.length) {
-    buys = buys.filter(b => buyerRefs.includes(b.buyerRef));
+
+  // Apply status_filter (default to ['active'] when no IDs provided)
+  const statusFilter = (args as Record<string, unknown>).status_filter as string[] | undefined;
+  if (!filterIds?.length) {
+    const effectiveFilter = statusFilter || ['active'];
+    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb)));
+  } else if (statusFilter?.length) {
+    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb)));
   }
-  if (statusFilter) {
-    buys = buys.filter(b => statusFilter.includes(deriveStatus(b)));
-  }
+
+  const includeSnapshot = (args as Record<string, unknown>).include_snapshot === true;
+  const includeHistory = (args as Record<string, unknown>).include_history === true;
 
   return {
     media_buys: buys.map(mb => {
       const status = deriveStatus(mb);
-      return {
+      const buy: Record<string, unknown> = {
         media_buy_id: mb.mediaBuyId,
-        buyer_ref: mb.buyerRef,
-        buyer_campaign_ref: mb.buyerCampaignRef,
         status,
-        currency: mb.currency,
-        total_budget: mb.packages.reduce((sum, p) => sum + p.budget, 0),
-        start_time: mb.startTime,
-        end_time: mb.endTime,
-        confirmed_at: mb.confirmedAt,
         revision: mb.revision,
+        confirmed_at: mb.confirmedAt,
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
-        ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
-        ...(mb.canceledAt && { cancellation: {
-          canceled_at: mb.canceledAt,
-          canceled_by: mb.canceledBy,
-          ...(mb.cancellationReason && { reason: mb.cancellationReason }),
-        } }),
         valid_actions: validActionsForStatus(status),
-        ...(includeHistory > 0 && { history: mb.history.slice(-includeHistory).reverse().map(h => ({
+        currency: mb.currency,
+        start_time: mb.startTime,
+        end_time: mb.endTime,
+        ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
+        ...(mb.canceledAt && {
+          cancellation: {
+            canceled_at: mb.canceledAt,
+            canceled_by: mb.canceledBy,
+            reason: mb.cancellationReason,
+          },
+        }),
+        packages: mb.packages.map(pkg => {
+          const pkgData: Record<string, unknown> = {
+            package_id: pkg.packageId,
+            product_id: pkg.productId,
+            budget: pkg.budget,
+            pricing_option_id: pkg.pricingOptionId,
+            paused: pkg.paused,
+            start_time: pkg.startTime,
+            end_time: pkg.endTime,
+            creative_approvals: pkg.creativeAssignments.map(cid => ({
+              creative_id: cid,
+              approval_status: 'approved',
+            })),
+            ...(pkg.canceledAt && {
+              cancellation: {
+                canceled_at: pkg.canceledAt,
+                canceled_by: pkg.canceledBy,
+                reason: pkg.cancellationReason,
+              },
+            }),
+          };
+          if (includeSnapshot) {
+            pkgData.snapshot_unavailable_reason = 'Sandbox training agent does not track real delivery';
+          }
+          return pkgData;
+        }),
+      };
+      if (includeHistory && mb.history?.length) {
+        buy.history = [...mb.history].reverse().map(h => ({
           revision: h.revision,
           timestamp: h.timestamp,
           actor: h.actor,
           action: h.action,
-          ...(h.summary && { summary: h.summary }),
+          summary: h.summary,
           ...(h.packageId && { package_id: h.packageId }),
-        })) }),
-        packages: mb.packages.map(pkg => ({
-          package_id: pkg.packageId,
-          buyer_ref: pkg.buyerRef,
-          product_id: pkg.productId,
-          budget: pkg.budget,
-          pricing_option_id: pkg.pricingOptionId,
-          paused: pkg.paused,
-          ...(pkg.canceled && { canceled: pkg.canceled }),
-          ...(pkg.canceledAt && { cancellation: {
-            canceled_at: pkg.canceledAt,
-            canceled_by: pkg.canceledBy,
-            ...(pkg.cancellationReason && { reason: pkg.cancellationReason }),
-          } }),
-          ...(pkg.creativeDeadline && { creative_deadline: pkg.creativeDeadline }),
-          start_time: pkg.startTime,
-          end_time: pkg.endTime,
-          creative_approvals: pkg.creativeAssignments.map(cid => ({
-            creative_id: cid,
-            approval_status: 'approved',
-          })),
-        })),
-      };
+        }));
+      }
+      return buy;
     }),
     sandbox: true,
   };
 }
 
-function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingContext): { reporting_period: { start: string; end: string }; currency: string; media_buy_deliveries: unknown[]; sandbox: boolean } | { errors: TaskError[] } {
-  const request = args as unknown as Partial<GetMediaBuyDeliveryRequest>;
+function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as GetMediaBuyDeliveryRequest & { media_buy_id?: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
-  const productMap = new Map(catalog.map(cp => [cp.product.product_id!, cp.product]));
-  const mediaBuyId = (args.media_buy_id || args.buyer_ref) as string;
-  const mb = session.mediaBuys.get(mediaBuyId) ||
-    Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+  const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
+  let mb = session.mediaBuys.get(mediaBuyId);
+
+  // Cross-session fallback for explicit ID lookup
+  if (!mb) {
+    for (const [, s] of getAllSessions()) {
+      if (s === session) continue;
+      mb = s.mediaBuys.get(mediaBuyId);
+      if (mb) break;
+    }
+  }
 
   if (!mb) {
     return {
@@ -988,7 +1030,6 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
       const { model, rate } = derivePricing(pkg, productMap);
       return {
         package_id: pkg.packageId,
-        buyer_ref: pkg.buyerRef,
         spend: 0,
         impressions: 0,
         clicks: 0,
@@ -1027,7 +1068,6 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
 
     return {
       package_id: pkg.packageId,
-      buyer_ref: pkg.buyerRef,
       spend,
       impressions,
       clicks,
@@ -1048,7 +1088,6 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
     currency: mb.currency,
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
-      buyer_ref: mb.buyerRef,
       status: deriveStatus(mb),
       totals: {
         impressions: totalImpressions,
@@ -1061,54 +1100,54 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   };
 }
 
-function derivePricing(pkg: PackageState, productMap: Map<string, Partial<Product>>): { model: string; rate: number } {
+function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/client').Product>): { model: string; rate: number } {
   const product = productMap.get(pkg.productId);
-  const pricingOptions = product?.pricing_options as Array<{ pricing_option_id: string; pricing_model: string; fixed_price?: number; floor_price?: number }> | undefined;
-  const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
+  const pricing = product?.pricing_options.find(po => po.pricing_option_id === pkg.pricingOptionId);
   return {
     model: pricing?.pricing_model || 'cpm',
-    rate: pricing?.fixed_price || pricing?.floor_price || 10,
+    rate: pricing?.fixed_price
+      ?? (pricing && pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined)
+      ?? 10,
   };
 }
 
-/** Input shape for a creative in sync_creatives. */
-interface CreativeInput {
-  creative_id?: string;
-  format_id: FormatID;
-  name?: string;
-  manifest?: { format_id: FormatID; assets: Record<string, unknown> };
-}
-
-function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext): { creatives: SyncCreativeResult[]; assignments?: AssignmentResult[]; sandbox: boolean } | { errors: TaskError[] } {
-  const request = args as unknown as Partial<SyncCreativesRequest>;
+function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as SyncCreativesRequest;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const creatives = args.creatives as CreativeInput[];
 
-  if (!creatives?.length) {
+  if (!req.creatives?.length) {
     return {
-      errors: [{ code: 'VALIDATION_ERROR', message: 'creatives array is required' }] as TaskError[],
+      errors: [{ code: 'INVALID_REQUEST', message: 'creatives array is required' }] as TaskError[],
     };
   }
 
-  if (session.creatives.size + creatives.length > MAX_CREATIVES_PER_SESSION) {
+  if (session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
   }
 
   // Build a set of valid format IDs for validation
-  const validFormatIds = new Set(getFormats().map(f => f.format_id?.id).filter(Boolean));
+  const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
 
-  const results: SyncCreativeResult[] = [];
-  for (const creative of creatives) {
-    const creativeId = creative.creative_id || `cr_${randomUUID().slice(0, 8)}`;
-    const formatId = creative.format_id;
+  const results: Record<string, unknown>[] = [];
+  for (const creative of req.creatives) {
+    if (!creative.creative_id) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'creative_id is required on each creative. The buyer assigns creative IDs.',
+        }],
+      };
+    }
+    const creativeId = creative.creative_id;
+    const formatId = creative.format_id as FormatID;
 
     // Validate format_id
     if (formatId?.id && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
-          code: 'VALIDATION_ERROR',
+          code: 'INVALID_REQUEST',
           message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
         }] as TaskError[],
       };
@@ -1122,7 +1161,8 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
       name: creative.name,
       status: 'approved',
       syncedAt: new Date().toISOString(),
-      manifest: creative.manifest,
+      // manifest is a training-agent extension, not in SDK CreativeAsset type
+      manifest: (creative as unknown as Record<string, unknown>).manifest as CreativeState['manifest'],
     });
 
     results.push({
@@ -1132,11 +1172,10 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
   }
 
   // Process creative assignments
-  const assignments = args.assignments as Array<{ media_buy_id: string; package_id: string; creative_id: string }> | undefined;
-  const assignmentResults: AssignmentResult[] = [];
-  if (assignments?.length) {
-    for (const assignment of assignments) {
-      const mediaBuyId = assignment.media_buy_id;
+  const assignmentResults: Record<string, unknown>[] = [];
+  if (req.assignments?.length) {
+    for (const assignment of req.assignments) {
+      const mediaBuyId = (assignment as Record<string, unknown>).media_buy_id as string;
       const packageId = assignment.package_id;
       const creativeId = assignment.creative_id;
 
@@ -1168,10 +1207,10 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
   };
 }
 
-function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext): { creatives: unknown[]; sandbox: boolean } {
-  const request = args as unknown as Partial<ListCreativesRequest>;
+function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as ListCreativesRequest & { creative_ids?: string[] };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const filterIds = args.creative_ids as string[] | undefined;
+  const filterIds = req.creative_ids || req.filters?.creative_ids;
 
   let creatives = Array.from(session.creatives.values());
   if (filterIds?.length) {
@@ -1190,120 +1229,109 @@ function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext
   };
 }
 
-/** Input shape for a package update in update_media_buy. */
-interface PackageUpdate {
-  package_id?: string;
-  buyer_ref?: string;
-  budget?: number;
-  paused?: boolean;
-  canceled?: boolean;
-  cancellation_reason?: string;
-  end_time?: string;
-}
-
-function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): { media_buy_id: string; buyer_ref: string; revision: number; valid_actions: string[]; sandbox: boolean; status?: string; implementation_date?: string; affected_packages?: unknown[] } | { errors: TaskError[] } {
-  const request = args as unknown as Partial<UpdateMediaBuyRequest>;
+function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as UpdateMediaBuyRequest;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const mediaBuyId = (args.media_buy_id || args.buyer_ref) as string;
-  const mb = session.mediaBuys.get(mediaBuyId) ||
-    Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+  const mediaBuyId = req.media_buy_id || '';
+  let mb = session.mediaBuys.get(mediaBuyId);
+
+  // Cross-session fallback for explicit ID lookup
+  if (!mb) {
+    for (const [, s] of getAllSessions()) {
+      if (s === session) continue;
+      mb = s.mediaBuys.get(mediaBuyId);
+      if (mb) break;
+    }
+  }
 
   if (!mb) {
-    return {
-      errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
-    };
+    return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
   }
 
   // Terminal state check
   const currentStatus = deriveStatus(mb);
-  if (currentStatus === 'completed' || currentStatus === 'rejected' || currentStatus === 'canceled') {
-    return {
-      errors: [{ code: 'INVALID_STATE', message: `Media buy ${mb.mediaBuyId} is in terminal state '${currentStatus}' and cannot be modified` }],
-    };
+  if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
+    return { errors: [{ code: 'INVALID_STATE', message: `Media buy is ${currentStatus} and cannot be updated` }] };
   }
 
-  // Optimistic concurrency check
-  const requestRevision = args.revision as number | undefined;
-  if (requestRevision !== undefined && requestRevision !== mb.revision) {
-    return {
-      errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${requestRevision}, current is ${mb.revision}. Re-read via get_media_buys and retry.` }],
-    };
+  // Revision check for optimistic concurrency
+  const reqRevision = (args as Record<string, unknown>).revision as number | undefined;
+  if (reqRevision !== undefined && reqRevision !== mb.revision) {
+    return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
   }
 
-  // Increment revision once per update call, before any mutations
-  mb.revision++;
-  const updateTimestamp = new Date().toISOString();
+  const now = new Date().toISOString();
 
-  // Handle media buy cancellation — takes precedence over all other fields
-  if (args.canceled === true) {
-    mb.status = 'canceled';
-    mb.canceledAt = updateTimestamp;
+  // Increment revision once before mutations
+  mb.revision += 1;
+
+  // Media buy cancellation
+  const isCanceled = (args as Record<string, unknown>).canceled === true;
+  if (isCanceled) {
+    const reason = (args as Record<string, unknown>).cancellation_reason as string | undefined;
+    mb.canceledAt = now;
     mb.canceledBy = 'buyer';
-    mb.cancellationReason = (args.cancellation_reason as string) || undefined;
-    mb.updatedAt = updateTimestamp;
-    mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'canceled', summary: mb.cancellationReason || 'Media buy canceled' });
+    mb.cancellationReason = reason;
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'canceled', summary: reason || 'Media buy canceled by buyer' });
+    mb.updatedAt = now;
+
+    const status = deriveStatus(mb);
     return {
       media_buy_id: mb.mediaBuyId,
-      buyer_ref: mb.buyerRef,
-      status: 'canceled' as const,
+      status,
       revision: mb.revision,
-      valid_actions: validActionsForStatus('canceled'),
-      implementation_date: updateTimestamp,
-      affected_packages: [],
+      valid_actions: validActionsForStatus(status),
+      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
       sandbox: true,
     };
   }
 
-  // Handle pause/resume
-  if (args.paused !== undefined) {
-    mb.status = args.paused ? 'paused' : 'active';
-    mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: args.paused ? 'paused' : 'resumed' });
+  // Pause/resume at media buy level
+  const pausedValue = (args as Record<string, unknown>).paused;
+  if (pausedValue === true) {
+    mb.status = 'paused';
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'paused', summary: 'Media buy paused' });
+  } else if (pausedValue === false && mb.status === 'paused') {
+    mb.status = 'active';
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'resumed', summary: 'Media buy resumed' });
   }
 
   // Update end_time with validation
-  if (args.end_time) {
-    const newEnd = args.end_time as string;
-    if (isNaN(new Date(newEnd).getTime())) {
-      return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${newEnd}". Use ISO 8601 format.` }] };
+  if (req.end_time) {
+    if (isNaN(new Date(req.end_time).getTime())) {
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${req.end_time}". Use ISO 8601 format.` }] };
     }
     const oldEnd = mb.endTime;
-    mb.endTime = newEnd;
-    mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'updated_dates', summary: `End time changed from ${oldEnd} to ${newEnd}` });
+    mb.endTime = req.end_time;
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'end_time_updated', summary: `End time changed from ${oldEnd} to ${req.end_time}` });
   }
 
   // Update packages
-  const packageUpdates = args.packages as PackageUpdate[] | undefined;
-  const affectedPackages: unknown[] = [];
-  if (packageUpdates?.length) {
+  const warnings: string[] = [];
+  if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
-    for (const update of packageUpdates) {
-      const pkgId = (update.package_id || update.buyer_ref) as string;
-      const pkg = mb.packages.find(p => p.packageId === pkgId || p.buyerRef === pkgId);
+    for (const update of req.packages as (PackageUpdate & { canceled?: boolean; cancellation_reason?: string })[]) {
+      const pkgId = update.package_id || '';
+      const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
       }
 
-      // Check if package is already canceled
-      if (pkg.canceled) {
-        return { errors: [{ code: 'INVALID_STATE', message: `Package ${pkgId} is canceled and cannot be modified` }] };
+      // Package cancellation
+      if ((update as Record<string, unknown>).canceled === true) {
+        pkg.canceled = true;
+        pkg.canceledAt = now;
+        pkg.canceledBy = 'buyer';
+        pkg.cancellationReason = (update as Record<string, unknown>).cancellation_reason as string | undefined;
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
+        continue;
       }
 
-      // Package cancellation takes precedence
-      if (update.canceled === true) {
-        pkg.canceled = true;
-        pkg.canceledAt = updateTimestamp;
-        pkg.canceledBy = 'buyer';
-        pkg.cancellationReason = (update.cancellation_reason as string) || undefined;
-        mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'package_canceled', packageId: pkg.packageId, summary: pkg.cancellationReason || `Package ${pkg.packageId} canceled` });
-        affectedPackages.push({
-          package_id: pkg.packageId,
-          buyer_ref: pkg.buyerRef,
-          canceled: true,
-          canceled_at: updateTimestamp,
-          canceled_by: 'buyer',
-          ...(pkg.cancellationReason && { cancellation_reason: pkg.cancellationReason }),
-        });
-        continue;
+      // Package pause/resume
+      if (update.paused !== undefined && update.paused !== pkg.paused) {
+        pkg.paused = update.paused;
+        const action = update.paused ? 'package_paused' : 'package_resumed';
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary: `Package ${pkgId} ${update.paused ? 'paused' : 'resumed'}`, packageId: pkgId });
       }
 
       if (update.budget !== undefined) {
@@ -1312,87 +1340,79 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         }
         const oldBudget = pkg.budget;
         pkg.budget = update.budget;
-        if (oldBudget !== update.budget) {
-          mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'updated_budget', packageId: pkg.packageId, summary: `Budget changed from $${oldBudget} to $${update.budget}` });
-        }
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget changed from ${oldBudget} to ${update.budget}`, packageId: pkgId });
       }
-      if (update.paused !== undefined) {
-        pkg.paused = update.paused;
-        mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: update.paused ? 'package_paused' : 'package_resumed', packageId: pkg.packageId });
-      }
+
       if (update.end_time) {
         if (isNaN(new Date(update.end_time).getTime())) {
-          return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time for package ${pkgId}: "${update.end_time}".` }] };
+          warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
+        } else {
+          pkg.endTime = update.end_time;
         }
-        pkg.endTime = update.end_time;
       }
-      affectedPackages.push({
-        package_id: pkg.packageId,
-        buyer_ref: pkg.buyerRef,
-        product_id: pkg.productId,
-        budget: pkg.budget,
-        paused: pkg.paused,
-        start_time: pkg.startTime,
-        end_time: pkg.endTime,
-      });
     }
   }
 
-  // Handle new_packages — add new packages to the media buy
-  const newPackages = args.new_packages as PackageInput[] | undefined;
+  // Add new packages
+  const newPackages = (args as Record<string, unknown>).new_packages as Array<Record<string, unknown>> | undefined;
   if (newPackages?.length) {
     const catalog = getCatalog();
-    const productMap = new Map(catalog.map(cp => [cp.product.product_id!, cp.product]));
-    for (const newPkg of newPackages) {
-      const product = productMap.get(newPkg.product_id);
+    const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+
+    for (let i = 0; i < newPackages.length; i++) {
+      const npkg = newPackages[i];
+      const productId = npkg.product_id as string;
+      const product = productMap.get(productId);
       if (!product) {
-        return { errors: [{ code: 'VALIDATION_ERROR', message: `New package: Product not found: ${newPkg.product_id}` }] };
+        return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
-      const pricingOptions = product.pricing_options as Array<{ pricing_option_id: string }> | undefined;
-      const pricing = pricingOptions?.find(po => po.pricing_option_id === newPkg.pricing_option_id);
-      if (!pricing) {
-        return { errors: [{ code: 'VALIDATION_ERROR', message: `New package: Pricing option not found: ${newPkg.pricing_option_id}` }] };
-      }
-      const pkg: PackageState = {
-        packageId: `pkg_${randomUUID().slice(0, 8)}`,
-        buyerRef: newPkg.buyer_ref || `pkg_ref_${randomUUID().slice(0, 6)}`,
-        productId: newPkg.product_id,
-        pricingOptionId: newPkg.pricing_option_id,
-        budget: newPkg.budget,
-        bidPrice: newPkg.bid_price,
-        impressions: newPkg.impressions,
-        startTime: newPkg.start_time || mb.startTime,
-        endTime: newPkg.end_time || mb.endTime,
-        paused: newPkg.paused || false,
-        canceled: false,
+
+      const pkgId = `pkg_${randomUUID().slice(0, 8)}`;
+      const newPkg: PackageState = {
+        packageId: pkgId,
+        productId,
+        budget: npkg.budget as number,
+        pricingOptionId: npkg.pricing_option_id as string,
+        bidPrice: npkg.bid_price as number | undefined,
+        impressions: npkg.impressions as number | undefined,
+        paused: (npkg.paused as boolean) || false,
+        startTime: (npkg.start_time as string) || mb.startTime,
+        endTime: (npkg.end_time as string) || mb.endTime,
+        formatIds: npkg.format_ids as FormatID[] | undefined,
         creativeAssignments: [],
       };
-      mb.packages.push(pkg);
-      mb.history.push({ revision: mb.revision, timestamp: updateTimestamp, actor: 'buyer', action: 'updated_packages', packageId: pkg.packageId, summary: `New package added: ${pkg.buyerRef}` });
-      affectedPackages.push({
-        package_id: pkg.packageId,
-        buyer_ref: pkg.buyerRef,
-        product_id: pkg.productId,
-        budget: pkg.budget,
-        paused: pkg.paused,
-        start_time: pkg.startTime,
-        end_time: pkg.endTime,
-      });
+      mb.packages.push(newPkg);
+      mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
     }
   }
 
-  mb.updatedAt = updateTimestamp;
+  mb.updatedAt = now;
 
-  return {
+  const status = deriveStatus(mb);
+  const result: Record<string, unknown> = {
     media_buy_id: mb.mediaBuyId,
-    buyer_ref: mb.buyerRef,
-    ...(args.paused !== undefined || args.canceled !== undefined ? { status: deriveStatus(mb) } : {}),
+    status,
     revision: mb.revision,
-    valid_actions: validActionsForStatus(deriveStatus(mb)),
-    implementation_date: updateTimestamp,
-    affected_packages: affectedPackages,
+    valid_actions: validActionsForStatus(status),
+    ...(mb.canceledAt && {
+      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+    }),
+    packages: mb.packages.map(pkg => ({
+      package_id: pkg.packageId,
+      product_id: pkg.productId,
+      budget: pkg.budget,
+      pricing_option_id: pkg.pricingOptionId,
+      paused: pkg.paused,
+      start_time: pkg.startTime,
+      end_time: pkg.endTime,
+      ...(pkg.canceledAt && {
+        cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
+      }),
+    })),
     sandbox: true,
   };
+  if (warnings.length) result.warnings = warnings;
+  return result;
 }
 
 function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
@@ -1402,7 +1422,7 @@ function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: Trainin
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   return {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy', 'governance'],
+    supported_protocols: ['media_buy', 'governance', 'signals'],
     protocol_version: '3.0',
     tasks,
     media_buy: {
@@ -1424,26 +1444,16 @@ function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: Trainin
 
 const MAX_SIGNAL_RESULTS = 10;
 
-/** Filters for get_signals. */
-interface SignalFilters {
-  max_cpm?: number;
-  data_providers?: string[];
-  catalog_types?: string[];
-}
-
-function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): { signals: SignalResponse[]; sandbox: boolean; note?: string } | { errors: TaskError[] } {
-  const request = args as unknown as Partial<GetSignalsRequest>;
+function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as GetSignalsRequest & { brief?: string };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
-  const signalSpec = (args.signal_spec || args.brief) as string | undefined;
-  const signalIds = args.signal_ids as Array<{ id: string }> | undefined;
-  const filters = args.filters as SignalFilters | undefined;
-  const maxResults = Math.min(Math.max((args.max_results as number) || MAX_SIGNAL_RESULTS, 1), 50);
-  const destinations = args.destinations as Array<{ type?: string; agent_url?: string }> | undefined;
+  const signalSpec = req.signal_spec || req.brief;
+  const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
-  if (!signalSpec && !signalIds?.length) {
+  if (!signalSpec && !req.signal_ids?.length) {
     return {
-      errors: [{ code: 'VALIDATION_ERROR', message: 'Either signal_spec or signal_ids is required' }],
+      errors: [{ code: 'INVALID_REQUEST', message: 'Either signal_spec or signal_ids is required' }],
     };
   }
 
@@ -1451,8 +1461,8 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   let results = allSignals;
 
   // Exact lookup by signal_ids
-  if (signalIds?.length) {
-    const idSet = new Set(signalIds.map(sid => sid.id));
+  if (req.signal_ids?.length) {
+    const idSet = new Set(req.signal_ids.map(sid => sid.id));
     results = results.filter(s => idSet.has(s.signalAgentSegmentId));
   }
 
@@ -1474,25 +1484,25 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
         const matchCount = terms.filter(t => text.includes(t)).length;
         return { signal: s, matchCount };
       })
-      .filter(s => s.matchCount > 0 || signalIds?.length) // keep exact matches even without keyword hit
+      .filter(s => s.matchCount > 0 || req.signal_ids?.length) // keep exact matches even without keyword hit
       .sort((a, b) => b.matchCount - a.matchCount);
     results = scored.map(s => s.signal);
   }
 
   // Apply filters
-  if (filters) {
-    if (filters.max_cpm !== undefined) {
-      const maxCpm = filters.max_cpm;
+  if (req.filters) {
+    const maxCpm = (req.filters as SignalFilters & { max_cpm?: number }).max_cpm;
+    if (maxCpm !== undefined) {
       results = results.filter(s =>
         s.pricingOptions.some(po => po.model === 'cpm' && po.cpm !== undefined && po.cpm <= maxCpm),
       );
     }
-    if (filters.data_providers?.length) {
-      const providerSet = new Set(filters.data_providers.map(d => d.toLowerCase()));
+    if (req.filters.data_providers?.length) {
+      const providerSet = new Set(req.filters.data_providers.map(d => d.toLowerCase()));
       results = results.filter(s => providerSet.has(s.providerName.toLowerCase()));
     }
-    if (filters.catalog_types?.length) {
-      const catalogTypes = filters.catalog_types;
+    if (req.filters.catalog_types?.length) {
+      const catalogTypes = req.filters.catalog_types as string[];
       results = results.filter(s => catalogTypes.includes(s.signalType));
     }
   }
@@ -1510,28 +1520,26 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
     const activation = session.signalActivations.get(activationKey);
     const isLive = activation?.isLive ?? false;
 
-    const deployment: SignalDeployment = {
-      type: 'agent',
+    const deployment = {
+      type: 'agent' as const,
       agent_url: agentUrl,
       is_live: isLive,
+      ...(isLive ? {
+        activation_key: {
+          type: 'key_value' as const,
+          key: 'audience_segment',
+          value: s.signalAgentSegmentId,
+        },
+        deployed_at: activation?.activatedAt,
+      } : {
+        estimated_activation_duration_minutes: 0, // sandbox: instant
+      }),
     };
 
-    // Include activation key when live
-    if (isLive) {
-      deployment.activation_key = {
-        type: 'key_value',
-        key: 'audience_segment',
-        value: s.signalAgentSegmentId,
-      };
-      deployment.deployed_at = activation?.activatedAt;
-    } else {
-      deployment.estimated_activation_duration_minutes = 0; // sandbox: instant
-    }
-
-    const signal: SignalResponse = {
+    const signal = {
       signal_agent_segment_id: s.signalAgentSegmentId,
       signal_id: {
-        source: 'catalog',
+        source: 'catalog' as const,
         data_provider_domain: s.providerDomain,
         id: s.signalAgentSegmentId,
       },
@@ -1542,32 +1550,20 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
       data_provider: s.providerName,
       coverage_percentage: s.coveragePercentage,
       deployments: [deployment],
-      pricing_options: s.pricingOptions.map(po => {
-        const option: SignalPricingOption = {
-          pricing_option_id: po.pricingOptionId,
-          model: po.model,
-          currency: po.currency,
-        };
-        if (po.model === 'cpm') option.cpm = po.cpm;
-        if (po.model === 'percent_of_media') {
-          option.percent = po.percent;
-          if (po.maxCpm !== undefined) option.max_cpm = po.maxCpm;
-        }
-        if (po.model === 'flat_fee') {
-          option.amount = po.amount;
-          option.period = po.period;
-        }
-        return option;
-      }),
+      pricing_options: s.pricingOptions.map(po => ({
+        pricing_option_id: po.pricingOptionId,
+        model: po.model,
+        currency: po.currency,
+        ...(po.model === 'cpm' && { cpm: po.cpm }),
+        ...(po.model === 'percent_of_media' && {
+          percent: po.percent,
+          ...(po.maxCpm !== undefined && { max_cpm: po.maxCpm }),
+        }),
+        ...(po.model === 'flat_fee' && { amount: po.amount, period: po.period }),
+      })),
+      ...(s.valueType === 'categorical' && s.categories ? { categories: s.categories } : {}),
+      ...(s.valueType === 'numeric' && s.range ? { range: s.range } : {}),
     };
-
-    // Include value type metadata
-    if (s.valueType === 'categorical' && s.categories) {
-      signal.categories = s.categories;
-    }
-    if (s.valueType === 'numeric' && s.range) {
-      signal.range = s.range;
-    }
 
     return signal;
   });
@@ -1585,40 +1581,33 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   return response;
 }
 
-/** Destination shape for activate_signal. */
-interface ActivationDestination {
-  type?: 'platform' | 'agent';
-  platform?: string;
-  account?: string;
-  account_id?: string;
-  agent_url?: string;
-}
-
-function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContext): { deployments: SignalDeployment[]; sandbox: boolean } | { errors: TaskError[] } {
-  const request = args as unknown as Partial<ActivateSignalRequest>;
+function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as ActivateSignalRequest & {
+    signal_id?: string;
+    destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
+  };
   // Accept both signal_agent_segment_id (protocol) and signal_id (SDK test tool)
-  const segmentId = (args.signal_agent_segment_id || args.signal_id) as string;
-  const action = (args.action as string) || 'activate';
+  const segmentId = req.signal_agent_segment_id || req.signal_id || '';
+  const action = req.action || 'activate';
   // Accept both destinations (array, protocol) and destination (singular, SDK test tool)
-  let destinations = args.destinations as ActivationDestination[] | undefined;
-  if (!destinations?.length && args.destination) {
-    const dest = args.destination as ActivationDestination;
+  let destinations: Destination[] = req.destinations || [];
+  if (!destinations.length && req.destination) {
+    const dest = req.destination;
     // SDK sends platform + account_id; normalize to protocol format
-    destinations = [{
-      type: dest.type || 'platform',
-      platform: dest.platform,
-      account: dest.account || dest.account_id,
-      ...(dest.agent_url ? { agent_url: dest.agent_url } : {}),
-    }];
+    if (dest.agent_url) {
+      destinations = [{ type: 'agent', agent_url: dest.agent_url, account: dest.account || dest.account_id }];
+    } else {
+      destinations = [{ type: 'platform', platform: dest.platform || '', account: dest.account || dest.account_id }];
+    }
   }
-  const pricingOptionId = args.pricing_option_id as string | undefined;
+  const pricingOptionId = req.pricing_option_id;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
-    return { errors: [{ code: 'VALIDATION_ERROR', message: 'signal_agent_segment_id is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'signal_agent_segment_id is required' }] };
   }
   if (!destinations?.length) {
-    return { errors: [{ code: 'VALIDATION_ERROR', message: 'destinations array is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'destinations array is required' }] };
   }
 
   // Find the signal in our catalog
@@ -1649,39 +1638,37 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   const agentUrl = getAgentUrl();
   const now = new Date().toISOString();
 
+  const destId = (dest: Destination): string =>
+    dest.type === 'agent' ? dest.agent_url : dest.platform || agentUrl;
+
   if (action === 'deactivate') {
     // Remove activations for this signal
     for (const dest of destinations) {
-      const destId = dest.agent_url || dest.platform || agentUrl;
-      const activationKey = `${segmentId}:${destId}`;
+      const activationKey = `${segmentId}:${destId(dest)}`;
       session.signalActivations.delete(activationKey);
     }
 
     return {
-      deployments: destinations.map(dest => {
-        const d: SignalDeployment = {
-          type: (dest.type as 'agent' | 'platform') || 'agent',
-          is_live: false,
-          deployed_at: now,
-        };
-        if (dest.agent_url) d.agent_url = dest.agent_url;
-        if (dest.platform) d.platform = dest.platform;
-        if (dest.account) d.account = dest.account;
-        return d;
-      }),
+      deployments: destinations.map(dest => ({
+        type: dest.type,
+        is_live: false,
+        deployed_at: now,
+        ...(dest.type === 'agent' ? { agent_url: dest.agent_url } : { platform: dest.platform }),
+        ...(dest.account ? { account: dest.account } : {}),
+      })),
       sandbox: true,
     };
   }
 
   // Activate: store activation state and return deployment info
-  const deployments: SignalDeployment[] = destinations.map(dest => {
-    const destId = dest.agent_url || dest.platform || agentUrl;
-    const activationKey = `${segmentId}:${destId}`;
+  const deployments = destinations.map(dest => {
+    const id = destId(dest);
+    const activationKey = `${segmentId}:${id}`;
 
     const activationState: SignalActivationState = {
       signalAgentSegmentId: segmentId,
-      destinationType: dest.type || 'agent',
-      destinationId: destId,
+      destinationType: dest.type,
+      destinationId: id,
       account: dest.account,
       pricingOptionId,
       isLive: true,
@@ -1689,39 +1676,36 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
     };
     session.signalActivations.set(activationKey, activationState);
 
-    const d: SignalDeployment = {
-      type: (dest.type as 'agent' | 'platform') || 'agent',
+    return {
+      type: dest.type,
       is_live: true,
       activation_key: {
-        type: 'key_value',
+        type: 'key_value' as const,
         key: 'audience_segment',
         value: segmentId,
       },
       deployed_at: now,
+      ...(dest.type === 'agent' ? { agent_url: dest.agent_url } : { platform: dest.platform }),
+      ...(dest.account ? { account: dest.account } : {}),
     };
-    if (dest.agent_url) d.agent_url = dest.agent_url;
-    if (dest.platform) d.platform = dest.platform;
-    if (dest.account) d.account = dest.account;
-    return d;
   });
 
   return { deployments, sandbox: true };
 }
 
-function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingContext): { reporting_period: { start: string; end: string; timezone: string }; currency: string; creatives: CreativeDeliveryEntry[]; sandbox: boolean } | { errors: TaskError[] } {
-  const request = args as unknown as Partial<GetCreativeDeliveryRequest>;
+function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+  const req = args as unknown as GetCreativeDeliveryRequest;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
 
   // Resolve media buy IDs from multiple input formats
-  const mediaBuyIds = args.media_buy_ids as string[] | undefined;
-  const buyerRefs = args.media_buy_buyer_refs as string[] | undefined;
-  const creativeIds = args.creative_ids as string[] | undefined;
-  const maxVariants = (args.max_variants as number) || 10;
+  const mediaBuyIds = req.media_buy_ids;
+  const creativeIds = req.creative_ids;
+  const maxVariants = req.max_variants || 10;
 
-  if (!mediaBuyIds?.length && !buyerRefs?.length && !creativeIds?.length) {
+  if (!mediaBuyIds?.length && !creativeIds?.length) {
     return {
-      errors: [{ code: 'VALIDATION_ERROR', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
+      errors: [{ code: 'INVALID_REQUEST', message: 'At least one of media_buy_ids or creative_ids is required.' }],
     };
   }
 
@@ -1729,7 +1713,6 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
   const matchingBuys: MediaBuyState[] = [];
   for (const mb of session.mediaBuys.values()) {
     if (mediaBuyIds?.includes(mb.mediaBuyId)) matchingBuys.push(mb);
-    else if (buyerRefs?.includes(mb.buyerRef)) matchingBuys.push(mb);
   }
 
   // Collect assigned creatives from matching buys, tracking which buy each belongs to
@@ -1761,7 +1744,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
   }
 
   const now = new Date();
-  const creatives: CreativeDeliveryEntry[] = [];
+  const creatives: Array<Record<string, unknown>> = [];
 
   for (const cid of relevantCreativeIds) {
     const creative = session.creatives.get(cid);
@@ -1773,7 +1756,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
     const totalImpressions = 50000 + Math.abs(idHash % 100000);
     const totalSpend = Math.round(totalImpressions * 0.05 * 100) / 100;
     const totalClicks = Math.round(totalImpressions * 0.03);
-    const variants: CreativeVariant[] = [];
+    const variants: Array<Record<string, unknown>> = [];
 
     const topics = ['technology', 'lifestyle', 'finance', 'health', 'sports'];
     const devices = ['mobile', 'desktop', 'tablet'];
@@ -1901,25 +1884,30 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const handler = HANDLER_MAP[name];
 
     if (!handler) {
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ error: `Unknown tool: ${name}` }) }],
-        isError: true,
-      };
+      return adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` });
     }
 
     try {
       const result = handler((args as Record<string, unknown>) || {}, ctx);
+      const hasErrors = result && 'errors' in result && Array.isArray(result.errors) && result.errors.length > 0;
+      if (hasErrors) {
+        const firstError = (result as { errors: Array<{ code: string; message: string }> }).errors[0];
+        return adcpError(firstError.code, {
+          message: firstError.message,
+          details: (result as { errors: Array<unknown> }).errors.length > 1
+            ? { all_errors: (result as { errors: Array<unknown> }).errors }
+            : undefined,
+        });
+      }
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       };
     } catch (error) {
       logger.error({ error, tool: name }, 'Training agent tool error');
-      return {
-        content: [{ type: 'text', text: JSON.stringify({
-          error: error instanceof Error ? error.message : 'Unknown error',
-        }) }],
-        isError: true,
-      };
+      return adcpError('SERVICE_UNAVAILABLE', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        recovery: 'transient',
+      });
     }
   });
 

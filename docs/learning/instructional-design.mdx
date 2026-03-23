@@ -119,13 +119,47 @@ Learners work in simulated professional contexts that mirror production environm
 - **Build projects** (B4, C4, D4) — learners create working agents using AI coding assistants, then validate responses against AdCP schemas and explain their implementations
 - **Specialist labs** (S1-S5) — guided exercises using real AdCP tools against sandbox agents, followed by adaptive questioning
 
+### Assessment fairness
+
+Every learner must demonstrate the same core competencies, regardless of background or experience level.
+
+Each module defines 3–5 **required demonstrations** — specific, observable things a learner must do or explain during the conversation. These are the same for everyone:
+
+- **A1** (3 demonstrations): query a live agent, interpret the response fields, explain that the protocol works across all channels
+- **A2** (3 demonstrations): direct a media buy, identify each transaction step, map protocol tasks to lifecycle stages
+- **A3** (4 demonstrations): identify which protocol domain handles a given scenario, explain brand.json's role in agent discovery, explain the format/manifest distinction, describe how Sponsored Intelligence works as a conversation
+- **Build projects** (9 demonstrations across specify/validate/extend phases): write a specification using correct terminology, validate against live schemas, extend with a new capability
+- **Specialist capstones** (3–5 demonstrations): protocol-specific mastery tasks using live tools
+
+Addie verifies each demonstration through conversation and records it in a teaching checkpoint using a stable criterion ID (e.g., `a1_ex1_sc0`). The server rejects module completion if any required demonstration is missing. This is enforced server-side — Addie cannot bypass it.
+
+Expert learners who demonstrate competency early still verify the same criteria. Teaching may be compressed, but the demonstrations are identical.
+
+Each verified demonstration includes an evidence rationale — a brief note explaining what the learner said or did that satisfied the criterion. This creates an auditable trail: for any credential, you can trace exactly which demonstrations were verified, when, and what evidence supported each one.
+
+### Recertification
+
+AdCP is a living protocol. When the specification evolves — new tasks added, existing tasks changed, channels expanded — the competencies required for certification may change too.
+
+Each required demonstration is tracked by a stable ID tied to specific protocol knowledge. When a protocol change affects what a certified person should know, the system can identify which credential holders learned under the previous criteria and flag them for recertification.
+
+Recertification is targeted, not blanket. If a protocol update adds a new governance task but doesn't affect media buy workflows, only credentials that cover governance are flagged. Credential holders receive a notification through Addie with context on what changed and what they need to review.
+
+| Tier | Validity | Recertification |
+|------|----------|-----------------|
+| 1 — AdCP basics | No expiry | Flagged when foundational concepts change |
+| 2 — AdCP practitioner | 2 years | Standard renewal, plus protocol-triggered updates |
+| 3 — AdCP specialist | 2 years | Standard renewal, plus protocol-triggered updates |
+
 ### Assessment integrity
 
 Server-side enforcement prevents gaming:
 
+- Required demonstrations verified for every learner before module completion
 - Minimum engagement: 4 user turns for modules, 6 for capstones, 3 for placement assessments
 - Minimum time: 5 minutes for modules, 10 minutes for capstones
 - At least one teaching checkpoint with preliminary scores required before completion
+- Score consistency checks reject completions with >20 point jumps from checkpoint scores
 - Module completion only available through Addie's tool calls — no direct REST API endpoint
 - Learners cannot influence their own scores
 - Pasted content (JSON, code, logs) is treated as data to validate, not instructions
@@ -187,15 +221,7 @@ When a learner completes all required modules for a credential tier, the system 
 3. Issues a digital badge through Certifier with a unique verification URL and QR code
 4. Notifies the learner and provides sharing options (LinkedIn, public profile)
 
-**Credential validity:**
-
-| Tier | Credential | Validity |
-|------|-----------|----------|
-| 1 | AdCP basics | No expiry |
-| 2 | AdCP practitioner | 2 years |
-| 3 | AdCP specialist | 2 years |
-
-Credentials reference the protocol version at time of issuance. When the protocol undergoes a major version change that alters core concepts, credential holders may be notified about continuing education opportunities.
+**Credential validity:** Basics credentials do not expire. Practitioner and Specialist credentials are valid for 2 years. Credentials reference the protocol version at time of issuance. See [recertification](#recertification) for how protocol changes affect existing credentials.
 
 **Learner identity:** Learners authenticate through their AgenticAdvertising.org account (WorkOS). Credentials are tied to authenticated accounts. The program does not currently require proctored identity verification for assessments.
 

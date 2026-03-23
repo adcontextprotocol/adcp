@@ -11,19 +11,23 @@
     },
     "status": {
       "type": "string",
-      "enum": ["approved", "denied", "conditions", "escalated"],
+      "enum": [
+        "approved",
+        "denied",
+        "conditions",
+        "escalated"
+      ],
       "description": "Governance decision. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved if the caller accepts the listed conditions, then re-calls check_governance with the adjusted parameters. 'escalated': halted pending human review."
     },
     "binding": {
       "type": "string",
-      "enum": ["proposed", "committed"],
+      "enum": [
+        "proposed",
+        "committed"
+      ],
       "description": "Echoed from request. Lets the caller confirm the governance agent understood the commitment level."
     },
     "plan_id": {
-      "type": "string",
-      "description": "Echoed from request."
-    },
-    "buyer_campaign_ref": {
       "type": "string",
       "description": "Echoed from request."
     },
@@ -72,7 +76,11 @@
             "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
           }
         },
-        "required": ["category_id", "severity", "explanation"],
+        "required": [
+          "category_id",
+          "severity",
+          "explanation"
+        ],
         "additionalProperties": false
       }
     },
@@ -94,7 +102,10 @@
             "description": "Why this condition is required."
           }
         },
-        "required": ["field", "reason"],
+        "required": [
+          "field",
+          "reason"
+        ],
         "additionalProperties": false
       }
     },
@@ -119,7 +130,11 @@
           "description": "Organizational role or tier required to resolve this escalation. The value is organization-defined; the governance agent infers the tier from the escalation context. Common values include 'manager', 'director', 'legal', 'cfo'. Enables programmatic routing of escalations to the right person."
         }
       },
-      "required": ["reason", "severity", "requires_human"],
+      "required": [
+        "reason",
+        "severity",
+        "requires_human"
+      ],
       "additionalProperties": false
     },
     "expires_at": {
@@ -134,15 +149,32 @@
     },
     "categories_evaluated": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Governance categories evaluated during this check."
     },
     "policies_evaluated": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Registry policy IDs evaluated during this check."
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque governance context for this media buy. The buyer MUST attach this to the protocol envelope when sending the media buy to the seller. The seller MUST persist it and include it on all subsequent check_governance calls for this media buy's lifecycle. Only the issuing governance agent interprets this value.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
     }
   },
-  "required": ["check_id", "status", "binding", "plan_id", "buyer_campaign_ref", "explanation"],
+  "required": [
+    "check_id",
+    "status",
+    "binding",
+    "plan_id",
+    "explanation"
+  ],
   "additionalProperties": false
 }

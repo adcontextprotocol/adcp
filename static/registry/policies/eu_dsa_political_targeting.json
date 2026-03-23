@@ -1,0 +1,33 @@
+{
+  "policy_id": "eu_dsa_political_targeting",
+  "version": "1.0.0",
+  "name": "EU Digital Services Act — Political Ad Targeting Restrictions",
+  "description": "Prohibits targeting political advertisements using special categories of personal data under DSA Article 26 and the EU Political Advertising Regulation.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
+  "region_aliases": {
+    "EU": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
+  },
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign"],
+  "effective_date": "2025-10-14",
+  "source_url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32022R2065",
+  "source_name": "European Parliament and Council",
+  "policy": "Political advertising in the EU must not use special categories of personal data (GDPR Article 9) for targeting.\n\nSpecific prohibitions:\n1. Targeting based on racial or ethnic origin, political opinions, religious beliefs, trade union membership, health data, sex life or sexual orientation, genetic data, or biometric data is prohibited for political ads.\n2. Profiling that infers special category data (e.g., inferring political opinions from browsing behavior) is also prohibited.\n3. Political ads must include transparency labels identifying the sponsor and funding source.\n4. Targeting criteria used must be disclosed in an ad transparency repository.\n\nThe EU Political Advertising Regulation (effective October 2025) further restricts targeting techniques for political advertising to only contextual, linguistic, and broad geographic criteria.",
+  "guidance": "This policy intersects with the restricted_attributes mechanism. When a plan declares policy_categories: ['political_advertising'], governance agents should automatically restrict all GDPR Article 9 categories. The DSA and Political Advertising Regulation effectively limit political ad targeting to contextual and broad geographic methods.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A political party runs ads in Germany using only German-language targeting and broad geographic targeting (Bundesland level) with no demographic or interest-based audience segments.",
+        "explanation": "Contextual, linguistic, and broad geographic targeting are permitted for political advertising under the EU Political Advertising Regulation."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A political campaign targets voters in France using audience segments based on inferred political leaning and religious affiliation.",
+        "explanation": "Targeting political ads using inferred political opinions or religious beliefs constitutes use of GDPR Article 9 special category data, which is prohibited under DSA Article 26."
+      }
+    ]
+  }
+}

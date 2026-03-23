@@ -128,7 +128,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 29. **Media Buy Rejection** — `rejected` status added to media-buy-status enum with `rejection_reason` on the MediaBuy object.
 
-30. **Idempotency** — `idempotency_key` on `update_media_buy` and `sync_creatives` for at-most-once execution. `buyer_ref` documented as the idempotency key for `create_media_buy`.
+30. **Idempotency** — `idempotency_key` on `update_media_buy` and `sync_creatives` for at-most-once execution. `idempotency_key` added to `create_media_buy` for at-most-once creation.
 
 ### Breaking Changes
 

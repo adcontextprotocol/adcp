@@ -7,11 +7,7 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
-      "description": "Publisher's ID of the media buy to update"
-    },
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference for the media buy to update"
+      "description": "Seller's ID of the media buy to update"
     },
     "revision": {
       "type": "integer",
@@ -66,8 +62,8 @@
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once.",
-      "minLength": 8,
+      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
       "maxLength": 255
     },
     "context": {
@@ -77,17 +73,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "required": [
-        "media_buy_id"
-      ]
-    },
-    {
-      "required": [
-        "buyer_ref"
-      ]
-    }
+  "required": [
+    "media_buy_id"
   ],
   "additionalProperties": true
 }

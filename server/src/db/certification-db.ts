@@ -38,12 +38,17 @@ export interface LessonPlan {
   demo_scenarios?: Array<{ description: string; tools: string[]; expected_outcome: string }>;
 }
 
+export interface SuccessCriterion {
+  id: string;
+  text: string;
+}
+
 export interface ExerciseDefinition {
   id: string;
   title: string;
   description: string;
   sandbox_actions: Array<{ tool: string; guidance: string }>;
-  success_criteria: string[];
+  success_criteria: SuccessCriterion[];
 }
 
 export interface AssessmentCriteria {
@@ -236,6 +241,8 @@ export async function completeModule(
   if (!result.rows[0]) {
     throw new Error(`No progress record found for user ${userId}, module ${moduleId}`);
   }
+  // Refresh engagement time view so admin metrics reflect the completion (errors logged internally)
+  void refreshEngagementTime();
   return result.rows[0];
 }
 
@@ -934,6 +941,8 @@ export interface TeachingCheckpoint {
   learner_gaps: string[];
   current_phase: string;
   preliminary_scores: Record<string, number> | null;
+  demonstrations_verified: string[];
+  demonstration_evidence: Record<string, string> | null;
   notes: string | null;
   created_at: string;
 }
@@ -948,13 +957,16 @@ export async function saveTeachingCheckpoint(checkpoint: {
   learner_gaps?: string[];
   current_phase: string;
   preliminary_scores?: Record<string, number>;
+  demonstrations_verified?: string[];
+  demonstration_evidence?: Record<string, string>;
   notes?: string;
 }): Promise<TeachingCheckpoint> {
   const result = await query<TeachingCheckpoint>(
     `INSERT INTO teaching_checkpoints
        (workos_user_id, module_id, thread_id, concepts_covered, concepts_remaining,
-        learner_strengths, learner_gaps, current_phase, preliminary_scores, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        learner_strengths, learner_gaps, current_phase, preliminary_scores,
+        demonstrations_verified, demonstration_evidence, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       checkpoint.workos_user_id,
@@ -966,6 +978,8 @@ export async function saveTeachingCheckpoint(checkpoint: {
       Array.isArray(checkpoint.learner_gaps) ? checkpoint.learner_gaps : [],
       checkpoint.current_phase,
       checkpoint.preliminary_scores ? JSON.stringify(checkpoint.preliminary_scores) : null,
+      Array.isArray(checkpoint.demonstrations_verified) ? checkpoint.demonstrations_verified : [],
+      checkpoint.demonstration_evidence ? JSON.stringify(checkpoint.demonstration_evidence) : null,
       checkpoint.notes || null,
     ]
   );
@@ -1007,6 +1021,8 @@ export interface AdminOverviewMetrics {
     rate: number;
     avg_score: number | null;
     avg_duration_minutes: number | null;
+    avg_engagement_minutes: number | null;
+    avg_session_count: number | null;
     abandoned: number;
     sessions: number;
     dimensions: Array<{ name: string; avg_score: number }>;
@@ -1047,11 +1063,12 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
      ORDER BY cc.sort_order`
   );
 
-  // Module completion with dimension averages
+  // Module completion with dimension averages and engagement time
   const moduleResult = await query<{
     module_id: string; title: string; started: string; completed: string;
-    avg_score: string | null; avg_duration_minutes: string | null; abandoned: string;
-    sessions: string;
+    avg_score: string | null; avg_duration_minutes: string | null;
+    avg_engagement_minutes: string | null; avg_session_count: string | null;
+    abandoned: string; sessions: string;
   }>(
     `SELECT
        m.id AS module_id,
@@ -1070,6 +1087,8 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
            ) - lp.started_at
          )) / 60
        END))::text AS avg_duration_minutes,
+       ROUND(AVG(et.engagement_minutes) FILTER (WHERE lp.status IN ('completed', 'tested_out')), 1)::text AS avg_engagement_minutes,
+       ROUND(AVG(et.session_count) FILTER (WHERE lp.status IN ('completed', 'tested_out')), 1)::text AS avg_session_count,
        COUNT(CASE WHEN lp.status = 'in_progress'
          AND COALESCE(
            (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
@@ -1080,6 +1099,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
        COALESCE((SELECT COUNT(DISTINCT tc.thread_id) FROM teaching_checkpoints tc WHERE tc.module_id = m.id), 0)::text AS sessions
      FROM certification_modules m
      LEFT JOIN learner_progress lp ON lp.module_id = m.id
+     LEFT JOIN learner_engagement_time et ON et.progress_id = lp.id
      GROUP BY m.id, m.title, m.track_id, m.sort_order
      ORDER BY m.track_id, m.sort_order`
   );
@@ -1123,6 +1143,8 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
         rate: started > 0 ? Math.round((completed / started) * 100) : 0,
         avg_score: r.avg_score ? parseInt(r.avg_score) : null,
         avg_duration_minutes: r.avg_duration_minutes ? parseInt(r.avg_duration_minutes) : null,
+        avg_engagement_minutes: r.avg_engagement_minutes ? parseFloat(r.avg_engagement_minutes) : null,
+        avg_session_count: r.avg_session_count ? parseFloat(r.avg_session_count) : null,
         abandoned: parseInt(r.abandoned),
         sessions: parseInt(r.sessions),
         dimensions: dimsByModule.get(r.module_id) || [],
@@ -1316,6 +1338,215 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
     credentials: credsResult.rows,
     checkpoints: checkpointsResult.rows,
   };
+}
+
+// =====================================================
+// ENGAGEMENT TIME
+// =====================================================
+
+/**
+ * Refresh the learner_engagement_time materialized view.
+ * Called after module completion so admin metrics reflect the latest data.
+ * Uses CONCURRENTLY to avoid locking reads during refresh.
+ */
+export async function refreshEngagementTime(): Promise<void> {
+  try {
+    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY learner_engagement_time');
+  } catch (error) {
+    // Non-critical — view will be stale until next refresh
+    logger.warn({ error }, 'Failed to refresh engagement time view');
+  }
+}
+
+// =====================================================
+// ABANDONMENT ANALYSIS
+// =====================================================
+
+export interface AbandonmentSegment {
+  module_id: string;
+  segment: 'bounced' | 'early_drop' | 'shallow_drop' | 'deep_drop';
+  count: number;
+  avg_user_messages: number;
+}
+
+/**
+ * Segment abandoned learners by engagement depth.
+ * - bounced: 0-2 messages (barely engaged)
+ * - early_drop: 3-5 messages (engaged briefly)
+ * - shallow_drop: 6-9 messages (moderate engagement)
+ * - deep_drop: 10+ messages (engaged significantly then left)
+ */
+export async function getAbandonmentSegments(): Promise<AbandonmentSegment[]> {
+  const result = await query<{
+    module_id: string; segment: string; count: string; avg_user_messages: string;
+  }>(
+    `WITH abandoned AS (
+      SELECT lp.module_id, lp.workos_user_id, lp.addie_thread_id
+      FROM learner_progress lp
+      WHERE lp.status = 'in_progress'
+        AND COALESCE(
+          (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+           WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+          lp.started_at
+        ) < NOW() - INTERVAL '3 days'
+    ),
+    msg_counts AS (
+      SELECT a.module_id, a.workos_user_id,
+        COUNT(*) FILTER (WHERE m.role = 'user') AS user_msgs
+      FROM abandoned a
+      LEFT JOIN addie_threads t ON t.thread_id::text = a.addie_thread_id OR t.external_id = a.addie_thread_id
+      LEFT JOIN addie_thread_messages m ON m.thread_id = t.thread_id
+      GROUP BY a.module_id, a.workos_user_id
+    )
+    SELECT
+      module_id,
+      CASE
+        WHEN user_msgs <= 2 THEN 'bounced'
+        WHEN user_msgs <= 5 THEN 'early_drop'
+        WHEN user_msgs <= 9 THEN 'shallow_drop'
+        ELSE 'deep_drop'
+      END AS segment,
+      COUNT(*)::text AS count,
+      ROUND(AVG(user_msgs), 1)::text AS avg_user_messages
+    FROM msg_counts
+    GROUP BY module_id, segment
+    ORDER BY module_id, segment`
+  );
+
+  return result.rows.map(r => ({
+    module_id: r.module_id,
+    segment: r.segment as AbandonmentSegment['segment'],
+    count: parseInt(r.count),
+    avg_user_messages: parseFloat(r.avg_user_messages),
+  }));
+}
+
+/**
+ * Where in the module do learners abandon? Uses last checkpoint to determine
+ * how far they got (phase, concepts covered vs remaining).
+ */
+export async function getAbandonPoints(): Promise<Array<{
+  module_id: string;
+  current_phase: string;
+  concepts_covered: number;
+  concepts_remaining: number;
+  count: number;
+}>> {
+  const result = await query<{
+    module_id: string; current_phase: string;
+    concepts_covered: string; concepts_remaining: string; count: string;
+  }>(
+    `SELECT
+       tc.module_id,
+       tc.current_phase,
+       array_length(tc.concepts_covered, 1)::text AS concepts_covered,
+       COALESCE(array_length(tc.concepts_remaining, 1), 0)::text AS concepts_remaining,
+       COUNT(*)::text AS count
+     FROM learner_progress lp
+     JOIN LATERAL (
+       SELECT * FROM teaching_checkpoints tc2
+       WHERE tc2.workos_user_id = lp.workos_user_id AND tc2.module_id = lp.module_id
+       ORDER BY tc2.created_at DESC LIMIT 1
+     ) tc ON true
+     WHERE lp.status = 'in_progress'
+       AND COALESCE(tc.created_at, lp.started_at) < NOW() - INTERVAL '3 days'
+     GROUP BY tc.module_id, tc.current_phase,
+       array_length(tc.concepts_covered, 1), array_length(tc.concepts_remaining, 1)
+     ORDER BY COUNT(*) DESC`
+  );
+
+  return result.rows.map(r => ({
+    module_id: r.module_id,
+    current_phase: r.current_phase,
+    concepts_covered: parseInt(r.concepts_covered || '0'),
+    concepts_remaining: parseInt(r.concepts_remaining || '0'),
+    count: parseInt(r.count),
+  }));
+}
+
+// =====================================================
+// COACHING INTENSITY & ANALYTICS
+// =====================================================
+
+/**
+ * Get coaching intensity per module: how many user messages on average
+ * before completion. Higher = more coaching needed.
+ */
+export async function getCoachingIntensity(): Promise<Array<{
+  module_id: string;
+  avg_user_messages: number;
+  avg_total_messages: number;
+  completions: number;
+}>> {
+  const result = await query<{
+    module_id: string; avg_user: string; avg_total: string; completions: string;
+  }>(
+    `SELECT
+       lp.module_id,
+       ROUND(AVG(msg.user_count), 1)::text AS avg_user,
+       ROUND(AVG(msg.total_count), 1)::text AS avg_total,
+       COUNT(*)::text AS completions
+     FROM learner_progress lp
+     JOIN LATERAL (
+       SELECT
+         COUNT(*) FILTER (WHERE m.role = 'user') AS user_count,
+         COUNT(*) AS total_count
+       FROM addie_threads t
+       JOIN addie_thread_messages m ON m.thread_id = t.thread_id
+       WHERE (t.thread_id::text = lp.addie_thread_id OR t.external_id = lp.addie_thread_id)
+         AND m.created_at >= lp.started_at
+     ) msg ON true
+     WHERE lp.status IN ('completed', 'tested_out')
+       AND lp.addie_thread_id IS NOT NULL
+     GROUP BY lp.module_id
+     ORDER BY lp.module_id`
+  );
+
+  return result.rows.map(r => ({
+    module_id: r.module_id,
+    avg_user_messages: parseFloat(r.avg_user),
+    avg_total_messages: parseFloat(r.avg_total),
+    completions: parseInt(r.completions),
+  }));
+}
+
+/**
+ * Completion velocity by cohort week. Tracks whether the learning experience
+ * is improving over time.
+ */
+export async function getCohortVelocity(): Promise<Array<{
+  cohort_week: string;
+  module_id: string;
+  started: number;
+  completed: number;
+  completion_rate: number;
+}>> {
+  const result = await query<{
+    cohort_week: string; module_id: string;
+    started: string; completed: string;
+  }>(
+    `SELECT
+       DATE_TRUNC('week', lp.started_at)::date::text AS cohort_week,
+       lp.module_id,
+       COUNT(*)::text AS started,
+       COUNT(*) FILTER (WHERE lp.status IN ('completed', 'tested_out'))::text AS completed
+     FROM learner_progress lp
+     WHERE lp.started_at IS NOT NULL
+     GROUP BY 1, 2
+     ORDER BY 1, 2`
+  );
+
+  return result.rows.map(r => {
+    const started = parseInt(r.started);
+    const completed = parseInt(r.completed);
+    return {
+      cohort_week: r.cohort_week,
+      module_id: r.module_id,
+      started,
+      completed,
+      completion_rate: started > 0 ? Math.round((completed / started) * 100) : 0,
+    };
+  });
 }
 
 // =====================================================

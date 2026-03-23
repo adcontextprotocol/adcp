@@ -187,6 +187,17 @@ async function createMediaBuy(request) {
 }
 ```
 
+Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request.
+
+### Governance Context
+
+`governance_context` is an opaque string that crosses trust boundaries — from governance agent to buyer to seller and back. Implementers should treat it as untrusted input at each hop:
+
+- **Governance agents** MUST treat `governance_context` as a lookup key into server-side state or a signed token (e.g., HMAC-SHA256). Encoding plain-text state in the value allows tampering by intermediaries. If state is encoded directly, it MUST be signed so modification is detectable.
+- **Governance agents** SHOULD bind each `governance_context` to a specific `(plan_id, media_buy_id)` tuple and reject contexts that don't match the request's identifiers. This prevents replay of a context from one media buy onto another.
+- **Sellers** MUST NOT interpret or modify `governance_context`. Store it as received and include it verbatim on all subsequent governance calls.
+- **Buyers** receive `governance_context` from the governance agent and attach it to the protocol envelope. They MUST NOT construct or modify the value.
+
 ### Budget Validation
 
 Validate budgets before committing:

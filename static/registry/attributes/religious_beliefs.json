@@ -1,0 +1,36 @@
+{
+  "attribute_id": "religious_beliefs",
+  "name": "Religious or Philosophical Beliefs",
+  "description": "Religious affiliation, spiritual practices, or philosophical beliefs.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Religious or philosophical beliefs are a special category of personal data."
+    },
+    {
+      "name": "US Fair Housing Act",
+      "jurisdictions": ["US"],
+      "summary": "Prohibits targeting by religion in housing advertising."
+    },
+    {
+      "name": "US Title VII / EEOC",
+      "jurisdictions": ["US"],
+      "summary": "Prohibits targeting by religion in employment advertising."
+    }
+  ],
+  "includes": [
+    "Religious affiliation or denomination",
+    "Religious practice signals (e.g., 'attends church weekly')",
+    "Philosophical belief systems",
+    "Faith-based interest segments"
+  ],
+  "excludes": [
+    "Holiday interest segments (e.g., 'Christmas shoppers') unless used as religious proxy",
+    "Cultural event attendance (e.g., 'Diwali celebrations') unless used as religious proxy"
+  ],
+  "signal_patterns": [
+    "religion_", "faith_", "church_", "mosque_", "synagogue_", "spiritual_"
+  ],
+  "guidance": "Holiday and cultural event targeting is a common edge case. Targeting 'Christmas shoppers' is commercial intent, not religious targeting. Targeting 'devout Christians' is religious targeting. The distinction is whether the signal infers belief or captures commercial behavior."
+}

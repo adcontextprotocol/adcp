@@ -99,20 +99,19 @@ export const GOVERNANCE_TOOLS = [
       type: 'object' as const,
       properties: {
         plan_id: { type: 'string' },
-        buyer_campaign_ref: { type: 'string' },
         binding: { type: 'string', enum: ['proposed', 'committed'] },
         caller: { type: 'string', format: 'uri' },
         tool: { type: 'string' },
         payload: { type: 'object' },
-        governance_context: { type: 'object', description: 'Normalized governance fields (budget, countries, channels, flight). Preferred over parsing payload.' },
+        governance_context: { type: 'string', description: 'Opaque governance context from a prior check_governance response. Pass on subsequent checks for lifecycle continuity.' },
         media_buy_id: { type: 'string' },
-        buyer_ref: { type: 'string' },
+
         phase: { type: 'string', enum: ['purchase', 'modification', 'delivery'] },
         planned_delivery: { type: 'object' },
         delivery_metrics: { type: 'object' },
         modification_summary: { type: 'string' },
       },
-      required: ['plan_id', 'buyer_campaign_ref', 'binding', 'caller'],
+      required: ['plan_id', 'binding', 'caller'],
     },
   },
   {
@@ -124,13 +123,13 @@ export const GOVERNANCE_TOOLS = [
       properties: {
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
-        buyer_campaign_ref: { type: 'string' },
+        governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
         outcome: { type: 'string', enum: ['completed', 'failed', 'delivery'] },
         seller_response: { type: 'object' },
         delivery: { type: 'object' },
         error: { type: 'object' },
       },
-      required: ['plan_id', 'buyer_campaign_ref', 'outcome'],
+      required: ['plan_id', 'outcome'],
     },
   },
   {
@@ -142,7 +141,6 @@ export const GOVERNANCE_TOOLS = [
       properties: {
         plan_ids: { type: 'array', items: { type: 'string' }, minItems: 1 },
         portfolio_plan_ids: { type: 'array', items: { type: 'string' } },
-        buyer_campaign_ref: { type: 'string' },
         include_entries: { type: 'boolean' },
       },
     },
@@ -242,12 +240,11 @@ export function handleSyncPlans(args: Record<string, unknown>, ctx: TrainingCont
 export function handleCheckGovernance(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = args.plan_id as string;
-  const buyerCampaignRef = args.buyer_campaign_ref as string;
   const binding = args.binding as 'proposed' | 'committed';
   const caller = args.caller as string;
   const tool = args.tool as string | undefined;
   const payload = args.payload as Record<string, unknown> | undefined;
-  const governanceContext = args.governance_context as Record<string, unknown> | undefined;
+  const governanceContext = args.governance_context as string | undefined;
   const phase = (args.phase as string) || 'purchase';
   const plannedDelivery = args.planned_delivery as Record<string, unknown> | undefined;
   const deliveryMetrics = args.delivery_metrics as Record<string, unknown> | undefined;
@@ -259,7 +256,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
     const check: GovernanceCheckState = {
       checkId,
       planId,
-      buyerCampaignRef,
+      governanceContext,
       binding,
       status: 'denied',
       caller,
@@ -318,12 +315,9 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
   // Delegation budget/market limits are checked here because the proposed payload
   // contains the budget and countries. For committed binding, planned_delivery
   // validation handles these constraints instead.
-  // Prefer governance_context (canonical shape) over payload heuristics.
-  if (binding === 'proposed' && (governanceContext || payload)) {
+  if (binding === 'proposed' && payload) {
     const { budget: payloadBudget, budgetFieldPath, countries: payloadCountries, channels: payloadChannels, flight: payloadFlight } =
-      governanceContext
-        ? extractFromGovernanceContext(governanceContext)
-        : extractFromPayload(payload!);
+      extractFromPayload(payload);
 
     // Delegation budget_limit enforcement
     if (callerDelegation?.budgetLimit && payloadBudget !== undefined) {
@@ -571,7 +565,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
   const check: GovernanceCheckState = {
     checkId,
     planId,
-    buyerCampaignRef,
+    governanceContext,
     binding,
     status,
     caller,
@@ -600,7 +594,7 @@ export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: Trai
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = args.plan_id as string;
   const checkId = args.check_id as string | undefined;
-  const buyerCampaignRef = args.buyer_campaign_ref as string;
+  const governanceContext = args.governance_context as string | undefined;
   const outcome = args.outcome as 'completed' | 'failed' | 'delivery';
   const sellerResponse = args.seller_response as Record<string, unknown> | undefined;
   const delivery = args.delivery as Record<string, unknown> | undefined;
@@ -654,7 +648,7 @@ export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: Trai
     outcomeId,
     planId,
     checkId,
-    buyerCampaignRef,
+    governanceContext,
     outcomeType: outcome,
     committedBudget,
     mediaBuyId: sellerResponse?.media_buy_id as string | undefined ?? delivery?.media_buy_id as string | undefined,
@@ -696,7 +690,6 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
   const planIds = (args.plan_ids as string[]) || [];
   const portfolioPlanIds = (args.portfolio_plan_ids as string[]) || [];
   const includeEntries = args.include_entries as boolean || false;
-  const campaignFilter = args.buyer_campaign_ref as string | undefined;
 
   if (!planIds.length && !portfolioPlanIds.length) {
     return { errors: [{ code: 'validation_error', message: 'plan_ids or portfolio_plan_ids is required' }] };
@@ -710,9 +703,9 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
 
     // Gather checks and outcomes for this plan
     const checks = Array.from(session.governanceChecks.values())
-      .filter(c => c.planId === planId && (!campaignFilter || c.buyerCampaignRef === campaignFilter));
+      .filter(c => c.planId === planId);
     const outcomes = Array.from(session.governanceOutcomes.values())
-      .filter(o => o.planId === planId && (!campaignFilter || o.buyerCampaignRef === campaignFilter));
+      .filter(o => o.planId === planId);
 
     // Budget state
     const budget = {
@@ -727,29 +720,30 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
     // Channel allocation from outcomes
     const channelAllocation: Record<string, { committed: number; pct: number }> = {};
 
-    // Campaign breakdown
-    const campaignMap = new Map<string, { status: string; committed: number; mediaBuyIds: Set<string> }>();
+    // Media buy breakdown (grouped by media_buy_id)
+    const mediaBuyMap = new Map<string, { status: string; committed: number; checkCount: number }>();
     for (const check of checks) {
-      if (!campaignMap.has(check.buyerCampaignRef)) {
-        campaignMap.set(check.buyerCampaignRef, { status: 'active', committed: 0, mediaBuyIds: new Set() });
-      }
       if (check.mediaBuyId) {
-        campaignMap.get(check.buyerCampaignRef)!.mediaBuyIds.add(check.mediaBuyId);
+        if (!mediaBuyMap.has(check.mediaBuyId)) {
+          mediaBuyMap.set(check.mediaBuyId, { status: 'active', committed: 0, checkCount: 0 });
+        }
+        mediaBuyMap.get(check.mediaBuyId)!.checkCount++;
       }
     }
     for (const outcome of outcomes) {
-      const camp = campaignMap.get(outcome.buyerCampaignRef);
-      if (camp) {
-        camp.committed += outcome.committedBudget;
-        if (outcome.mediaBuyId) camp.mediaBuyIds.add(outcome.mediaBuyId);
+      if (outcome.mediaBuyId) {
+        const entry = mediaBuyMap.get(outcome.mediaBuyId);
+        if (entry) {
+          entry.committed += outcome.committedBudget;
+        }
       }
     }
 
-    const campaigns = Array.from(campaignMap.entries()).map(([ref, data]) => ({
-      buyer_campaign_ref: ref,
+    const mediaBuys = Array.from(mediaBuyMap.entries()).map(([id, data]) => ({
+      media_buy_id: id,
       status: data.status,
       committed: data.committed,
-      active_media_buys: [...data.mediaBuyIds],
+      check_count: data.checkCount,
     }));
 
     // Summary statistics
@@ -799,7 +793,7 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
       status: plan.status,
       budget,
       channel_allocation: channelAllocation,
-      campaigns,
+      media_buys: mediaBuys,
       summary,
     };
 
@@ -859,21 +853,6 @@ interface ExtractedFields {
   countries: string[];
   channels: string[];
   flight: { start?: string; end?: string };
-}
-
-function extractFromGovernanceContext(ctx: Record<string, unknown>): ExtractedFields {
-  const totalBudget = ctx.total_budget as Record<string, unknown> | undefined;
-  const flight = ctx.flight as Record<string, unknown> | undefined;
-  return {
-    budget: totalBudget?.amount as number | undefined,
-    budgetFieldPath: 'governance_context.total_budget.amount',
-    countries: (ctx.countries as string[]) || [],
-    channels: (ctx.channels as string[]) || [],
-    flight: {
-      start: flight?.start as string | undefined,
-      end: flight?.end as string | undefined,
-    },
-  };
 }
 
 function extractFromPayload(payload: Record<string, unknown>): ExtractedFields {
@@ -984,7 +963,6 @@ function buildCheckResponse(check: GovernanceCheckState): Record<string, unknown
     status: check.status,
     binding: check.binding,
     plan_id: check.planId,
-    buyer_campaign_ref: check.buyerCampaignRef,
     explanation: check.explanation,
     mode: check.mode,
     categories_evaluated: check.categoriesEvaluated,
@@ -1021,6 +999,11 @@ function buildCheckResponse(check: GovernanceCheckState): Record<string, unknown
   // For delivery phase, suggest next check in 24 hours
   if (check.phase === 'delivery' && check.status === 'approved') {
     response.next_check = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  // Issue governance_context only on approved/conditions responses
+  if (check.status === 'approved' || check.status === 'conditions') {
+    response.governance_context = randomUUID();
   }
 
   return response;

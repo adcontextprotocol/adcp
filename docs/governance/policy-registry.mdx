@@ -38,7 +38,7 @@ Advertising compliance involves the same regulations and standards across many c
 
 The registry solves this by providing:
 
-- **Standardized policy definitions** with structured metadata (jurisdiction, vertical, enforcement level)
+- **Standardized policy definitions** with structured metadata (jurisdiction, policy category, enforcement level)
 - **Natural language policy text** that governance agents (LLMs) use directly for evaluation
 - **Calibration exemplars** (pass/fail scenarios) that align agent behavior
 - **Version tracking** so brands can pin to specific policy versions
@@ -64,7 +64,7 @@ Governance agents are LLMs that interpret natural language policy text -- the sa
 
 1. **Resolve applicable policies** from the brand's compliance configuration or buyer request
 2. **Bulk-resolve from the registry** via `POST /api/policies/resolve/bulk`
-3. **Filter by context** -- intersect policy jurisdictions/verticals/channels with campaign parameters
+3. **Filter by context** -- intersect policy jurisdictions/policy categories/channels with campaign parameters
 4. **Include policy text + exemplars** in the evaluation prompt
 5. **Apply enforcement level** -- `must` violations result in rejection, `should` violations result in warnings
 
@@ -81,7 +81,7 @@ Each policy in the registry follows the [policy-entry schema](https://adcontextp
   "category": "regulation",
   "enforcement": "must",
   "jurisdictions": ["GB"],
-  "verticals": ["food", "beverage"],
+  "policy_categories": ["health_wellness"],
   "governance_domains": ["campaign", "property", "content_standards"],
   "effective_date": "2025-10-01",
   "source_url": "https://www.legislation.gov.uk/ukpga/2022/17/contents",
@@ -124,7 +124,7 @@ For example, the EU AI Act Article 50 has `effective_date: "2026-08-02"`. A bran
 | Tier | Source | Example |
 |------|--------|---------|
 | **Always-on** | Regulations that apply automatically based on brand category and campaign jurisdictions | COPPA for US children's brands, GDPR for EU campaigns |
-| **Best practices** | Standards that brands opt into based on their vertical | Alcohol advertising standards for beverage brands |
+| **Best practices** | Standards that brands opt into based on their industry | Alcohol advertising standards for beverage brands |
 | **Brand-specific** | Custom policies in the brand's compliance configuration | Brand-specific competitor exclusions, custom content rules |
 
 ## Brand compliance configuration
@@ -228,7 +228,7 @@ The registry is served via the AgenticAdvertising.org API:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/policies/registry` | GET | List policies with filtering by category, jurisdiction, vertical, domain |
+| `/api/policies/registry` | GET | List policies with filtering by category, jurisdiction, policy_categories, domain |
 | `/api/policies/resolve` | GET | Resolve a single policy by ID (+ optional version) |
 | `/api/policies/resolve/bulk` | POST | Bulk resolve multiple policy IDs |
 | `/api/policies/history` | GET | Revision history for a policy |
@@ -255,18 +255,83 @@ The registry ships with 14 seeded policies covering common advertising regulatio
 
 ### Standards
 
-| ID | Verticals | Description |
-|----|-----------|-------------|
-| `alcohol_advertising` | alcohol, beverage | Responsible alcohol advertising practices |
-| `pharma_us_fda` | pharmaceutical, healthcare | FDA-aligned pharmaceutical advertising |
-| `gambling_advertising` | gambling, gaming | Responsible gambling advertising |
-| `financial_services` | financial_services, insurance | Financial product advertising disclosure |
+| ID | Policy Categories | Description |
+|----|-------------------|-------------|
+| `alcohol_advertising` | `age_restricted` | Responsible alcohol advertising practices |
+| `pharma_us_fda` | `pharmaceutical_advertising` | FDA-aligned pharmaceutical advertising |
+| `gambling_advertising` | `gambling_advertising` | Responsible gambling advertising |
+| `financial_services` | `fair_lending` | Financial product advertising disclosure |
 | `scope3_brand_safety` | All | Scope3 Common Sense brand safety framework -- content adjacency baseline (enforcement: `must`) donated to AgenticAdvertising.org |
-| `childrens_advertising` | All | Global standards for advertising directed at or seen by children (UK CAP/BCAP, EU AVMSD, ICC) |
+| `childrens_advertising` | `children_directed` | Global standards for advertising directed at or seen by children (UK CAP/BCAP, EU AVMSD, ICC) |
 
 <Note>
-The Scope3 Common Sense brand safety framework was donated to AgenticAdvertising.org as the industry baseline for brand safety, replacing the defunct GARM framework. It defines common-sense content adjacency standards applicable to all verticals and channels.
+The Scope3 Common Sense brand safety framework was donated to AgenticAdvertising.org as the industry baseline for brand safety, replacing the defunct GARM framework. It defines common-sense content adjacency standards applicable to all industries and channels.
 </Note>
+
+## Policy category definitions
+
+The registry defines policy categories — regulatory regime groupings that determine which sets of policies apply to a campaign. Categories are referenced by ID in campaign plans via `policy_categories`.
+
+Each category definition includes:
+
+| Field | Description |
+|-------|-------------|
+| `category_id` | Unique identifier (e.g., `children_directed`, `fair_housing`) |
+| `name` | Human-readable name |
+| `description` | What regulatory regime this category represents |
+| `regulatory_frameworks` | Specific laws and regulations grouped under this category |
+| `restricted_attributes` | Personal data categories that must not be used for targeting when this category applies |
+| `industries` | Industries where this category commonly applies |
+| `guidance` | Implementation guidance for governance agents |
+
+### Seeded categories
+
+| Category | Restricted Attributes | Description |
+|----------|-----------------------|-------------|
+| `children_directed` | — | COPPA, UK AADC, GDPR Article 8. Restricts data collection and targeting for children's content. |
+| `political_advertising` | `political_opinions` | EU DSA Article 26, US state disclosure laws. Prohibits special category targeting for political ads. |
+| `age_restricted` | — | Alcohol, tobacco, cannabis. Age-gating, time-of-day restrictions, and content placement rules. |
+| `gambling_advertising` | `health_data` | Sports betting, casinos, lotteries. Jurisdiction-level legality, self-exclusion compliance, responsible gambling messaging. |
+| `fair_housing` | `racial_ethnic_origin`, `religious_beliefs`, `sex_life_sexual_orientation` | US FHA, state fair housing. Prohibits targeting/exclusion by protected characteristics in housing ads. |
+| `fair_lending` | `racial_ethnic_origin`, `religious_beliefs`, `sex_life_sexual_orientation` | US ECOA, CFPB guidance. Prohibits discriminatory targeting in credit/lending ads. |
+| `fair_employment` | `racial_ethnic_origin`, `religious_beliefs`, `sex_life_sexual_orientation`, `health_data`, `genetic_data` | US EEOC (Title VII, ADA, GINA), state employment law. Prohibits discriminatory targeting in job ads. |
+| `pharmaceutical_advertising` | `health_data` | FDA DTC, EU prescription ad bans. Fair balance, indication restrictions. |
+| `health_wellness` | `health_data` | FTC health claims, supplement advertising. Substantiation requirements. |
+| `firearms_weapons` | — | Platform-level and jurisdictional restrictions on firearms advertising. |
+
+The `restricted_attributes` on a category are authoritative — when a plan declares a policy category, those attributes are automatically restricted for the campaign regardless of whether the plan also declares them in `restricted_attributes`.
+
+## Restricted attribute definitions
+
+The registry defines restricted attribute categories — types of personal data that regulations restrict for ad targeting. These map to GDPR Article 9 special categories and are used across plans, signal definitions, and policy categories.
+
+Each attribute definition includes:
+
+| Field | Description |
+|-------|-------------|
+| `attribute_id` | Unique identifier (e.g., `health_data`, `racial_ethnic_origin`) |
+| `name` | Human-readable name |
+| `description` | What personal data this category covers |
+| `regulatory_basis` | Legal basis for restriction (e.g., "GDPR Article 9(1)") |
+| `includes` | Examples of data that falls within this category |
+| `excludes` | Common data that might seem related but is explicitly outside this category |
+| `signal_patterns` | Naming patterns governance agents can use to detect undeclared signals that likely touch this data |
+| `guidance` | Implementation guidance |
+
+### Seeded attributes
+
+| Attribute | Regulatory Basis | Includes |
+|-----------|-----------------|----------|
+| `racial_ethnic_origin` | GDPR Article 9(1) | Race, ethnicity, national origin, tribal affiliation |
+| `political_opinions` | GDPR Article 9(1) | Party affiliation, voting patterns, political donations |
+| `religious_beliefs` | GDPR Article 9(1) | Religion, denomination, religious practice indicators |
+| `trade_union_membership` | GDPR Article 9(1) | Union membership, collective bargaining participation |
+| `health_data` | GDPR Article 9(1) | Medical conditions, prescriptions, health behaviors, disability |
+| `sex_life_sexual_orientation` | GDPR Article 9(1) | Sexual orientation, gender identity, relationship status indicators |
+| `genetic_data` | GDPR Article 9(1) | DNA profiles, genetic test results, hereditary conditions |
+| `biometric_data` | GDPR Article 9(1) | Fingerprints, facial geometry, voice prints, gait analysis |
+
+Data providers can reference these definitions when declaring `restricted_attributes` on their signal definitions. See [Declaring governance metadata](/docs/signals/data-providers#declaring-governance-metadata).
 
 ## Contributing policies
 
