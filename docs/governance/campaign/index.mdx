@@ -122,7 +122,7 @@ When a seller confirms a media buy, it returns a `planned_delivery` object descr
 
 Buyer-side governance has a trust limitation: the orchestrator attests to its own compliance. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. You can't trust the agent that's spending money to also be the one that checks whether spending that money is OK.
 
-Seller-side governance checks solve this. The buyer registers governance agents (URLs with credentials) via [`register_governance`](/docs/accounts/tasks/register_governance). When the seller receives a `create_media_buy`, it calls the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
+Seller-side governance checks solve this. The buyer syncs governance agents (URLs with credentials) via [`sync_governance`](/docs/accounts/tasks/sync_governance). When the seller receives a `create_media_buy`, it calls the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
 
 This also catches misinterpretation. If the brief says "Mexico" and the seller interprets it as "New Mexico," the governance agent sees the geo mismatch against the plan and denies the buy -- before it goes live.
 

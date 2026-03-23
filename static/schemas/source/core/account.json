@@ -93,7 +93,7 @@
     },
     "governance_agents": {
       "type": "array",
-      "description": "Governance agent endpoints registered on this account. Authentication credentials are write-only and not included in responses — use register_governance to set or update credentials.",
+      "description": "Governance agent endpoints registered on this account. Authentication credentials are write-only and not included in responses — use sync_governance to set or update credentials.",
       "items": {
         "type": "object",
         "properties": {

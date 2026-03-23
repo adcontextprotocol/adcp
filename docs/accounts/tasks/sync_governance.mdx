@@ -1,30 +1,30 @@
 ---
-title: register_governance
-description: "register_governance registers governance agent endpoints against specific accounts. The seller persists these agents and calls them via check_governance during media buy lifecycle events."
-"og:title": "AdCP — register_governance"
+title: sync_governance
+description: "sync_governance syncs governance agent endpoints to specific accounts. The seller persists these agents and calls them via check_governance during media buy lifecycle events."
+"og:title": "AdCP — sync_governance"
 testable: false
 ---
 
-Register governance agent endpoints against specific accounts. The seller persists these agents and calls them via `check_governance` during media buy lifecycle events. Each account entry pairs an [account reference](/docs/building/integration/accounts-and-agents#account-references) with the governance agents to register, supporting both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`).
+Sync governance agent endpoints to specific accounts. The seller persists these agents and calls them via `check_governance` during media buy lifecycle events. Each account entry pairs an [account reference](/docs/building/integration/accounts-and-agents#account-references) with the governance agents for that account, supporting both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`).
 
 This uses **replace semantics** — each call replaces any previously registered agents on the specified accounts. Accounts not included in the request keep their existing registrations.
 
 **Response Time**: ~1s.
 
-**Request Schema**: [`/schemas/latest/account/register-governance-request.json`](https://adcontextprotocol.org/schemas/latest/account/register-governance-request.json)
-**Response Schema**: [`/schemas/latest/account/register-governance-response.json`](https://adcontextprotocol.org/schemas/latest/account/register-governance-response.json)
+**Request Schema**: [`/schemas/latest/account/sync-governance-request.json`](https://adcontextprotocol.org/schemas/latest/account/sync-governance-request.json)
+**Response Schema**: [`/schemas/latest/account/sync-governance-response.json`](https://adcontextprotocol.org/schemas/latest/account/sync-governance-response.json)
 
 ## Quick Start
 
-Register a budget governance agent on an explicit account:
+Sync a budget governance agent to an explicit account:
 
 <CodeGroup>
 
 ```javascript JavaScript
 import { testAgent } from "@adcp/client/testing";
-import { RegisterGovernanceResponseSchema } from "@adcp/client";
+import { SyncGovernanceResponseSchema } from "@adcp/client";
 
-const result = await testAgent.registerGovernance({
+const result = await testAgent.syncGovernance({
   accounts: [
     {
       account: { account_id: "acct-social-001" },
@@ -46,7 +46,7 @@ if (!result.success) {
   throw new Error(`Request failed: ${result.error}`);
 }
 
-const validated = RegisterGovernanceResponseSchema.parse(result.data);
+const validated = SyncGovernanceResponseSchema.parse(result.data);
 
 if ("errors" in validated && validated.errors) {
   throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
@@ -66,7 +66,7 @@ import asyncio
 from adcp.testing import test_agent
 
 async def main():
-    result = await test_agent.simple.register_governance(
+    result = await test_agent.simple.sync_governance(
         accounts=[
             {
                 "account": {"account_id": "acct-social-001"},
@@ -102,7 +102,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `accounts` | array | Yes | Per-account governance agent entries. Each pairs an account reference with governance agents to register. |
+| `accounts` | array | Yes | Per-account governance agent entries. Each pairs an account reference with governance agents for that account. |
 
 **Each account entry:**
 
@@ -129,7 +129,7 @@ Returns an `accounts` array with per-account results. Individual entries may fai
 |-------|-------------|
 | `account` | Account reference, echoed from request. |
 | `status` | `registered` or `failed`. |
-| `governance_agents` | Governance agents now registered on this account. Reflects the persisted state after registration. Only present when `status: "registered"`. |
+| `governance_agents` | Governance agents now active on this account. Reflects the persisted state after sync. Only present when `status: "registered"`. |
 | `errors` | Per-account errors. Only present when `status: "failed"`. |
 
 **Error response:**
@@ -148,9 +148,9 @@ The seller MUST verify that the authenticated agent has authority over each refe
 
 ```javascript JavaScript
 import { testAgent } from "@adcp/client/testing";
-import { RegisterGovernanceResponseSchema } from "@adcp/client";
+import { SyncGovernanceResponseSchema } from "@adcp/client";
 
-const result = await testAgent.registerGovernance({
+const result = await testAgent.syncGovernance({
   accounts: [
     {
       account: { account_id: "acct-social-001" },
@@ -185,7 +185,7 @@ if (!result.success) {
   throw new Error(`Request failed: ${result.error}`);
 }
 
-const validated = RegisterGovernanceResponseSchema.parse(result.data);
+const validated = SyncGovernanceResponseSchema.parse(result.data);
 
 if ("errors" in validated && validated.errors) {
   throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
@@ -201,7 +201,7 @@ import asyncio
 from adcp.testing import test_agent
 
 async def main():
-    result = await test_agent.simple.register_governance(
+    result = await test_agent.simple.sync_governance(
         accounts=[
             {
                 "account": {"account_id": "acct-social-001"},
@@ -249,7 +249,7 @@ asyncio.run(main())
 
 ```json Request
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/account/register-governance-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/sync-governance-request.json",
   "accounts": [
     {
       "account": {
@@ -275,7 +275,7 @@ asyncio.run(main())
 
 ### Rotate governance agent credentials
 
-Call `register_governance` again with updated `authentication`. Replace semantics means the new credentials overwrite the previous registration.
+Call `sync_governance` again with updated `authentication`. Replace semantics means the new credentials overwrite the previous registration.
 
 ## Error Handling
 

@@ -1,19 +1,19 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/account/register-governance-request.json",
-  "title": "Register Governance Request",
-  "description": "Register governance agent endpoints against specific accounts. The seller persists these governance agents and calls them for approval during media buy lifecycle events via check_governance. Uses replace semantics: each call replaces any previously registered agents on the specified accounts. The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents.",
+  "$id": "/schemas/account/sync-governance-request.json",
+  "title": "Sync Governance Request",
+  "description": "Sync governance agent endpoints against specific accounts. The seller persists these governance agents and calls them for approval during media buy lifecycle events via check_governance. Uses replace semantics: each call replaces any previously synced agents on the specified accounts. The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents.",
   "type": "object",
   "properties": {
     "accounts": {
       "type": "array",
-      "description": "Per-account governance agent registration. Each entry pairs an account reference with the governance agents to register for that account.",
+      "description": "Per-account governance agent configuration. Each entry pairs an account reference with the governance agents for that account.",
       "items": {
         "type": "object",
         "properties": {
           "account": {
             "$ref": "/schemas/core/account-ref.json",
-            "description": "Account to register governance agents against. Use account_id for explicit accounts or brand + operator for implicit accounts."
+            "description": "Account to sync governance agents for. Use account_id for explicit accounts or brand + operator for implicit accounts."
           },
           "governance_agents": {
             "type": "array",
@@ -77,7 +77,7 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Register governance agents on explicit accounts (by account_id)",
+      "description": "Sync governance agents on explicit accounts (by account_id)",
       "data": {
         "accounts": [
           {
@@ -97,7 +97,7 @@
       }
     },
     {
-      "description": "Register governance agents on implicit accounts (by brand + operator)",
+      "description": "Sync governance agents on implicit accounts (by brand + operator)",
       "data": {
         "accounts": [
           {

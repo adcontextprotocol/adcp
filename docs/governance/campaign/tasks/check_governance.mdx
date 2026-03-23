@@ -31,7 +31,7 @@ The orchestrator calls with `binding: "proposed"` before sending a tool call to 
 
 ### Committed (seller)
 
-The seller calls with `binding: "committed"` when processing a request on an account that has `governance_agents` (set via [`register_governance`](/docs/accounts/tasks/register_governance)). This is a binding check -- budget will be committed if approved. The seller presents the authentication credentials from the agent's configuration.
+The seller calls with `binding: "committed"` when processing a request on an account that has `governance_agents` (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). This is a binding check -- budget will be committed if approved. The seller presents the authentication credentials from the agent's configuration.
 
 Committed checks cover the full media buy lifecycle through three phases:
 

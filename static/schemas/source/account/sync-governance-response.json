@@ -1,18 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/account/register-governance-response.json",
-  "title": "Register Governance Response",
-  "description": "Response from governance agent registration. Returns per-account results confirming registration, or operation-level errors on complete failure.",
+  "$id": "/schemas/account/sync-governance-response.json",
+  "title": "Sync Governance Response",
+  "description": "Response from governance agent sync. Returns per-account results confirming sync, or operation-level errors on complete failure.",
   "type": "object",
   "oneOf": [
     {
-      "title": "RegisterGovernanceSuccess",
-      "description": "Registration processed — individual accounts may have errors",
+      "title": "SyncGovernanceSuccess",
+      "description": "Sync processed — individual accounts may have errors",
       "type": "object",
       "properties": {
         "accounts": {
           "type": "array",
-          "description": "Per-account registration results",
+          "description": "Per-account sync results",
           "items": {
             "type": "object",
             "properties": {
@@ -23,11 +23,11 @@
               "status": {
                 "type": "string",
                 "enum": ["registered", "failed"],
-                "description": "Registration result. registered: governance agents persisted. failed: could not register (see errors)."
+                "description": "Sync result. registered: governance agents persisted. failed: could not sync (see errors)."
               },
               "governance_agents": {
                 "type": "array",
-                "description": "Governance agents now registered on this account. Reflects the persisted state after registration.",
+                "description": "Governance agents now synced on this account. Reflects the persisted state after sync.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -74,7 +74,7 @@
       }
     },
     {
-      "title": "RegisterGovernanceError",
+      "title": "SyncGovernanceError",
       "description": "Operation failed completely, no accounts were processed",
       "type": "object",
       "properties": {
@@ -102,7 +102,7 @@
   ],
   "examples": [
     {
-      "description": "Governance agents registered on two accounts",
+      "description": "Governance agents synced on two accounts",
       "data": {
         "accounts": [
           {
