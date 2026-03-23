@@ -23,7 +23,7 @@ Retrieve the current operational state of media buys: configuration, creative ap
 | `include_snapshot` | boolean | No | When true, include near-real-time delivery snapshots for each package. Defaults to `false`. |
 | `pagination` | object | No | Cursor-based pagination controls (`max_results`, `cursor`) for broad queries. |
 
-*Either `media_buy_ids` can be provided. If neither is provided, the query is scope-based and uses `status_filter` + `pagination`.
+*`media_buy_ids` filters results to specific media buys. If neither is provided, the query is scope-based and uses `status_filter` + `pagination`.
 
 When `media_buy_ids` are provided, no implicit status filtering is applied. Pass `status_filter` explicitly if you want to filter identified buys by status.
 
@@ -347,7 +347,7 @@ Use cursor pagination for broad status queries to avoid large payloads:
 
 - Request: set `pagination.max_results` (1-100, default 50) and optional `pagination.cursor`
 - Response: read `pagination.has_more`; when true, pass `pagination.cursor` into the next request
-- ID-targeted queries (`media_buy_ids`/`media_buy_ids`) can omit pagination unless the ID set is very large
+- ID-targeted queries (`media_buy_ids`) can omit pagination unless the ID set is very large
 
 ## Error Handling
 

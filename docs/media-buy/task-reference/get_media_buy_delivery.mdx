@@ -35,7 +35,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 | `2026-01-01` | `2026-02-01` | Full month of January (31 days) |
 | `2026-01-15` | `2026-01-16` | January 15th only (1 day) |
 
-*Either `media_buy_ids` can be provided. If neither provided, returns all media buys in current session context.
+*`media_buy_ids` filters results to specific media buys. If neither provided, returns all media buys in current session context.
 
 ## Response
 
@@ -500,7 +500,7 @@ asyncio.run(main())
 ## Query Behavior
 
 ### Context-Based Queries
-- If neither `media_buy_ids` nor `media_buy_ids` provided, returns all media buys from current session context
+- If no `media_buy_ids` provided, returns all media buys from current session context
 - Context established by previous operations (e.g., `create_media_buy`)
 
 ### Status Filtering
@@ -541,7 +541,7 @@ asyncio.run(main())
 | `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
 | `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
 | `DATE_RANGE_NOT_SUPPORTED` | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
-| `CONTEXT_REQUIRED` | No media buys in context | Provide media_buy_idss explicitly |
+| `CONTEXT_REQUIRED` | No media buys in context | Provide media_buy_ids explicitly |
 | `INVALID_STATUS_FILTER` | Invalid status value | Use valid status: pending_activation, active, paused, completed |
 
 ## Package-Level Metrics

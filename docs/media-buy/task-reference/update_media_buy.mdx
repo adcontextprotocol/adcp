@@ -252,7 +252,7 @@ async def increase_budget():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Update failed: {result.errors}")
 
-    pkg = next((p for p in result.affected_packages if p.== 'ctv_package'), None)
+    pkg = next((p for p in result.affected_packages if p.package_id == 'pkg_001'), None)
     if pkg:
         print(f"Package budget updated to {pkg.budget}")
 
@@ -433,7 +433,7 @@ async def replace_creatives():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Update failed: {result.errors}")
 
-    pkg = next((p for p in result.affected_packages if p.== 'ctv_package'), None)
+    pkg = next((p for p in result.affected_packages if p.package_id == 'pkg_001'), None)
     assignment_count = len(pkg.creative_assignments) if pkg and pkg.creative_assignments else 0
     print(f"Assigned {assignment_count} creatives")
 
@@ -522,7 +522,6 @@ asyncio.run(update_multiple_packages())
 
 ❌ **Cannot update:**
 - Media buy ID
-- Buyer reference
 - Brand reference
 - Original package product IDs
 
