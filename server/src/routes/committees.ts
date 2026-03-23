@@ -18,7 +18,7 @@ import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack }
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
-import { validateFetchUrl } from "../utils/url-security.js";
+import { validateHostResolution } from "../utils/url-security.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, isSlackConfigured } from "../slack/client.js";
 import { CommunityDatabase } from "../db/community-db.js";
@@ -134,13 +134,26 @@ const workos = AUTH_ENABLED
   : null;
 
 /**
- * Fetch a URL with SSRF protection: validates hostname, resolves DNS,
- * and follows redirects manually to re-validate each hop.
+ * Allowlisted protocols for URL metadata fetching.
  */
-async function safeFetch(url: URL): Promise<globalThis.Response> {
-  await validateFetchUrl(url);
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
 
-  const response = await fetch(url.toString(), {
+/**
+ * Validate and fetch a URL with SSRF protection.
+ * Validates protocol/hostname, resolves DNS, and follows redirects manually.
+ */
+async function safeFetchUrl(urlString: string): Promise<globalThis.Response> {
+  const parsed = new URL(urlString);
+
+  if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+    throw new Error('Only http and https URLs are supported');
+  }
+  await validateHostResolution(parsed.hostname);
+
+  // Construct sanitized URL from validated components to break taint chain
+  const sanitized = `${parsed.protocol}//${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+
+  const response = await fetch(sanitized, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
@@ -152,9 +165,13 @@ async function safeFetch(url: URL): Promise<globalThis.Response> {
   if ([301, 302, 303, 307, 308].includes(response.status)) {
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
-    const redirectUrl = new URL(location, url);
-    await validateFetchUrl(redirectUrl);
-    return fetch(redirectUrl.toString(), {
+    const redirect = new URL(location, sanitized);
+    if (!ALLOWED_PROTOCOLS.has(redirect.protocol)) {
+      throw new Error('Redirect to non-HTTP protocol');
+    }
+    await validateHostResolution(redirect.hostname);
+    const sanitizedRedirect = `${redirect.protocol}//${redirect.host}${redirect.pathname}${redirect.search}${redirect.hash}`;
+    return fetch(sanitizedRedirect, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
         'Accept': 'text/html,application/xhtml+xml',
@@ -170,8 +187,7 @@ async function safeFetch(url: URL): Promise<globalThis.Response> {
  * Fetch and extract metadata from a URL (for link posts)
  */
 async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: string; site_name: string }> {
-  const parsedUrl = new URL(url);
-  const response = await safeFetch(parsedUrl);
+  const response = await safeFetchUrl(url);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch URL: ${response.status}`);
