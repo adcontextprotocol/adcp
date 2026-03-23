@@ -387,7 +387,7 @@ const TOOLS = [
         media_buy_ids: { type: 'array', items: { type: 'string' } },
         buyer_refs: { type: 'array', items: { type: 'string' }, description: 'Filter by buyer reference IDs' },
         status_filter: { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
-        include_history: { type: 'boolean', description: 'Include revision history entries' },
+        include_history: { type: 'integer', minimum: 0, maximum: 1000, description: 'Include the last N revision history entries per media buy. 0 or omit to exclude. Recommended: 5-10 for monitoring, 50+ for audit.' },
         include_snapshot: { type: 'boolean', description: 'Include full media buy snapshot in response' },
       },
     },
@@ -921,7 +921,7 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
   }
 
   const includeSnapshot = (args as Record<string, unknown>).include_snapshot === true;
-  const includeHistory = (args as Record<string, unknown>).include_history === true;
+  const includeHistory = Number((args as Record<string, unknown>).include_history) || 0;
 
   return {
     media_buys: buys.map(mb => {
@@ -972,8 +972,8 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
           return pkgData;
         }),
       };
-      if (includeHistory && mb.history?.length) {
-        buy.history = [...mb.history].reverse().map(h => ({
+      if (includeHistory > 0 && mb.history?.length) {
+        buy.history = mb.history.slice(-includeHistory).reverse().map(h => ({
           revision: h.revision,
           timestamp: h.timestamp,
           actor: h.actor,
