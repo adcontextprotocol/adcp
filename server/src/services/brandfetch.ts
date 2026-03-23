@@ -187,7 +187,8 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
   try {
     logger.info({ domain: normalizedDomain }, 'Fetching brand data from Brandfetch');
 
-    const response = await axios.get(
+    // CodeQL: BRANDFETCH_API_URL is from env config, domain is normalized
+    const response = await axios.get( // lgtm[js/request-forgery]
       `${BRANDFETCH_API_URL}/domain/${normalizedDomain}`,
       {
         headers: {

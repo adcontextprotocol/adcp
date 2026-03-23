@@ -238,7 +238,7 @@ export function createPublicBillingRouter(): Router {
       }, 'Invoice request received');
 
       // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
       if (!emailRegex.test(contactEmail)) {
         return res.status(400).json({
           error: "Invalid email format",

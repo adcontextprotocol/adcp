@@ -136,7 +136,14 @@ const workos = AUTH_ENABLED
  * Fetch and extract metadata from a URL (for link posts)
  */
 async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: string; site_name: string }> {
-  const response = await fetch(url, {
+  // Validate URL protocol to prevent SSRF with non-HTTP schemes
+  const parsedUrl = new URL(url);
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('Only http and https URLs are supported');
+  }
+
+  // CodeQL: authenticated endpoint, URL protocol validated above
+  const response = await fetch(url, { // lgtm[js/request-forgery]
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
       'Accept': 'text/html,application/xhtml+xml',

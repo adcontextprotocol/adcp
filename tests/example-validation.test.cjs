@@ -36,27 +36,26 @@ async function loadExternalSchema(uri) {
 // Load all schemas with async compilation
 const schemas = {};
 async function loadSchemas(dir) {
-  const items = fs.readdirSync(dir);
-  
-  for (const item of items) {
-    const itemPath = path.join(dir, item);
-    const stat = fs.statSync(itemPath);
-    
-    if (stat.isDirectory()) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const itemPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
       await loadSchemas(itemPath);
-    } else if (item.endsWith('.json') && item !== 'index.json') {
+    } else if (entry.name.endsWith('.json') && entry.name !== 'index.json') {
       try {
         const schema = JSON.parse(fs.readFileSync(itemPath, 'utf8'));
         if (schema.$id) {
           // Create a fresh AJV instance for each schema to avoid conflicts
-          const schemaAjv = new Ajv({ 
+          const schemaAjv = new Ajv({
             allErrors: true,
             verbose: true,
             strict: false,
             loadSchema: loadExternalSchema
           });
           addFormats(schemaAjv);
-          
+
           schemas[schema.$id] = await schemaAjv.compileAsync(schema);
         }
       } catch (error) {

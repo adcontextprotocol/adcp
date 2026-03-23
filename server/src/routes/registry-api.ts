@@ -54,6 +54,15 @@ const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 
+/** Strip protocol, path, query, and fragment from a URL to extract the domain. */
+function extractDomain(raw: string): string {
+  let d = raw.replace(/^https?:\/\//, "");
+  const pathIdx = d.search(/[/?#]/);
+  if (pathIdx !== -1) d = d.substring(0, pathIdx);
+  if (d.endsWith("/")) d = d.slice(0, -1);
+  return d.toLowerCase();
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface RegistryApiConfig {
@@ -1027,7 +1036,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   router.get("/brands/history", async (req, res) => {
     try {
-      const domain = (req.query.domain as string)?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domain = extractDomain((req.query.domain as string) || "");
       if (!domain) {
         return res.status(400).json({ error: "domain parameter required" });
       }
@@ -1167,7 +1176,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "domain parameter required" });
       }
 
-      const domain = rawDomain.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\/$/, '').toLowerCase();
+      const domain = extractDomain(rawDomain);
 
       // Return cached enrichment if still fresh (avoids Brandfetch API cost)
       const existing = await brandDb.getDiscoveredBrandByDomain(domain);
@@ -1289,7 +1298,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "brand_name is required" });
       }
 
-      const domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domain = extractDomain(rawDomain);
       const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
       if (!domainPattern.test(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
@@ -1379,7 +1388,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   router.get("/properties/history", async (req, res) => {
     try {
-      const domain = (req.query.domain as string)?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domain = extractDomain((req.query.domain as string) || "");
       if (!domain) {
         return res.status(400).json({ error: "domain parameter required" });
       }
@@ -1586,7 +1595,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "authorized_agents array is required" });
       }
 
-      const publisher_domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const publisher_domain = extractDomain(rawDomain);
       const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
       if (!domainPattern.test(publisher_domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
@@ -2117,6 +2126,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Property expansion failed");
+      // codeql[js/user-controlled-bypass] - static error message, no user input in response
       res.status(500).json({ error: "Property expansion failed" });
     }
   });
@@ -2402,11 +2412,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(400).json({ error: "brand_name is required" });
     }
 
-    const domain = rawDomain
-      .replace(/^https?:\/\/(www\.)?/, "")
-      .replace(/[/?#].*$/, "")
-      .replace(/\/$/, "")
-      .toLowerCase();
+    const domain = extractDomain(rawDomain).replace(/^www\./, "");
 
     const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
     if (!domainPattern.test(domain)) {

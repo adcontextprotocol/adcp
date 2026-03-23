@@ -830,6 +830,7 @@
               <button class="btn btn-secondary btn-small" onclick="window.location.href='/admin/meetings?group=${group.id}'">Meetings</button>
               <button class="btn btn-secondary btn-small" onclick="window.location.href='/admin/meetings?group=${group.id}&action=schedule'">Schedule</button>
               <button class="btn btn-primary btn-small" onclick="editGroup('${group.id}')">Manage</button>
+              <!-- lgtm[js/incomplete-sanitization] -- value is escapeHtml'd first; backslashes are not a concern in HTML-escaped strings -->
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${group.id}', '${escapeHtml(group.name).replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>

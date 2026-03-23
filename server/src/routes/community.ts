@@ -267,7 +267,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         }
       }
       if (req.body.contact_email !== undefined && typeof req.body.contact_email === 'string' && req.body.contact_email) {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.body.contact_email)) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(req.body.contact_email)) {
           return res.status(400).json({ error: 'Invalid contact email' });
         }
       }

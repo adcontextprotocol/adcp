@@ -4833,7 +4833,7 @@
       if (addressLine2) addressParts.push(addressLine2);
       addressParts.push(`${city}, ${state} ${postalCode}`);
       addressParts.push(country);
-      const fullAddress = addressParts.filter(Boolean).join('<br>');
+      const fullAddress = addressParts.filter(Boolean).map(p => escapeHtml(p)).join('<br>');
 
       // Populate draft review content
       document.getElementById('invoiceDraftReviewContent').innerHTML = `

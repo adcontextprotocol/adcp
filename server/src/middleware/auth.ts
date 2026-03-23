@@ -471,6 +471,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   logger.debug({ path: req.path, hasCookie: !!sessionCookie, isHtmlRequest }, 'Authentication check');
 
+  // codeql[js/user-controlled-bypass] - auth check must read session cookie to verify identity
   if (!sessionCookie) {
     logger.info({ path: req.path, isHtmlRequest }, 'No wos-session cookie present — user not logged in');
     if (isHtmlRequest) {

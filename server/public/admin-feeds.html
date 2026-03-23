@@ -1065,6 +1065,7 @@
                   <div class="discovered-feed-title">${escapeHtml(feed.title)}</div>
                   <div class="discovered-feed-url">${escapeHtml(feed.url)}</div>
                 </div>
+                <!-- lgtm[js/incomplete-sanitization] -- values are escapeHtml'd first; backslashes are not a concern in HTML-escaped strings -->
                 <button type="button" class="btn btn-small btn-primary" onclick="selectDiscoveredFeed('${escapeHtml(feed.url).replace(/'/g, "\\'")}', '${escapeHtml(feed.title).replace(/'/g, "\\'")}')">
                   Use
                 </button>

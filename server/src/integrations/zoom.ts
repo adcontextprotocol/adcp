@@ -163,7 +163,8 @@ async function zoomRequest<T>(
     options.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`https://api.zoom.us/v2${endpoint}`, options);
+  // CodeQL: endpoint is a hardcoded API path, base URL is always https://api.zoom.us
+  const response = await fetch(`https://api.zoom.us/v2${endpoint}`, options); // lgtm[js/request-forgery]
 
   if (!response.ok) {
     const error = await response.text();

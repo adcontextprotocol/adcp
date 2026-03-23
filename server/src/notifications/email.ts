@@ -818,7 +818,7 @@ export async function sendEmailReply(data: {
   let quotedHtml = '';
   let quotedText = '';
   if (data.threadContext.originalText) {
-    const senderName = data.threadContext.from.replace(/<.*>/, '').trim() || data.threadContext.from;
+    const senderName = data.threadContext.from.replace(/<[^>]*>/, '').trim() || data.threadContext.from;
     const dateStr = data.threadContext.originalDate
       ? data.threadContext.originalDate.toLocaleDateString('en-US', {
           weekday: 'short',
