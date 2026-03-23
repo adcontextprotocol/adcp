@@ -295,7 +295,8 @@ function convertHtmlToMarkdown(html: string): string {
   let md = html;
   // Remove script and style (loop to handle nested cases)
   let mdPrev = '';
-  while (mdPrev !== md) {
+  let mdIterations = 0;
+  while (mdPrev !== md && mdIterations++ < 100) {
     mdPrev = md;
     md = md
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')

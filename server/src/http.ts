@@ -5405,7 +5405,13 @@ Disallow: /api/admin/
             }
             slackUserIdToLink = parsedState.slack_user_id;
             isNativeMode = parsedState.native === true;
-            nativeRedirectUri = parsedState.native_redirect_uri || nativeRedirectUri;
+            const candidateNativeUri = parsedState.native_redirect_uri || nativeRedirectUri;
+            const ALLOWED_NATIVE_SCHEMES = ['addie://'];
+            if (ALLOWED_NATIVE_SCHEMES.some(scheme => candidateNativeUri.startsWith(scheme))) {
+              nativeRedirectUri = candidateNativeUri;
+            } else if (candidateNativeUri !== nativeRedirectUri) {
+              logger.warn({ nativeRedirectUri: candidateNativeUri }, 'Blocked invalid native_redirect_uri from OAuth state');
+            }
             logger.debug({ parsedState, returnTo, slackUserIdToLink, isNativeMode }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
