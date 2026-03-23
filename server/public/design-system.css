@@ -556,6 +556,34 @@ body {
   border-color: white;
 }
 
+/* Filter Pills - horizontal scrollable tag/filter bar */
+.ds-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-text-secondary);
+  background: var(--color-gray-100);
+  border: 1px solid var(--color-gray-300);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition-all);
+  text-decoration: none;
+}
+.ds-pill:hover {
+  color: var(--color-text-heading);
+  background: var(--color-gray-200);
+}
+.ds-pill.active {
+  color: var(--color-warning-800, #92400e);
+  background: var(--color-warning-100, #fef3c7);
+  border-color: var(--color-warning-300, #fcd34d);
+}
+
 /* -----------------------------------------------------------------------------
    9.2 Cards
    ----------------------------------------------------------------------------- */

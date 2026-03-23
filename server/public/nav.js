@@ -221,7 +221,7 @@
         left: 0;
         right: 0;
         z-index: 1001;
-        background: linear-gradient(90deg, #1a36b4 0%, #2d4eb4 100%);
+        background: linear-gradient(90deg, var(--color-primary-700, #1a36b4) 0%, var(--color-primary-600, #2d4eb4) 100%);
         color: #fff;
         font-size: 0.8125rem;
         line-height: 1.4;
@@ -507,7 +507,7 @@
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #b45309, #d97706);
+        background: linear-gradient(135deg, var(--color-warning-700, #b45309), var(--color-warning-500, #d97706));
         color: #fff;
         display: flex;
         align-items: center;
@@ -1384,6 +1384,16 @@
     }
   }
 
+  function isSafeImageUrl(url) {
+    if (!url) return false;
+    try {
+      var parsed = new URL(url, window.location.origin);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch (e) {
+      return false;
+    }
+  }
+
   function loadNavAvatar() {
     var el = document.getElementById('accountAvatar');
     if (!el) return;
@@ -1392,7 +1402,7 @@
     fetch(apiBaseUrl + '/api/me/portrait', { credentials: 'include' })
       .then(function(res) { return res.ok ? res.json() : null; })
       .then(function(data) {
-        if (data && data.portrait) {
+        if (data && data.portrait && isSafeImageUrl(data.portrait.image_url)) {
           el.innerHTML = '<img src="' + escapeHtml(data.portrait.image_url) + '" alt="">';
           return;
         }
@@ -1401,13 +1411,13 @@
           .then(function(res) { return res.ok ? res.json() : null; })
           .then(function(hubData) {
             if (!hubData) return;
-            var url = hubData.profile?.avatar_url;
-            if (url) {
+            var url = hubData.profile && hubData.profile.avatar_url;
+            if (isSafeImageUrl(url)) {
               el.innerHTML = '<img src="' + escapeHtml(url) + '" alt="">';
             }
           });
       })
-      .catch(function() {});
+      .catch(function(err) { console.debug('Avatar load failed:', err); });
   }
 
   // Run when DOM is ready
