@@ -211,6 +211,14 @@ Create a media buy from selected packages or execute a proposal.
 
 Modify an existing media buy's budget, targeting, or settings.
 
+**Package operations** are structurally explicit — the operation type is determined by where the package appears in the request:
+
+| Operation | Request location | Description |
+|-----------|-----------------|-------------|
+| **New** | `new_packages[]` | Add a package to the media buy |
+| **Changed** | `packages[]` | Modify an existing package (budget, targeting, dates, creatives) |
+| **Canceled** | `packages[]` with `canceled: true` | Cancel an existing package (irreversible) |
+
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
 - Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged

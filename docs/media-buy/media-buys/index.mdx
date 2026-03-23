@@ -297,12 +297,21 @@ The creation process handles:
 - **Budget distribution** allocating spend across multiple packages
 - **Platform coordination** creating campaigns across multiple ad servers
 
-### Updating Media Buys  
-Modification capabilities include:
+### Updating Media Buys
+
+The operation type for each package is structurally explicit — determined by where it appears in the request:
+
+| Operation | Request field | Example |
+|-----------|--------------|---------|
+| **New** | `new_packages[]` | Add a line item mid-flight |
+| **Changed** | `packages[]` | Adjust budget, targeting, dates, creatives |
+| **Canceled** | `packages[]` with `canceled: true` | Cancel a line item (irreversible) |
+
+Campaign-level modifications include:
 - **Budget adjustments** for increased/decreased spend
 - **Targeting updates** to refine audience parameters
-- **Package modifications** adding/removing products and formats
 - **Schedule changes** for extended or shortened campaign timing
+- **Pause/resume** for campaign-level delivery control
 
 ### Canceling Media Buys
 
