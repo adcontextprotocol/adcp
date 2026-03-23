@@ -368,7 +368,10 @@ When a task finishes, the server sends the full `Task` object with **task result
           "media_buy_id": "mb_12345",
           "creative_deadline": "2024-01-30T23:59:59Z",
           "packages": [
-            { "package_id": "pkg_001" }
+            {
+              "package_id": "pkg_001",
+              "context": { "line_item": "li_ctv_sports" }
+            }
           ]
         }
       }
