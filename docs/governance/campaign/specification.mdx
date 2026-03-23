@@ -157,7 +157,7 @@ A brand's compliance configuration contains two kinds of policies:
 
 The policy team selects registry policies that apply to the brand, configures parameters where needed, and adds any custom policies specific to the brand. The buying team never interacts with this configuration -- they create campaign plans that reference the brand, and the governance agent resolves applicable policies automatically.
 
-The brand's industry verticals inform automatic policy matching -- for example, a brand in the beverage vertical would receive any registry policies tagged for that vertical.
+The brand's industries inform automatic policy matching -- for example, a brand in the beverage industry would receive any registry policies tagged for that industry.
 
 ## Policy registry
 
@@ -188,6 +188,45 @@ The plan's `countries` and `regions` fields also serve as **geo enforcement**: t
 The resolved policy set is what the governance agent evaluates during [`check_governance`](/docs/governance/campaign/tasks/check_governance). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
 
 If the plan has no `policy_ids` or `custom_policies`, the governance agent operates with an empty policy set for policy-based categories. Other categories (`budget_authority`, `strategic_alignment`, etc.) still apply based on the plan's parameters.
+
+## Audience governance
+
+Campaign plans declare audience targeting constraints, restricted attributes, and policy categories. The governance agent uses these to validate that seller targeting complies with regulatory requirements and campaign intent.
+
+### Three-layer model
+
+Audience governance separates three concerns:
+
+| Layer | Field | Purpose | Example |
+|-------|-------|---------|---------|
+| **Identity** | `brand.industries` | What the company does | `["pharmaceuticals", "consumer_packaged_goods"]` |
+| **Regulatory regime** | `plan.policy_categories` | What regulations apply to this campaign | `["pharmaceutical_advertising", "health_wellness"]` |
+| **Data restrictions** | `plan.restricted_attributes` | What personal data is off-limits for targeting | `["health_data"]` |
+
+A pharmaceutical company is always pharma (identity), but a general awareness campaign might not trigger pharmaceutical advertising regulations (regime), and only campaigns in EU jurisdictions might restrict health data targeting (restrictions).
+
+### Audience constraints
+
+Plans can declare `audience.include` and `audience.exclude` arrays using audience selectors. Each selector is either a signal reference (pointing to a specific data provider signal) or a natural language description.
+
+The governance agent evaluates these constraints against seller targeting in `check_governance`:
+1. Compare `governance_context.audience_targeting` against the plan's `audience.include`/`exclude`
+2. Compare `planned_delivery.audience_targeting` against the same constraints (for committed checks)
+3. Detect divergence between what the orchestrator requested and what the seller will activate
+
+### Structural governance matching
+
+Signal definitions can self-declare `restricted_attributes` and `policy_categories`. When they do, the governance agent performs **structural matching** — a set intersection between the plan's restrictions and the signal's declarations. This is deterministic and requires no LLM inference.
+
+For signals without declared governance metadata, the governance agent falls back to **semantic matching** — inferring sensitivity from the signal name and description. Structural matching produces higher-confidence findings than semantic matching.
+
+Restricted attributes apply to both `include` and `exclude` targeting. Using restricted data to exclude an audience (e.g., excluding people with health conditions from pharmaceutical ads) is as prohibited as using it for inclusion — both constitute use of restricted personal data for targeting decisions.
+
+### Audience distribution drift
+
+During delivery, sellers report `audience_distribution` in `delivery_metrics`. Index values indicate demographic composition relative to a declared baseline (census, platform, or custom). A value of 1.0 means parity; values significantly above or below indicate skew.
+
+The governance agent tracks both per-period indices and cumulative indices across all reporting periods. This enables detection of systematic bias that might not be visible in any single reporting period.
 
 ## State tracking
 

@@ -1,0 +1,28 @@
+{
+  "policy_id": "platform_firearms_restrictions",
+  "version": "1.0.0",
+  "name": "Platform Firearms Advertising Restrictions",
+  "description": "Platform-level restrictions on firearms and weapons advertising, varying by platform but broadly limiting promotion, targeting, and placement.",
+  "category": "standard",
+  "enforcement": "should",
+  "jurisdictions": [],
+  "policy_categories": ["firearms_weapons"],
+  "governance_domains": ["campaign", "content_standards"],
+  "source_name": "Industry — Major Platform Policies",
+  "policy": "Firearms and weapons advertising is subject to platform-specific restrictions that vary in scope but share common patterns.\n\nCommon restrictions:\n1. Most major platforms prohibit ads that promote the sale of firearms, ammunition, or explosives.\n2. Accessories that modify firearms (e.g., silencers, high-capacity magazines) are typically restricted.\n3. Some platforms allow ads from licensed retailers with additional restrictions (age-gating, no automatic weapons).\n4. Firearms safety courses and advocacy organizations may be permitted on some platforms.\n5. Content depicting violence or unsafe firearms handling is prohibited across all platforms.\n\nSpecific platform policies vary significantly:\n- Google: Prohibits ads promoting firearms, parts, and ammunition\n- Meta: Prohibits ads promoting the sale or use of weapons\n- Amazon: No firearms or weapons advertising\n- Some CTV/streaming platforms: May allow licensed retailer ads with restrictions\n\nGovernance agents should check seller-specific policies for the exact restrictions that apply.",
+  "guidance": "Firearms restrictions are primarily platform-driven rather than federal regulation (in the US). The enforcement level is 'should' because some sellers/channels do permit restricted firearms advertising from licensed dealers. Governance agents should flag firearms_weapons campaigns for additional seller-specific policy review. The seller's enforced_policies response is authoritative for what is actually permitted on their platform.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A firearms safety organization runs ads for safety training courses on a CTV platform that permits educational firearms content, with age verification targeting adults 18+.",
+        "explanation": "Educational firearms safety content is permitted on some platforms. Age-gating and educational intent comply with common platform policies."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A firearms retailer runs programmatic display ads promoting handgun sales across Google Display Network inventory.",
+        "explanation": "Google prohibits ads promoting the sale of firearms. Running firearms sales ads on Google inventory violates platform advertising policies."
+      }
+    ]
+  }
+}

@@ -502,7 +502,7 @@ export async function expandHouse(houseDomain: string, options: {
     max_tokens: 4096,
     messages: [{
       role: 'user',
-      content: `${DISCOVER_PROMPT}\n\nCompany: ${houseName}\nCorporate domain: ${houseDomain}\nIndustry: ${(house.brand_manifest?.company as Record<string, unknown>)?.industry || 'unknown'}`,
+      content: `${DISCOVER_PROMPT}\n\nCompany: ${houseName}\nCorporate domain: ${houseDomain}\nIndustries: ${((house.brand_manifest?.company as Record<string, unknown>)?.industries as string[] | undefined)?.join(', ') || 'unknown'}`,
     }],
   });
 

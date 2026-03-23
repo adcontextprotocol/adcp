@@ -44,6 +44,17 @@ Push campaign plans to the governance agent. A plan defines the authorized param
           "end": "2026-06-15T00:00:00Z"
         },
         "countries": ["US"],
+        "policy_categories": ["age_restricted"],
+        "audience": {
+          "include": [
+            { "type": "description", "description": "Adults 25-54 interested in home improvement" }
+          ],
+          "exclude": [
+            { "type": "description", "description": "Children under 13" }
+          ]
+        },
+        "restricted_attributes": ["health_data"],
+        "min_audience_size": 1000,
         "policy_ids": ["us_coppa", "alcohol_advertising"],
         "custom_policies": [
           "No advertising adjacent to competitor content"
@@ -119,6 +130,11 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].flight` | object | Yes | Authorized flight dates. Media buys with dates outside this window are rejected. |
 | `plans[].countries` | array | No | ISO 3166-1 alpha-2 country codes for authorized markets. The governance agent rejects buys targeting outside these countries and resolves applicable policies by matching against policy jurisdictions. |
 | `plans[].regions` | array | No | ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., `US-MA`). When present, restricts buys to these regions rather than the full country. |
+| `plans[].policy_categories` | array | No | Regulatory categories that apply to this campaign (e.g., `children_directed`, `fair_housing`). Determines which policy regimes the governance agent enforces. When omitted, governance agents MAY infer from the brand's industries and campaign objectives. |
+| `plans[].audience` | object | No | Audience targeting constraints. Defines who the campaign should reach (include) and must not reach (exclude). See [audience constraints](#audience-constraints). |
+| `plans[].restricted_attributes` | array | No | Personal data categories that must not be used for targeting (e.g., `health_data`, `racial_ethnic_origin`). GDPR Article 9 special categories. The governance agent flags any audience targeting referencing these attributes. |
+| `plans[].restricted_attributes_custom` | array | No | Additional restricted attributes not covered by the enum. Freeform strings for jurisdiction-specific restrictions (e.g., `financial_status`). |
+| `plans[].min_audience_size` | integer | No | Minimum audience segment size for k-anonymity. Applies to the estimated intersection audience when multiple criteria are used. |
 | `plans[].policy_ids` | array | No | Registry policy IDs to enforce for this plan. Intersected with the plan's countries/regions to activate only geographically relevant policies. |
 | `plans[].custom_policies` | array | No | Natural language policy statements specific to this campaign (e.g., "No advertising adjacent to competitor content"). |
 | `plans[].mode` | enum | No | Governance enforcement mode for this plan: `enforce`, `advisory`, or `audit`. Defaults to `enforce`. See [governance modes](/docs/governance/campaign/specification#governance-modes). |
@@ -149,9 +165,48 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].categories[].status` | enum | `active` or `inactive`. |
 | `plans[].resolved_policies` | array | Policies the governance agent will enforce for this plan. Includes explicitly referenced and auto-applied policies. |
 | `plans[].resolved_policies[].policy_id` | string | Registry policy ID. |
-| `plans[].resolved_policies[].source` | enum | `explicit` (referenced in config or plan) or `auto_applied` (matched by jurisdiction/vertical). |
+| `plans[].resolved_policies[].source` | enum | `explicit` (referenced in config or plan) or `auto_applied` (matched by jurisdiction/policy category). |
 | `plans[].resolved_policies[].enforcement` | enum | `must`, `should`, or `may`. |
 | `plans[].resolved_policies[].reason` | string | Why this policy was included. |
+
+## Audience constraints
+
+Plans can declare audience targeting constraints using the `audience` field. Each constraint is an **audience selector** — either a reference to a specific signal or a natural language description.
+
+**Signal reference** — points to a specific signal in a data provider's catalog:
+
+```json
+{
+  "type": "signal",
+  "catalog_url": "https://signals.dataprovider.com/catalog.json",
+  "signal_id": "likely_ev_buyers",
+  "value": true
+}
+```
+
+**Description** — natural language for constraints that don't map to a specific signal:
+
+```json
+{
+  "type": "description",
+  "description": "Adults aged 25-54 in urban areas",
+  "category": "demographic"
+}
+```
+
+The governance agent evaluates seller targeting against these constraints during `check_governance`. Signal references enable structural matching; descriptions require semantic comparison.
+
+### Restricted attributes
+
+The `restricted_attributes` field declares personal data categories that must not be used for targeting. Values are GDPR Article 9 special categories: `racial_ethnic_origin`, `political_opinions`, `religious_beliefs`, `trade_union_membership`, `health_data`, `sex_life_sexual_orientation`, `genetic_data`, `biometric_data`.
+
+The governance agent matches these against signal definitions that declare their own `restricted_attributes`. Signals with matching attributes are blocked from targeting. For signals without declared attributes, the governance agent falls back to semantic inference from the signal name and description.
+
+### Policy categories
+
+The `policy_categories` field declares which regulatory regimes apply. Categories are defined in the [policy registry](/docs/governance/policy-registry) and group related regulations — for example, `children_directed` covers COPPA, UK AADC, and GDPR Article 8.
+
+Policy categories are distinct from `brand.industries`. Industries describe what a company does; policy categories describe what regulatory regimes apply to a specific campaign. A pharmaceutical company (`industries: ["pharmaceuticals"]`) running a general awareness campaign might not need `pharmaceutical_advertising` as a policy category if the campaign doesn't promote specific drugs.
 
 ## Error codes
 

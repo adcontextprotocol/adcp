@@ -131,7 +131,7 @@ export interface BrandfetchEnrichmentResult {
   manifest?: EnrichedBrandManifest;
   company?: {
     name: string;
-    industry?: string;
+    industries?: string[];
     employees?: string;
     founded?: number;
     location?: string;
@@ -343,7 +343,7 @@ function mapToEnrichmentResult(
   const company = data.company
     ? {
         name: data.name,
-        industry: data.company.industries?.[0]?.name,
+        industries: data.company.industries?.map(i => i.name),
         employees: data.company.employees,
         founded: data.company.foundedYear,
         location: data.company.location

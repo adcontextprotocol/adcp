@@ -1,0 +1,43 @@
+{
+  "attribute_id": "racial_ethnic_origin",
+  "name": "Racial or Ethnic Origin",
+  "description": "Race, ethnicity, national origin, or tribal affiliation. Includes both self-identified and inferred racial/ethnic data.",
+  "regulatory_basis": [
+    {
+      "name": "GDPR Article 9(1)",
+      "jurisdictions": ["EU"],
+      "summary": "Racial or ethnic origin is a special category of personal data."
+    },
+    {
+      "name": "US Fair Housing Act",
+      "jurisdictions": ["US"],
+      "summary": "Prohibits targeting by race, color, or national origin in housing advertising."
+    },
+    {
+      "name": "US ECOA",
+      "jurisdictions": ["US"],
+      "summary": "Prohibits targeting by race, color, or national origin in credit advertising."
+    },
+    {
+      "name": "US Title VII / EEOC",
+      "jurisdictions": ["US"],
+      "summary": "Prohibits targeting by race, color, or national origin in employment advertising."
+    }
+  ],
+  "includes": [
+    "Race and ethnicity segments",
+    "National origin or ancestry",
+    "Tribal affiliation",
+    "Language-as-proxy when used to infer ethnicity",
+    "Multicultural audience segments that define audiences by racial/ethnic identity"
+  ],
+  "excludes": [
+    "Language preference for ad delivery (serving ads in Spanish is not ethnic targeting)",
+    "Country of residence (geo-targeting by country is not ethnic origin targeting)",
+    "Cultural interest segments (e.g., 'interested in Korean cuisine') unless used as ethnic proxy"
+  ],
+  "signal_patterns": [
+    "ethnicity_", "race_", "multicultural_", "hispanic_", "african_american_", "asian_american_"
+  ],
+  "guidance": "The proxy problem is central here. Zip code targeting in the US can function as a racial proxy (redlining). Governance agents evaluating housing/employment/credit campaigns should consider geo-targeting specificity alongside explicit racial/ethnic signals. Language targeting is generally acceptable for ad delivery but not when used as an ethnic proxy for exclusion."
+}
