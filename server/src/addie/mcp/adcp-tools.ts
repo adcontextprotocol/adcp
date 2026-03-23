@@ -618,6 +618,70 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     },
   },
   {
+    name: 'get_media_buys',
+    description:
+      'Retrieve media buy state: status, valid_actions, creative approvals, pending formats, and optional delivery snapshots or revision history. Not for detailed delivery metrics or reporting — use get_media_buy_delivery for that.',
+    usage_hints:
+      'use when the user wants to check campaign status, see creative approval state, find out what actions are available, or monitor media buy lifecycle',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The sales agent URL (must be HTTPS)',
+        },
+        account: {
+          type: 'object',
+          description: 'Filter to a specific account.',
+          properties: {
+            account_id: { type: 'string', description: 'Seller-assigned account identifier' },
+            brand: {
+              type: 'object',
+              properties: {
+                domain: { type: 'string' },
+              },
+              required: ['domain'],
+            },
+            operator: { type: 'string', description: 'Domain of the operating entity' },
+          },
+        },
+        media_buy_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of publisher media buy IDs to retrieve.',
+        },
+        status_filter: {
+          description: 'Filter by media buy status. Single status or array. Defaults to ["active"] when no IDs provided.',
+          oneOf: [
+            { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] },
+            { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'] } },
+          ],
+        },
+        include_snapshot: {
+          type: 'boolean',
+          description: 'Include near-real-time delivery snapshots per package (impressions, spend, pacing).',
+        },
+        include_history: {
+          type: 'integer',
+          description: 'Include the last N revision history entries per media buy. Each entry has revision, timestamp, actor, action, and summary. 0 or omit to exclude. Recommended: 5-10 for monitoring, 50+ for audit.',
+        },
+        pagination: {
+          type: 'object',
+          description: 'Cursor-based pagination.',
+          properties: {
+            max_results: { type: 'integer', description: 'Max items per page (1-100)', minimum: 1, maximum: 100 },
+            cursor: { type: 'string', description: 'Cursor from previous response' },
+          },
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
+      },
+      required: ['agent_url'],
+    },
+  },
+  {
     name: 'get_media_buy_delivery',
     description:
       'Retrieve performance metrics for a campaign. Returns impressions, spend, clicks, and other delivery data.',
@@ -685,9 +749,9 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
   {
     name: 'update_media_buy',
     description:
-      'Modify an existing media buy using PATCH semantics. Supports campaign-level updates (dates, pause/resume) and package-level updates (budget, targeting, creatives).',
+      'Modify an existing media buy using PATCH semantics. Supports campaign-level updates (dates, pause/resume, cancel), package-level updates (budget, targeting, creatives, cancel individual packages), and adding new packages via new_packages.',
     usage_hints:
-      'use when the user wants to modify a campaign, pause/resume ads, change budget, update targeting, or swap creatives',
+      'use when the user wants to modify a campaign, pause/resume ads, cancel a campaign or line item, change budget, update targeting, swap creatives, or add new packages to an existing campaign',
     input_schema: {
       type: 'object',
       properties: {
@@ -698,6 +762,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         media_buy_id: {
           type: 'string',
           description: 'Media buy identifier to update',
+        },
+        revision: {
+          type: 'integer',
+          description: 'Expected current revision for optimistic concurrency. Obtain from get_media_buys. Seller rejects with CONFLICT on mismatch.',
         },
         start_time: {
           type: 'string',
@@ -711,6 +779,15 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'boolean',
           description: 'Pause (true) or resume (false) the entire media buy',
         },
+        canceled: {
+          type: 'boolean',
+          description: 'Cancel the entire media buy (irreversible, must be true when present). Seller may reject with NOT_CANCELLABLE.',
+        },
+        cancellation_reason: {
+          type: 'string',
+          description: 'Reason for cancellation',
+          maxLength: 500,
+        },
         packages: {
           type: 'array',
           description: 'Package-level updates',
@@ -719,6 +796,8 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             properties: {
               package_id: { type: 'string', description: 'Package ID to update' },
               paused: { type: 'boolean', description: 'Pause/resume this package' },
+              canceled: { type: 'boolean', description: 'Cancel this package (irreversible, must be true when present). Seller may reject with NOT_CANCELLABLE.' },
+              cancellation_reason: { type: 'string', description: 'Reason for canceling this package', maxLength: 500 },
               budget: { type: 'number', description: 'Updated budget' },
               bid_price: { type: 'number', description: 'Updated bid price (auction only)' },
               targeting_overlay: { type: 'object', description: 'Updated targeting restrictions' },
@@ -735,6 +814,23 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
                 description: 'Replace creative assignments',
               },
             },
+          },
+        },
+        new_packages: {
+          type: 'array',
+          description: 'New packages to add to this media buy. Same shape as create_media_buy packages. Only supported by sellers that advertise add_packages in valid_actions.',
+          items: {
+            type: 'object',
+            properties: {
+              product_id: { type: 'string', description: 'Product ID for this package' },
+              budget: { type: 'number', description: 'Budget allocation' },
+              pricing_option_id: { type: 'string', description: 'Selected pricing option' },
+              bid_price: { type: 'number', description: 'Bid price (auction only)' },
+              start_time: { type: 'string', description: 'Flight start (ISO 8601)' },
+              end_time: { type: 'string', description: 'Flight end (ISO 8601)' },
+              context: { type: 'object', description: 'Opaque context echoed back for buyer-side correlation' },
+            },
+            required: ['product_id', 'budget', 'pricing_option_id'],
           },
         },
         reporting_webhook: {

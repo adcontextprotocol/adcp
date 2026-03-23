@@ -173,6 +173,15 @@ export interface BrandRef {
   name?: string;
 }
 
+export interface MediaBuyHistoryEntry {
+  revision: number;
+  timestamp: string;
+  actor: string;
+  action: string;
+  summary: string;
+  packageId?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   accountRef: AccountRef;
@@ -182,8 +191,15 @@ export interface MediaBuyState {
   packages: PackageState[];
   startTime: string;
   endTime: string;
+  revision: number;
+  confirmedAt: string;
+  canceledAt?: string;
+  canceledBy?: string;
+  cancellationReason?: string;
+  creativeDeadline?: string;
   createdAt: string;
   updatedAt: string;
+  history: MediaBuyHistoryEntry[];
 }
 
 export interface PackageState {
@@ -194,6 +210,10 @@ export interface PackageState {
   bidPrice?: number;
   impressions?: number;
   paused: boolean;
+  canceled?: boolean;
+  canceledAt?: string;
+  canceledBy?: string;
+  cancellationReason?: string;
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];

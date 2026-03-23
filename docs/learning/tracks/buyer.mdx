@@ -44,12 +44,17 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
   <Card title="Targeting" icon="crosshairs" href="/docs/media-buy/advanced-topics/targeting">
     Targeting options, audience overlays, and geo-targeting.
   </Card>
+  <Card title="get_media_buys task" icon="list-check" href="/docs/media-buy/task-reference/get_media_buys">
+    Operational monitoring: lifecycle state, creative approvals, valid actions, delivery snapshots.
+  </Card>
 </CardGroup>
 
 ### Key concepts
 
 - **Multi-agent buying** — query multiple sellers in parallel, compare, allocate, execute
 - **Orchestration pattern** — discover, evaluate, allocate, execute, monitor
+- **Order lifecycle** — `confirmed_at` on creation, pause/resume, cancellation via `update_media_buy`, terminal states
+- **Valid actions** — `get_media_buys` returns `valid_actions` so agents know what operations are permitted
 - **Audience targeting** — `sync_audiences` for custom segments
 - **Account setup** — `sync_accounts` to establish billing before buying
 

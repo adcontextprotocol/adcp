@@ -205,8 +205,9 @@ npx adcp \
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
+| `confirmed_at` | ISO 8601 timestamp of order confirmation. A successful response constitutes confirmation. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
-| `packages` | Array of created packages with complete state |
+| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
 
 ### Error Response
 
@@ -770,7 +771,7 @@ Common errors and resolutions:
 |------------|-------------|------------|
 | `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
 | `FORMAT_INCOMPATIBLE` | Format not supported by product | Check product's `format_ids` field |
-| `BUDGET_INSUFFICIENT` | Budget below product minimum | Increase budget or choose different product |
+| `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
@@ -941,7 +942,9 @@ const response = await session.call('create_media_buy', {
 {
   "status": "completed",
   "media_buy_id": "mb_12345",
+  "confirmed_at": "2025-06-01T10:00:00Z",
   "creative_deadline": "2025-06-15T23:59:59Z",
+  "revision": 1,
   "packages": [
     {
       "package_id": "pkg_001",
@@ -999,7 +1002,9 @@ const response = await session.call('create_media_buy',
   "message": "Media buy approved and created",
   "result": {
     "media_buy_id": "mb_67890",
+    "confirmed_at": "2025-01-22T14:30:00Z",
     "creative_deadline": "2025-06-20T23:59:59Z",
+    "revision": 1,
     "packages": [
       {
         "package_id": "pkg_002",
@@ -1067,7 +1072,9 @@ const response = await a2a.send({
       {
         "data": {
           "media_buy_id": "mb_12345",
+          "confirmed_at": "2025-06-01T10:00:00Z",
           "creative_deadline": "2025-06-15T23:59:59Z",
+          "revision": 1,
           "packages": [
             {
               "package_id": "pkg_001",
