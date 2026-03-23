@@ -18,6 +18,7 @@ import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack }
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
+import { validateFetchUrl } from "../utils/url-security.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, isSlackConfigured } from "../slack/client.js";
 import { CommunityDatabase } from "../db/community-db.js";
@@ -133,23 +134,44 @@ const workos = AUTH_ENABLED
   : null;
 
 /**
- * Fetch and extract metadata from a URL (for link posts)
+ * Fetch a URL with SSRF protection: validates hostname, resolves DNS,
+ * and follows redirects manually to re-validate each hop.
  */
-async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: string; site_name: string }> {
-  // Validate URL protocol to prevent SSRF with non-HTTP schemes
-  const parsedUrl = new URL(url);
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error('Only http and https URLs are supported');
-  }
+async function safeFetch(url: URL): Promise<globalThis.Response> {
+  await validateFetchUrl(url);
 
-  // CodeQL: authenticated endpoint, URL protocol validated above
-  const response = await fetch(url, { // lgtm[js/request-forgery]
+  const response = await fetch(url.toString(), {
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
     },
-    redirect: 'follow',
+    redirect: 'manual',
   });
+
+  // Follow redirects manually, re-validating each target
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Redirect with no Location header');
+    const redirectUrl = new URL(location, url);
+    await validateFetchUrl(redirectUrl);
+    return fetch(redirectUrl.toString(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      redirect: 'error',
+    });
+  }
+
+  return response;
+}
+
+/**
+ * Fetch and extract metadata from a URL (for link posts)
+ */
+async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: string; site_name: string }> {
+  const parsedUrl = new URL(url);
+  const response = await safeFetch(parsedUrl);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch URL: ${response.status}`);

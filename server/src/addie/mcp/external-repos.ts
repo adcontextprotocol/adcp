@@ -9,7 +9,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { logger } from '../../logger.js';
 
@@ -399,24 +399,21 @@ function syncRepo(repo: ExternalRepo): string | null {
     if (hasGitDir) {
       // Repo with .git exists, pull latest
       logger.debug({ repoId: repo.id }, 'Addie External Repos: Pulling latest');
-      execSync(`git -C "${repoPath}" fetch origin "${branch}" --depth=1 2>/dev/null`, {
+      execFileSync('git', ['-C', repoPath, 'fetch', 'origin', branch, '--depth=1'], {
         timeout: 30000,
         stdio: 'pipe',
       });
-      execSync(`git -C "${repoPath}" reset --hard "origin/${branch}" 2>/dev/null`, {
+      execFileSync('git', ['-C', repoPath, 'reset', '--hard', `origin/${branch}`], {
         timeout: 10000,
         stdio: 'pipe',
       });
     } else {
       // Clone fresh (shallow clone for speed)
       logger.info({ repoId: repo.id, url: repo.url }, 'Addie External Repos: Cloning');
-      execSync(
-        `git clone --depth=1 --branch "${branch}" "${repo.url}" "${repoPath}" 2>/dev/null`,
-        {
-          timeout: 60000,
-          stdio: 'pipe',
-        }
-      );
+      execFileSync('git', ['clone', '--depth=1', '--branch', branch, repo.url, repoPath], {
+        timeout: 60000,
+        stdio: 'pipe',
+      });
     }
     return repoPath;
   } catch (error) {
@@ -771,7 +768,7 @@ export async function initializeExternalRepos(): Promise<void> {
   // Git is only needed when SKIP_REPO_SYNC is not set (i.e., runtime cloning/fetching)
   if (process.env.SKIP_REPO_SYNC !== 'true') {
     try {
-      execSync('git --version', { stdio: 'pipe' });
+      execFileSync('git', ['--version'], { stdio: 'pipe' });
     } catch {
       logger.warn('Addie External Repos: Git not available, skipping external repo indexing');
       initialized = true;

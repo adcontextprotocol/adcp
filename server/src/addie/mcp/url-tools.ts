@@ -9,6 +9,7 @@
  */
 
 import { logger } from '../../logger.js';
+import { validateFetchUrl } from '../../utils/url-security.js';
 import type { AddieTool } from '../types.js';
 
 // Maximum content size to prevent memory issues (500KB for text, 20MB for images/PDFs)
@@ -152,21 +153,17 @@ async function fetchUrlContent(
     return `Error: Invalid URL format: ${url}`;
   }
 
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    return `Error: Only HTTP and HTTPS URLs are supported`;
-  }
-
-  // Block obvious problematic domains
-  const blockedDomains = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
-  if (blockedDomains.some(d => parsedUrl.hostname === d || parsedUrl.hostname.endsWith(`.${d}`))) {
-    return `Error: Cannot fetch from local addresses`;
+  try {
+    await validateFetchUrl(parsedUrl);
+  } catch (err) {
+    return `Error: ${err instanceof Error ? err.message : 'URL validation failed'}`;
   }
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(url, {
+    const response = await fetch(parsedUrl.toString(), {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Addie/1.0 (AgenticAdvertising.org AI Assistant)',
@@ -263,8 +260,13 @@ function extractTextFromHtml(html: string): string {
     .replace(/<\/?(p|div|br|h[1-6]|li|tr|td|th|blockquote|pre|hr)[^>]*>/gi, '\n')
     .replace(/<\/?(ul|ol|table|thead|tbody)[^>]*>/gi, '\n\n');
 
-  // Remove remaining tags
-  text = text.replace(/<[^>]+>/g, '');
+  // Remove remaining tags (loop to handle nested/malformed markup like "<<script>script>")
+  let textPrev = '';
+  let textIterations = 0;
+  while (textPrev !== text && textIterations++ < 100) {
+    textPrev = text;
+    text = text.replace(/<[^>]+>/g, '');
+  }
 
   // Decode HTML entities (&amp; must be last to avoid double-decoding e.g. &amp;lt; -> &lt; -> <)
   text = text
@@ -329,8 +331,13 @@ function convertHtmlToMarkdown(html: string): string {
   md = md.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
   md = md.replace(/<pre[^>]*>(.*?)<\/pre>/gis, '```\n$1\n```\n');
 
-  // Remove remaining tags
-  md = md.replace(/<[^>]+>/g, '');
+  // Remove remaining tags (loop to handle nested/malformed markup)
+  let mdPrev2 = '';
+  let mdIterations2 = 0;
+  while (mdPrev2 !== md && mdIterations2++ < 100) {
+    mdPrev2 = md;
+    md = md.replace(/<[^>]+>/g, '');
+  }
 
   // Decode entities and clean up (&amp; must be last to avoid double-decoding)
   md = md

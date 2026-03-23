@@ -279,8 +279,13 @@ function extractHtmlContent(content: string): string {
   content = content.replace(/<div id="adcp-nav"[^>]*>[\s\S]*?<\/div>/gi, '');
   content = content.replace(/<div id="adcp-footer"[^>]*>[\s\S]*?<\/div>/gi, '');
 
-  // Remove HTML comments
-  content = content.replace(/<!--[\s\S]*?-->/g, '');
+  // Remove HTML comments (loop to handle nested/malformed comments)
+  let commentPrev = '';
+  let commentIterations = 0;
+  while (commentPrev !== content && commentIterations++ < 100) {
+    commentPrev = content;
+    content = content.replace(/<!--[\s\S]*?-->/g, '');
+  }
 
   // Replace common entities (&amp; must be last to avoid double-decoding e.g. &amp;lt; -> &lt; -> <)
   content = content.replace(/&nbsp;/g, ' ');
