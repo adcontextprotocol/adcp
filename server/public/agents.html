@@ -900,7 +900,7 @@
                     <details>
                         <summary class="detail-section__summary">
                             <span class="detail-section__arrow">&#9654;</span>
-                            Tools (${agentWithCaps?.capabilities?.tools_count || 0})
+                            Tools (${Number(agentWithCaps?.capabilities?.tools_count) || 0})
                         </summary>
                         <div id="tools-section" class="detail-section__content"><div class="loading">Loading tools...</div></div>
                     </details>

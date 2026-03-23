@@ -25,6 +25,7 @@ const AI_REFERRER_DOMAINS = [
 ];
 
 // Derive regex from domain list to prevent drift
+// lgtm[js/incomplete-sanitization] -- domains are hardcoded literals above; only dots need regex escaping
 const AI_REFERRER_REGEX = AI_REFERRER_DOMAINS
   .map((d) => d.replace(/\./g, "\\."))
   .join("|");

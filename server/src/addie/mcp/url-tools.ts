@@ -246,11 +246,17 @@ async function fetchUrlContent(
  * Extract readable text from HTML
  */
 function extractTextFromHtml(html: string): string {
-  // Remove script and style tags completely
-  let text = html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  // Remove script, style, and noscript tags completely (loop to handle nested cases)
+  let text = html;
+  let prev = '';
+  let iterations = 0;
+  while (prev !== text && iterations++ < 100) {
+    prev = text;
+    text = text
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  }
 
   // Replace block elements with newlines
   text = text
@@ -260,16 +266,16 @@ function extractTextFromHtml(html: string): string {
   // Remove remaining tags
   text = text.replace(/<[^>]+>/g, '');
 
-  // Decode HTML entities
+  // Decode HTML entities (&amp; must be last to avoid double-decoding e.g. &amp;lt; -> &lt; -> <)
   text = text
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&amp;/g, '&');
 
   // Clean up whitespace
   text = text
@@ -286,10 +292,15 @@ function extractTextFromHtml(html: string): string {
  * Convert HTML to basic Markdown
  */
 function convertHtmlToMarkdown(html: string): string {
-  let md = html
-    // Remove script and style
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  let md = html;
+  // Remove script and style (loop to handle nested cases)
+  let mdPrev = '';
+  while (mdPrev !== md) {
+    mdPrev = md;
+    md = md
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  }
 
   // Headers
   md = md.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n');
@@ -320,13 +331,13 @@ function convertHtmlToMarkdown(html: string): string {
   // Remove remaining tags
   md = md.replace(/<[^>]+>/g, '');
 
-  // Decode entities and clean up
+  // Decode entities and clean up (&amp; must be last to avoid double-decoding)
   md = md
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
@@ -346,8 +357,13 @@ async function readSlackFile(
     return { type: 'text', error: 'Slack bot token not available for file access' };
   }
 
-  // Validate it's a Slack URL
-  if (!fileUrl.includes('slack.com') && !fileUrl.includes('files.slack.com')) {
+  // Validate it's a Slack URL by parsing hostname
+  try {
+    const parsed = new URL(fileUrl);
+    if (parsed.hostname !== 'slack.com' && !parsed.hostname.endsWith('.slack.com')) {
+      return { type: 'text', error: 'Not a valid Slack file URL' };
+    }
+  } catch {
     return { type: 'text', error: 'Not a valid Slack file URL' };
   }
 
@@ -602,7 +618,7 @@ export function extractMultimodalContent(content: string): FileReadResult | null
     return null;
   }
   try {
-    const jsonStr = content.replace('__MULTIMODAL_CONTENT__', '').replace('__END_MULTIMODAL__', '');
+    const jsonStr = content.replace(/__MULTIMODAL_CONTENT__/g, '').replace(/__END_MULTIMODAL__/g, '');
     const parsed = JSON.parse(jsonStr);
 
     // Validate required fields exist

@@ -477,7 +477,8 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     testFunction: () => {
       // Check if current variants include legitimacy signals
       // The Friction-First variant specifically addresses this with transparency
-      const hasLegitimacySignals = Object.values(CURRENT_VARIANTS).some(v =>
+      // CodeQL: substring checks on template content for legitimacy signals, not URL validation
+      const hasLegitimacySignals = Object.values(CURRENT_VARIANTS).some(v => // lgtm[js/incomplete-url-substring-sanitization]
         v.template.includes('official') ||
         v.template.includes('verify') ||
         v.template.includes('agenticadvertising.org') ||

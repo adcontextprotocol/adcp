@@ -376,6 +376,18 @@ function syncRepo(repo: ExternalRepo): string | null {
   const repoPath = path.join(getReposDir(), repo.id);
   const branch = repo.branch || 'main';
 
+  // Validate branch name to prevent command injection (alphanumeric, hyphens, underscores, dots, slashes)
+  if (!/^[a-zA-Z0-9._\-/]+$/.test(branch)) {
+    logger.error({ repoId: repo.id, branch }, 'Addie External Repos: Invalid branch name');
+    return null;
+  }
+
+  // Validate repo URL is a valid git URL (https or git protocol)
+  if (!/^https?:\/\/[^\s"'`$;|&]+$/.test(repo.url) && !/^git@[^\s"'`$;|&]+$/.test(repo.url)) {
+    logger.error({ repoId: repo.id, url: repo.url }, 'Addie External Repos: Invalid repo URL');
+    return null;
+  }
+
   try {
     if (fs.existsSync(path.join(repoPath, '.git'))) {
       // Repo exists — skip network fetch if SKIP_REPO_SYNC is set (e.g. Docker with pre-cloned repos)
@@ -384,11 +396,11 @@ function syncRepo(repo: ExternalRepo): string | null {
       }
       // Repo exists, pull latest
       logger.debug({ repoId: repo.id }, 'Addie External Repos: Pulling latest');
-      execSync(`git -C "${repoPath}" fetch origin ${branch} --depth=1 2>/dev/null`, {
+      execSync(`git -C "${repoPath}" fetch origin "${branch}" --depth=1 2>/dev/null`, {
         timeout: 30000,
         stdio: 'pipe',
       });
-      execSync(`git -C "${repoPath}" reset --hard origin/${branch} 2>/dev/null`, {
+      execSync(`git -C "${repoPath}" reset --hard "origin/${branch}" 2>/dev/null`, {
         timeout: 10000,
         stdio: 'pipe',
       });
@@ -396,7 +408,7 @@ function syncRepo(repo: ExternalRepo): string | null {
       // Clone fresh (shallow clone for speed)
       logger.info({ repoId: repo.id, url: repo.url }, 'Addie External Repos: Cloning');
       execSync(
-        `git clone --depth=1 --branch ${branch} "${repo.url}" "${repoPath}" 2>/dev/null`,
+        `git clone --depth=1 --branch "${branch}" "${repo.url}" "${repoPath}" 2>/dev/null`,
         {
           timeout: 60000,
           stdio: 'pipe',

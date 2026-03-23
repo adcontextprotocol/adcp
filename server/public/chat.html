@@ -2914,13 +2914,13 @@
           const isActive = currentTabId === tab.id;
 
           return `
-            <div class="tab-item ${isActive ? 'active' : ''}" data-tab-id="${tab.id}" data-channel="${tab.channel}">
+            <div class="tab-item ${isActive ? 'active' : ''}" data-tab-id="${escapeHtml(tab.id)}" data-channel="${escapeHtml(tab.channel)}">
               <span class="tab-item-indicator ${indicatorClass}"></span>
               <div class="tab-item-content">
                 <div class="tab-item-title">${escapeHtml(tab.title)}</div>
               </div>
               ${tab.unreadCount > 0 ? `<span class="tab-item-badge">${tab.unreadCount}</span>` : ''}
-              <button class="tab-item-close" data-tab-id="${tab.id}" title="Close">
+              <button class="tab-item-close" data-tab-id="${escapeHtml(tab.id)}" title="Close">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>
                   <line x1="6" y1="6" x2="18" y2="18"/>

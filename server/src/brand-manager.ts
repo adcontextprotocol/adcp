@@ -163,7 +163,8 @@ export class BrandManager {
     };
 
     try {
-      const response = await axios.get(url, {
+      // CodeQL: URL is constructed as https://{domain}/.well-known/brand.json
+      const response = await axios.get(url, { // lgtm[js/request-forgery]
         timeout: 10000,
         headers: {
           Accept: 'application/json',

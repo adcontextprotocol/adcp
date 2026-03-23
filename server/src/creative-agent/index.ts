@@ -58,7 +58,7 @@ const CREATIVE_AGENT_HOST = 'creative.adcontextprotocol.org';
  */
 function getAgentBaseUrl(req: Request): string {
   const host = req.headers['x-forwarded-host'] || req.headers.host || '';
-  if (typeof host === 'string' && host.startsWith(CREATIVE_AGENT_HOST)) {
+  if (typeof host === 'string' && (host === CREATIVE_AGENT_HOST || host.startsWith(CREATIVE_AGENT_HOST + ':'))) {
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
     return `${proto}://${CREATIVE_AGENT_HOST}`;
   }

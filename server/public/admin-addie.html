@@ -3477,7 +3477,8 @@
 
     async function viewThread(threadId) {
       try {
-        const response = await fetch(`/api/admin/addie/threads/${threadId}`);
+        // CodeQL: threadId is from server-rendered data, URL is same-origin relative path
+        const response = await fetch(`/api/admin/addie/threads/${encodeURIComponent(threadId)}`); // lgtm[js/client-side-request-forgery]
         const data = await response.json();
         currentThreadData = data;
         currentConversationData = data;
@@ -3780,8 +3781,12 @@
       // Filter out internal docs URLs (keep external sources)
       return links.filter(link => {
         // Keep external sources, filter out protocol docs
-        return !link.url.includes('docs.adcontextprotocol.org') &&
-               !link.url.includes('localhost');
+        try {
+          const parsed = new URL(link.url);
+          return parsed.hostname !== 'docs.adcontextprotocol.org' && parsed.hostname !== 'localhost';
+        } catch {
+          return true; // Keep links we can't parse
+        }
       });
     }
 

@@ -80,7 +80,7 @@ export function validateEmail(email: unknown): FieldValidationResult {
   }
 
   // Basic email pattern (not overly strict - let WorkOS do final validation)
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   if (!emailPattern.test(trimmed)) {
     return { valid: false, error: 'Invalid email format' };
   }

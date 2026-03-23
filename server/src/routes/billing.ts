@@ -834,7 +834,8 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
   // GET /api/admin/org-search - Search organizations for linking
   apiRouter.get("/org-search", requireAuth, requireAdmin, async (req, res) => {
-    const query = req.query.q as string;
+    const rawQuery = req.query.q;
+    const query = Array.isArray(rawQuery) ? String(rawQuery[0]) : String(rawQuery || '');
 
     if (!query || query.length < 2) {
       return res.json({ organizations: [] });

@@ -350,6 +350,7 @@ async function getUserFromRequest(
 
   // Then check WorkOS session
   const sessionCookie = req.cookies?.['wos-session'];
+  // codeql[js/user-controlled-bypass] - session cookie is verified cryptographically by WorkOS sealed session
   if (sessionCookie && AUTH_ENABLED && workos) {
     try {
       const session = workos.userManagement.loadSealedSession({
@@ -1128,6 +1129,18 @@ export class HTTPServer {
         return res.redirect('/');
       }
 
+      // Validate destination URL protocol to prevent javascript: or data: redirects
+      try {
+        const parsed = new URL(destinationUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          logger.warn({ trackingId, destinationUrl }, 'Click tracker blocked non-HTTP redirect');
+          return res.redirect('/');
+        }
+      } catch {
+        logger.warn({ trackingId, destinationUrl }, 'Click tracker blocked invalid URL');
+        return res.redirect('/');
+      }
+
       try {
         // Record the click
         await emailDb.recordClick({
@@ -1149,7 +1162,8 @@ export class HTTPServer {
       }
 
       // Always redirect to destination
-      res.redirect(destinationUrl);
+      // CodeQL: email click tracker - URL protocol validated above, intentional redirect to tracked links
+      res.redirect(destinationUrl); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // ==================== Email Preferences & Unsubscribe ====================
@@ -1253,11 +1267,11 @@ export class HTTPServer {
       ${userCategoryPrefs.map(cat => `
         <div class="category">
           <div class="category-info">
-            <h3>${cat.category_name}</h3>
-            <p>${cat.category_description || ''}</p>
+            <h3>${escapeHtml(cat.category_name)}</h3>
+            <p>${escapeHtml(cat.category_description || '')}</p>
           </div>
           <label class="toggle">
-            <input type="checkbox" ${cat.enabled ? 'checked' : ''} onchange="toggleCategory('${cat.category_id}', this.checked)">
+            <input type="checkbox" ${cat.enabled ? 'checked' : ''} onchange="toggleCategory('${escapeHtml(cat.category_id)}', this.checked)">
             <span class="slider"></span>
           </label>
         </div>
@@ -1271,7 +1285,7 @@ export class HTTPServer {
   `}
 
   <script>
-    const token = '${token}';
+    const token = '${escapeHtml(token)}';
 
     async function toggleCategory(categoryId, enabled) {
       try {
@@ -5180,6 +5194,7 @@ Disallow: /api/admin/
     });
 
     // GET /auth/callback - Handle OAuth callback from WorkOS
+    // codeql[js/user-controlled-bypass] - OAuth callback must read authorization code from query params
     this.app.get('/auth/callback', async (req, res) => {
       const code = req.query.code as string;
       const state = req.query.state as string;
@@ -5381,7 +5396,13 @@ Disallow: /api/admin/
         if (state) {
           try {
             const parsedState = JSON.parse(state);
-            returnTo = parsedState.return_to || returnTo;
+            const candidateReturnTo = parsedState.return_to || returnTo;
+            // Validate returnTo is a relative path or an allowed AdCP URL to prevent open redirect
+            if ((candidateReturnTo.startsWith('/') && !candidateReturnTo.startsWith('//')) || HTTPServer.isAllowedAdcpUrl(candidateReturnTo)) {
+              returnTo = candidateReturnTo;
+            } else {
+              logger.warn({ returnTo: candidateReturnTo }, 'Blocked invalid return_to from OAuth state');
+            }
             slackUserIdToLink = parsedState.slack_user_id;
             isNativeMode = parsedState.native === true;
             nativeRedirectUri = parsedState.native_redirect_uri || nativeRedirectUri;
@@ -5521,7 +5542,8 @@ Disallow: /api/admin/
             return res.type('html').send(html);
           }
           logger.debug({ returnTo }, 'Redirecting authenticated user');
-          res.redirect(returnTo);
+          // CodeQL: returnTo validated as relative path or allowed AdCP URL above
+          res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
         }
       } catch (error) {
         logger.error({ err: error }, 'Auth callback error:');
@@ -5535,6 +5557,7 @@ Disallow: /api/admin/
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
       // Dev mode: clear dev-session cookie and redirect to home
+      // codeql[js/user-controlled-bypass] - dev mode check uses server-side env var, not user input
       if (isDevModeEnabled()) {
         logger.debug('Dev mode logout - clearing dev session cookie');
         res.clearCookie(getDevSessionCookieName(), {
@@ -5639,8 +5662,15 @@ Disallow: /api/admin/
     this.app.post('/auth/bridge-callback', express.urlencoded({ extended: false }), (req, res) => {
       // CSRF protection: verify the form POST originated from AAO
       const origin = req.get('origin') || '';
-      if (origin && !origin.endsWith('agenticadvertising.org')) {
-        return res.status(403).send('Invalid origin');
+      if (origin) {
+        try {
+          const parsed = new URL(origin);
+          if (parsed.hostname !== 'agenticadvertising.org' && !parsed.hostname.endsWith('.agenticadvertising.org')) {
+            return res.status(403).send('Invalid origin');
+          }
+        } catch {
+          return res.status(403).send('Invalid origin');
+        }
       }
 
       const returnTo = req.query.return_to as string || '/';
@@ -5669,7 +5699,8 @@ Disallow: /api/admin/
         maxAge: HTTPServer.BRIDGE_CHECK_TTL,
       });
 
-      res.redirect(returnTo);
+      // CodeQL: returnTo validated by isAllowedAdcpUrl check above
+      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /auth/bridge-callback - Handles no-session case (redirect back from bridge without session)
@@ -5688,7 +5719,8 @@ Disallow: /api/admin/
         maxAge: HTTPServer.BRIDGE_CHECK_TTL,
       });
 
-      res.redirect(returnTo);
+      // CodeQL: returnTo validated by isAllowedAdcpUrl check above
+      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /api/me - Get current user info
@@ -6723,6 +6755,7 @@ Disallow: /api/admin/
         const profiles = await memberDb.getCarouselProfiles();
 
         // Resolve brand data for carousel profiles
+        // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
         await Promise.all(profiles.map(async (profile) => {
           if (profile.primary_brand_domain) {
             const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
@@ -6849,6 +6882,7 @@ Disallow: /api/admin/
         let credentials: { credential_id: string; credential_name: string; tier: number; awarded_at: string }[] = [];
         try {
           const { getOrgMemberCredentials } = await import('./db/certification-db.js');
+          // codeql[js/user-controlled-bypass] - org ID comes from server-side DB profile, not user input
           credentials = await getOrgMemberCredentials(profile.workos_organization_id);
         } catch { /* credentials optional */ }
 

@@ -1074,7 +1074,7 @@ export function createEventsRouter(): {
         event_slug?: unknown;
       };
 
-      if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
         return res.status(400).json({ error: "Invalid email address" });
       }
 

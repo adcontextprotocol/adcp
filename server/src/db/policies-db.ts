@@ -195,10 +195,13 @@ export async function bulkResolve(policyIds: string[]): Promise<Record<string, P
     'SELECT * FROM policies WHERE policy_id = ANY($1)',
     [policyIds]
   );
-  const map: Record<string, Policy | null> = {};
+  const map: Record<string, Policy | null> = Object.create(null);
   const rows = result.rows.map(deserializePolicy);
   for (const id of policyIds) {
-    map[id] = rows.find(r => r.policy_id === id) || null;
+    // Validate property name to prevent prototype pollution
+    if (typeof id === 'string' && !['__proto__', 'constructor', 'prototype'].includes(id)) {
+      map[id] = rows.find(r => r.policy_id === id) || null;
+    }
   }
   return map;
 }

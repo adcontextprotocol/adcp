@@ -5827,7 +5827,7 @@ Use add_committee_leader to assign a leader.`;
       dueDate = new Date(today);
       dueDate.setDate(dueDate.getDate() + 1);
     } else if (lowerInput.startsWith('next ')) {
-      const dayName = lowerInput.replace('next ', '');
+      const dayName = lowerInput.replace(/next /g, '');
       const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
       const targetDay = days.indexOf(dayName);
       if (targetDay === -1) {
@@ -7065,7 +7065,7 @@ Use add_committee_leader to assign a leader.`;
         expires_at: expiresAt,
       });
 
-      const scopeLabel = scope === 'platform' ? 'platform-wide' : scope.replace('registry_', '') + ' registry edits';
+      const scopeLabel = scope === 'platform' ? 'platform-wide' : scope.replace(/registry_/g, '') + ' registry edits';
       let response = `**Ban created** (ID: \`${ban.id}\`)\n`;
       response += `- **Type**: ${banType}\n`;
       response += `- **Entity**: \`${entityId}\`\n`;
@@ -7136,7 +7136,7 @@ Use add_committee_leader to assign a leader.`;
 
       let response = `**Active bans** (${bans.length}):\n\n`;
       for (const ban of bans) {
-        const scopeLabel = ban.scope === 'platform' ? 'Platform' : ban.scope.replace('registry_', '').charAt(0).toUpperCase() + ban.scope.replace('registry_', '').slice(1) + ' registry';
+        const scopeLabel = ban.scope === 'platform' ? 'Platform' : ban.scope.replace(/registry_/g, '').charAt(0).toUpperCase() + ban.scope.replace(/registry_/g, '').slice(1) + ' registry';
         response += `- **\`${ban.id}\`** — ${ban.ban_type} \`${ban.entity_id}\`\n`;
         response += `  Scope: ${scopeLabel}${ban.scope_target ? ` (${ban.scope_target})` : ''}\n`;
         response += `  Reason: ${ban.reason}\n`;

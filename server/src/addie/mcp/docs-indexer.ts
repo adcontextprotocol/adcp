@@ -263,11 +263,15 @@ function extractHtmlTitle(content: string, filename: string): string {
  * Extract text content from HTML, removing tags and scripts
  */
 function extractHtmlContent(content: string): string {
-  // Remove script tags and their content
-  content = content.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
-
-  // Remove style tags and their content
-  content = content.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  // Remove script and style tags with their content (loop to handle nested cases)
+  let prev = '';
+  let iterations = 0;
+  while (prev !== content && iterations++ < 100) {
+    prev = content;
+    content = content
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  }
 
   // Remove nav and footer (navigation noise)
   content = content.replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '');
@@ -277,15 +281,15 @@ function extractHtmlContent(content: string): string {
   // Remove HTML comments
   content = content.replace(/<!--[\s\S]*?-->/g, '');
 
-  // Replace common entities
+  // Replace common entities (&amp; must be last to avoid double-decoding e.g. &amp;lt; -> &lt; -> <)
   content = content.replace(/&nbsp;/g, ' ');
-  content = content.replace(/&amp;/g, '&');
   content = content.replace(/&lt;/g, '<');
   content = content.replace(/&gt;/g, '>');
   content = content.replace(/&quot;/g, '"');
   content = content.replace(/&#39;/g, "'");
   content = content.replace(/&mdash;/g, '—');
   content = content.replace(/&ndash;/g, '–');
+  content = content.replace(/&amp;/g, '&');
 
   // Convert list items to bullets
   content = content.replace(/<li[^>]*>/gi, '\n• ');
