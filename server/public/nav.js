@@ -1388,7 +1388,7 @@
     if (!url) return false;
     try {
       var parsed = new URL(url, window.location.origin);
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+      return parsed.protocol === 'https:';
     } catch (e) {
       return false;
     }
