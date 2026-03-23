@@ -452,23 +452,24 @@ The seller POSTs to the buyer's `governance_agents` URLs when media buy events o
 
 ### Setup
 
-The buyer registers `governance_agents` when syncing accounts with the seller. Each agent includes authentication credentials so the governance agent can verify the seller's identity:
+The buyer syncs governance agents via [`sync_governance`](/docs/accounts/tasks/sync_governance), pairing each account with the governance agent endpoints to call. Each agent includes authentication credentials so the governance agent can verify the seller's identity:
 
 ```json
 {
-  "tool": "sync_accounts",
+  "tool": "sync_governance",
   "arguments": {
     "accounts": [
       {
-        "brand": { "domain": "acmecorp.com" },
-        "operator": "pinnacle-media.com",
-        "billing": "operator",
+        "account": {
+          "brand": { "domain": "acmecorp.com" },
+          "operator": "pinnacle-media.com"
+        },
         "governance_agents": [
           {
             "url": "https://governance.pinnacle-media.com",
             "authentication": {
               "schemes": ["Bearer"],
-              "credentials": "gov_token_acme_pinnacle_2026_xyz..."
+              "credentials": "gov_token_acme_pinnacle_2026_xyzxyzxyz..."
             }
           }
         ]
@@ -482,7 +483,7 @@ The seller stores these endpoints and presents the credentials when calling `che
 
 ### Governance modes
 
-The governance agent's operating mode can be set per-plan via the `mode` field in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), defaulting to `enforce`. Mode is not exposed to sellers via `sync_accounts` -- the seller calls `check_governance` and acts on the response status. It does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
+The governance agent's operating mode can be set per-plan via the `mode` field in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), defaulting to `enforce`. Mode is not exposed to sellers -- the seller calls `check_governance` and acts on the response status. It does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
 
 | Mode | Behavior | Use case |
 |------|----------|----------|
@@ -714,7 +715,7 @@ The seller calls each governance agent at its registered URL using MCP over HTTP
 
 ### Multi-agent composition
 
-Accounts MAY register multiple governance agents via the `governance_agents` array on `sync_accounts`, each responsible for different validation categories. For example, one agent handles budget authority and strategic alignment while another handles regulatory compliance and brand policy.
+Accounts MAY register multiple governance agents via [`sync_governance`](/docs/accounts/tasks/sync_governance), each responsible for different validation categories. For example, one agent handles budget authority and strategic alignment while another handles regulatory compliance and brand policy.
 
 When multiple governance agents are registered, the seller MUST call each agent whose `categories` overlap with the action being validated. All applicable agents must approve for the action to proceed (unanimous approval). If any agent returns `denied` or `escalated`, the action is blocked.
 

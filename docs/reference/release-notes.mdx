@@ -39,6 +39,8 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 12. **Accounts and Sandbox Refinements** — `sync_accounts` adds `payment_terms`, sandbox capability moves to the account capability block, and sandbox now participates in the account natural key for implicit account flows.
 
+13. **Governance Agent Sync** — `sync_governance` task for syncing governance agent endpoints to specific accounts. Supports both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`) via account references. Replace semantics per call. Governance sync is now a dedicated tool — removed from `sync_accounts` and `list_accounts`.
+
 ### Breaking Changes
 
 | Change | rc.1 | rc.2 |
@@ -49,6 +51,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 | DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present |
 | delete_content_standards | Documented task | Removed — archive standards via `update_content_standards` instead |
 | get_property_features | Standalone task | Removed — use property list filters and `get_adcp_capabilities` for feature discovery |
+| Governance agent sync | `governance_agents` on `sync_accounts` request and `list_accounts` request | Moved to dedicated `sync_governance` task |
 
 ### Migration Notes For rc.1 Adopters
 
