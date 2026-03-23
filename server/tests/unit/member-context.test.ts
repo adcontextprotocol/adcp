@@ -1,4 +1,59 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock modules that require environment variables at import time
+vi.mock('../../src/auth/workos-client.js', () => ({
+  workos: {},
+  clientId: 'mock_client_id',
+}));
+
+vi.mock('../../src/db/client.js', () => ({
+  getPool: vi.fn(),
+  query: vi.fn(),
+}));
+
+vi.mock('../../src/middleware/auth.js', () => ({
+  isDevModeEnabled: vi.fn().mockReturnValue(false),
+  DEV_USERS: [],
+}));
+
+vi.mock('../../src/slack/client.js', () => ({
+  resolveSlackUserDisplayName: vi.fn(),
+}));
+
+vi.mock('../../src/db/slack-db.js', () => ({
+  SlackDatabase: class {},
+}));
+vi.mock('../../src/db/member-db.js', () => ({
+  MemberDatabase: class {},
+}));
+vi.mock('../../src/db/organization-db.js', () => ({
+  OrganizationDatabase: class {},
+}));
+vi.mock('../../src/db/working-group-db.js', () => ({
+  WorkingGroupDatabase: class {},
+}));
+vi.mock('../../src/db/email-preferences-db.js', () => ({
+  EmailPreferencesDatabase: class {},
+}));
+vi.mock('../../src/db/addie-db.js', () => ({
+  AddieDatabase: class {},
+}));
+vi.mock('../../src/db/join-request-db.js', () => ({
+  JoinRequestDatabase: class {},
+}));
+vi.mock('../../src/db/org-knowledge-db.js', () => ({
+  OrgKnowledgeDatabase: class {},
+}));
+vi.mock('../../src/addie/thread-service.js', () => ({
+  getThreadService: vi.fn(),
+}));
+vi.mock('../../src/config/personas.js', () => ({
+  PERSONA_LABELS: {},
+}));
+vi.mock('../../src/db/org-filters.js', () => ({
+  resolveEffectiveMembership: vi.fn(),
+}));
+
 import { formatMemberContextForPrompt, MemberContext } from '../../src/addie/member-context.js';
 
 /**
@@ -96,7 +151,7 @@ describe('formatMemberContextForPrompt', () => {
 
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('individual account');
-    expect(result).toContain('active AgenticAdvertising.org individual member');
+    expect(result).toContain('AgenticAdvertising.org individual member');
   });
 
   it('should indicate non-member status', () => {
@@ -243,7 +298,7 @@ describe('formatMemberContextForPrompt', () => {
     };
 
     const result = formatMemberContextForPrompt(context);
-    expect(result).toContain('### Slack Activity');
+    expect(result).toContain('### Slack Activity (Last 30 Days)');
     expect(result).toContain('42');
     expect(result).toContain('18');
     expect(result).toContain('12');
@@ -376,7 +431,7 @@ describe('formatMemberContextForPrompt', () => {
     expect(result).not.toContain('Slack account is not yet linked');
   });
 
-  it('should include Addie interaction history', () => {
+  it('should not include Addie interaction history (removed from context)', () => {
     const context: MemberContext = {
       is_mapped: true,
       is_member: true,
@@ -398,32 +453,8 @@ describe('formatMemberContextForPrompt', () => {
     };
 
     const result = formatMemberContextForPrompt(context);
-    expect(result).toContain('### Previous Conversations with Addie');
-    expect(result).toContain('10');
-    expect(result).toContain('VAST creatives');
-  });
-
-  it('should truncate long topic strings', () => {
-    const longTopic = 'A'.repeat(120);
-    const context: MemberContext = {
-      is_mapped: true,
-      is_member: true,
-      slack_linked: false,
-      workos_user: {
-        workos_user_id: 'user_123',
-        email: 'john@example.com',
-        first_name: 'John',
-      },
-      addie_history: {
-        total_interactions: 1,
-        last_interaction_at: new Date(),
-        recent_topics: [longTopic],
-      },
-    };
-
-    const result = formatMemberContextForPrompt(context);
-    expect(result).toContain('...');
-    expect(result).not.toContain('A'.repeat(120));
+    // Addie interaction history was removed from the context formatter
+    expect(result).not.toContain('### Previous Conversations with Addie');
   });
 
   it('should end with personalization reminder', () => {
@@ -529,11 +560,11 @@ describe('MemberContext interface completeness', () => {
     expect(result).toContain('## User Context');
     expect(result).toContain('### Subscription Details');
     expect(result).toContain('### Organization Engagement');
-    expect(result).toContain('### Slack Activity');
+    expect(result).toContain('### Slack Activity (Last 30 Days)');
     expect(result).toContain('### Organization Membership');
     expect(result).toContain('### Working Groups');
     expect(result).toContain('### Email Preferences');
-    expect(result).toContain('### Previous Conversations with Addie');
+    // Addie history was removed from context formatter
 
     // Verify key data points
     expect(result).toContain('John');

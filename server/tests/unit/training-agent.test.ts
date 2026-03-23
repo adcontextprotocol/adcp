@@ -714,7 +714,7 @@ describe('createTrainingAgentServer', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'nonexistent_tool', {});
     expect(isError).toBe(true);
-    expect(result.error).toContain('Unknown tool');
+    expect(result.message).toContain('Unknown tool');
   });
 });
 
@@ -783,7 +783,7 @@ describe('get_products handler', () => {
     expect(hasRelevance).toBe(true);
   });
 
-  it('caps brief results at 5 most relevant products', async () => {
+  it('caps brief keyword results at 5 then adds proposal completions', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     // Use a broad term that matches many products
     const { result } = await simulateCallTool(server, 'get_products', {
@@ -792,8 +792,9 @@ describe('get_products handler', () => {
     });
 
     const products = result.products as Array<Record<string, unknown>>;
-    // Broad terms match well over 5 catalog products, so the cap must be exercised
-    expect(products.length).toEqual(5);
+    // Brief mode caps keyword matches at 5, then adds missing products from
+    // matching proposals. Total may exceed 5 due to proposal completions.
+    expect(products.length).toBeGreaterThanOrEqual(5);
   });
 
   it('returns suggestions when brief has no keyword matches', async () => {
@@ -974,7 +975,7 @@ describe('create_media_buy handler', () => {
 
   it('returns error for empty packages', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -982,8 +983,7 @@ describe('create_media_buy handler', () => {
       packages: [],
     });
 
-    expect(result.errors).toBeDefined();
-    expect(Array.isArray(result.errors)).toBe(true);
+    expect(isError).toBe(true);
     // No success fields on error
     expect(result.media_buy_id).toBeUndefined();
     expect(result.packages).toBeUndefined();
@@ -991,7 +991,7 @@ describe('create_media_buy handler', () => {
 
   it('returns error for invalid product_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { isError } = await simulateCallTool(server, 'create_media_buy', {
       account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -1003,14 +1003,14 @@ describe('create_media_buy handler', () => {
       }],
     });
 
-    expect(result.errors).toBeDefined();
+    expect(isError).toBe(true);
   });
 
   it('returns error for invalid pricing_option_id', async () => {
     const catalog = buildCatalog();
     const productId = catalog[0].product.product_id as string;
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -1022,9 +1022,8 @@ describe('create_media_buy handler', () => {
       }],
     });
 
-    expect(result.errors).toBeDefined();
-    const errors = result.errors as Array<Record<string, unknown>>;
-    expect(errors[0].message).toContain('Pricing option not found');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('Pricing option not found');
   });
 
   it('returns error when budget is below min_spend', async () => {
@@ -1048,7 +1047,7 @@ describe('create_media_buy handler', () => {
 
     const minSpend = targetPricing.min_spend_per_package as number;
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -1060,9 +1059,8 @@ describe('create_media_buy handler', () => {
       }],
     });
 
-    expect(result.errors).toBeDefined();
-    const errors = result.errors as Array<Record<string, unknown>>;
-    expect((errors[0].message as string)).toContain('below minimum spend');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('below minimum spend');
   });
 
   it('resolves start_time "asap" to an ISO timestamp', async () => {
@@ -1092,7 +1090,7 @@ describe('create_media_buy handler', () => {
   it('returns error when start_time is after end_time', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-08-01T00:00:00Z',
@@ -1103,8 +1101,8 @@ describe('create_media_buy handler', () => {
         budget: 50000,
       }],
     });
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('before end_time');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('before end_time');
   });
 
   it('returns error when bid_price is below floor_price', async () => {
@@ -1125,7 +1123,7 @@ describe('create_media_buy handler', () => {
 
     const floorPrice = targetPricing.floor_price as number;
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account: { brand: { domain: 'test.example' }, operator: 'test.example' },
       brand: { domain: 'test.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -1137,8 +1135,8 @@ describe('create_media_buy handler', () => {
         bid_price: floorPrice - 0.01,
       }],
     });
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('below floor price');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('below floor price');
   });
 
   it('includes status field in create response', async () => {
@@ -1214,9 +1212,9 @@ describe('sync_creatives handler', () => {
     expect(creatives[0].action).toBe('updated');
   });
 
-  it('generates creative_id when not provided', async () => {
+  it('rejects creative without creative_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'sync_creatives', {
+    const { result, isError } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [
         {
           format_id: { agent_url: TEST_AGENT_URL, id: 'video_preroll' },
@@ -1224,18 +1222,17 @@ describe('sync_creatives handler', () => {
       ],
     });
 
-    const creatives = result.creatives as Array<Record<string, unknown>>;
-    expect(typeof creatives[0].creative_id).toBe('string');
-    expect((creatives[0].creative_id as string).length).toBeGreaterThan(0);
+    expect(isError).toBe(true);
+    expect(result.message).toContain('creative_id is required');
   });
 
   it('returns error for empty creatives array', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'sync_creatives', {
+    const { result, isError } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [],
     });
 
-    expect(result.errors).toBeDefined();
+    expect(isError).toBe(true);
     // No creatives field on error response
     expect(result.creatives).toBeUndefined();
   });
@@ -1257,14 +1254,14 @@ describe('sync_creatives handler', () => {
 
   it('returns error for invalid format_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'sync_creatives', {
+    const { result, isError } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [{
         creative_id: 'cr_bad_format',
         format_id: { agent_url: TEST_AGENT_URL, id: 'nonexistent_format' },
       }],
     });
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Unknown format_id');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('Unknown format_id');
   });
 
   it('processes creative-to-package assignments', async () => {
@@ -1349,10 +1346,11 @@ describe('get_media_buys handler', () => {
       }],
     });
 
-    // Retrieve
+    // Retrieve - include pending_activation status since dates are in the future
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server2, 'get_media_buys', {
       account: { brand: { domain: 'getbuys.example' }, operator: 'getbuys.example' },
+      status_filter: ['active', 'pending_activation'],
     });
 
     const buys = result.media_buys as Array<Record<string, unknown>>;
@@ -1444,14 +1442,14 @@ describe('update_media_buy handler', () => {
 
   it('returns error for nonexistent media buy', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'update_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'update_media_buy', {
       media_buy_id: 'nonexistent',
     });
 
-    expect(result.errors).toBeDefined();
+    expect(isError).toBe(true);
   });
 
-  it('warns when updating a nonexistent package', async () => {
+  it('returns error when updating a nonexistent package', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
@@ -1471,14 +1469,15 @@ describe('update_media_buy handler', () => {
     const mediaBuyId = createResult.media_buy_id as string;
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server2, 'update_media_buy', {
+    const { result, isError } = await simulateCallTool(server2, 'update_media_buy', {
       account: { brand: { domain: 'update-warn.example' }, operator: 'update-warn.example' },
       media_buy_id: mediaBuyId,
       packages: [{ package_id: 'nonexistent_pkg', budget: 5000 }],
     });
 
-    expect(result.warnings).toBeDefined();
-    expect((result.warnings as string[])[0]).toContain('Package not found: nonexistent_pkg');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('PACKAGE_NOT_FOUND');
+    expect(result.message).toContain('Package not found: nonexistent_pkg');
   });
 });
 
@@ -1514,14 +1513,14 @@ describe('update_media_buy end_time validation', () => {
     const mediaBuyId = createResult.media_buy_id as string;
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server2, 'update_media_buy', {
+    const { result, isError } = await simulateCallTool(server2, 'update_media_buy', {
       account,
       media_buy_id: mediaBuyId,
       end_time: 'banana',
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid end_time');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('Invalid end_time');
   });
 });
 
@@ -1544,7 +1543,7 @@ describe('create_media_buy package-level date validation', () => {
     const account = { brand: { domain: 'pkgdate.example' }, operator: 'pkgdate.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'pkgdate.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -1557,8 +1556,8 @@ describe('create_media_buy package-level date validation', () => {
       }],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid start_time');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('Invalid start_time');
   });
 
   it('rejects invalid package end_time', async () => {
@@ -1568,7 +1567,7 @@ describe('create_media_buy package-level date validation', () => {
     const account = { brand: { domain: 'pkgdate2.example' }, operator: 'pkgdate2.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'pkgdate2.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -1581,8 +1580,8 @@ describe('create_media_buy package-level date validation', () => {
       }],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid end_time');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('Invalid end_time');
   });
 });
 
@@ -1955,12 +1954,12 @@ describe('get_media_buy_delivery handler', () => {
 
   it('returns not_found for nonexistent media buy', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+    const { result, isError } = await simulateCallTool(server, 'get_media_buy_delivery', {
       media_buy_id: 'mb_nonexistent',
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('not_found');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('MEDIA_BUY_NOT_FOUND');
   });
 
   it('looks up by media_buy_id', async () => {
@@ -2109,7 +2108,7 @@ describe('session limits', () => {
     }
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'limit-mb.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -2121,8 +2120,8 @@ describe('session limits', () => {
       }],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('limit_exceeded');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('LIMIT_EXCEEDED');
   });
 
   it('rejects sync_creatives when session creative limit reached', async () => {
@@ -2140,13 +2139,13 @@ describe('session limits', () => {
     }
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'sync_creatives', {
+    const { result, isError } = await simulateCallTool(server, 'sync_creatives', {
       account,
       creatives: [{ name: 'one-too-many' }],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('limit_exceeded');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('LIMIT_EXCEEDED');
   });
 });
 
@@ -2197,9 +2196,9 @@ describe('update_media_buy pause/resume', () => {
     const pausedPkgs = pauseResult.packages as Array<Record<string, unknown>>;
     expect(pausedPkgs[0].paused).toBe(true);
 
-    // Verify via get_media_buys
+    // Verify via get_media_buys - include pending_activation since dates are future
     const server3 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account });
+    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account, status_filter: ['active', 'pending_activation', 'paused'] });
     const buys = listResult.media_buys as Array<Record<string, unknown>>;
     const buyPkgs = buys[0].packages as Array<Record<string, unknown>>;
     expect(buyPkgs[0].paused).toBe(true);
@@ -2236,7 +2235,7 @@ describe('create_media_buy multi-error collection', () => {
     const account = { brand: { domain: 'multierr.example' }, operator: 'multierr.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'multierr.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -2260,14 +2259,15 @@ describe('create_media_buy multi-error collection', () => {
       ],
     });
 
-    const errors = result.errors as Array<Record<string, unknown>>;
-    expect(errors).toBeDefined();
-    // At minimum: 2 bad product IDs + 1 bad pricing option = 3 errors
-    expect(errors.length).toBeGreaterThanOrEqual(3);
+    expect(isError).toBe(true);
+    // First error is the main one, all_errors has the rest
+    const allErrors = (result.details as Record<string, unknown>)?.all_errors as Array<Record<string, unknown>>;
+    expect(allErrors).toBeDefined();
+    expect(allErrors.length).toBeGreaterThanOrEqual(3);
     // Each error should identify the package by index
-    expect(errors[0].message).toContain('Package 0');
-    expect(errors[1].message).toContain('Package 1');
-    expect(errors[2].message).toContain('Package 2');
+    expect(allErrors[0].message).toContain('Package 0');
+    expect(allErrors[1].message).toContain('Package 1');
+    expect(allErrors[2].message).toContain('Package 2');
   });
 
   it('rejects negative budget', async () => {
@@ -2277,7 +2277,7 @@ describe('create_media_buy multi-error collection', () => {
     const account = { brand: { domain: 'negbudget.example' }, operator: 'negbudget.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'create_media_buy', {
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'negbudget.example' },
       start_time: '2027-06-01T00:00:00Z',
@@ -2289,9 +2289,8 @@ describe('create_media_buy multi-error collection', () => {
       }],
     });
 
-    expect(result.errors).toBeDefined();
-    const errors = result.errors as Array<Record<string, unknown>>;
-    expect(errors[0].message).toContain('non-negative');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('non-negative');
   });
 });
 
@@ -2331,14 +2330,14 @@ describe('update_media_buy budget validation', () => {
     const packageId = pkgs[0].package_id as string;
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server2, 'update_media_buy', {
+    const { result, isError } = await simulateCallTool(server2, 'update_media_buy', {
       account,
       media_buy_id: mediaBuyId,
       packages: [{ package_id: packageId, budget: -500 }],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('non-negative');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('non-negative');
   });
 });
 
@@ -2443,9 +2442,9 @@ describe('get_signals handler', () => {
 
   it('returns error when neither signal_spec nor signal_ids provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'get_signals', { account });
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('signal_spec or signal_ids');
+    const { result, isError } = await simulateCallTool(server, 'get_signals', { account });
+    expect(isError).toBe(true);
+    expect(result.message).toContain('signal_spec or signal_ids');
   });
 
   it('discovers signals by natural language spec', async () => {
@@ -2762,39 +2761,39 @@ describe('activate_signal handler', () => {
 
   it('returns error for nonexistent signal', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'activate_signal', {
+    const { result, isError } = await simulateCallTool(server, 'activate_signal', {
       account,
       signal_agent_segment_id: 'nonexistent_signal',
       destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('SIGNAL_AGENT_SEGMENT_NOT_FOUND');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('SIGNAL_AGENT_SEGMENT_NOT_FOUND');
   });
 
   it('returns error for invalid pricing option', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'activate_signal', {
+    const { result, isError } = await simulateCallTool(server, 'activate_signal', {
       account,
       signal_agent_segment_id: 'trident_likely_ev_buyers',
       pricing_option_id: 'invalid_pricing',
       destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('INVALID_PRICING_MODEL');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_PRICING_MODEL');
   });
 
   it('returns error when destinations is empty', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'activate_signal', {
+    const { result, isError } = await simulateCallTool(server, 'activate_signal', {
       account,
       signal_agent_segment_id: 'trident_likely_ev_buyers',
       destinations: [],
     });
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('destinations');
+    expect(isError).toBe(true);
+    expect(result.message).toContain('destinations');
   });
 
   it('activated signal shows is_live true in subsequent get_signals', async () => {
@@ -2885,10 +2884,10 @@ describe('get_creative_delivery handler', () => {
 
   it('returns validation error when no scoping filter provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'get_creative_delivery', {});
+    const { result, isError } = await simulateCallTool(server, 'get_creative_delivery', {});
 
-    expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('validation_error');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
   });
 
   it('returns empty creatives for unknown media buy', async () => {
@@ -2998,7 +2997,7 @@ describe('get_creative_delivery handler', () => {
       }],
     });
 
-    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account });
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['active', 'completed', 'pending_activation'] });
     const buys = buyResult.media_buys as Array<Record<string, unknown>>;
     const mediaBuyId = buys[0].media_buy_id as string;
     const mbPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
@@ -3055,7 +3054,7 @@ describe('get_creative_delivery handler', () => {
       }],
     });
 
-    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account });
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', { account, status_filter: ['active', 'completed', 'pending_activation'] });
     const buys = buyResult.media_buys as Array<Record<string, unknown>>;
     const mediaBuyId = buys[0].media_buy_id as string;
     const refPkgs = (buys[0] as Record<string, unknown>).packages as Array<Record<string, unknown>>;
@@ -3103,7 +3102,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toEqual({ major_versions: [3] });
     expect(result.protocol_version).toBe('3.0');
-    expect(result.supported_protocols).toEqual(['media_buy', 'governance']);
+    expect(result.supported_protocols).toEqual(['media_buy', 'governance', 'signals']);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
