@@ -193,7 +193,7 @@ Episodes can carry booking, cancellation, and material submission deadlines. The
 | `cancellation_deadline` | datetime | Last date/time to cancel without penalty |
 | `material_deadlines` | array | Ordered stages for creative material submission |
 
-Deadlines MUST be chronologically ordered: `booking_deadline` <= `cancellation_deadline` <= each `material_deadlines[n].due_at` (ascending by array index) <= the installment's `scheduled_at`. Buyer agents SHOULD reject installments where deadlines violate this ordering.
+Deadlines MUST be chronologically ordered: `booking_deadline` ≤ `cancellation_deadline` ≤ each `material_deadlines[n].due_at` (ascending by array index) ≤ the installment's `scheduled_at`. Buyer agents SHOULD reject installments where deadlines violate this ordering.
 
 Each material deadline has:
 
