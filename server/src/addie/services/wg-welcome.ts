@@ -34,7 +34,7 @@ export async function sendWgWelcomeMessage(params: {
   workingGroupSlug: string;
   workingGroupName: string;
 }): Promise<void> {
-  const { userId, userEmail, userName, workingGroupId, workingGroupSlug, workingGroupName } = params;
+  const { userId, userEmail, workingGroupId, workingGroupSlug, workingGroupName } = params;
 
   try {
     // Don't send duplicate welcomes (e.g. leave + rejoin)
