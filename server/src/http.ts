@@ -4842,10 +4842,12 @@ Disallow: /api/admin/
     // Public Perspectives API Routes
     // ========================================
 
-    // GET /api/perspectives - List published perspectives (excludes working group posts)
+    // GET /api/perspectives - List published perspectives (excludes working group posts and RSS)
+    // ?authored=true filters to only authored content (excludes RSS feed articles)
     this.app.get('/api/perspectives', async (req, res) => {
       try {
         const pool = getPool();
+        const authored = req.query.authored === 'true';
         const result = await pool.query(
           `SELECT
             id, slug, content_type, title, subtitle, category, excerpt,
@@ -4854,6 +4856,7 @@ Disallow: /api/admin/
             published_at, display_order, tags, like_count
           FROM perspectives
           WHERE status = 'published' AND working_group_id IS NULL
+            ${authored ? "AND (source_type IS NULL OR source_type != 'rss')" : ''}
           ORDER BY published_at DESC NULLS LAST`
         );
 
