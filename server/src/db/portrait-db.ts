@@ -97,8 +97,9 @@ export async function createPortrait(data: {
   return result.rows[0];
 }
 
-/** Approve a portrait and set it as the profile's active portrait */
+/** Approve a portrait and set it as the profile's active portrait and community avatar */
 export async function approvePortrait(portraitId: string, profileId: string): Promise<PortraitMetadata | null> {
+  const portraitUrl = `/api/portraits/${portraitId}.png`;
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
@@ -111,6 +112,17 @@ export async function approvePortrait(portraitId: string, profileId: string): Pr
       `UPDATE member_profiles SET portrait_id = $1, updated_at = NOW() WHERE id = $2`,
       [portraitId, profileId]
     );
+    // Set the portrait as the community avatar for all users in this org
+    await client.query(
+      `UPDATE users SET avatar_url = $1
+       WHERE workos_user_id IN (
+         SELECT om.workos_user_id
+         FROM member_profiles mp
+         JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
+         WHERE mp.id = $2
+       )`,
+      [portraitUrl, profileId]
+    );
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -122,12 +134,34 @@ export async function approvePortrait(portraitId: string, profileId: string): Pr
   return getPortraitById(portraitId);
 }
 
-/** Remove portrait from a profile (sets portrait_id to NULL) */
+/** Remove portrait from a profile (sets portrait_id to NULL) and clears community avatars */
 export async function removeFromProfile(profileId: string): Promise<void> {
-  await query(
-    `UPDATE member_profiles SET portrait_id = NULL, updated_at = NOW() WHERE id = $1`,
-    [profileId]
-  );
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    // Clear avatar_url for users whose avatar points to a portrait from this profile
+    await client.query(
+      `UPDATE users SET avatar_url = NULL
+       WHERE workos_user_id IN (
+         SELECT om.workos_user_id
+         FROM member_profiles mp
+         JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
+         WHERE mp.id = $1
+       )
+       AND avatar_url LIKE '/api/portraits/%'`,
+      [profileId]
+    );
+    await client.query(
+      `UPDATE member_profiles SET portrait_id = NULL, updated_at = NOW() WHERE id = $1`,
+      [profileId]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /** Soft-delete a portrait (set status to rejected) */
