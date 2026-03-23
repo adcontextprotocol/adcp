@@ -165,6 +165,8 @@ npx adcp \
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `po_number` | string | No | Purchase order number |
+| `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
+| `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
 | `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
@@ -194,6 +196,7 @@ npx adcp \
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
+| `context` | object | No | Opaque correlation data echoed unchanged in the package response. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. |
 
 ## Response
 

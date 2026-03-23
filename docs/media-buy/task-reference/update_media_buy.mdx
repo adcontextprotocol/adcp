@@ -138,6 +138,7 @@ asyncio.run(create_and_pause_campaign())
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
+| `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
 `media_buy_id` is required to identify the media buy to update.

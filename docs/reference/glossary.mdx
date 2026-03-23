@@ -23,7 +23,7 @@ A hashed identifier record representing one person in a CRM audience. Contains a
 Plan-level include/exclude rules that structurally prevent prohibited targeting patterns. Each constraint is an [Audience Selector](#audience-selector). The governance agent evaluates `check_governance` requests against these constraints to detect prohibited targeting before any ad is served.
 
 **Audience Selector**
-A discriminated union describing one targeting criterion — either a signal reference (pointing to a specific data provider signal) or a natural language description. Audience selectors appear in plan audience constraints, `governance_context.audience_targeting`, and `planned_delivery.audience_targeting`.
+A discriminated union describing one targeting criterion — either a signal reference (pointing to a specific data provider signal) or a natural language description. Audience selectors appear in plan audience constraints and `planned_delivery.audience_targeting`.
 
 **Action Source**
 Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `chat`, `email`, `offline`, `system_generated`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.

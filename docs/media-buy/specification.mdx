@@ -75,7 +75,7 @@ Every media buy request involves three entities:
 
 - **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.
 
-- **`media_buy_id`**: Client-provided reference for idempotency. Orchestrators SHOULD include this to enable retry safety.
+- **`idempotency_key`**: Client-generated unique key for safe retries. Sales agents that receive a duplicate key for the same account MUST return the original response rather than re-executing.
 
 ### Asynchronous Operations
 
