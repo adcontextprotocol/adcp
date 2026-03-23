@@ -44,8 +44,8 @@ services:
       - SLACK_SIGNING_SECRET=
       - ADDIE_BOT_TOKEN=
       - ADDIE_SIGNING_SECRET=
-      # Skip git fetch for pre-cloned repos (avoids execSync blocking the event loop on startup)
-      - SKIP_REPO_SYNC=true
+      # Skip external repo indexing in dev (not needed locally)
+      - SKIP_REPO_INDEX=true
     volumes:
       # Mount public directory for hot reloading static files
       - ./server/public:/app/server/public:ro
