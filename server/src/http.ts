@@ -22,6 +22,7 @@ import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
+import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -75,6 +76,7 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
@@ -348,6 +350,7 @@ async function getUserFromRequest(
 
   // Then check WorkOS session
   const sessionCookie = req.cookies?.['wos-session'];
+  // codeql[js/user-controlled-bypass] - session cookie is verified cryptographically by WorkOS sealed session
   if (sessionCookie && AUTH_ENABLED && workos) {
     try {
       const session = workos.userManagement.loadSealedSession({
@@ -708,21 +711,38 @@ export class HTTPServer {
         return next();
       }
 
-      // Determine the file path to check
+      // Sanitize input: split into segments, reject traversal and
+      // non-allowlisted characters. Reconstructing from validated segments
+      // breaks taint propagation from req.path.
+      const segments = urlPath.split('/').filter(Boolean);
+      if (segments.some(s => s === '..' || s === '.' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(s))) {
+        return next();
+      }
+
+      // Determine which file to look for
+      const lastSegment = segments[segments.length - 1] || '';
       let filePath: string;
-      if (urlPath.endsWith('.html')) {
-        filePath = path.join(publicPath, urlPath);
-      } else if (!urlPath.includes('.')) {
-        // Extensionless path - check if .html version exists
-        filePath = path.join(publicPath, urlPath + '.html');
+      if (lastSegment.endsWith('.html')) {
+        filePath = path.join(publicPath, ...segments);
+      } else if (!lastSegment.includes('.')) {
+        // Extensionless path - try .html version
+        filePath = path.join(publicPath, ...segments.slice(0, -1), lastSegment + '.html');
       } else {
-        // Has an extension but not .html - skip
         return next();
       }
 
       try {
-        // Check if file exists
-        await fs.access(filePath);
+        // Read HTML file; for extensionless paths, also try /index.html
+        let html: string;
+        try {
+          html = await fs.readFile(filePath, 'utf-8');
+        } catch {
+          if (lastSegment.endsWith('.html')) {
+            throw new Error('not found');
+          }
+          filePath = path.join(publicPath, ...segments, 'index.html');
+          html = await fs.readFile(filePath, 'utf-8');
+        }
 
         // Cross-domain session bridge: if on AdCP without a session cookie,
         // redirect through AAO to pick up the session (if one exists).
@@ -732,8 +752,7 @@ export class HTTPServer {
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
 
-        // Read and inject config
-        let html = await fs.readFile(filePath, 'utf-8');
+        // Inject config
         const configScript = getAppConfigScript(user);
 
         // Inject before </head>
@@ -1012,6 +1031,11 @@ export class HTTPServer {
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
 
+    // Mount portrait routes
+    this.app.use('/api/portraits', createPublicPortraitRouter());
+    this.app.use('/api/me/portrait', createPortraitRouter({ memberDb, orgDb, invalidateMemberContextCache }));
+    this.app.use('/api/admin/portraits', createAdminPortraitRouter());
+
     // Mount community routes
     const communityDb = new CommunityDatabase();
     const communitySlackDb = new SlackDatabase();
@@ -1105,6 +1129,18 @@ export class HTTPServer {
         return res.redirect('/');
       }
 
+      // Validate destination URL protocol to prevent javascript: or data: redirects
+      try {
+        const parsed = new URL(destinationUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          logger.warn({ trackingId, destinationUrl }, 'Click tracker blocked non-HTTP redirect');
+          return res.redirect('/');
+        }
+      } catch {
+        logger.warn({ trackingId, destinationUrl }, 'Click tracker blocked invalid URL');
+        return res.redirect('/');
+      }
+
       try {
         // Record the click
         await emailDb.recordClick({
@@ -1126,7 +1162,8 @@ export class HTTPServer {
       }
 
       // Always redirect to destination
-      res.redirect(destinationUrl);
+      // CodeQL: email click tracker - URL protocol validated above, intentional redirect to tracked links
+      res.redirect(destinationUrl); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // ==================== Email Preferences & Unsubscribe ====================
@@ -1230,11 +1267,11 @@ export class HTTPServer {
       ${userCategoryPrefs.map(cat => `
         <div class="category">
           <div class="category-info">
-            <h3>${cat.category_name}</h3>
-            <p>${cat.category_description || ''}</p>
+            <h3>${escapeHtml(cat.category_name)}</h3>
+            <p>${escapeHtml(cat.category_description || '')}</p>
           </div>
           <label class="toggle">
-            <input type="checkbox" ${cat.enabled ? 'checked' : ''} onchange="toggleCategory('${cat.category_id}', this.checked)">
+            <input type="checkbox" ${cat.enabled ? 'checked' : ''} onchange="toggleCategory('${escapeHtml(cat.category_id)}', this.checked)">
             <span class="slider"></span>
           </label>
         </div>
@@ -1248,7 +1285,7 @@ export class HTTPServer {
   `}
 
   <script>
-    const token = '${token}';
+    const token = '${escapeHtml(token)}';
 
     async function toggleCategory(categoryId, enabled) {
       try {
@@ -3127,29 +3164,17 @@ export class HTTPServer {
               eventType: event.type,
             }, 'Processing subscription event');
 
+            // Resolve org once for all subscription event types
+            const customerId = subscription.customer as string;
+            const org = await resolveOrgForStripeCustomer({
+              customerId,
+              stripe,
+              orgDb,
+              subscription,
+            });
+
             // For subscription created, record agreement acceptance atomically
             if (event.type === 'customer.subscription.created') {
-              const customerId = subscription.customer as string;
-
-              // Try to find org by stripe_customer_id first
-              let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
-              // If not found, look up by workos_organization_id in Stripe customer metadata
-              if (!org) {
-                logger.info({ customerId }, 'Org not found by customer ID, checking Stripe metadata');
-                const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-                const workosOrgId = customer.metadata?.workos_organization_id;
-
-                if (workosOrgId) {
-                  org = await orgDb.getOrganization(workosOrgId);
-                  if (org) {
-                    // Link the Stripe customer ID to the organization
-                    await orgDb.setStripeCustomerId(workosOrgId, customerId);
-                    logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization');
-                  }
-                }
-              }
-
               if (org) {
                 // Get agreement info from organization's pending fields
                 // (set when user checked the agreement checkbox)
@@ -3360,15 +3385,12 @@ export class HTTPServer {
             // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
-              const customerId = subscription.customer as string;
-              const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
               if (org) {
                 // Calculate period end from subscription or invoice
                 let periodEnd: Date | null = null;
 
-                if ((subscription as any).current_period_end) {
-                  periodEnd = new Date((subscription as any).current_period_end * 1000);
+                if (subscription.current_period_end) {
+                  periodEnd = new Date(subscription.current_period_end * 1000);
                 }
 
                 // Extract pricing details from subscription items
@@ -3513,24 +3535,12 @@ export class HTTPServer {
             // Get organization from customer ID
             const customerId = invoice.customer as string;
 
-            // Try to find org by stripe_customer_id first
-            let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
-
-            // If not found, look up by workos_organization_id in Stripe customer metadata
-            if (!org) {
-              logger.info({ customerId, invoiceId: invoice.id }, 'Org not found by customer ID, checking Stripe metadata');
-              const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-              const workosOrgId = customer.metadata?.workos_organization_id;
-
-              if (workosOrgId) {
-                org = await orgDb.getOrganization(workosOrgId);
-                if (org) {
-                  // Link the Stripe customer ID to the organization
-                  await orgDb.setStripeCustomerId(workosOrgId, customerId);
-                  logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization from invoice webhook');
-                }
-              }
-            }
+            let org = await resolveOrgForStripeCustomer({
+              customerId,
+              stripe,
+              orgDb,
+              invoice,
+            });
 
             if (!org) {
               logger.warn({
@@ -4005,10 +4015,10 @@ export class HTTPServer {
               // Ensure the Stripe customer has org metadata so that subsequent
               // subscription and invoice webhooks can find the org.
               try {
-                const customer = await stripe.customers.retrieve(customerId);
-                if ('deleted' in customer && customer.deleted) {
+                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
+                if ('deleted' in customerRaw && customerRaw.deleted) {
                   logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
-                } else if (!customer.metadata?.workos_organization_id) {
+                } else if (!(customerRaw as Stripe.Customer).metadata?.workos_organization_id) {
                   await stripe.customers.update(customerId, {
                     metadata: { workos_organization_id: workosOrgId },
                   });
@@ -4035,7 +4045,7 @@ export class HTTPServer {
     // Admin sub-pages (accounts, referrals, analytics, geo)
     this.app.get('/admin/referrals', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-referrals.html'));
-    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/admin/accounts'));
+    this.app.get('/admin/prospects', requireAuth, requireAdmin, (req, res) => res.redirect(301, '/admin/accounts'));
     this.app.get('/admin/accounts', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-accounts.html'));
     this.app.get('/admin/accounts/:orgId', requireAuth, requireAdmin, (req, res) =>
@@ -4732,7 +4742,7 @@ export class HTTPServer {
         // Static pages with their priorities and change frequencies
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
-          { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/stories', priority: '0.9', changefreq: 'daily' },
           { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
@@ -5184,6 +5194,7 @@ Disallow: /api/admin/
     });
 
     // GET /auth/callback - Handle OAuth callback from WorkOS
+    // codeql[js/user-controlled-bypass] - OAuth callback must read authorization code from query params
     this.app.get('/auth/callback', async (req, res) => {
       const code = req.query.code as string;
       const state = req.query.state as string;
@@ -5385,10 +5396,22 @@ Disallow: /api/admin/
         if (state) {
           try {
             const parsedState = JSON.parse(state);
-            returnTo = parsedState.return_to || returnTo;
+            const candidateReturnTo = parsedState.return_to || returnTo;
+            // Validate returnTo is a relative path or an allowed AdCP URL to prevent open redirect
+            if ((candidateReturnTo.startsWith('/') && !candidateReturnTo.startsWith('//')) || HTTPServer.isAllowedAdcpUrl(candidateReturnTo)) {
+              returnTo = candidateReturnTo;
+            } else {
+              logger.warn({ returnTo: candidateReturnTo }, 'Blocked invalid return_to from OAuth state');
+            }
             slackUserIdToLink = parsedState.slack_user_id;
             isNativeMode = parsedState.native === true;
-            nativeRedirectUri = parsedState.native_redirect_uri || nativeRedirectUri;
+            const candidateNativeUri = parsedState.native_redirect_uri || nativeRedirectUri;
+            const ALLOWED_NATIVE_SCHEMES = ['addie://'];
+            if (ALLOWED_NATIVE_SCHEMES.some(scheme => candidateNativeUri.startsWith(scheme))) {
+              nativeRedirectUri = candidateNativeUri;
+            } else if (candidateNativeUri !== nativeRedirectUri) {
+              logger.warn({ nativeRedirectUri: candidateNativeUri }, 'Blocked invalid native_redirect_uri from OAuth state');
+            }
             logger.debug({ parsedState, returnTo, slackUserIdToLink, isNativeMode }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
@@ -5525,7 +5548,8 @@ Disallow: /api/admin/
             return res.type('html').send(html);
           }
           logger.debug({ returnTo }, 'Redirecting authenticated user');
-          res.redirect(returnTo);
+          // CodeQL: returnTo validated as relative path or allowed AdCP URL above
+          res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
         }
       } catch (error) {
         logger.error({ err: error }, 'Auth callback error:');
@@ -5539,6 +5563,7 @@ Disallow: /api/admin/
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
       // Dev mode: clear dev-session cookie and redirect to home
+      // codeql[js/user-controlled-bypass] - dev mode check uses server-side env var, not user input
       if (isDevModeEnabled()) {
         logger.debug('Dev mode logout - clearing dev session cookie');
         res.clearCookie(getDevSessionCookieName(), {
@@ -5643,8 +5668,15 @@ Disallow: /api/admin/
     this.app.post('/auth/bridge-callback', express.urlencoded({ extended: false }), (req, res) => {
       // CSRF protection: verify the form POST originated from AAO
       const origin = req.get('origin') || '';
-      if (origin && !origin.endsWith('agenticadvertising.org')) {
-        return res.status(403).send('Invalid origin');
+      if (origin) {
+        try {
+          const parsed = new URL(origin);
+          if (parsed.hostname !== 'agenticadvertising.org' && !parsed.hostname.endsWith('.agenticadvertising.org')) {
+            return res.status(403).send('Invalid origin');
+          }
+        } catch {
+          return res.status(403).send('Invalid origin');
+        }
       }
 
       const returnTo = req.query.return_to as string || '/';
@@ -5673,7 +5705,8 @@ Disallow: /api/admin/
         maxAge: HTTPServer.BRIDGE_CHECK_TTL,
       });
 
-      res.redirect(returnTo);
+      // CodeQL: returnTo validated by isAllowedAdcpUrl check above
+      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /auth/bridge-callback - Handles no-session case (redirect back from bridge without session)
@@ -5692,7 +5725,8 @@ Disallow: /api/admin/
         maxAge: HTTPServer.BRIDGE_CHECK_TTL,
       });
 
-      res.redirect(returnTo);
+      // CodeQL: returnTo validated by isAllowedAdcpUrl check above
+      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /api/me - Get current user info
@@ -6168,6 +6202,7 @@ Disallow: /api/admin/
             // If org has no admin/owner yet, promote this user to owner
             const existingMembers = await workos!.userManagement.listOrganizationMemberships({
               organizationId: organization_id,
+              statuses: ['active', 'inactive', 'pending'],
               limit: 100,
             });
             const hasAdmin = existingMembers.data.some((m) => {
@@ -6299,6 +6334,7 @@ Disallow: /api/admin/
         // Check if org has any existing members
         const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
           organizationId: organization_id,
+          statuses: ['active', 'inactive', 'pending'],
         });
 
         // If org has no members (e.g., prospect org) AND user's email domain matches,
@@ -6725,6 +6761,7 @@ Disallow: /api/admin/
         const profiles = await memberDb.getCarouselProfiles();
 
         // Resolve brand data for carousel profiles
+        // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
         await Promise.all(profiles.map(async (profile) => {
           if (profile.primary_brand_domain) {
             const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
@@ -6851,6 +6888,7 @@ Disallow: /api/admin/
         let credentials: { credential_id: string; credential_name: string; tier: number; awarded_at: string }[] = [];
         try {
           const { getOrgMemberCredentials } = await import('./db/certification-db.js');
+          // codeql[js/user-controlled-bypass] - org ID comes from server-side DB profile, not user input
           credentials = await getOrgMemberCredentials(profile.workos_organization_id);
         } catch { /* credentials optional */ }
 
@@ -7248,6 +7286,7 @@ Disallow: /api/admin/
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+
     await runMigrations();
 
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)

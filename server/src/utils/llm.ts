@@ -54,8 +54,8 @@ export type ModelTier = 'fast' | 'primary' | 'precision';
  * Options for LLM completion
  */
 export interface CompleteOptions {
-  /** The prompt to send (user message) */
-  prompt: string;
+  /** The prompt to send (user message). Accepts a string or content blocks for multimodal input. */
+  prompt: string | Anthropic.Messages.ContentBlockParam[];
   /** Optional system prompt */
   system?: string;
   /** Maximum tokens in response (default: 100) */

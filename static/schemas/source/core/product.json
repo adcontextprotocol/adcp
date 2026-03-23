@@ -53,7 +53,7 @@
     },
     "exclusivity": {
       "$ref": "/schemas/enums/exclusivity.json",
-      "description": "Whether this product offers exclusive access to its inventory. Defaults to 'none' when absent. Most relevant for guaranteed products tied to specific shows or placements."
+      "description": "Whether this product offers exclusive access to its inventory. Defaults to 'none' when absent. Most relevant for guaranteed products tied to specific collections or placements."
     },
     "pricing_options": {
       "type": "array",
@@ -169,6 +169,10 @@
       "minimum": 1,
       "description": "Maximum number of optimization_goals this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1 goal — buyers sending arrays longer than this value should expect the seller to use only the highest-priority (lowest priority number) goal."
     },
+    "measurement_readiness": {
+      "$ref": "/schemas/core/measurement-readiness.json",
+      "description": "Assessment of whether the buyer's event source setup is sufficient for this product to optimize effectively. Only present when the seller can evaluate the buyer's account context. Buyers should check this before creating media buys with event-based optimization goals."
+    },
     "conversion_tracking": {
       "type": "object",
       "description": "Conversion event tracking for this product. Presence indicates the product supports optimization_goals with kind: 'event'. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
@@ -282,24 +286,24 @@
       ],
       "additionalProperties": true
     },
-    "shows": {
+    "collections": {
       "type": "array",
-      "description": "Shows available in this product. Each entry references shows declared in an adagents.json by domain and show ID. Buyers resolve full show objects from the referenced adagents.json.",
+      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json.",
       "items": {
-        "$ref": "/schemas/core/show-selector.json"
+        "$ref": "/schemas/core/collection-selector.json"
       },
       "minItems": 1
     },
-    "show_targeting_allowed": {
+    "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can target a subset of this product's shows. When false (default), the product is a bundle — buyers get all listed shows. When true, buyers can select specific shows in the media buy."
+      "description": "Whether buyers can target a subset of this product's collections. When false (default), the product is a bundle — buyers get all listed collections. When true, buyers can select specific collections in the media buy."
     },
-    "episodes": {
+    "installments": {
       "type": "array",
-      "description": "Specific episodes included in this product. Each episode references its parent show via show_id when the product spans multiple shows. When absent with shows present, the product covers the shows broadly (run-of-show).",
+      "description": "Specific installments included in this product. Each installment references its parent collection via collection_id when the product spans multiple collections. When absent with collections present, the product covers the collections broadly (run-of-collection).",
       "items": {
-        "$ref": "/schemas/core/episode.json"
+        "$ref": "/schemas/core/installment.json"
       }
     },
     "enforced_policies": {

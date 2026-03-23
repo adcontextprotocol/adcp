@@ -430,7 +430,7 @@ export class AddieDatabase {
     activeOnly?: boolean;
     limit?: number;
     offset?: number;
-  } = {}): Promise<AddieKnowledge[]> {
+  } = {}): Promise<{ rows: AddieKnowledge[]; total: number }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     let paramIndex = 1;
@@ -456,28 +456,35 @@ export class AddieDatabase {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    let sql = `
-      SELECT * FROM addie_knowledge
+    const limit = options.limit ?? 100;
+    const offset = options.offset ?? 0;
+
+    params.push(limit);
+    const limitParam = `$${paramIndex++}`;
+    params.push(offset);
+    const offsetParam = `$${paramIndex++}`;
+
+    const sql = `
+      SELECT id, title, category, source_url, source_type, is_active,
+        LEFT(content, 250) as content,
+        fetch_url, fetch_status, last_fetched_at, summary, addie_notes,
+        relevance_tags, quality_score, discovery_source,
+        slack_channel_name, slack_username, slack_permalink,
+        created_by, created_at, updated_at,
+        COUNT(*) OVER()::int as total_count
+      FROM addie_knowledge
       ${whereClause}
       ORDER BY
         CASE WHEN source_type = 'curated' AND fetch_status = 'pending' THEN 0 ELSE 1 END,
         updated_at DESC,
         category,
         title
+      LIMIT ${limitParam} OFFSET ${offsetParam}
     `;
 
-    if (options.limit) {
-      sql += ` LIMIT $${paramIndex++}`;
-      params.push(options.limit);
-    }
-
-    if (options.offset) {
-      sql += ` OFFSET $${paramIndex++}`;
-      params.push(options.offset);
-    }
-
-    const result = await query<AddieKnowledge>(sql, params);
-    return result.rows;
+    const result = await query<AddieKnowledge & { total_count: number }>(sql, params);
+    const total = result.rows[0]?.total_count ?? 0;
+    return { rows: result.rows, total };
   }
 
   /**

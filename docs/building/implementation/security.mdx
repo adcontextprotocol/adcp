@@ -57,23 +57,21 @@ These operations are publicly accessible:
 
 ## Webhook Security
 
-The normative specification for webhook HMAC-SHA256 signing and verification is in [Push Notifications](/docs/building/implementation/webhooks). This section summarizes the key security requirements.
+Webhook signature verification and replay prevention are defined in [Push Notifications](/docs/building/implementation/webhooks#hmac-sha256-recommended-for-production). The normative requirements:
+
+- **Algorithm**: HMAC-SHA256 only
+- **Signed message**: `{unix_timestamp}.{raw_http_body_bytes}` — never re-serialize the JSON
+- **Timing-safe comparison**: MUST use constant-time comparison (e.g., `timingSafeEqual`)
+- **Replay window**: Reject requests where `|current_time - timestamp| > 300` seconds
+- **Minimum secret length**: 32 bytes
 
 ### Verification order
 
-Receivers MUST process incoming webhooks in this order to minimize computation for invalid requests:
-
+Verify in this order to minimize computation on invalid requests:
 1. Reject if `X-ADCP-Signature` or `X-ADCP-Timestamp` header is missing
 2. Reject if timestamp is non-numeric
-3. Reject if timestamp is outside 5-minute window (`|now - timestamp| > 300`)
-4. Compute HMAC-SHA256 and compare using constant-time comparison
-
-### Key requirements
-
-- **Algorithm**: HMAC-SHA256 only
-- **Signed message**: `{unix_timestamp}.{raw_body}` — raw HTTP body bytes, never re-serialized JSON
-- **Timing-safe comparison**: MUST use constant-time comparison (e.g., `crypto.timingSafeEqual`). Buffer lengths MUST match before comparing.
-- **Minimum secret length**: 32 bytes
+3. Reject if timestamp is outside the 5-minute window
+4. Compute and compare HMAC
 
 ### Secret rotation
 
@@ -81,10 +79,9 @@ Receivers MUST process incoming webhooks in this order to minimize computation f
 - Rotation window SHOULD NOT exceed the replay window (5 minutes)
 - Publishers begin signing with the new secret immediately upon rotation
 
-### Webhook URL validation (SSRF prevention)
+### Webhook URL validation (SSRF)
 
 Buyer-provided `push_notification_config.url` is an SSRF vector. Publishers MUST:
-
 - Reject non-HTTPS URLs
 - Reject URLs targeting private/reserved IP ranges (RFC 1918, RFC 6598, link-local)
 - Resolve DNS and validate the resolved IP is not private before connecting
@@ -189,6 +186,17 @@ async function createMediaBuy(request) {
   });
 }
 ```
+
+Buyers MUST generate a unique `idempotency_key` per `(seller, request)` pair. Reusing the same key across sellers allows colluding sellers to correlate requests from the same buyer. Use a fresh UUID v4 for each request.
+
+### Governance Context
+
+`governance_context` is an opaque string that crosses trust boundaries — from governance agent to buyer to seller and back. Implementers should treat it as untrusted input at each hop:
+
+- **Governance agents** MUST treat `governance_context` as a lookup key into server-side state or a signed token (e.g., HMAC-SHA256). Encoding plain-text state in the value allows tampering by intermediaries. If state is encoded directly, it MUST be signed so modification is detectable.
+- **Governance agents** SHOULD bind each `governance_context` to a specific `(plan_id, media_buy_id)` tuple and reject contexts that don't match the request's identifiers. This prevents replay of a context from one media buy onto another.
+- **Sellers** MUST NOT interpret or modify `governance_context`. Store it as received and include it verbatim on all subsequent governance calls.
+- **Buyers** receive `governance_context` from the governance agent and attach it to the protocol envelope. They MUST NOT construct or modify the value.
 
 ### Budget Validation
 

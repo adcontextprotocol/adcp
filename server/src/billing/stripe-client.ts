@@ -1196,6 +1196,16 @@ export async function createCheckoutSession(
     }
     sessionParams.billing_address_collection = 'required';
 
+    // For subscriptions, copy org metadata to the subscription so webhook handlers
+    // can resolve the org even if checkout.session.completed hasn't linked the customer yet.
+    if (mode === 'subscription') {
+      sessionParams.subscription_data = {
+        metadata: {
+          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        },
+      };
+    }
+
     // For one-time payments, also create invoices and customers
     // Note: customer_creation is not allowed in subscription mode - Stripe creates customers automatically
     if (mode === 'payment') {
@@ -1781,7 +1791,7 @@ export async function createEventSponsorshipProduct(input: EventSponsorshipProdu
       const product = existingPrice.product as Stripe.Product;
 
       // Update the product name if it changed
-      if (product && typeof product !== 'string' && !product.deleted) {
+      if (product && typeof product !== 'string' && !('deleted' in product)) {
         if (product.name !== productName) {
           await stripe.products.update(product.id, { name: productName });
           logger.info({ productId: product.id, lookupKey }, 'Updated existing event sponsorship product name');
@@ -1845,7 +1855,7 @@ export async function getProductWithEventInfo(productId: string): Promise<{
 
   try {
     const product = await stripe.products.retrieve(productId);
-    if (product.deleted) return null;
+    if ('deleted' in product) return null;
 
     return {
       product_id: product.id,

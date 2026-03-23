@@ -11,15 +11,7 @@
     },
     "media_buy_ids": {
       "type": "array",
-      "description": "Array of publisher media buy IDs to retrieve. When omitted along with buyer_refs, returns a paginated set of accessible media buys matching status_filter.",
-      "items": {
-        "type": "string"
-      },
-      "minItems": 1
-    },
-    "buyer_refs": {
-      "type": "array",
-      "description": "Array of buyer reference IDs to retrieve",
+      "description": "Array of media buy IDs to retrieve. When omitted, returns a paginated set of accessible media buys matching status_filter.",
       "items": {
         "type": "string"
       },
@@ -38,12 +30,19 @@
           "minItems": 1
         }
       ],
-      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] only when media_buy_ids and buyer_refs are both omitted. When media_buy_ids or buyer_refs are provided, no implicit status filter is applied."
+      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] when media_buy_ids is omitted. When media_buy_ids is provided, no implicit status filter is applied."
     },
     "include_snapshot": {
       "type": "boolean",
       "description": "When true, include a near-real-time delivery snapshot for each package. Snapshots reflect the latest available entity-level stats from the platform (e.g., updated every ~15 minutes on GAM, ~1 hour on batch-only platforms). The staleness_seconds field on each snapshot indicates data freshness. If a snapshot cannot be returned, package.snapshot_unavailable_reason explains why. Defaults to false.",
       "default": false
+    },
+    "include_history": {
+      "type": "integer",
+      "description": "When present, include the last N revision history entries for each media buy (returns min(N, available entries)). Each entry contains revision number, timestamp, actor, and a summary of what changed. Omit or set to 0 to exclude history (default). Recommended: 5-10 for monitoring, 50+ for audit.",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 0
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json",

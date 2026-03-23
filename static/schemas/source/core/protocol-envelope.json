@@ -30,6 +30,13 @@
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Push notification configuration for async task updates (A2A and REST protocols). Echoed from the request to confirm webhook settings. Specifies URL, authentication scheme (Bearer or HMAC-SHA256), and credentials. MCP uses progress notifications instead of webhooks."
     },
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque governance context issued by a governance agent during check_governance. Buyers attach it to media buy requests; sellers persist it and include it on all subsequent governance calls for that media buy's lifecycle. Neither buyers nor sellers interpret this value — only the governance agent that issued it.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
     "payload": {
       "type": "object",
       "description": "The actual task-specific response data. This is the content defined in individual task response schemas (e.g., get-products-response.json, create-media-buy-response.json). Contains only domain-specific data without protocol-level fields.",
@@ -83,7 +90,7 @@
           }
         },
         "payload": {
-          "buyer_ref": "campaign_2024_q1"
+          "account": { "account_id": "acct_123" }
         }
       }
     },
@@ -97,11 +104,9 @@
         "timestamp": "2025-10-14T14:32:15Z",
         "payload": {
           "media_buy_id": "mb_123456",
-          "buyer_ref": "campaign_2024_q1",
           "packages": [
             {
-              "package_id": "pkg_001",
-              "buyer_ref": "pkg_premium_ctv"
+              "package_id": "pkg_001"
             }
           ],
           "errors": [

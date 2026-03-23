@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/get-creative-delivery-request.json",
   "title": "Get Creative Delivery Request",
-  "description": "Request parameters for retrieving creative delivery data including variant-level metrics from a creative agent. At least one scoping filter (media_buy_ids, media_buy_buyer_refs, or creative_ids) is required.",
+  "description": "Request parameters for retrieving creative delivery data including variant-level metrics from a creative agent. At least one scoping filter (media_buy_ids or creative_ids) is required.",
   "type": "object",
   "properties": {
     "account": {
@@ -12,14 +12,6 @@
     "media_buy_ids": {
       "type": "array",
       "description": "Filter to specific media buys by publisher ID. If omitted, returns creative delivery across all matching media buys.",
-      "items": {
-        "type": "string"
-      },
-      "minItems": 1
-    },
-    "media_buy_buyer_refs": {
-      "type": "array",
-      "description": "Filter to specific media buys by buyer reference ID. Alternative to media_buy_ids when the buyer doesn't have the publisher's identifiers.",
       "items": {
         "type": "string"
       },
@@ -61,7 +53,6 @@
   },
   "anyOf": [
     { "required": ["media_buy_ids"] },
-    { "required": ["media_buy_buyer_refs"] },
     { "required": ["creative_ids"] }
   ],
   "additionalProperties": true

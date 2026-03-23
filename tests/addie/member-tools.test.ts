@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import type { MemberContext } from '../../server/src/addie/member-context.js';
 
 // Import the tool definitions directly (no side effects)
 import { MEMBER_TOOLS, createMemberToolHandlers, extractAdcpVersion } from '../../server/src/addie/mcp/member-tools.js';
@@ -150,11 +151,12 @@ describe('createMemberToolHandlers', () => {
       const handlers = createMemberToolHandlers({
         is_mapped: true,
         is_member: true,
+        slack_linked: false,
         workos_user: {
           workos_user_id: 'user_123',
           email: 'test@example.com',
         },
-      });
+      } as MemberContext);
 
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});
@@ -167,7 +169,8 @@ describe('createMemberToolHandlers', () => {
       const handlers = createMemberToolHandlers({
         is_mapped: false,
         is_member: false,
-      });
+        slack_linked: false,
+      } as MemberContext);
 
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});
@@ -181,12 +184,13 @@ describe('createMemberToolHandlers', () => {
       const handlers = createMemberToolHandlers({
         is_mapped: true,
         is_member: false,
+        slack_linked: true,
         slack_user: {
           slack_user_id: 'U12345',
           display_name: 'testuser',
           email: null,
         },
-      });
+      } as MemberContext);
 
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});

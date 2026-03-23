@@ -62,9 +62,17 @@ async function fetchUrlContent(url: string): Promise<string> {
   if (!article || !article.textContent) {
     // Fallback to basic text extraction if Readability fails
     logger.warn({ url }, 'Readability failed to parse article, using fallback');
-    const fallbackText = html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    let fallbackText = html;
+    // Remove script/style blocks (loop to handle nested cases)
+    let prev = '';
+    let iterations = 0;
+    while (prev !== fallbackText && iterations++ < 100) {
+      prev = fallbackText;
+      fallbackText = fallbackText
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    }
+    fallbackText = fallbackText
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();

@@ -53,15 +53,41 @@ const ALLOWED_DOCUMENT_DOMAINS = [
   'sheets.google.com',
 ];
 
+// Trusted domains for direct file links (PDFs, presentations)
+const ALLOWED_FILE_HOSTING_DOMAINS = [
+  'drive.google.com',
+  'docs.google.com',
+  'storage.googleapis.com',
+  'dropbox.com',
+  'www.dropbox.com',
+  'dl.dropboxusercontent.com',
+  'onedrive.live.com',
+  '1drv.ms',
+  'agenticadvertising.org',
+  'www.agenticadvertising.org',
+];
+
+const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.pptx'];
+
 function isAllowedDocumentUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    // Must be HTTPS
     if (parsed.protocol !== 'https:') {
       return false;
     }
-    // Must be an allowed domain
-    return ALLOWED_DOCUMENT_DOMAINS.includes(parsed.hostname);
+    // Allow trusted Google Docs/Sheets domains
+    if (ALLOWED_DOCUMENT_DOMAINS.includes(parsed.hostname)) {
+      return true;
+    }
+    // Allow PDF/PPTX only from trusted file hosting domains
+    const pathname = parsed.pathname.toLowerCase();
+    if (
+      ALLOWED_FILE_HOSTING_DOMAINS.includes(parsed.hostname) &&
+      ALLOWED_FILE_EXTENSIONS.some(ext => pathname.endsWith(ext))
+    ) {
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -110,7 +136,14 @@ const workos = AUTH_ENABLED
  * Fetch and extract metadata from a URL (for link posts)
  */
 async function fetchUrlMetadata(url: string): Promise<{ title: string; excerpt: string; site_name: string }> {
-  const response = await fetch(url, {
+  // Validate URL protocol to prevent SSRF with non-HTTP schemes
+  const parsedUrl = new URL(url);
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('Only http and https URLs are supported');
+  }
+
+  // CodeQL: authenticated endpoint, URL protocol validated above
+  const response = await fetch(url, { // lgtm[js/request-forgery]
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
@@ -1639,7 +1672,7 @@ export function createCommitteeRouters(): {
       if (!isAllowedDocumentUrl(document_url)) {
         return res.status(400).json({
           error: 'Invalid document URL',
-          message: 'Only Google Docs, Sheets, and Drive URLs are supported',
+          message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs or PPTX files are supported',
         });
       }
 
@@ -1740,7 +1773,7 @@ export function createCommitteeRouters(): {
       if (document_url && !isAllowedDocumentUrl(document_url)) {
         return res.status(400).json({
           error: 'Invalid document URL',
-          message: 'Only Google Docs, Sheets, and Drive URLs are supported',
+          message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs or PPTX files are supported',
         });
       }
 
@@ -1863,6 +1896,60 @@ export function createCommitteeRouters(): {
       res.status(500).json({
         error: 'Failed to delete document',
       });
+    }
+  });
+
+  // GET /api/working-groups/assets/:assetId — Serve an extracted document asset (image)
+  publicApiRouter.get('/assets/:assetId', async (req: Request, res: Response) => {
+    try {
+      const { assetId } = req.params;
+
+      if (!UUID_REGEX.test(assetId)) {
+        return res.status(400).send('Invalid asset ID');
+      }
+
+      const asset = await workingGroupDb.getDocumentAssetData(assetId);
+      if (!asset) {
+        return res.status(404).send('Asset not found');
+      }
+
+      const SAFE_SERVE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+      if (!SAFE_SERVE_TYPES.has(asset.mime_type)) {
+        return res.status(415).send('Unsupported media type');
+      }
+
+      res.set({
+        'Content-Type': asset.mime_type,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'",
+        'Content-Disposition': 'inline',
+        'Cache-Control': 'public, max-age=86400',
+      });
+      return res.send(asset.asset_data);
+    } catch (error) {
+      logger.error({ err: error, assetId: req.params.assetId }, 'Failed to serve document asset');
+      res.status(500).send('Internal error');
+    }
+  });
+
+  // GET /api/working-groups/:slug/documents/:documentId/assets — List assets for a document
+  publicApiRouter.get('/:slug/documents/:documentId/assets', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { documentId } = req.params;
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({ error: 'Invalid document ID' });
+      }
+
+      const assets = await workingGroupDb.getDocumentAssets(documentId);
+
+      res.json(assets.map(a => ({
+        ...a,
+        url: `/api/working-groups/assets/${a.id}`,
+      })));
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to list document assets');
+      res.status(500).json({ error: 'Failed to list assets' });
     }
   });
 

@@ -54,6 +54,15 @@ const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 
+/** Strip protocol, path, query, and fragment from a URL to extract the domain. */
+function extractDomain(raw: string): string {
+  let d = raw.replace(/^https?:\/\//, "");
+  const pathIdx = d.search(/[/?#]/);
+  if (pathIdx !== -1) d = d.substring(0, pathIdx);
+  if (d.endsWith("/")) d = d.slice(0, -1);
+  return d.toLowerCase();
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface RegistryApiConfig {
@@ -809,7 +818,7 @@ registry.registerPath({
   operationId: "listPolicies",
   summary: "List policies",
   description:
-    "Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, vertical, and governance domain.",
+    "Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, policy category, and governance domain.",
   tags: ["Policy Registry"],
   request: {
     query: z.object({
@@ -817,7 +826,7 @@ registry.registerPath({
       category: z.enum(["regulation", "standard"]).optional(),
       enforcement: z.enum(["must", "should", "may"]).optional(),
       jurisdiction: z.string().optional().openapi({ example: "EU", description: "Filter by jurisdiction (includes region alias matching)" }),
-      vertical: z.string().optional().openapi({ example: "finance" }),
+      policy_category: z.string().optional().openapi({ example: "age_restricted" }),
       domain: z.string().optional().openapi({ example: "campaign", description: "Filter by governance domain" }),
       limit: z.string().optional().openapi({ type: 'integer', description: "Results per page (default 20, max 1000)" }),
       offset: z.string().optional().openapi({ type: 'integer', description: "Pagination offset (default 0)" }),
@@ -925,7 +934,7 @@ registry.registerPath({
             description: z.string().optional(),
             jurisdictions: z.array(z.string()).optional(),
             region_aliases: z.record(z.string(), z.array(z.string())).optional(),
-            verticals: z.array(z.string()).optional(),
+            policy_categories: z.array(z.string()).optional(),
             channels: z.array(z.string()).optional(),
             effective_date: z.string().optional(),
             sunset_date: z.string().optional(),
@@ -1027,7 +1036,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   router.get("/brands/history", async (req, res) => {
     try {
-      const domain = (req.query.domain as string)?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domain = extractDomain((req.query.domain as string) || "");
       if (!domain) {
         return res.status(400).json({ error: "domain parameter required" });
       }
@@ -1167,7 +1176,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "domain parameter required" });
       }
 
-      const domain = rawDomain.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\/$/, '').toLowerCase();
+      const domain = extractDomain(rawDomain);
 
       // Return cached enrichment if still fresh (avoids Brandfetch API cost)
       const existing = await brandDb.getDiscoveredBrandByDomain(domain);
@@ -1289,7 +1298,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "brand_name is required" });
       }
 
-      const domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domain = extractDomain(rawDomain);
       const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
       if (!domainPattern.test(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
@@ -1379,7 +1388,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   router.get("/properties/history", async (req, res) => {
     try {
-      const domain = (req.query.domain as string)?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domain = extractDomain((req.query.domain as string) || "");
       if (!domain) {
         return res.status(400).json({ error: "domain parameter required" });
       }
@@ -1586,7 +1595,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "authorized_agents array is required" });
       }
 
-      const publisher_domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const publisher_domain = extractDomain(rawDomain);
       const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
       if (!domainPattern.test(publisher_domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
@@ -2117,6 +2126,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Property expansion failed");
+      // codeql[js/user-controlled-bypass] - static error message, no user input in response
       res.status(500).json({ error: "Property expansion failed" });
     }
   });
@@ -2402,11 +2412,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.status(400).json({ error: "brand_name is required" });
     }
 
-    const domain = rawDomain
-      .replace(/^https?:\/\/(www\.)?/, "")
-      .replace(/[/?#].*$/, "")
-      .replace(/\/$/, "")
-      .toLowerCase();
+    const domain = extractDomain(rawDomain).replace(/^www\./, "");
 
     const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
     if (!domainPattern.test(domain)) {
@@ -2536,7 +2542,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         category: req.query.category as any,
         enforcement: req.query.enforcement as any,
         jurisdiction: req.query.jurisdiction as string,
-        vertical: req.query.vertical as string,
+        policy_category: typeof (req.query.policy_category ?? req.query.vertical) === 'string'
+          ? (req.query.policy_category ?? req.query.vertical) as string : undefined,
         domain: req.query.domain as string,
         limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 1000) : undefined,
         offset: parseInt(req.query.offset as string) || 0,
@@ -2665,12 +2672,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
+      // Bridge deprecated field name: verticals → policy_categories
+      if (req.body.verticals !== undefined && req.body.policy_categories === undefined) {
+        req.body.policy_categories = req.body.verticals;
+      }
+
       // Validate JSONB array fields
       if (req.body.jurisdictions !== undefined && !Array.isArray(req.body.jurisdictions)) {
         return res.status(400).json({ error: "jurisdictions must be an array" });
       }
-      if (req.body.verticals !== undefined && !Array.isArray(req.body.verticals)) {
-        return res.status(400).json({ error: "verticals must be an array" });
+      if (req.body.policy_categories !== undefined) {
+        if (!Array.isArray(req.body.policy_categories)) {
+          return res.status(400).json({ error: "policy_categories must be an array" });
+        }
+        if (!req.body.policy_categories.every((v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 100)) {
+          return res.status(400).json({ error: "policy_categories must be an array of non-empty strings" });
+        }
       }
       if (req.body.channels !== undefined && req.body.channels !== null && !Array.isArray(req.body.channels)) {
         return res.status(400).json({ error: "channels must be an array" });
@@ -2695,7 +2712,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           enforcement,
           jurisdictions: req.body.jurisdictions,
           region_aliases: req.body.region_aliases,
-          verticals: req.body.verticals,
+          policy_categories: req.body.policy_categories,
           channels: req.body.channels,
           effective_date: req.body.effective_date,
           sunset_date: req.body.sunset_date,

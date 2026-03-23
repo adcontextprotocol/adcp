@@ -96,7 +96,6 @@ import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-do
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
-import { BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers } from './mcp/brand-sandbox-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
@@ -317,6 +316,45 @@ async function checkAddieThreadParticipation(
     logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to check thread participation');
     return { participated: false, messages: [] };
   }
+}
+
+/** Delay (ms) before Addie responds in channel threads when not explicitly mentioned.
+ *  Gives humans time to reply first. After the delay, re-checks the thread
+ *  and skips if a human has already responded. */
+const THREAD_RESPONSE_DELAY_MS = 45_000; // 45 seconds
+
+/**
+ * Wait before responding in a thread, then re-check if a human has already replied.
+ * Returns true if Addie should still respond, false if a human got there first.
+ */
+async function shouldRespondAfterDelay(
+  channelId: string,
+  threadTs: string,
+  triggerMessageTs: string,
+  botUserId: string,
+): Promise<boolean> {
+  await new Promise(resolve => setTimeout(resolve, THREAD_RESPONSE_DELAY_MS));
+
+  try {
+    const freshMessages = await getThreadReplies(channelId, threadTs);
+    // Check if any human message arrived AFTER the triggering message.
+    // Slack timestamps are "epoch.sequence" strings — string comparison is chronologically correct.
+    const hasNewerHumanReply = freshMessages.some(
+      msg => msg.user
+        && msg.user !== botUserId
+        && msg.ts > triggerMessageTs
+    );
+    return !hasNewerHumanReply;
+  } catch (error) {
+    logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to re-check thread after delay');
+    // On error, respond anyway to avoid silently dropping messages
+    return true;
+  }
+}
+
+/** Working group and council channels get Opus for protocol depth. */
+function isDepthChannel(channelName: string | undefined): boolean {
+  return channelName ? /^(wg-|council-)/.test(channelName) : false;
 }
 
 let boltApp: InstanceType<typeof App> | null = null;
@@ -691,6 +729,27 @@ async function buildRequestContext(
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
         certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
+        // If no module is in progress, inject a strong reminder to call start_certification_module.
+        // Without this, Addie can teach certification content in a guardrail-free zone where
+        // demonstrations aren't tracked and no progress is recorded.
+        if (inProgress.length === 0) {
+          const noModuleWarning = [
+            '⚠️ [CERTIFICATION — NO MODULE ACTIVE] ⚠️',
+            'No certification module is currently in progress for this learner.',
+            '',
+            'MANDATORY: If the learner wants to learn about AdCP, start any module, or asks about agentic advertising in the context of certification:',
+            '1. Call start_certification_module with the appropriate module_id IMMEDIATELY',
+            '2. Do NOT teach, explain, demo, or discuss module content before calling it',
+            '3. Do NOT say "the module is active" or "we are already in the module" — that is FALSE unless you have called start_certification_module in THIS conversation and received a success response',
+            '4. Do NOT call get_products, list_creative_formats, get_signals, or any AdCP demo tool for teaching purposes before starting a module',
+            '',
+            'The ONLY pre-module conversation allowed is helping the learner choose WHICH module to start.',
+            'Once they indicate any module (or say "start certification" / "start A1" / "I want to learn"), call the tool FIRST.',
+          ].join('\n');
+          certContextText = certContextText
+            ? `${noModuleWarning}\n\n${certContextText}`
+            : noModuleWarning;
+        }
       } catch (error) {
         logger.warn({ error }, 'Addie Bolt: Failed to get certification progress for context');
       }
@@ -795,13 +854,6 @@ async function createUserScopedTools(
   const brandHandlers = createBrandToolHandlers();
   allTools.push(...BRAND_TOOLS);
   for (const [name, handler] of brandHandlers) {
-    allHandlers.set(name, handler);
-  }
-
-  // Add brand sandbox tools (certification exercises)
-  const brandSandboxHandlers = createBrandSandboxToolHandlers();
-  allTools.push(...BRAND_SANDBOX_TOOLS);
-  for (const [name, handler] of brandSandboxHandlers) {
     allHandlers.set(name, handler);
   }
 
@@ -946,6 +998,7 @@ async function selectRoutedToolsForSlackResponse(
   isAAOAdmin: boolean;
   unavailableHint: string;
   requiresPrecision: boolean;
+  requiresDepth: boolean;
 }> {
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
     memberContext,
@@ -967,6 +1020,7 @@ async function selectRoutedToolsForSlackResponse(
       isAAOAdmin: userIsAdmin,
       unavailableHint,
       requiresPrecision: false,
+      requiresDepth: false,
     };
   }
 
@@ -1010,6 +1064,7 @@ async function selectRoutedToolsForSlackResponse(
       filteredToolCount: filteredTools.tools.length,
       totalToolCount: userTools.tools.length,
       requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
+      requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     },
     'Addie Bolt: Routed conversational tools'
   );
@@ -1019,6 +1074,7 @@ async function selectRoutedToolsForSlackResponse(
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
+    requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
   };
 }
 
@@ -1308,7 +1364,7 @@ async function handleUserMessage({
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
-    ...(routedTools.requiresPrecision && { modelOverride: ModelConfig.precision }),
+    ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
     ...(hasCertificationContext && { maxMessages: 50 }),
   };
 
@@ -1360,6 +1416,7 @@ async function handleUserMessage({
           activeToolTaskIds.push(taskId);
           // Show tool execution as an in-progress task in the streamed message
           try {
+            // chunks is a Slack streaming API feature not yet in the SDK types
             await streamer.append({
               chunks: [{
                 type: 'task_update',
@@ -1380,6 +1437,7 @@ async function handleUserMessage({
           // Mark tool execution as complete in the streamed message
           const taskId = activeToolTaskIds.pop() || event.tool_name;
           try {
+            // chunks is a Slack streaming API feature not yet in the SDK types
             await streamer.append({
               chunks: [{
                 type: 'task_update',
@@ -1551,6 +1609,7 @@ async function handleUserMessage({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const dmEffectiveModel = (routedTools.requiresPrecision || routedTools.requiresDepth) ? ModelConfig.precision : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -1565,7 +1624,7 @@ async function handleUserMessage({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: AddieModelConfig.chat,
+      model: dmEffectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -1866,10 +1925,14 @@ async function handleAppMention({
     .filter(Boolean)
     .join('\n\n');
 
+  // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
+  const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
+  const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
+
   // Admin users get higher iteration limit for bulk operations
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
   };
 
@@ -1904,6 +1967,7 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const mentionEffectiveModel = mentionUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -1918,7 +1982,7 @@ async function handleAppMention({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: AddieModelConfig.chat,
+      model: mentionEffectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -2540,7 +2604,7 @@ async function handleDirectMessage(
   // Admin users get higher iteration limit for bulk operations
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
   };
 
@@ -2878,10 +2942,14 @@ async function handleActiveThreadReply({
     .filter(Boolean)
     .join('\n\n');
 
+  // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
+  const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
+  const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
+
   // Admin users get higher iteration limit
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
   };
 
@@ -2917,6 +2985,7 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const activeThreadEffectiveModel = threadUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -2931,7 +3000,7 @@ async function handleActiveThreadReply({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: AddieModelConfig.chat,
+      model: activeThreadEffectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -3172,6 +3241,22 @@ async function handleChannelMessage({
         return;
       }
 
+      // In multi-party threads, delay before responding to let humans go first.
+      // Skip delay if user explicitly named Addie (they want her input).
+      const explicitlyNamedAddie = /\baddie\b/i.test(messageText);
+      if (!explicitlyNamedAddie && multiParty) {
+        const shouldRespond = await shouldRespondAfterDelay(
+          channelId, threadTsForCheck, event.ts, context.botUserId
+        );
+        if (!shouldRespond) {
+          logger.info(
+            { channelId, userId, threadTs: threadTsForCheck },
+            'Addie Bolt: Skipping active thread reply — human replied during delay'
+          );
+          return;
+        }
+      }
+
       logger.info({ channelId, userId, threadTs: threadTsForCheck },
         'Addie Bolt: Responding to active thread reply (Addie already participating)');
 
@@ -3321,6 +3406,22 @@ async function handleChannelMessage({
     }
 
     // action === 'respond'
+    // In threaded channel messages, delay before responding to let humans go first.
+    // Skip delay if user explicitly named Addie (they want her input).
+    // @mentions are handled by handleAppMention (filtered at line 3071), DMs at line 3029.
+    if (isInThread && context.botUserId && !/\baddie\b/i.test(messageText)) {
+      const shouldRespond = await shouldRespondAfterDelay(
+        channelId, threadTs, event.ts, context.botUserId
+      );
+      if (!shouldRespond) {
+        logger.info(
+          { channelId, userId, threadTs },
+          'Addie Bolt: Skipping channel response — human replied during delay'
+        );
+        return;
+      }
+    }
+
     logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
@@ -3341,11 +3442,13 @@ async function handleChannelMessage({
       .filter(Boolean)
       .join('\n\n');
 
-    // Use precision model (Opus) for billing/financial queries
-    const effectiveModel = plan.requires_precision ? ModelConfig.precision : AddieModelConfig.chat;
+    // Use Opus for billing, router-flagged depth, or protocol-depth channels (wg-*, council-*)
+    const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
+    const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
+    const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-      ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
+      ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
       requestContext,
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);

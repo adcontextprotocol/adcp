@@ -28,7 +28,8 @@ export class AgentValidator {
     const adagentsUrl = `https://${normalizedDomain}/.well-known/adagents.json`;
 
     try {
-      const response = await fetch(adagentsUrl, {
+      // CodeQL: URL is constructed as https://{normalizedDomain}/.well-known/adagents.json
+      const response = await fetch(adagentsUrl, { // lgtm[js/request-forgery]
         headers: { "User-Agent": "AdCP-Registry/1.0" },
         signal: AbortSignal.timeout(5000),
       });

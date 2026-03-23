@@ -7,7 +7,7 @@ testable: false
 
 Reports how a vendor's service was consumed after campaign delivery. Called by orchestrators to inform a vendor agent (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing.
 
-Each usage record is self-contained — it carries its own `account` and `buyer_campaign_ref`. A single request can span multiple accounts and campaigns.
+Each usage record is self-contained — it carries its own `account` and `media_buy_id`. A single request can span multiple accounts and campaigns.
 
 **Response Time**: ~1s.
 
@@ -32,7 +32,6 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
 | `pricing_option_id` | string | Signals: Yes | Pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. The vendor uses this to verify the correct rate was applied. |
-| `buyer_campaign_ref` | string | No | Buyer's campaign reference (e.g., a `media_buy_id`). Used to group records by campaign. |
 | `impressions` | number | Signals: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
 | `signal_agent_segment_id` | string | Signals: Yes | Signal identifier from `get_signals` |
@@ -60,7 +59,6 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
   "usage": [
     {
       "account": { "account_id": "acct_pinnacle_signals" },
-      "buyer_campaign_ref": "mb_spring_launch_001",
       "signal_agent_segment_id": "luxury_auto_intenders",
       "pricing_option_id": "po_lux_auto_cpm",
       "impressions": 4200000,
@@ -94,7 +92,6 @@ A single request spanning two campaigns across two accounts:
   "usage": [
     {
       "account": { "account_id": "acct_pinnacle_signals" },
-      "buyer_campaign_ref": "mb_spring_q1_001",
       "signal_agent_segment_id": "luxury_auto_intenders",
       "pricing_option_id": "po_lux_auto_cpm",
       "impressions": 2100000,
@@ -103,7 +100,6 @@ A single request spanning two campaigns across two accounts:
     },
     {
       "account": { "account_id": "acct_nova" },
-      "buyer_campaign_ref": "mb_summer_preview_002",
       "signal_agent_segment_id": "eco_conscious_shoppers",
       "pricing_option_id": "po_eco_cpm",
       "impressions": 800000,

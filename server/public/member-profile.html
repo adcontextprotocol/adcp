@@ -1986,6 +1986,16 @@
 
 
       if (photoUrl) {
+        try {
+          const parsed = new URL(photoUrl);
+          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            photoPreview.innerHTML = '<span style="color: var(--color-error-500); font-size: 11px;">Only http/https URLs allowed</span>';
+            return;
+          }
+        } catch {
+          photoPreview.innerHTML = '<span style="color: var(--color-error-500); font-size: 11px;">Invalid URL</span>';
+          return;
+        }
         const img = document.createElement('img');
         img.src = photoUrl;
         img.alt = 'Profile photo';

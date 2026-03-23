@@ -74,6 +74,18 @@
           "$ref": "/schemas/core/creative-policy.json",
           "description": "Creative requirements and restrictions for a product"
         },
+        "deadline-policy": {
+          "$ref": "/schemas/core/deadline-policy.json",
+          "description": "Default deadline rules for installments based on lead times from scheduled_at"
+        },
+        "installment-deadlines": {
+          "$ref": "/schemas/core/installment-deadlines.json",
+          "description": "Booking, cancellation, and material submission deadlines for an installment"
+        },
+        "material-deadline": {
+          "$ref": "/schemas/core/material-deadline.json",
+          "description": "A deadline for creative material submission at a specific stage"
+        },
         "response": {
           "$ref": "/schemas/core/response.json",
           "description": "Standard response structure (MCP)"

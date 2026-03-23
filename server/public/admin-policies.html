@@ -340,7 +340,7 @@
         const regions = regionKeys.map(r =>
           `<span class="jurisdiction-tag">${escapeHtml(r)}</span>`
         ).join('');
-        const verticals = (p.verticals || []).map(v =>
+        const policyCategories = (p.policy_categories || []).map(v =>
           `<span class="jurisdiction-tag">${escapeHtml(v)}</span>`
         ).join('');
         const domains = (p.governance_domains || []).map(d =>
@@ -380,7 +380,7 @@
 
       const jurisdictions = (p.jurisdictions || []).join(', ') ||
         Object.keys(p.region_aliases || {}).join(', ') || 'Global';
-      const verticals = (p.verticals || []).join(', ') || 'All';
+      const policyCategories = (p.policy_categories || []).join(', ') || 'All';
       const domains = (p.governance_domains || []).join(', ') || 'All';
 
       let exemplarsHtml = '';
@@ -424,8 +424,8 @@
               <p>${escapeHtml(jurisdictions)}</p>
             </div>
             <div class="meta-item">
-              <label>Verticals</label>
-              <p>${escapeHtml(verticals)}</p>
+              <label>Policy Categories</label>
+              <p>${escapeHtml(policyCategories)}</p>
             </div>
             <div class="meta-item">
               <label>Governance domains</label>

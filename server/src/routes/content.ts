@@ -684,8 +684,15 @@ export function createContentRouter(): Router {
         });
       }
 
+      // Validate URL protocol to prevent SSRF with non-HTTP schemes
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return res.status(400).json({ error: 'Only http and https URLs are supported' });
+      }
+
       // Fetch the page
-      const response = await fetch(url, {
+      // CodeQL: authenticated endpoint, URL protocol validated above
+      const response = await fetch(url, { // lgtm[js/request-forgery]
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
           'Accept': 'text/html,application/xhtml+xml',
@@ -712,15 +719,16 @@ export function createContentRouter(): Router {
 
       // Decode HTML entities helper
       const decodeHtmlEntities = (text: string): string => {
+        // &amp; must be decoded last to avoid double-decoding (e.g. &amp;lt; -> &lt; -> <)
         return text
-          .replace(/&amp;/g, '&')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
           .replace(/&quot;/g, '"')
           .replace(/&#39;/g, "'")
           .replace(/&nbsp;/g, ' ')
           .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec))
-          .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+          .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+          .replace(/&amp;/g, '&');
       };
 
       // Determine title (prefer og:title, then <title>)
@@ -736,7 +744,7 @@ export function createContentRouter(): Router {
       if (!site_name) {
         try {
           const parsedUrl = new URL(url);
-          site_name = parsedUrl.hostname.replace('www.', '');
+          site_name = parsedUrl.hostname.replace(/www\./g, '');
           // Capitalize first letter
           site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
         } catch {

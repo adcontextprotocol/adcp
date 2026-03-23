@@ -22,7 +22,7 @@
     "openooh_venue_type",
     "rss_url",
     "apple_podcast_id",
-    "spotify_show_id",
+    "spotify_collection_id",
     "podcast_guid"
   ],
   "examples": [

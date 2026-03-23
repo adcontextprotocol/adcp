@@ -375,16 +375,35 @@ function getReposDir(): string {
 function syncRepo(repo: ExternalRepo): string | null {
   const repoPath = path.join(getReposDir(), repo.id);
   const branch = repo.branch || 'main';
+  const hasGitDir = fs.existsSync(path.join(repoPath, '.git'));
+  const hasContent = fs.existsSync(repoPath);
+
+  // Pre-cloned without .git (Docker build stripped it) or sync explicitly skipped
+  if (hasContent && (!hasGitDir || process.env.SKIP_REPO_SYNC === 'true')) {
+    return repoPath;
+  }
+
+  // Validate branch name to prevent command injection (alphanumeric, hyphens, underscores, dots, slashes)
+  if (!/^[a-zA-Z0-9._\-/]+$/.test(branch)) {
+    logger.error({ repoId: repo.id, branch }, 'Addie External Repos: Invalid branch name');
+    return null;
+  }
+
+  // Validate repo URL is a valid git URL (https or git protocol)
+  if (!/^https?:\/\/[^\s"'`$;|&]+$/.test(repo.url) && !/^git@[^\s"'`$;|&]+$/.test(repo.url)) {
+    logger.error({ repoId: repo.id, url: repo.url }, 'Addie External Repos: Invalid repo URL');
+    return null;
+  }
 
   try {
-    if (fs.existsSync(path.join(repoPath, '.git'))) {
-      // Repo exists, pull latest
+    if (hasGitDir) {
+      // Repo with .git exists, pull latest
       logger.debug({ repoId: repo.id }, 'Addie External Repos: Pulling latest');
-      execSync(`git -C "${repoPath}" fetch origin ${branch} --depth=1 2>/dev/null`, {
+      execSync(`git -C "${repoPath}" fetch origin "${branch}" --depth=1 2>/dev/null`, {
         timeout: 30000,
         stdio: 'pipe',
       });
-      execSync(`git -C "${repoPath}" reset --hard origin/${branch} 2>/dev/null`, {
+      execSync(`git -C "${repoPath}" reset --hard "origin/${branch}" 2>/dev/null`, {
         timeout: 10000,
         stdio: 'pipe',
       });
@@ -392,7 +411,7 @@ function syncRepo(repo: ExternalRepo): string | null {
       // Clone fresh (shallow clone for speed)
       logger.info({ repoId: repo.id, url: repo.url }, 'Addie External Repos: Cloning');
       execSync(
-        `git clone --depth=1 --branch ${branch} "${repo.url}" "${repoPath}" 2>/dev/null`,
+        `git clone --depth=1 --branch "${branch}" "${repo.url}" "${repoPath}" 2>/dev/null`,
         {
           timeout: 60000,
           stdio: 'pipe',
@@ -405,8 +424,8 @@ function syncRepo(repo: ExternalRepo): string | null {
       { repoId: repo.id, error: error instanceof Error ? error.message : 'Unknown error' },
       'Addie External Repos: Failed to sync repo'
     );
-    // If we have an existing clone, use it even if pull failed
-    if (fs.existsSync(path.join(repoPath, '.git'))) {
+    // Use cached version if any content exists on disk
+    if (hasContent) {
       logger.info({ repoId: repo.id }, 'Addie External Repos: Using cached version');
       return repoPath;
     }
@@ -742,13 +761,22 @@ export async function initializeExternalRepos(): Promise<void> {
     return;
   }
 
-  // Check if git is available
-  try {
-    execSync('git --version', { stdio: 'pipe' });
-  } catch {
-    logger.warn('Addie External Repos: Git not available, skipping external repo indexing');
+  // Skip all indexing in dev mode (repos not needed locally)
+  if (process.env.SKIP_REPO_INDEX === 'true') {
+    logger.info('Addie External Repos: SKIP_REPO_INDEX=true, skipping external repo indexing');
     initialized = true;
     return;
+  }
+
+  // Git is only needed when SKIP_REPO_SYNC is not set (i.e., runtime cloning/fetching)
+  if (process.env.SKIP_REPO_SYNC !== 'true') {
+    try {
+      execSync('git --version', { stdio: 'pipe' });
+    } catch {
+      logger.warn('Addie External Repos: Git not available, skipping external repo indexing');
+      initialized = true;
+      return;
+    }
   }
 
   logger.info({ repoCount: EXTERNAL_REPOS.length }, 'Addie External Repos: Syncing repositories');

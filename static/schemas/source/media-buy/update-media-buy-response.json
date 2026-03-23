@@ -12,11 +12,16 @@
       "properties": {
         "media_buy_id": {
           "type": "string",
-          "description": "Publisher's identifier for the media buy"
+          "description": "Seller's identifier for the media buy"
         },
-        "buyer_ref": {
-          "type": "string",
-          "description": "Buyer's reference identifier for the media buy"
+        "status": {
+          "$ref": "/schemas/enums/media-buy-status.json",
+          "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused')."
+        },
+        "revision": {
+          "type": "integer",
+          "description": "Revision number after this update. Use this value in subsequent update_media_buy requests for optimistic concurrency.",
+          "minimum": 1
         },
         "implementation_date": {
           "type": [
@@ -37,6 +42,14 @@
             "$ref": "/schemas/core/package.json"
           }
         },
+        "valid_actions": {
+          "type": "array",
+          "description": "Actions the buyer can perform after this update. Saves a round-trip to get_media_buys.",
+          "items": {
+            "type": "string",
+            "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "add_packages", "sync_creatives"]
+          }
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -49,8 +62,7 @@
         }
       },
       "required": [
-        "media_buy_id",
-        "buyer_ref"
+        "media_buy_id"
       ],
       "additionalProperties": true,
       "not": {
@@ -88,11 +100,6 @@
           {
             "required": [
               "media_buy_id"
-            ]
-          },
-          {
-            "required": [
-              "buyer_ref"
             ]
           },
           {

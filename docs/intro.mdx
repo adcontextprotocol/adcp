@@ -263,14 +263,12 @@ Sam has products, creatives, and accounts. Time to buy. One call to `create_medi
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
-  "buyer_ref": "acme_outdoor_summer_q2",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "brand": { "domain": "acmeoutdoor.com" },
   "start_time": "2026-04-01T00:00:00Z",
   "end_time": "2026-06-30T23:59:59Z",
   "packages": [
     {
-      "buyer_ref": "pkg_streamhaus_ctv",
       "product_id": "streamhaus_sports_ctv_q2",
       "budget": 35000,
       "pricing_option_id": "cpm_standard"
@@ -348,12 +346,10 @@ Before any of Sam's campaigns go live, they pass through governance. Jordan, Pin
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
   "plan_id": "acme_outdoor_q2_plan",
-  "buyer_campaign_ref": "AcmeOutdoor_Summer_Q2",
   "binding": "proposed",
   "caller": "https://buyer.pinnacle-agency.com/a2a",
   "tool": "create_media_buy",
   "payload": {
-    "buyer_ref": "acme_outdoor_summer_q2",
     "brand": { "domain": "acmeoutdoor.com" },
     "start_time": "2026-04-01T00:00:00Z",
     "end_time": "2026-06-30T23:59:59Z"
@@ -446,7 +442,7 @@ For deeper performance tracking, AdCP provides two more tools:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
-  "buyer_ref": "acme_outdoor_summer_q2",
+  "media_buy_id": "mb_acme_q2_001",
   "measurement_period": {
     "start": "2026-04-01T00:00:00Z",
     "end": "2026-04-30T23:59:59Z"
@@ -586,7 +582,7 @@ Governance isn't a gate that slows things down. It's the safety net that lets yo
 ## Where do you want to start?
 
 <CardGroup cols={2}>
-  <Card title="I want to buy on AI platforms" icon="cart-shopping" href="/docs/guides/monetizing-ai">
+  <Card title="I want to buy on AI platforms" icon="cart-shopping" href="/docs/sponsored-intelligence/monetizing-ai">
     For brands, agencies, and businesses who want to advertise on AI surfaces
   </Card>
   <Card title="I want to build with AdCP" icon="code" href="/docs/building">
@@ -654,7 +650,7 @@ Run campaigns across more platforms without scaling your team.
 
 AdCP-enabled agents work across all your media partners through a single interface — the same tasks buy CTV inventory, activate audience data, and manage creatives regardless of which platform you're working with.
 
-1. **Read the buyer's guide** — The [monetizing AI guide](/docs/guides/monetizing-ai) explains how this works for brands, agencies, and SMBs.
+1. **Read the buyer's guide** — The [monetizing AI guide](/docs/sponsored-intelligence/monetizing-ai) explains how this works for brands, agencies, and SMBs.
 2. **Check platform support** — See which of your media partners support AdCP, or browse the [registry](/docs/registry).
 3. **Try it with Addie** — [Ask Addie](https://adcontextprotocol.org/chat) to walk you through the protocol — no code required.
 4. **Build your own agent** — No engineering team required. The [certification program](/docs/learning/overview) teaches anyone to build a working advertising agent through vibe coding — describe what you want, an AI coding assistant writes the code.

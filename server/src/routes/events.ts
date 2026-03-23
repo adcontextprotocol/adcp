@@ -152,30 +152,6 @@ export function createEventsRouter(): {
   });
 
   // =========================================================================
-  // PUBLIC PAGE ROUTES (mounted at /)
-  // =========================================================================
-
-  // Public events listing page
-  pageRouter.get("/events", optionalAuth, (req, res, next) => {
-    // Skip if this is the admin route (handled above)
-    if (req.baseUrl === "/admin") {
-      return next();
-    }
-    serveHtmlWithConfig(req, res, "events.html").catch((err) => {
-      logger.error({ err }, "Error serving events page");
-      res.status(500).send("Internal server error");
-    });
-  });
-
-  // Public event detail page
-  pageRouter.get("/events/:slug", optionalAuth, (req, res) => {
-    serveHtmlWithConfig(req, res, "event-detail.html").catch((err) => {
-      logger.error({ err }, "Error serving event detail page");
-      res.status(500).send("Internal server error");
-    });
-  });
-
-  // =========================================================================
   // ADMIN API ROUTES (mounted at /api/admin/events)
   // =========================================================================
 
@@ -1098,7 +1074,7 @@ export function createEventsRouter(): {
         event_slug?: unknown;
       };
 
-      if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
         return res.status(400).json({ error: "Invalid email address" });
       }
 

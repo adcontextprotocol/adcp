@@ -36,27 +36,26 @@ async function loadExternalSchema(uri) {
 // Load all schemas with async compilation
 const schemas = {};
 async function loadSchemas(dir) {
-  const items = fs.readdirSync(dir);
-  
-  for (const item of items) {
-    const itemPath = path.join(dir, item);
-    const stat = fs.statSync(itemPath);
-    
-    if (stat.isDirectory()) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const itemPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
       await loadSchemas(itemPath);
-    } else if (item.endsWith('.json') && item !== 'index.json') {
+    } else if (entry.name.endsWith('.json') && entry.name !== 'index.json') {
       try {
         const schema = JSON.parse(fs.readFileSync(itemPath, 'utf8'));
         if (schema.$id) {
           // Create a fresh AJV instance for each schema to avoid conflicts
-          const schemaAjv = new Ajv({ 
+          const schemaAjv = new Ajv({
             allErrors: true,
             verbose: true,
             strict: false,
             loadSchema: loadExternalSchema
           });
           addFormats(schemaAjv);
-          
+
           schemas[schema.$id] = await schemaAjv.compileAsync(schema);
         }
       } catch (error) {
@@ -211,11 +210,9 @@ const exampleData = {
   },
   
   createMediaBuyRequest: {
-    "buyer_ref": "nike_q1_campaign_2024",
     "account_id": "acc_nike_001",
     "packages": [
       {
-        "buyer_ref": "nike_ctv_sports_package",
         "products": ["ctv_sports_premium"]
       }
     ],
@@ -230,20 +227,16 @@ const exampleData = {
   
   createMediaBuyResponse: {
     "media_buy_id": "mb_12345",
-    "buyer_ref": "nike_q1_campaign_2024",
     "packages": [
       {
         "package_id": "pkg_12345_001",
-        "buyer_ref": "nike_ctv_sports_package"
       }
     ]
   },
 
   createMediaBuyRequestNoAccountId: {
-    "buyer_ref": "single_account_campaign",
     "packages": [
       {
-        "buyer_ref": "display_package",
         "products": ["display_premium_sites"]
       }
     ],
@@ -255,11 +248,9 @@ const exampleData = {
   },
 
   createMediaBuyRequestAsap: {
-    "buyer_ref": "acme_flash_sale_campaign",
     "account_id": "acc_acme_001",
     "packages": [
       {
-        "buyer_ref": "acme_display_package",
         "products": ["display_premium_sites"],
         "format_ids": ["display_300x250"]
       }

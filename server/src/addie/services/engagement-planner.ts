@@ -34,6 +34,11 @@ interface CertificationSummary {
   credentialsEarned: string[];
   hasInProgressTrack: boolean;
   abandonedModuleTitle: string | null;
+  expectationStatus?: 'invited' | 'joined' | 'started' | 'completed' | 'declined';
+  teamCertProgress?: { certified: number; total: number };
+  completionCelebrated?: boolean;
+  snoozedUntil?: string | null;
+  globalCertifiedCount?: number;
 }
 
 interface EngagementContext {
@@ -351,11 +356,12 @@ export function hasMeaningfulEngagement(
     if (capabilities.community_profile_completeness >= 40) return true;
   }
 
-  // Working on certification
+  // Working on certification or invited to certify
   if (certification) {
     if (certification.modulesCompleted > 0) return true;
     if (certification.hasInProgressTrack) return true;
     if (certification.credentialsEarned.length > 0) return true;
+    if (certification.expectationStatus) return true;
   }
 
   // Having a workos_user_id or account_linked alone is not enough —
@@ -752,6 +758,21 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     condition: (ctx) => !!ctx.certification?.abandonedModuleTitle,
   },
   {
+    id: 'cert_invite_nudge',
+    description: 'Their team is working on AdCP certification and they haven\'t started yet. Mention ~90 minutes for basics, link to /certification. Don\'t mention who invited them. If team cert progress is available, use it as social proof. If you know how many professionals are certified across the industry, mention it briefly.',
+    keywords: ['certification', 'team', 'get started'],
+    dimension: 'engagement',
+    baseScore: 66,
+    minStage: 'prospect',
+    condition: (ctx) => {
+      if (!ctx.certification) return false;
+      if (ctx.certification.snoozedUntil && new Date(ctx.certification.snoozedUntil) > new Date()) return false;
+      const status = ctx.certification.expectationStatus;
+      return status === 'invited' ||
+        (status === 'joined' && ctx.certification.modulesCompleted === 0 && !ctx.certification.hasInProgressTrack);
+    },
+  },
+  {
     id: 'continue_certification',
     description: 'Continue their in-progress certification track',
     keywords: ['certification', 'continue', 'module'],
@@ -862,6 +883,18 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     baseScore: 70,
     minStage: 'welcomed',
     condition: (ctx) => !!ctx.certification && ctx.certification.credentialsEarned.length > 0,
+  },
+  {
+    id: 'cert_completion_congrats',
+    description: 'Congratulate them on earning their credential. Lead with the achievement — the credential they earned is the story. If there is a next tier, you may briefly note it exists but frame it as "whenever you\'re ready." If their team is close to 100% certified, that is a stronger closing note than the next tier.',
+    keywords: ['congratulations', 'credential', 'certified', 'team'],
+    dimension: 'recognition',
+    baseScore: 72,
+    minStage: 'welcomed',
+    condition: (ctx) => {
+      if (!ctx.certification) return false;
+      return ctx.certification.expectationStatus === 'completed' && !ctx.certification.completionCelebrated;
+    },
   },
 ];
 
@@ -1099,7 +1132,20 @@ function formatCertificationBlock(cert?: CertificationSummary | null): string {
   } else if (cert.hasInProgressTrack && cert.modulesCompleted < cert.totalModules) {
     lines.push(`  Currently working through a certification track`);
   }
-  if (cert.modulesCompleted === 0 && !cert.hasInProgressTrack) {
+  if (cert.expectationStatus) {
+    lines.push(`  Team certification expectation: ${cert.expectationStatus}`);
+  }
+  if (cert.teamCertProgress) {
+    const pct = cert.teamCertProgress.total > 0 ? cert.teamCertProgress.certified / cert.teamCertProgress.total : 0;
+    if (pct >= 0.25 || cert.teamCertProgress.certified >= 3) {
+      lines.push(`  Their team has ${cert.teamCertProgress.certified} of ${cert.teamCertProgress.total} members certified.`);
+      lines.push(`  You may mention this as encouragement if it feels natural, but don't make it the focus.`);
+    }
+  }
+  if (cert.globalCertifiedCount && cert.globalCertifiedCount >= 10) {
+    lines.push(`  ${cert.globalCertifiedCount} professionals across the industry have earned AdCP certification.`);
+  }
+  if (cert.modulesCompleted === 0 && !cert.hasInProgressTrack && !cert.expectationStatus) {
     return ''; // No certification activity — don't clutter the prompt
   }
   return lines.join('\n') + '\n';

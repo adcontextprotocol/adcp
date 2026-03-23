@@ -56,14 +56,14 @@ function isLikelyArticleUrl(url: string): boolean {
 
   // Skip social media posts (these don't have article content)
   const socialPatterns = [
-    /twitter\.com\/\w+\/status/,
-    /x\.com\/\w+\/status/,
-    /linkedin\.com\/posts/,
-    /linkedin\.com\/feed/,
-    /instagram\.com\/p\//,
-    /tiktok\.com/,
-    /youtube\.com\/watch/,
-    /youtu\.be\//,
+    /^https?:\/\/([^/]+\.)?twitter\.com\/\w+\/status/,
+    /^https?:\/\/([^/]+\.)?x\.com\/\w+\/status/,
+    /^https?:\/\/([^/]+\.)?linkedin\.com\/posts/,
+    /^https?:\/\/([^/]+\.)?linkedin\.com\/feed/,
+    /^https?:\/\/([^/]+\.)?instagram\.com\/p\//,
+    /^https?:\/\/([^/]+\.)?tiktok\.com/,
+    /^https?:\/\/([^/]+\.)?youtube\.com\/watch/,
+    /^https?:\/\/([^/]+\.)?youtu\.be\//,
   ];
   if (socialPatterns.some(pattern => pattern.test(urlLower))) {
     return false;

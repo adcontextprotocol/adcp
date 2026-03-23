@@ -57,11 +57,14 @@ export const invitationRateLimiter = rateLimit({
 
 /**
  * Rate limiter for organization creation
- * Limits: 5 orgs per hour per user
+ * Limits: 15 failed attempts per hour per user
+ * Successful requests (2xx) don't count against the limit so that
+ * legitimate registrations aren't penalized by earlier validation errors.
  */
 export const orgCreationRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // 5 requests per window
+  max: 15,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   store: new PostgresStore('org:'),
@@ -76,7 +79,7 @@ export const orgCreationRateLimiter = rateLimit({
 
     res.status(429).json({
       error: 'Too many requests',
-      message: 'You have exceeded the organization creation limit. Please try again later.',
+      message: 'Too many registration attempts. Please wait an hour and try again, or email hello@agenticadvertising.org for help.',
       retryAfter: Math.ceil(60 * 60),
     });
   },

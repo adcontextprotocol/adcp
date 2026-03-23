@@ -86,12 +86,10 @@
         "message": "Media buy created successfully with 2 packages ready for creative assignment",
         "result": {
           "media_buy_id": "mb_12345",
-          "buyer_ref": "nike_q1_campaign_2024",
           "creative_deadline": "2024-01-30T23:59:59Z",
           "packages": [
             {
               "package_id": "pkg_12345_001",
-              "buyer_ref": "nike_ctv_package",
               "product_id": "ctv_sports_premium",
               "budget": 60000,
               "pacing": "even",

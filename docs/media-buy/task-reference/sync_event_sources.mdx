@@ -123,9 +123,57 @@ asyncio.run(main())
 - `action_source` - Type of event source (website pixel, app SDK, etc.)
 - `managed_by` - Who manages this source: `buyer` or `seller`
 - `setup` - Implementation details (snippet, instructions)
+- `health` - Event source health assessment (when seller supports health scoring)
 - `errors` - Per-source errors (only when `action: "failed"`)
 
 **See schema for complete field list**: [sync-event-sources-response.json](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
+
+### Event Source Health
+
+Sellers that evaluate event source quality include a `health` object on each source in the response. This is analogous to Snap's Event Quality Score or Meta's Event Match Quality — it tells the buyer whether their event integration is working well enough for optimization.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | AdCP-standardized health level: `insufficient`, `minimum`, `good`, `excellent`. Use this for cross-seller decisions. |
+| `detail` | object | Seller-specific scoring (optional). Contains `score`, `max_score`, and optional `label`. Only present when the seller has a native quality score. |
+| `match_rate` | number | Fraction of events matched to ad interactions (0.0-1.0). |
+| `last_event_at` | date-time | Timestamp of the most recent event received. |
+| `evaluated_at` | date-time | When this health assessment was computed. Stale for sellers computing from reporting data. |
+| `events_received_24h` | integer | Events received in the last 24 hours (0 = not firing). |
+| `issues` | array | Actionable problems with severity (`error`, `warning`, `info`) and message. Sort by severity — don't rely on array position. |
+
+```json test=false
+{
+  "event_sources": [
+    {
+      "event_source_id": "web_pixel",
+      "action": "unchanged",
+      "managed_by": "buyer",
+      "health": {
+        "status": "good",
+        "detail": { "score": 7.2, "max_score": 10, "label": "Event Match Quality" },
+        "match_rate": 0.72,
+        "last_event_at": "2026-03-23T14:22:00Z",
+        "evaluated_at": "2026-03-23T14:30:00Z",
+        "events_received_24h": 14200,
+        "issues": [
+          {
+            "severity": "warning",
+            "message": "Missing hashed_email parameter on 38% of purchase events. Adding this improves match rate for cross-device attribution."
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Buyer agents should key decisions off `status`, not `detail.score`. The four-tier status is comparable across all sellers — a buyer agent writes one rule ("require `good` or better for DR products") that works everywhere. The `detail` object is for human dashboards or advanced diagnostics.
+
+Buyer agents can use health data to:
+- Gate product selection on event quality (e.g., require `good` or better for DR products)
+- Surface setup issues to the buyer before campaign launch
+- Prioritize which event sources to fix first
 
 ## Common Scenarios
 

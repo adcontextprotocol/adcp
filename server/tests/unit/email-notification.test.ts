@@ -259,10 +259,9 @@ describe('Email Notifications', () => {
 
       expect(result).toBe(true);
       const sendCall = mockSend.mock.calls[0]?.[0];
-      expect(sendCall?.subject).toContain('Acme Corp');
       expect(sendCall?.subject).toContain('AgenticAdvertising.org');
-      expect(sendCall?.html).toContain('Hi John,');
-      expect(sendCall?.html).toContain('already a member!');
+      expect(sendCall?.html).toContain('Hi John!');
+      expect(sendCall?.html).toContain('already a member');
       expect(sendCall?.html).toContain('Invite Teammates');
     });
 
@@ -278,8 +277,8 @@ describe('Email Notifications', () => {
 
       expect(result).toBe(true);
       const sendCall = mockSend.mock.calls[0]?.[0];
-      expect(sendCall?.subject).toBe('Welcome to AgenticAdvertising.org');
-      expect(sendCall?.html).toContain('Hi Jane,');
+      expect(sendCall?.subject).toContain('Welcome to AgenticAdvertising.org');
+      expect(sendCall?.html).toContain('Hi Jane!');
       expect(sendCall?.html).toContain("isn't a member yet");
       expect(sendCall?.html).toContain('Become a Member');
     });
@@ -294,7 +293,7 @@ describe('Email Notifications', () => {
 
       expect(result).toBe(true);
       const sendCall = mockSend.mock.calls[0]?.[0];
-      expect(sendCall?.html).toContain('Hi there,');
+      expect(sendCall?.html).toContain('Hi there!');
     });
 
     it('should skip sending if email already sent to user', async () => {

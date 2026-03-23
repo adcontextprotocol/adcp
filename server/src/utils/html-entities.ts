@@ -16,10 +16,9 @@ export function decodeHtmlEntities(text: string): string {
       .replace(/&#x([0-9a-fA-F]+);/g, (_, code) =>
         String.fromCodePoint(parseInt(code, 16))
       )
-      // Named entities
+      // Named entities (&amp; must be last to avoid double-decoding e.g. &amp;lt; -> &lt; -> <)
       .replace(/&apos;/g, "'")
       .replace(/&quot;/g, '"')
-      .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&nbsp;/g, ' ')
@@ -30,5 +29,6 @@ export function decodeHtmlEntities(text: string): string {
       .replace(/&ldquo;/g, '\u201C')
       .replace(/&rdquo;/g, '\u201D')
       .replace(/&hellip;/g, '\u2026')
+      .replace(/&amp;/g, '&')
   );
 }

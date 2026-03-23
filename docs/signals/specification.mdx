@@ -70,6 +70,15 @@ Every signal request involves two roles:
 
 - **`activation_key`**: Key for campaign targeting. Signal agents MUST return this when `is_live: true` AND the caller has access to the deployment. Orchestrators MUST use this for targeting (not `signal_agent_segment_id`).
 
+### Governance metadata
+
+Signal definitions MAY include `restricted_attributes` and `policy_categories` fields to enable structural governance matching. Data providers SHOULD declare these so governance agents can deterministically evaluate compliance rather than inferring sensitivity from signal names.
+
+- **`restricted_attributes`**: Array of GDPR Article 9 special category values this signal touches. Governance agents SHOULD prefer declared attributes over semantic inference.
+- **`policy_categories`**: Array of policy category IDs this signal is sensitive for. Governance agents match these against a plan's `policy_categories` to flag sensitive data usage.
+
+See [Declaring governance metadata](/docs/signals/data-providers#declaring-governance-metadata) for implementation details.
+
 ## Tasks
 
 The Signals Protocol defines two tasks. See task reference pages for complete request/response schemas and examples.

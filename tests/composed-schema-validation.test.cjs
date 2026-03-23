@@ -161,11 +161,9 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/create-media-buy-request.json',
     {
-      buyer_ref: 'campaign-2024-q4',
       account: { account_id: 'acc_test_001' },
       packages: [
         {
-          buyer_ref: 'pkg-001',
           product_id: 'ctv_premium',
           budget: 50000,
           pricing_option_id: 'cpm_standard'
@@ -192,11 +190,9 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/create-media-buy-request.json',
     {
-      buyer_ref: 'campaign-simple',
       account: { account_id: 'acc_test_001' },
       packages: [
         {
-          buyer_ref: 'pkg-001',
           product_id: 'display_standard',
           budget: 10000,
           pricing_option_id: 'cpm_fixed'
@@ -214,11 +210,9 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/create-media-buy-request.json',
     {
-      buyer_ref: 'single-account-campaign',
       account: { brand: { domain: 'acmecorp.com' }, operator: 'acmecorp.com' },
       packages: [
         {
-          buyer_ref: 'pkg-001',
           product_id: 'display_standard',
           budget: 10000,
           pricing_option_id: 'cpm_fixed'
@@ -288,11 +282,9 @@ async function runTests() {
       await testBundledSchemaValidation(
         path.join(bundledPath, 'media-buy/create-media-buy-request.json'),
         {
-          buyer_ref: 'campaign-bundled-test',
           account: { account_id: 'acc_test_001' },
           packages: [
             {
-              buyer_ref: 'pkg-001',
               product_id: 'ctv_premium',
               budget: 50000,
               pricing_option_id: 'cpm_standard'

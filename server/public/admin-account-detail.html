@@ -1245,6 +1245,20 @@
 
       <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
 
+      <!-- Discount notice -->
+      <div id="invoiceDiscountNotice" style="display: none; margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm);">
+        <div style="font-size: var(--text-sm);">
+          <strong style="color: var(--color-success-700);">Discount available:</strong>
+          <span id="invoiceDiscountText"></span>
+        </div>
+        <div style="margin-top: var(--space-2);">
+          <label style="font-size: var(--text-sm);">
+            <input type="checkbox" id="applyDiscountToInvoice" checked>
+            Apply discount to invoice
+          </label>
+        </div>
+      </div>
+
       <form id="invoiceForm" onsubmit="submitInvoice(event)">
         <!-- Product Selection -->
         <div id="invoiceProductSection">
@@ -2091,8 +2105,9 @@
 
     async function assignOwner(userId) {
       try {
+        let response;
         if (userId) {
-          await fetch(`/api/admin/organizations/${accountId}/stakeholders`, {
+          response = await fetch(`/api/admin/organizations/${accountId}/stakeholders`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: userId, role: 'owner' })
@@ -2101,15 +2116,19 @@
           // Remove owner
           const currentOwner = accountData.stakeholders?.find(s => s.role === 'owner');
           if (currentOwner) {
-            await fetch(`/api/admin/organizations/${accountId}/stakeholders/${currentOwner.id}`, {
+            response = await fetch(`/api/admin/organizations/${accountId}/stakeholders/${currentOwner.id}`, {
               method: 'DELETE'
             });
           }
         }
+        if (response && !response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || err.message || 'Request failed');
+        }
         location.reload();
       } catch (error) {
         console.error('Error assigning owner:', error);
-        alert('Failed to assign owner');
+        alert('Failed to assign owner: ' + error.message);
       }
     }
 
@@ -2701,7 +2720,7 @@
         if (accountData.discount_percent) {
           discountText = `${accountData.discount_percent}% off`;
         } else {
-          discountText = `$${(accountData.discount_amount_cents / 100).toFixed(0)} off`;
+          discountText = `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(accountData.discount_amount_cents / 100)} off`;
         }
         if (accountData.stripe_promotion_code) {
           discountText += ` (code: ${accountData.stripe_promotion_code})`;
@@ -2863,6 +2882,28 @@
       document.getElementById('sendInvoiceBtn').style.display = 'none';
       document.getElementById('invoiceForm').reset();
 
+      // Show discount notice if org has a discount
+      const invoiceDiscountNotice = document.getElementById('invoiceDiscountNotice');
+      if (accountData.discount_percent || accountData.discount_amount_cents) {
+        invoiceDiscountNotice.style.display = 'block';
+        let discountText = '';
+        if (accountData.discount_percent) {
+          discountText = `${accountData.discount_percent}% off`;
+        } else {
+          discountText = `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(accountData.discount_amount_cents / 100)} off`;
+        }
+        if (accountData.stripe_promotion_code) {
+          discountText += ` (code: ${accountData.stripe_promotion_code})`;
+        }
+        document.getElementById('invoiceDiscountText').textContent = discountText;
+        document.getElementById('applyDiscountToInvoice').checked = true;
+        document.getElementById('applyDiscountToInvoice').onchange = () => {
+          if (invoiceProductsData.length > 0) renderInvoiceProducts(invoiceProductsData);
+        };
+      } else {
+        invoiceDiscountNotice.style.display = 'none';
+      }
+
       // Pre-fill from account data
       if (accountData) {
         document.getElementById('invoiceContactName').value = accountData.prospect_contact_name || '';
@@ -2890,6 +2931,21 @@
       }
     }
 
+    function invoiceDiscountActive() {
+      return document.getElementById('applyDiscountToInvoice')?.checked &&
+        (accountData.discount_percent || accountData.discount_amount_cents);
+    }
+
+    function applyInvoiceDiscount(amountCents) {
+      if (accountData.discount_percent) {
+        return Math.round(amountCents * (1 - accountData.discount_percent / 100));
+      }
+      if (accountData.discount_amount_cents) {
+        return Math.max(0, amountCents - accountData.discount_amount_cents);
+      }
+      return amountCents;
+    }
+
     function renderInvoiceProducts(products) {
       const container = document.getElementById('invoiceProducts');
 
@@ -2898,11 +2954,17 @@
         return;
       }
 
+      const hasDiscount = invoiceDiscountActive();
+
       container.innerHTML = products.map((product, index) => {
-        const price = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD'
-        }).format(product.amount_cents / 100);
+        const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+        const price = fmt(product.amount_cents);
+
+        let discountedPriceHtml = '';
+        if (hasDiscount) {
+          const discountedCents = applyInvoiceDiscount(product.amount_cents);
+          discountedPriceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted); font-weight: normal;">${price}</span> <span style="color: var(--color-success-700); font-weight: var(--font-semibold);">${fmt(discountedCents)}</span>`;
+        }
 
         const interval = product.billing_interval ? `/${product.billing_interval}` : '';
         const displayName = escapeHtml(product.display_name || product.product_name);
@@ -2923,7 +2985,10 @@
           " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
             <strong>${displayName}</strong>
             <br>
-            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
+            ${hasDiscount
+              ? `${discountedPriceHtml}${interval}`
+              : `<span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>`
+            }
             ${description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${description}</span>` : ''}
           </button>
         `;
@@ -2949,13 +3014,17 @@
         amountCents: product.amount_cents
       };
 
-      const price = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(product.amount_cents / 100);
+      const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+      const price = fmt(product.amount_cents);
+
+      let priceHtml = `<span style="color: var(--color-brand);">${price}</span>`;
+      if (invoiceDiscountActive()) {
+        const discountedCents = applyInvoiceDiscount(product.amount_cents);
+        priceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted);">${price}</span> <span style="color: var(--color-success-700);">${fmt(discountedCents)}</span>`;
+      }
 
       document.getElementById('selectedProductDisplay').innerHTML = `
-        <strong>${escapeHtml(displayName)}</strong> - <span style="color: var(--color-brand);">${price}</span>
+        <strong>${escapeHtml(displayName)}</strong> - ${priceHtml}
       `;
 
       document.getElementById('invoiceProductSection').style.display = 'none';
@@ -2975,6 +3044,7 @@
       btn.disabled = true;
       btn.textContent = 'Sending...';
 
+      const applyDiscount = document.getElementById('applyDiscountToInvoice')?.checked;
       const data = {
         lookup_key: selectedInvoiceProduct.lookupKey,
         company_name: document.getElementById('invoiceCompanyName').value,
@@ -2987,7 +3057,8 @@
           state: document.getElementById('invoiceState').value,
           postal_code: document.getElementById('invoicePostalCode').value,
           country: document.getElementById('invoiceCountry').value,
-        }
+        },
+        coupon_id: applyDiscount && accountData.stripe_coupon_id ? accountData.stripe_coupon_id : null,
       };
 
       try {
@@ -3006,6 +3077,7 @@
 
         if (result.success && result.invoice_url) {
           document.getElementById('invoiceBillingSection').style.display = 'none';
+          document.getElementById('invoiceDiscountNotice').style.display = 'none';
           document.getElementById('sendInvoiceBtn').style.display = 'none';
           document.getElementById('invoiceUrl').value = result.invoice_url;
           document.getElementById('invoiceResult').style.display = 'block';

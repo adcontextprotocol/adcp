@@ -11,6 +11,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getPool } from "../db/client.js";
 import { resolveEffectiveMembership } from "../db/org-filters.js";
+import { resolvePreferredOrganization, backfillPrimaryOrganization } from "../db/users-db.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger('html-config');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -137,6 +141,8 @@ export async function enrichUserWithMembership(user: AppUser | null | undefined)
   if (!user?.id || user.isMember !== undefined) return user;
   try {
     const pool = getPool();
+
+    // Try primary_organization_id first (fast path)
     const result = await pool.query(
       `SELECT u.primary_organization_id
        FROM users u
@@ -144,8 +150,23 @@ export async function enrichUserWithMembership(user: AppUser | null | undefined)
          AND u.primary_organization_id IS NOT NULL`,
       [user.id]
     );
-    if (result.rows.length > 0) {
-      const orgId = result.rows[0].primary_organization_id;
+
+    let orgId: string | null = result.rows[0]?.primary_organization_id ?? null;
+
+    // Fall back to organization_memberships if primary_organization_id is not set.
+    // This handles users who signed up after the initial backfill migration.
+    if (!orgId) {
+      orgId = await resolvePreferredOrganization(user.id);
+
+      // Backfill primary_organization_id so future lookups use the fast path
+      if (orgId) {
+        backfillPrimaryOrganization(user.id, orgId).catch((err) => {
+          logger.warn({ error: err, userId: user.id }, 'Best-effort backfill of primary_organization_id failed');
+        });
+      }
+    }
+
+    if (orgId) {
       const membership = await resolveEffectiveMembership(orgId);
       user.isMember = membership.is_member;
     } else {
@@ -229,12 +250,14 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
   );
 
   // Replace meta description
+  // lgtm[js/polynomial-redos] -- matched against server-controlled HTML template, not user input
   result = result.replace(
     /<meta name="description"[^>]*content="Loading\.\.\."/i,
     `<meta name="description" id="pageDescription" content="${safeDesc}"`
   );
 
   // Replace Open Graph tags
+  // lgtm[js/polynomial-redos] -- matched against server-controlled HTML template, not user input
   result = result.replace(
     /<meta property="og:url"[^>]*content=""/i,
     `<meta property="og:url" id="ogUrl" content="${safeUrl}"`
@@ -253,6 +276,7 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
   );
 
   // Replace Twitter tags
+  // lgtm[js/polynomial-redos] -- matched against server-controlled HTML template, not user input
   result = result.replace(
     /<meta name="twitter:url"[^>]*content=""/i,
     `<meta name="twitter:url" id="twitterUrl" content="${safeUrl}"`
@@ -271,6 +295,7 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
   );
 
   // Replace canonical URL
+  // lgtm[js/polynomial-redos] -- matched against server-controlled HTML template, not user input
   result = result.replace(
     /<link rel="canonical"[^>]*href=""/i,
     `<link rel="canonical" id="canonicalUrl" href="${safeUrl}"`
@@ -358,5 +383,6 @@ export async function serveHtmlWithMetaTags(
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
+  // lgtm[js/reflected-xss] -- html is read from static file; config is injected via JSON.stringify which escapes all special characters
   res.send(html);
 }

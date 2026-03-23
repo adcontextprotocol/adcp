@@ -160,8 +160,8 @@ For audio formats with content context:
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{STATION_ID}` | Radio station or podcast identifier | `WXYZ-FM`, `pod_12345` |
-| `{SHOW_NAME}` | Program or show name | `Morning Drive`, `Tech Talk Daily` |
-| `{EPISODE_ID}` | Podcast episode identifier | `ep_2025_01_15` |
+| `{COLLECTION_NAME}` | Program or collection name | `Morning Drive`, `Tech Talk Daily` |
+| `{INSTALLMENT_ID}` | Podcast episode identifier | `ep_2025_01_15` |
 | `{AUDIO_DURATION}` | Content duration in seconds | `3600` |
 
 ### AXE Integration
@@ -267,7 +267,7 @@ Use the macro that matches your catalog's `content_id_type`. For example, a prod
       "duration_ms": 30000
     },
     "impression_tracker": {
-      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&station={STATION_ID}&show={SHOW_NAME}&cb={CACHEBUSTER}"
+      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&station={STATION_ID}&show={COLLECTION_NAME}&cb={CACHEBUSTER}"
     }
   }
 }
@@ -362,7 +362,7 @@ Not all macros are available in all inventory types. Check format specifications
 | `{AD_BREAK_ID}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Audio Content** | | | | | | | | | |
 | `{STATION_ID}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `{SHOW_NAME}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `{COLLECTION_NAME}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **Legend**:
 - ✅ = Available

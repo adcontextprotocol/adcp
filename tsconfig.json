@@ -3,7 +3,7 @@
     "target": "ES2020",
     "module": "ESNext",
     "lib": ["ES2020"],
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": false,
@@ -13,6 +13,6 @@
     "isolatedModules": true,
     "types": ["jest", "node"]
   },
-  "include": ["tests/**/*", "server/src/**/*"],
-  "exclude": ["node_modules", "dist", "docs"]
+  "include": ["server/src/**/*"],
+  "exclude": ["node_modules", "dist", "docs", "tests/**/*", "server/tests/**/*"]
 }

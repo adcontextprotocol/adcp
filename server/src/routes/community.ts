@@ -182,7 +182,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
     try {
       const user = req.user!;
       const allowedFields = [
-        'slug', 'headline', 'bio', 'avatar_url', 'expertise', 'interests',
+        'slug', 'headline', 'bio', 'expertise', 'interests',
         'linkedin_url', 'twitter_url', 'github_username', 'is_public', 'open_to_coffee_chat', 'open_to_intros',
         'city',
       ];
@@ -238,7 +238,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
       }
 
       // Validate URL fields are HTTP(S) only
-      for (const urlField of ['avatar_url', 'linkedin_url', 'twitter_url'] as const) {
+      for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
         const value = updates[urlField];
         if (value && typeof value === 'string') {
           try {
@@ -267,7 +267,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         }
       }
       if (req.body.contact_email !== undefined && typeof req.body.contact_email === 'string' && req.body.contact_email) {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.body.contact_email)) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(req.body.contact_email)) {
           return res.status(400).json({ error: 'Invalid contact email' });
         }
       }
