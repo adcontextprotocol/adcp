@@ -1914,10 +1914,54 @@ export function setupAccountRoutes(
         const membership = membershipResult.rows[0];
         const previousRole = membership.role || "member";
 
+        // If membership ID is missing locally, look it up from WorkOS and backfill
         if (!membership.workos_membership_id) {
-          return res.status(400).json({
-            error: "Cannot update role: missing WorkOS membership ID",
-          });
+          const { workos: workosClient } = await import("../../auth/workos-client.js");
+          if (!workosClient) {
+            return res.status(500).json({ error: "WorkOS client not configured" });
+          }
+          try {
+            const memberships = await workosClient.userManagement.listOrganizationMemberships({
+              userId,
+              organizationId: orgId,
+            });
+            const match = memberships.data.find(
+              (m) => m.userId === userId && m.organizationId === orgId
+            );
+            if (!match) {
+              return res.status(400).json({
+                error: "Cannot update role: membership not found in WorkOS",
+              });
+            }
+            if (!isValidWorkOSMembershipId(match.id)) {
+              logger.error(
+                { orgId, userId, membershipId: match.id },
+                "WorkOS returned invalid membership ID format"
+              );
+              return res.status(400).json({
+                error: "Cannot update role: invalid membership data from WorkOS",
+              });
+            }
+            membership.workos_membership_id = match.id;
+            // Backfill the local cache
+            await pool.query(
+              `UPDATE organization_memberships SET workos_membership_id = $1
+               WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+              [match.id, orgId, userId]
+            );
+            logger.info(
+              { orgId, userId, membershipId: match.id },
+              "Backfilled missing WorkOS membership ID"
+            );
+          } catch (lookupError) {
+            logger.error(
+              { err: lookupError, orgId, userId },
+              "Failed to look up membership from WorkOS"
+            );
+            return res.status(400).json({
+              error: "Cannot update role: unable to resolve WorkOS membership",
+            });
+          }
         }
 
         // Validate membership ID format

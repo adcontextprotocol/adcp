@@ -1475,8 +1475,17 @@
           return await r.json();
         }));
 
-        // Sort by user count descending to suggest largest as primary
-        orgs.sort((a, b) => (b.member_count || 0) - (a.member_count || 0));
+        // Score orgs to recommend the best primary based on financial and engagement signals
+        function scoreMergeCandidate(org) {
+          let score = 0;
+          if (org.stripe_customer_id) score += 100;
+          if (org.subscription_status === 'active') score += 50;
+          if ((org.pending_invoices || []).length > 0) score += 75;
+          score += (org.member_count || 0) * 5;
+          if (org.enrichment_at) score += 10;
+          return score;
+        }
+        orgs.sort((a, b) => scoreMergeCandidate(b) - scoreMergeCandidate(a));
 
         mergeModalElement.innerHTML = `
           <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
@@ -1500,15 +1509,36 @@
                   });
                   const remainingMembers = Math.max(0, (org.member_count || 0) - memberNames.length);
 
+                  const hasStripe = !!org.stripe_customer_id;
+                  const hasSubscription = !!org.subscription_status;
+                  const wgCount = (org.working_groups || []).length;
+
+                  // Build detail tags
+                  const tags = [];
+                  tags.push(`${org.member_count || 0} members`);
+                  if (hasSubscription) {
+                    const subColor = org.subscription_status === 'active' ? 'var(--color-success-700)' : 'var(--color-warning-700)';
+                    tags.push(`<span style="color: ${subColor}; font-weight: var(--font-semibold);">${escapeHtml(org.subscription_status)} subscription</span>`);
+                  }
+                  if (hasStripe && !hasSubscription) {
+                    tags.push('Stripe customer (no subscription)');
+                  }
+                  const pendingInvoices = org.pending_invoices || [];
+                  if (pendingInvoices.length > 0) {
+                    const totalDue = pendingInvoices.reduce((sum, inv) => sum + (inv.amount_due || 0), 0);
+                    const formatted = totalDue > 0 ? `$${(totalDue / 100).toLocaleString()}` : '';
+                    tags.push(`<span style="color: var(--color-warning-700); font-weight: var(--font-semibold);">${pendingInvoices.length} pending invoice${pendingInvoices.length > 1 ? 's' : ''}${formatted ? ` (${formatted})` : ''}</span>`);
+                  }
+                  if (wgCount > 0) tags.push(`${wgCount} working group${wgCount > 1 ? 's' : ''}`);
+                  if (org.company_type) tags.push(escapeHtml(org.company_type));
+
                   return `
-                  <label style="display: flex; align-items: start; gap: var(--space-3); padding: var(--space-3); border: 2px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer;" class="merge-org-option" data-org-id="${org.workos_organization_id || org.id}">
-                    <input type="radio" name="primaryOrg" value="${org.workos_organization_id || org.id}" ${i === 0 ? 'checked' : ''} style="margin-top: 4px;">
+                  <label style="display: flex; align-items: start; gap: var(--space-3); padding: var(--space-3); border: 2px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer;" class="merge-org-option" data-org-id="${escapeHtml(org.workos_organization_id || org.id)}">
+                    <input type="radio" name="primaryOrg" value="${escapeHtml(org.workos_organization_id || org.id)}" ${i === 0 ? 'checked' : ''} style="margin-top: 4px;">
                     <div style="flex: 1;">
                       <div style="font-weight: var(--font-semibold);">${escapeHtml(org.name)}</div>
                       <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
-                        ${org.member_count || 0} members
-                        ${org.subscription_status ? ` • ${escapeHtml(org.subscription_status)}` : ''}
-                        ${org.company_type ? ` • ${escapeHtml(org.company_type)}` : ''}
+                        ${tags.join(' · ')}
                       </div>
                       ${memberNames.length > 0 ? `
                         <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">
@@ -1589,7 +1619,7 @@
       const secondaryOrgId = secondaryOrgIds[0];
 
       try {
-        const response = await fetch(`/api/admin/cleanup/preview-merge?primary=${primaryOrgId}&secondary=${secondaryOrgId}`);
+        const response = await fetch(`/api/admin/cleanup/preview-merge?primary=${encodeURIComponent(primaryOrgId)}&secondary=${encodeURIComponent(secondaryOrgId)}`);
         if (!response.ok) throw new Error('Failed to load preview');
         const preview = await response.json();
 
