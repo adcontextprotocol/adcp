@@ -1,6 +1,6 @@
 ---
 title: AdCP 3.0
-description: "What's new in AdCP 3.0: brand identity and rights, creative workflow upgrades, governance, sponsored intelligence, shows and episodes, 20 media channels, and migration guides from v2."
+description: "What's new in AdCP 3.0: brand identity and rights, creative workflow upgrades, governance, sponsored intelligence, collections and installments, 20 media channels, and migration guides from v2."
 "og:title": "AdCP — AdCP 3.0"
 ---
 
@@ -23,7 +23,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Creative libraries** | Media Buy-centric creative reads/writes | `list_creatives` / `sync_creatives` as Creative Protocol operations plus `supports_generation`, `supports_transformation`, and `has_creative_library` discovery |
 | **Creative governance** | No creative evaluation protocol | `get_creative_features` for security scanning, quality, content categorization |
 | **Disclosure matching** | Position-only disclosure handling | Position + persistence-aware disclosure matching (`continuous`, `initial`, `flexible`) |
-| **Shows and episodes** | No content programming model | `shows` on products with distribution IDs, episode lifecycle, break-based inventory |
+| **Collections and installments** | No content programming model | `shows` on products with distribution IDs, installment lifecycle, break-based inventory |
 | **Planning ergonomics** | No `time_budget`, `preferred_delivery_types`, `exclusivity`, or per-package flights | `time_budget` + `incomplete`, `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time` |
 | **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
@@ -98,14 +98,14 @@ Structured `visual_guidelines` on `brand.json` complement rights by giving gener
 
 ---
 
-### Shows and episodes
+### Collections and installments
 
-Products can now reference persistent content programs — podcasts, TV series, YouTube channels — via `shows`, which follows the same publisher-scoped selector pattern as `publisher_properties`. Shows are declared in the publisher's `adagents.json` and products reference them by publisher domain and show ID. Buyers resolve full show objects from `adagents.json`. Shows include distribution identifiers for cross-seller matching, episode lifecycle states (scheduled, tentative, live, postponed, cancelled, aired, published), break-based ad inventory configuration, talent linking to `brand.json`, and international content rating systems.
+Products can now reference persistent content programs — podcasts, TV series, YouTube channels — via `collections`, which follows the same publisher-scoped selector pattern as `publisher_properties`. Collections are declared in the publisher's `adagents.json` and products reference them by publisher domain and collection ID. Buyers resolve full collection objects from `adagents.json`. Collections include distribution identifiers for cross-seller matching, installment lifecycle states (scheduled, tentative, live, postponed, cancelled, aired, published), break-based ad inventory configuration, talent linking to `brand.json`, and international content rating systems.
 
 Shows support relationships (spinoff, companion, sequel, prequel, crossover) and derivative content (clips, highlights, recaps) for comprehensive content modeling.
 
-<Card title="Shows and episodes" icon="arrow-right" href="/docs/media-buy/product-discovery/shows-and-episodes">
-  Full specification including show schemas, episode lifecycle, and break-based inventory.
+<Card title="Collections and installments" icon="arrow-right" href="/docs/media-buy/product-discovery/collections-and-installments">
+  Full specification including collection schemas, installment lifecycle, and break-based inventory.
 </Card>
 
 ---

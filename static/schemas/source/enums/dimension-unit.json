@@ -8,6 +8,8 @@
     "px",
     "dp",
     "inches",
-    "cm"
+    "cm",
+    "mm",
+    "pt"
   ]
 }
