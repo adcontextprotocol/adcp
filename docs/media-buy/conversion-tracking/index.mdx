@@ -234,7 +234,7 @@ The `status` field is the AdCP-standardized score — comparable across all sell
 
 | Status | Meaning |
 |--------|---------|
-| `insufficient` | Not firing, volume too low, or setup incomplete — optimization cannot run |
+| `insufficient` | Setup incomplete or event quality too low — optimization cannot run |
 | `minimum` | Functional but data quality limits optimization effectiveness |
 | `good` | Meets quality thresholds for most optimization goals |
 | `excellent` | Exceeds quality thresholds across all dimensions |
@@ -264,7 +264,7 @@ Sellers with native API-accessible quality scores (Snap EQS, Meta EMQ) relay the
 - **`good`**: firing steadily, reasonable volume, core event types covered
 - **`excellent`**: high volume, low errors, enhanced matching enabled
 
-When sellers compute health from reporting data, the `evaluated_at` timestamp tells the buyer how fresh the assessment is. The `detail` object is absent for these sellers — there is no native score to relay.
+When sellers compute health from reporting data, the `evaluated_at` timestamp tells the buyer how fresh the assessment is. Assessments older than 24 hours may not reflect recent changes to tag configuration or event volume. The `detail` object is absent for these sellers — there is no native score to relay.
 
 **Schema**: [`/schemas/latest/core/event-source-health.json`](https://adcontextprotocol.org/schemas/latest/core/event-source-health.json)
 
@@ -284,9 +284,11 @@ Measurement readiness is evaluated per product in the context of the buyer's acc
 
 **When `measurement_readiness` is absent**, the product either does not use event-based optimization (CTV awareness, guaranteed display) or the seller does not provide readiness assessments. In both cases, the buyer agent should treat the product as viable. Do not treat absent readiness as `insufficient`.
 
+Unlike event source health, measurement readiness has no `evaluated_at` timestamp — it is evaluated fresh on each `get_products` call using the buyer's current event source configuration.
+
 ### Cross-seller buyer agent pattern
 
-A buyer agent talking to multiple sellers writes one set of rules that works everywhere. The standardized `status` field means no per-seller integration code:
+A buyer agent talking to multiple sellers writes one set of rules that works everywhere. Any status other than `insufficient` means the product can optimize — the question is how well. The standardized `status` field means no per-seller integration code:
 
 ```javascript test=false
 // Works across all sellers — no seller-specific logic
@@ -296,7 +298,7 @@ for (const seller of sellers) {
   // Surface issues from any seller — sort by severity, don't rely on array position
   for (const source of sources.event_sources) {
     if (source.health?.status === "insufficient") {
-      surfaceIssues(source.health.issues);
+      surfaceIssues(source.health.issues ?? []);
     }
   }
 

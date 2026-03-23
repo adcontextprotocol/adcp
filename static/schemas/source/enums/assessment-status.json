@@ -6,7 +6,7 @@
   "type": "string",
   "enum": ["insufficient", "minimum", "good", "excellent"],
   "enumDescriptions": {
-    "insufficient": "Not firing, volume too low, or setup incomplete — optimization cannot run",
+    "insufficient": "Setup incomplete or event quality too low — optimization cannot run",
     "minimum": "Functional but data quality limits optimization effectiveness",
     "good": "Meets quality thresholds for most optimization goals",
     "excellent": "Exceeds quality thresholds across all dimensions"
