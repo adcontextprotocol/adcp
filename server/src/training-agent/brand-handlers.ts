@@ -416,6 +416,7 @@ export const BRAND_TOOLS = [
     name: 'get_brand_identity',
     description: 'Get brand identity data from the talent roster. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: daan_janssen, sofia_reyes, pieter_van_dijk, yuki_tanaka.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -431,6 +432,7 @@ export const BRAND_TOOLS = [
     name: 'get_rights',
     description: 'Search for licensable talent rights. Returns matches with pricing options. Supports natural language queries — interprets intent, budget, and geography. Set include_excluded=true to see filtered-out talent with reasons.',
     annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -448,6 +450,7 @@ export const BRAND_TOOLS = [
     name: 'acquire_rights',
     description: 'Acquire rights from the talent roster. Returns acquired (with generation credentials), pending_approval, or rejected based on campaign category and existing contracts.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -480,6 +483,7 @@ export const BRAND_TOOLS = [
     name: 'update_rights',
     description: 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {

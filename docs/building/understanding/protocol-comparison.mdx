@@ -13,9 +13,9 @@ Both MCP and A2A provide identical AdCP capabilities using the same unified stat
 | **Request Style** | Tool calls | Task messages |
 | **Response Style** | Direct JSON | Artifacts |
 | **Status System** | Unified status field | Unified status field |
-| **Async Handling** | Polling with tasks/get | SSE streaming |
-| **Webhooks** | Protocol wrapper extension | Native PushNotificationConfig |
-| **Task Management** | tasks/list, tasks/get tools | Native tasks/list, tasks/get |
+| **Async Handling** | [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) | SSE streaming |
+| **Webhooks** | `push_notification_config` in tool args | Native PushNotificationConfig |
+| **Task Management** | MCP Tasks (`tasks/get`, `tasks/result`, `tasks/cancel`) | Native task lifecycle |
 | **Context** | Manual (pass context_id) | Automatic (protocol-managed) |
 | **Best For** | Claude, AI assistants | Agent workflows |
 
@@ -91,32 +91,30 @@ Same status and data, different packaging:
 Both protocols handle async operations with the same status progression:
 `submitted` → `working` → `completed`/`failed`
 
-### MCP Async Pattern
+### MCP Async Pattern (MCP Tasks)
 ```javascript
-// Initial response with task_id
-{
-  "status": "submitted",
-  "message": "Creating media buy, requires manual approval",
-  "context_id": "ctx-123",
-  "task_id": "task-456",
-}
-
-// Poll using tasks/get
-const updates = await session.call('tasks/get', {
-  task_id: "task-456",
-  include_result: true
-});
-
-// Optional: Configure webhook
-const response = await session.call('create_media_buy', params, {
-  push_notification_config: {
-    url: "https://buyer.com/webhooks",
-    authentication: {
-      schemes: ["HMAC-SHA256"],
-      credentials: "shared_secret_32_chars"
+// Task-augmented tool call — returns CreateTaskResult immediately
+const createResult = await mcp.callTool({
+  name: "create_media_buy",
+  arguments: {
+    buyer_ref: "nike_q1",
+    packages: [...],
+    push_notification_config: {  // Optional: webhook for session-outliving ops
+      url: "https://buyer.com/webhooks/adcp/create_media_buy/op_123",
+      authentication: { schemes: ["HMAC-SHA256"], credentials: "secret" }
     }
-  }
+  },
+  task: { ttl: 86400000 }  // Request task-augmented execution
 });
+// createResult.task = { taskId: "task-456", status: "working", pollInterval: 5000 }
+
+// Client polls via MCP Tasks protocol (outside the LLM loop)
+const status = await mcp.getTask({ taskId: "task-456" });
+// status = { taskId: "task-456", status: "completed", ... }
+
+// Retrieve the actual CallToolResult
+const result = await mcp.getTaskResult({ taskId: "task-456" });
+// result = { content: [...], isError: false }
 ```
 
 ### A2A Async Pattern
