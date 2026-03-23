@@ -105,7 +105,7 @@
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries.",
+      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
       "maxLength": 255
     },

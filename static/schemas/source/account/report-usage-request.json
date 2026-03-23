@@ -7,7 +7,7 @@
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated unique key for this request. If a request with the same key has already been accepted, the server returns the original response without re-processing. Use a UUID or other unique identifier. Prevents duplicate billing on retries."
+      "description": "Client-generated unique key for this request. If a request with the same key has already been accepted, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request. Prevents duplicate billing on retries."
     },
     "reporting_period": {
       "$ref": "/schemas/core/datetime-range.json",
@@ -23,6 +23,10 @@
           "account": {
             "$ref": "/schemas/core/account-ref.json",
             "description": "Account for this usage record."
+          },
+          "media_buy_id": {
+            "type": "string",
+            "description": "Seller-assigned media buy identifier. Links this usage record to a specific media buy."
           },
           "vendor_cost": {
             "type": "number",

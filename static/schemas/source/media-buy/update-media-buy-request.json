@@ -39,7 +39,7 @@
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once.",
+      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
       "minLength": 16,
       "maxLength": 255
     },
