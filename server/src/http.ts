@@ -709,26 +709,26 @@ export class HTTPServer {
         return next();
       }
 
-      // Determine the file path to check
-      const resolvedPublic = path.resolve(publicPath);
-
-      // Read a file only if its resolved path stays within publicPath
-      async function safeReadPublicFile(candidate: string): Promise<string> {
-        const resolved = path.resolve(candidate);
-        if (!resolved.startsWith(resolvedPublic + path.sep) && resolved !== resolvedPublic) {
-          throw new Error('not found');
-        }
-        return fs.readFile(resolved, 'utf-8');
+      // Sanitize urlPath: normalize and reject any traversal above root
+      const safePath = path.posix.normalize(urlPath);
+      if (safePath.startsWith('..') || safePath.includes('/../')) {
+        return next();
       }
 
       let filePath: string;
-      if (urlPath.endsWith('.html')) {
-        filePath = path.join(publicPath, urlPath);
-      } else if (!urlPath.includes('.')) {
+      if (safePath.endsWith('.html')) {
+        filePath = path.join(publicPath, safePath);
+      } else if (!safePath.includes('.')) {
         // Extensionless path - check if .html version exists
-        filePath = path.join(publicPath, urlPath + '.html');
+        filePath = path.join(publicPath, safePath + '.html');
       } else {
         // Has an extension but not .html - skip
+        return next();
+      }
+
+      // Verify the resolved path stays within publicPath
+      const resolvedPublic = path.resolve(publicPath);
+      if (!path.resolve(filePath).startsWith(resolvedPublic + path.sep)) {
         return next();
       }
 
@@ -736,13 +736,17 @@ export class HTTPServer {
         // Read HTML file directly; for extensionless paths, also try /index.html
         let html: string;
         try {
-          html = await safeReadPublicFile(filePath);
+          html = await fs.readFile(filePath, 'utf-8');
         } catch {
-          if (urlPath.endsWith('.html')) {
+          if (safePath.endsWith('.html')) {
             throw new Error('not found');
           }
-          filePath = path.join(publicPath, urlPath, 'index.html');
-          html = await safeReadPublicFile(filePath);
+          const indexPath = path.join(publicPath, safePath, 'index.html');
+          if (!path.resolve(indexPath).startsWith(resolvedPublic + path.sep)) {
+            throw new Error('not found');
+          }
+          filePath = indexPath;
+          html = await fs.readFile(filePath, 'utf-8');
         }
 
         // Cross-domain session bridge: if on AdCP without a session cookie,
