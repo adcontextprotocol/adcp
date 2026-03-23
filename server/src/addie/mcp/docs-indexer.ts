@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../../logger.js';
+import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 
 // Website pages to EXCLUDE from indexing (admin, dashboard, etc.)
 const WEBSITE_PAGES_TO_EXCLUDE = [
@@ -529,16 +530,29 @@ export async function initializeDocsIndex(): Promise<void> {
     logger.warn({ paths: possiblePublicPaths }, 'Addie Docs: Could not find public directory');
   }
 
+  // Index working group documents from database
+  try {
+    const workingGroupDocs = await loadWorkingGroupDocuments();
+    docsIndex.push(...workingGroupDocs);
+    if (workingGroupDocs.length > 0) {
+      logger.info({ count: workingGroupDocs.length }, 'Addie Docs: Indexed working group documents');
+    }
+  } catch (error) {
+    logger.warn({ error }, 'Addie Docs: Failed to index working group documents');
+  }
+
   initialized = true;
 
   const categories = [...new Set(docsIndex.map((d) => d.category))];
   const websiteCount = docsIndex.filter((d) => d.category === 'website').length;
+  const workingGroupCount = docsIndex.filter((d) => d.category.startsWith('working group')).length;
 
   logger.info(
     {
       totalDocs: docsIndex.length,
       totalHeadings: headingsIndex.length,
       websitePages: websiteCount,
+      workingGroupDocs: workingGroupCount,
       categories: categories.join(', '),
     },
     'Addie Docs: Indexing complete'
@@ -719,4 +733,66 @@ export function searchHeadings(
  */
 export function getHeadingById(id: string): IndexedHeading | null {
   return headingsIndex.find((h) => h.id === id) || null;
+}
+
+/**
+ * Load working group documents from the database into the in-memory index.
+ * Documents are categorized by their working group name so they're
+ * naturally filterable alongside other doc categories.
+ */
+async function loadWorkingGroupDocuments(): Promise<IndexedDoc[]> {
+  const workingGroupDb = new WorkingGroupDatabase();
+  const documents = await workingGroupDb.getIndexedDocumentsWithContent();
+  const indexed: IndexedDoc[] = [];
+
+  for (const doc of documents) {
+    const id = `wg-doc:${doc.working_group_slug}/${doc.id}`;
+    const category = `working group: ${doc.working_group_name.toLowerCase()}`;
+    let content = doc.last_content || '';
+
+    // Append asset descriptions so visual content is searchable
+    try {
+      const assets = await workingGroupDb.getDocumentAssets(doc.id);
+      const described = assets.filter(a => a.description);
+      if (described.length > 0) {
+        const assetSection = described
+          .map(a => `[Image: ${a.description}] (${process.env.BASE_URL || ''}/api/working-groups/assets/${a.id})`)
+          .join('\n');
+        content += `\n\n## Visual Assets\n${assetSection}`;
+      }
+    } catch {
+      // Asset descriptions are supplementary — don't fail the whole doc
+    }
+
+    indexed.push({
+      id,
+      title: doc.title,
+      category,
+      path: `working-groups/${doc.working_group_slug}/${doc.id}`,
+      content,
+      sourceUrl: doc.document_url,
+    });
+  }
+
+  return indexed;
+}
+
+/**
+ * Refresh working group documents in the in-memory index.
+ * Called by the committee document indexer after processing changes.
+ * Removes stale entries and reloads from the database.
+ */
+export async function refreshWorkingGroupDocs(): Promise<void> {
+  if (!initialized) return;
+
+  // Remove existing working group docs from index
+  docsIndex = docsIndex.filter((doc) => !doc.id.startsWith('wg-doc:'));
+
+  try {
+    const workingGroupDocs = await loadWorkingGroupDocuments();
+    docsIndex.push(...workingGroupDocs);
+    logger.info({ count: workingGroupDocs.length }, 'Addie Docs: Refreshed working group documents');
+  } catch (error) {
+    logger.warn({ error }, 'Addie Docs: Failed to refresh working group documents');
+  }
 }

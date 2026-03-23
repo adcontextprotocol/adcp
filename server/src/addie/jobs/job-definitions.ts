@@ -6,7 +6,7 @@
  */
 
 import { jobScheduler } from './scheduler.js';
-import { runDocumentIndexerJob } from './committee-document-indexer.js';
+import { runDocumentIndexerJob, generateAssetDescriptions } from './committee-document-indexer.js';
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
 import { runRelationshipOrchestratorCycle } from '../services/relationship-orchestrator.js';
 import { enrichMissingOrganizations } from '../../services/enrichment.js';
@@ -97,6 +97,19 @@ export function registerAllJobs(): void {
     runner: runDocumentIndexerJob,
     options: { batchSize: 20 },
     shouldLogResult: (r) => r.documentsChecked > 0,
+  });
+
+  // Asset description generator - uses Claude vision to describe extracted images
+  jobScheduler.register({
+    name: 'asset-description-generator',
+    description: 'Asset description generator',
+    interval: { value: 30, unit: 'minutes' },
+    initialDelay: { value: 3, unit: 'minutes' },
+    runner: async () => {
+      const described = await generateAssetDescriptions(5);
+      return { assetsDescribed: described };
+    },
+    shouldLogResult: (r: { assetsDescribed: number }) => r.assetsDescribed > 0,
   });
 
   // Summary generator - generates AI summaries for committees
