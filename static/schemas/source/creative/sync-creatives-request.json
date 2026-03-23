@@ -56,21 +56,24 @@
             "minItems": 1
           }
         },
-        "required": ["creative_id", "package_id"],
+        "required": [
+          "creative_id",
+          "package_id"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution.",
-      "minLength": 8,
+      "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
       "maxLength": 255
     },
     "delete_missing": {
       "type": "boolean",
       "default": false,
-      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement. Invalid when creative_ids is provided — delete_missing applies to the entire library scope, not a filtered subset."
+      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement. Invalid when creative_ids is provided \u2014 delete_missing applies to the entire library scope, not a filtered subset."
     },
     "dry_run": {
       "type": "boolean",
@@ -102,7 +105,9 @@
     {
       "description": "Full sync with hosted video creative",
       "data": {
-        "account": { "account_id": "acct_acmecorp" },
+        "account": {
+          "account_id": "acct_acmecorp"
+        },
         "creatives": [
           {
             "creative_id": "hero_video_30s",
@@ -126,15 +131,23 @@
           }
         ],
         "assignments": [
-          { "creative_id": "hero_video_30s", "package_id": "pkg_ctv_001" },
-          { "creative_id": "hero_video_30s", "package_id": "pkg_ctv_002" }
+          {
+            "creative_id": "hero_video_30s",
+            "package_id": "pkg_ctv_001"
+          },
+          {
+            "creative_id": "hero_video_30s",
+            "package_id": "pkg_ctv_002"
+          }
         ]
       }
     },
     {
       "description": "Generative creative with approval",
       "data": {
-        "account": { "account_id": "acct_acmecorp" },
+        "account": {
+          "account_id": "acct_acmecorp"
+        },
         "creatives": [
           {
             "creative_id": "holiday_hero",
@@ -163,7 +176,9 @@
     {
       "description": "Scoped update using creative_ids filter",
       "data": {
-        "account": { "account_id": "acct_acmecorp" },
+        "account": {
+          "account_id": "acct_acmecorp"
+        },
         "creative_ids": [
           "hero_video_30s",
           "banner_300x250"

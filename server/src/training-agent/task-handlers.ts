@@ -19,7 +19,6 @@ import type {
   FormatID,
   Format,
   CreateMediaBuyRequest,
-  PackageRequest,
   UpdateMediaBuyRequest,
   GetProductsRequest,
   GetMediaBuysRequest,
@@ -32,7 +31,13 @@ import type {
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
 } from '@adcp/client';
-import { adcpError } from '@adcp/client';
+/** Build a structured MCP error response for tool calls. */
+function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string }) {
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: JSON.stringify({ code, ...opts }) }],
+  };
+}
 
 // Derive types from SDK request types that aren't re-exported from main entry
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
@@ -110,7 +115,6 @@ interface SignalPricingOption {
 /** Package delivery metrics in get_media_buy_delivery response. */
 interface PackageDeliveryMetrics {
   package_id: string;
-  buyer_ref: string;
   spend: number;
   impressions: number;
   clicks: number;
@@ -300,7 +304,6 @@ const TOOLS = [
         brand: { type: 'object' },
         filters: { type: 'object' },
         fields: { type: 'array', items: { type: 'string' } },
-        buyer_campaign_ref: { type: 'string' },
       },
       required: ['buying_mode'],
     },
@@ -324,8 +327,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        buyer_ref: { type: 'string' },
-        buyer_campaign_ref: { type: 'string' },
+        idempotency_key: { type: 'string' },
         account: ACCOUNT_REF_SCHEMA,
         brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
         packages: {
@@ -336,7 +338,6 @@ const TOOLS = [
               product_id: { type: 'string' },
               pricing_option_id: { type: 'string' },
               budget: { type: 'number' },
-              buyer_ref: { type: 'string' },
               bid_price: { type: 'number' },
               impressions: { type: 'number' },
               paused: { type: 'boolean' },
@@ -355,7 +356,7 @@ const TOOLS = [
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
       },
-      required: ['buyer_ref', 'account', 'brand', 'start_time', 'end_time'],
+      required: ['account', 'brand', 'start_time', 'end_time'],
     },
   },
   {
@@ -381,7 +382,6 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
         media_buy_ids: { type: 'array', items: { type: 'string' }, description: 'Plural form (SDK)' },
-        buyer_ref: { type: 'string' },
       },
       required: ['media_buy_id'] as const,
     },
@@ -415,14 +415,13 @@ const TOOLS = [
   },
   {
     name: 'get_creative_delivery',
-    description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids, media_buy_buyer_refs, or creative_ids.',
+    description: 'Get variant-level creative delivery data including what was generated, manifests, and per-variant metrics. Call this to see what creatives were actually served and how each variant performed. Requires at least one of media_buy_ids or creative_ids.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
-        media_buy_buyer_refs: { type: 'array', items: { type: 'string' } },
         creative_ids: { type: 'array', items: { type: 'string' } },
         max_variants: { type: 'number' },
       },
@@ -437,7 +436,6 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_id: { type: 'string' },
-        buyer_ref: { type: 'string' },
         packages: { type: 'array' },
         end_time: { type: 'string' },
       },
@@ -674,7 +672,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       };
     }
     // Expand proposal allocations into packages
-    req.packages = proposal.allocations.map((alloc, i) => {
+    (req as unknown as Record<string, unknown>).packages = proposal.allocations.map((alloc, i) => {
       const product = productMap.get(alloc.product_id);
       const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
       const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
@@ -694,7 +692,6 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         product_id: alloc.product_id,
         pricing_option_id: pricingOptionId,
         budget: Math.round(totalBudget * alloc.allocation_percentage / 100),
-        buyer_ref: `proposal-${proposal.proposal_id}-${i + 1}`,
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
       };
     });
@@ -729,8 +726,8 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
   for (let i = 0; i < req.packages.length; i++) {
-    const pkg: PackageRequest = req.packages[i];
-    const pkgLabel = pkg.buyer_ref ? `Package "${pkg.buyer_ref}"` : `Package ${i}`;
+    const pkg = req.packages[i] as unknown as { product_id: string; pricing_option_id: string; budget: number; bid_price?: number; impressions?: number; paused?: boolean; start_time?: string; end_time?: string; format_ids?: FormatID[] };
+    const pkgLabel = `Package ${i}`;
 
     // Check negative budget before product lookup (budget is always validatable)
     if (pkg.budget < 0) {
@@ -800,7 +797,6 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     createdPackages.push({
       packageId: `pkg_${randomUUID().slice(0, 8)}`,
-      buyerRef: pkg.buyer_ref,
       productId: pkg.product_id,
       budget: pkg.budget,
       pricingOptionId: pkg.pricing_option_id,
@@ -824,8 +820,6 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
-    buyerRef: req.buyer_ref,
-    buyerCampaignRef: req.buyer_campaign_ref,
     accountRef: req.account,
     brandRef: req.brand,
     status: 'active',
@@ -841,12 +835,9 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   return {
     media_buy_id: mediaBuyId,
-    buyer_ref: req.buyer_ref,
-    buyer_campaign_ref: mediaBuy.buyerCampaignRef,
     status: deriveStatus(mediaBuy),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
-      buyer_ref: pkg.buyerRef,
       product_id: pkg.productId,
       budget: pkg.budget,
       pricing_option_id: pkg.pricingOptionId,
@@ -894,8 +885,6 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
     media_buys: buys.map(mb => {
       const buy: Record<string, unknown> = {
         media_buy_id: mb.mediaBuyId,
-        buyer_ref: mb.buyerRef,
-        buyer_campaign_ref: mb.buyerCampaignRef,
         status: deriveStatus(mb),
         currency: mb.currency,
         start_time: mb.startTime,
@@ -903,7 +892,6 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
         packages: mb.packages.map(pkg => {
           const pkgData: Record<string, unknown> = {
             package_id: pkg.packageId,
-            buyer_ref: pkg.buyerRef,
             product_id: pkg.productId,
             budget: pkg.budget,
             pricing_option_id: pkg.pricingOptionId,
@@ -928,21 +916,18 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
 }
 
 function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as GetMediaBuyDeliveryRequest & { media_buy_id?: string; buyer_ref?: string };
+  const req = args as unknown as GetMediaBuyDeliveryRequest & { media_buy_id?: string };
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
-  // Accept singular media_buy_id/buyer_ref (backward compat) or plural from SDK
-  const mediaBuyId = req.media_buy_id || req.buyer_ref || req.media_buy_ids?.[0] || '';
-  let mb = session.mediaBuys.get(mediaBuyId) ||
-    Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+  const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
+  let mb = session.mediaBuys.get(mediaBuyId);
 
   // Cross-session fallback for explicit ID lookup
   if (!mb) {
     for (const [, s] of getAllSessions()) {
       if (s === session) continue;
-      mb = s.mediaBuys.get(mediaBuyId) ||
-        Array.from(s.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+      mb = s.mediaBuys.get(mediaBuyId);
       if (mb) break;
     }
   }
@@ -972,7 +957,6 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
       const { model, rate } = derivePricing(pkg, productMap);
       return {
         package_id: pkg.packageId,
-        buyer_ref: pkg.buyerRef,
         spend: 0,
         impressions: 0,
         clicks: 0,
@@ -1011,7 +995,6 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
 
     return {
       package_id: pkg.packageId,
-      buyer_ref: pkg.buyerRef,
       spend,
       impressions,
       clicks,
@@ -1032,7 +1015,6 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
     currency: mb.currency,
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
-      buyer_ref: mb.buyerRef,
       status: deriveStatus(mb),
       totals: {
         impressions: totalImpressions,
@@ -1177,16 +1159,14 @@ function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext
 function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
   const req = args as unknown as UpdateMediaBuyRequest;
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const mediaBuyId = req.media_buy_id || req.buyer_ref || '';
-  let mb = session.mediaBuys.get(mediaBuyId) ||
-    Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+  const mediaBuyId = req.media_buy_id || '';
+  let mb = session.mediaBuys.get(mediaBuyId);
 
   // Cross-session fallback for explicit ID lookup
   if (!mb) {
     for (const [, s] of getAllSessions()) {
       if (s === session) continue;
-      mb = s.mediaBuys.get(mediaBuyId) ||
-        Array.from(s.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
+      mb = s.mediaBuys.get(mediaBuyId);
       if (mb) break;
     }
   }
@@ -1210,8 +1190,8 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
     for (const update of req.packages as PackageUpdate[]) {
-      const pkgId = update.package_id || update.buyer_ref || '';
-      const pkg = mb.packages.find(p => p.packageId === pkgId || p.buyerRef === pkgId);
+      const pkgId = update.package_id || '';
+      const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) {
         warnings.push(`Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}`);
         continue;
@@ -1235,12 +1215,10 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   mb.updatedAt = new Date().toISOString();
 
-  const result: { media_buy_id: string; buyer_ref: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } = {
+  const result: { media_buy_id: string; packages: unknown[]; sandbox: boolean; warnings?: string[] } = {
     media_buy_id: mb.mediaBuyId,
-    buyer_ref: mb.buyerRef,
     packages: mb.packages.map(pkg => ({
       package_id: pkg.packageId,
-      buyer_ref: pkg.buyerRef,
       product_id: pkg.productId,
       budget: pkg.budget,
       pricing_option_id: pkg.pricingOptionId,
@@ -1539,13 +1517,12 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
 
   // Resolve media buy IDs from multiple input formats
   const mediaBuyIds = req.media_buy_ids;
-  const buyerRefs = req.media_buy_buyer_refs;
   const creativeIds = req.creative_ids;
   const maxVariants = req.max_variants || 10;
 
-  if (!mediaBuyIds?.length && !buyerRefs?.length && !creativeIds?.length) {
+  if (!mediaBuyIds?.length && !creativeIds?.length) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'At least one of media_buy_ids, media_buy_buyer_refs, or creative_ids is required.' }],
+      errors: [{ code: 'INVALID_REQUEST', message: 'At least one of media_buy_ids or creative_ids is required.' }],
     };
   }
 
@@ -1553,7 +1530,6 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
   const matchingBuys: MediaBuyState[] = [];
   for (const mb of session.mediaBuys.values()) {
     if (mediaBuyIds?.includes(mb.mediaBuyId)) matchingBuys.push(mb);
-    else if (buyerRefs?.includes(mb.buyerRef)) matchingBuys.push(mb);
   }
 
   // Collect assigned creatives from matching buys, tracking which buy each belongs to

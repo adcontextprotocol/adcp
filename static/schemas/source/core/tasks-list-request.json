@@ -76,7 +76,7 @@
         },
         "context_contains": {
           "type": "string",
-          "description": "Filter tasks where context contains this text (searches buyer_ref, media_buy_id, signal_id, etc.)"
+          "description": "Filter tasks where context contains this text (searches media_buy_id, signal_id, etc.)"
         },
         "has_webhook": {
           "type": "boolean",

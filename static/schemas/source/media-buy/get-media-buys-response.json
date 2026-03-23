@@ -13,15 +13,7 @@
         "properties": {
           "media_buy_id": {
             "type": "string",
-            "description": "Publisher's unique identifier for the media buy"
-          },
-          "buyer_ref": {
-            "type": "string",
-            "description": "Buyer's reference identifier for this media buy"
-          },
-          "buyer_campaign_ref": {
-            "type": "string",
-            "description": "Buyer campaign reference label sourced from create_media_buy.buyer_campaign_ref. Groups related operations under a single campaign; may be absent when not provided at creation time."
+            "description": "Seller's unique identifier for the media buy"
           },
           "account": {
             "$ref": "/schemas/core/account.json",
@@ -70,16 +62,12 @@
             "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots",
             "items": {
               "title": "PackageStatus",
-              "description": "Current status of a package within a media buy — includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
+              "description": "Current status of a package within a media buy \u2014 includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
               "type": "object",
               "properties": {
                 "package_id": {
                   "type": "string",
-                  "description": "Publisher's package identifier"
-                },
-                "buyer_ref": {
-                  "type": "string",
-                  "description": "Buyer's reference identifier for this package"
+                  "description": "Seller's package identifier"
                 },
                 "product_id": {
                   "type": "string",
@@ -162,7 +150,7 @@
                 },
                 "snapshot": {
                   "type": "object",
-                  "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform — not billing-grade data.",
+                  "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform \u2014 not billing-grade data.",
                   "properties": {
                     "as_of": {
                       "type": "string",
@@ -201,7 +189,7 @@
                     },
                     "delivery_status": {
                       "type": "string",
-                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle — the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
+                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle \u2014 the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
                       "enum": [
                         "delivering",
                         "not_delivering",

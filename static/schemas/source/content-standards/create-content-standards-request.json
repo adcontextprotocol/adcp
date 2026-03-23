@@ -11,19 +11,25 @@
       "properties": {
         "countries_all": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "minItems": 1,
           "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
         },
         "channels_any": {
           "type": "array",
-          "items": { "$ref": "/schemas/enums/channels.json" },
+          "items": {
+            "$ref": "/schemas/enums/channels.json"
+          },
           "minItems": 1,
           "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
         },
         "languages_any": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "minItems": 1,
           "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
         },
@@ -32,11 +38,15 @@
           "description": "Human-readable description of this scope"
         }
       },
-      "required": ["languages_any"]
+      "required": [
+        "languages_any"
+      ]
     },
     "registry_policy_ids": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Registry policy IDs to use as the evaluation basis for this content standard. When provided, the agent resolves policies from the registry and uses their policy text and exemplars as the evaluation criteria. The 'policy' field becomes optional when registry_policy_ids is provided."
     },
     "policy": {
@@ -70,7 +80,10 @@
                     "description": "BCP 47 language tag for content at this URL"
                   }
                 },
-                "required": ["type", "value"]
+                "required": [
+                  "type",
+                  "value"
+                ]
               },
               {
                 "$ref": "/schemas/content-standards/artifact.json",
@@ -103,7 +116,10 @@
                     "description": "BCP 47 language tag for content at this URL"
                   }
                 },
-                "required": ["type", "value"]
+                "required": [
+                  "type",
+                  "value"
+                ]
               },
               {
                 "$ref": "/schemas/content-standards/artifact.json",
@@ -115,6 +131,12 @@
         }
       }
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate content standards creation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -122,6 +144,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["scope", "policy"],
+  "required": [
+    "scope",
+    "policy"
+  ],
   "additionalProperties": true
 }

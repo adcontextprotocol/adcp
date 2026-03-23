@@ -125,7 +125,6 @@ Implement `create_media_buy` to accept campaign instructions from buyer agents. 
 
 ```json
 {
-  "buyer_ref": "agency-q2-leaderboard",
   "account": { "account_id": "acct-56789" },
   "brand": { "brand_id": "nova-electronics" },
   "proposal_id": "prop-homepage-leaderboard",
@@ -194,6 +193,25 @@ Declare `property_features` entries to point buyers toward governance agents tha
 When a buyer includes a `content_standards_ref` in a `get_products` or `create_media_buy` request, they are asking you to enforce brand suitability rules during delivery. Your responsibilities: fetch the standards from the referenced governance agent, evaluate whether you can enforce them, reject the buy if you cannot, and calibrate your local evaluation model against the governance agent via `calibrate_content`. After delivery, push content artifacts back to the buyer so they can validate compliance independently.
 
 If you cannot meaningfully enforce a buyer's content standards, reject the buy rather than accepting it and failing silently. See the [content standards implementation guide](/docs/governance/content-standards/implementation-guide) for the full sales agent workflow.
+
+### Campaign governance context
+
+When a buyer includes `governance_context` in the protocol envelope of a `create_media_buy` request, store it alongside the media buy. This is an opaque value — you don't interpret it, you just persist and forward it.
+
+Pass `governance_context` back to the buyer's governance agent on every lifecycle event for that media buy:
+
+| Lifecycle event | How governance_context flows |
+|---|---|
+| **Create** | Received in `create_media_buy` envelope. Store it. If calling `check_governance`, include it. |
+| **Activate** | Include stored `governance_context` when calling `check_governance` with the seller's `planned_delivery`. |
+| **Update** | Include on `check_governance` for modifications. The governance agent uses it to track cumulative changes. |
+| **Pause / Resume** | Include if calling `check_governance`. The governance agent updates pacing state. |
+| **Cancel / Complete** | Include so the governance agent can close out budget tracking and produce final audit. |
+| **Delivery webhooks** | Include in webhook payloads so the governance agent can correlate delivery data. |
+
+The governance agent uses `governance_context` to reconnect each event to the original plan, campaign, and budget state. Without it, the governance agent has no way to track the media buy across its lifecycle.
+
+If `governance_context` is not present in the original request, skip governance calls — the buyer is not using campaign governance for this media buy.
 
 ### Creative governance
 

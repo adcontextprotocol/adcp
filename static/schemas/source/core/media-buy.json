@@ -7,15 +7,7 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
-      "description": "Publisher's unique identifier for the media buy"
-    },
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference identifier for this media buy. Sellers SHOULD deduplicate requests with the same buyer_ref and account, returning the existing media buy rather than creating a duplicate."
-    },
-    "buyer_campaign_ref": {
-      "type": "string",
-      "description": "Buyer's campaign reference label. Groups related operations under a single campaign for CRM and ad server correlation."
+      "description": "Seller's unique identifier for the media buy"
     },
     "account": {
       "$ref": "/schemas/core/account.json",

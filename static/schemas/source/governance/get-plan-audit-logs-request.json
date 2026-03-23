@@ -7,19 +7,19 @@
   "properties": {
     "plan_ids": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1,
       "description": "Plan IDs to retrieve. For a single plan, pass a one-element array."
     },
     "portfolio_plan_ids": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1,
       "description": "Portfolio plan IDs. The governance agent expands each to its member_plan_ids and returns combined audit data."
-    },
-    "buyer_campaign_ref": {
-      "type": "string",
-      "description": "Filter to a specific campaign. Omit for plan-level aggregate."
     },
     "include_entries": {
       "type": "boolean",
@@ -28,8 +28,16 @@
     }
   },
   "anyOf": [
-    { "required": ["plan_ids"] },
-    { "required": ["portfolio_plan_ids"] }
+    {
+      "required": [
+        "plan_ids"
+      ]
+    },
+    {
+      "required": [
+        "portfolio_plan_ids"
+      ]
+    }
   ],
   "additionalProperties": false
 }

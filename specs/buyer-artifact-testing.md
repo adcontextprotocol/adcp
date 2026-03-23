@@ -305,7 +305,7 @@ This tests the second half of the funnel: can a buyer agent actually *execute* t
    - Same pricing model as the IO line item
    - Rate comparison (see "Rate comparison" section below)
 6. Construct the full `create_media_buy` request body — the exact JSON a buyer agent would send:
-   - `packages` array with `{ product_id, pricing_option_id, budget, buyer_ref, start_time, end_time }`
+   - `packages` array with `{ product_id, pricing_option_id, budget, start_time, end_time }`
    - `brand`, `account`, `start_time`, `end_time` at the buy level
    - For unmatched line items: flag as unmappable with reason
 7. If `execute: true` and at least one line item mapped, submit `create_media_buy` to the agent and include the response
@@ -360,7 +360,6 @@ interface IoTestResult {
 
     // The package that would be sent in create_media_buy
     proposed_package?: {
-      buyer_ref: string;
       product_id: string;
       pricing_option_id: string;
       budget: number;
@@ -389,7 +388,6 @@ interface IoTestResult {
     start_time: string;
     end_time: string;
     packages: Array<{
-      buyer_ref: string;
       product_id: string;
       pricing_option_id: string;
       budget: number;

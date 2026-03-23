@@ -4,9 +4,8 @@
  */
 import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
 
-// Derive SpecialCategory from Episode.special.category (not re-exported from @adcp/client)
-type Episode = NonNullable<Product['episodes']>[number];
-type SpecialCategory = NonNullable<NonNullable<Episode['special']>['category']>;
+// SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
+type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
@@ -176,10 +175,8 @@ export interface BrandRef {
 
 export interface MediaBuyState {
   mediaBuyId: string;
-  buyerRef: string;
-  buyerCampaignRef?: string;
-  accountRef: AccountReference;
-  brandRef?: BrandReference;
+  accountRef: AccountRef;
+  brandRef?: BrandRef;
   status: string;
   currency: string;
   packages: PackageState[];
@@ -191,7 +188,6 @@ export interface MediaBuyState {
 
 export interface PackageState {
   packageId: string;
-  buyerRef: string;
   productId: string;
   budget: number;
   pricingOptionId: string;
@@ -256,7 +252,7 @@ export interface GovernancePlanState {
 export interface GovernanceCheckState {
   checkId: string;
   planId: string;
-  buyerCampaignRef: string;
+  governanceContext?: string;
   binding: 'proposed' | 'committed';
   status: 'approved' | 'denied' | 'conditions' | 'escalated';
   caller: string;
@@ -293,7 +289,7 @@ export interface GovernanceOutcomeState {
   outcomeId: string;
   planId: string;
   checkId?: string;
-  buyerCampaignRef: string;
+  governanceContext?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
   mediaBuyId?: string;

@@ -19,11 +19,9 @@ Sellers do not call this task. They report delivery data via [`check_governance`
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "check_id": "chk_xyz789",
-    "buyer_campaign_ref": "q1-2026-spring-launch",
     "outcome": "completed",
     "seller_response": {
       "media_buy_id": "mb_seller_456",
-      "buyer_ref": "q1-launch-pinnacle-001",
       "packages": [
         {
           "package_id": "pkg_001",
@@ -103,7 +101,6 @@ The governance agent still commits the seller's actual amount (\$120K, not the r
   "tool": "report_plan_outcome",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "buyer_campaign_ref": "q1-2026-spring-launch",
     "outcome": "delivery",
     "delivery": {
       "media_buy_id": "mb_seller_456",
@@ -162,7 +159,6 @@ If the seller rejected the request, report it so the governance agent can update
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "check_id": "chk_xyz789",
-    "buyer_campaign_ref": "q1-2026-spring-launch",
     "outcome": "failed",
     "error": {
       "code": "PRODUCT_UNAVAILABLE",
@@ -192,11 +188,9 @@ If the seller rejected the request, report it so the governance agent can update
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | The plan this outcome is for. |
 | `check_id` | string | Conditional | The `check_id` from `check_governance`. Links the outcome to the governance check that authorized it. Required for `completed` and `failed` outcomes. |
-| `buyer_campaign_ref` | string | Yes | Campaign identifier. |
 | `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
 | `seller_response` | object | No | The seller's full response. Required when outcome is `completed`. |
 | `seller_response.media_buy_id` | string | No | Seller's media buy identifier. |
-| `seller_response.buyer_ref` | string | No | The buyer reference echoed back by the seller. |
 | `seller_response.committed_budget` | number | No | Total budget committed across all confirmed packages. When present, the governance agent uses this directly instead of summing individual package budgets. |
 | `seller_response.packages` | array | No | Confirmed packages with actual budget and targeting. |
 | `seller_response.planned_delivery` | object | No | What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters. |
@@ -233,7 +227,7 @@ If the seller rejected the request, report it so the governance agent can update
 |------|----------|-------------|
 | `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
 | `CHECK_NOT_FOUND` | correctable | No governance check with this `check_id`. |
-| `CAMPAIGN_NOT_FOUND` | correctable | No campaign with this `buyer_campaign_ref` in the plan. |
+| `CAMPAIGN_NOT_FOUND` | correctable | No campaign with this `governance_context` in the plan. |
 | `CAMPAIGN_SUSPENDED` | correctable | Plan is suspended pending human review. Outcome reporting is blocked until the escalation is resolved. |
 
 ## Related tasks

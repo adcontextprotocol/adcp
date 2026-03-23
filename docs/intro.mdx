@@ -263,14 +263,12 @@ Sam has products, creatives, and accounts. Time to buy. One call to `create_medi
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
-  "buyer_ref": "acme_outdoor_summer_q2",
   "account": { "brand": { "domain": "acmeoutdoor.com" }, "operator": "pinnacle-agency.com" },
   "brand": { "domain": "acmeoutdoor.com" },
   "start_time": "2026-04-01T00:00:00Z",
   "end_time": "2026-06-30T23:59:59Z",
   "packages": [
     {
-      "buyer_ref": "pkg_streamhaus_ctv",
       "product_id": "streamhaus_sports_ctv_q2",
       "budget": 35000,
       "pricing_option_id": "cpm_standard"
@@ -348,12 +346,10 @@ Before any of Sam's campaigns go live, they pass through governance. Jordan, Pin
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/governance/check-governance-request.json",
   "plan_id": "acme_outdoor_q2_plan",
-  "buyer_campaign_ref": "AcmeOutdoor_Summer_Q2",
   "binding": "proposed",
   "caller": "https://buyer.pinnacle-agency.com/a2a",
   "tool": "create_media_buy",
   "payload": {
-    "buyer_ref": "acme_outdoor_summer_q2",
     "brand": { "domain": "acmeoutdoor.com" },
     "start_time": "2026-04-01T00:00:00Z",
     "end_time": "2026-06-30T23:59:59Z"
@@ -446,7 +442,7 @@ For deeper performance tracking, AdCP provides two more tools:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json",
-  "buyer_ref": "acme_outdoor_summer_q2",
+  "media_buy_id": "mb_acme_q2_001",
   "measurement_period": {
     "start": "2026-04-01T00:00:00Z",
     "end": "2026-04-30T23:59:59Z"
