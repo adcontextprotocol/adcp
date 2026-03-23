@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/register-governance-response.json",
+  "title": "Register Governance Response",
+  "description": "Response from governance agent registration. Returns per-account results confirming registration, or operation-level errors on complete failure.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "RegisterGovernanceSuccess",
+      "description": "Registration processed — individual accounts may have errors",
+      "type": "object",
+      "properties": {
+        "accounts": {
+          "type": "array",
+          "description": "Per-account registration results",
+          "items": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "/schemas/core/account-ref.json",
+                "description": "Account reference, echoed from request"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["registered", "failed"],
+                "description": "Registration result. registered: governance agents persisted. failed: could not register (see errors)."
+              },
+              "governance_agents": {
+                "type": "array",
+                "description": "Governance agents now registered on this account. Reflects the persisted state after registration.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "pattern": "^https://",
+                      "description": "Governance agent endpoint URL."
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": { "type": "string", "maxLength": 64 },
+                      "description": "Governance categories this agent handles.",
+                      "maxItems": 20
+                    }
+                  },
+                  "required": ["url"],
+                  "additionalProperties": true
+                }
+              },
+              "errors": {
+                "type": "array",
+                "description": "Per-account errors (only present when status is 'failed')",
+                "items": {
+                  "$ref": "/schemas/core/error.json"
+                }
+              }
+            },
+            "required": ["account", "status"],
+            "additionalProperties": true
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["accounts"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "title": "RegisterGovernanceError",
+      "description": "Operation failed completely, no accounts were processed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors (e.g., authentication failure, service unavailable)",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["accounts"]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "description": "Governance agents registered on two accounts",
+      "data": {
+        "accounts": [
+          {
+            "account": { "account_id": "acct-social-001" },
+            "status": "registered",
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com/budget",
+                "categories": ["budget_authority"]
+              }
+            ]
+          },
+          {
+            "account": { "account_id": "acct-social-002" },
+            "status": "registered",
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com/compliance",
+                "categories": ["geo_compliance"]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Partial failure — one account not found",
+      "data": {
+        "accounts": [
+          {
+            "account": { "account_id": "acct-social-001" },
+            "status": "registered",
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com/budget",
+                "categories": ["budget_authority"]
+              }
+            ]
+          },
+          {
+            "account": { "account_id": "acct-unknown" },
+            "status": "failed",
+            "errors": [
+              {
+                "code": "ACCOUNT_NOT_FOUND",
+                "message": "Account 'acct-unknown' does not exist or is not accessible to the authenticated agent."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

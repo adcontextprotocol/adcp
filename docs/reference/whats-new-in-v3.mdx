@@ -250,7 +250,7 @@ This page covers the full v2 → v3 shift. If you already adopted `3.0.0-rc.1`, 
 
 ### Compliance and governance refinements
 
-Creative compliance now includes disclosure persistence semantics in addition to position and duration, allowing formats to declare which persistence modes they can enforce. Campaign governance also lands in rc.2 with `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`, plus `governance_context` for canonical plan extraction.
+Creative compliance now includes disclosure persistence semantics in addition to position and duration, allowing formats to declare which persistence modes they can enforce. Campaign governance also lands in rc.2 with `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`, plus `governance_context` for canonical plan extraction. `register_governance` provides a dedicated task for registering governance agent endpoints against accounts, replacing the previous approach of embedding `governance_agents` on `sync_accounts` and `list_accounts` requests.
 
 For the exhaustive rc.2 change list, see the [Release Notes](/docs/reference/release-notes#version-300-rc2) and [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-rc2).
 

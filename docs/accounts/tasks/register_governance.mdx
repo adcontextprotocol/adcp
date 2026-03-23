@@ -1,0 +1,292 @@
+---
+title: register_governance
+description: "register_governance registers governance agent endpoints against specific accounts. The seller persists these agents and calls them via check_governance during media buy lifecycle events."
+"og:title": "AdCP — register_governance"
+testable: false
+---
+
+Register governance agent endpoints against specific accounts. The seller persists these agents and calls them via `check_governance` during media buy lifecycle events. Each account entry pairs an [account reference](/docs/building/integration/accounts-and-agents#account-references) with the governance agents to register, supporting both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`).
+
+This uses **replace semantics** — each call replaces any previously registered agents on the specified accounts. Accounts not included in the request keep their existing registrations.
+
+**Response Time**: ~1s.
+
+**Request Schema**: [`/schemas/v3/account/register-governance-request.json`](https://adcontextprotocol.org/schemas/v3/account/register-governance-request.json)
+**Response Schema**: [`/schemas/v3/account/register-governance-response.json`](https://adcontextprotocol.org/schemas/v3/account/register-governance-response.json)
+
+## Quick Start
+
+Register a budget governance agent on an explicit account:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { RegisterGovernanceResponseSchema } from "@adcp/client";
+
+const result = await testAgent.registerGovernance({
+  accounts: [
+    {
+      account: { account_id: "acct-social-001" },
+      governance_agents: [
+        {
+          url: "https://governance.pinnacle-media.com/budget",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          categories: ["budget_authority"]
+        }
+      ]
+    }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = RegisterGovernanceResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const entry of validated.accounts) {
+  if (entry.status === "registered") {
+    console.log(`${JSON.stringify(entry.account)}: ${entry.governance_agents.length} agents registered`);
+  } else {
+    console.log(`${JSON.stringify(entry.account)}: failed — ${JSON.stringify(entry.errors)}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.register_governance(
+        accounts=[
+            {
+                "account": {"account_id": "acct-social-001"},
+                "governance_agents": [
+                    {
+                        "url": "https://governance.pinnacle-media.com/budget",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        },
+                        "categories": ["budget_authority"]
+                    }
+                ]
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for entry in result.accounts:
+        if entry.status == "registered":
+            print(f"{entry.account}: {len(entry.governance_agents)} agents registered")
+        else:
+            print(f"{entry.account}: failed — {entry.errors}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `accounts` | array | Yes | Per-account governance agent entries. Each pairs an account reference with governance agents to register. |
+
+**Each account entry:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `account` | object | Yes | [Account reference](/docs/building/integration/accounts-and-agents#account-references): `{account_id}` for explicit accounts or `{brand, operator}` for implicit accounts. |
+| `governance_agents` | array | Yes | Governance agent endpoints for this account (1–10 per account). |
+
+**Each governance agent:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | Yes | HTTPS endpoint URL for the governance agent. |
+| `authentication` | object | Yes | Credentials the seller presents when calling this agent. Contains `schemes` (array with one auth scheme) and `credentials` (token, min 32 characters). |
+| `categories` | array | No | Governance categories this agent handles (e.g., `["budget_authority", "geo_compliance"]`). When omitted, the agent handles all categories. Max 20 categories, each max 64 characters. |
+
+## Response
+
+**Success response:**
+
+Returns an `accounts` array with per-account results. Individual entries may fail even when the operation succeeds.
+
+| Field | Description |
+|-------|-------------|
+| `account` | Account reference, echoed from request. |
+| `status` | `registered` or `failed`. |
+| `governance_agents` | Governance agents now registered on this account. Reflects the persisted state after registration. Only present when `status: "registered"`. |
+| `errors` | Per-account errors. Only present when `status: "failed"`. |
+
+**Error response:**
+
+`errors` array with operation-level errors (auth failure, service unavailable). No `accounts` array is present.
+
+## Authorization
+
+The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents. Requests referencing accounts the agent does not own MUST return a `failed` status with an error for those entries.
+
+## Common Scenarios
+
+### Different governance agents per account
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { RegisterGovernanceResponseSchema } from "@adcp/client";
+
+const result = await testAgent.registerGovernance({
+  accounts: [
+    {
+      account: { account_id: "acct-social-001" },
+      governance_agents: [
+        {
+          url: "https://governance.pinnacle-media.com/budget",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          categories: ["budget_authority"]
+        }
+      ]
+    },
+    {
+      account: { account_id: "acct-social-002" },
+      governance_agents: [
+        {
+          url: "https://governance.pinnacle-media.com/compliance",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          },
+          categories: ["geo_compliance"]
+        }
+      ]
+    }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = RegisterGovernanceResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const entry of validated.accounts) {
+  console.log(`${JSON.stringify(entry.account)}: ${entry.status}`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.register_governance(
+        accounts=[
+            {
+                "account": {"account_id": "acct-social-001"},
+                "governance_agents": [
+                    {
+                        "url": "https://governance.pinnacle-media.com/budget",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        },
+                        "categories": ["budget_authority"]
+                    }
+                ]
+            },
+            {
+                "account": {"account_id": "acct-social-002"},
+                "governance_agents": [
+                    {
+                        "url": "https://governance.pinnacle-media.com/compliance",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+                        },
+                        "categories": ["geo_compliance"]
+                    }
+                ]
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for entry in result.accounts:
+        print(f"{entry.account}: {entry.status}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Implicit accounts (brand + operator)
+
+<CodeGroup>
+
+```json Request
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/register-governance-request.json",
+  "accounts": [
+    {
+      "account": {
+        "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+        "operator": "pinnacle-media.com"
+      },
+      "governance_agents": [
+        {
+          "url": "https://governance.pinnacle-media.com/compliance",
+          "authentication": {
+            "schemes": ["Bearer"],
+            "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          },
+          "categories": ["geo_compliance", "strategic_alignment"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+### Rotate governance agent credentials
+
+Call `register_governance` again with updated `authentication`. Replace semantics means the new credentials overwrite the previous registration.
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `ACCOUNT_NOT_FOUND` | Referenced account does not exist or is not accessible | Verify account reference via `list_accounts` or `sync_accounts` |
+| `UNAUTHORIZED` | Agent does not have authority over the referenced account | Check that you are authenticated as an agent with access to this account |
+
+## Next Steps
+
+- [list_accounts](/docs/accounts/tasks/list_accounts) — Discover accounts and their current governance agents
+- [sync_accounts](/docs/accounts/tasks/sync_accounts) — Provision or link advertiser accounts
+- [check_governance](/docs/governance/campaign/tasks/check_governance) — How sellers call governance agents during media buy events
+- [Accounts and agents](/docs/building/integration/accounts-and-agents) — Account models, billing, and trust

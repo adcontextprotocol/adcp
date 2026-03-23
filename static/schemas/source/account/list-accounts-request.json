@@ -24,67 +24,6 @@
       "type": "boolean",
       "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with explicit accounts (require_operator_auth: true) where sandbox accounts are pre-existing test accounts on the platform."
     },
-    "account_governance": {
-      "type": "array",
-      "description": "Per-account governance agent registration. Each entry pairs an account reference with the governance agents to register for that account. The seller persists these governance agents and calls them for approval during media buy lifecycle events.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "account": {
-            "$ref": "/schemas/core/account-ref.json",
-            "description": "Account to register governance agents against. Use account_id for explicit accounts or brand + operator for implicit accounts."
-          },
-          "governance_agents": {
-            "type": "array",
-            "description": "Governance agent endpoints for this account. The seller calls these agents via check_governance during media buy lifecycle events.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "pattern": "^https://",
-                  "description": "Governance agent endpoint URL. Must use HTTPS."
-                },
-                "authentication": {
-                  "type": "object",
-                  "description": "Authentication the seller presents when calling this governance agent.",
-                  "properties": {
-                    "schemes": {
-                      "type": "array",
-                      "items": { "$ref": "/schemas/enums/auth-scheme.json" },
-                      "minItems": 1,
-                      "maxItems": 1
-                    },
-                    "credentials": {
-                      "type": "string",
-                      "description": "Authentication credential (e.g., Bearer token).",
-                      "minLength": 32
-                    }
-                  },
-                  "required": ["schemes", "credentials"],
-                  "additionalProperties": false
-                },
-                "categories": {
-                  "type": "array",
-                  "items": { "type": "string", "maxLength": 64 },
-                  "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories.",
-                  "maxItems": 20
-                }
-              },
-              "required": ["url", "authentication"],
-              "additionalProperties": false
-            },
-            "minItems": 1,
-            "maxItems": 10
-          }
-        },
-        "required": ["account", "governance_agents"],
-        "additionalProperties": false
-      },
-      "minItems": 1,
-      "maxItems": 100
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

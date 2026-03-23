@@ -142,6 +142,7 @@
                       "docs/accounts/tasks/sync_accounts",
                       "docs/accounts/tasks/list_accounts",
                       "docs/accounts/tasks/report_usage",
+                      "docs/accounts/tasks/register_governance",
                       "docs/accounts/tasks/get_account_financials"
                     ]
                   }
