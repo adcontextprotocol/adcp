@@ -51,7 +51,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 | DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present |
 | delete_content_standards | Documented task | Removed — archive standards via `update_content_standards` instead |
 | get_property_features | Standalone task | Removed — use property list filters and `get_adcp_capabilities` for feature discovery |
-| Governance agent registration | `governance_agents` on `sync_accounts` request and `list_accounts` request | Moved to dedicated `sync_governance` task |
+| Governance agent sync | `governance_agents` on `sync_accounts` request and `list_accounts` request | Moved to dedicated `sync_governance` task |
 
 ### Migration Notes For rc.1 Adopters
 

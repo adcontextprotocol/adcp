@@ -22,8 +22,8 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["registered", "failed"],
-                "description": "Sync result. registered: governance agents persisted. failed: could not sync (see errors)."
+                "enum": ["synced", "failed"],
+                "description": "Sync result. synced: governance agents persisted. failed: could not complete (see errors)."
               },
               "governance_agents": {
                 "type": "array",
@@ -107,7 +107,7 @@
         "accounts": [
           {
             "account": { "account_id": "acct-social-001" },
-            "status": "registered",
+            "status": "synced",
             "governance_agents": [
               {
                 "url": "https://governance.pinnacle-media.com/budget",
@@ -117,7 +117,7 @@
           },
           {
             "account": { "account_id": "acct-social-002" },
-            "status": "registered",
+            "status": "synced",
             "governance_agents": [
               {
                 "url": "https://governance.pinnacle-media.com/compliance",
@@ -134,7 +134,7 @@
         "accounts": [
           {
             "account": { "account_id": "acct-social-001" },
-            "status": "registered",
+            "status": "synced",
             "governance_agents": [
               {
                 "url": "https://governance.pinnacle-media.com/budget",
