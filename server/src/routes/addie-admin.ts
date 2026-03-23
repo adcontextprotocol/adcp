@@ -68,6 +68,22 @@ function parseNumericId(id: string): number | null {
 }
 
 /**
+ * Parse a query string limit and clamp to [1, max].
+ */
+function clampLimit(raw: unknown, defaultVal: number, max = 200): number {
+  const parsed = raw ? parseInt(raw as string, 10) : NaN;
+  return isNaN(parsed) ? defaultVal : Math.min(Math.max(parsed, 1), max);
+}
+
+/**
+ * Parse a query string offset and clamp to [0, max].
+ */
+function clampOffset(raw: unknown, max = 100000): number {
+  const parsed = raw ? parseInt(raw as string, 10) : NaN;
+  return isNaN(parsed) ? 0 : Math.min(Math.max(parsed, 0), max);
+}
+
+/**
  * Create Addie admin routes
  * Returns separate routers for page routes (/admin/addie/*) and API routes (/api/admin/addie/*)
  */
@@ -96,16 +112,13 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
     try {
       const { category, active_only, source_type, status, limit, offset } = req.query;
 
-      const parsedLimit = limit ? parseInt(limit as string, 10) : 100;
-      const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
-
       const { rows: documents, total } = await addieDb.listKnowledge({
         category: category as string | undefined,
         sourceType: source_type as string | undefined,
         fetchStatus: status as string | undefined,
         activeOnly: active_only !== "false",
-        limit: isNaN(parsedLimit) ? 100 : Math.min(Math.max(parsedLimit, 1), 500),
-        offset: isNaN(parsedOffset) ? 0 : Math.max(parsedOffset, 0),
+        limit: clampLimit(limit, 100, 500),
+        offset: clampOffset(offset),
       });
 
       res.json({
@@ -146,7 +159,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
 
       const results = await addieDb.searchKnowledge(q, {
         category: category as string | undefined,
-        limit: limit ? parseInt(limit as string, 10) : 10,
+        limit: clampLimit(limit, 10, 100),
       });
 
       res.json({
@@ -319,8 +332,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         flaggedOnly: flagged_only === "true",
         unreviewedOnly: unreviewed_only === "true",
         userId: user_id as string | undefined,
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
 
       res.json({
@@ -396,8 +409,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         min_messages: min_messages ? parseInt(min_messages as string, 10) : undefined,
         user_id: user_id as string | undefined,
         since: since ? new Date(since as string) : undefined,
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
         // Search filters (with length limits to prevent performance issues)
         search_text: typeof search === 'string' && search.length <= 500 ? search : undefined,
         tool_name: typeof tool === 'string' && tool.length <= 100 ? tool : undefined,
@@ -941,8 +954,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const { limit, offset } = req.query;
 
       const conversations = await addieDb.getWebConversations({
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
 
       res.json({
@@ -1015,8 +1028,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/config/history - Get config version history
   apiRouter.get("/config/history", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const limit = parseInt(req.query.limit as string) || 20;
-      const history = await addieDb.getConfigVersionHistory(limit);
+      const history = await addieDb.getConfigVersionHistory(clampLimit(req.query.limit, 20, 100));
       res.json({ versions: history });
     } catch (error) {
       logger.error({ err: error }, "Error fetching config version history");
@@ -1221,7 +1233,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
     try {
       const { limit } = req.query;
       const suggestions = await addieDb.getPendingSuggestions(
-        limit ? parseInt(limit as string, 10) : 50
+        clampLimit(limit, 50)
       );
 
       res.json({
@@ -1508,8 +1520,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
       const resources = await addieDb.listCuratedResources({
         status: status as string | undefined,
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
 
       res.json({
@@ -1684,7 +1696,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
     try {
       const { limit } = req.query;
       const runs = await addieDb.getRecentAnalysisRuns(
-        limit ? parseInt(limit as string, 10) : 10
+        clampLimit(limit, 10, 100)
       );
 
       res.json({
@@ -1856,8 +1868,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const evalService = await getEvalServiceLazy();
 
       const runs = await evalService.listRuns(
-        limit ? parseInt(limit as string, 10) : 20,
-        offset ? parseInt(offset as string, 10) : 0
+        clampLimit(limit, 20, 100),
+        clampOffset(offset)
       );
 
       res.json({
@@ -1913,8 +1925,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
       const results = await evalService.getResults(
         numericId,
-        limit ? parseInt(limit as string, 10) : 100,
-        offset ? parseInt(offset as string, 10) : 0
+        clampLimit(limit, 100, 500),
+        clampOffset(offset)
       );
 
       res.json({
@@ -2303,8 +2315,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         status: status as EscalationStatus | undefined,
         category: category as EscalationCategory | undefined,
       };
-      const parsedLimit = limit ? parseInt(limit as string, 10) : 50;
-      const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+      const parsedLimit = clampLimit(limit, 50);
+      const parsedOffset = clampOffset(offset);
 
       const [escalations, totalCount, stats] = await Promise.all([
         listEscalations({
@@ -2476,8 +2488,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const images = await imageDb.listImages({
         category: category as string | undefined,
         approved: approved !== undefined ? approved === "true" : undefined,
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
       res.json({ images });
     } catch (error) {
@@ -2551,8 +2563,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
     try {
       const { limit, offset, zero_results_only } = req.query;
       const searches = await imageDb.listSearches({
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
         zeroResultsOnly: zero_results_only === "true",
       });
       res.json({ searches });
@@ -2565,9 +2577,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/images/misses - Top zero-result queries
   apiRouter.get("/images/misses", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
-      const limit = Math.max(1, Math.min(rawLimit || 20, 100));
-      const misses = await imageDb.getTopMisses(limit);
+      const misses = await imageDb.getTopMisses(clampLimit(req.query.limit, 20, 100));
       res.json({ misses });
     } catch (error) {
       logger.error({ err: error }, "Error fetching image misses");
@@ -2582,9 +2592,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/conversation-insights - List past insights
   apiRouter.get("/conversation-insights", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 12;
-      const limit = Math.max(1, Math.min(rawLimit || 12, 52));
-      const insights = await listInsights(limit);
+      const insights = await listInsights(clampLimit(req.query.limit, 12, 52));
       res.json({ insights });
     } catch (error) {
       logger.error({ err: error }, "Error fetching conversation insights");

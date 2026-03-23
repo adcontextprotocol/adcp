@@ -7,6 +7,9 @@ import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaB
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
 
+/** Matches the talent-role.json enum in static/schemas/source/enums/ */
+export type TalentRole = 'host' | 'guest' | 'creator' | 'cast' | 'narrator' | 'producer' | 'correspondent' | 'commentator' | 'analyst';
+
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
 
@@ -38,7 +41,7 @@ export interface ShowDefinition {
   cadence: string;
   status: string;
   contentRatings?: Array<{ system: string; rating: string }>;
-  talent?: Array<{ name: string; role: string }>;
+  talent?: Array<{ name: string; role: TalentRole }>;
   distribution?: Array<{ publisherDomain: string; identifiers: Array<{ type: string; value: string }> }>;
   description?: string;
   special?: ShowSpecial;
@@ -129,7 +132,7 @@ export interface ShowResponse {
   status: string;
   description?: string;
   content_rating?: Array<{ system: string; rating: string }>;
-  talent?: Array<{ name: string; role: string }>;
+  talent?: Array<{ name: string; role: TalentRole }>;
   distribution?: Array<{
     publisher_domain: string;
     identifiers: Array<{ type: string; value: string }>;
