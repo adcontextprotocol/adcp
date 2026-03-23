@@ -711,6 +711,16 @@ export class HTTPServer {
 
       // Determine the file path to check
       const resolvedPublic = path.resolve(publicPath);
+
+      // Read a file only if its resolved path stays within publicPath
+      async function safeReadPublicFile(candidate: string): Promise<string> {
+        const resolved = path.resolve(candidate);
+        if (!resolved.startsWith(resolvedPublic + path.sep) && resolved !== resolvedPublic) {
+          throw new Error('not found');
+        }
+        return fs.readFile(resolved, 'utf-8');
+      }
+
       let filePath: string;
       if (urlPath.endsWith('.html')) {
         filePath = path.join(publicPath, urlPath);
@@ -722,25 +732,17 @@ export class HTTPServer {
         return next();
       }
 
-      // Ensure resolved path stays within public directory
-      if (!path.resolve(filePath).startsWith(resolvedPublic + path.sep) && path.resolve(filePath) !== resolvedPublic) {
-        return next();
-      }
-
       try {
         // Read HTML file directly; for extensionless paths, also try /index.html
         let html: string;
         try {
-          html = await fs.readFile(filePath, 'utf-8');
+          html = await safeReadPublicFile(filePath);
         } catch {
           if (urlPath.endsWith('.html')) {
             throw new Error('not found');
           }
           filePath = path.join(publicPath, urlPath, 'index.html');
-          if (!path.resolve(filePath).startsWith(resolvedPublic + path.sep)) {
-            throw new Error('not found');
-          }
-          html = await fs.readFile(filePath, 'utf-8');
+          html = await safeReadPublicFile(filePath);
         }
 
         // Cross-domain session bridge: if on AdCP without a session cookie,
