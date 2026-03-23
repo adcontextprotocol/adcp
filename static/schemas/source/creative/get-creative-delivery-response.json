@@ -13,10 +13,6 @@
       "type": "string",
       "description": "Publisher's media buy identifier. Present when the request was scoped to a single media buy."
     },
-    "media_buy_buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference identifier for the media buy. Echoed back so the buyer can correlate without mapping publisher IDs."
-    },
     "currency": {
       "type": "string",
       "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')",

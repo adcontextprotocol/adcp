@@ -396,7 +396,6 @@ const products = await session.call('get_products', {
 // Task-augmented call for a long-running operation
 const result = await session.call('create_media_buy',
   {
-    buyer_ref: "nike_q1_2025",
     packages: [...],
   },
   {
@@ -414,7 +413,169 @@ const result = await session.call('create_media_buy',
 // result is a CreateTaskResult — the client handles polling via tasks/get
 ```
 
-See [Push Notifications](/docs/building/implementation/webhooks) for webhook payload formats, authentication, and handler examples.
+**Webhook POST format:**
+```json
+{
+  "task_id": "task_456",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [...]
+  }
+}
+```
+
+**Note:** This example follows the recommended URL-based routing pattern where `task_type` and `operation_id` are passed in the URL (e.g., `/webhooks/adcp/create_media_buy/op_456`). While the schema still supports these fields in the payload for backward compatibility, they are deprecated.
+
+The `result` field contains the AdCP data payload. For `completed`/`failed` statuses, this is the full task response (e.g., `create-media-buy-response.json`). For other statuses, use the status-specific schemas (e.g., `create-media-buy-async-response-working.json`).
+
+#### MCP Webhook Envelope Fields
+
+The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) envelope includes:
+
+**Required fields:**
+- `task_id` — Unique task identifier for correlation
+- `status` — Current task status (completed, failed, working, input-required, etc.)
+- `timestamp` — ISO 8601 timestamp when webhook was generated
+
+**Optional fields:**
+- `domain` — AdCP domain ("media-buy" or "signals")
+- `context_id` — Conversation/session identifier
+- `message` — Human-readable context about the status change
+
+**Deprecated fields (supported but not recommended):**
+- `task_type` — Task name (e.g., "create_media_buy", "sync_creatives") - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
+- `operation_id` — Correlates a sequence of updates for the same operation - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
+
+**Data field:**
+- `result` — Task-specific AdCP payload (see Data Schema Validation below)
+
+#### Webhook Trigger Rules
+
+Webhooks are sent when **all** of these conditions are met:
+
+1. **Task type supports async** (e.g., `create_media_buy`, `sync_creatives`, `get_products`)
+2. **`pushNotificationConfig` is provided** in the request
+3. **Task runs asynchronously** — initial response is `working` or `submitted`
+
+If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent—you already have the result.
+
+**Status changes that trigger webhooks:**
+- `working` → Progress update (task actively processing)
+- `input-required` → Human input needed
+- `completed` → Final result available
+- `failed` → Error details
+
+#### Data Schema Validation
+
+The `result` field in MCP webhooks uses status-specific schemas:
+
+| Status | Schema | Contents |
+|--------|--------|----------|
+| `completed` | `[task]-response.json` | Full task response (success branch) |
+| `failed` | `[task]-response.json` | Full task response (error branch) |
+| `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
+| `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
+| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+
+Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json)
+
+#### Webhook Handler Example
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) => {
+  const { task_type, agent_id, operation_id } = req.params;
+  const webhook = req.body;
+
+  // Verify webhook authenticity (HMAC-SHA256 example)
+  const signature = req.headers['x-adcp-signature'];
+  const timestamp = req.headers['x-adcp-timestamp'];
+  if (!verifySignature(webhook, signature, timestamp)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Handle status changes
+  switch (webhook.status) {
+    case 'input-required':
+      // Alert human that input is needed
+      await notifyHuman({
+        operation_id,
+        message: webhook.message,
+        context_id: webhook.context_id,
+        data: webhook.result
+      });
+      break;
+
+    case 'completed':
+      // Process the completed operation
+      if (task_type === 'create_media_buy') {
+        await handleMediaBuyCreated({
+          media_buy_id: webhook.result.media_buy_id,
+          packages: webhook.result.packages
+        });
+      }
+      break;
+
+    case 'failed':
+      // Handle failure
+      await handleOperationFailed({
+        operation_id,
+        error: webhook.result?.errors,
+        message: webhook.message
+      });
+      break;
+
+    case 'working':
+      // Update progress UI
+      await updateProgress({
+        operation_id,
+        percentage: webhook.result?.percentage,
+        message: webhook.message
+      });
+      break;
+
+    case 'canceled':
+      await handleOperationCanceled(operation_id, webhook.message);
+      break;
+  }
+
+  // Always return 200 for successful processing
+  res.status(200).json({ status: 'processed' });
+});
+
+function verifySignature(payload, signature, timestamp) {
+  const crypto = require('crypto');
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.WEBHOOK_SECRET)
+    .update(timestamp + JSON.stringify(payload))
+    .digest('hex');
+  return signature === `sha256=${expectedSig}`;
+}
+```
+
+#### Task Management and Polling
+```javascript
+// Check status of specific task
+const taskStatus = await session.pollTask('task_456', true);
+if (taskStatus.status === 'completed') {
+  console.log('Result:', taskStatus.result);
+}
+
+// State reconciliation
+const reconciliation = await session.reconcileState();
+if (reconciliation.missing_from_client.length > 0) {
+  console.log('Found orphaned tasks:', reconciliation.missing_from_client);
+  // Start tracking these tasks
+}
+
+// List all pending operations
+const pending = await session.listPendingTasks();
+console.log(`${pending.tasks.length} operations in progress`);
+```
 
 ### Context Expiration Handling
 
@@ -434,6 +595,155 @@ async function handleContextExpiration(session, tool, params) {
 ```
 
 **Key Difference**: Unlike A2A which manages context automatically, MCP requires explicit context_id management.
+
+## Handling Async Operations
+
+When a task returns `working` or `submitted` status, you have two options for receiving updates:
+
+| Approach | Best For | Trade-offs |
+|----------|----------|------------|
+| **Polling** | Simple integrations, short tasks | Easy to implement, but inefficient for long waits |
+| **Webhooks** | Production systems, long-running tasks | More efficient, but requires a public endpoint |
+
+### Option 1: Polling
+
+Use `tasks/get` to check task status periodically:
+
+```javascript
+async function waitForCompletion(session, initialResponse) {
+  if (!initialResponse.task_id) {
+    return initialResponse; // Already completed
+  }
+  
+  // Poll more frequently for 'working' (will finish soon)
+  // Poll less frequently for 'submitted' (may take hours)
+  let pollInterval = initialResponse.status === 'working' ? 5000 : 30000;
+  
+  while (true) {
+    const response = await session.pollTask(initialResponse.task_id, true);
+    
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
+    
+    if (response.status === 'input-required') {
+      const input = await promptUser(response.message);
+      return session.call('create_media_buy', {
+        context_id: response.context_id,
+        additional_info: input
+      });
+    }
+    
+    pollInterval = response.status === 'working' ? 5000 : 30000;
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+}
+```
+
+### Option 2: Webhooks
+
+Configure a webhook URL and the server will POST updates to you directly. This is more efficient for long-running tasks since you don't need to keep polling.
+
+```javascript
+const response = await session.call('create_media_buy',
+  {
+    packages: [...],
+    budget: { total: 150000, currency: "USD" }
+  },
+  {
+    pushNotificationConfig: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
+    }
+  }
+);
+
+// If status is 'submitted', the server will POST updates to your webhook
+// You don't need to poll - just wait for the webhook
+```
+
+See [Webhooks](/docs/building/implementation/webhooks) for webhook payload formats and handling examples.
+
+### Handling Different Statuses
+
+```javascript
+const initial = await session.call('create_media_buy', {
+  packages: [...],
+  budget: { total: 100000, currency: "USD" }
+});
+
+switch (initial.status) {
+  case 'completed':
+    // Done immediately - no async handling needed
+    console.log('Created:', initial.media_buy_id);
+    break;
+    
+  case 'working':
+    // Will finish within ~2 minutes - poll or wait
+    console.log('Processing...');
+    const final = await waitForCompletion(session, initial);
+    console.log('Created:', final.result.media_buy_id);
+    break;
+    
+  case 'submitted':
+    // Long-running (hours/days) - use webhooks or poll infrequently
+    console.log(`Task ${initial.task_id} queued for approval`);
+    // Webhook will notify when complete, or poll manually
+    break;
+    
+  case 'input-required':
+    // Blocked on user input
+    console.log('Need more info:', initial.message);
+    break;
+}
+```
+
+## Integration Example
+
+```javascript
+// Initialize MCP session with context management
+const session = new McpAdcpSession(mcp);
+
+// Use unified status handling (see Core Concepts)
+async function handleAdcpCall(tool, params, options = {}) {
+  const response = await session.call(tool, params, options);
+  
+  switch (response.status) {
+    case 'input-required':
+      // Handle clarification (see Core Concepts for patterns)
+      const input = await promptUser(response.message);
+      return session.call(tool, { ...params, additional_info: input });
+      
+    case 'working':
+      // Handle short async operations 
+      return waitForCompletion(session, response);
+      
+    case 'submitted':
+      // Handle long async operations
+      if (options.webhook_url) {
+        console.log(`Task ${response.task_id} submitted, webhook will notify`);
+        return { pending: true, task_id: response.task_id };
+      } else {
+        console.log(`Task ${response.task_id} submitted, polling...`);
+        return waitForCompletion(session, response);
+      }
+      
+    case 'completed':
+      return response; // Task-specific fields are at the top level
+      
+    case 'failed':
+      throw new Error(response.message);
+  }
+}
+
+// Example usage
+const products = await handleAdcpCall('get_products', {
+  brief: "CTV campaign for luxury cars"
+});
+```
 
 ## MCP-Specific Considerations
 

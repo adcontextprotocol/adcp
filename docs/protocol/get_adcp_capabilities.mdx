@@ -444,10 +444,8 @@ const products = await client.getProducts({
 // Then, create media buy with fine-grained targeting
 // (if seller supports postal areas, we can target specific ZIP codes)
 const buy = await client.createMediaBuy({
-  buyer_ref: 'my-campaign-001',
   brand: { domain: 'mybrand.com' },
   packages: [{
-    buyer_ref: 'package-001',
     product_id: products.products[0].product_id,
     pricing_option_id: products.products[0].pricing_options[0].id,
     budget: 10000,
@@ -499,10 +497,8 @@ const radioProducts = await client.getProducts({
 // For local inventory, targeting_overlay is optional -
 // the product's coverage IS the geography
 const buy = await client.createMediaBuy({
-  buyer_ref: 'radio-campaign-001',
   brand: { domain: 'mybrand.com' },
   packages: [{
-    buyer_ref: 'package-001',
     product_id: radioProducts.products[0].product_id,
     pricing_option_id: radioProducts.products[0].pricing_options[0].id,
     budget: 5000

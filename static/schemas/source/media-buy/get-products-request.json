@@ -7,8 +7,12 @@
   "properties": {
     "buying_mode": {
       "type": "string",
-      "enum": ["brief", "wholesale", "refine"],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests. v3 clients MUST include buying_mode. Sellers receiving requests from pre-v3 clients without buying_mode SHOULD default to 'brief'."
+      "enum": [
+        "brief",
+        "wholesale",
+        "refine"
+      ],
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences \u2014 brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests. v3 clients MUST include buying_mode. Sellers receiving requests from pre-v3 clients without buying_mode SHOULD default to 'brief'."
     },
     "brief": {
       "type": "string",
@@ -26,7 +30,7 @@
               "scope": {
                 "type": "string",
                 "const": "request",
-                "description": "Change scoped to the overall request — direction for the selection as a whole."
+                "description": "Change scoped to the overall request \u2014 direction for the selection as a whole."
               },
               "ask": {
                 "type": "string",
@@ -34,7 +38,10 @@
                 "description": "What the buyer is asking for at the request level (e.g., 'more video options and less display', 'suggest how to combine these products')."
               }
             },
-            "required": ["scope", "ask"],
+            "required": [
+              "scope",
+              "ask"
+            ],
             "additionalProperties": false
           },
           {
@@ -51,7 +58,11 @@
               },
               "action": {
                 "type": "string",
-                "enum": ["include", "omit", "more_like_this"],
+                "enum": [
+                  "include",
+                  "omit",
+                  "more_like_this"
+                ],
                 "description": "'include': return this product with updated pricing and data. 'omit': exclude this product from the response. 'more_like_this': find additional products similar to this one (the original is also returned)."
               },
               "ask": {
@@ -60,7 +71,11 @@
                 "description": "What the buyer is asking for on this product. For 'include': specific changes to request (e.g., 'add 16:9 format'). For 'more_like_this': what 'similar' means (e.g., 'same audience but video format'). Ignored when action is 'omit'."
               }
             },
-            "required": ["scope", "id", "action"],
+            "required": [
+              "scope",
+              "id",
+              "action"
+            ],
             "additionalProperties": false
           },
           {
@@ -77,7 +92,10 @@
               },
               "action": {
                 "type": "string",
-                "enum": ["include", "omit"],
+                "enum": [
+                  "include",
+                  "omit"
+                ],
                 "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response."
               },
               "ask": {
@@ -86,7 +104,11 @@
                 "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
               }
             },
-            "required": ["scope", "id", "action"],
+            "required": [
+              "scope",
+              "id",
+              "action"
+            ],
             "additionalProperties": false
           }
         ]
@@ -104,13 +126,9 @@
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account for product lookup. Returns products with pricing specific to this account's rate card."
     },
-    "buyer_campaign_ref": {
-      "type": "string",
-      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
-    },
     "preferred_delivery_types": {
       "type": "array",
-      "description": "Delivery types the buyer prefers, in priority order. Unlike filters.delivery_type which excludes non-matching products, this signals preference for curation — the publisher may still include other delivery types when they match the brief well.",
+      "description": "Delivery types the buyer prefers, in priority order. Unlike filters.delivery_type which excludes non-matching products, this signals preference for curation \u2014 the publisher may still include other delivery types when they match the brief well.",
       "items": {
         "$ref": "/schemas/enums/delivery-type.json"
       },
@@ -164,7 +182,11 @@
       }
     },
     "time_budget": {
-      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/core/duration.json"
+        }
+      ],
       "description": "Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing."
     },
     "pagination": {
@@ -175,16 +197,22 @@
     },
     "required_policies": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["buying_mode"],
+  "required": [
+    "buying_mode"
+  ],
   "dependencies": {
-    "catalog": ["brand"]
+    "catalog": [
+      "brand"
+    ]
   },
   "additionalProperties": true
 }

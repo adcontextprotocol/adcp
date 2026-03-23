@@ -1,0 +1,30 @@
+{
+  "policy_id": "us_eeoc_employment_targeting",
+  "version": "1.0.0",
+  "name": "US EEOC — Employment Ad Targeting Restrictions",
+  "description": "Prohibits discriminatory targeting in employment advertising under Title VII, ADEA, ADA, and GINA.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["fair_employment"],
+  "governance_domains": ["campaign"],
+  "effective_date": "1964-07-02",
+  "source_url": "https://www.eeoc.gov/laws/guidance/cm-604-theories-discrimination",
+  "source_name": "US Equal Employment Opportunity Commission",
+  "policy": "Employment advertisements must not target or exclude audiences based on race, color, religion, sex (including pregnancy, sexual orientation, gender identity), national origin, age (40+), disability, or genetic information.\n\nSpecific prohibitions:\n1. Age-based audience exclusions that prevent adults 40+ from seeing job ads violate the ADEA.\n2. Gender-based targeting for job ads is prohibited except where sex is a bona fide occupational qualification (BFOQ), which is extremely narrow.\n3. Disability-related audience segments must not be used to exclude candidates.\n4. Religious affiliation segments must not be used for targeting or exclusion.\n\nThe EEOC has affirmed that algorithmic discrimination in hiring, including discriminatory ad delivery, constitutes unlawful employment practices.",
+  "guidance": "The DOJ and EEOC have brought actions against employers and platforms for age-targeted job ads. Governance agents should treat any demographic targeting in employment campaigns as high-risk. Even interest-based targeting can raise issues if interests correlate strongly with protected characteristics.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A tech company runs job ads for software engineers using skills-based targeting (programming languages, certifications) with broad demographic reach.",
+        "explanation": "Skills-based targeting without demographic exclusions does not violate employment discrimination law."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A company runs job ads targeted only to users aged 22-35, excluding users over 40 from seeing the ads.",
+        "explanation": "Age-based exclusion in employment advertising violates the Age Discrimination in Employment Act. The DOJ's 2019 settlement with multiple employers confirmed this applies to digital ad targeting."
+      }
+    ]
+  }
+}

@@ -33,8 +33,8 @@
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response.",
-      "minLength": 8,
+      "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
       "maxLength": 255
     },
     "context": {
@@ -44,6 +44,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["rights_id", "creative_url"],
+  "required": [
+    "rights_id",
+    "creative_url"
+  ],
   "additionalProperties": true
 }

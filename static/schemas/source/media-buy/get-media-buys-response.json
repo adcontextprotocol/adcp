@@ -13,15 +13,7 @@
         "properties": {
           "media_buy_id": {
             "type": "string",
-            "description": "Publisher's unique identifier for the media buy"
-          },
-          "buyer_ref": {
-            "type": "string",
-            "description": "Buyer's reference identifier for this media buy"
-          },
-          "buyer_campaign_ref": {
-            "type": "string",
-            "description": "Buyer campaign reference label sourced from create_media_buy.buyer_campaign_ref. Groups related operations under a single campaign; may be absent when not provided at creation time."
+            "description": "Seller's unique identifier for the media buy"
           },
           "account": {
             "$ref": "/schemas/core/account.json",
@@ -55,6 +47,38 @@
             "format": "date-time",
             "description": "ISO 8601 timestamp for creative upload deadline"
           },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the seller confirmed this media buy. A successful create_media_buy response constitutes order confirmation."
+          },
+          "cancellation": {
+            "type": "object",
+            "description": "Cancellation metadata. Present only when status is 'canceled'.",
+            "required": ["canceled_at", "canceled_by"],
+            "properties": {
+              "canceled_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when this media buy was canceled."
+              },
+              "canceled_by": {
+                "$ref": "/schemas/enums/canceled-by.json",
+                "description": "Which party initiated the cancellation."
+              },
+              "reason": {
+                "type": "string",
+                "description": "Reason the media buy was canceled.",
+                "maxLength": 500
+              }
+            },
+            "additionalProperties": false
+          },
+          "revision": {
+            "type": "integer",
+            "description": "Current revision number. Pass this in update_media_buy for optimistic concurrency.",
+            "minimum": 1
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -65,21 +89,79 @@
             "format": "date-time",
             "description": "Last update timestamp"
           },
+          "valid_actions": {
+            "type": "array",
+            "description": "Actions the buyer can perform on this media buy in its current state. Eliminates the need for agents to internalize the state machine — the seller declares what is permitted right now.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "pause",
+                "resume",
+                "cancel",
+                "update_budget",
+                "update_dates",
+                "update_packages",
+                "add_packages",
+                "sync_creatives"
+              ]
+            }
+          },
+          "history": {
+            "type": "array",
+            "description": "Revision history entries, most recent first. Only present when include_history > 0 in the request. Each entry represents a state change or update to the media buy. Entries are append-only: sellers MUST NOT modify or delete previously emitted history entries. Callers MAY cache entries by revision number. Returns min(N, available entries) when include_history exceeds the total.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "revision": {
+                  "type": "integer",
+                  "description": "Revision number after this change was applied.",
+                  "minimum": 1
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When this change occurred."
+                },
+                "actor": {
+                  "type": "string",
+                  "description": "Identity of who made the change — derived from authentication context, not caller-provided. Format is seller-defined (e.g., agent URL, user email, API key label)."
+                },
+                "action": {
+                  "type": "string",
+                  "description": "What happened. Standard actions: created, activated, paused, resumed, canceled, rejected, completed, updated_budget, updated_dates, updated_packages, package_canceled, package_paused, package_resumed. Sellers MAY use additional platform-specific actions (e.g., creative_approved, targeting_updated) — use ext on the history entry for structured metadata about custom actions."
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "Human-readable summary of the change (e.g., 'Budget increased from $5,000 to $7,500 on pkg_abc').",
+                  "maxLength": 500
+                },
+                "package_id": {
+                  "type": "string",
+                  "description": "Package affected, when the change targeted a specific package."
+                },
+                "ext": {
+                  "$ref": "/schemas/core/ext.json"
+                }
+              },
+              "required": [
+                "revision",
+                "timestamp",
+                "action"
+              ],
+              "additionalProperties": true
+            }
+          },
           "packages": {
             "type": "array",
             "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots",
             "items": {
               "title": "PackageStatus",
-              "description": "Current status of a package within a media buy — includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
+              "description": "Current status of a package within a media buy \u2014 includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
               "type": "object",
               "properties": {
                 "package_id": {
                   "type": "string",
-                  "description": "Publisher's package identifier"
-                },
-                "buyer_ref": {
-                  "type": "string",
-                  "description": "Buyer's reference identifier for this package"
+                  "description": "Seller's package identifier"
                 },
                 "product_id": {
                   "type": "string",
@@ -118,6 +200,37 @@
                 "paused": {
                   "type": "boolean",
                   "description": "Whether this package is currently paused by the buyer"
+                },
+                "canceled": {
+                  "type": "boolean",
+                  "description": "Whether this package has been canceled. Canceled packages stop delivery and cannot be reactivated."
+                },
+                "cancellation": {
+                  "type": "object",
+                  "description": "Cancellation metadata. Present only when canceled is true.",
+                  "required": ["canceled_at", "canceled_by"],
+                  "properties": {
+                    "canceled_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp when this package was canceled."
+                    },
+                    "canceled_by": {
+                      "$ref": "/schemas/enums/canceled-by.json",
+                      "description": "Which party initiated the package cancellation."
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Reason the package was canceled.",
+                      "maxLength": 500
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "creative_deadline": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
                 },
                 "creative_approvals": {
                   "type": "array",
@@ -162,7 +275,7 @@
                 },
                 "snapshot": {
                   "type": "object",
-                  "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform — not billing-grade data.",
+                  "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform \u2014 not billing-grade data.",
                   "properties": {
                     "as_of": {
                       "type": "string",
@@ -201,7 +314,7 @@
                     },
                     "delivery_status": {
                       "type": "string",
-                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle — the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
+                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle \u2014 the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
                       "enum": [
                         "delivering",
                         "not_delivering",

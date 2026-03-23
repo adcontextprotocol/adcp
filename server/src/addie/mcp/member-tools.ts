@@ -10,6 +10,7 @@
  * Addie can only modify data on behalf of the user she's talking to.
  */
 
+import { randomUUID } from 'node:crypto';
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -3193,7 +3194,6 @@ export function createMemberToolHandlers(
         if (liBudget && (status === 'mapped' || status === 'partial')) mappableBudget += liBudget;
 
         const proposedPackage = bestPricing ? {
-          buyer_ref: `line-${i + 1}`,
           product_id: bestProduct.product_id,
           pricing_option_id: bestPricing.pricing_option_id,
           budget: liBudget || 0,
@@ -3222,7 +3222,7 @@ export function createMemberToolHandlers(
       const latestEnd = allEndDates.length > 0 ? allEndDates.sort().reverse()[0] : new Date(Date.now() + 30 * 86400000).toISOString();
 
       const proposedRequest = mappedPackages.length > 0 ? {
-        buyer_ref: `io-test-${Date.now()}`,
+        idempotency_key: randomUUID(),
         brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
         account: { account_id: advertiser || 'test-account' },
         start_time: earliestStart,

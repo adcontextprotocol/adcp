@@ -107,13 +107,11 @@ Create an advertising campaign from selected products.
 **Request:**
 ```json
 {
-  "buyer_ref": "campaign-2024-q1-001",
   "brand": {
     "domain": "acme.com"
   },
   "packages": [
     {
-      "buyer_ref": "pkg-video-001",
       "product_id": "premium_video_30s",
       "pricing_option_id": "cpm-standard",
       "budget": 10000
@@ -127,10 +125,8 @@ Create an advertising campaign from selected products.
 ```
 
 **Key fields:**
-- `buyer_ref` (string, required): Your unique identifier for this campaign
 - `brand` (object, required): Brand identity - `{ "domain": "acmecorp.com" }`
 - `packages` (array, required): Products to purchase, each with:
-  - `buyer_ref`: Your identifier for this package
   - `product_id`: From `get_products` response
   - `pricing_option_id`: From product's `pricing_options`
   - `budget`: Amount in dollars

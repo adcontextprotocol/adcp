@@ -132,7 +132,6 @@ asyncio.run(discover_with_filters())
 | `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
 | `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
-| `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
@@ -244,6 +243,7 @@ Returns an array of `products` and optionally `proposals`.
 | `shows` | ShowSelector[] | (Optional) Shows available in this product. Each entry has `publisher_domain` and `show_ids`. Buyers resolve full show objects from the referenced `adagents.json`. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes). |
 | `show_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
+| `measurement_readiness` | [MeasurementReadiness](/docs/media-buy/conversion-tracking/#measurement-readiness) | (Optional) Whether the buyer's event setup is sufficient for this product's optimization. Only present when the seller can evaluate the buyer's account context. |
 
 ### Proposals Array (Optional)
 

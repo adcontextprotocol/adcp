@@ -94,14 +94,6 @@
       },
       "minItems": 1
     },
-    "buyer_refs": {
-      "type": "array",
-      "description": "Filter creatives assigned to media buys with any of these buyer references. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
-      "items": {
-        "type": "string"
-      },
-      "minItems": 1
-    },
     "unassigned": {
       "type": "boolean",
       "description": "Filter for unassigned creatives when true, assigned creatives when false. Sales-agent-specific — standalone creative agents SHOULD ignore this filter."

@@ -147,10 +147,6 @@
                       "type": "string",
                       "description": "Package identifier"
                     },
-                    "buyer_ref": {
-                      "type": "string",
-                      "description": "Buyer's reference identifier for this package"
-                    },
                     "assigned_date": {
                       "type": "string",
                       "format": "date-time",
