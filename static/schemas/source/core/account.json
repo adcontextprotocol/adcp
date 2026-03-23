@@ -100,7 +100,8 @@
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Governance agent endpoint URL."
+            "pattern": "^https://",
+            "description": "Governance agent endpoint URL. Must use HTTPS."
           },
           "authentication": {
             "type": "object",
@@ -122,14 +123,16 @@
           },
           "categories": {
             "type": "array",
-            "items": { "type": "string" },
-            "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories."
+            "items": { "type": "string", "maxLength": 64 },
+            "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories.",
+            "maxItems": 20
           }
         },
         "required": ["url", "authentication"],
         "additionalProperties": false
       },
-      "minItems": 1
+      "minItems": 1,
+      "maxItems": 10
     },
     "sandbox": {
       "type": "boolean",

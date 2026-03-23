@@ -43,7 +43,8 @@
                 "url": {
                   "type": "string",
                   "format": "uri",
-                  "description": "Governance agent endpoint URL."
+                  "pattern": "^https://",
+                  "description": "Governance agent endpoint URL. Must use HTTPS."
                 },
                 "authentication": {
                   "type": "object",

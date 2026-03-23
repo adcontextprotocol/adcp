@@ -99,7 +99,9 @@ Pass `account_governance` in the request to register governance endpoints agains
 
 This uses **replace semantics** — each call replaces any previously registered agents on the specified accounts. Accounts not included in `account_governance` keep their existing registrations. Omitting `account_governance` entirely leaves all registrations unchanged.
 
-The seller calls the registered agents for approval during media buy lifecycle events (via `check_governance`). Each governance agent entry requires a `url` and `authentication`, and can optionally be scoped to specific `categories`. A successful response confirms the governance agents were registered — the returned accounts will include the `governance_agents` field reflecting the persisted configuration.
+The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents. Requests referencing accounts the agent does not own MUST return an error for those entries.
+
+The seller calls the registered agents for approval during media buy lifecycle events (via `check_governance`). Each governance agent entry requires a `url` (HTTPS only) and `authentication`, and can optionally be scoped to specific `categories`. A successful response confirms the governance agents were registered — the returned accounts will include the `governance_agents` field reflecting the persisted configuration.
 
 <CodeGroup>
 
@@ -210,6 +212,8 @@ asyncio.run(main())
 
 </CodeGroup>
 
+<CodeGroup>
+
 ```json Explicit accounts (by account_id)
 {
   "$schema": "https://adcontextprotocol.org/schemas/latest/account/list-accounts-request.json",
@@ -254,6 +258,8 @@ asyncio.run(main())
   ]
 }
 ```
+
+</CodeGroup>
 
 ## Common Scenarios
 

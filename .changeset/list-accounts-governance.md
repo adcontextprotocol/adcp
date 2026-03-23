@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Add optional `governance_agents` field to `list_accounts` request, allowing buyers to register governance agent endpoints on explicit-account sellers where `sync_accounts` is not used.
+Add optional `account_governance` field to `list_accounts` request, allowing buyers to register per-account governance agents using account references (account_id or brand+operator).
