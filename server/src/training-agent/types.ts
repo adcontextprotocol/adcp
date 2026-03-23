@@ -8,7 +8,8 @@ import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaB
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
 
 /** Matches the talent-role.json enum in static/schemas/source/enums/ */
-export type TalentRole = 'host' | 'guest' | 'creator' | 'cast' | 'narrator' | 'producer' | 'correspondent' | 'commentator' | 'analyst';
+export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'producer', 'correspondent', 'commentator', 'analyst'] as const;
+export type TalentRole = typeof TALENT_ROLES[number];
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];

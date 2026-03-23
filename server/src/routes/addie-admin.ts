@@ -78,7 +78,7 @@ function clampLimit(raw: unknown, defaultVal: number, max = 200): number {
 /**
  * Parse a query string offset and clamp to [0, max].
  */
-function clampOffset(raw: unknown, max = 100000): number {
+function clampOffset(raw: unknown, max = 1_000_000): number {
   const parsed = raw ? parseInt(raw as string, 10) : NaN;
   return isNaN(parsed) ? 0 : Math.min(Math.max(parsed, 0), max);
 }
