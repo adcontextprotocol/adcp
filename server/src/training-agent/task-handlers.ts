@@ -385,7 +385,6 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         media_buy_ids: { type: 'array', items: { type: 'string' } },
-        buyer_refs: { type: 'array', items: { type: 'string' }, description: 'Filter by buyer reference IDs' },
         status_filter: { type: 'array', items: { type: 'string', enum: ['pending_activation', 'active', 'paused', 'completed', 'canceled', 'rejected'] }, description: 'Filter by lifecycle status. Defaults to ["active"] when no media_buy_ids provided.' },
         include_history: { type: 'integer', minimum: 0, maximum: 1000, description: 'Include the last N revision history entries per media buy. 0 or omit to exclude. Recommended: 5-10 for monitoring, 50+ for audit.' },
         include_snapshot: { type: 'boolean', description: 'Include full media buy snapshot in response' },

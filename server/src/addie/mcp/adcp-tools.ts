@@ -650,11 +650,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           items: { type: 'string' },
           description: 'Array of publisher media buy IDs to retrieve.',
         },
-        buyer_refs: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Array of buyer reference IDs to retrieve.',
-        },
         status_filter: {
           description: 'Filter by media buy status. Single status or array. Defaults to ["active"] when no IDs provided.',
           oneOf: [
@@ -827,15 +822,15 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           items: {
             type: 'object',
             properties: {
-              buyer_ref: { type: 'string', description: 'Your reference for the new package' },
               product_id: { type: 'string', description: 'Product ID for this package' },
               budget: { type: 'number', description: 'Budget allocation' },
               pricing_option_id: { type: 'string', description: 'Selected pricing option' },
               bid_price: { type: 'number', description: 'Bid price (auction only)' },
               start_time: { type: 'string', description: 'Flight start (ISO 8601)' },
               end_time: { type: 'string', description: 'Flight end (ISO 8601)' },
+              context: { type: 'object', description: 'Opaque context echoed back for buyer-side correlation' },
             },
-            required: ['buyer_ref', 'product_id', 'budget', 'pricing_option_id'],
+            required: ['product_id', 'budget', 'pricing_option_id'],
           },
         },
         reporting_webhook: {
