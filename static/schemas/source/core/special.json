@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/special.json",
   "title": "Special",
-  "description": "Event-anchored content tied to a real-world event or occasion. When present on a show, indicates the show is a special. When present on an episode, indicates that specific episode is event-anchored (overrides or supplements the show-level special).",
+  "description": "Event-anchored content tied to a real-world event or occasion. When present on a collection, indicates the collection is a special. When present on an installment, indicates that specific installment is event-anchored (overrides or supplements the collection-level special).",
   "type": "object",
   "properties": {
     "name": {

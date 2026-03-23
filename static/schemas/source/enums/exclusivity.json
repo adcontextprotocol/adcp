@@ -11,7 +11,7 @@
   ],
   "enumDescriptions": {
     "none": "No exclusivity — multiple advertisers can buy this product simultaneously",
-    "category": "Category-exclusive — only one advertiser per industry category (e.g., one auto brand per show sponsorship)",
+    "category": "Category-exclusive — only one advertiser per industry category (e.g., one auto brand per collection sponsorship)",
     "exclusive": "Sole sponsorship — only one advertiser can buy this product"
   }
 }

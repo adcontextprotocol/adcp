@@ -240,8 +240,8 @@ Returns an array of `products` and optionally `proposals`.
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
 | `delivery_measurement` | DeliveryMeasurement | (Optional) How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
-| `shows` | ShowSelector[] | (Optional) Shows available in this product. Each entry has `publisher_domain` and `show_ids`. Buyers resolve full show objects from the referenced `adagents.json`. See [Shows and episodes](/docs/media-buy/product-discovery/shows-and-episodes). |
-| `show_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
+| `shows` | CollectionSelector[] | (Optional) Collections available in this product. Each entry has `publisher_domain` and `collection_ids`. Buyers resolve full collection objects from the referenced `adagents.json`. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments). |
+| `collection_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 
 ### Proposals Array (Optional)

@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/ad-inventory-config.json",
   "title": "Ad Inventory Configuration",
-  "description": "Break-based ad inventory configuration for an episode. Describes the ad breaks available within the content. For non-break ad formats (host reads, integrations, sponsorships), use product placements instead.",
+  "description": "Break-based ad inventory configuration for an installment. Describes the ad breaks available within the content. For non-break ad formats (host reads, integrations, sponsorships), use product placements instead.",
   "type": "object",
   "properties": {
     "expected_breaks": {
       "type": "integer",
       "minimum": 0,
-      "description": "Number of planned ad breaks in the episode"
+      "description": "Number of planned ad breaks in the installment"
     },
     "total_ad_seconds": {
       "type": "integer",
