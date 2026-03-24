@@ -3798,7 +3798,7 @@ describe('proposal lifecycle', () => {
     );
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+    await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
       refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
