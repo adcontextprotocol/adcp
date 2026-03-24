@@ -1205,6 +1205,7 @@ export interface TrackedBatchMarketingEmail {
   render: TrackedEmailRenderer;
   category: string;
   workosUserId: string;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -1248,7 +1249,7 @@ export async function sendTrackedBatchMarketingEmails(
         recipient_email: email.to,
         subject: email.subject,
         workos_user_id: email.workosUserId,
-        metadata: {},
+        metadata: email.metadata || {},
       });
 
       const trackingId = emailEvent.tracking_id;

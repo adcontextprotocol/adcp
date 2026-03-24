@@ -325,7 +325,7 @@ async function buildSpotlightAction(): Promise<DigestSpotlightAction | null> {
     const upcoming = await meetingsDb.getUpcomingMeetings(5);
     // Find the soonest meeting that's within the next 7 days
     const oneWeekOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const soonest = upcoming.find((m: { start_time: string | Date }) => new Date(m.start_time) <= oneWeekOut);
+    const soonest = upcoming.find((m) => new Date(m.start_time) <= oneWeekOut);
 
     if (!soonest) return null;
 
@@ -338,8 +338,8 @@ async function buildSpotlightAction(): Promise<DigestSpotlightAction | null> {
       timeZoneName: 'short',
     });
 
-    const groupName = (soonest as { working_group_name?: string }).working_group_name || 'a working group';
-    const title = (soonest as { title?: string }).title || 'meeting';
+    const groupName = soonest.working_group_name || 'a working group';
+    const title = soonest.title || 'meeting';
 
     return {
       text: `This week: ${groupName} meets ${dayStr} at ${timeStr} for ${title}.`,

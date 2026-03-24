@@ -42,6 +42,7 @@ export function renderDigestEmail(
   editionDate: string,
   segment: DigestSegment,
   firstName?: string,
+  userWorkingGroupNames?: string[],
 ): { html: string; text: string } {
   const t = (linkTag: string, url: string) => trackLink(trackingId, linkTag, url);
   const viewInBrowserUrl = t('view_browser', `${BASE_URL}/digest/${editionDate}`);
@@ -84,18 +85,25 @@ export function renderDigestEmail(
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
     <!-- Working Group Updates -->
-    ${content.workingGroups.length > 0 ? `
+    ${content.workingGroups.length > 0 ? (() => {
+      const userWGs = new Set(userWorkingGroupNames || []);
+      const sorted = userWGs.size > 0
+        ? [...content.workingGroups].sort((a, b) => (userWGs.has(b.name) ? 1 : 0) - (userWGs.has(a.name) ? 1 : 0))
+        : content.workingGroups;
+      return `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Working Group Updates</h2>
-    ${content.workingGroups.map((wg) => `
-    <div style="margin-bottom: 12px;">
+    ${sorted.map((wg) => {
+      const isMember = userWGs.has(wg.name);
+      return `
+    <div style="margin-bottom: 12px;${isMember ? ' border-left: 3px solid #2563eb; padding-left: 12px;' : ''}">
       <p style="font-size: 14px; margin: 0;">
-        <strong>${escapeHtml(wg.name)}</strong>: ${escapeHtml(wg.summary.slice(0, 150))}
+        <strong>${escapeHtml(wg.name)}</strong>${isMember ? ' <span style="font-size: 11px; color: #2563eb; font-weight: 600;">YOUR GROUP</span>' : ''}: ${escapeHtml(wg.summary.slice(0, 150))}
         ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
       </p>
-    </div>
-    `).join('')}
-    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
-    ` : ''}
+    </div>`;
+    }).join('')}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">`;
+    })() : ''}
 
     <!-- New Members -->
     ${content.newMembers.length > 0 ? `

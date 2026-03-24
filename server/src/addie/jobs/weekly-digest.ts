@@ -1,5 +1,6 @@
 import { createLogger } from '../../logger.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../services/digest-builder.js';
+import { query } from '../../db/client.js';
 import {
   createDigest,
   getDigestByDate,
@@ -181,20 +182,36 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
   const recipients = await getDigestEmailRecipients();
   const subject = await generateDigestSubject(digest.content);
 
+  // Pre-fetch all user WG memberships for personalization (single query)
+  const wgMemberships = await query<{ workos_user_id: string; name: string }>(
+    `SELECT wgm.workos_user_id, wg.name
+     FROM working_group_memberships wgm
+     JOIN working_groups wg ON wg.id = wgm.working_group_id
+     WHERE wgm.status = 'active' AND wg.status = 'active'`,
+  );
+  const userWGMap = new Map<string, string[]>();
+  for (const row of wgMemberships.rows) {
+    const groups = userWGMap.get(row.workos_user_id) || [];
+    groups.push(row.name);
+    userWGMap.set(row.workos_user_id, groups);
+  }
+
   const emailBatch: TrackedBatchMarketingEmail[] = [];
 
   for (const recipient of recipients) {
     const segment: DigestSegment = recipient.has_slack ? 'both' : 'website_only';
+    const userWGs = userWGMap.get(recipient.workos_user_id);
 
     emailBatch.push({
       to: recipient.email,
       subject,
       render: (trackingId: string) => {
-        const { html, text } = renderDigestEmail(digest.content, trackingId, editionDate, segment, recipient.first_name || undefined);
+        const { html, text } = renderDigestEmail(digest.content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs);
         return { htmlContent: html, textContent: text };
       },
       category: 'weekly_digest',
       workosUserId: recipient.workos_user_id,
+      metadata: { edition_date: editionDate, segment },
     });
 
     stats.by_segment[segment] = (stats.by_segment[segment] || 0) + 1;
