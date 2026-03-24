@@ -39,10 +39,11 @@ export function isAddressedToAnotherUser(messageText: string, botUserId: string)
  *
  * Returns true if:
  * - The message mentions "Addie" by name (word boundary, case-insensitive)
- * - The sender is continuing a back-and-forth with Addie — the most recent
- *   human message (skipping Addie's messages) is also from the same sender.
- *   This check is NOT self-reinforcing because Addie's own responses don't
- *   change who the last human speaker was.
+ * - The sender is continuing a conversation with Addie — walking backwards
+ *   past the sender's own consecutive messages and then past Addie's
+ *   consecutive responses, the next message is from the sender (meaning
+ *   Addie was responding to them). If it's a different human, the sender
+ *   is talking to that person, not Addie.
  *
  * Returns false if:
  * - The message starts with a Slack @mention of another user (not the bot),
@@ -65,11 +66,23 @@ export function isDirectedAtAddie(
     return false;
   }
 
-  // Find the most recent human message before the current one (skip bot messages).
-  // If it's from the same person, they're continuing a conversation with Addie.
-  const lastHuman = threadMessages
-    .filter(msg => msg.ts !== currentMessageTs && msg.user && msg.user !== botUserId)
-    .at(-1);
+  // Walk backwards: skip the sender's consecutive messages, then skip Addie's
+  // consecutive responses, and check who's underneath. If it's the sender
+  // again, Addie was responding to them (back-and-forth). If it's another
+  // human, the sender is talking to that person.
+  const prior = threadMessages.filter(msg => msg.ts < currentMessageTs && msg.user);
+  let i = prior.length - 1;
 
-  return lastHuman?.user === currentUserId;
+  while (i >= 0 && prior[i].user === currentUserId) {
+    i--;
+  }
+  while (i >= 0 && prior[i].user === botUserId) {
+    i--;
+  }
+
+  if (i < 0) {
+    return prior.some(msg => msg.user === botUserId);
+  }
+
+  return prior[i].user === currentUserId;
 }
