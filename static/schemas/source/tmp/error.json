@@ -15,8 +15,6 @@
       "enum": [
         "invalid_request",
         "unknown_package",
-        "unsupported_response_type",
-        "unsupported_wire_format",
         "rate_limited",
         "timeout",
         "internal_error",

@@ -130,7 +130,7 @@ Returned by a provider or router when a request cannot be processed. Distinct fr
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `request_id` | string | Yes | Echo of the original request's `request_id`. |
-| `code` | enum | Yes | Machine-readable error code: `invalid_request`, `unknown_package`, `unsupported_response_type`, `unsupported_wire_format`, `rate_limited`, `timeout`, `internal_error`, `provider_unavailable`. |
+| `code` | enum | Yes | Machine-readable error code: `invalid_request`, `unknown_package`, `rate_limited`, `timeout`, `internal_error`, `provider_unavailable`. |
 | `message` | string | No | Human-readable error description for debugging. |
 
 The router SHOULD exclude providers that return errors from the merged response for that request. The router MAY track error rates per provider and preemptively skip providers with sustained errors.
@@ -143,7 +143,6 @@ TMP providers are registered with the router via publisher configuration. The pu
 |---|---|---|---|
 | `context_match` | bool | Yes | Provider supports Context Match requests. |
 | `identity_match` | bool | No | Provider supports Identity Match requests. Default: false. |
-| `wire_formats` | List\<string\> | Yes | Supported wire formats. Must include at least one of `capnp` or `json`. |
 
 Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match`.
 
@@ -195,21 +194,11 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 
 ## Wire Format
 
-### Cap'n Proto (primary)
-
-Content type: `application/x-capnp`
-
-Cap'n Proto schemas define all message types. Implementations MUST support Cap'n Proto encoding. Schema files are published at `https://adcontextprotocol.org/schemas/v3/tmp/`.
-
-### JSON (debug/development)
-
 Content type: `application/json`
 
-JSON encoding follows the field names and types defined in this specification. JSON support is OPTIONAL. Implementations that support JSON MUST produce responses consistent with their Cap'n Proto responses.
+All TMP messages use JSON encoding. Field names and types follow the JSON Schema definitions in this specification. Implementations MUST support JSON.
 
-### Content negotiation
-
-The router negotiates wire format with each provider based on provider configuration. The router prefers Cap'n Proto when both formats are available.
+TMP messages are small (200-600 bytes per request/response). At these sizes, serialization format is less than 1% of total latency — the protocol's performance comes from smaller messages and structural separation, not encoding efficiency. JSON is universal, debuggable, and supported by every language and tool.
 
 ## Transport
 

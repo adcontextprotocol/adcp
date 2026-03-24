@@ -34,6 +34,39 @@
       },
       "minItems": 1
     },
+    "geo": {
+      "type": "object",
+      "description": "Geographic context for this impression. Publisher controls granularity — country is sufficient for volume filtering and regulatory compliance, finer granularity helps with valuation. This describes where the ad is serving, not where the user is (user location is identity data). All fields optional.",
+      "properties": {
+        "country": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'GB', 'DE').",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "region": {
+          "type": "string",
+          "description": "ISO 3166-2 subdivision code (e.g., 'US-CA', 'GB-SCT').",
+          "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+        },
+        "metro": {
+          "type": "object",
+          "description": "Metro area, using the same classification systems as AdCP targeting.",
+          "properties": {
+            "system": {
+              "$ref": "/schemas/enums/metro-system.json",
+              "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')."
+            },
+            "value": {
+              "type": "string",
+              "description": "Metro code within the system (e.g., '501' for New York DMA)."
+            }
+          },
+          "required": ["system", "value"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "available_packages": {
       "type": "array",
       "description": "ALL packages eligible for this placement. MUST NOT be filtered by user identity or audience — that filtering happens via Identity Match. Sending only user-relevant packages leaks identity into the context path. Using a stable per-placement set also enables caching.",

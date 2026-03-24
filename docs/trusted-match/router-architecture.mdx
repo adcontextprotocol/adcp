@@ -57,8 +57,6 @@ Publishers configure which providers the router calls. This is an operational re
 | `endpoint` | URL | Provider's HTTP/2 endpoint |
 | `context_match` | bool | Provider handles Context Match requests |
 | `identity_match` | bool | Provider handles Identity Match requests |
-| `wire_formats` | list | Supported formats: `capnp`, `json` |
-
 Additional configuration per provider:
 
 - **Property scoping**: Which properties or property groups this provider serves
@@ -67,9 +65,7 @@ Additional configuration per provider:
 
 Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match`.
 
-### Wire format negotiation
-
-The router negotiates wire format with each provider based on their declared capabilities. Cap'n Proto is preferred when both formats are available — it eliminates serialization overhead and keeps payloads small (~100-300 bytes for a typical context match request). JSON is supported as a development and debugging fallback.
+All communication uses JSON over HTTP/2. TMP messages are small (200-600 bytes) — at these sizes, serialization format is less than 1% of total latency.
 
 ## Integration
 
@@ -121,7 +117,7 @@ TMP targets sub-50ms end-to-end latency: publisher sends request, router fans ou
 
 This is achievable because:
 
-- **Binary encoding**: Cap'n Proto wire format eliminates serialization/deserialization overhead. Typical Context Match request: 100-300 bytes.
+- **Small messages**: TMP requests are 200-600 bytes of JSON — orders of magnitude smaller than OpenRTB. Serialization is sub-microsecond.
 - **No price computation**: Packages are pre-negotiated. The provider evaluates targeting criteria, not auction dynamics.
 - **Parallel fan-out**: All providers are called simultaneously. The total latency is the slowest provider's response time, not the sum.
 - **Stateless router**: No database lookups in the hot path. The router's only job is forwarding and merging.
@@ -138,7 +134,7 @@ The TMP Router replaces this with a multi-provider, multi-surface, protocol-stan
 | Providers | Single vendor | Any provider declaring TMP capabilities |
 | Discovery | Publisher configuration | Publisher configuration |
 | Surfaces | Web (Prebid Server) | Web, AI, mobile, CTV, retail media |
-| Request format | Full OpenRTB BidRequest (~2-10KB JSON) | TMP ContextMatchRequest (~100-300 bytes Cap'n Proto) |
+| Request format | Full OpenRTB BidRequest (~2-10KB JSON) | TMP ContextMatchRequest (~200-600 bytes JSON) |
 | Privacy | Data masking before sending | Structural separation (TEE-ready) |
 | Identity handling | User ID in bid request | Separate Identity Match operation |
 
