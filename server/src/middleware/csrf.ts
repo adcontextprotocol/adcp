@@ -54,15 +54,21 @@ function isExemptPath(path: string): boolean {
 }
 
 /**
- * Set the CSRF cookie if it isn't already present.
- * Called on every request so the token is available before the first POST.
+ * Check whether the incoming request has a valid CSRF cookie.
+ * Returns the cookie value if valid, null if missing/malformed.
  */
-function ensureCsrfCookie(req: Request, res: Response): string {
+function getValidCookie(req: Request): string | null {
   const existing = req.cookies?.[CSRF_COOKIE];
   if (existing && typeof existing === "string" && existing.length === TOKEN_BYTES * 2) {
     return existing;
   }
+  return null;
+}
 
+/**
+ * Set a fresh CSRF cookie on the response.
+ */
+function setNewCsrfCookie(res: Response): string {
   const token = crypto.randomBytes(TOKEN_BYTES).toString("hex");
   res.cookie(CSRF_COOKIE, token, {
     httpOnly: false,   // JS must be able to read this
@@ -78,10 +84,13 @@ function ensureCsrfCookie(req: Request, res: Response): string {
  * Express middleware — mount after cookieParser().
  */
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
-  const token = ensureCsrfCookie(req, res);
+  const existingCookie = getValidCookie(req);
 
-  // Safe methods — nothing to validate
+  // Safe methods — nothing to validate, just ensure cookie exists
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    if (!existingCookie) {
+      setNewCsrfCookie(res);
+    }
     return next();
   }
 
@@ -91,24 +100,54 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return next();
   }
 
-  // Static admin API key (set by earlier middleware on req)
-  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
-    return next();
-  }
-
   // Webhook / external service callbacks
   if (isExemptPath(req.path)) {
     return next();
   }
 
-  // Validate: header must match cookie
-  const headerValue = req.headers[CSRF_HEADER];
-  if (!headerValue || headerValue !== token) {
+  // If the cookie was missing/expired, the client can't have a valid header.
+  // Set a fresh cookie and return it in the response body so the client can
+  // retry without relying on document.cookie timing.
+  if (!existingCookie) {
+    const freshToken = setNewCsrfCookie(res);
     logger.warn(
-      { method: req.method, path: req.path },
-      "CSRF token missing or mismatched"
+      {
+        method: req.method,
+        path: req.path,
+        reason: "cookie_missing",
+        origin: req.headers.origin || null,
+        referer: req.headers.referer || null,
+        userAgent: req.headers["user-agent"] || null,
+      },
+      "CSRF validation failed: cookie missing or expired"
     );
-    res.status(403).json({ error: "CSRF validation failed" });
+    res.setHeader("X-CSRF-Retry", "true");
+    res.status(403).json({ error: "CSRF validation failed", reason: "cookie_expired", token: freshToken });
+    return;
+  }
+
+  // Validate: header must match cookie (timing-safe to prevent side-channel leakage)
+  const headerValue = req.headers[CSRF_HEADER];
+  if (
+    !headerValue ||
+    typeof headerValue !== "string" ||
+    headerValue.length !== existingCookie.length ||
+    !crypto.timingSafeEqual(Buffer.from(headerValue), Buffer.from(existingCookie))
+  ) {
+    logger.warn(
+      {
+        method: req.method,
+        path: req.path,
+        reason: headerValue ? "mismatch" : "header_missing",
+        hasCookie: true,
+        hasHeader: !!headerValue,
+        origin: req.headers.origin || null,
+        referer: req.headers.referer || null,
+        userAgent: req.headers["user-agent"] || null,
+      },
+      "CSRF validation failed: token mismatch"
+    );
+    res.status(403).json({ error: "CSRF validation failed", reason: "token_mismatch" });
     return;
   }
 

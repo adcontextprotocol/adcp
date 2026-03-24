@@ -146,7 +146,7 @@ export function initPostHogErrorTracking(): boolean {
   getPostHog();
 
   // Set up the error hook in the logger
-  setErrorHook((message, error, context) => {
+  setErrorHook((message, error, context, level) => {
     const client = getPostHog();
     if (!client) return;
 
@@ -192,8 +192,49 @@ export function initPostHogErrorTracking(): boolean {
         source: 'server-logger',
       },
     });
+
+    // Fatal-level errors (uncaught exceptions, unhandled rejections, critical failures)
+    // get an immediate Slack notification so we know about them in real time.
+    if (level && level >= 60) {
+      notifySlackCriticalError(message, error, module);
+    }
   });
 
   logger.info('PostHog error tracking initialized - all logger.error() calls will be captured');
   return true;
+}
+
+/**
+ * Send a Slack notification for fatal-level errors.
+ * Uses the Slack Web API (chat.postMessage) via Addie's bot token, posting
+ * to the channel configured in OPS_ALERT_CHANNEL_ID.
+ * Fire-and-forget — failures are silently ignored to avoid loops.
+ */
+const OPS_ALERT_CHANNEL_ID = process.env.OPS_ALERT_CHANNEL_ID;
+
+function notifySlackCriticalError(message: string, error?: Error, module?: string): void {
+  if (!OPS_ALERT_CHANNEL_ID) return;
+
+  import('../slack/client.js')
+    .then(({ sendChannelMessage, isSlackConfigured }) => {
+      if (!isSlackConfigured()) return;
+      return sendChannelMessage(OPS_ALERT_CHANNEL_ID!, {
+        text: `FATAL ERROR on ${process.env.FLY_APP_NAME || 'aao-server'}: ${message}`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: [
+                `:rotating_light: *FATAL ERROR* on \`${process.env.FLY_APP_NAME || 'aao-server'}\``,
+                module ? `*Module:* \`${module}\`` : '',
+                `*Message:* ${message}`,
+                error?.stack ? `\`\`\`${error.stack.slice(0, 500)}\`\`\`` : '',
+              ].filter(Boolean).join('\n'),
+            },
+          },
+        ],
+      });
+    })
+    .catch(() => {});
 }

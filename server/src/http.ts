@@ -7414,6 +7414,19 @@ Disallow: /api/admin/
 
     process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
     process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+    process.on("uncaughtException", (err) => {
+      logger.fatal({ err }, "Uncaught exception — shutting down");
+      // Give PostHog/OTel time to flush before exiting
+      setTimeout(() => process.exit(1), 2000);
+    });
+
+    process.on("unhandledRejection", (reason) => {
+      logger.fatal(
+        { err: reason instanceof Error ? reason : new Error(String(reason)) },
+        "Unhandled promise rejection"
+      );
+    });
   }
 
   /**
