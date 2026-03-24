@@ -153,10 +153,13 @@
                 "postal_code": "80331",
                 "country": "DE"
               },
-              "contact": {
-                "name": "AP Department",
-                "email": "billing@acme-corp.com"
-              },
+              "contacts": [
+                {
+                  "role": "billing",
+                  "name": "AP Department",
+                  "email": "billing@acme-corp.com"
+                }
+              ],
               "bank": {
                 "account_holder": "Acme Corporation GmbH",
                 "iban": "DE75512108001245126199",

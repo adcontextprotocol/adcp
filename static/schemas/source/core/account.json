@@ -222,10 +222,13 @@
             "postal_code": "80331",
             "country": "DE"
           },
-          "contact": {
-            "name": "AP Department",
-            "email": "billing@acme-corp.com"
-          }
+          "contacts": [
+            {
+              "role": "billing",
+              "name": "AP Department",
+              "email": "billing@acme-corp.com"
+            }
+          ]
         },
         "account_scope": "operator_brand",
         "payment_terms": "net_30"

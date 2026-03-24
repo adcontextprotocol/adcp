@@ -56,26 +56,42 @@
       "required": ["street", "city", "postal_code", "country"],
       "additionalProperties": false
     },
-    "contact": {
-      "type": "object",
-      "description": "Primary contact for billing and account matters. Contains personal data subject to GDPR and equivalent regulations. Implementations MUST use this data only for invoicing and account management.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Full name of the billing contact",
-          "maxLength": 200
+    "contacts": {
+      "type": "array",
+      "description": "Contacts for billing, legal, and operational matters. Contains personal data subject to GDPR and equivalent regulations. Implementations MUST use this data only for invoicing and account management.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["billing", "legal", "creative", "general"],
+            "enumDescriptions": {
+              "billing": "Accounts payable and invoice queries",
+              "legal": "Contract and compliance matters",
+              "creative": "Material submission and creative approval",
+              "general": "Default contact when no specific role applies"
+            },
+            "description": "Contact's functional role in the business relationship"
+          },
+          "name": {
+            "type": "string",
+            "description": "Full name of the contact",
+            "maxLength": 200
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 30
+          }
         },
-        "email": {
-          "type": "string",
-          "format": "email",
-          "maxLength": 254
-        },
-        "phone": {
-          "type": "string",
-          "maxLength": 30
-        }
+        "required": ["role"],
+        "additionalProperties": false
       },
-      "additionalProperties": false
+      "maxItems": 10
     },
     "bank": {
       "type": "object",
@@ -130,11 +146,14 @@
           "postal_code": "10117",
           "country": "DE"
         },
-        "contact": {
-          "name": "Sam Adeyemi",
-          "email": "billing@pinnacle-media.com",
-          "phone": "+49 30 12345678"
-        },
+        "contacts": [
+          {
+            "role": "billing",
+            "name": "Sam Adeyemi",
+            "email": "billing@pinnacle-media.com",
+            "phone": "+49 30 12345678"
+          }
+        ],
         "bank": {
           "account_holder": "Pinnacle Media GmbH",
           "iban": "DE89370400440532013000",
@@ -154,10 +173,13 @@
           "region": "NY",
           "country": "US"
         },
-        "contact": {
-          "name": "AP Department",
-          "email": "ap@acme-corp.com"
-        },
+        "contacts": [
+          {
+            "role": "billing",
+            "name": "AP Department",
+            "email": "ap@acme-corp.com"
+          }
+        ],
         "bank": {
           "account_holder": "Acme Corporation",
           "routing_number": "021000021",
