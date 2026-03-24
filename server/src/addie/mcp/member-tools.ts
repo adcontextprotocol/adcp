@@ -611,7 +611,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'add_committee_document',
     description:
-      'Add a Google Docs document to a committee (working group, council, or chapter) for tracking. The document will be automatically indexed and summarized. Only committee leaders can add documents.',
+      'Add a Google Docs document to a committee (working group, council, or chapter) for tracking. The document will be automatically indexed and summarized. Committee members and leaders can add documents.',
     usage_hints: 'use when user wants to add a Google Doc to track for a committee',
     input_schema: {
       type: 'object',
@@ -641,7 +641,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'update_committee_document',
     description:
-      'Update a document tracked by a committee. Can change title, description, URL, or featured status. Only committee leaders can update documents.',
+      'Update a document tracked by a committee. Can change title, description, URL, or featured status. Committee members and leaders can update documents.',
     usage_hints: 'use when user wants to update/edit a tracked document',
     input_schema: {
       type: 'object',
@@ -1929,7 +1929,7 @@ export function createMemberToolHandlers(
 
     if (!result.ok) {
       if (result.status === 403) {
-        return `You're not a leader of the "${slug}" committee. Only committee leaders can add documents.`;
+        return `You're not a member of the "${slug}" committee. Only members and leaders can add documents.`;
       }
       if (result.status === 404) {
         return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
@@ -2048,7 +2048,7 @@ export function createMemberToolHandlers(
 
     if (!result.ok) {
       if (result.status === 403) {
-        return `You're not a leader of the "${slug}" committee. Only committee leaders can update documents.`;
+        return `You're not a member of the "${slug}" committee. Only members and leaders can update documents.`;
       }
       if (result.status === 404) {
         return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
