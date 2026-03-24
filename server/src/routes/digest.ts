@@ -6,6 +6,15 @@ import { renderDigestWebPage, renderDigestEmail, type DigestSegment } from '../a
 
 const logger = createLogger('digest-routes');
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function createDigestRouter(): Router {
   const router = Router();
 
@@ -53,7 +62,7 @@ export function createDigestRouter(): Router {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex">
-  <title>Digest Preview - ${segment} - ${editionDate}</title>
+  <title>Digest Preview - ${escapeHtml(segment)} - ${escapeHtml(editionDate)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f5f5f5; }
     .preview-bar { background: #1a1a2e; color: white; padding: 12px 20px; display: flex; align-items: center; gap: 16px; font-size: 14px; flex-wrap: wrap; }
@@ -68,9 +77,9 @@ export function createDigestRouter(): Router {
   <div class="preview-bar">
     <label>Segment:</label>
     ${(['website_only', 'both', 'slack_only', 'active'] as const).map((s) =>
-      `<a href="?segment=${s}&firstName=${encodeURIComponent(firstName || '')}&date=${editionDate}" class="${s === segment ? 'active' : ''}">${s}</a>`
+      `<a href="?segment=${encodeURIComponent(s)}&amp;firstName=${encodeURIComponent(firstName || '')}&amp;date=${encodeURIComponent(editionDate)}" class="${s === segment ? 'active' : ''}">${escapeHtml(s)}</a>`
     ).join(' ')}
-    <span style="margin-left: auto;">Status: ${digest.status} | ${editionDate}</span>
+    <span style="margin-left: auto;">Status: ${escapeHtml(digest.status)} | ${escapeHtml(editionDate)}</span>
   </div>
   <div class="preview-content">
     ${html}
