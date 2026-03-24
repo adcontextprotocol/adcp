@@ -169,7 +169,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         category: {
           type: 'string',
-          description: 'Optional category filter (media-buy, signals, creative, intro, reference)',
+          description: 'Optional category filter. Protocol docs: media-buy, signals, creative, intro, reference. Working group docs: "working group: <name>" (e.g., "working group: marketing").',
         },
         limit: {
           type: 'number',
