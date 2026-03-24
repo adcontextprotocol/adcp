@@ -840,14 +840,30 @@
         <input type="hidden" id="documentId">
 
         <div class="form-group">
-          <label>Document Title *</label>
-          <input type="text" id="documentTitle" required placeholder="e.g., Governance Framework Draft">
+          <label>Document Title</label>
+          <input type="text" id="documentTitle" placeholder="e.g., Governance Framework Draft">
+          <small id="documentTitleHint" style="display: none;">Leave blank to use the file name</small>
         </div>
 
-        <div class="form-group">
+        <!-- Source toggle: URL or File Upload -->
+        <div class="form-group" id="sourceToggleGroup">
+          <label>Source</label>
+          <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-2);">
+            <button type="button" class="btn btn-sm" id="sourceUrlBtn" onclick="setDocumentSource('url')" style="flex: 1;">Link / URL</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="sourceFileBtn" onclick="setDocumentSource('file')" style="flex: 1;">Upload file</button>
+          </div>
+        </div>
+
+        <div id="documentUrlGroup" class="form-group">
           <label>Document URL *</label>
-          <input type="url" id="documentUrl" required placeholder="https://docs.google.com/document/d/...">
-          <small>Google Docs URLs are automatically indexed and summarized</small>
+          <input type="url" id="documentUrl" placeholder="https://docs.google.com/document/d/...">
+          <small>Google Docs, Sheets, Drive, or direct links to PDF/PPTX</small>
+        </div>
+
+        <div id="documentFileGroup" class="form-group" style="display: none;">
+          <label>Upload PDF or PPTX *</label>
+          <input type="file" id="documentFile" accept=".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation">
+          <small>Max 50 MB. Content is automatically indexed and searchable by Addie.</small>
         </div>
 
         <div class="form-group">
@@ -856,13 +872,14 @@
         </div>
 
         <div class="form-row">
-          <div class="form-group">
+          <div class="form-group" id="documentTypeGroup">
             <label>Document Type</label>
             <select id="documentType">
               <option value="google_doc">Google Doc</option>
               <option value="google_sheet">Google Sheet</option>
               <option value="external_link">External Link</option>
               <option value="pdf">PDF</option>
+              <option value="pptx">PPTX</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -916,6 +933,7 @@
     let deletingEventId = null;
     let deletingDocumentId = null;
     let currentTab = 'posts';
+    let isLeader = true; // assume leader until proven otherwise
 
     async function init() {
       // Get slug from URL
@@ -938,7 +956,12 @@
       }
 
       // Try to load posts - this will fail with 403 if not a leader
-      await loadPosts();
+      const postsLoaded = await loadPosts();
+
+      // If not a leader but a member, show documents-only mode
+      if (!postsLoaded) {
+        return; // loadPosts already handled redirect/error
+      }
     }
 
     function switchTab(tab) {
@@ -984,8 +1007,9 @@
             return;
           }
           if (response.status === 403) {
-            showError('You must be a leader of this working group to manage posts.');
-            return;
+            // Not a leader — try documents-only mode for members
+            showDocumentsOnlyMode();
+            return false;
           }
           if (response.status === 404) {
             showError('Working group not found.');
@@ -1026,13 +1050,16 @@
         document.getElementById('loadingState').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
 
-        // Switch to events tab if requested via URL
-        if (currentTab === 'events') {
-          switchTab('events');
+        // Switch to requested tab via URL
+        if (currentTab === 'events' || currentTab === 'documents') {
+          switchTab(currentTab);
         }
+
+        return true;
       } catch (error) {
         console.error('Error loading posts:', error);
         showError('Failed to load posts. Please try again.');
+        return false;
       }
     }
 
@@ -1040,6 +1067,33 @@
       document.getElementById('loadingState').style.display = 'none';
       document.getElementById('errorMessage').textContent = message;
       document.getElementById('errorState').style.display = 'block';
+    }
+
+    async function showDocumentsOnlyMode() {
+      // Member (non-leader) — show only the documents tab
+      isLeader = false;
+      const groupResponse = await fetch(`/api/working-groups/${currentSlug}`, {
+        credentials: 'include'
+      });
+      if (!groupResponse.ok) {
+        showError("You don't have permission to manage this working group.");
+        return;
+      }
+      const groupData = await groupResponse.json();
+      currentGroup = groupData.working_group;
+
+      document.getElementById('pageTitle').textContent = `Documents | ${currentGroup.name} | AgenticAdvertising.org`;
+      document.getElementById('groupNameBack').textContent = currentGroup.name;
+      document.getElementById('groupNameTitle').textContent = currentGroup.name;
+      document.getElementById('backLink').href = `/working-groups/${currentSlug}`;
+
+      // Hide non-document tabs
+      document.getElementById('postsTab').style.display = 'none';
+      document.getElementById('eventsTab').style.display = 'none';
+
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      switchTab('documents');
     }
 
     function renderPosts() {
@@ -1081,7 +1135,7 @@
             <div class="post-actions">
               ${post.status === 'published' ? `<a href="/working-groups/${currentSlug}#post-${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
               <button class="btn btn-primary btn-small" onclick="editPost('${post.id}')">Edit</button>
-              <button class="btn btn-danger btn-small" onclick="showDeleteModal('${post.id}', '${escapeHtml(post.title).replace(/'/g, "\\'")}')">Delete</button>
+              <button class="btn btn-danger btn-small" onclick="showDeleteModal('${post.id}', '${escapeHtml(post.title).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
         `;
@@ -1407,7 +1461,7 @@
             <div class="event-actions">
               ${event.status === 'published' ? `<a href="/events/${event.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
               <button class="btn btn-primary btn-small" onclick="editEvent('${event.id}')">Edit</button>
-              <button class="btn btn-danger btn-small" onclick="showDeleteEventModal('${event.id}', '${escapeHtml(event.title).replace(/'/g, "\\'")}')">Delete</button>
+              <button class="btn btn-danger btn-small" onclick="showDeleteEventModal('${event.id}', '${escapeHtml(event.title).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
         `;
@@ -1640,15 +1694,21 @@
           ? `<span class="badge badge-${doc.index_status}">${doc.index_status}</span>`
           : '';
         const featuredBadge = doc.is_featured ? `<span class="badge badge-featured">featured</span>` : '';
+        const uploadedBadge = doc.file_name ? `<span class="badge badge-uploaded">uploaded</span>` : '';
         const lastModified = doc.last_modified_at
           ? formatRelativeDate(doc.last_modified_at)
           : '';
+
+        // Uploaded files link to the download endpoint; URL-based docs link externally
+        const docHref = doc.file_name
+          ? `/api/working-groups/${currentSlug}/documents/${doc.id}/file`
+          : escapeHtml(doc.document_url || '#');
 
         return `
           <div class="document-item${doc.is_featured ? ' featured' : ''}">
             <div class="document-info" style="flex: 1;">
               <h3>
-                <a href="${escapeHtml(doc.document_url)}" target="_blank" rel="noopener">
+                <a href="${docHref}" target="_blank" rel="noopener">
                   ${escapeHtml(doc.title)}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -1661,6 +1721,7 @@
                 ${typeBadge}
                 ${statusBadge}
                 ${featuredBadge}
+                ${uploadedBadge}
                 ${lastModified ? `<span>Updated ${lastModified}</span>` : ''}
               </div>
               ${doc.document_summary ? `<div class="document-summary-preview">${escapeHtml(doc.document_summary)}</div>` : ''}
@@ -1674,7 +1735,7 @@
                 </svg>
               </button>
               <button class="btn btn-primary btn-small" onclick="editDocument('${doc.id}')">Edit</button>
-              <button class="btn btn-danger btn-small" onclick="showDeleteDocumentModal('${doc.id}', '${escapeHtml(doc.title).replace(/'/g, "\\'")}')">Delete</button>
+              ${isLeader ? `<button class="btn btn-danger btn-small" onclick="showDeleteDocumentModal('${doc.id}', '${escapeHtml(doc.title).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">Delete</button>` : ''}
             </div>
           </div>
         `;
@@ -1696,12 +1757,45 @@
       return `${Math.floor(diffDays / 365)} years ago`;
     }
 
+    let documentSource = 'url'; // 'url' or 'file'
+
+    function setDocumentSource(source) {
+      documentSource = source;
+      const urlGroup = document.getElementById('documentUrlGroup');
+      const fileGroup = document.getElementById('documentFileGroup');
+      const urlBtn = document.getElementById('sourceUrlBtn');
+      const fileBtn = document.getElementById('sourceFileBtn');
+      const typeGroup = document.getElementById('documentTypeGroup');
+      const titleHint = document.getElementById('documentTitleHint');
+
+      if (source === 'file') {
+        urlGroup.style.display = 'none';
+        fileGroup.style.display = 'block';
+        urlBtn.className = 'btn btn-sm btn-secondary';
+        fileBtn.className = 'btn btn-sm';
+        typeGroup.style.display = 'none';
+        titleHint.style.display = 'block';
+        document.getElementById('documentUrl').removeAttribute('required');
+      } else {
+        urlGroup.style.display = 'block';
+        fileGroup.style.display = 'none';
+        urlBtn.className = 'btn btn-sm';
+        fileBtn.className = 'btn btn-sm btn-secondary';
+        typeGroup.style.display = 'block';
+        titleHint.style.display = 'none';
+        document.getElementById('documentFile').value = '';
+      }
+    }
+
     function showCreateDocumentModal() {
       editingDocument = null;
       document.getElementById('documentModalTitle').textContent = 'Add Document';
       document.getElementById('documentForm').reset();
       document.getElementById('documentId').value = '';
       document.getElementById('documentDisplayOrder').value = '0';
+      document.getElementById('sourceToggleGroup').style.display = 'block';
+      document.getElementById('documentUrl').disabled = false;
+      setDocumentSource('url');
       document.getElementById('documentModal').style.display = 'flex';
     }
 
@@ -1720,11 +1814,24 @@
       document.getElementById('documentDisplayOrder').value = doc.display_order || 0;
       document.getElementById('documentIsFeatured').checked = doc.is_featured || false;
 
+      // Uploaded files: hide source toggle, show file info instead of URL
+      if (doc.file_name) {
+        document.getElementById('sourceToggleGroup').style.display = 'none';
+        document.getElementById('documentUrlGroup').style.display = 'none';
+        document.getElementById('documentFileGroup').style.display = 'none';
+        document.getElementById('documentTypeGroup').style.display = 'none';
+      } else {
+        document.getElementById('sourceToggleGroup').style.display = 'block';
+        setDocumentSource('url');
+        document.getElementById('documentUrl').disabled = false;
+      }
+
       document.getElementById('documentModal').style.display = 'flex';
     }
 
     function closeDocumentModal() {
       document.getElementById('documentModal').style.display = 'none';
+      document.getElementById('documentUrl').disabled = false;
       editingDocument = null;
     }
 
@@ -1732,35 +1839,65 @@
       e.preventDefault();
 
       const id = document.getElementById('documentId').value;
-      const data = {
-        title: document.getElementById('documentTitle').value.trim(),
-        document_url: document.getElementById('documentUrl').value.trim(),
-        description: document.getElementById('documentDescription').value.trim() || null,
-        document_type: document.getElementById('documentType').value,
-        display_order: parseInt(document.getElementById('documentDisplayOrder').value) || 0,
-        is_featured: document.getElementById('documentIsFeatured').checked,
-      };
+      const fileInput = document.getElementById('documentFile');
+      const isFileUpload = documentSource === 'file' && fileInput.files.length > 0;
 
       const saveBtn = document.getElementById('saveDocumentBtn');
       saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving...';
+      saveBtn.textContent = isFileUpload ? 'Uploading...' : 'Saving...';
 
       try {
-        const url = id
-          ? `/api/working-groups/${currentSlug}/documents/${id}`
-          : `/api/working-groups/${currentSlug}/documents`;
-        const method = id ? 'PUT' : 'POST';
+        if (isFileUpload && !id) {
+          // New document via file upload
+          const formData = new FormData();
+          formData.append('file', fileInput.files[0]);
+          formData.append('title', document.getElementById('documentTitle').value.trim());
+          formData.append('description', document.getElementById('documentDescription').value.trim());
+          formData.append('display_order', document.getElementById('documentDisplayOrder').value || '0');
+          formData.append('is_featured', document.getElementById('documentIsFeatured').checked ? 'true' : 'false');
 
-        const response = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(data)
-        });
+          const response = await fetch(`/api/working-groups/${currentSlug}/documents/upload`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+          });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to save');
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to upload');
+          }
+        } else {
+          // URL-based document or editing existing
+          const data = {
+            title: document.getElementById('documentTitle').value.trim(),
+            document_url: document.getElementById('documentUrl').disabled ? undefined : document.getElementById('documentUrl').value.trim(),
+            description: document.getElementById('documentDescription').value.trim() || null,
+            document_type: document.getElementById('documentType').value,
+            display_order: parseInt(document.getElementById('documentDisplayOrder').value) || 0,
+            is_featured: document.getElementById('documentIsFeatured').checked,
+          };
+
+          // For URL-based new docs, require a URL
+          if (!id && !data.document_url) {
+            throw new Error('A document URL is required');
+          }
+
+          const url = id
+            ? `/api/working-groups/${currentSlug}/documents/${id}`
+            : `/api/working-groups/${currentSlug}/documents`;
+          const method = id ? 'PUT' : 'POST';
+
+          const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(data)
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to save');
+          }
         }
 
         closeDocumentModal();

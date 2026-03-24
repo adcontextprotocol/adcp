@@ -779,7 +779,7 @@ async function loadWorkingGroupDocuments(): Promise<IndexedDoc[]> {
       category,
       path: `working-groups/${doc.working_group_slug}/${doc.id}`,
       content,
-      sourceUrl: doc.document_url,
+      sourceUrl: doc.document_url || `/api/working-groups/${doc.working_group_slug}/documents/${doc.id}/file`,
     });
   }
 
@@ -794,12 +794,10 @@ async function loadWorkingGroupDocuments(): Promise<IndexedDoc[]> {
 export async function refreshWorkingGroupDocs(): Promise<void> {
   if (!initialized) return;
 
-  // Remove existing working group docs from index
-  docsIndex = docsIndex.filter((doc) => !doc.id.startsWith('wg-doc:'));
-
   try {
     const workingGroupDocs = await loadWorkingGroupDocuments();
-    docsIndex.push(...workingGroupDocs);
+    const nonWgDocs = docsIndex.filter((doc) => !doc.id.startsWith('wg-doc:'));
+    docsIndex = [...nonWgDocs, ...workingGroupDocs];
     logger.info({ count: workingGroupDocs.length }, 'Addie Docs: Refreshed working group documents');
   } catch (error) {
     logger.warn({ error }, 'Addie Docs: Failed to refresh working group documents');

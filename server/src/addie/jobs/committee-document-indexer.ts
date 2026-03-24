@@ -418,7 +418,7 @@ async function generateChangeSummary(
 /**
  * Index a single document
  */
-async function indexDocument(doc: CommitteeDocument): Promise<{
+async function indexDocument(doc: CommitteeDocument & { has_file_data?: boolean }): Promise<{
   changed: boolean;
   error?: string;
   summary?: string;
@@ -429,22 +429,37 @@ async function indexDocument(doc: CommitteeDocument): Promise<{
   let status: DocumentIndexStatus;
 
   if (doc.document_type === 'pdf' || doc.document_type === 'pptx') {
-    // Binary document: fetch, parse text + extract images
-    const fetchResult = await fetchDocumentBuffer(doc.document_url);
-    if (fetchResult.status !== 'success') {
-      await workingGroupDb.updateDocumentIndex(doc.id, doc.content_hash || '', doc.last_content || '', fetchResult.status, fetchResult.error);
-      return { changed: false, error: fetchResult.error };
+    // Get file buffer: from DB (uploaded) or from URL (linked)
+    let buffer: Buffer;
+
+    if (doc.has_file_data) {
+      const fileData = await workingGroupDb.getDocumentFileData(doc.id, doc.working_group_id);
+      if (!fileData) {
+        await workingGroupDb.updateDocumentIndex(doc.id, doc.content_hash || '', doc.last_content || '', 'error', 'Uploaded file data missing');
+        return { changed: false, error: 'Uploaded file data missing' };
+      }
+      buffer = fileData.file_data;
+    } else if (doc.document_url) {
+      const fetchResult = await fetchDocumentBuffer(doc.document_url);
+      if (fetchResult.status !== 'success') {
+        await workingGroupDb.updateDocumentIndex(doc.id, doc.content_hash || '', doc.last_content || '', fetchResult.status, fetchResult.error);
+        return { changed: false, error: fetchResult.error };
+      }
+      buffer = fetchResult.buffer;
+    } else {
+      await workingGroupDb.updateDocumentIndex(doc.id, doc.content_hash || '', doc.last_content || '', 'error', 'No file data or URL');
+      return { changed: false, error: 'No file data or URL' };
     }
 
     const parseResult = doc.document_type === 'pdf'
-      ? await parsePdfContent(fetchResult.buffer)
-      : await parsePptxContent(fetchResult.buffer);
+      ? await parsePdfContent(buffer)
+      : await parsePptxContent(buffer);
 
     content = parseResult.content;
     assets = parseResult.assets;
     error = parseResult.error;
     status = parseResult.status;
-  } else if (isGoogleDocsUrl(doc.document_url)) {
+  } else if (doc.document_url && isGoogleDocsUrl(doc.document_url)) {
     const fetchResult = await fetchGoogleDocContent(doc.document_url);
     content = fetchResult.content;
     error = fetchResult.error;
