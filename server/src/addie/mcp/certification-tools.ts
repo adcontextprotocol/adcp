@@ -11,6 +11,7 @@ import * as certDb from '../../db/certification-db.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
+import { TRAINING_AGENT_URL } from '../../training-agent/config.js';
 
 const logger = createLogger('certification-tools');
 
@@ -450,11 +451,9 @@ export async function buildCertificationContext(
   lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more get_products calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
 
   // Inject training agent URL for demos
-  const trainingAgentUrl = process.env.TRAINING_AGENT_URL
-    || process.env.BASE_URL
-    || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+  const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
   lines.push('');
-  lines.push(`**Sandbox training agent**: For all demos and exercises, use agent_url: "${trainingAgentUrl}/api/training-agent/mcp". HTTP is allowed for this sandbox agent. Use brand domain "demo.example.com" for the account.`);
+  lines.push(`**Sandbox training agent**: For all demos and exercises, use agent_url: "${trainingAgentUrl}/mcp". Use brand domain "demo.example.com" for the account.`);
 
   // Inject cross-module learner profile from completed modules
   if (userId) {
@@ -1235,10 +1234,8 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          const trainingAgentUrl = process.env.TRAINING_AGENT_URL
-            || process.env.BASE_URL
-            || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
-          lines.push('', `## Demo scenarios (use agent_url: ${trainingAgentUrl}/api/training-agent/mcp)`);
+          const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+          lines.push('', `## Demo scenarios (use agent_url: ${trainingAgentUrl}/mcp)`);
           lines.push('YOU (Sage) run ONE demo early (turn 2-3) to ground concepts. Clearly label it as YOUR demonstration — say "Let me show you..." before calling the tool. Do NOT attribute tool results to the learner. After the demo, invite the learner to try the exercise themselves.');
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
@@ -1360,14 +1357,12 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          const trainingAgentUrl = process.env.TRAINING_AGENT_URL
-            || process.env.BASE_URL
-            || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
-          lines.push(`**Live demos** (run these against the sandbox training agent at agent_url: ${trainingAgentUrl}/api/training-agent/mcp):`);
+          const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+          lines.push(`**Live demos** (run these against the sandbox training agent at agent_url: ${trainingAgentUrl}/mcp):`);
           lp.demo_scenarios.forEach(ds => {
             lines.push(`- ${ds.description} (tools: ${ds.tools.join(', ')})`);
           });
-          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, always use agent_url: "${trainingAgentUrl}/api/training-agent/mcp". This is a sandbox agent — HTTP is allowed (ignore the HTTPS requirement). Use brand domain "demo.example.com" for the account.`);
+          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, always use agent_url: "${trainingAgentUrl}/mcp". Use brand domain "demo.example.com" for the account.`);
           lines.push('');
         }
       }

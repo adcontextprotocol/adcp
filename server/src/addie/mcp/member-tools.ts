@@ -79,13 +79,13 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
  * but defaults to the documented public token.
  */
 const PUBLIC_TEST_AGENT = {
-  url: process.env.PUBLIC_TEST_AGENT_URL || 'https://agenticadvertising.org/api/training-agent/mcp',
+  url: process.env.PUBLIC_TEST_AGENT_URL || 'https://test-agent.adcontextprotocol.org/mcp',
   token: process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
   name: 'AdCP Public Test Agent',
 };
 
-// Legacy URL for backward compatibility — redirect to the training agent
-const LEGACY_TEST_AGENT_URL = 'https://test-agent.adcontextprotocol.org/mcp';
+// Internal path URL — redirect to the canonical hostname
+const INTERNAL_PATH_AGENT_URL = 'https://agenticadvertising.org/api/training-agent/mcp';
 
 /**
  * Known error patterns that indicate bugs in the @adcp/client testing library
@@ -179,8 +179,8 @@ async function resolveAgentAuth(
 ): Promise<ResolvedAgentAuth> {
   let resolvedUrl = agentUrl;
 
-  // Redirect legacy URL
-  if (resolvedUrl.toLowerCase() === LEGACY_TEST_AGENT_URL.toLowerCase()) {
+  // Redirect internal path URL to canonical hostname
+  if (resolvedUrl.toLowerCase() === INTERNAL_PATH_AGENT_URL.toLowerCase()) {
     resolvedUrl = PUBLIC_TEST_AGENT.url;
   }
 

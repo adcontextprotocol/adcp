@@ -11,6 +11,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import { AuthenticationRequiredError } from '@adcp/client';
+import { TRAINING_AGENT_HOSTNAME } from '../../training-agent/config.js';
 
 // Tool handler type (matches claude-client.ts internal type)
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
@@ -2148,18 +2149,24 @@ export function createAdcpToolHandlers(
     return undefined;
   }
 
+  // The training agent is served at two hostnames:
+  //   1. test-agent.adcontextprotocol.org (canonical, used in docs and certification)
+  //   2. agenticadvertising.org/api/training-agent (internal path on main server)
+  // Both resolve to the same embedded agent. Recognize either for the in-process shortcut.
+  function isTrainingAgentUrl(url: URL): boolean {
+    if (url.hostname === TRAINING_AGENT_HOSTNAME) return true;
+    const selfHost = new URL(getBaseUrl()).hostname;
+    return url.pathname.startsWith('/api/training-agent') && url.hostname === selfHost;
+  }
+
   // Helper to validate agent URL
   function validateAgentUrl(agentUrl: string): string | null {
     try {
       const url = new URL(agentUrl);
 
-      // Allow the embedded training agent only if same-origin (prevents SSRF via external URLs with matching path)
-      if (url.pathname.startsWith('/api/training-agent')) {
-        const selfHost = new URL(getBaseUrl()).hostname;
-        if (url.hostname === selfHost) {
-          return null;
-        }
-        // External URL with /api/training-agent path — fall through to normal validation
+      // Allow the embedded training agent (same-origin or dedicated hostname)
+      if (isTrainingAgentUrl(url)) {
+        return null;
       }
 
       if (url.protocol !== 'https:') {
@@ -2202,8 +2209,7 @@ export function createAdcpToolHandlers(
     // In-process shortcut for training agent (avoids HTTP round-trip and localhost restrictions)
     try {
       const parsedUrl = new URL(agentUrl);
-      const selfHost = new URL(getBaseUrl()).hostname;
-      if (parsedUrl.pathname.startsWith('/api/training-agent') && parsedUrl.hostname === selfHost) {
+      if (isTrainingAgentUrl(parsedUrl)) {
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const userId = memberContext?.workos_user?.workos_user_id;
         const ctx = { mode: 'training' as const, userId };
