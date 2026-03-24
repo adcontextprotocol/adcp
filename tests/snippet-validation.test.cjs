@@ -34,7 +34,6 @@ const execAsync = promisify(exec);
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const CACHE_FILE = path.join(__dirname, '.tested-files.json');
-const TEST_AGENT_URL = 'https://test-agent.adcontextprotocol.org';
 const MCP_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
 const A2A_TOKEN = 'L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8';
 
