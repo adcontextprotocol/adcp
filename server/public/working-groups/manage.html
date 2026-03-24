@@ -1135,7 +1135,7 @@
             <div class="post-actions">
               ${post.status === 'published' ? `<a href="/working-groups/${currentSlug}#post-${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
               <button class="btn btn-primary btn-small" onclick="editPost('${post.id}')">Edit</button>
-              <button class="btn btn-danger btn-small" onclick="showDeleteModal('${post.id}', '${escapeHtml(post.title).replace(/'/g, "\\'")}')">Delete</button>
+              <button class="btn btn-danger btn-small" onclick="showDeleteModal('${post.id}', '${escapeHtml(post.title).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
         `;
@@ -1461,7 +1461,7 @@
             <div class="event-actions">
               ${event.status === 'published' ? `<a href="/events/${event.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
               <button class="btn btn-primary btn-small" onclick="editEvent('${event.id}')">Edit</button>
-              <button class="btn btn-danger btn-small" onclick="showDeleteEventModal('${event.id}', '${escapeHtml(event.title).replace(/'/g, "\\'")}')">Delete</button>
+              <button class="btn btn-danger btn-small" onclick="showDeleteEventModal('${event.id}', '${escapeHtml(event.title).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
         `;
@@ -1735,7 +1735,7 @@
                 </svg>
               </button>
               <button class="btn btn-primary btn-small" onclick="editDocument('${doc.id}')">Edit</button>
-              ${isLeader ? `<button class="btn btn-danger btn-small" onclick="showDeleteDocumentModal('${doc.id}', '${escapeHtml(doc.title).replace(/'/g, "\\'")}')">Delete</button>` : ''}
+              ${isLeader ? `<button class="btn btn-danger btn-small" onclick="showDeleteDocumentModal('${doc.id}', '${escapeHtml(doc.title).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">Delete</button>` : ''}
             </div>
           </div>
         `;
