@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { createLogger } from '../logger.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { getDigestByDate, getCurrentWeekDigest, recordDigestFeedback } from '../db/digest-db.js';
 import { renderDigestWebPage, renderDigestEmail, type DigestSegment } from '../addie/templates/weekly-digest.js';
 
@@ -15,12 +16,7 @@ export function createDigestRouter(): Router {
    *   firstName: recipient first name (default: none)
    *   date: YYYY-MM-DD (default: most recent digest)
    */
-  router.get('/preview', async (req: Request, res: Response) => {
-    // Simple admin check - must be authenticated
-    if (!req.user) {
-      res.status(401).send('Authentication required');
-      return;
-    }
+  router.get('/preview', requireAuth, requireAdmin, async (req: Request, res: Response) => {
 
     const VALID_SEGMENTS = new Set(['website_only', 'slack_only', 'both', 'active']);
     const segmentParam = typeof req.query.segment === 'string' ? req.query.segment : 'both';

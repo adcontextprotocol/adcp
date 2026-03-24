@@ -1,6 +1,5 @@
 import { createLogger } from '../../logger.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../services/digest-builder.js';
-import { query } from '../../db/client.js';
 import {
   createDigest,
   getDigestByDate,
@@ -8,6 +7,7 @@ import {
   markSent,
   markSkipped,
   getDigestEmailRecipients,
+  getUserWorkingGroupMap,
   type DigestSendStats,
 } from '../../db/digest-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -183,18 +183,7 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
   const subject = generateDigestSubject(digest.content);
 
   // Pre-fetch all user WG memberships for personalization (single query)
-  const wgMemberships = await query<{ workos_user_id: string; name: string }>(
-    `SELECT wgm.workos_user_id, wg.name
-     FROM working_group_memberships wgm
-     JOIN working_groups wg ON wg.id = wgm.working_group_id
-     WHERE wgm.status = 'active' AND wg.status = 'active'`,
-  );
-  const userWGMap = new Map<string, string[]>();
-  for (const row of wgMemberships.rows) {
-    const groups = userWGMap.get(row.workos_user_id) || [];
-    groups.push(row.name);
-    userWGMap.set(row.workos_user_id, groups);
-  }
+  const userWGMap = await getUserWorkingGroupMap();
 
   const emailBatch: TrackedBatchMarketingEmail[] = [];
 

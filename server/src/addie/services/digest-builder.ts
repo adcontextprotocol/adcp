@@ -135,7 +135,7 @@ Keep each "whyItMatters" to 1-2 sentences.`,
         tags: article.relevance_tags || [],
         knowledgeId: article.id,
       };
-    }).filter((item): item is NonNullable<typeof item> => item !== null) as DigestNewsItem[];
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
   } catch {
     logger.warn('Failed to parse LLM news selection, using top 3 by score');
     return articles.slice(0, 3).map((a) => ({
@@ -330,7 +330,7 @@ async function buildSpotlightAction(): Promise<DigestSpotlightAction | null> {
     if (!soonest) return null;
 
     const meetingDate = new Date(soonest.start_time);
-    const dayStr = meetingDate.toLocaleDateString('en-US', { weekday: 'long' });
+    const dayStr = meetingDate.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' });
     const timeStr = meetingDate.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
@@ -394,6 +394,9 @@ export function generateDigestSubject(content: DigestContent): string {
 
   if (content.workingGroups.length > 0) {
     const topWG = content.workingGroups[0].name;
+    if (content.workingGroups.length === 1) {
+      return `This week: ${topWG} update | AAO Weekly`;
+    }
     return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AAO Weekly`;
   }
 

@@ -327,7 +327,28 @@ export async function recordDigestFeedback(
   trackingId?: string,
 ): Promise<void> {
   await query(
-    `INSERT INTO digest_feedback (edition_date, vote, tracking_id) VALUES ($1, $2, $3)`,
+    `INSERT INTO digest_feedback (edition_date, vote, tracking_id) VALUES ($1, $2, $3)
+     ON CONFLICT (edition_date, tracking_id) WHERE tracking_id IS NOT NULL DO NOTHING`,
     [editionDate, vote, trackingId || null],
   );
+}
+
+/**
+ * Get active WG memberships for all users (for digest personalization).
+ * Returns a map of workos_user_id → array of WG names.
+ */
+export async function getUserWorkingGroupMap(): Promise<Map<string, string[]>> {
+  const result = await query<{ workos_user_id: string; name: string }>(
+    `SELECT wgm.workos_user_id, wg.name
+     FROM working_group_memberships wgm
+     JOIN working_groups wg ON wg.id = wgm.working_group_id
+     WHERE wgm.status = 'active' AND wg.status = 'active'`,
+  );
+  const map = new Map<string, string[]>();
+  for (const row of result.rows) {
+    const groups = map.get(row.workos_user_id) || [];
+    groups.push(row.name);
+    map.set(row.workos_user_id, groups);
+  }
+  return map;
 }

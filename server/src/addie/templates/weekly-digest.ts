@@ -520,30 +520,6 @@ function getFoundingDaysRemaining(): number | null {
   return days > 0 ? days : null;
 }
 
-function renderFoundingDeadlineBannerHtml(trackingId: string = 'web'): string {
-  const days = getFoundingDaysRemaining();
-  if (days === null) return '';
-
-  const headline = days <= 7
-    ? `Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}`
-    : 'Founding member enrollment closes March 31';
-
-  const joinUrl = trackLink(trackingId, 'cta_founding', `${BASE_URL}/join`);
-
-  return `
-    <div style="text-align: center; padding: 20px; background: #fef9e7; border: 1px solid #f0d060; border-radius: 8px; margin: 24px 0;">
-      <p style="font-size: 16px; color: #1a1a2e; margin: 0 0 8px 0; font-weight: 600;">
-        ${headline}
-      </p>
-      <p style="font-size: 14px; color: #555; margin: 0 0 12px 0;">
-        Lock in current pricing permanently. After March 31, membership rates increase.
-      </p>
-      <a href="${joinUrl}" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
-        Join as a founding member
-      </a>
-    </div>`;
-}
-
 function renderFoundingDeadlineBannerSlack(): SlackBlock | null {
   const days = getFoundingDaysRemaining();
   if (days === null) return null;
