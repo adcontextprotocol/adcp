@@ -706,8 +706,9 @@ export class HTTPServer {
         return res.redirect(302, 'https://docs.adcontextprotocol.org/');
       }
 
-      // Skip paths that have their own route handlers which handle auth and config injection
-      if (urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat' || urlPath === '/governance') {
+      // Skip paths that have their own route handlers (redirects or custom serving)
+      const skipExact = ['/agents', '/brands', '/publishers', '/registry', '/registry/', '/latest', '/latest/', '/working-groups', '/working-groups/', '/chat', '/governance'];
+      if (urlPath.startsWith('/dashboard') || skipExact.includes(urlPath)) {
         return next();
       }
 
@@ -774,7 +775,26 @@ export class HTTPServer {
       }
     });
 
-    this.app.use(express.static(publicPath, { index: false }));
+    // Redirect routes that have matching directories/files in public/
+    // but are handled by route handlers. Must come before express.static
+    // to prevent directory trailing-slash redirects.
+    this.app.use((req, res, next) => {
+      const redirects: Record<string, string> = {
+        '/latest': '/stories',
+        '/latest/': '/stories',
+        '/working-groups': '/committees?type=working_group',
+        '/working-groups/': '/committees?type=working_group',
+        '/brands': '/registry?tab=brands',
+        '/publishers': '/registry?tab=properties',
+      };
+      const target = redirects[req.path];
+      if (target && req.method === 'GET') {
+        return res.redirect(301, target);
+      }
+      next();
+    });
+
+    this.app.use(express.static(publicPath, { index: false, redirect: false }));
   }
 
 
@@ -1769,7 +1789,7 @@ export class HTTPServer {
     // Agent registry - serves HTML for browsers, JSON for API clients
     this.app.get("/agents", async (req, res) => {
       if (req.accepts('text/html', 'application/json') === 'text/html') {
-        return this.serveHtmlWithConfig(req, res, 'agents.html');
+        return res.redirect(301, '/registry?tab=agents');
       }
       const type = req.query.type as AgentType | undefined;
       const agents = await this.agentService.listAgents(type);
@@ -1855,9 +1875,18 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'index.html');
     });
 
-    // Registry UI route - serve registry.html at /registry
+    // Registry UI — tabbed page serving different registry content based on ?tab parameter
     this.app.get("/registry", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'registry.html');
+      const tabMap: Record<string, string> = {
+        agents: 'agents.html',
+        brands: 'brands.html',
+        properties: 'publishers.html',
+        policies: 'policies.html',
+        members: 'members.html',
+      };
+      const tab = req.query.tab as string | undefined;
+      const htmlFile = (tab && tabMap[tab]) || 'agents.html';
+      await this.serveHtmlWithConfig(req, res, htmlFile);
     });
 
     // Tools hub for registry utilities and builder workflows
@@ -1935,19 +1964,23 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'brand-landing.html');
     });
 
-    // Standalone brand registry page
-    this.app.get("/brands", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'brands.html');
+    // Standalone registry pages redirect to unified /registry with tab
+    this.app.get("/brands", (_req, res) => {
+      res.redirect(301, '/registry?tab=brands');
     });
 
-    // Publishers registry page
-    this.app.get("/publishers", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'publishers.html');
+    this.app.get("/publishers", (_req, res) => {
+      res.redirect(301, '/registry?tab=properties');
     });
 
-    // Properties registry page (redirects to publishers - consolidated)
+    // Policies registry page
+    this.app.get("/policies", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'policies.html');
+    });
+
+    // Properties registry page (redirects to unified registry)
     this.app.get("/properties", (_req, res) => {
-      res.redirect(301, '/publishers');
+      res.redirect(301, '/registry?tab=properties');
     });
 
     // Referral landing page - personalized invite page for prospects
@@ -2035,9 +2068,9 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'event-detail.html');
     });
 
-    // Working Groups pages - public list, detail pages handled by single HTML
-    this.app.get("/working-groups", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'working-groups.html');
+    // Working Groups index redirects to committees with type filter
+    this.app.get("/working-groups", (_req, res) => {
+      res.redirect(301, '/committees?type=working_group');
     });
 
     // Committees page (unified view for working groups, councils, chapters)
@@ -4743,7 +4776,9 @@ export class HTTPServer {
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
           { path: '/stories', priority: '0.9', changefreq: 'daily' },
-          { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
+          { path: '/registry', priority: '0.8', changefreq: 'weekly' },
+          { path: '/policies', priority: '0.7', changefreq: 'weekly' },
+          { path: '/committees', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
         ];

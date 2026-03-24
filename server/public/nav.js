@@ -132,9 +132,8 @@
     const isCommunityActive = currentPath.startsWith('/community') || currentPath.startsWith('/events') || currentPath.startsWith('/committees') || currentPath.startsWith('/meetings');
     const isRegistryActive = currentPath === '/registry'
       || currentPath.startsWith('/registry/')
-      || currentPath === '/agents'
-      || currentPath === '/brands'
-      || currentPath === '/publishers'
+      || currentPath === '/policies'
+      || currentPath === '/members'
       || currentPath.startsWith('/brand')
       || currentPath.startsWith('/adagents')
       || currentPath.startsWith('/property/view');
