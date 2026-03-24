@@ -9,6 +9,7 @@ import {
   type DigestConversation,
   type DigestWorkingGroup,
   type DigestSocialPostIdea,
+  type DigestSpotlightAction,
 } from '../../db/digest-db.js';
 import { getRecentSocialPostIdeas } from '../jobs/social-post-ideas.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -30,12 +31,13 @@ const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agentica
 export async function buildDigestContent(): Promise<DigestContent> {
   logger.info('Building weekly digest content');
 
-  const [news, newMembers, conversations, workingGroups, socialPostIdeas] = await Promise.all([
+  const [news, newMembers, conversations, workingGroups, socialPostIdeas, spotlightAction] = await Promise.all([
     buildNewsSection(),
     buildNewMembersSection(),
     buildConversationsSection(),
     buildWorkingGroupsSection(),
     buildSocialPostIdeasSection(),
+    buildSpotlightAction(),
   ]);
 
   const intro = await generateIntro(news, newMembers, conversations, workingGroups);
@@ -47,6 +49,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
     conversations,
     workingGroups,
     ...(socialPostIdeas.length > 0 ? { socialPostIdeas } : {}),
+    ...(spotlightAction ? { spotlightAction } : {}),
     generatedAt: new Date().toISOString(),
   };
 
@@ -311,6 +314,42 @@ async function generateIntro(
   });
 
   return result.text;
+}
+
+// --- Spotlight Action ---
+
+const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+async function buildSpotlightAction(): Promise<DigestSpotlightAction | null> {
+  try {
+    const upcoming = await meetingsDb.getUpcomingMeetings(5);
+    // Find the soonest meeting that's within the next 7 days
+    const oneWeekOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const soonest = upcoming.find((m: { start_time: string | Date }) => new Date(m.start_time) <= oneWeekOut);
+
+    if (!soonest) return null;
+
+    const meetingDate = new Date(soonest.start_time);
+    const dayStr = meetingDate.toLocaleDateString('en-US', { weekday: 'long' });
+    const timeStr = meetingDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/New_York',
+      timeZoneName: 'short',
+    });
+
+    const groupName = (soonest as { working_group_name?: string }).working_group_name || 'a working group';
+    const title = (soonest as { title?: string }).title || 'meeting';
+
+    return {
+      text: `This week: ${groupName} meets ${dayStr} at ${timeStr} for ${title}.`,
+      linkUrl: `${BASE_URL}/working-groups`,
+      linkLabel: 'See all meetings',
+    };
+  } catch (err) {
+    logger.warn({ error: err }, 'Failed to build spotlight action');
+    return null;
+  }
 }
 
 // --- Social Post Ideas Section ---

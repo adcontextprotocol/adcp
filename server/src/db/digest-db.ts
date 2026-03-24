@@ -26,6 +26,12 @@ export interface DigestEditEntry {
   description: string;
 }
 
+export interface DigestSpotlightAction {
+  text: string;
+  linkUrl?: string;
+  linkLabel?: string;
+}
+
 export interface DigestContent {
   intro: string;
   news: DigestNewsItem[];
@@ -33,6 +39,7 @@ export interface DigestContent {
   conversations: DigestConversation[];
   workingGroups: DigestWorkingGroup[];
   socialPostIdeas?: DigestSocialPostIdea[];
+  spotlightAction?: DigestSpotlightAction;
   editorsNote?: string;
   emailSubject?: string;
   editHistory?: DigestEditEntry[];

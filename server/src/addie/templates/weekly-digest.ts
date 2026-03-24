@@ -1,9 +1,18 @@
 import type { DigestContent } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { FOUNDING_DEADLINE } from '../founding-deadline.js';
+import { trackedUrl } from '../../notifications/email.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
+
+/**
+ * Wrap a URL for email click tracking. Returns raw URL for web/preview renders.
+ */
+function trackLink(trackingId: string, linkTag: string, destinationUrl: string): string {
+  if (trackingId === 'web' || trackingId === 'preview') return destinationUrl;
+  return trackedUrl(trackingId, linkTag, destinationUrl);
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -34,7 +43,8 @@ export function renderDigestEmail(
   segment: DigestSegment,
   firstName?: string,
 ): { html: string; text: string } {
-  const viewInBrowserUrl = `${BASE_URL}/digest/${editionDate}`;
+  const t = (linkTag: string, url: string) => trackLink(trackingId, linkTag, url);
+  const viewInBrowserUrl = t('view_browser', `${BASE_URL}/digest/${editionDate}`);
   const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : '';
 
   const html = `
@@ -59,6 +69,15 @@ export function renderDigestEmail(
     ${content.editorsNote ? `
     <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
       <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${escapeHtml(content.editorsNote)}</p>
+    </div>
+    ` : ''}
+
+    ${content.spotlightAction ? `
+    <div style="margin: 20px 0; padding: 16px 20px; background: #f0fdf4; border-left: 4px solid #047857; border-radius: 0 6px 6px 0;">
+      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">
+        ${escapeHtml(content.spotlightAction.text)}
+        ${content.spotlightAction.linkUrl ? ` <a href="${t('spotlight_cta', content.spotlightAction.linkUrl)}" style="color: #047857; font-weight: 600;">${escapeHtml(content.spotlightAction.linkLabel || 'Learn more')}</a>` : ''}
+      </p>
     </div>
     ` : ''}
 
@@ -90,12 +109,12 @@ export function renderDigestEmail(
     <!-- Notable Conversations -->
     ${content.conversations.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Notable Conversations</h2>
-    ${content.conversations.map((conv) => `
+    ${content.conversations.map((conv, i) => `
     <div style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
       <p style="font-size: 14px; color: #333; margin: 0 0 6px 0;">${escapeHtml(conv.summary)}</p>
       <p style="font-size: 13px; color: #666; margin: 0;">
         in <strong>${escapeHtml(conv.channelName)}</strong>
-        ${segment !== 'website_only' ? ` &middot; <a href="${escapeHtml(conv.threadUrl)}" style="color: #2563eb;">Join the conversation</a>` : ''}
+        ${segment !== 'website_only' ? ` &middot; <a href="${t(`convo_${i}`, conv.threadUrl)}" style="color: #2563eb;">Join the conversation</a>` : ''}
       </p>
     </div>
     `).join('')}
@@ -104,10 +123,10 @@ export function renderDigestEmail(
     <!-- Industry Briefing -->
     ${content.news.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Industry Briefing</h2>
-    ${content.news.map((item) => `
+    ${content.news.map((item, i) => `
     <div style="margin-bottom: 20px;">
       <h3 style="font-size: 15px; margin: 0 0 4px 0;">
-        <a href="${escapeHtml(item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
+        <a href="${t(`news_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
       </h3>
       <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
       <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">Why it matters: ${escapeHtml(item.whyItMatters)}</p>
@@ -118,34 +137,34 @@ export function renderDigestEmail(
     ${content.socialPostIdeas && content.socialPostIdeas.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Ready to share</h2>
     <p style="font-size: 14px; color: #555; margin-bottom: 16px;">
-      Grab ready-to-post social copy for these stories in <a href="${SLACK_WORKSPACE_URL}/channels/social-post-ideas" style="color: #2563eb;">#social-post-ideas</a>:
+      Grab ready-to-post social copy for these stories in <a href="${t('social_channel', `${SLACK_WORKSPACE_URL}/channels/social-post-ideas`)}" style="color: #2563eb;">#social-post-ideas</a>:
     </p>
-    ${content.socialPostIdeas.map((idea) => `
+    ${content.socialPostIdeas.map((idea, i) => `
     <div style="margin-bottom: 12px;">
       <p style="font-size: 14px; margin: 0;">
-        <a href="${escapeHtml(idea.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(idea.title)}</a>
+        <a href="${t(`social_${i}`, idea.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(idea.title)}</a>
         <br><span style="font-size: 13px; color: #666;">${escapeHtml(idea.description.slice(0, 150))}</span>
       </p>
     </div>
     `).join('')}
     <p style="font-size: 13px; color: #666; margin-top: 8px;">
-      Want a version tailored to your company? Ask Addie in Slack or <a href="${BASE_URL}/chat" style="color: #2563eb;">web chat</a>.
+      Want a version tailored to your company? Ask Addie in Slack or <a href="${t('cta_chat', `${BASE_URL}/chat`)}" style="color: #2563eb;">web chat</a>.
     </p>
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
-    ${renderFoundingDeadlineBannerHtml()}
+    ${renderFoundingDeadlineBannerHtml(trackingId)}
 
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
     <!-- Segment-specific CTA -->
-    ${renderCta(segment)}
+    ${renderCta(segment, trackingId)}
 
     <!-- Feedback -->
     <p style="font-size: 13px; color: #888; text-align: center; margin-top: 30px;">
       Was this useful?
-      <a href="${BASE_URL}/digest/${editionDate}/feedback?vote=yes&t=${trackingId}" style="text-decoration: none; font-size: 16px;">&#128077;</a>
-      <a href="${BASE_URL}/digest/${editionDate}/feedback?vote=no&t=${trackingId}" style="text-decoration: none; font-size: 16px;">&#128078;</a>
+      <a href="${t('feedback_yes', `${BASE_URL}/digest/${editionDate}/feedback?vote=yes&t=${trackingId}`)}" style="text-decoration: none; font-size: 16px;">&#128077;</a>
+      <a href="${t('feedback_no', `${BASE_URL}/digest/${editionDate}/feedback?vote=no&t=${trackingId}`)}" style="text-decoration: none; font-size: 16px;">&#128078;</a>
     </p>
   </div>`.trim();
 
@@ -154,7 +173,8 @@ export function renderDigestEmail(
   return { html, text };
 }
 
-function renderCta(segment: DigestSegment): string {
+function renderCta(segment: DigestSegment, trackingId: string): string {
+  const t = (tag: string, url: string) => trackLink(trackingId, tag, url);
   switch (segment) {
     case 'website_only':
       return `
@@ -162,7 +182,7 @@ function renderCta(segment: DigestSegment): string {
         <p style="font-size: 15px; color: #1a1a2e; margin: 0 0 8px 0;">
           Join 1,400+ members discussing agentic advertising in Slack
         </p>
-        <a href="${BASE_URL}/slack" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+        <a href="${t('cta_slack_join', `${BASE_URL}/slack`)}" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
           Join the conversation
         </a>
       </div>`;
@@ -172,7 +192,7 @@ function renderCta(segment: DigestSegment): string {
         <p style="font-size: 15px; color: #1a1a2e; margin: 0 0 8px 0;">
           Get listed in the member directory and access your full profile
         </p>
-        <a href="${BASE_URL}/signup" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+        <a href="${t('cta_signup', `${BASE_URL}/signup`)}" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
           Create your account
         </a>
       </div>`;
@@ -182,7 +202,7 @@ function renderCta(segment: DigestSegment): string {
       <div style="text-align: center; padding: 16px; background: #f0f4ff; border-radius: 8px;">
         <p style="font-size: 15px; color: #1a1a2e; margin: 0;">
           Know someone who should be part of this community?
-          <a href="${BASE_URL}/invite" style="color: #2563eb;">Invite a colleague</a>
+          <a href="${t('cta_invite', `${BASE_URL}/invite`)}" style="color: #2563eb;">Invite a colleague</a>
         </p>
       </div>`;
   }
@@ -198,6 +218,10 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
 
   if (content.editorsNote) {
     lines.push(content.editorsNote, '');
+  }
+
+  if (content.spotlightAction) {
+    lines.push(`>> ${content.spotlightAction.text}`, '');
   }
 
   if (content.workingGroups.length > 0) {
@@ -283,6 +307,14 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: escapeSlackMrkdwn(content.editorsNote).split('\n').map((line) => `> ${line}`).join('\n') },
+    });
+  }
+
+  // Spotlight action
+  if (content.spotlightAction) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `:point_right: ${escapeSlackMrkdwn(content.spotlightAction.text)}` },
     });
   }
 
@@ -427,13 +459,15 @@ function getFoundingDaysRemaining(): number | null {
   return days > 0 ? days : null;
 }
 
-function renderFoundingDeadlineBannerHtml(): string {
+function renderFoundingDeadlineBannerHtml(trackingId: string = 'web'): string {
   const days = getFoundingDaysRemaining();
   if (days === null) return '';
 
   const headline = days <= 7
     ? `Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}`
     : 'Founding member enrollment closes March 31';
+
+  const joinUrl = trackLink(trackingId, 'cta_founding', `${BASE_URL}/join`);
 
   return `
     <div style="text-align: center; padding: 20px; background: #fef9e7; border: 1px solid #f0d060; border-radius: 8px; margin: 24px 0;">
@@ -443,7 +477,7 @@ function renderFoundingDeadlineBannerHtml(): string {
       <p style="font-size: 14px; color: #555; margin: 0 0 12px 0;">
         Lock in current pricing permanently. After March 31, membership rates increase.
       </p>
-      <a href="${BASE_URL}/join" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+      <a href="${joinUrl}" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
         Join as a founding member
       </a>
     </div>`;

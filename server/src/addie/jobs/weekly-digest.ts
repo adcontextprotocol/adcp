@@ -1,6 +1,5 @@
-import crypto from 'crypto';
 import { createLogger } from '../../logger.js';
-import { buildDigestContent, hasMinimumContent } from '../services/digest-builder.js';
+import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../services/digest-builder.js';
 import {
   createDigest,
   getDigestByDate,
@@ -12,9 +11,8 @@ import {
 } from '../../db/digest-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
-import { sendBatchMarketingEmails, type BatchMarketingEmail } from '../../notifications/email.js';
+import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
-import { generateDigestSubject } from '../services/digest-builder.js';
 
 const logger = createLogger('weekly-digest');
 const workingGroupDb = new WorkingGroupDatabase();
@@ -179,22 +177,22 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
     }
   }
 
-  // Prepare and batch-send emails to eligible recipients
+  // Prepare and batch-send emails with link tracking
   const recipients = await getDigestEmailRecipients();
   const subject = await generateDigestSubject(digest.content);
 
-  const emailBatch: BatchMarketingEmail[] = [];
+  const emailBatch: TrackedBatchMarketingEmail[] = [];
 
   for (const recipient of recipients) {
     const segment: DigestSegment = recipient.has_slack ? 'both' : 'website_only';
-    const feedbackId = crypto.randomUUID();
-    const { html, text } = renderDigestEmail(digest.content, feedbackId, editionDate, segment, recipient.first_name || undefined);
 
     emailBatch.push({
       to: recipient.email,
       subject,
-      htmlContent: html,
-      textContent: text,
+      render: (trackingId: string) => {
+        const { html, text } = renderDigestEmail(digest.content, trackingId, editionDate, segment, recipient.first_name || undefined);
+        return { htmlContent: html, textContent: text };
+      },
       category: 'weekly_digest',
       workosUserId: recipient.workos_user_id,
     });
@@ -202,7 +200,7 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
     stats.by_segment[segment] = (stats.by_segment[segment] || 0) + 1;
   }
 
-  const batchResult = await sendBatchMarketingEmails(emailBatch);
+  const batchResult = await sendTrackedBatchMarketingEmails(emailBatch);
   stats.email_count = batchResult.sent;
 
   // Adjust segment counts if there were failures
