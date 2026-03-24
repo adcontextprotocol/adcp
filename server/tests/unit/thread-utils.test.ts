@@ -64,6 +64,41 @@ describe('isDirectedAtAddie', () => {
     ];
     expect(isDirectedAtAddie('sounds good', threadWithAlice, '4', BRIAN, BOT_ID)).toBe(false);
   });
+
+  it('returns false when sender sends consecutive messages after another human spoke', () => {
+    // Brian and Alice talking — Addie participated earlier but Brian is now
+    // sending follow-ups to Alice, not Addie.
+    const thread = [
+      { user: ALICE, ts: '1' },      // Alice asks
+      { user: BOT_ID, ts: '2' },     // Addie responds
+      { user: ALICE, ts: '3' },      // Alice follows up
+      { user: BOT_ID, ts: '4' },     // Addie responds
+      { user: ALICE, ts: '5' },      // Alice says "all good"
+      { user: BOT_ID, ts: '6' },     // Addie says bye
+      { user: BRIAN, ts: '7' },      // Brian to Alice
+      { user: ALICE, ts: '8' },      // Alice to Brian
+      { user: BRIAN, ts: '9' },      // Brian to Alice
+    ];
+    // Brian's follow-up — Alice spoke between his messages, so not directed at Addie
+    expect(isDirectedAtAddie('want to have him email me?', thread, '10', BRIAN, BOT_ID)).toBe(false);
+  });
+
+  it('returns true when sender follows up after Addie responded', () => {
+    const thread = [
+      { user: BRIAN, ts: '1' },
+      { user: BOT_ID, ts: '2' },     // Addie responded to Brian
+    ];
+    // Brian follows up after Addie's response
+    expect(isDirectedAtAddie('what about the other thing?', thread, '3', BRIAN, BOT_ID)).toBe(true);
+  });
+
+  it('returns false when only the sender has spoken (no Addie response)', () => {
+    const thread = [
+      { user: BRIAN, ts: '1' },
+      { user: BRIAN, ts: '2' },
+    ];
+    expect(isDirectedAtAddie('hello?', thread, '3', BRIAN, BOT_ID)).toBe(false);
+  });
 });
 
 describe('isAddressedToAnotherUser', () => {
