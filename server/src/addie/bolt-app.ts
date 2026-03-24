@@ -2626,15 +2626,15 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in the permanent DM thread when available, so all conversation
-  // stays in one Slack thread. When no permanent thread exists, post as a
-  // top-level message so the response is visible (not hidden in a collapsed thread).
+  // Reply where the user actually is: if they're in a thread, reply there;
+  // if they sent a top-level message, reply at top level. The permanent thread
+  // is still used for conversation history continuity (externalId above).
   let responseTs: string | undefined;
   try {
     const postResult = await boltApp.client.chat.postMessage({
       channel: channelId,
       text: wrapUrlsForSlack(outputValidation.sanitized),
-      ...(permThreadTs ? { thread_ts: permThreadTs } : {}),
+      ...(event.thread_ts ? { thread_ts: event.thread_ts } : {}),
     });
     responseTs = postResult.ts;
   } catch (error) {
