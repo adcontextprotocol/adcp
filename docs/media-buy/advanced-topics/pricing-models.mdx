@@ -516,6 +516,26 @@ The `price_breakdown` field also appears on the package response (confirmed line
 
 ---
 
+## Eligible Adjustments
+
+Publishers can declare which adjustment kinds apply to a pricing option using `eligible_adjustments`. This tells buyer agents upfront whether discounts, commissions, or settlement terms are available — before any negotiation begins.
+
+```json
+{
+  "pricing_option_id": "cpm_eur_premium",
+  "pricing_model": "cpm",
+  "fixed_price": 14.00,
+  "currency": "EUR",
+  "eligible_adjustments": ["discount", "commission", "settlement"]
+}
+```
+
+When `eligible_adjustments` is present, the buyer knows which kinds of adjustments to expect or request. When absent, no adjustments are pre-declared — the buyer should check `price_breakdown` if present for any adjustments that were already applied.
+
+This field pairs with `price_breakdown`: `eligible_adjustments` signals what is *possible*, while `price_breakdown` shows what was *applied*.
+
+---
+
 ## Multi-Currency Support
 
 Publishers can offer the same product in multiple currencies:

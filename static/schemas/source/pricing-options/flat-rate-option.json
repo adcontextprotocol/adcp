@@ -90,6 +90,14 @@
     "price_breakdown": {
       "description": "Breakdown of how fixed_price was derived from the list (rate card) price. Only meaningful when fixed_price is present.",
       "$ref": "/schemas/pricing-options/price-breakdown.json"
+    },
+    "eligible_adjustments": {
+      "type": "array",
+      "description": "Adjustment kinds applicable to this pricing option. Tells buyer agents which adjustments are available before negotiation. When absent, no adjustments are pre-declared — the buyer should check price_breakdown if present.",
+      "items": {
+        "$ref": "/schemas/enums/adjustment-kind.json"
+      },
+      "uniqueItems": true
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency"],
