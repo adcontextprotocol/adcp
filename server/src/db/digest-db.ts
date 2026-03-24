@@ -20,6 +20,12 @@ export interface DigestSocialPostIdea {
   description: string;
 }
 
+export interface DigestEditEntry {
+  editedBy: string;
+  editedAt: string;
+  description: string;
+}
+
 export interface DigestContent {
   intro: string;
   news: DigestNewsItem[];
@@ -27,6 +33,9 @@ export interface DigestContent {
   conversations: DigestConversation[];
   workingGroups: DigestWorkingGroup[];
   socialPostIdeas?: DigestSocialPostIdea[];
+  editorsNote?: string;
+  emailSubject?: string;
+  editHistory?: DigestEditEntry[];
   generatedAt: string;
 }
 
@@ -171,6 +180,23 @@ export async function markSkipped(id: number): Promise<void> {
     `UPDATE weekly_digests SET status = 'skipped' WHERE id = $1`,
     [id],
   );
+}
+
+/**
+ * Update the content of a draft digest. Only works on drafts.
+ */
+export async function updateDigestContent(
+  id: number,
+  content: DigestContent,
+): Promise<DigestRecord | null> {
+  const result = await query<DigestRecord>(
+    `UPDATE weekly_digests
+     SET content = $2
+     WHERE id = $1 AND status = 'draft'
+     RETURNING *`,
+    [id, JSON.stringify(content)],
+  );
+  return result.rows[0] || null;
 }
 
 /**

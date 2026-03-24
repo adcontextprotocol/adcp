@@ -100,10 +100,18 @@ async function buildNewsSection(): Promise<DigestNewsItem[]> {
     .join('\n');
 
   const result = await complete({
-    system: `You are Addie, the AI assistant for AgenticAdvertising.org, a standards organization for AI-powered advertising.
+    system: `You are Addie, the AI assistant for AgenticAdvertising.org (AAO), a membership organization building the Ad Context Protocol (AdCP) for agentic advertising.
+
 Select the 3 most relevant articles for our weekly digest and write a brief "why it matters" take for each.
+
+Editorial guidelines:
+- Frame every "why it matters" from AAO's perspective — how does this affect our members, our protocol work, or the agentic advertising ecosystem?
+- Do NOT promote competitor organizations' initiatives (e.g., IAB Tech Lab, AAMP) as industry leadership. If covering competitor news, frame it in terms of what it means for AAO members and where AAO's approach differs.
+- Prefer articles about trends, adoption, and real-world applications of agentic advertising over articles about other organizations' announcements.
+- Be direct and opinionated. Our members are practitioners who want signal, not press releases.
+
 Respond in JSON format: [{"index": 1, "whyItMatters": "..."}]
-Keep each "whyItMatters" to 1-2 sentences. Be opinionated and specific about relevance to agentic advertising.`,
+Keep each "whyItMatters" to 1-2 sentences.`,
     prompt: `Select the top 3 articles from this list for our weekly digest:\n\n${articleList}`,
     maxTokens: 500,
     model: 'fast',
@@ -284,17 +292,18 @@ async function generateIntro(
   workingGroups: DigestWorkingGroup[],
 ): Promise<string> {
   if (!isLLMConfigured()) {
-    return `This week at AgenticAdvertising.org: ${news.length} industry stories, ${newMembers.length} new members, and ${conversations.length} notable conversations.`;
+    return `This week at AgenticAdvertising.org: ${workingGroups.length} working group updates, ${newMembers.length} new members, ${conversations.length} notable conversations, and ${news.length} industry stories.`;
   }
 
+  // Lead with community activity, industry news last
   const context = [];
-  if (news.length > 0) context.push(`${news.length} industry stories (top: "${news[0].title}")`);
+  if (workingGroups.length > 0) context.push(`${workingGroups.length} working group update${workingGroups.length > 1 ? 's' : ''}`);
   if (newMembers.length > 0) context.push(`${newMembers.length} new member${newMembers.length > 1 ? 's' : ''}`);
   if (conversations.length > 0) context.push(`${conversations.length} notable conversation${conversations.length > 1 ? 's' : ''}`);
-  if (workingGroups.length > 0) context.push(`${workingGroups.length} working group update${workingGroups.length > 1 ? 's' : ''}`);
+  if (news.length > 0) context.push(`${news.length} industry stories`);
 
   const result = await complete({
-    system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org. Write a 1-2 sentence intro for the weekly digest. Be warm, concise, and specific. No emojis.`,
+    system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org (AAO). Write a 1-2 sentence intro for the weekly digest. Lead with what's happening in our community — working groups, members, conversations. Mention industry news second. Be warm, concise, and specific. No emojis.`,
     prompt: `Write an intro for this week's digest. Content: ${context.join(', ')}.`,
     maxTokens: 150,
     model: 'fast',
@@ -318,4 +327,42 @@ async function buildSocialPostIdeasSection(): Promise<DigestSocialPostIdea[]> {
     logger.warn({ error }, 'Failed to build social post ideas section');
     return [];
   }
+}
+
+// --- Subject Line Generation ---
+
+/**
+ * Generate a community-focused email subject line for the digest.
+ */
+export async function generateDigestSubject(content: DigestContent): Promise<string> {
+  // If editor set a custom subject, use it
+  if (content.emailSubject) {
+    return content.emailSubject;
+  }
+
+  if (!isLLMConfigured()) {
+    if (content.workingGroups.length > 0) {
+      return `${content.workingGroups.length} working group updates + more | AAO Weekly`;
+    }
+    return 'This week at AgenticAdvertising.org';
+  }
+
+  const context: string[] = [];
+  if (content.editorsNote) context.push(`Editor's note: ${content.editorsNote}`);
+  if (content.workingGroups.length > 0) {
+    context.push(`Working groups: ${content.workingGroups.map((wg) => wg.name).join(', ')}`);
+  }
+  if (content.newMembers.length > 0) context.push(`${content.newMembers.length} new members`);
+  if (content.conversations.length > 0) context.push(`${content.conversations.length} notable conversations`);
+  if (content.news.length > 0) context.push(`${content.news.length} industry stories`);
+
+  const result = await complete({
+    system: `Write a short email subject line (under 60 characters) for the AgenticAdvertising.org weekly digest. Lead with community activity or the editor's note if provided. Do NOT lead with external news headlines. Output only the subject line, nothing else.`,
+    prompt: `Digest content: ${context.join(', ')}`,
+    maxTokens: 60,
+    model: 'fast',
+    operationName: 'digest-subject',
+  });
+
+  return result.text.replace(/^["']|["']$/g, '').trim();
 }

@@ -14,6 +14,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { sendBatchMarketingEmails, type BatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
+import { generateDigestSubject } from '../services/digest-builder.js';
 
 const logger = createLogger('weekly-digest');
 const workingGroupDb = new WorkingGroupDatabase();
@@ -180,10 +181,7 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
 
   // Prepare and batch-send emails to eligible recipients
   const recipients = await getDigestEmailRecipients();
-  const topNewsTitle = digest.content.news?.[0]?.title;
-  const subject = topNewsTitle
-    ? `${topNewsTitle} + more | AgenticAdvertising.org Weekly`
-    : `AgenticAdvertising.org Weekly - ${formatShortDate(editionDate)}`;
+  const subject = await generateDigestSubject(digest.content);
 
   const emailBatch: BatchMarketingEmail[] = [];
 
@@ -234,9 +232,4 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
   }
 
   return result;
-}
-
-function formatShortDate(editionDate: string): string {
-  const date = new Date(editionDate + 'T12:00:00Z');
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }

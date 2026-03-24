@@ -56,24 +56,29 @@ export function renderDigestEmail(
     <!-- Intro -->
     <p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.intro)}</p>
 
+    ${content.editorsNote ? `
+    <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
+      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${escapeHtml(content.editorsNote)}</p>
+    </div>
+    ` : ''}
+
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
-    <!-- Industry Briefing -->
-    ${content.news.length > 0 ? `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Industry Briefing</h2>
-    ${content.news.map((item) => `
-    <div style="margin-bottom: 20px;">
-      <h3 style="font-size: 15px; margin: 0 0 4px 0;">
-        <a href="${escapeHtml(item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
-      </h3>
-      <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
-      <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">Why it matters: ${escapeHtml(item.whyItMatters)}</p>
+    <!-- Working Group Updates -->
+    ${content.workingGroups.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Working Group Updates</h2>
+    ${content.workingGroups.map((wg) => `
+    <div style="margin-bottom: 12px;">
+      <p style="font-size: 14px; margin: 0;">
+        <strong>${escapeHtml(wg.name)}</strong>: ${escapeHtml(wg.summary.slice(0, 150))}
+        ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
+      </p>
     </div>
     `).join('')}
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
-    <!-- Community Pulse -->
+    <!-- New Members -->
     ${content.newMembers.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">New Members</h2>
     <p style="font-size: 14px; color: #555;">
@@ -82,6 +87,7 @@ export function renderDigestEmail(
     </p>
     ` : ''}
 
+    <!-- Notable Conversations -->
     ${content.conversations.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Notable Conversations</h2>
     ${content.conversations.map((conv) => `
@@ -95,14 +101,16 @@ export function renderDigestEmail(
     `).join('')}
     ` : ''}
 
-    ${content.workingGroups.length > 0 ? `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Working Group Updates</h2>
-    ${content.workingGroups.map((wg) => `
-    <div style="margin-bottom: 12px;">
-      <p style="font-size: 14px; margin: 0;">
-        <strong>${escapeHtml(wg.name)}</strong>: ${escapeHtml(wg.summary.slice(0, 150))}
-        ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
-      </p>
+    <!-- Industry Briefing -->
+    ${content.news.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Industry Briefing</h2>
+    ${content.news.map((item) => `
+    <div style="margin-bottom: 20px;">
+      <h3 style="font-size: 15px; margin: 0 0 4px 0;">
+        <a href="${escapeHtml(item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
+      </h3>
+      <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
+      <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">Why it matters: ${escapeHtml(item.whyItMatters)}</p>
     </div>
     `).join('')}
     ` : ''}
@@ -188,13 +196,15 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
   if (firstName) lines.push(`Hi ${firstName},`, '');
   lines.push(content.intro, '');
 
-  if (content.news.length > 0) {
-    lines.push('--- INDUSTRY BRIEFING ---', '');
-    for (const item of content.news) {
-      lines.push(`* ${item.title}`);
-      lines.push(`  ${item.summary}`);
-      lines.push(`  Why it matters: ${item.whyItMatters}`);
-      lines.push(`  ${item.url}`);
+  if (content.editorsNote) {
+    lines.push(content.editorsNote, '');
+  }
+
+  if (content.workingGroups.length > 0) {
+    lines.push('--- WORKING GROUP UPDATES ---', '');
+    for (const wg of content.workingGroups) {
+      lines.push(`* ${wg.name}: ${wg.summary.slice(0, 150)}`);
+      if (wg.nextMeeting) lines.push(`  Next: ${wg.nextMeeting}`);
       lines.push('');
     }
   }
@@ -217,11 +227,13 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
     }
   }
 
-  if (content.workingGroups.length > 0) {
-    lines.push('--- WORKING GROUP UPDATES ---', '');
-    for (const wg of content.workingGroups) {
-      lines.push(`* ${wg.name}: ${wg.summary.slice(0, 150)}`);
-      if (wg.nextMeeting) lines.push(`  Next: ${wg.nextMeeting}`);
+  if (content.news.length > 0) {
+    lines.push('--- INDUSTRY BRIEFING ---', '');
+    for (const item of content.news) {
+      lines.push(`* ${item.title}`);
+      lines.push(`  ${item.summary}`);
+      lines.push(`  Why it matters: ${item.whyItMatters}`);
+      lines.push(`  ${item.url}`);
       lines.push('');
     }
   }
@@ -266,15 +278,26 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     text: { type: 'mrkdwn', text: escapeSlackMrkdwn(content.intro) },
   });
 
-  // Top news headlines
-  if (content.news.length > 0) {
-    const newsText = content.news
-      .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
+  // Editor's note
+  if (content.editorsNote) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: escapeSlackMrkdwn(content.editorsNote).split('\n').map((line) => `> ${line}`).join('\n') },
+    });
+  }
+
+  // Working group updates
+  if (content.workingGroups.length > 0) {
+    const wgText = content.workingGroups
+      .map((wg) => {
+        const meeting = wg.nextMeeting ? `\n>    _Next: ${escapeSlackMrkdwn(wg.nextMeeting)}_` : '';
+        return `> *${escapeSlackMrkdwn(wg.name)}*: ${escapeSlackMrkdwn(wg.summary.slice(0, 150))}${meeting}`;
+      })
       .join('\n\n');
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Industry Briefing*\n\n${newsText}` },
+      text: { type: 'mrkdwn', text: `*Working Group Updates*\n\n${wgText}` },
     });
   }
 
@@ -286,15 +309,24 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   if (content.conversations.length > 0) {
     communityParts.push(`${content.conversations.length} notable conversation${content.conversations.length > 1 ? 's' : ''}`);
   }
-  if (content.workingGroups.length > 0) {
-    communityParts.push(`${content.workingGroups.length} working group update${content.workingGroups.length > 1 ? 's' : ''}`);
-  }
 
   if (communityParts.length > 0) {
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Community Pulse*\n${communityParts.join(' · ')}` },
+    });
+  }
+
+  // Industry briefing
+  if (content.news.length > 0) {
+    const newsText = content.news
+      .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
+      .join('\n\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Industry Briefing*\n\n${newsText}` },
     });
   }
 
@@ -341,7 +373,7 @@ export function renderDigestReview(content: DigestContent, editionDate: string):
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*Weekly Digest Draft for ${formatDate(editionDate)}*\nReact with :white_check_mark: to approve for Tuesday 10am ET delivery. Reply in thread with any edits.`,
+      text: `*Weekly Digest Draft for ${formatDate(editionDate)}*\n:white_check_mark: Approve for 10am ET delivery · :arrows_counterclockwise: Regenerate from scratch\nReply in thread to edit — e.g. "remove the first article", "editor's note: Don't miss our March town hall", or ask for any changes.`,
     },
   });
   blocks.splice(1, 0, { type: 'divider' });
