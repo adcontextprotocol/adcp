@@ -74,7 +74,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   member: {
     name: 'member',
-    description: 'Manage member profile, working groups, committees, content proposals, and account settings',
+    description: 'Manage member profile, working groups, committees, content proposals, and account settings. Includes listing working group documents.',
     tools: [
       'get_my_profile',
       'update_my_profile',
@@ -92,6 +92,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'bookmark_resource',
       'set_outreach_preference',
       'draft_social_posts',
+      'list_committee_documents',
     ],
   },
 
@@ -195,7 +196,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   content: {
     name: 'content',
-    description: 'Manage content workflows - draft GitHub issues, propose news sources, handle content approvals, manage committee documents',
+    description: 'Manage content workflows - draft GitHub issues, propose news sources, handle content approvals, add or update committee documents (admin actions)',
     tools: [
       'draft_github_issue',
       'propose_news_source',
@@ -203,7 +204,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'approve_content',
       'reject_content',
       'add_committee_document',
-      'list_committee_documents',
       'update_committee_document',
       'delete_committee_document',
     ],

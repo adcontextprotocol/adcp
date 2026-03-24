@@ -20,6 +20,7 @@ import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from "../utils/url-security.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
+import { refreshWorkingGroupDocs } from "../addie/mcp/docs-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, inviteToChannel, isSlackConfigured } from "../slack/client.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { CommunityDatabase } from "../db/community-db.js";
@@ -1815,6 +1816,11 @@ export function createCommitteeRouters(): {
       }
 
       res.status(201).json({ document });
+
+      // Index immediately so Addie can reference the document right away
+      reindexDocument(document.id)
+        .then(() => refreshWorkingGroupDocs())
+        .catch(err => logger.warn({ err, documentId: document.id }, 'Background indexing after document creation failed'));
     } catch (error) {
       logger.error({ err: error }, 'Create committee document error');
       res.status(500).json({
@@ -1921,6 +1927,11 @@ export function createCommitteeRouters(): {
       }
 
       res.status(201).json({ document });
+
+      // Index immediately so Addie can reference the document right away
+      reindexDocument(document.id)
+        .then(() => refreshWorkingGroupDocs())
+        .catch(err => logger.warn({ err, documentId: document.id }, 'Background indexing after file upload failed'));
     } catch (error) {
       logger.error({ err: error }, 'Upload committee document error');
       res.status(500).json({
@@ -2013,6 +2024,10 @@ export function createCommitteeRouters(): {
       });
 
       res.json({ document });
+
+      // Refresh in-memory search index so Addie sees updated metadata
+      refreshWorkingGroupDocs()
+        .catch(err => logger.warn({ err, documentId }, 'Background refresh after document update failed'));
     } catch (error) {
       logger.error({ err: error }, 'Update committee document error');
       res.status(500).json({
@@ -2067,6 +2082,9 @@ export function createCommitteeRouters(): {
         });
       }
 
+      // Refresh in-memory search index so Addie sees updated content
+      await refreshWorkingGroupDocs();
+
       // Fetch the updated document
       const updatedDoc = await workingGroupDb.getDocumentById(documentId);
 
@@ -2117,6 +2135,10 @@ export function createCommitteeRouters(): {
       logger.info({ documentId, groupSlug: slug }, 'Committee document deleted');
 
       res.json({ success: true });
+
+      // Remove from in-memory search index
+      refreshWorkingGroupDocs()
+        .catch(err => logger.warn({ err, documentId }, 'Background refresh after document delete failed'));
     } catch (error) {
       logger.error({ err: error }, 'Delete committee document error');
       res.status(500).json({
