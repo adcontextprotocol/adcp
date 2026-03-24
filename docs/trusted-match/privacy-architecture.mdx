@@ -45,9 +45,10 @@ TEE is an upgrade path, not a prerequisite. The protocol works without it. Publi
 
 **From Context Match requests**, a buyer agent learns:
 
-- Which publisher pages and content exist (by domain, content hash, topic)
-- What packages are available on those pages
-- Content signals: topics, sentiment, language, brand safety classification
+- Which publisher placements and content artifacts exist
+- What packages are available on those placements
+- Content signals via `context_signals` (topics, sentiment, keywords, language, brand safety tier, summary, embedding) — pre-computed by the publisher
+- Geographic context (country, region, metro) — publisher-controlled granularity
 
 **From Identity Match requests**, a buyer agent learns:
 

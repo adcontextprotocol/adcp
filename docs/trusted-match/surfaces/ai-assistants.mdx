@@ -30,6 +30,15 @@ When a user sends a message in a conversation, the AI platform sends a Context M
   "property_type": "ai_assistant",
   "placement_id": "chat-inline-recommendation",
   "artifacts": ["turn:b3c9e2"],
+  "context_signals": {
+    "topics": ["shopping.fashion.sneakers", "lifestyle.fitness"],
+    "sentiment": "positive",
+    "keywords": ["sneakers", "running", "recommendations"],
+    "language": "en",
+    "brand_safety_tier": "safe",
+    "summary": "User asking for sneaker recommendations for running and casual wear"
+  },
+  "geo": { "country": "US" },
   "available_packages": [
     { "package_id": "pkg-sneaker-reco", "media_buy_id": "mb-footwear-q1", "format_ids": ["sponsored_recommendation"], "catalogs": [{ "catalog_id": "catalog-sneakers", "type": "product", "ids": ["sku-runner-x", "sku-classic-low", "sku-retro-1"] }] },
     { "package_id": "pkg-fashion-native", "media_buy_id": "mb-retailer-spring", "format_ids": ["native_mention"] }
@@ -37,7 +46,7 @@ When a user sends a message in a conversation, the AI platform sends a Context M
 }
 ```
 
-The `artifacts` reference a registered conversation turn. The buyer agent resolves topic classification and content metadata from its cached artifact registry. No user identity is present.
+The `artifacts` reference a conversation turn by ID. For ephemeral content like conversation turns, the platform sends `context_signals` with pre-computed classifier outputs (topics, sentiment, keywords, summary, embedding) so the buyer can evaluate relevance without needing a pre-synced artifact registry. For static content (articles, episodes), the buyer resolves artifact metadata from its own cache. No user identity is present.
 
 The buyer agent responds with an offer:
 
@@ -47,11 +56,11 @@ The buyer agent responds with an offer:
   "offers": [
     {
       "package_id": "pkg-sneaker-reco",
-      "brand": { "house": "Apex Athletics", "brand": "Apex Runners" },
+      "brand": { "domain": "apexathletics.example.com", "brand_id": "apex_runners" },
       "price": { "amount": 12.50, "currency": "USD", "model": "cpm" },
       "summary": "Apex Classic Low + Runner X — free shipping this month",
       "creative_manifest": {
-        "format_id": { "id": "sponsored_recommendation" },
+        "format_id": { "agent_url": "https://chatplatform.example.com", "id": "sponsored_recommendation" },
         "assets": {
           "headline": { "asset_type": "text", "text": "Trending for spring" },
           "body": { "asset_type": "text", "text": "Apex Classic Low — clean lines, tons of colorways. Free shipping this month." },

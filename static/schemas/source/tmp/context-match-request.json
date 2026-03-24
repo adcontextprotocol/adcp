@@ -67,6 +67,64 @@
       },
       "additionalProperties": false
     },
+    "url_hash": {
+      "type": "string",
+      "description": "Blake3 hash of the canonicalized URL, base64-encoded. For URL-addressable content, the buyer checks this against their pre-crawled content index. Canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments."
+    },
+    "context_signals": {
+      "type": "object",
+      "description": "Pre-computed classifier outputs for the content environment. Use when artifact pre-registration is not feasible (e.g., real-time conversation turns, search queries) or to supplement artifact-based matching. Raw content (conversation text, article body, URLs) MUST NOT be included — only classified outputs. The publisher is the classifier boundary.",
+      "properties": {
+        "topics": {
+          "type": "array",
+          "description": "Topic taxonomy identifiers describing the content (e.g., 'cooking.pasta', 'fitness.running'). Publishers use a consistent taxonomy across requests.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sentiment": {
+          "type": "string",
+          "description": "Content sentiment classification.",
+          "enum": ["positive", "negative", "neutral", "mixed"]
+        },
+        "keywords": {
+          "type": "array",
+          "description": "Content keywords extracted by the publisher's classifier.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "language": {
+          "type": "string",
+          "description": "Content language in ISO 639-1 format (e.g., 'en', 'ja', 'de').",
+          "pattern": "^[a-z]{2}$"
+        },
+        "brand_safety_tier": {
+          "type": "string",
+          "description": "Publisher's brand safety classification of the content.",
+          "enum": ["safe", "sensitive", "unsafe"]
+        },
+        "summary": {
+          "type": "string",
+          "description": "Publisher-generated natural language summary of the content for relevance judgment (e.g., 'User exploring Italian cookware options for home pasta making'). Useful for LLM-native buyers that evaluate relevance semantically."
+        },
+        "embedding": {
+          "type": "string",
+          "description": "Content embedding as base64-encoded int8 vector. Captures semantic content beyond what topics and keywords express. Publishers declare the model used. For standardized matching, use the protocol-recommended model (nomic-embed-text-v1.5, 256 dims, int8 quantized = 256 bytes)."
+        },
+        "embedding_model": {
+          "type": "string",
+          "description": "Embedding model identifier (e.g., 'nomic-embed-text-v1.5'). Required when embedding is present."
+        },
+        "embedding_dims": {
+          "type": "integer",
+          "description": "Number of dimensions in the embedding vector. Required when embedding is present.",
+          "minimum": 64,
+          "maximum": 2048
+        }
+      },
+      "additionalProperties": false
+    },
     "available_packages": {
       "type": "array",
       "description": "ALL packages eligible for this placement. MUST NOT be filtered by user identity or audience — that filtering happens via Identity Match. Sending only user-relevant packages leaks identity into the context path. Using a stable per-placement set also enables caching.",
