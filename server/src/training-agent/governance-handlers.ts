@@ -19,7 +19,7 @@ import type {
 import type { BrandReference } from '@adcp/client';
 import { getSession, sessionKeyFromArgs } from './state.js';
 
-interface SyncPlansInput {
+interface SyncPlansInput extends ToolArgs {
   plans: SyncPlanInput[];
 }
 
@@ -250,7 +250,7 @@ const GOVERNANCE_CATEGORIES = [
 
 export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const input = args as unknown as SyncPlansInput;
+  const input = args as SyncPlansInput;
 
   if (!input.plans?.length) {
     return { errors: [{ code: 'validation_error', message: 'plans array is required' }] };
@@ -318,7 +318,7 @@ export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 }
 
 export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as CheckGovernanceInput;
+  const req = args as CheckGovernanceInput;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
   const binding = req.binding;
@@ -671,7 +671,7 @@ export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
 }
 
 export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ReportPlanOutcomeInput;
+  const req = args as ReportPlanOutcomeInput;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planId = req.plan_id;
   const checkId = req.check_id;
@@ -757,7 +757,7 @@ export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
 }
 
 export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetPlanAuditLogsInput;
+  const req = args as GetPlanAuditLogsInput;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const planIds = req.plan_ids || [];
   const portfolioPlanIds = req.portfolio_plan_ids || [];
@@ -767,7 +767,16 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
     return { errors: [{ code: 'validation_error', message: 'plan_ids or portfolio_plan_ids is required' }] };
   }
 
-  const results: object[] = [];
+  const results: Array<{
+    plan_id: string;
+    plan_version: number;
+    status: string;
+    budget: object;
+    channel_allocation: object;
+    media_buys: object;
+    summary: object;
+    entries?: Array<{ id: string; type: string; timestamp: string; [key: string]: unknown }>;
+  }> = [];
 
   for (const planId of planIds) {
     const plan = session.governancePlans.get(planId);
@@ -859,23 +868,13 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
       },
     };
 
-    const planResult = {
-      plan_id: planId,
-      plan_version: plan.version,
-      status: plan.status,
-      budget,
-      channel_allocation: channelAllocation,
-      media_buys: mediaBuys,
-      summary,
-      entries: undefined as Array<{ id: string; type: string; timestamp: string; [key: string]: unknown }> | undefined,
-    };
-
-    // Include entries if requested
+    // Build entries array when requested
+    let auditEntries: Array<{ id: string; type: string; timestamp: string; [key: string]: unknown }> | undefined;
     if (includeEntries) {
-      const entries: Array<{ id: string; type: string; timestamp: string; [key: string]: unknown }> = [];
+      auditEntries = [];
 
       for (const check of checks) {
-        entries.push({
+        auditEntries.push({
           id: check.checkId,
           type: 'check',
           timestamp: check.timestamp,
@@ -897,7 +896,7 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
       }
 
       for (const outcome of outcomes) {
-        entries.push({
+        auditEntries.push({
           id: outcome.outcomeId,
           type: 'outcome',
           timestamp: outcome.timestamp,
@@ -908,11 +907,19 @@ export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
       }
 
       // Sort by timestamp
-      entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-      planResult.entries = entries;
+      auditEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     }
 
-    results.push(planResult);
+    results.push({
+      plan_id: planId,
+      plan_version: plan.version,
+      status: plan.status,
+      budget,
+      channel_allocation: channelAllocation,
+      media_buys: mediaBuys,
+      summary,
+      ...(auditEntries && { entries: auditEntries }),
+    });
   }
 
   return { plans: results };

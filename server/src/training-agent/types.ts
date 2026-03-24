@@ -2,7 +2,7 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/client.
  */
-import type { Product, Proposal, Account, BrandReference, FormatID, CreativeAsset, CreateMediaBuyRequest, EventType } from '@adcp/client';
+import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';

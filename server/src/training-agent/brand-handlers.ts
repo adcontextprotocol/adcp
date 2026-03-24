@@ -36,6 +36,13 @@ interface VoiceSynthesisSettings {
   language?: string;
 }
 
+interface GenerationCredential {
+  provider: string;
+  rights_key: string;
+  uses: string[];
+  expires_at: string;
+}
+
 interface VoiceSynthesis {
   provider: string;
   voice_id: string;
@@ -827,7 +834,7 @@ export function handleAcquireRights(
   const startDate = campaign.start_date || '2026-04-01';
   const endDate = campaign.end_date || '2026-06-30';
 
-  const generationCredentials: Array<{ provider: string; rights_key: string; uses: string[]; expires_at: string }> = [];
+  const generationCredentials: GenerationCredential[] = [];
   const campaignUses = campaign.uses || pricingOption.uses;
 
   if (campaignUses.includes('likeness')) {
@@ -942,7 +949,7 @@ export function handleUpdateRights(
   const talentName = getTalentName(talent);
   const campaignUses = pricingOption.uses;
 
-  const generationCredentials: Array<{ provider: string; rights_key: string; uses: string[]; expires_at: string }> = [];
+  const generationCredentials: GenerationCredential[] = [];
 
   if (campaignUses.includes('likeness')) {
     generationCredentials.push({

@@ -42,6 +42,7 @@ function adcpError(code: string, opts: { message: string; details?: unknown; rec
 
 // Derive types from SDK request types that aren't re-exported from main entry
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
+type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
@@ -1381,7 +1382,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const warnings: string[] = [];
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
-    for (const update of req.packages as (PackageUpdate & { canceled?: boolean; cancellation_reason?: string })[]) {
+    for (const update of req.packages as PackageUpdateExt[]) {
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) {
@@ -1389,11 +1390,11 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       }
 
       // Package cancellation
-      if ((update as PackageUpdate & { canceled?: boolean; cancellation_reason?: string }).canceled === true) {
+      if ((update as PackageUpdateExt).canceled === true) {
         pkg.canceled = true;
         pkg.canceledAt = now;
         pkg.canceledBy = 'buyer';
-        pkg.cancellationReason = (update as PackageUpdate & { cancellation_reason?: string }).cancellation_reason;
+        pkg.cancellationReason = (update as PackageUpdateExt).cancellation_reason;
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
         continue;
       }
@@ -2029,7 +2030,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       task = await taskStore.createTask(
         { ttl: clampedTtl },
         0,
-        request as unknown as { method: string; params?: { _meta?: Record<string, never> } },
+        request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
       );
       await taskStore.storeTaskResult(task.taskId, terminalStatus, toolResult);
       task = await taskStore.getTask(task.taskId);
