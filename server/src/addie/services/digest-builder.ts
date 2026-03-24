@@ -372,36 +372,34 @@ async function buildSocialPostIdeasSection(): Promise<DigestSocialPostIdea[]> {
 
 /**
  * Generate a community-focused email subject line for the digest.
+ * Uses a template with the most concrete content item — no AI generation.
  */
-export async function generateDigestSubject(content: DigestContent): Promise<string> {
+export function generateDigestSubject(content: DigestContent): string {
   // If editor set a custom subject, use it
   if (content.emailSubject) {
     return content.emailSubject;
   }
 
-  if (!isLLMConfigured()) {
-    if (content.workingGroups.length > 0) {
-      return `${content.workingGroups.length} working group updates + more | AAO Weekly`;
+  // Template: "This week: [single concrete thing] | AAO Weekly"
+  // Pick the most specific item available
+  if (content.spotlightAction) {
+    // e.g., "This week: Measurement WG meets Thursday | AAO Weekly"
+    const short = content.spotlightAction.text
+      .replace(/^This week:\s*/i, '')
+      .replace(/\.\s*$/, '');
+    if (short.length <= 50) {
+      return `This week: ${short} | AAO Weekly`;
     }
-    return 'This week at AgenticAdvertising.org';
   }
 
-  const context: string[] = [];
-  if (content.editorsNote) context.push(`Editor's note: ${content.editorsNote}`);
   if (content.workingGroups.length > 0) {
-    context.push(`Working groups: ${content.workingGroups.map((wg) => wg.name).join(', ')}`);
+    const topWG = content.workingGroups[0].name;
+    return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AAO Weekly`;
   }
-  if (content.newMembers.length > 0) context.push(`${content.newMembers.length} new members`);
-  if (content.conversations.length > 0) context.push(`${content.conversations.length} notable conversations`);
-  if (content.news.length > 0) context.push(`${content.news.length} industry stories`);
 
-  const result = await complete({
-    system: `Write a short email subject line (under 60 characters) for the AgenticAdvertising.org weekly digest. Lead with community activity or the editor's note if provided. Do NOT lead with external news headlines. Output only the subject line, nothing else.`,
-    prompt: `Digest content: ${context.join(', ')}`,
-    maxTokens: 60,
-    model: 'fast',
-    operationName: 'digest-subject',
-  });
+  if (content.newMembers.length > 0) {
+    return `This week: ${content.newMembers.length} new members joined | AAO Weekly`;
+  }
 
-  return result.text.replace(/^["']|["']$/g, '').trim();
+  return 'This week at AgenticAdvertising.org';
 }

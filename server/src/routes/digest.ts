@@ -22,8 +22,10 @@ export function createDigestRouter(): Router {
       return;
     }
 
-    const segment = (req.query.segment as DigestSegment) || 'both';
-    const firstName = typeof req.query.firstName === 'string' ? req.query.firstName : undefined;
+    const VALID_SEGMENTS = new Set(['website_only', 'slack_only', 'both', 'active']);
+    const segmentParam = typeof req.query.segment === 'string' ? req.query.segment : 'both';
+    const segment: DigestSegment = VALID_SEGMENTS.has(segmentParam) ? segmentParam as DigestSegment : 'both';
+    const firstName = typeof req.query.firstName === 'string' ? req.query.firstName.slice(0, 50) : undefined;
     const dateParam = typeof req.query.date === 'string' ? req.query.date : undefined;
 
     try {
@@ -70,7 +72,7 @@ export function createDigestRouter(): Router {
   <div class="preview-bar">
     <label>Segment:</label>
     ${(['website_only', 'both', 'slack_only', 'active'] as const).map((s) =>
-      `<a href="?segment=${s}&firstName=${firstName || ''}&date=${editionDate}" class="${s === segment ? 'active' : ''}">${s}</a>`
+      `<a href="?segment=${s}&firstName=${encodeURIComponent(firstName || '')}&date=${editionDate}" class="${s === segment ? 'active' : ''}">${s}</a>`
     ).join(' ')}
     <span style="margin-left: auto;">Status: ${digest.status} | ${editionDate}</span>
   </div>

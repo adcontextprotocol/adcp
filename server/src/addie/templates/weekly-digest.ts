@@ -85,25 +85,7 @@ export function renderDigestEmail(
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
     <!-- Working Group Updates -->
-    ${content.workingGroups.length > 0 ? (() => {
-      const userWGs = new Set(userWorkingGroupNames || []);
-      const sorted = userWGs.size > 0
-        ? [...content.workingGroups].sort((a, b) => (userWGs.has(b.name) ? 1 : 0) - (userWGs.has(a.name) ? 1 : 0))
-        : content.workingGroups;
-      return `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Working Group Updates</h2>
-    ${sorted.map((wg) => {
-      const isMember = userWGs.has(wg.name);
-      return `
-    <div style="margin-bottom: 12px;${isMember ? ' border-left: 3px solid #2563eb; padding-left: 12px;' : ''}">
-      <p style="font-size: 14px; margin: 0;">
-        <strong>${escapeHtml(wg.name)}</strong>${isMember ? ' <span style="font-size: 11px; color: #2563eb; font-weight: 600;">YOUR GROUP</span>' : ''}: ${escapeHtml(wg.summary.slice(0, 150))}
-        ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
-      </p>
-    </div>`;
-    }).join('')}
-    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">`;
-    })() : ''}
+    ${renderWorkingGroupsHtml(content.workingGroups, userWorkingGroupNames)}
 
     <!-- New Members -->
     ${content.newMembers.length > 0 ? `
@@ -161,11 +143,7 @@ export function renderDigestEmail(
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
-    ${renderFoundingDeadlineBannerHtml(trackingId)}
-
-    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
-
-    <!-- Segment-specific CTA -->
+    <!-- CTA (founding member merged with segment CTA when deadline active) -->
     ${renderCta(segment, trackingId)}
 
     <!-- Feedback -->
@@ -181,8 +159,50 @@ export function renderDigestEmail(
   return { html, text };
 }
 
+/**
+ * Render the working groups section with personalization.
+ * User's groups are sorted first and highlighted with a blue left border.
+ */
+function renderWorkingGroupsHtml(
+  workingGroups: DigestContent['workingGroups'],
+  userWorkingGroupNames?: string[],
+): string {
+  if (workingGroups.length === 0) return '';
+
+  const userWGs = new Set(userWorkingGroupNames || []);
+  const sorted = userWGs.size > 0
+    ? [...workingGroups].sort((a, b) => {
+        const aMatch = userWGs.has(a.name) ? 1 : 0;
+        const bMatch = userWGs.has(b.name) ? 1 : 0;
+        return bMatch - aMatch || a.name.localeCompare(b.name);
+      })
+    : workingGroups;
+
+  const items = sorted.map((wg) => {
+    const isMember = userWGs.has(wg.name);
+    return `
+    <div style="margin-bottom: 12px;${isMember ? ' border-left: 3px solid #2563eb; padding-left: 12px;' : ''}">
+      <p style="font-size: 14px; margin: 0;">
+        <strong>${escapeHtml(wg.name)}</strong>: ${escapeHtml(wg.summary.slice(0, 150))}
+        ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
+      </p>
+    </div>`;
+  }).join('');
+
+  return `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Working Group Updates</h2>
+    ${items}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">`;
+}
+
 function renderCta(segment: DigestSegment, trackingId: string): string {
   const t = (tag: string, url: string) => trackLink(trackingId, tag, url);
+  // If founding deadline is active, merge it into the CTA
+  const foundingDays = getFoundingDaysRemaining();
+  if (foundingDays !== null) {
+    return renderFoundingCtaHtml(segment, t, foundingDays);
+  }
+
   switch (segment) {
     case 'website_only':
       return `
@@ -206,6 +226,7 @@ function renderCta(segment: DigestSegment, trackingId: string): string {
       </div>`;
     case 'both':
     case 'active':
+    default:
       return `
       <div style="text-align: center; padding: 16px; background: #f0f4ff; border-radius: 8px;">
         <p style="font-size: 15px; color: #1a1a2e; margin: 0;">
@@ -214,6 +235,38 @@ function renderCta(segment: DigestSegment, trackingId: string): string {
         </p>
       </div>`;
   }
+}
+
+/**
+ * Merged founding member + segment CTA. One ask per email.
+ */
+function renderFoundingCtaHtml(
+  segment: DigestSegment,
+  t: (tag: string, url: string) => string,
+  daysRemaining: number,
+): string {
+  const urgency = daysRemaining <= 7
+    ? `Founding member enrollment closes in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}`
+    : 'Founding member enrollment closes March 31';
+
+  const secondaryText = segment === 'website_only'
+    ? 'Lock in current pricing and join 1,400+ members in Slack.'
+    : segment === 'slack_only'
+      ? 'Lock in current pricing and get listed in the member directory.'
+      : 'Lock in current pricing permanently. After March 31, membership rates increase.';
+
+  return `
+    <div style="text-align: center; padding: 20px; background: #fef9e7; border: 1px solid #f0d060; border-radius: 8px;">
+      <p style="font-size: 16px; color: #1a1a2e; margin: 0 0 8px 0; font-weight: 600;">
+        ${urgency}
+      </p>
+      <p style="font-size: 14px; color: #555; margin: 0 0 12px 0;">
+        ${secondaryText}
+      </p>
+      <a href="${t('cta_founding', `${BASE_URL}/join`)}" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+        Join as a founding member
+      </a>
+    </div>`;
 }
 
 function renderDigestText(content: DigestContent, editionDate: string, segment: DigestSegment, firstName?: string): string {

@@ -180,7 +180,7 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
 
   // Prepare and batch-send emails with link tracking
   const recipients = await getDigestEmailRecipients();
-  const subject = await generateDigestSubject(digest.content);
+  const subject = generateDigestSubject(digest.content);
 
   // Pre-fetch all user WG memberships for personalization (single query)
   const wgMemberships = await query<{ workos_user_id: string; name: string }>(
