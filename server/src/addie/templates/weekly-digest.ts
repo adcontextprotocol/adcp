@@ -1,9 +1,18 @@
 import type { DigestContent } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { FOUNDING_DEADLINE } from '../founding-deadline.js';
+import { trackedUrl } from '../../notifications/email.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
+
+/**
+ * Wrap a URL for email click tracking. Returns raw URL for web/preview renders.
+ */
+function trackLink(trackingId: string, linkTag: string, destinationUrl: string): string {
+  if (trackingId === 'web' || trackingId === 'preview') return destinationUrl;
+  return trackedUrl(trackingId, linkTag, destinationUrl);
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -33,8 +42,10 @@ export function renderDigestEmail(
   editionDate: string,
   segment: DigestSegment,
   firstName?: string,
+  userWorkingGroupNames?: string[],
 ): { html: string; text: string } {
-  const viewInBrowserUrl = `${BASE_URL}/digest/${editionDate}`;
+  const t = (linkTag: string, url: string) => trackLink(trackingId, linkTag, url);
+  const viewInBrowserUrl = t('view_browser', `${BASE_URL}/digest/${editionDate}`);
   const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : '';
 
   const html = `
@@ -56,24 +67,27 @@ export function renderDigestEmail(
     <!-- Intro -->
     <p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.intro)}</p>
 
-    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
-
-    <!-- Industry Briefing -->
-    ${content.news.length > 0 ? `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Industry Briefing</h2>
-    ${content.news.map((item) => `
-    <div style="margin-bottom: 20px;">
-      <h3 style="font-size: 15px; margin: 0 0 4px 0;">
-        <a href="${escapeHtml(item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
-      </h3>
-      <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
-      <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">Why it matters: ${escapeHtml(item.whyItMatters)}</p>
+    ${content.editorsNote ? `
+    <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
+      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${escapeHtml(content.editorsNote)}</p>
     </div>
-    `).join('')}
-    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
-    <!-- Community Pulse -->
+    ${content.spotlightAction ? `
+    <div style="margin: 20px 0; padding: 16px 20px; background: #f0fdf4; border-left: 4px solid #047857; border-radius: 0 6px 6px 0;">
+      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">
+        ${escapeHtml(content.spotlightAction.text)}
+        ${content.spotlightAction.linkUrl ? ` <a href="${t('spotlight_cta', content.spotlightAction.linkUrl)}" style="color: #047857; font-weight: 600;">${escapeHtml(content.spotlightAction.linkLabel || 'Learn more')}</a>` : ''}
+      </p>
+    </div>
+    ` : ''}
+
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+
+    <!-- Working Group Updates -->
+    ${renderWorkingGroupsHtml(content.workingGroups, userWorkingGroupNames)}
+
+    <!-- New Members -->
     ${content.newMembers.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">New Members</h2>
     <p style="font-size: 14px; color: #555;">
@@ -82,27 +96,30 @@ export function renderDigestEmail(
     </p>
     ` : ''}
 
+    <!-- Notable Conversations -->
     ${content.conversations.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Notable Conversations</h2>
-    ${content.conversations.map((conv) => `
+    ${content.conversations.map((conv, i) => `
     <div style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
       <p style="font-size: 14px; color: #333; margin: 0 0 6px 0;">${escapeHtml(conv.summary)}</p>
       <p style="font-size: 13px; color: #666; margin: 0;">
         in <strong>${escapeHtml(conv.channelName)}</strong>
-        ${segment !== 'website_only' ? ` &middot; <a href="${escapeHtml(conv.threadUrl)}" style="color: #2563eb;">Join the conversation</a>` : ''}
+        ${segment !== 'website_only' ? ` &middot; <a href="${t(`convo_${i}`, conv.threadUrl)}" style="color: #2563eb;">Join the conversation</a>` : ''}
       </p>
     </div>
     `).join('')}
     ` : ''}
 
-    ${content.workingGroups.length > 0 ? `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Working Group Updates</h2>
-    ${content.workingGroups.map((wg) => `
-    <div style="margin-bottom: 12px;">
-      <p style="font-size: 14px; margin: 0;">
-        <strong>${escapeHtml(wg.name)}</strong>: ${escapeHtml(wg.summary.slice(0, 150))}
-        ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
-      </p>
+    <!-- Industry Briefing -->
+    ${content.news.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Industry Briefing</h2>
+    ${content.news.map((item, i) => `
+    <div style="margin-bottom: 20px;">
+      <h3 style="font-size: 15px; margin: 0 0 4px 0;">
+        <a href="${t(`news_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
+      </h3>
+      <p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(item.summary)}</p>
+      <p style="font-size: 13px; color: #1a1a2e; margin: 4px 0; font-style: italic;">Why it matters: ${escapeHtml(item.whyItMatters)}</p>
     </div>
     `).join('')}
     ` : ''}
@@ -110,34 +127,30 @@ export function renderDigestEmail(
     ${content.socialPostIdeas && content.socialPostIdeas.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Ready to share</h2>
     <p style="font-size: 14px; color: #555; margin-bottom: 16px;">
-      Grab ready-to-post social copy for these stories in <a href="${SLACK_WORKSPACE_URL}/channels/social-post-ideas" style="color: #2563eb;">#social-post-ideas</a>:
+      Grab ready-to-post social copy for these stories in <a href="${t('social_channel', `${SLACK_WORKSPACE_URL}/channels/social-post-ideas`)}" style="color: #2563eb;">#social-post-ideas</a>:
     </p>
-    ${content.socialPostIdeas.map((idea) => `
+    ${content.socialPostIdeas.map((idea, i) => `
     <div style="margin-bottom: 12px;">
       <p style="font-size: 14px; margin: 0;">
-        <a href="${escapeHtml(idea.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(idea.title)}</a>
+        <a href="${t(`social_${i}`, idea.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(idea.title)}</a>
         <br><span style="font-size: 13px; color: #666;">${escapeHtml(idea.description.slice(0, 150))}</span>
       </p>
     </div>
     `).join('')}
     <p style="font-size: 13px; color: #666; margin-top: 8px;">
-      Want a version tailored to your company? Ask Addie in Slack or <a href="${BASE_URL}/chat" style="color: #2563eb;">web chat</a>.
+      Want a version tailored to your company? Ask Addie in Slack or <a href="${t('cta_chat', `${BASE_URL}/chat`)}" style="color: #2563eb;">web chat</a>.
     </p>
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
-    ${renderFoundingDeadlineBannerHtml()}
-
-    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
-
-    <!-- Segment-specific CTA -->
-    ${renderCta(segment)}
+    <!-- CTA (founding member merged with segment CTA when deadline active) -->
+    ${renderCta(segment, trackingId)}
 
     <!-- Feedback -->
     <p style="font-size: 13px; color: #888; text-align: center; margin-top: 30px;">
       Was this useful?
-      <a href="${BASE_URL}/digest/${editionDate}/feedback?vote=yes&t=${trackingId}" style="text-decoration: none; font-size: 16px;">&#128077;</a>
-      <a href="${BASE_URL}/digest/${editionDate}/feedback?vote=no&t=${trackingId}" style="text-decoration: none; font-size: 16px;">&#128078;</a>
+      <a href="${t('feedback_yes', `${BASE_URL}/digest/${editionDate}/feedback?vote=yes&t=${trackingId}`)}" style="text-decoration: none; font-size: 16px;">&#128077;</a>
+      <a href="${t('feedback_no', `${BASE_URL}/digest/${editionDate}/feedback?vote=no&t=${trackingId}`)}" style="text-decoration: none; font-size: 16px;">&#128078;</a>
     </p>
   </div>`.trim();
 
@@ -146,7 +159,50 @@ export function renderDigestEmail(
   return { html, text };
 }
 
-function renderCta(segment: DigestSegment): string {
+/**
+ * Render the working groups section with personalization.
+ * User's groups are sorted first and highlighted with a blue left border.
+ */
+function renderWorkingGroupsHtml(
+  workingGroups: DigestContent['workingGroups'],
+  userWorkingGroupNames?: string[],
+): string {
+  if (workingGroups.length === 0) return '';
+
+  const userWGs = new Set(userWorkingGroupNames || []);
+  const sorted = userWGs.size > 0
+    ? [...workingGroups].sort((a, b) => {
+        const aMatch = userWGs.has(a.name) ? 1 : 0;
+        const bMatch = userWGs.has(b.name) ? 1 : 0;
+        return bMatch - aMatch || a.name.localeCompare(b.name);
+      })
+    : workingGroups;
+
+  const items = sorted.map((wg) => {
+    const isMember = userWGs.has(wg.name);
+    return `
+    <div style="margin-bottom: 12px;${isMember ? ' border-left: 3px solid #2563eb; padding-left: 12px;' : ''}">
+      <p style="font-size: 14px; margin: 0;">
+        <strong>${escapeHtml(wg.name)}</strong>: ${escapeHtml(wg.summary.slice(0, 150))}
+        ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
+      </p>
+    </div>`;
+  }).join('');
+
+  return `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Working Group Updates</h2>
+    ${items}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">`;
+}
+
+function renderCta(segment: DigestSegment, trackingId: string): string {
+  const t = (tag: string, url: string) => trackLink(trackingId, tag, url);
+  // If founding deadline is active, merge it into the CTA
+  const foundingDays = getFoundingDaysRemaining();
+  if (foundingDays !== null) {
+    return renderFoundingCtaHtml(segment, t, foundingDays);
+  }
+
   switch (segment) {
     case 'website_only':
       return `
@@ -154,7 +210,7 @@ function renderCta(segment: DigestSegment): string {
         <p style="font-size: 15px; color: #1a1a2e; margin: 0 0 8px 0;">
           Join 1,400+ members discussing agentic advertising in Slack
         </p>
-        <a href="${BASE_URL}/slack" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+        <a href="${t('cta_slack_join', `${BASE_URL}/slack`)}" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
           Join the conversation
         </a>
       </div>`;
@@ -164,20 +220,53 @@ function renderCta(segment: DigestSegment): string {
         <p style="font-size: 15px; color: #1a1a2e; margin: 0 0 8px 0;">
           Get listed in the member directory and access your full profile
         </p>
-        <a href="${BASE_URL}/signup" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+        <a href="${t('cta_signup', `${BASE_URL}/signup`)}" style="display: inline-block; padding: 10px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
           Create your account
         </a>
       </div>`;
     case 'both':
     case 'active':
+    default:
       return `
       <div style="text-align: center; padding: 16px; background: #f0f4ff; border-radius: 8px;">
         <p style="font-size: 15px; color: #1a1a2e; margin: 0;">
           Know someone who should be part of this community?
-          <a href="${BASE_URL}/invite" style="color: #2563eb;">Invite a colleague</a>
+          <a href="${t('cta_invite', `${BASE_URL}/invite`)}" style="color: #2563eb;">Invite a colleague</a>
         </p>
       </div>`;
   }
+}
+
+/**
+ * Merged founding member + segment CTA. One ask per email.
+ */
+function renderFoundingCtaHtml(
+  segment: DigestSegment,
+  t: (tag: string, url: string) => string,
+  daysRemaining: number,
+): string {
+  const urgency = daysRemaining <= 7
+    ? `Founding member enrollment closes in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}`
+    : 'Founding member enrollment closes March 31';
+
+  const secondaryText = segment === 'website_only'
+    ? 'Lock in current pricing and join 1,400+ members in Slack.'
+    : segment === 'slack_only'
+      ? 'Lock in current pricing and get listed in the member directory.'
+      : 'Lock in current pricing permanently. After March 31, membership rates increase.';
+
+  return `
+    <div style="text-align: center; padding: 20px; background: #fef9e7; border: 1px solid #f0d060; border-radius: 8px;">
+      <p style="font-size: 16px; color: #1a1a2e; margin: 0 0 8px 0; font-weight: 600;">
+        ${urgency}
+      </p>
+      <p style="font-size: 14px; color: #555; margin: 0 0 12px 0;">
+        ${secondaryText}
+      </p>
+      <a href="${t('cta_founding', `${BASE_URL}/join`)}" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+        Join as a founding member
+      </a>
+    </div>`;
 }
 
 function renderDigestText(content: DigestContent, editionDate: string, segment: DigestSegment, firstName?: string): string {
@@ -188,13 +277,19 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
   if (firstName) lines.push(`Hi ${firstName},`, '');
   lines.push(content.intro, '');
 
-  if (content.news.length > 0) {
-    lines.push('--- INDUSTRY BRIEFING ---', '');
-    for (const item of content.news) {
-      lines.push(`* ${item.title}`);
-      lines.push(`  ${item.summary}`);
-      lines.push(`  Why it matters: ${item.whyItMatters}`);
-      lines.push(`  ${item.url}`);
+  if (content.editorsNote) {
+    lines.push(content.editorsNote, '');
+  }
+
+  if (content.spotlightAction) {
+    lines.push(`>> ${content.spotlightAction.text}`, '');
+  }
+
+  if (content.workingGroups.length > 0) {
+    lines.push('--- WORKING GROUP UPDATES ---', '');
+    for (const wg of content.workingGroups) {
+      lines.push(`* ${wg.name}: ${wg.summary.slice(0, 150)}`);
+      if (wg.nextMeeting) lines.push(`  Next: ${wg.nextMeeting}`);
       lines.push('');
     }
   }
@@ -217,11 +312,13 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
     }
   }
 
-  if (content.workingGroups.length > 0) {
-    lines.push('--- WORKING GROUP UPDATES ---', '');
-    for (const wg of content.workingGroups) {
-      lines.push(`* ${wg.name}: ${wg.summary.slice(0, 150)}`);
-      if (wg.nextMeeting) lines.push(`  Next: ${wg.nextMeeting}`);
+  if (content.news.length > 0) {
+    lines.push('--- INDUSTRY BRIEFING ---', '');
+    for (const item of content.news) {
+      lines.push(`* ${item.title}`);
+      lines.push(`  ${item.summary}`);
+      lines.push(`  Why it matters: ${item.whyItMatters}`);
+      lines.push(`  ${item.url}`);
       lines.push('');
     }
   }
@@ -266,15 +363,34 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     text: { type: 'mrkdwn', text: escapeSlackMrkdwn(content.intro) },
   });
 
-  // Top news headlines
-  if (content.news.length > 0) {
-    const newsText = content.news
-      .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
+  // Editor's note
+  if (content.editorsNote) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: escapeSlackMrkdwn(content.editorsNote).split('\n').map((line) => `> ${line}`).join('\n') },
+    });
+  }
+
+  // Spotlight action
+  if (content.spotlightAction) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `:point_right: ${escapeSlackMrkdwn(content.spotlightAction.text)}` },
+    });
+  }
+
+  // Working group updates
+  if (content.workingGroups.length > 0) {
+    const wgText = content.workingGroups
+      .map((wg) => {
+        const meeting = wg.nextMeeting ? `\n>    _Next: ${escapeSlackMrkdwn(wg.nextMeeting)}_` : '';
+        return `> *${escapeSlackMrkdwn(wg.name)}*: ${escapeSlackMrkdwn(wg.summary.slice(0, 150))}${meeting}`;
+      })
       .join('\n\n');
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Industry Briefing*\n\n${newsText}` },
+      text: { type: 'mrkdwn', text: `*Working Group Updates*\n\n${wgText}` },
     });
   }
 
@@ -286,15 +402,24 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   if (content.conversations.length > 0) {
     communityParts.push(`${content.conversations.length} notable conversation${content.conversations.length > 1 ? 's' : ''}`);
   }
-  if (content.workingGroups.length > 0) {
-    communityParts.push(`${content.workingGroups.length} working group update${content.workingGroups.length > 1 ? 's' : ''}`);
-  }
 
   if (communityParts.length > 0) {
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Community Pulse*\n${communityParts.join(' · ')}` },
+    });
+  }
+
+  // Industry briefing
+  if (content.news.length > 0) {
+    const newsText = content.news
+      .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
+      .join('\n\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Industry Briefing*\n\n${newsText}` },
     });
   }
 
@@ -341,7 +466,7 @@ export function renderDigestReview(content: DigestContent, editionDate: string):
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*Weekly Digest Draft for ${formatDate(editionDate)}*\nReact with :white_check_mark: to approve for Tuesday 10am ET delivery. Reply in thread with any edits.`,
+      text: `*Weekly Digest Draft for ${formatDate(editionDate)}*\n:white_check_mark: Approve for 10am ET delivery · :arrows_counterclockwise: Regenerate from scratch\nReply in thread to edit — e.g. "remove the first article", "editor's note: Don't miss our March town hall", or ask for any changes.`,
     },
   });
   blocks.splice(1, 0, { type: 'divider' });
@@ -393,28 +518,6 @@ export function renderDigestWebPage(content: DigestContent, editionDate: string)
 function getFoundingDaysRemaining(): number | null {
   const days = Math.ceil((FOUNDING_DEADLINE.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   return days > 0 ? days : null;
-}
-
-function renderFoundingDeadlineBannerHtml(): string {
-  const days = getFoundingDaysRemaining();
-  if (days === null) return '';
-
-  const headline = days <= 7
-    ? `Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}`
-    : 'Founding member enrollment closes March 31';
-
-  return `
-    <div style="text-align: center; padding: 20px; background: #fef9e7; border: 1px solid #f0d060; border-radius: 8px; margin: 24px 0;">
-      <p style="font-size: 16px; color: #1a1a2e; margin: 0 0 8px 0; font-weight: 600;">
-        ${headline}
-      </p>
-      <p style="font-size: 14px; color: #555; margin: 0 0 12px 0;">
-        Lock in current pricing permanently. After March 31, membership rates increase.
-      </p>
-      <a href="${BASE_URL}/join" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
-        Join as a founding member
-      </a>
-    </div>`;
 }
 
 function renderFoundingDeadlineBannerSlack(): SlackBlock | null {

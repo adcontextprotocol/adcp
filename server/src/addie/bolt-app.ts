@@ -112,7 +112,9 @@ import {
 } from './services/community-articles.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import { getDigestByReviewMessage, approveDigest } from '../db/digest-db.js';
+import { getDigestByReviewMessage, approveDigest, updateDigestContent } from '../db/digest-db.js';
+import { applyDigestEdit } from './services/digest-editor.js';
+import { renderDigestReview } from './templates/weekly-digest.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import * as personEvents from '../db/person-events-db.js';
 
@@ -3211,6 +3213,13 @@ async function handleChannelMessage({
   logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');
 
+  // Check if this is a reply in a digest review thread — route to digest editor
+  if (isInThread) {
+    const digestThreadTs = 'thread_ts' in event ? event.thread_ts! : event.ts;
+    const digestHandled = await handleDigestEditReply(channelId, digestThreadTs, messageText, userId);
+    if (digestHandled) return;
+  }
+
   // Check if this is a reply in a thread where Addie has already participated.
   // If so, treat it as an implicit @mention and respond directly.
   // This creates natural conversational flow when users reply to Addie's questions.
@@ -3754,6 +3763,157 @@ async function handleViewFlagged({ ack, body, client }: any): Promise<void> {
 }
 
 /**
+ * Handle a thread reply on a digest review message.
+ * Processes editorial feedback and updates the draft.
+ * Returns true if this was a digest review thread (handled), false otherwise.
+ */
+async function handleDigestEditReply(
+  channelId: string,
+  threadTs: string,
+  messageText: string,
+  userId: string,
+): Promise<boolean> {
+  const digest = await getDigestByReviewMessage(channelId, threadTs);
+  if (!digest) {
+    return false;
+  }
+
+  if (digest.status !== 'draft') {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `This digest has already been ${digest.status}. Edits can only be made to drafts.`,
+      });
+    }
+    return true;
+  }
+
+  // Verify editor is an Editorial working group leader or member
+  const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
+  if (!editorial) {
+    logger.warn('Editorial working group not found for digest edit');
+    return true;
+  }
+  const isLeader = (editorial.leaders || []).some(
+    (l) => l.user_id === userId || l.canonical_user_id === userId,
+  );
+  const isMember = isLeader || await workingGroupDb.isMember(editorial.id, userId);
+  if (!isMember) {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: 'Only Editorial working group members can edit the digest.',
+      });
+    }
+    return true;
+  }
+
+  // Resolve editor name
+  let editorName = 'An editor';
+  try {
+    const { resolveSlackUserDisplayName } = await import('../slack/client.js');
+    const resolved = await resolveSlackUserDisplayName(userId);
+    if (resolved?.display_name) {
+      editorName = resolved.display_name;
+    }
+  } catch {
+    // Use default
+  }
+
+  let result;
+  try {
+    result = await applyDigestEdit(digest.content, messageText, editorName);
+  } catch (err) {
+    logger.error({ error: err, digestId: digest.id }, 'Failed to apply digest edit');
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: 'Something went wrong applying that edit. Try again or try a simpler instruction.',
+      });
+    }
+    return true;
+  }
+
+  // Persist the updated content
+  const updated = await updateDigestContent(digest.id, result.content);
+
+  try {
+    if (boltApp) {
+      // Post the edit summary
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: result.summary,
+      });
+
+      // If content was actually changed, post an updated preview
+      if (updated) {
+        const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
+        const preview = renderDigestReview(result.content, editionDate);
+
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: preview.text,
+          blocks: preview.blocks,
+        });
+      }
+    }
+  } catch (err) {
+    logger.warn({ error: err, digestId: digest.id }, 'Failed to post digest edit response to Slack');
+  }
+
+  logger.info(
+    { digestId: digest.id, editorName },
+    'Digest edit applied',
+  );
+
+  return true;
+}
+
+/**
+ * Handle 🔄 (arrows_counterclockwise) reaction on a digest review message.
+ * Verifies the reactor is an Editorial working group member, then regenerates.
+ */
+async function handleDigestRegenerate(
+  reactingUserId: string,
+  channelId: string,
+  messageTs: string,
+): Promise<boolean> {
+  const digest = await getDigestByReviewMessage(channelId, messageTs);
+  if (!digest || digest.status !== 'draft') {
+    return false;
+  }
+
+  // Verify reactor is an Editorial working group leader or member
+  const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
+  if (!editorial) {
+    logger.warn('Editorial working group not found for digest regenerate');
+    return true;
+  }
+  const isLeader = (editorial.leaders || []).some(
+    (l) => l.user_id === reactingUserId || l.canonical_user_id === reactingUserId,
+  );
+  const isMember = isLeader || await workingGroupDb.isMember(editorial.id, reactingUserId);
+  if (!isMember) {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: 'Only Editorial working group members can regenerate the digest.',
+      });
+    }
+    return true;
+  }
+
+  // Delegate to applyDigestEdit which handles regeneration and edit history
+  return handleDigestEditReply(channelId, messageTs, 'regenerate', reactingUserId);
+}
+
+/**
  * Handle white_check_mark reaction on a weekly digest review message.
  * Verifies the reactor is an Editorial working group leader, then approves the digest.
  * Returns true if the reaction was for a digest review message (handled), false otherwise.
@@ -3848,6 +4008,12 @@ async function handleReactionAdded({
   // Check for weekly digest approval (white_check_mark on digest review message)
   if (reaction === 'white_check_mark') {
     const handled = await handleDigestApproval(reactingUserId, itemChannel, itemTs);
+    if (handled) return;
+  }
+
+  // Check for weekly digest regeneration (🔄 on digest review message)
+  if (reaction === 'arrows_counterclockwise') {
+    const handled = await handleDigestRegenerate(reactingUserId, itemChannel, itemTs);
     if (handled) return;
   }
 

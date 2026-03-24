@@ -1,6 +1,5 @@
-import crypto from 'crypto';
 import { createLogger } from '../../logger.js';
-import { buildDigestContent, hasMinimumContent } from '../services/digest-builder.js';
+import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../services/digest-builder.js';
 import {
   createDigest,
   getDigestByDate,
@@ -8,11 +7,12 @@ import {
   markSent,
   markSkipped,
   getDigestEmailRecipients,
+  getUserWorkingGroupMap,
   type DigestSendStats,
 } from '../../db/digest-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
-import { sendBatchMarketingEmails, type BatchMarketingEmail } from '../../notifications/email.js';
+import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
 
 const logger = createLogger('weekly-digest');
@@ -178,33 +178,35 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
     }
   }
 
-  // Prepare and batch-send emails to eligible recipients
+  // Prepare and batch-send emails with link tracking
   const recipients = await getDigestEmailRecipients();
-  const topNewsTitle = digest.content.news?.[0]?.title;
-  const subject = topNewsTitle
-    ? `${topNewsTitle} + more | AgenticAdvertising.org Weekly`
-    : `AgenticAdvertising.org Weekly - ${formatShortDate(editionDate)}`;
+  const subject = generateDigestSubject(digest.content);
 
-  const emailBatch: BatchMarketingEmail[] = [];
+  // Pre-fetch all user WG memberships for personalization (single query)
+  const userWGMap = await getUserWorkingGroupMap();
+
+  const emailBatch: TrackedBatchMarketingEmail[] = [];
 
   for (const recipient of recipients) {
     const segment: DigestSegment = recipient.has_slack ? 'both' : 'website_only';
-    const feedbackId = crypto.randomUUID();
-    const { html, text } = renderDigestEmail(digest.content, feedbackId, editionDate, segment, recipient.first_name || undefined);
+    const userWGs = userWGMap.get(recipient.workos_user_id);
 
     emailBatch.push({
       to: recipient.email,
       subject,
-      htmlContent: html,
-      textContent: text,
+      render: (trackingId: string) => {
+        const { html, text } = renderDigestEmail(digest.content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs);
+        return { htmlContent: html, textContent: text };
+      },
       category: 'weekly_digest',
       workosUserId: recipient.workos_user_id,
+      metadata: { edition_date: editionDate, segment },
     });
 
     stats.by_segment[segment] = (stats.by_segment[segment] || 0) + 1;
   }
 
-  const batchResult = await sendBatchMarketingEmails(emailBatch);
+  const batchResult = await sendTrackedBatchMarketingEmails(emailBatch);
   stats.email_count = batchResult.sent;
 
   // Adjust segment counts if there were failures
@@ -234,9 +236,4 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
   }
 
   return result;
-}
-
-function formatShortDate(editionDate: string): string {
-  const date = new Date(editionDate + 'T12:00:00Z');
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
