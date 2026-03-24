@@ -6,7 +6,7 @@
  * Responses are deterministic — built from in-memory data, not LLM calls.
  */
 
-import type { TrainingContext } from './types.js';
+import type { TrainingContext, ToolArgs } from './types.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -31,10 +31,26 @@ interface Tone {
   donts: string[];
 }
 
+interface VoiceSynthesisSettings {
+  stability?: number;
+  language?: string;
+}
+
 interface VoiceSynthesis {
   provider: string;
   voice_id: string;
-  settings: Record<string, unknown>;
+  settings: VoiceSynthesisSettings;
+}
+
+interface PhotographyGuidelines {
+  realism: string;
+  lighting: string;
+  framing: string[];
+}
+
+interface VisualGuidelines {
+  photography: PhotographyGuidelines;
+  restrictions: string[];
 }
 
 interface PricingOption {
@@ -84,7 +100,7 @@ interface TalentEntry {
   fonts?: Record<string, string>;
   tone: Tone;
   voice_synthesis?: VoiceSynthesis;
-  visual_guidelines?: Record<string, unknown>;
+  visual_guidelines?: VisualGuidelines;
   rights: {
     available_uses: string[];
     countries: string[];
@@ -504,19 +520,22 @@ function getTalentName(talent: TalentEntry): string {
 }
 
 export function handleGetBrandIdentity(
-  args: Record<string, unknown>,
+  args: ToolArgs,
   _ctx: TrainingContext,
-): Record<string, unknown> {
-  const brandId = args.brand_id as string;
-  const fields = args.fields as string[] | undefined;
-  const authorized = args.authorized as boolean ?? false;
+) {
+  const req = args as { brand_id: string; fields?: string[]; authorized?: boolean };
+  const brandId = req.brand_id;
+  const fields = req.fields;
+  const authorized = req.authorized ?? false;
 
   const talent = TALENT_MAP.get(brandId);
   if (!talent) {
     return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
   }
 
-  const response: Record<string, unknown> = {
+  // Dynamic field access by name — TalentEntry has no index signature
+  const talentRecord = talent as unknown as { [key: string]: unknown };
+  const response: { [key: string]: unknown } = {
     brand_id: talent.brand_id,
     house: talent.house,
     names: talent.names,
@@ -528,18 +547,18 @@ export function handleGetBrandIdentity(
 
   for (const field of requested) {
     if ((PUBLIC_FIELDS as readonly string[]).includes(field)) {
-      const value = (talent as unknown as Record<string, unknown>)[field];
+      const value = talentRecord[field];
       if (value !== undefined) {
         response[field] = value;
       }
     } else if ((AUTHORIZED_FIELDS as readonly string[]).includes(field)) {
       if (authorized) {
-        const value = (talent as unknown as Record<string, unknown>)[field];
+        const value = talentRecord[field];
         if (value !== undefined) {
           response[field] = value;
         }
       } else {
-        const value = (talent as unknown as Record<string, unknown>)[field];
+        const value = talentRecord[field];
         if (value !== undefined) {
           withheld.push(field);
         }
@@ -644,14 +663,15 @@ function buildMatchReasons(
 }
 
 export function handleGetRights(
-  args: Record<string, unknown>,
+  args: ToolArgs,
   _ctx: TrainingContext,
-): Record<string, unknown> {
-  const query = (args.query as string) || '';
-  const uses = (args.uses as string[]) || [];
-  const countries = args.countries as string[] | undefined;
-  const brandId = args.brand_id as string | undefined;
-  const includeExcluded = args.include_excluded as boolean ?? false;
+) {
+  const req = args as { query?: string; uses?: string[]; countries?: string[]; brand_id?: string; include_excluded?: boolean };
+  const query = req.query || '';
+  const uses = req.uses || [];
+  const countries = req.countries;
+  const brandId = req.brand_id;
+  const includeExcluded = req.include_excluded ?? false;
 
   const queryLower = query.toLowerCase();
 
@@ -667,8 +687,8 @@ export function handleGetRights(
     uses.some(u => t.rights.available_uses.includes(u))
   );
 
-  const rights: Record<string, unknown>[] = [];
-  const excluded: Record<string, unknown>[] = [];
+  const rights: Array<RightsOffering & { brand_id: string; name: string; description: string; match_score: number; match_reasons: string[] }> = [];
+  const excluded: Array<{ brand_id: string; name: string; reason: string; suggestions?: string[] }> = [];
 
   for (const talent of candidates) {
     let excludeRule: { reason: string; suggestions?: string[] } | null = null;
@@ -715,24 +735,20 @@ export function handleGetRights(
     }
   }
 
-  rights.sort((a, b) => (b.match_score as number) - (a.match_score as number));
+  rights.sort((a, b) => b.match_score - a.match_score);
 
-  const response: Record<string, unknown> = { rights, sandbox: true };
-  if (includeExcluded && excluded.length > 0) {
-    response.excluded = excluded;
-  }
-
-  return response;
+  return {
+    rights,
+    sandbox: true,
+    ...(includeExcluded && excluded.length > 0 && { excluded }),
+  };
 }
 
-export function handleAcquireRights(
-  args: Record<string, unknown>,
-  _ctx: TrainingContext,
-): Record<string, unknown> {
-  const rightsId = args.rights_id as string;
-  const pricingOptionId = args.pricing_option_id as string;
-  const buyer = args.buyer as { domain: string; brand_id?: string } | undefined;
-  const campaign = args.campaign as {
+interface AcquireRightsArgs {
+  rights_id: string;
+  pricing_option_id: string;
+  buyer?: { domain: string; brand_id?: string };
+  campaign: {
     description: string;
     uses: string[];
     countries?: string[];
@@ -740,6 +756,17 @@ export function handleAcquireRights(
     start_date?: string;
     end_date?: string;
   };
+}
+
+export function handleAcquireRights(
+  args: ToolArgs,
+  _ctx: TrainingContext,
+) {
+  const req = args as AcquireRightsArgs;
+  const rightsId = req.rights_id;
+  const pricingOptionId = req.pricing_option_id;
+  const buyer = req.buyer;
+  const campaign = req.campaign;
 
   if (!buyer) {
     return { errors: [{ code: 'invalid_request', message: 'buyer is required' }] };
@@ -800,7 +827,7 @@ export function handleAcquireRights(
   const startDate = campaign.start_date || '2026-04-01';
   const endDate = campaign.end_date || '2026-06-30';
 
-  const generationCredentials: Record<string, unknown>[] = [];
+  const generationCredentials: Array<{ provider: string; rights_key: string; uses: string[]; expires_at: string }> = [];
   const campaignUses = campaign.uses || pricingOption.uses;
 
   if (campaignUses.includes('likeness')) {
@@ -873,13 +900,14 @@ export function handleAcquireRights(
 }
 
 export function handleUpdateRights(
-  args: Record<string, unknown>,
+  args: ToolArgs,
   _ctx: TrainingContext,
-): Record<string, unknown> {
-  const rightsId = args.rights_id as string;
-  const endDate = args.end_date as string | undefined;
-  const impressionCap = args.impression_cap as number | undefined;
-  const paused = args.paused as boolean | undefined;
+) {
+  const req = args as { rights_id: string; end_date?: string; impression_cap?: number; paused?: boolean };
+  const rightsId = req.rights_id;
+  const endDate = req.end_date;
+  const impressionCap = req.impression_cap;
+  const paused = req.paused;
 
   let talent: TalentEntry | undefined;
   let offering: RightsOffering | undefined;
@@ -914,7 +942,7 @@ export function handleUpdateRights(
   const talentName = getTalentName(talent);
   const campaignUses = pricingOption.uses;
 
-  const generationCredentials: Record<string, unknown>[] = [];
+  const generationCredentials: Array<{ provider: string; rights_key: string; uses: string[]; expires_at: string }> = [];
 
   if (campaignUses.includes('likeness')) {
     generationCredentials.push({
@@ -934,7 +962,7 @@ export function handleUpdateRights(
     });
   }
 
-  const response: Record<string, unknown> = {
+  return {
     rights_id: rightsId,
     terms: {
       pricing_option_id: pricingOption.pricing_option_id,
@@ -964,12 +992,7 @@ export function handleUpdateRights(
       verification_url: `https://sandbox.lotientertainment.com/rights/${rightsId}/verify`,
     },
     implementation_date: new Date().toISOString(),
+    ...(paused !== undefined && { paused }),
     sandbox: true,
   };
-
-  if (paused !== undefined) {
-    response.paused = paused;
-  }
-
-  return response;
 }

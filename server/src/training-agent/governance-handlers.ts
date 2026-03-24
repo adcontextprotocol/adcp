@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   TrainingContext,
-  BrandRef,
+  ToolArgs,
   GovernancePlanState,
   GovernanceDelegation,
   GovernanceCheckState,
@@ -16,7 +16,89 @@ import type {
   GovernanceFinding,
   GovernanceCondition,
 } from './types.js';
+import type { BrandReference } from '@adcp/client';
 import { getSession, sessionKeyFromArgs } from './state.js';
+
+interface SyncPlansInput {
+  plans: SyncPlanInput[];
+}
+
+interface SyncPlanInput {
+  plan_id: string;
+  brand: BrandReference;
+  objectives: string;
+  budget: { total: number; currency: string; authority_level: string; per_seller_max_pct?: number; reallocation_threshold?: number };
+  flight: { start: string; end: string };
+  channels?: { required?: string[]; allowed?: string[]; mix_targets?: Record<string, { min_pct?: number; max_pct?: number }> };
+  countries?: string[];
+  regions?: string[];
+  delegations?: Array<{ agent_url: string; authority: string; budget_limit?: { amount: number; currency: string }; markets?: string[]; expires_at?: string }>;
+  approved_sellers?: string[] | null;
+  policy_ids?: string[];
+  custom_policies?: string[];
+  mode?: GovernancePlanState['mode'];
+}
+
+interface CheckGovernanceInput extends ToolArgs {
+  plan_id: string;
+  binding: 'proposed' | 'committed';
+  caller: string;
+  tool?: string;
+  payload?: CheckPayload;
+  governance_context?: string;
+  phase?: string;
+  planned_delivery?: PlannedDeliveryInput;
+  delivery_metrics?: DeliveryMetricsInput;
+  modification_summary?: string;
+  media_buy_id?: string;
+}
+
+interface CheckPayload {
+  packages?: Array<{ budget?: number; channels?: string[] }>;
+  budget?: number | { total?: number };
+  total_budget?: number | { amount?: number };
+  geo?: { countries?: string[] };
+  targeting?: { countries?: string[] };
+  countries?: string[];
+  channels?: string[];
+  channel?: string;
+  start_time?: string;
+  end_time?: string;
+  flight?: { start?: string; end?: string; start_time?: string; end_time?: string };
+}
+
+interface PlannedDeliveryInput {
+  geo?: { countries?: string[] };
+  channels?: string[];
+  total_budget?: number;
+}
+
+interface DeliveryMetricsInput {
+  cumulative_spend?: number;
+  geo_distribution?: Record<string, number>;
+}
+
+interface ReportPlanOutcomeInput extends ToolArgs {
+  plan_id: string;
+  check_id?: string;
+  governance_context?: string;
+  outcome: 'completed' | 'failed' | 'delivery';
+  seller_response?: SellerResponseInput;
+  delivery?: { spend?: number; media_buy_id?: string };
+  error?: object;
+}
+
+interface SellerResponseInput {
+  committed_budget?: number;
+  packages?: Array<{ budget?: number | { total?: number } }>;
+  media_buy_id?: string;
+}
+
+interface GetPlanAuditLogsInput extends ToolArgs {
+  plan_ids?: string[];
+  portfolio_plan_ids?: string[];
+  include_entries?: boolean;
+}
 
 // ── Governance tool definitions ─────────────────────────────────
 
@@ -166,69 +248,63 @@ const GOVERNANCE_CATEGORIES = [
 
 // ── Handler implementations ─────────────────────────────────────
 
-export function handleSyncPlans(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
+export function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const plans = args.plans as Array<Record<string, unknown>>;
+  const input = args as unknown as SyncPlansInput;
 
-  if (!plans?.length) {
+  if (!input.plans?.length) {
     return { errors: [{ code: 'validation_error', message: 'plans array is required' }] };
   }
 
-  const results: Record<string, unknown>[] = [];
+  const results: Array<{ plan_id: string; status: string; version: number; categories: Array<{ category_id: string; status: string }> }> = [];
 
-  for (const plan of plans) {
-    const planId = plan.plan_id as string;
-    const budget = plan.budget as Record<string, unknown>;
-    const flight = plan.flight as Record<string, unknown>;
-    const channels = plan.channels as Record<string, unknown> | undefined;
-    const delegations = plan.delegations as Array<Record<string, unknown>> | undefined;
-
-    const existing = session.governancePlans.get(planId);
+  for (const plan of input.plans) {
+    const existing = session.governancePlans.get(plan.plan_id);
     const version = existing ? existing.version + 1 : 1;
 
     const planState: GovernancePlanState = {
-      planId,
+      planId: plan.plan_id,
       version,
       status: 'active',
-      brand: plan.brand as import('@adcp/client').BrandReference,
-      objectives: plan.objectives as string,
+      brand: plan.brand,
+      objectives: plan.objectives,
       budget: {
-        total: budget.total as number,
-        currency: budget.currency as string,
-        authorityLevel: budget.authority_level as string,
-        perSellerMaxPct: budget.per_seller_max_pct as number | undefined,
-        reallocationThreshold: budget.reallocation_threshold as number | undefined,
+        total: plan.budget.total,
+        currency: plan.budget.currency,
+        authorityLevel: plan.budget.authority_level,
+        perSellerMaxPct: plan.budget.per_seller_max_pct,
+        reallocationThreshold: plan.budget.reallocation_threshold,
       },
-      channels: channels ? {
-        required: channels.required as string[] | undefined,
-        allowed: channels.allowed as string[] | undefined,
-        mixTargets: channels.mix_targets as Record<string, { min_pct?: number; max_pct?: number }> | undefined,
+      channels: plan.channels ? {
+        required: plan.channels.required,
+        allowed: plan.channels.allowed,
+        mixTargets: plan.channels.mix_targets,
       } : undefined,
       flight: {
-        start: flight.start as string,
-        end: flight.end as string,
+        start: plan.flight.start,
+        end: plan.flight.end,
       },
-      countries: plan.countries as string[] | undefined,
-      regions: plan.regions as string[] | undefined,
-      delegations: delegations?.map(d => ({
-        agentUrl: d.agent_url as string,
-        authority: d.authority as string,
-        budgetLimit: d.budget_limit as { amount: number; currency: string } | undefined,
-        markets: d.markets as string[] | undefined,
-        expiresAt: d.expires_at as string | undefined,
+      countries: plan.countries,
+      regions: plan.regions,
+      delegations: plan.delegations?.map(d => ({
+        agentUrl: d.agent_url,
+        authority: d.authority,
+        budgetLimit: d.budget_limit,
+        markets: d.markets,
+        expiresAt: d.expires_at,
       })),
-      approvedSellers: plan.approved_sellers as string[] | null | undefined,
-      policyIds: plan.policy_ids as string[] | undefined,
-      customPolicies: plan.custom_policies as string[] | undefined,
-      mode: (plan.mode as GovernancePlanState['mode']) || 'enforce',
+      approvedSellers: plan.approved_sellers,
+      policyIds: plan.policy_ids,
+      customPolicies: plan.custom_policies,
+      mode: plan.mode || 'enforce',
       committedBudget: existing?.committedBudget ?? 0,
       syncedAt: new Date().toISOString(),
     };
 
-    session.governancePlans.set(planId, planState);
+    session.governancePlans.set(plan.plan_id, planState);
 
     results.push({
-      plan_id: planId,
+      plan_id: plan.plan_id,
       status: 'active',
       version,
       categories: GOVERNANCE_CATEGORIES.map(id => ({
@@ -241,18 +317,19 @@ export function handleSyncPlans(args: Record<string, unknown>, ctx: TrainingCont
   return { plans: results };
 }
 
-export function handleCheckGovernance(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const planId = args.plan_id as string;
-  const binding = args.binding as 'proposed' | 'committed';
-  const caller = args.caller as string;
-  const tool = args.tool as string | undefined;
-  const payload = args.payload as Record<string, unknown> | undefined;
-  const governanceContext = args.governance_context as string | undefined;
-  const phase = (args.phase as string) || 'purchase';
-  const plannedDelivery = args.planned_delivery as Record<string, unknown> | undefined;
-  const deliveryMetrics = args.delivery_metrics as Record<string, unknown> | undefined;
-  const mediaBuyId = args.media_buy_id as string | undefined;
+export function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as CheckGovernanceInput;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const planId = req.plan_id;
+  const binding = req.binding;
+  const caller = req.caller;
+  const tool = req.tool;
+  const payload = req.payload;
+  const governanceContext = req.governance_context;
+  const phase = req.phase || 'purchase';
+  const plannedDelivery = req.planned_delivery;
+  const deliveryMetrics = req.delivery_metrics;
+  const mediaBuyId = req.media_buy_id;
 
   const plan = session.governancePlans.get(planId);
   if (!plan) {
@@ -457,8 +534,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
   if (binding === 'committed' && plannedDelivery) {
     categoriesEvaluated.push('geo_compliance', 'channel_compliance', 'flight_compliance');
 
-    const pdGeo = plannedDelivery.geo as Record<string, unknown> | undefined;
-    const pdCountries = (pdGeo?.countries as string[]) || [];
+    const pdCountries = plannedDelivery.geo?.countries || [];
     if (pdCountries.length > 0 && plan.countries?.length) {
       const planCountrySet = new Set(plan.countries);
       const unauthorized = pdCountries.filter(c => !planCountrySet.has(c));
@@ -471,7 +547,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
       }
     }
 
-    const pdChannels = (plannedDelivery.channels as string[]) || [];
+    const pdChannels = plannedDelivery.channels || [];
     if (pdChannels.length > 0 && plan.channels?.allowed?.length) {
       const allowedSet = new Set(plan.channels.allowed);
       const unauthorized = pdChannels.filter(c => !allowedSet.has(c));
@@ -484,7 +560,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
       }
     }
 
-    const pdBudget = plannedDelivery.total_budget as number | undefined;
+    const pdBudget = plannedDelivery.total_budget;
     if (pdBudget !== undefined) {
       categoriesEvaluated.push('budget_authority');
       const remaining = plan.budget.total - plan.committedBudget;
@@ -501,7 +577,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
   // Delivery phase: check delivery metrics for drift
   if (phase === 'delivery' && deliveryMetrics) {
     categoriesEvaluated.push('delivery_pacing');
-    const cumulativeSpend = deliveryMetrics.cumulative_spend as number | undefined;
+    const cumulativeSpend = deliveryMetrics.cumulative_spend;
     if (cumulativeSpend !== undefined) {
       const spendPct = (cumulativeSpend / plan.budget.total) * 100;
       if (spendPct > 95) {
@@ -521,7 +597,7 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
       }
     }
 
-    const geoDistribution = deliveryMetrics.geo_distribution as Record<string, number> | undefined;
+    const geoDistribution = deliveryMetrics.geo_distribution;
     if (geoDistribution && plan.countries?.length) {
       const planCountrySet = new Set(plan.countries);
       for (const [country, pct] of Object.entries(geoDistribution)) {
@@ -594,14 +670,15 @@ export function handleCheckGovernance(args: Record<string, unknown>, ctx: Traini
   return buildCheckResponse(check);
 }
 
-export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const planId = args.plan_id as string;
-  const checkId = args.check_id as string | undefined;
-  const governanceContext = args.governance_context as string | undefined;
-  const outcome = args.outcome as 'completed' | 'failed' | 'delivery';
-  const sellerResponse = args.seller_response as Record<string, unknown> | undefined;
-  const delivery = args.delivery as Record<string, unknown> | undefined;
+export function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as ReportPlanOutcomeInput;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const planId = req.plan_id;
+  const checkId = req.check_id;
+  const governanceContext = req.governance_context;
+  const outcome = req.outcome;
+  const sellerResponse = req.seller_response;
+  const delivery = req.delivery;
 
   const plan = session.governancePlans.get(planId);
   if (!plan) {
@@ -613,18 +690,15 @@ export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: Trai
 
   if (outcome === 'completed' && sellerResponse) {
     // Prefer committed_budget when present (canonical); fall back to summing packages
-    if (typeof sellerResponse.committed_budget === 'number') {
-      committedBudget = sellerResponse.committed_budget as number;
-    } else {
-      const packages = sellerResponse.packages as Array<Record<string, unknown>> | undefined;
-      if (packages?.length) {
-        committedBudget = packages.reduce((sum, pkg) => {
-          const b = pkg.budget;
-          if (typeof b === 'number') return sum + b;
-          if (b && typeof b === 'object') return sum + ((b as Record<string, unknown>).total as number || 0);
-          return sum;
-        }, 0);
-      }
+    if (sellerResponse.committed_budget !== undefined) {
+      committedBudget = sellerResponse.committed_budget;
+    } else if (sellerResponse.packages?.length) {
+      committedBudget = sellerResponse.packages.reduce((sum, pkg) => {
+        const b = pkg.budget;
+        if (typeof b === 'number') return sum + b;
+        if (b && typeof b === 'object') return sum + (b.total || 0);
+        return sum;
+      }, 0);
     }
 
     plan.committedBudget += committedBudget;
@@ -640,7 +714,7 @@ export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: Trai
   }
 
   if (outcome === 'delivery' && delivery) {
-    const spend = delivery.spend as number | undefined;
+    const spend = delivery.spend;
     if (spend) {
       committedBudget = spend;
       plan.committedBudget += spend;
@@ -655,51 +729,45 @@ export function handleReportPlanOutcome(args: Record<string, unknown>, ctx: Trai
     governanceContext,
     outcomeType: outcome,
     committedBudget,
-    mediaBuyId: sellerResponse?.media_buy_id as string | undefined ?? delivery?.media_buy_id as string | undefined,
+    mediaBuyId: sellerResponse?.media_buy_id ?? delivery?.media_buy_id,
     findings,
     timestamp: new Date().toISOString(),
   };
 
   session.governanceOutcomes.set(outcomeId, outcomeState);
 
-  const result: Record<string, unknown> = {
+  return {
     outcome_id: outcomeId,
     status: findings.length > 0 ? 'findings' : 'accepted',
+    ...(committedBudget > 0 && { committed_budget: committedBudget }),
+    ...(findings.length > 0 && {
+      findings: findings.map(f => ({
+        category_id: f.categoryId,
+        severity: f.severity,
+        explanation: f.explanation,
+      })),
+    }),
+    ...((outcome === 'completed' || outcome === 'failed') && {
+      plan_summary: {
+        total_committed: plan.committedBudget,
+        budget_remaining: plan.budget.total - plan.committedBudget,
+      },
+    }),
   };
-
-  if (committedBudget > 0) {
-    result.committed_budget = committedBudget;
-  }
-
-  if (findings.length > 0) {
-    result.findings = findings.map(f => ({
-      category_id: f.categoryId,
-      severity: f.severity,
-      explanation: f.explanation,
-    }));
-  }
-
-  if (outcome === 'completed' || outcome === 'failed') {
-    result.plan_summary = {
-      total_committed: plan.committedBudget,
-      budget_remaining: plan.budget.total - plan.committedBudget,
-    };
-  }
-
-  return result;
 }
 
-export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
-  const planIds = (args.plan_ids as string[]) || [];
-  const portfolioPlanIds = (args.portfolio_plan_ids as string[]) || [];
-  const includeEntries = args.include_entries as boolean || false;
+export function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as GetPlanAuditLogsInput;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const planIds = req.plan_ids || [];
+  const portfolioPlanIds = req.portfolio_plan_ids || [];
+  const includeEntries = req.include_entries || false;
 
   if (!planIds.length && !portfolioPlanIds.length) {
     return { errors: [{ code: 'validation_error', message: 'plan_ids or portfolio_plan_ids is required' }] };
   }
 
-  const results: Record<string, unknown>[] = [];
+  const results: object[] = [];
 
   for (const planId of planIds) {
     const plan = session.governancePlans.get(planId);
@@ -776,7 +844,7 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
         reason: c.escalation?.reason as string ?? 'Escalated per policy',
       }));
 
-    const summary: Record<string, unknown> = {
+    const summary = {
       checks_performed: totalChecks,
       outcomes_reported: outcomes.length,
       statuses: statusCounts,
@@ -791,7 +859,7 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
       },
     };
 
-    const planResult: Record<string, unknown> = {
+    const planResult = {
       plan_id: planId,
       plan_version: plan.version,
       status: plan.status,
@@ -799,11 +867,12 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
       channel_allocation: channelAllocation,
       media_buys: mediaBuys,
       summary,
+      entries: undefined as Array<{ id: string; type: string; timestamp: string; [key: string]: unknown }> | undefined,
     };
 
     // Include entries if requested
     if (includeEntries) {
-      const entries: Record<string, unknown>[] = [];
+      const entries: Array<{ id: string; type: string; timestamp: string; [key: string]: unknown }> = [];
 
       for (const check of checks) {
         entries.push({
@@ -839,7 +908,7 @@ export function handleGetPlanAuditLogs(args: Record<string, unknown>, ctx: Train
       }
 
       // Sort by timestamp
-      entries.sort((a, b) => (a.timestamp as string).localeCompare(b.timestamp as string));
+      entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
       planResult.entries = entries;
     }
 
@@ -859,81 +928,59 @@ interface ExtractedFields {
   flight: { start?: string; end?: string };
 }
 
-function extractFromPayload(payload: Record<string, unknown>): ExtractedFields {
+function extractFromPayload(payload: CheckPayload): ExtractedFields {
   const budgetInfo = extractBudget(payload);
   return {
     budget: budgetInfo?.amount,
     budgetFieldPath: budgetInfo?.fieldPath ?? 'budget.total',
-    countries: extractCountries(payload),
+    countries: payload.geo?.countries || payload.targeting?.countries || payload.countries || [],
     channels: extractChannels(payload),
     flight: extractFlight(payload),
   };
 }
 
-function extractBudget(payload: Record<string, unknown>): { amount: number; fieldPath: string } | undefined {
-  // Try total_budget.amount first
-  const totalBudget = payload.total_budget as Record<string, unknown> | undefined;
-  if (totalBudget?.amount !== undefined) return { amount: totalBudget.amount as number, fieldPath: 'total_budget.amount' };
+function extractBudget(payload: CheckPayload): { amount: number; fieldPath: string } | undefined {
+  // Try total_budget.amount first, then total_budget as bare number
+  if (payload.total_budget !== undefined) {
+    if (typeof payload.total_budget === 'number') return { amount: payload.total_budget, fieldPath: 'total_budget' };
+    if (payload.total_budget.amount !== undefined) return { amount: payload.total_budget.amount, fieldPath: 'total_budget.amount' };
+  }
 
-  // Try total_budget as a number (planned_delivery format)
-  if (typeof payload.total_budget === 'number') return { amount: payload.total_budget, fieldPath: 'total_budget' };
-
-  // Try budget.total (common simplified format)
-  const budget = payload.budget as Record<string, unknown> | undefined;
-  if (budget?.total !== undefined) return { amount: budget.total as number, fieldPath: 'budget.total' };
-
-  // Try budget as a number
-  if (typeof payload.budget === 'number') return { amount: payload.budget, fieldPath: 'budget' };
+  // Try budget.total (common simplified format) or budget as number
+  if (payload.budget !== undefined) {
+    if (typeof payload.budget === 'number') return { amount: payload.budget, fieldPath: 'budget' };
+    if (payload.budget.total !== undefined) return { amount: payload.budget.total, fieldPath: 'budget.total' };
+  }
 
   // Sum package budgets
-  const packages = payload.packages as Array<Record<string, unknown>> | undefined;
-  if (packages?.length) {
-    const total = packages.reduce((sum, pkg) => sum + ((pkg.budget as number) || 0), 0);
+  if (payload.packages?.length) {
+    const total = payload.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
     return { amount: total, fieldPath: 'packages.0.budget' };
   }
   return undefined;
 }
 
-function extractCountries(payload: Record<string, unknown>): string[] {
-  // Look in geo.countries, targeting.countries, or countries
-  const geo = payload.geo as Record<string, unknown> | undefined;
-  if (geo?.countries) return geo.countries as string[];
-  const targeting = payload.targeting as Record<string, unknown> | undefined;
-  if (targeting?.countries) return targeting.countries as string[];
-  if (payload.countries) return payload.countries as string[];
-  return [];
-}
-
-function extractChannels(payload: Record<string, unknown>): string[] {
-  if (payload.channels) return payload.channels as string[];
-  // Singular channel field
-  if (typeof payload.channel === 'string') return [payload.channel];
-  // Look in packages for channels
-  const packages = payload.packages as Array<Record<string, unknown>> | undefined;
-  if (packages?.length) {
+function extractChannels(payload: CheckPayload): string[] {
+  if (payload.channels) return payload.channels;
+  if (payload.channel) return [payload.channel];
+  if (payload.packages?.length) {
     const channels = new Set<string>();
-    for (const pkg of packages) {
-      const pChannels = pkg.channels as string[] | undefined;
-      pChannels?.forEach(c => channels.add(c));
+    for (const pkg of payload.packages) {
+      pkg.channels?.forEach(c => channels.add(c));
     }
-    return [...channels];
+    if (channels.size > 0) return [...channels];
   }
   return [];
 }
 
-function extractFlight(payload: Record<string, unknown>): { start?: string; end?: string } {
-  // Try flight.start/end first, then start_time/end_time
-  const flight = payload.flight as Record<string, unknown> | undefined;
-  if (flight) {
+function extractFlight(payload: CheckPayload): { start?: string; end?: string } {
+  if (payload.flight) {
     return {
-      start: (flight.start as string) || (flight.start_time as string) || undefined,
-      end: (flight.end as string) || (flight.end_time as string) || undefined,
+      start: payload.flight.start || payload.flight.start_time,
+      end: payload.flight.end || payload.flight.end_time,
     };
   }
-  return {
-    start: payload.start_time as string | undefined,
-    end: payload.end_time as string | undefined,
-  };
+  return { start: payload.start_time, end: payload.end_time };
 }
 
 function buildExplanation(
@@ -961,8 +1008,8 @@ function buildExplanation(
   return `Governance check completed with status: ${status}.`;
 }
 
-function buildCheckResponse(check: GovernanceCheckState): Record<string, unknown> {
-  const response: Record<string, unknown> = {
+function buildCheckResponse(check: GovernanceCheckState) {
+  return {
     check_id: check.checkId,
     status: check.status,
     binding: check.binding,
@@ -971,44 +1018,30 @@ function buildCheckResponse(check: GovernanceCheckState): Record<string, unknown
     mode: check.mode,
     categories_evaluated: check.categoriesEvaluated,
     policies_evaluated: check.policiesEvaluated,
+    ...(check.findings.length > 0 && {
+      findings: check.findings.map(f => ({
+        category_id: f.categoryId,
+        severity: f.severity,
+        explanation: f.explanation,
+        ...(f.policyId && { policy_id: f.policyId }),
+        ...(f.confidence !== undefined && { confidence: f.confidence }),
+        ...(f.details && { details: f.details }),
+      })),
+    }),
+    ...(check.conditions?.length && {
+      conditions: check.conditions.map(c => ({
+        field: c.field,
+        ...(c.requiredValue !== undefined && { required_value: c.requiredValue }),
+        reason: c.reason,
+      })),
+    }),
+    ...(check.escalation && { escalation: check.escalation }),
+    ...(check.expiresAt && { expires_at: check.expiresAt }),
+    ...(check.phase === 'delivery' && check.status === 'approved' && {
+      next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    }),
+    ...((check.status === 'approved' || check.status === 'conditions') && {
+      governance_context: randomUUID(),
+    }),
   };
-
-  if (check.findings.length > 0) {
-    response.findings = check.findings.map(f => ({
-      category_id: f.categoryId,
-      severity: f.severity,
-      explanation: f.explanation,
-      ...(f.policyId && { policy_id: f.policyId }),
-      ...(f.confidence !== undefined && { confidence: f.confidence }),
-      ...(f.details && { details: f.details }),
-    }));
-  }
-
-  if (check.conditions?.length) {
-    response.conditions = check.conditions.map(c => ({
-      field: c.field,
-      ...(c.requiredValue !== undefined && { required_value: c.requiredValue }),
-      reason: c.reason,
-    }));
-  }
-
-  if (check.escalation) {
-    response.escalation = check.escalation;
-  }
-
-  if (check.expiresAt) {
-    response.expires_at = check.expiresAt;
-  }
-
-  // For delivery phase, suggest next check in 24 hours
-  if (check.phase === 'delivery' && check.status === 'approved') {
-    response.next_check = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  // Issue governance_context only on approved/conditions responses
-  if (check.status === 'approved' || check.status === 'conditions') {
-    response.governance_context = randomUUID();
-  }
-
-  return response;
 }
