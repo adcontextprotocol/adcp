@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Get Started - AgenticAdvertising.org</title>
-  <meta name="description" content="Join AgenticAdvertising.org as a founding member. Shape the standards, governance, and education that define how AI and advertising work together.">
-  <meta property="og:title" content="Get Started - AgenticAdvertising.org">
-  <meta property="og:description" content="The standards are being written. The governance frameworks are being tested. You can shape it.">
+  <title>Membership - AgenticAdvertising.org</title>
+  <meta name="description" content="Join AgenticAdvertising.org. Shape the standards, governance, and education that define how AI and advertising work together.">
+  <meta property="og:title" content="Membership - AgenticAdvertising.org">
+  <meta property="og:description" content="Five membership tiers for practitioners, startups, and organizations. Slack, Addie AI access, certification, governance, and more.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://agenticadvertising.org/membership">
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
@@ -133,7 +133,7 @@
       position: relative;
     }
     .pricing-card.featured::before {
-      content: 'Most Popular';
+      content: 'Recommended';
       position: absolute;
       top: -12px;
       left: 50%;
@@ -214,14 +214,20 @@
       width: 100%;
       border-collapse: collapse;
       font-size: var(--text-sm);
-      min-width: 600px;
+      min-width: 800px;
+      table-layout: fixed;
     }
     .comparison-table th,
     .comparison-table td {
-      padding: var(--space-3) var(--space-4);
-      text-align: left;
+      padding: var(--space-3) var(--space-3);
+      text-align: center;
       border-bottom: var(--border-1) solid var(--color-border);
       vertical-align: top;
+    }
+    .comparison-table th:first-child,
+    .comparison-table td:first-child {
+      text-align: left;
+      width: 22%;
     }
     .comparison-table th {
       background: var(--aao-primary);
@@ -343,6 +349,28 @@
       margin: 0;
     }
 
+    /* Seat types */
+    .seat-types {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-6);
+      margin: var(--space-6) 0;
+    }
+    .seat-type {
+      padding: var(--space-5);
+      border-radius: var(--radius-lg);
+      border: var(--border-1) solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+    .seat-type h3 {
+      font-size: var(--text-lg);
+      margin: 0 0 var(--space-2) 0;
+    }
+    .seat-type p {
+      font-size: var(--text-base);
+      margin: 0;
+    }
+
     /* Benefits grid */
     .benefits-grid {
       display: grid;
@@ -449,6 +477,9 @@
       .benefits-grid {
         grid-template-columns: 1fr;
       }
+      .seat-types {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -458,19 +489,21 @@
   <script src="/nav.js"></script>
 
   <!-- Pricing summary for search engines and AI indexing (sr-only = visually hidden) -->
-  <div class="sr-only" aria-hidden="true">
+  <div class="sr-only">
     <h2>Membership pricing summary</h2>
-    <p>Industry Council Leader: $50,000/year for industry-leading organizations. Benefits include seat on Industry Council with strategic input on roadmap, speaking opportunities at key industry events, priority attendance at flagship events, featured recognition on website and at events, plus all Company Membership benefits.</p>
-    <p>Company Membership: $10,000/year for organizations with $5M+ annual revenue, or $2,500/year for organizations under $5M revenue.</p>
-    <p>Individual Membership: $250/year for industry professionals, or $50/year for students, academics, and non-profits.</p>
-    <p>Founding member pricing is available through March 31, 2026. Benefits include board eligibility, voting rights, working group participation, and professional development.</p>
+    <p>Explorer: $50/year. 1 Addie seat (AI access and certification).</p>
+    <p>Professional: $250/year. 1 Slack seat, 1 Addie seat, councils, voting rights, directory listing.</p>
+    <p>Builder: $3,000/year. 5 Slack seats, 10 Addie seats, API access, councils, board eligible, voting rights.</p>
+    <p>Member: $15,000/year. 10 Slack seats, 100 Addie seats, API access, councils, board eligible, voting rights, featured directory.</p>
+    <p>Leader: $50,000/year. 20+ Slack seats, unlimited Addie seats, API access, lead councils, board eligible, first access to sponsorships and co-branded research.</p>
+    <p>Founding member pricing is available through March 31, 2026.</p>
   </div>
 
   <!-- Hero Section -->
   <section class="hero hero--clean">
     <div class="hero-container">
-      <h1 id="membership-hero-title">Get started</h1>
-      <p id="membership-hero-subtitle" class="hero-subtitle">The standards are being written. The governance frameworks are being tested. The first generation of agentic advertising professionals is being certified right now. You can shape it.</p>
+      <h1 id="membership-hero-title">Shape how AI and advertising work together</h1>
+      <p id="membership-hero-subtitle" class="hero-subtitle">Join the member organization building open standards, governance, and education for agentic advertising.</p>
     </div>
   </section>
   <script>
@@ -492,8 +525,7 @@
       <div class="sub-nav-links">
         <a href="#why-join" class="active">Why join</a>
         <a href="#what-you-get">What you get</a>
-        <a href="#membership-tiers">Tiers</a>
-        <a href="#founding-membership">Founding membership</a>
+        <a href="#membership-tiers">Tiers &amp; seats</a>
         <a href="#pricing">Pricing</a>
         <a href="#faq">FAQ</a>
       </div>
@@ -530,19 +562,27 @@
       <div class="benefits-grid">
         <div class="benefit-card">
           <h3>Community</h3>
-          <p>Connect with the people building agentic advertising. Working groups, committees, events, and a member Slack where the real conversations happen.</p>
+          <p>Connect with the people building agentic advertising. Working groups, councils, events, and a member Slack where the real conversations happen.</p>
         </div>
         <div class="benefit-card">
           <h3>Visibility</h3>
-          <p>Member directory listing and partner discovery. Your brand in front of the ecosystem &mdash; the brands, agencies, publishers, and builders looking for partners.</p>
+          <p>Directory listing and partner discovery. Your organization in front of the ecosystem &mdash; the brands, agencies, publishers, and builders looking for partners.</p>
         </div>
         <div class="benefit-card">
           <h3>Governance voice</h3>
-          <p>Vote on standards, serve on the board, join committees. Voting members control the strategic direction of the organization.</p>
+          <p>Vote on standards, serve on the board, join councils. Shape the rules for how AI agents buy, sell, and measure media.</p>
         </div>
         <div class="benefit-card">
           <h3>Education</h3>
-          <p><a href="/certification">AdCP Academy</a> access, three-tier certification, and Addie &mdash; an AI assistant that teaches the protocol and answers your questions.</p>
+          <p><a href="/certification">AdCP Academy</a> access, three-tier certification, and <a href="/chat">Addie</a> &mdash; your AI guide to agentic advertising. Free to start.</p>
+        </div>
+        <div class="benefit-card">
+          <h3>For publishers</h3>
+          <p>Shape how buy-side agents discover your inventory, respect your pricing, and enforce your brand safety rules. Your properties, your terms.</p>
+        </div>
+        <div class="benefit-card">
+          <h3>For brands</h3>
+          <p>Train your media team on the protocol your agencies and partners are adopting. Your Addie seats work for agency partners working on your business.</p>
         </div>
       </div>
 
@@ -558,137 +598,157 @@
     <section class="section" id="membership-tiers">
       <h2>Membership tiers</h2>
       <p>
-        Three classes, each designed for a different role in the ecosystem. Choose the one that fits how you want to participate.
+        Five tiers, each designed for a different role in the ecosystem. Every tier includes Slack seats and Addie seats &mdash; the more people you bring, the more embedded you become.
       </p>
+
+      <div class="seat-types">
+        <div class="seat-type">
+          <h3>Slack seats</h3>
+          <p>Full community access &mdash; Slack, working groups, events. For the people actively shaping standards and participating in the conversation.</p>
+        </div>
+        <div class="seat-type">
+          <h3>Addie seats</h3>
+          <p>Personalized AI access and certification through Addie. Each seat is one person who can use Addie, get certified, and earn recognized credentials.</p>
+        </div>
+      </div>
 
       <div class="comparison-table-wrapper">
         <table class="comparison-table">
           <thead>
             <tr>
-              <th>Rights & benefits</th>
-              <th>Voting member</th>
-              <th>Individual member</th>
-              <th>Associate member</th>
+              <th scope="col"></th>
+              <th scope="col">Explorer</th>
+              <th scope="col">Professional</th>
+              <th scope="col">Builder</th>
+              <th scope="col">Member</th>
+              <th scope="col">Leader</th>
             </tr>
           </thead>
           <tbody>
             <tr class="eligibility-row">
-              <td><strong>Who it's for</strong></td>
-              <td>Companies in the ad ecosystem: brands, agencies, publishers, ad tech</td>
-              <td>Practitioners, independents, students, academics</td>
-              <td>Adjacent organizations, non-primary participants</td>
+              <td><strong>For</strong></td>
+              <td>Getting started</td>
+              <td>Working practitioners</td>
+              <td>Growing teams &amp; startups</td>
+              <td>Organizations &amp; established teams</td>
+              <td>Industry-shaping organizations</td>
             </tr>
             <tr class="section-header">
-              <td colspan="4">Governance</td>
+              <td colspan="6">People</td>
             </tr>
             <tr>
-              <td>Vote on corporate matters</td>
-              <td class="check">&#10003;</td>
-              <td class="dash">&mdash;</td>
-              <td class="dash">&mdash;</td>
+              <td>Slack seats</td>
+              <td>&mdash;</td>
+              <td>1</td>
+              <td>5</td>
+              <td>10</td>
+              <td>20+</td>
             </tr>
             <tr>
-              <td>Elect and remove directors</td>
-              <td class="check">&#10003;</td>
-              <td class="dash">&mdash;</td>
-              <td class="dash">&mdash;</td>
-            </tr>
-            <tr>
-              <td>Amend bylaws and certificate</td>
-              <td class="check">&#10003;</td>
-              <td class="dash">&mdash;</td>
-              <td class="dash">&mdash;</td>
-            </tr>
-            <tr>
-              <td>Hold elected or appointed office</td>
-              <td class="check">&#10003;</td>
-              <td class="dash">&mdash;</td>
-              <td class="dash">&mdash;</td>
+              <td><a href="/chat">Addie seats</a></td>
+              <td>1</td>
+              <td>1</td>
+              <td>10</td>
+              <td>100</td>
+              <td>Unlimited</td>
             </tr>
             <tr class="section-header">
-              <td colspan="4">Participation</td>
+              <td colspan="6">Build</td>
             </tr>
             <tr>
-              <td>Working groups and convenings</td>
+              <td><a href="/certification">AdCP Academy</a></td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
             </tr>
             <tr>
-              <td>Category-specific member committees</td>
-              <td class="check">&#10003;</td>
+              <td><a href="https://docs.adcontextprotocol.org">API access</a></td>
               <td class="dash">&mdash;</td>
               <td class="dash">&mdash;</td>
-            </tr>
-            <tr>
-              <td>Education, training, and development</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
               <td class="check">&#10003;</td>
             </tr>
+            <tr class="section-header">
+              <td colspan="6">Connect</td>
+            </tr>
             <tr>
-              <td><a href="/certification">AdCP Academy</a> certification</td>
-              <td class="check">&#10003;</td>
-              <td class="check">&#10003;</td>
+              <td><a href="/community">Slack &amp; working groups</a></td>
               <td class="dash">&mdash;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+            </tr>
+            <tr>
+              <td><a href="/committees">Councils &amp; chapters</a></td>
+              <td class="dash">&mdash;</td>
+              <td>Participate</td>
+              <td>Participate</td>
+              <td>Participate</td>
+              <td>Lead</td>
+            </tr>
+            <tr class="section-header">
+              <td colspan="6">Grow</td>
+            </tr>
+            <tr>
+              <td><a href="/members">Directory listing</a></td>
+              <td class="dash">&mdash;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td>Featured</td>
+              <td>Featured</td>
+            </tr>
+            <tr>
+              <td>Marketing opportunities</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+              <td>Available</td>
+              <td>Available</td>
+              <td>First access</td>
+            </tr>
+            <tr class="section-header">
+              <td colspan="6">Govern</td>
+            </tr>
+            <tr>
+              <td>Voting rights</td>
+              <td class="dash">&mdash;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+            </tr>
+            <tr>
+              <td>Board eligible</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+            </tr>
+            <tr class="section-header">
+              <td colspan="6">Price</td>
+            </tr>
+            <tr>
+              <td><strong>Annual</strong></td>
+              <td><strong>$50</strong></td>
+              <td><strong>$250</strong></td>
+              <td><strong>$3,000</strong></td>
+              <td><strong>$15,000</strong></td>
+              <td><strong>$50,000</strong></td>
+            </tr>
+            <tr class="eligibility-row">
+              <td>Payment</td>
+              <td>Credit card</td>
+              <td>Credit card</td>
+              <td>Credit card</td>
+              <td>Credit card or invoice</td>
+              <td>Credit card or invoice</td>
             </tr>
           </tbody>
         </table>
-      </div>
-    </section>
-
-    <!-- Section 4: Founding membership -->
-    <section class="section" id="founding-membership">
-      <h2>Founding membership</h2>
-      <p>
-        AgenticAdvertising.org is in its formation phase. Everyone who joins before March 31, 2026 is a founding member &mdash; with benefits that don't expire.
-      </p>
-
-      <h3>What founding members get</h3>
-      <ul>
-        <li><strong>Advisory Council membership</strong> &mdash; Shape early strategy, governance structures, and the member value proposition</li>
-        <li><strong>Board voting rights</strong> &mdash; Vote on the initial board of directors</li>
-        <li><strong>Board eligibility</strong> &mdash; Stand for election to the board</li>
-        <li><strong>Launch event priority</strong> &mdash; Priority access to the April 2026 launch event</li>
-        <li><strong>Permanent recognition</strong> &mdash; Founding member status for as long as you maintain membership</li>
-      </ul>
-
-      <div class="info-box">
-        <p>
-          <strong>After March 31, 2026:</strong> Pricing will increase and new tier structures will be introduced. Founding members keep their rates as long as they maintain continuous membership.
-        </p>
-      </div>
-
-      <div class="timeline-box">
-        <h3 style="margin-top: 0;">Timeline</h3>
-        <div class="timeline-item">
-          <div class="timeline-marker">Q4</div>
-          <div class="timeline-content">
-            <h4>December 2025 &mdash; Launch</h4>
-            <p>Organization launches. Founding members join the Advisory Council.</p>
-          </div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-marker">Q1</div>
-          <div class="timeline-content">
-            <h4>Q1 2026 &mdash; Board formation</h4>
-            <p>Founding members participate in initial board selection. Advisory Council shapes governance structures.</p>
-          </div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-marker">Q2</div>
-          <div class="timeline-content">
-            <h4>April 2026 &mdash; Launch event</h4>
-            <p>Official launch event with founding members. Board assumes formal governance.</p>
-          </div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-marker future">H2</div>
-          <div class="timeline-content">
-            <h4>H2 2026 &mdash; Standard operations</h4>
-            <p>New pricing structure takes effect for new members.</p>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -697,44 +757,79 @@
       <h2>Frequently asked questions</h2>
 
       <div class="faq-item">
-        <div class="faq-question">Do I need to be a member to use AdCP?</div>
-        <div class="faq-answer">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a1">Do I need to be a member to use AdCP?</div>
+        <div class="faq-answer" id="faq-a1" role="region">
           No. AdCP is an open protocol that anyone can implement. Membership is about participating in the community that develops and governs the standard &mdash; not about access to the technology itself.
         </div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">How do I choose the right membership tier?</div>
-        <div class="faq-answer">
-          If you're a company in the ad ecosystem (brand, agency, publisher, ad tech provider), Voting Membership gives you governance rights. If you're an individual practitioner, Individual Membership gives you education and community access. Associate Membership is for adjacent organizations that want to participate without governance rights.
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a2">How do I choose the right membership tier?</div>
+        <div class="faq-answer" id="faq-a2" role="region">
+          <strong>Explorer</strong> ($50/yr) to get certified and see what agentic advertising is about. <strong>Professional</strong> ($250/yr) if you're a working practitioner who wants full community access and council participation. <strong>Builder</strong> ($3,000/yr) if you're a growing team that needs API access and multiple seats. <strong>Member</strong> ($15,000/yr) if you're an established organization that wants to train your team and participate in governance. <strong>Leader</strong> ($50,000/yr) for organizations that want to lead councils, shape industry direction, and get first access to marketing opportunities.
         </div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">What happens after the founding member window closes?</div>
-        <div class="faq-answer">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a3">What happens after the founding member window closes?</div>
+        <div class="faq-answer" id="faq-a3" role="region">
           Pricing will increase and new tier structures will be introduced. Founding members keep their rates as long as they maintain continuous membership. The Advisory Council and board voting rights earned during the founding period are permanent member benefits.
         </div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">Can I pay monthly instead of annually?</div>
-        <div class="faq-answer">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a4">Can I pay monthly instead of annually?</div>
+        <div class="faq-answer" id="faq-a4" role="region">
           Currently, we only offer annual memberships. This helps us plan and invest in programs that benefit the community. Monthly billing may be available in the future.
         </div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">What if my organization is a non-profit?</div>
-        <div class="faq-answer">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a5">What if my organization is a non-profit?</div>
+        <div class="faq-answer" id="faq-a5" role="region">
           Non-profit organizations typically qualify for lower-tier pricing regardless of budget size. Contact us and we'll find the right fit.
         </div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-question">How many people from my organization can participate?</div>
-        <div class="faq-answer">
-          Company memberships (Voting Member) cover your entire organization. Every team member can participate in working groups, education programs, and community events. The governance vote is one vote per member organization.
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a6">What's the difference between a Slack seat and an Addie seat?</div>
+        <div class="faq-answer" id="faq-a6" role="region">
+          <strong>Slack seats</strong> give full community access &mdash; Slack, working groups, and events. <strong>Addie seats</strong> give personalized AI access and certification eligibility through Addie. Every Slack seat holder also gets an Addie seat.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a7">Can I add more seats later?</div>
+        <div class="faq-answer" id="faq-a7" role="region">
+          Yes. Need more Slack or Addie seats than your tier includes? <a href="mailto:membership@agenticadvertising.org">Contact us</a> for a custom package.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a8">What does API access include?</div>
+        <div class="faq-answer" id="faq-a8" role="region">
+          API access lets you programmatically query the AdCP registry, validate agents, resolve brands, and integrate AAO data into your products. It's the developer tooling for building AdCP-compatible systems.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a9">I'm a publisher. What does membership do for me?</div>
+        <div class="faq-answer" id="faq-a9" role="region">
+          AdCP gives buy-side agents a standardized way to discover your inventory, respect your pricing, and measure outcomes on your terms. As a member, you shape exactly how that works &mdash; from floor price enforcement to brand safety rules that agents must follow. Your team gets certified, your properties get listed in the registry, and you have a seat at the table when sell-side standards are written.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a10">Can my agency partners use our seats?</div>
+        <div class="faq-answer" id="faq-a10" role="region">
+          Yes. Addie seats can be allocated to anyone working on your business &mdash; including agency partners. If your Publicis or GroupM team needs to understand agentic advertising in the context of your brand, they can use your organization's seats to get certified and access Addie.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a11">What's the cancellation policy?</div>
+        <div class="faq-answer" id="faq-a11" role="region">
+          Memberships are annual. You can cancel at any time and your membership will remain active through the end of your paid period. We do not offer prorated refunds for early cancellation.
         </div>
       </div>
     </section>
@@ -749,19 +844,22 @@
         <!-- Static pricing for SEO and non-JS clients -->
         <noscript>
           <div class="pricing-static">
-            <h3>Industry Council Leader</h3>
-            <p><strong>$50,000/year</strong> for industry-leading organizations</p>
-            <p>Benefits include: Seat on Industry Council with strategic input on roadmap, speaking opportunities at key industry events, priority attendance at flagship events, featured recognition on website and at events, plus all Company Membership benefits.</p>
+            <h3>Explorer &mdash; $50/year</h3>
+            <p>1 Addie seat. AI access and certification.</p>
 
-            <h3>Company Membership</h3>
-            <p><strong>$10,000/year</strong> for organizations with $5M+ annual revenue</p>
-            <p><strong>$2,500/year</strong> for organizations under $5M annual revenue</p>
-            <p>Benefits include: Board eligibility, board voting rights, standards development participation, working group access, and all team members can participate.</p>
+            <h3>Professional &mdash; $250/year</h3>
+            <p>1 Slack seat, 1 Addie seat. Councils, voting rights, directory listing.</p>
 
-            <h3>Individual Membership</h3>
-            <p><strong>$250/year</strong> for industry professionals</p>
-            <p><strong>$50/year</strong> for students, academics & non-profits</p>
-            <p>Benefits include: Professional development, <a href="/certification">AdCP Academy</a>, member directory listing, working group participation, community Slack access, and event discounts.</p>
+            <h3>Builder &mdash; $3,000/year</h3>
+            <p>5 Slack seats, 10 Addie seats. API access, councils, board eligible.</p>
+
+            <h3>Member &mdash; $15,000/year</h3>
+            <p>10 Slack seats, 100 Addie seats. API access, board eligible, featured directory.</p>
+
+            <h3>Leader &mdash; $50,000/year</h3>
+            <p>20+ Slack seats, unlimited Addie seats. API access, lead councils, board eligible, first access to marketing opportunities.</p>
+
+            <p><a href="mailto:membership@agenticadvertising.org">Contact us to join &rarr;</a></p>
           </div>
         </noscript>
       </div>
@@ -777,14 +875,21 @@
   <script>
     // Initialize join CTA component
     // Script is at end of body, so DOM is already loaded - call directly
+    // Hide founding-period content after March 31, 2026
+    var isFoundingPeriod = new Date() < new Date('2026-04-01T04:00:00Z');
+    if (!isFoundingPeriod) {
+      document.querySelectorAll('.founding-banner, #founding-membership').forEach(function(el) {
+        el.style.display = 'none';
+      });
+    }
+
     renderJoinCta({
       containerId: 'join-cta-container',
-      showFoundingNote: true,
       showContactLine: true
     });
 
     // Sub-nav active state on scroll
-    const sections = document.querySelectorAll('.section[id]');
+    const sections = document.querySelectorAll('.section[id], .pricing-section[id]');
     const navLinks = document.querySelectorAll('.sub-nav-links a');
 
     function updateActiveNav() {
@@ -823,17 +928,21 @@
 
     // FAQ Accordion
     const faqItems = document.querySelectorAll('.faq-item');
+    function toggleFaq(item) {
+      faqItems.forEach(other => {
+        if (other !== item && other.classList.contains('open')) {
+          other.classList.remove('open');
+          other.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
+        }
+      });
+      item.classList.toggle('open');
+      item.querySelector('.faq-question').setAttribute('aria-expanded', item.classList.contains('open'));
+    }
     faqItems.forEach(item => {
       const question = item.querySelector('.faq-question');
-      question.addEventListener('click', () => {
-        // Close other open items
-        faqItems.forEach(other => {
-          if (other !== item && other.classList.contains('open')) {
-            other.classList.remove('open');
-          }
-        });
-        // Toggle current item
-        item.classList.toggle('open');
+      question.addEventListener('click', () => toggleFaq(item));
+      question.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFaq(item); }
       });
     });
   </script>
