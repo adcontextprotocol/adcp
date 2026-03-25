@@ -1,0 +1,341 @@
+---
+title: Compliance test controller
+description: "Optional sandbox tool that lets comply walk full lifecycle state machines by triggering seller-side transitions deterministically."
+"og:title": "AdCP — Compliance test controller"
+---
+
+# Compliance test controller
+
+AdCP defines lifecycle state machines for accounts, creatives, media buys, SI sessions, and delivery reporting. Many transitions in these state machines are seller-initiated — creative approval, account suspension, budget depletion, delivery accrual. A compliance tester (like `comply()` in `@adcp/client`) can only exercise buyer-initiated flows, leaving seller-initiated transitions untested.
+
+The **compliance test controller** is an optional tool that sellers expose in sandbox mode. It allows a compliance tester to trigger seller-side state transitions deterministically, enabling end-to-end lifecycle verification.
+
+## Motivation
+
+Without a test controller, compliance testing is observational: fire an action, read back whatever state exists, move on. This catches schema violations but not behavioral ones.
+
+| Track | Observational (today) | Deterministic (with controller) |
+|-------|-----------------------|---------------------------------|
+| **Creative** | Sync → observe initial status | Walk `processing` → `approved` → `archived`; force `rejected` with reason |
+| **Account** | Read existing statuses | Force `suspended` → verify operation gates → reactivate |
+| **SI sessions** | Initiate → message → terminate | Force timeout → verify `SESSION_NOT_FOUND` on next call |
+| **Reporting** | Call `get_media_buy_delivery` → hope data exists | Simulate delivery → verify rollups |
+| **Budgeting** | Create buy with budget → read back | Simulate spend to threshold → verify alerts and `payment_required` |
+| **Media buy** | Create → pause → resume | Force seller-initiated `rejected` → verify terminal state |
+
+## Tool definition
+
+Sellers that implement compliance test controller MUST:
+- Only expose the tool in sandbox mode (when `dry_run: true` or equivalent sandbox flag is active)
+- Enforce the same state transition rules as production — invalid transitions MUST return errors
+- Reflect forced state changes in subsequent reads (`list_creatives`, `get_media_buys`, etc.)
+
+```json
+{
+  "name": "comply_test_controller",
+  "description": "Triggers seller-side state transitions for compliance testing. Sandbox only.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "scenario": {
+        "type": "string",
+        "enum": [
+          "force_creative_status",
+          "force_account_status",
+          "force_media_buy_status",
+          "force_session_status",
+          "simulate_delivery",
+          "simulate_budget_spend"
+        ],
+        "description": "The seller-side transition to trigger."
+      },
+      "params": {
+        "type": "object",
+        "description": "Scenario-specific parameters. See per-scenario definitions below."
+      }
+    },
+    "required": ["scenario", "params"]
+  }
+}
+```
+
+## Scenarios
+
+### `force_creative_status`
+
+Transitions a creative to the specified status. The seller MUST enforce valid transitions per the creative lifecycle state machine.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_id` | string | Yes | Creative to transition |
+| `status` | CreativeStatus | Yes | Target status |
+| `rejection_reason` | string | When `status` = `rejected` | Reason for rejection |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_creative_status",
+  "params": {
+    "creative_id": "cr-123",
+    "status": "rejected",
+    "rejection_reason": "Brand safety policy violation"
+  }
+}
+```
+
+### `force_account_status`
+
+Transitions an account to the specified status. The seller MUST enforce the account lifecycle rules — terminal states (`rejected`, `closed`) cannot be exited.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `account_id` | string | Yes | Account to transition |
+| `status` | AccountStatus | Yes | Target status |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_account_status",
+  "params": {
+    "account_id": "acct-456",
+    "status": "payment_required"
+  }
+}
+```
+
+### `force_media_buy_status`
+
+Transitions a media buy to the specified status.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `media_buy_id` | string | Yes | Media buy to transition |
+| `status` | MediaBuyStatus | Yes | Target status |
+| `rejection_reason` | string | When `status` = `rejected` | Reason for rejection |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_media_buy_status",
+  "params": {
+    "media_buy_id": "mb-789",
+    "status": "rejected",
+    "rejection_reason": "Policy violation"
+  }
+}
+```
+
+### `force_session_status`
+
+Transitions an SI session to the specified status. Enables testing timeout and expiration scenarios that would otherwise require waiting for real timeouts.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `session_id` | string | Yes | Session to transition |
+| `status` | SiSessionStatus | Yes | Target status (`expired`, `terminated`) |
+
+**Example:**
+
+```json
+{
+  "scenario": "force_session_status",
+  "params": {
+    "session_id": "sess-abc",
+    "status": "expired"
+  }
+}
+```
+
+### `simulate_delivery`
+
+Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_buy_delivery` MUST reflect this data.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `media_buy_id` | string | Yes | Media buy to add delivery to |
+| `impressions` | integer | No | Impressions to simulate |
+| `clicks` | integer | No | Clicks to simulate |
+| `spend` | object | No | `{ amount: number, currency: string }` |
+| `conversions` | integer | No | Conversions to simulate |
+
+**Example:**
+
+```json
+{
+  "scenario": "simulate_delivery",
+  "params": {
+    "media_buy_id": "mb-789",
+    "impressions": 10000,
+    "clicks": 150,
+    "spend": { "amount": 150.00, "currency": "USD" }
+  }
+}
+```
+
+### `simulate_budget_spend`
+
+Simulates budget consumption to a specified percentage. Enables testing budget threshold alerts and `payment_required` transitions without waiting for real spend.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `account_id` | string | No | Account (for account-level budget) |
+| `media_buy_id` | string | No | Media buy (for buy-level budget) |
+| `spend_percentage` | number | Yes | Spend to this % of budget (0–100) |
+
+At least one of `account_id` or `media_buy_id` is required.
+
+**Example:**
+
+```json
+{
+  "scenario": "simulate_budget_spend",
+  "params": {
+    "media_buy_id": "mb-789",
+    "spend_percentage": 95
+  }
+}
+```
+
+## Response shape
+
+All scenarios return the same envelope:
+
+**Success:**
+
+```json
+{
+  "success": true,
+  "previous_state": "processing",
+  "current_state": "approved",
+  "message": "Creative cr-123 transitioned from processing to approved"
+}
+```
+
+**Failure (invalid transition):**
+
+```json
+{
+  "success": false,
+  "error": "Cannot transition from archived to processing — archived is terminal",
+  "current_state": "archived"
+}
+```
+
+**Failure (unknown entity):**
+
+```json
+{
+  "success": false,
+  "error": "Creative cr-unknown not found",
+  "current_state": null
+}
+```
+
+For `simulate_delivery` and `simulate_budget_spend`, `previous_state` and `current_state` may be omitted. The `message` field should describe what was simulated.
+
+## Compliance testing modes
+
+The presence of `comply_test_controller` in a seller's tool list determines which mode a compliance tester uses:
+
+### Observational mode (default)
+
+When `comply_test_controller` is not available:
+- Comply runs buyer-initiated flows and validates response schemas
+- State machine transitions that require seller action are skipped
+- Advisory observations note what could not be tested
+
+### Deterministic mode
+
+When `comply_test_controller` is available:
+- Comply walks every reachable state in each lifecycle
+- Forces edge cases: terminal states, invalid transitions, error codes
+- Validates that forced state changes are reflected in subsequent reads
+- Tests operation gates (e.g., `create_media_buy` blocked when account is `suspended`)
+
+### Example: creative lifecycle in deterministic mode
+
+```
+1. sync_creatives(creative)
+2. force_creative_status(creative_id, "approved")
+3. list_creatives() → verify status = "approved"
+4. force_creative_status(creative_id, "archived")
+5. list_creatives() → verify status = "archived"
+6. force_creative_status(creative_id, "processing") → expect error (terminal)
+7. sync_creatives(same creative) → verify resubmission accepted
+8. force_creative_status(creative_id, "rejected", reason)
+9. list_creatives() → verify rejection_reason persisted
+```
+
+### Example: account operation gates in deterministic mode
+
+```
+1. sync_accounts(account) → active
+2. force_account_status(account_id, "suspended")
+3. create_media_buy() → expect error (account suspended)
+4. get_media_buys() → expect existing buys still readable
+5. force_account_status(account_id, "active")
+6. create_media_buy() → expect success
+7. force_account_status(account_id, "payment_required")
+8. update_media_buy(add packages) → expect error
+9. get_media_buys() → existing buys still readable
+```
+
+### Example: delivery and budget verification
+
+```
+1. create_media_buy(budget: $1000)
+2. simulate_delivery(impressions: 10000, spend: $500)
+3. get_media_buy_delivery() → verify delivery reflects simulated data
+4. simulate_budget_spend(spend_percentage: 95)
+5. get_account_financials() → verify spend at 95%
+6. simulate_budget_spend(spend_percentage: 100)
+7. force_account_status("payment_required")
+8. create_media_buy() → expect error
+```
+
+## Certification tiers
+
+| Tier | Requirement | What it proves |
+|------|-------------|----------------|
+| **Schema compliance** | Pass comply in observational mode | Response shapes are correct, tools exist, basic flows work |
+| **Behavioral compliance** | Pass comply in deterministic mode | State machines are correctly implemented, error codes are correct, operation gates enforce correctly |
+
+## Implementation guidance
+
+### For sellers
+
+1. Gate `comply_test_controller` behind sandbox mode — it MUST NOT be available in production
+2. Reuse your production state machine logic — the controller should call the same internal transition functions, not bypass them
+3. Enforce transition rules — if `archived` is terminal in production, `force_creative_status(archived → processing)` must fail via the controller too
+4. Reflect changes immediately — after a forced transition, the next `list_*` or `get_*` call must return the updated state
+
+### For compliance testers
+
+1. Detect the tool during profile discovery
+2. Run observational mode as the baseline — it works everywhere
+3. Layer deterministic scenarios on top when the controller is available
+4. Report which mode was used so compliance results are clear about coverage
+5. Test the controller's transition validation itself — invalid transitions should fail, not silently succeed
+
+## Open questions
+
+1. **Should sellers validate transition ordering?** For example, if comply calls `force_creative_status(approved)` on a creative that was never `processing`, should the seller reject it? Recommendation: yes — the controller should enforce the same state machine rules as production.
+
+2. **Cleanup between tests.** Should comply call a `reset` scenario between test runs, or should each scenario be self-contained? Recommendation: self-contained — each test creates its own entities, so there's no shared state to clean up.
+
+3. **Delivery simulation fidelity.** Should `simulate_delivery` create records indistinguishable from real delivery, or is a synthetic marker acceptable? Recommendation: indistinguishable — the point is to test that `get_media_buy_delivery` works correctly with real-shaped data.
