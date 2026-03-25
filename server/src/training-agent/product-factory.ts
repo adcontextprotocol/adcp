@@ -454,7 +454,6 @@ function buildProduct(
       const builtEpisodes: Episode[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const epAny = ep as Record<string, unknown>;
           const episode = {
             episode_id: ep.episodeId,
             show_id: show.showId,
@@ -462,7 +461,7 @@ function buildProduct(
             status: ep.status as EpisodeStatus,
             ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
             ...(ep.durationSeconds && { duration_seconds: ep.durationSeconds }),
-            ...(epAny.special ? { special: epAny.special } : {}),
+            ...(ep.special ? { special: ep.special } : {}),
           } as Episode;
           builtEpisodes.push(episode);
         }

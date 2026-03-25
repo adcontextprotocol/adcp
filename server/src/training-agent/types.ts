@@ -2,7 +2,7 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/client.
  */
-import type { Product, Proposal, Account, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
+import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -165,6 +165,9 @@ export interface SignalActivationState {
   activatedAt: string;
 }
 
+/** MCP tool args arrive as untyped JSON. Handlers cast to specific request types internally. */
+export interface ToolArgs { account?: AccountRef; brand?: BrandRef }
+
 export interface AccountRef {
   account_id?: string;
   brand?: { domain: string };
@@ -224,13 +227,28 @@ export interface PackageState {
   creativeAssignments: string[];
 }
 
+/** A single asset slot inside a creative manifest (e.g., headline, hero_image). */
+export interface ManifestAsset {
+  asset_type: string;
+  content?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+/** Creative manifest with format and named asset slots. */
+export interface CreativeManifest {
+  format_id: FormatID;
+  assets: Record<string, ManifestAsset>;
+}
+
 export interface CreativeState {
   creativeId: string;
   formatId: FormatID;
   name?: string;
   status: string;
   syncedAt: string;
-  manifest?: { format_id: FormatID; assets: Record<string, unknown> };
+  manifest?: CreativeManifest;
 }
 
 // ── Governance types ────────────────────────────────────────────
