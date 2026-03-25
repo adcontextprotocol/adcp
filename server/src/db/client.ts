@@ -48,7 +48,7 @@ export function getPool(): Pool {
  */
 export async function query<T extends QueryResultRow = any>(
   text: string,
-  params?: any[] // lgtm[js/sql-injection] -- parameterized query wrapper; all callers use $N placeholders
+  params?: any[]
 ): Promise<QueryResult<T>> {
   const pool = getPool();
   return pool.query<T>(text, params);
@@ -78,4 +78,9 @@ export async function closeDatabase(): Promise<void> {
  */
 export function isDatabaseInitialized(): boolean {
   return pool !== null;
+}
+
+/** Escape SQL LIKE pattern metacharacters (\\, %, _) in a single pass. */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }

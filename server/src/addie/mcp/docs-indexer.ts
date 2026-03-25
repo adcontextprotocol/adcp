@@ -287,15 +287,15 @@ function extractHtmlContent(content: string): string {
     content = content.replace(/<!--[\s\S]*?-->/g, '');
   }
 
-  // Replace common entities (&amp; must be last to avoid double-decoding e.g. &amp;lt; -> &lt; -> <)
-  content = content.replace(/&nbsp;/g, ' ');
-  content = content.replace(/&lt;/g, '<');
-  content = content.replace(/&gt;/g, '>');
-  content = content.replace(/&quot;/g, '"');
-  content = content.replace(/&#39;/g, "'");
-  content = content.replace(/&mdash;/g, '—');
-  content = content.replace(/&ndash;/g, '–');
-  content = content.replace(/&amp;/g, '&');
+  // Single-pass entity decode to prevent multi-character sanitization interaction
+  const ENTITY_MAP: Record<string, string> = {
+    '&nbsp;': ' ', '&lt;': '<', '&gt;': '>', '&quot;': '"',
+    '&#39;': "'", '&mdash;': '—', '&ndash;': '–', '&amp;': '&',
+  };
+  content = content.replace(
+    /&(?:nbsp|lt|gt|quot|mdash|ndash|amp|#39);/g,
+    (match) => ENTITY_MAP[match] || match
+  );
 
   // Convert list items to bullets
   content = content.replace(/<li[^>]*>/gi, '\n• ');
