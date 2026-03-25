@@ -54,7 +54,7 @@ Pre-computed classifier outputs for the content environment. MUST NOT contain ra
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `topics` | List\<string\> | No | Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs when `topic_taxonomy` is 7 (default), or human-readable strings for custom taxonomies. |
+| `topics` | List\<string\> | No | Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs when `taxonomy_id` is 7 (default), or human-readable strings for custom taxonomies. |
 | `taxonomy_source` | enum | No | Organization that defines the topic taxonomy. Default: `iab`. |
 | `taxonomy_id` | integer | No | Taxonomy version within the source. For IAB, follows the AdCOM cattax enum: `7` = Content Taxonomy 3.0 (CC-BY-3.0). Default: `7`. |
 | `sentiment` | enum | No | Content sentiment: `positive`, `negative`, `neutral`, `mixed`. |
@@ -97,7 +97,7 @@ A buyer's response for a single package. For simple GAM activation, only `packag
 | `package_id` | string | Yes | Must match a `package_id` from `available_packages`. References the commercial terms (MSA, IO, deal). |
 | `brand` | BrandRef | No | Brand for this offer. Required when the product allows dynamic brands. For single-brand packages, already known from the media buy. |
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
-| `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Hellmann's mayo — recipe integration". |
+| `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
 | `creative_manifest` | CreativeManifest | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
 | `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Attribution reconciliation happens via delivery reporting or clean room. |
 

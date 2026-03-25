@@ -26,7 +26,7 @@ When a shopper views a search results page or category page, the retailer sends 
     {
       "package_id": "pkg-coffee-sponsored",
       "media_buy_id": "mb-coffee-brand-q1",
-      "format_ids": ["sponsored_carousel", "sponsored_search_result"],
+      "format_ids": [{ "agent_url": "https://grocery-retailer.example.com", "id": "sponsored_carousel" }, { "agent_url": "https://grocery-retailer.example.com", "id": "sponsored_search_result" }],
       "catalogs": [{ "catalog_id": "coffee-products", "type": "product", "gtins": ["gtin-cold-brew-12oz", "gtin-cold-brew-32oz", "gtin-iced-latte-4pk", "gtin-coffee-pods-24ct"] }]
     }
   ]
@@ -41,11 +41,11 @@ The buyer responds with an offer:
   "offers": [
     {
       "package_id": "pkg-coffee-sponsored",
-      "brand": { "house": "ColdBrew Co.", "brand": "ColdBrew" },
+      "brand": { "domain": "coldbrew.example.com", "brand_id": "coldbrew" },
       "price": { "amount": 2.50, "currency": "USD", "model": "cpc" },
       "summary": "Cold brew and iced latte — buy 2 get 1 free promotion",
       "creative_manifest": {
-        "format_id": "sponsored_product_listing",
+        "format_id": { "agent_url": "https://grocery-retailer.example.com", "id": "sponsored_product_listing" },
         "assets": {
           "items": {
             "type": "catalog-asset",

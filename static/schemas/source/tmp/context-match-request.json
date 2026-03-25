@@ -77,7 +77,7 @@
       "properties": {
         "topics": {
           "type": "array",
-          "description": "Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs (e.g., '632' for Food & Drink) when topic_taxonomy is 7, or human-readable strings (e.g., 'cooking.pasta') for custom taxonomies.",
+          "description": "Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs (e.g., '632' for Food & Drink) when taxonomy_id is 7, or human-readable strings (e.g., 'cooking.pasta') for custom taxonomies.",
           "items": {
             "type": "string"
           }

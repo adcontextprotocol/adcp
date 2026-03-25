@@ -51,10 +51,10 @@ A fitness app triggers an interstitial after a workout completes:
   "placement_id": "interstitial_main",
   "artifacts": ["screen:workout-complete", "screen:workout-summary"],
   "available_packages": [
-    { "package_id": "pkg-sports-inter-01", "media_buy_id": "mb-gearup-q2", "format_ids": ["interstitial_fullscreen"] },
-    { "package_id": "pkg-nutrition-inter-02", "media_buy_id": "mb-greenfuel-q2", "format_ids": ["interstitial_fullscreen"] },
-    { "package_id": "pkg-telecom-inter-03", "media_buy_id": "mb-wavenet-q2", "format_ids": ["interstitial_fullscreen"] },
-    { "package_id": "pkg-auto-inter-04", "media_buy_id": "mb-rideon-q2", "format_ids": ["interstitial_fullscreen"] }
+    { "package_id": "pkg-sports-inter-01", "media_buy_id": "mb-gearup-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] },
+    { "package_id": "pkg-nutrition-inter-02", "media_buy_id": "mb-greenfuel-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] },
+    { "package_id": "pkg-telecom-inter-03", "media_buy_id": "mb-wavenet-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] },
+    { "package_id": "pkg-auto-inter-04", "media_buy_id": "mb-rideon-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] }
   ]
 }
 ```
@@ -94,9 +94,9 @@ A recipe app shows sponsored content cards in its recipe feed:
   "placement_id": "banner_feed",
   "artifacts": ["article:weeknight-pasta-recipes"],
   "available_packages": [
-    { "package_id": "pkg-grocery-native-01", "media_buy_id": "mb-freshmart-q2", "format_ids": ["native_card"] },
-    { "package_id": "pkg-kitchenware-native-02", "media_buy_id": "mb-ironpan-q2", "format_ids": ["native_card"] },
-    { "package_id": "pkg-meal-native-03", "media_buy_id": "mb-plateplan-q2", "format_ids": ["native_card"] }
+    { "package_id": "pkg-grocery-native-01", "media_buy_id": "mb-freshmart-q2", "format_ids": [{ "agent_url": "https://tastecraft.example.com", "id": "native_card" }] },
+    { "package_id": "pkg-kitchenware-native-02", "media_buy_id": "mb-ironpan-q2", "format_ids": [{ "agent_url": "https://tastecraft.example.com", "id": "native_card" }] },
+    { "package_id": "pkg-meal-native-03", "media_buy_id": "mb-plateplan-q2", "format_ids": [{ "agent_url": "https://tastecraft.example.com", "id": "native_card" }] }
   ]
 }
 ```
@@ -109,11 +109,11 @@ A recipe app shows sponsored content cards in its recipe feed:
   "offers": [
     {
       "package_id": "pkg-grocery-native-01",
-      "brand": { "house": "FreshMart", "brand": "FreshMart" },
+      "brand": { "domain": "freshmart.example.com" },
       "price": { "amount": 6.50, "currency": "USD", "model": "cpm" },
       "summary": "Pasta night ingredients — 20% off with in-app coupon",
       "creative_manifest": {
-        "format_id": { "id": "native_card" },
+        "format_id": { "agent_url": "https://tastecraft.example.com", "id": "native_card" },
         "assets": {
           "headline": { "asset_type": "text", "text": "Everything for pasta night" },
           "body": { "asset_type": "text", "text": "Fresh basil, San Marzano tomatoes, and artisan pasta. 20% off your next order." },
@@ -128,10 +128,10 @@ A recipe app shows sponsored content cards in its recipe feed:
     },
     {
       "package_id": "pkg-kitchenware-native-02",
-      "brand": { "house": "IronPan Co.", "brand": "IronPan" },
+      "brand": { "domain": "ironpan.example.com", "brand_id": "ironpan" },
       "summary": "Cast iron skillet — pairs with pasta recipes",
       "creative_manifest": {
-        "format_id": { "id": "native_card" },
+        "format_id": { "agent_url": "https://tastecraft.example.com", "id": "native_card" },
         "assets": {
           "headline": { "asset_type": "text", "text": "The only pan you need" },
           "body": { "asset_type": "text", "text": "Pre-seasoned 12-inch cast iron. Free shipping this week." },
@@ -239,8 +239,8 @@ Rewarded video follows the same activation pattern as interstitials. The placeme
   "placement_id": "rewarded_video",
   "artifacts": ["screen:level-complete-42"],
   "available_packages": [
-    { "package_id": "pkg-gaming-reward-01", "media_buy_id": "mb-cloudplay-q2", "format_ids": ["rewarded_video_30s"] },
-    { "package_id": "pkg-snack-reward-02", "media_buy_id": "mb-crunchbar-q2", "format_ids": ["rewarded_video_15s", "rewarded_video_30s"] }
+    { "package_id": "pkg-gaming-reward-01", "media_buy_id": "mb-cloudplay-q2", "format_ids": [{ "agent_url": "https://puzzlequest.example.com", "id": "rewarded_video_30s" }] },
+    { "package_id": "pkg-snack-reward-02", "media_buy_id": "mb-crunchbar-q2", "format_ids": [{ "agent_url": "https://puzzlequest.example.com", "id": "rewarded_video_15s" }, { "agent_url": "https://puzzlequest.example.com", "id": "rewarded_video_30s" }] }
   ]
 }
 ```

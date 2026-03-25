@@ -36,7 +36,7 @@ The publisher sends a Context Match request to the TMP Router. The request conta
     {
       "package_id": "pkg-A",
       "media_buy_id": "mb-coffee-q1",
-      "format_ids": ["sponsored_carousel"],
+      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "sponsored_carousel" }],
       "catalogs": [
         { "catalog_id": "coffee-products", "type": "product", "gtins": ["gtin-001", "gtin-002", "gtin-003", "gtin-004"] }
       ]
@@ -44,12 +44,12 @@ The publisher sends a Context Match request to the TMP Router. The request conta
     {
       "package_id": "pkg-B",
       "media_buy_id": "mb-homepage",
-      "format_ids": ["display_takeover"]
+      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "display_takeover" }]
     },
     {
       "package_id": "pkg-C",
       "media_buy_id": "mb-summer-promo",
-      "format_ids": ["native_text"],
+      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "native_text" }],
       "catalogs": [
         { "catalog_id": "iced-beverages", "type": "product", "gtins": ["gtin-005", "gtin-006", "gtin-003"] }
       ]
@@ -70,10 +70,10 @@ The buyer agent evaluates each package against the context. Package B is homepag
   "offers": [
     {
       "package_id": "pkg-A",
-      "brand": { "name": "Blue Bottle", "advertiser_domain": "bluebottle.example.com" },
+      "brand": { "domain": "bluebottle.example.com", "brand_id": "blue_bottle" },
       "summary": "Cold brew coffee carousel — featuring top-rated blends",
       "creative_manifest": {
-        "format_id": "sponsored_carousel",
+        "format_id": { "agent_url": "https://retailer.example.com", "id": "sponsored_carousel" },
         "assets": {
           "items": {
             "type": "catalog-asset",
@@ -93,7 +93,7 @@ The buyer agent evaluates each package against the context. Package B is homepag
       "summary": "Free shipping on iced beverages — summer promotion",
       "price": { "amount": 0, "currency": "USD", "model": "flat" },
       "creative_manifest": {
-        "format_id": "native_text",
+        "format_id": { "agent_url": "https://retailer.example.com", "id": "native_text" },
         "assets": {
           "headline": { "type": "text-asset", "text": "Free shipping on iced beverages" },
           "body": { "type": "text-asset", "text": "Summer promotion — order any iced beverage and get free delivery." },

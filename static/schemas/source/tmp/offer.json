@@ -19,7 +19,7 @@
     },
     "summary": {
       "type": "string",
-      "description": "Buyer-generated description of the offer, for the publisher to judge relevance. E.g., '50% off Hellmann's mayo — recipe integration'. The publisher (or their AI assistant) uses this to decide whether the offer fits the context."
+      "description": "Buyer-generated description of the offer, for the publisher to judge relevance. E.g., '50% off Goldenfield mayo — recipe integration'. The publisher (or their AI assistant) uses this to decide whether the offer fits the context."
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
