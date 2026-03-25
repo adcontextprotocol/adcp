@@ -24,12 +24,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const { promisify } = require('util');
 const glob = require('glob');
 const crypto = require('crypto');
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
@@ -237,8 +238,7 @@ async function testJavaScriptSnippet(snippet) {
 
     // Execute with Node.js from project root to access node_modules
     // Set auth token env var - the SDK looks for env var named by auth_token_env value
-    // lgtm[js/shell-command-injection-from-environment] -- tempFile is constructed from __dirname and Date.now(), not from environment input
-    const { stdout, stderr } = await execAsync(`node ${tempFile}`, {
+    const { stdout, stderr } = await execFileAsync('node', [tempFile], {
       timeout: 60000, // 60 second timeout (API calls can take time)
       cwd: path.join(__dirname, '..'), // Run from project root
       env: {
@@ -421,13 +421,10 @@ async function testPythonSnippet(snippet) {
 
     // Use virtualenv Python directly (no activation needed - much faster!)
     const venvPython = path.join(__dirname, '..', '.venv', 'bin', 'python');
-    const pythonCommand = fs.existsSync(venvPython)
-      ? `${venvPython} ${tempFile}`
-      : `python3 ${tempFile}`;
+    const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python3';
 
     // Execute from project root
-    // lgtm[js/shell-command-injection-from-environment] -- pythonCommand is built from __dirname and Date.now(), not from environment input
-    const { stdout, stderr } = await execAsync(pythonCommand, {
+    const { stdout, stderr } = await execFileAsync(pythonCmd, [tempFile], {
       timeout: 60000, // 60 second timeout (API calls can take time)
       cwd: path.join(__dirname, '..') // Run from project root
     });

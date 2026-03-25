@@ -2916,33 +2916,48 @@
 
       // Render the active tabs list
       function renderActiveTabs() {
-        if (activeTabs.length === 0) {
-          activeTabsList.innerHTML = '';
-          return;
-        }
+        activeTabsList.innerHTML = '';
+        if (activeTabs.length === 0) return;
 
-        activeTabsList.innerHTML = activeTabs.map(tab => {
+        activeTabs.forEach(tab => {
           const indicatorClass = tab.isLoading ? 'tab-item-indicator--thinking' :
                                  tab.unreadCount > 0 ? 'tab-item-indicator--ready' :
                                  'tab-item-indicator--idle';
           const isActive = currentTabId === tab.id;
 
-          return `
-            <div class="tab-item ${isActive ? 'active' : ''}" data-tab-id="${escapeHtml(tab.id)}" data-channel="${escapeHtml(tab.channel)}">
-              <span class="tab-item-indicator ${indicatorClass}"></span>
-              <div class="tab-item-content">
-                <div class="tab-item-title">${escapeHtml(tab.title)}</div>
-              </div>
-              ${tab.unreadCount > 0 ? `<span class="tab-item-badge">${tab.unreadCount}</span>` : ''}
-              <button class="tab-item-close" data-tab-id="${escapeHtml(tab.id)}" title="Close">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-          `;
-        }).join('');
+          const div = document.createElement('div');
+          div.className = 'tab-item' + (isActive ? ' active' : '');
+          div.dataset.tabId = tab.id;
+          div.dataset.channel = tab.channel;
+
+          const indicator = document.createElement('span');
+          indicator.className = 'tab-item-indicator ' + indicatorClass;
+          div.appendChild(indicator);
+
+          const content = document.createElement('div');
+          content.className = 'tab-item-content';
+          const title = document.createElement('div');
+          title.className = 'tab-item-title';
+          title.textContent = tab.title;
+          content.appendChild(title);
+          div.appendChild(content);
+
+          if (tab.unreadCount > 0) {
+            const badge = document.createElement('span');
+            badge.className = 'tab-item-badge';
+            badge.textContent = tab.unreadCount;
+            div.appendChild(badge);
+          }
+
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'tab-item-close';
+          closeBtn.dataset.tabId = tab.id;
+          closeBtn.title = 'Close';
+          closeBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+          div.appendChild(closeBtn);
+
+          activeTabsList.appendChild(div);
+        });
       }
 
       // Render the history list (threads not in active tabs)

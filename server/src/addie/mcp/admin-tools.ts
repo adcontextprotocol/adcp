@@ -22,7 +22,7 @@ import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
-import { getPool } from '../../db/client.js';
+import { getPool, escapeLikePattern } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
 import { BrandDatabase } from '../../db/brand-db.js';
@@ -5859,8 +5859,7 @@ Use add_committee_leader to assign a leader.`;
     try {
       // Look up org by name if no ID provided
       if (!orgId && companyName) {
-        // Escape LIKE pattern special characters (% and _)
-        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const escapedName = escapeLikePattern(companyName);
         const searchResult = await pool.query(`
           SELECT workos_organization_id, name
           FROM organizations
@@ -5985,7 +5984,7 @@ Use add_committee_leader to assign a leader.`;
 
       let targetOrgId = orgId;
       if (!targetOrgId && companyName) {
-        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const escapedName = escapeLikePattern(companyName);
         const searchResult = await pool.query(`
           SELECT workos_organization_id, name
           FROM organizations
@@ -6201,8 +6200,7 @@ Use add_committee_leader to assign a leader.`;
       let orgName: string | undefined;
 
       if (!orgId && companyName) {
-        // Escape LIKE pattern special characters (% and _)
-        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const escapedName = escapeLikePattern(companyName);
         const searchResult = await pool.query(`
           SELECT workos_organization_id, name
           FROM organizations

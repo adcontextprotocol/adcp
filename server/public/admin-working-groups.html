@@ -825,19 +825,36 @@
                 ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || l.user_id)).join(', ')}</span>` : ''}
               </div>
             </div>
-            <div class="group-actions">
-              <button class="btn btn-secondary btn-small" onclick="window.open('/working-groups/${group.slug}', '_blank')">View</button>
-              <button class="btn btn-secondary btn-small" onclick="window.location.href='/admin/meetings?group=${group.id}'">Meetings</button>
-              <button class="btn btn-secondary btn-small" onclick="window.location.href='/admin/meetings?group=${group.id}&action=schedule'">Schedule</button>
-              <button class="btn btn-primary btn-small" onclick="editGroup('${group.id}')">Manage</button>
-              <!-- lgtm[js/incomplete-sanitization] -- value is escapeHtml'd first; backslashes are not a concern in HTML-escaped strings -->
-              <button class="btn btn-danger btn-small" onclick="showDeleteModal('${group.id}', '${escapeHtml(group.name).replace(/'/g, "\\'")}')">Delete</button>
+            <div class="group-actions" data-group-id="${group.id}" data-group-slug="${group.slug}" data-group-name="${escapeHtml(group.name)}">
+              <button class="btn btn-secondary btn-small view-group-btn">View</button>
+              <button class="btn btn-secondary btn-small meetings-btn">Meetings</button>
+              <button class="btn btn-secondary btn-small schedule-btn">Schedule</button>
+              <button class="btn btn-primary btn-small manage-btn">Manage</button>
+              <button class="btn btn-danger btn-small delete-group-btn">Delete</button>
             </div>
           </div>
         `;
       });
 
       listDiv.innerHTML = html;
+      listDiv.querySelectorAll('.group-actions').forEach(actions => {
+        const { groupId, groupSlug, groupName } = actions.dataset;
+        actions.querySelector('.view-group-btn').addEventListener('click', () => {
+          window.open('/working-groups/' + groupSlug, '_blank');
+        });
+        actions.querySelector('.meetings-btn').addEventListener('click', () => {
+          window.location.href = '/admin/meetings?group=' + groupId;
+        });
+        actions.querySelector('.schedule-btn').addEventListener('click', () => {
+          window.location.href = '/admin/meetings?group=' + groupId + '&action=schedule';
+        });
+        actions.querySelector('.manage-btn').addEventListener('click', () => {
+          editGroup(groupId);
+        });
+        actions.querySelector('.delete-group-btn').addEventListener('click', () => {
+          showDeleteModal(groupId, groupName);
+        });
+      });
     }
 
     // Show tabs
