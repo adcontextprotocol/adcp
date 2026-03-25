@@ -31,6 +31,8 @@ Comply SHOULD verify that `comply_test_controller` is absent from `tools/list` o
 
 ## Tool definition
 
+**Schemas**: [`comply-test-controller-request.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json) | [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json)
+
 Sellers that implement compliance test controller MUST:
 - Only expose the tool in sandbox mode (see sandbox gating above)
 - Enforce the same state transition rules as production — invalid transitions MUST return errors
