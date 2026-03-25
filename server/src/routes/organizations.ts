@@ -1155,34 +1155,26 @@ export function createOrganizationsRouter(): Router {
 
           // Prospect org — check if user is already a member
           const isDevUser = isDevModeEnabled() && getDevUser(req);
-          let alreadyMember = false;
+          let existingMembership: { id: string; role?: { slug: string } } | null = null;
           if (!isDevUser) {
             const userMemberships = await workos!.userManagement.listOrganizationMemberships({
               userId: user.id,
               organizationId: existingOrgId,
+              statuses: ['active', 'inactive', 'pending'],
             });
-            alreadyMember = userMemberships.data.length > 0;
+            existingMembership = userMemberships.data[0] ?? null;
           }
+          const alreadyMember = !!existingMembership;
 
-          if (alreadyMember) {
-            return res.status(200).json({
-              id: existingOrgId,
-              name: existingOrgName,
-              adopted: true,
-            });
-          }
+          // Adopting a prospect org always makes the user the owner.
+          // They may already have a membership (e.g. from Slack domain sync)
+          // with a lower role — upgrade it.
+          const roleSlug = 'owner';
 
-          // Add user to the prospect org. Owner if none exists, otherwise member.
-          let roleSlug = 'owner';
-          if (!isDevUser) {
-            const existingMembers = await workos!.userManagement.listOrganizationMemberships({
-              organizationId: existingOrgId,
-              limit: 100,
+          if (existingMembership && existingMembership.role?.slug !== 'owner') {
+            await workos!.userManagement.updateOrganizationMembership(existingMembership.id, {
+              roleSlug: 'owner',
             });
-            const hasOwner = existingMembers.data.some((m) => m.role?.slug === 'owner');
-            if (hasOwner) {
-              roleSlug = 'member';
-            }
           }
 
           logger.info({
@@ -1191,9 +1183,10 @@ export function createOrganizationsRouter(): Router {
             orgName: existingOrgName,
             domain: verifiedDomain,
             role: roleSlug,
+            wasAlreadyMember: alreadyMember,
           }, 'User adopting prospect organization via registration');
 
-          if (!isDevUser) {
+          if (!alreadyMember && !isDevUser) {
             await workos!.userManagement.createOrganizationMembership({
               userId: user.id,
               organizationId: existingOrgId,
