@@ -9,6 +9,7 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
+import { WorkOS } from '@workos-inc/node';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { createLogger } from '../logger.js';
@@ -16,13 +17,19 @@ import { createTrainingAgentServer } from './task-handlers.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
+import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import type { TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-routes');
 
 const TRAINING_AGENT_TOKEN = process.env.TRAINING_AGENT_TOKEN;
-const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
+const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN;
 const STARTUP_TIME = new Date().toISOString();
+
+// WorkOS client for API key validation (reuses main app's credentials)
+const workos = process.env.WORKOS_API_KEY && process.env.WORKOS_CLIENT_ID
+  ? new WorkOS(process.env.WORKOS_API_KEY, { clientId: process.env.WORKOS_CLIENT_ID })
+  : null;
 
 // Permissive CORS: this is a sandbox training agent meant to be
 // called from any origin (certification UI, notebooks, CLI tools, etc.)
@@ -39,9 +46,9 @@ function constantTimeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb);
 }
 
-function requireToken(req: Request, res: Response, next: NextFunction): void {
-  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN) {
-    // No tokens configured = dev mode, allow all
+async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
+    // No tokens configured and no WorkOS = dev mode, allow all
     return next();
   }
   const auth = req.headers.authorization;
@@ -49,20 +56,46 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
     res.status(401).json({
       jsonrpc: '2.0',
       id: null,
-      error: { code: -32000, message: 'Invalid or missing bearer token' },
+      error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
     });
     return;
   }
   const token = auth.slice(7);
-  // Accept primary token or the documented public test agent token
+
+  // Accept static tokens (primary or public test agent)
   if ((TRAINING_AGENT_TOKEN && constantTimeEqual(token, TRAINING_AGENT_TOKEN)) ||
       (PUBLIC_TEST_AGENT_TOKEN && constantTimeEqual(token, PUBLIC_TEST_AGENT_TOKEN))) {
     return next();
   }
+
+  // Accept WorkOS API keys (AAO dashboard API keys with sk_ or wos_api_key_ prefix)
+  if (workos && isWorkOSApiKeyFormat(token)) {
+    try {
+      const result = await workos.apiKeys.validateApiKey({ value: token });
+      if (result.apiKey) {
+        logger.info({ orgId: result.apiKey.owner.id }, 'Training agent: authenticated via AAO API key');
+        return next();
+      }
+      res.status(401).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Invalid API key. Generate a new key from your AAO dashboard.' },
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Training agent: WorkOS API key validation failed');
+      res.status(401).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'API key validation failed. Please try again.' },
+      });
+    }
+    return;
+  }
+
   res.status(401).json({
     jsonrpc: '2.0',
     id: null,
-    error: { code: -32000, message: 'Invalid or missing bearer token' },
+    error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
   });
 }
 

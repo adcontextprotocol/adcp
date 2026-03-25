@@ -12,7 +12,7 @@
  *
  * Test Agent Configuration:
  * - Uses https://test-agent.adcontextprotocol.org for testing
- * - MCP token: 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+ * - MCP token: set ADCP_AUTH_TOKEN environment variable (AAO API key)
  * - A2A token: L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8
  *
  * Usage:
@@ -35,7 +35,7 @@ const execFileAsync = promisify(execFile);
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const CACHE_FILE = path.join(__dirname, '.tested-files.json');
-const MCP_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
+const MCP_TOKEN = process.env.ADCP_AUTH_TOKEN || 'test-token';
 const A2A_TOKEN = 'L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8';
 
 // Parse command line arguments

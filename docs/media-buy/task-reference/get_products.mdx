@@ -69,7 +69,7 @@ uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
   '{"buying_mode":"brief","brief":"Premium athletic footwear with innovative cushioning","brand":{"domain":"acmecorp.com"}}' \
-  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+  --auth $ADCP_AUTH_TOKEN
 ```
 
 </CodeGroup>
@@ -759,7 +759,7 @@ uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
   '{"buying_mode":"wholesale","brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
-  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+  --auth $ADCP_AUTH_TOKEN
 ```
 
 </CodeGroup>
