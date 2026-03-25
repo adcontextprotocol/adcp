@@ -773,9 +773,9 @@
             isPersonalAccount = targetOrg?.is_personal || false;
 
             // Load billing even without a member profile (for subscription status)
-            if (orgParam) {
+            if (targetOrg) {
               try {
-                const billingResp = await fetch(`/api/organizations/${orgParam}/billing`);
+                const billingResp = await fetch(`/api/organizations/${targetOrg.id}/billing`);
                 if (billingResp.ok) {
                   memberBillingData = await billingResp.json();
                 }
