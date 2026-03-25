@@ -223,6 +223,20 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           },
           required: ['domain'],
         },
+        invoice_recipient: {
+          type: 'object',
+          description: 'Override the account default billing entity for this buy. When provided, the seller invoices this entity instead.',
+          properties: {
+            legal_name: { type: 'string', description: 'Registered legal name of the business entity' },
+            vat_id: { type: 'string', description: 'VAT identification number' },
+            tax_id: { type: 'string', description: 'Tax identification number (non-VAT jurisdictions)' },
+            registration_number: { type: 'string', description: 'Company registration number (e.g., HRB 12345)' },
+            address: { type: 'object', description: 'Postal address', properties: { street: { type: 'string' }, city: { type: 'string' }, postal_code: { type: 'string' }, region: { type: 'string' }, country: { type: 'string', description: 'ISO 3166-1 alpha-2' } }, required: ['street', 'city', 'postal_code', 'country'] },
+            contacts: { type: 'array', description: 'Billing, legal, creative, or general contacts', items: { type: 'object', properties: { role: { type: 'string', enum: ['billing', 'legal', 'creative', 'general'] }, name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' } }, required: ['role'] } },
+            bank: { type: 'object', description: 'Bank details for payment (write-only, never echoed in responses). Supports SEPA (iban/bic) and non-SEPA (routing_number/account_number).' },
+          },
+          required: ['legal_name'],
+        },
         po_number: {
           type: 'string',
           description: 'Purchase order number for tracking.',
@@ -782,7 +796,8 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         },
         canceled: {
           type: 'boolean',
-          description: 'Cancel the entire media buy (irreversible, must be true when present). Seller may reject with NOT_CANCELLABLE.',
+          enum: [true],
+          description: 'Cancel the entire media buy (irreversible). Seller may reject with NOT_CANCELLABLE.',
         },
         cancellation_reason: {
           type: 'string',
@@ -797,7 +812,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             properties: {
               package_id: { type: 'string', description: 'Package ID to update' },
               paused: { type: 'boolean', description: 'Pause/resume this package' },
-              canceled: { type: 'boolean', description: 'Cancel this package (irreversible, must be true when present). Seller may reject with NOT_CANCELLABLE.' },
+              canceled: { type: 'boolean', enum: [true], description: 'Cancel this package (irreversible). Seller may reject with NOT_CANCELLABLE.' },
               cancellation_reason: { type: 'string', description: 'Reason for canceling this package', maxLength: 500 },
               budget: { type: 'number', description: 'Updated budget' },
               bid_price: { type: 'number', description: 'Updated bid price (auction only)' },
@@ -816,6 +831,20 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
               },
             },
           },
+        },
+        invoice_recipient: {
+          type: 'object',
+          description: 'Update who receives the invoice for this buy. Overrides the account default billing entity.',
+          properties: {
+            legal_name: { type: 'string', description: 'Registered legal name of the business entity' },
+            vat_id: { type: 'string', description: 'VAT identification number' },
+            tax_id: { type: 'string', description: 'Tax identification number (non-VAT jurisdictions)' },
+            registration_number: { type: 'string', description: 'Company registration number (e.g., HRB 12345)' },
+            address: { type: 'object', description: 'Postal address', properties: { street: { type: 'string' }, city: { type: 'string' }, postal_code: { type: 'string' }, region: { type: 'string' }, country: { type: 'string', description: 'ISO 3166-1 alpha-2' } }, required: ['street', 'city', 'postal_code', 'country'] },
+            contacts: { type: 'array', description: 'Billing, legal, creative, or general contacts', items: { type: 'object', properties: { role: { type: 'string', enum: ['billing', 'legal', 'creative', 'general'] }, name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' } }, required: ['role'] } },
+            bank: { type: 'object', description: 'Bank details for payment (write-only, never echoed in responses). Supports SEPA (iban/bic) and non-SEPA (routing_number/account_number).' },
+          },
+          required: ['legal_name'],
         },
         new_packages: {
           type: 'array',
@@ -2296,10 +2325,19 @@ export function createAdcpToolHandlers(
 
             // Build auth URL with pending request context for auto-retry
             // Note: URLSearchParams handles encoding, so don't double-encode
+            // Strip bank details from params before URL serialization — bank data
+            // in URLs leaks to browser history, access logs, and referrer headers.
+            const safeParams = structuredClone(params);
+            for (const key of ['billing_entity', 'invoice_recipient'] as const) {
+              const obj = (safeParams as Record<string, unknown>)[key];
+              if (obj && typeof obj === 'object' && 'bank' in (obj as Record<string, unknown>)) {
+                delete (obj as Record<string, unknown>).bank;
+              }
+            }
             const authParams = new URLSearchParams({
               agent_context_id: agentContext.id,
               pending_task: task,
-              pending_params: JSON.stringify(params),
+              pending_params: JSON.stringify(safeParams),
             });
             const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
 

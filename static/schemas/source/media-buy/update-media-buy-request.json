@@ -44,6 +44,10 @@
       },
       "minItems": 1
     },
+    "invoice_recipient": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Update who receives the invoice for this buy. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
     "new_packages": {
       "type": "array",
       "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. Sellers that support mid-flight package additions advertise add_packages in valid_actions. Sellers that do not support this MUST reject with UNSUPPORTED_FEATURE.",
