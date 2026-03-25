@@ -7,7 +7,7 @@
  */
 
 import type { TrainingContext, ToolArgs, SessionState, MediaBuyState, CreativeState } from './types.js';
-import { getSession, getAllSessions, sessionKeyFromArgs } from './state.js';
+import { getSession, sessionKeyFromArgs } from './state.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -136,7 +136,7 @@ interface ComplyRequest extends ToolArgs {
 
 export const COMPLY_TEST_CONTROLLER_TOOL = {
   name: 'comply_test_controller',
-  description: 'Triggers seller-side state transitions for compliance testing. Sandbox only. Use scenario "list_scenarios" to discover supported scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}.',
+  description: 'Triggers seller-side state transitions for compliance testing. Sandbox only. Call with scenario: "list_scenarios" to discover available scenarios and their required params.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   execution: { taskSupport: 'forbidden' as const },
   inputSchema: {
@@ -170,6 +170,17 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
 
 export function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): object {
   const req = args as unknown as ComplyRequest;
+
+  // Sandbox gating: comply_test_controller is only available in sandbox mode
+  const account = (args as Record<string, unknown>).account as { sandbox?: boolean } | undefined;
+  if (!account?.sandbox) {
+    return {
+      success: false,
+      error: 'FORBIDDEN',
+      error_detail: 'comply_test_controller is only available in sandbox mode',
+    };
+  }
+
   const scenario = req.scenario;
 
   if (scenario === 'list_scenarios') {
@@ -180,7 +191,7 @@ export function handleComplyTestController(args: ToolArgs, ctx: TrainingContext)
     return {
       success: false,
       error: 'UNKNOWN_SCENARIO',
-      error_detail: `Scenario "${scenario}" is not supported by this seller`,
+      error_detail: `Scenario "${String(scenario).slice(0, 100)}" is not supported by this seller`,
     };
   }
 
@@ -339,15 +350,7 @@ function handleForceAccountStatus(session: SessionState, params: Record<string, 
 // ── force_media_buy_status ────────────────────────────────────────
 
 function findMediaBuy(session: SessionState, mediaBuyId: string): MediaBuyState | undefined {
-  let mb = session.mediaBuys.get(mediaBuyId);
-  if (!mb) {
-    for (const [, s] of getAllSessions()) {
-      if (s === session) continue;
-      mb = s.mediaBuys.get(mediaBuyId);
-      if (mb) break;
-    }
-  }
-  return mb;
+  return session.mediaBuys.get(mediaBuyId);
 }
 
 function handleForceMediaBuyStatus(session: SessionState, params: Record<string, unknown>): object {
@@ -465,8 +468,6 @@ function handleForceSessionStatus(session: SessionState, params: Record<string, 
     // SI sessions are created implicitly — if we haven't seen it, assume it's active
     // (a real agent would track sessions via initiate_session)
     // For comply testing, treat unknown session IDs as active
-    ext.siSessions.set(sessionId, { status: targetStatus, terminationReason: params.termination_reason as string });
-
     if (targetStatus === 'terminated' && !params.termination_reason) {
       return {
         success: false,
@@ -474,6 +475,8 @@ function handleForceSessionStatus(session: SessionState, params: Record<string, 
         error_detail: 'termination_reason is required when status = terminated',
       };
     }
+
+    ext.siSessions.set(sessionId, { status: targetStatus, terminationReason: params.termination_reason as string });
 
     return {
       success: true,

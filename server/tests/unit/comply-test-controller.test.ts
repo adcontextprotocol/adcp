@@ -130,6 +130,37 @@ describe('comply_test_controller', () => {
     });
   });
 
+  describe('sandbox gating', () => {
+    it('rejects calls without sandbox: true', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'list_scenarios',
+        account: { brand: { domain: 'test.example.com' }, operator: 'tester' },
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('rejects calls with sandbox: false', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'list_scenarios',
+        account: { brand: { domain: 'test.example.com' }, operator: 'tester', sandbox: false },
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('rejects calls with no account', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'list_scenarios',
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+  });
+
   describe('unknown scenario', () => {
     it('returns UNKNOWN_SCENARIO error', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
@@ -207,58 +238,10 @@ describe('comply_test_controller', () => {
       expect(result.current_state).toBeNull();
     });
 
-    it('requires rejection_reason when rejecting', async () => {
+    it('rejects transition to rejected from approved (no valid path)', async () => {
       const creativeId = await syncCreative(server);
-      // First move to pending_review (need: approved → archived → approved → ... no)
-      // Actually approved can only go to archived. Let's go:
-      // approved → archived → approved → (need to get to pending_review)
-      // Actually let's force to archived, then back to approved, that's the only path
-      // The test controller forces states — we need processing → pending_review → rejected
-      // Let's start fresh: sync gives us approved. Let's go approved → archived → approved → archived → approved
-      // Actually per the transition table: archived → approved is valid
-      // And processing → rejected needs rejection_reason
-      // Let's just directly test: we need a creative in processing or pending_review state
-      // Force to archived first, then to approved (archived → approved), then...
-      // We can't get to pending_review from approved — only to archived
-      // Let's just test with a creative we force through processing → rejected
-
-      // Force: approved → archived
-      await simulateCallTool(server, 'comply_test_controller', {
-        scenario: 'force_creative_status',
-        params: { creative_id: creativeId, status: 'archived' },
-        account: ACCOUNT,
-        brand: BRAND,
-      });
-      // Force: archived → approved
-      await simulateCallTool(server, 'comply_test_controller', {
-        scenario: 'force_creative_status',
-        params: { creative_id: creativeId, status: 'approved' },
-        account: ACCOUNT,
-        brand: BRAND,
-      });
-
-      // We can't reach rejected from approved — only archived can.
-      // Let's test from pending_review. But we can't reach pending_review from approved.
-      // The path is: processing → pending_review → rejected
-      // So we need to get to processing first. But there's no valid transition from approved to processing.
-      // The rejection_reason test works when we can reach pending_review → rejected.
-      // Let's test the INVALID_PARAMS response by trying to reject from a valid state.
-      // Actually processing → rejected is valid. But we can't get to processing from approved.
-      // Let's skip this test complexity and test rejection_reason with a simple mock state.
-      // Better: just verify that if we COULD reject (from pending_review), it needs a reason.
-      // For now, this is tested implicitly — the state machine won't even let us get there from approved.
-    });
-
-    it('requires rejection_reason when forcing to rejected from pending_review', async () => {
-      const creativeId = await syncCreative(server);
-      // Creative is "approved". We can't easily get to pending_review from approved.
-      // But we CAN test: archived → approved, then we still can't get to pending_review.
-      // The training agent auto-approves on sync. To test rejection_reason validation,
-      // we'd need to manipulate state directly. The important thing is the transition
-      // table correctly blocks the path.
-
-      // Since we can't reach a state where rejected is valid from approved,
-      // let's verify the error is INVALID_TRANSITION (not INVALID_PARAMS for missing reason)
+      // Training agent auto-approves on sync. No valid transition from approved → rejected,
+      // so transition validation fires before rejection_reason check.
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_creative_status',
         params: { creative_id: creativeId, status: 'rejected' },
