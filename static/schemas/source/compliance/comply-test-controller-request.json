@@ -4,171 +4,174 @@
   "title": "Comply Test Controller Request",
   "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production.",
   "type": "object",
-  "properties": {
-    "scenario": {
-      "type": "string",
-      "enum": [
-        "list_scenarios",
-        "force_creative_status",
-        "force_account_status",
-        "force_media_buy_status",
-        "force_session_status",
-        "simulate_delivery",
-        "simulate_budget_spend"
-      ],
-      "description": "The seller-side transition to trigger. list_scenarios: discover which scenarios this seller supports. force_*: trigger a state transition. simulate_*: inject synthetic data."
-    },
-    "params": {
+  "oneOf": [
+    {
+      "title": "ListScenarios",
+      "description": "Discover which scenarios this seller supports",
       "type": "object",
-      "description": "Scenario-specific parameters. Omit for list_scenarios."
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
-  },
-  "required": ["scenario"],
-  "additionalProperties": true,
-  "allOf": [
-    {
-      "if": {
-        "properties": { "scenario": { "const": "force_creative_status" } },
-        "required": ["scenario"]
+      "properties": {
+        "scenario": { "type": "string", "const": "list_scenarios" },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
-      "then": {
-        "properties": {
-          "params": {
-            "properties": {
-              "creative_id": { "type": "string", "description": "Creative to transition" },
-              "status": { "$ref": "/schemas/enums/creative-status.json" },
-              "rejection_reason": { "type": "string", "description": "Reason for rejection. Required when status = rejected." }
-            },
-            "required": ["creative_id", "status"]
-          }
+      "required": ["scenario"],
+      "additionalProperties": true
+    },
+    {
+      "title": "ForceCreativeStatus",
+      "description": "Transition a creative to the specified status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_creative_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "creative_id": { "type": "string", "description": "Creative to transition" },
+            "status": { "$ref": "/schemas/enums/creative-status.json" },
+            "rejection_reason": { "type": "string", "description": "Reason for rejection. Required when status = rejected." }
+          },
+          "required": ["creative_id", "status"],
+          "additionalProperties": true
         },
-        "required": ["params"]
-      }
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
     },
     {
-      "if": {
-        "properties": { "scenario": { "const": "force_account_status" } },
-        "required": ["scenario"]
-      },
-      "then": {
-        "properties": {
-          "params": {
-            "properties": {
-              "account_id": { "type": "string", "description": "Account to transition" },
-              "status": {
-                "type": "string",
-                "enum": ["active", "pending_approval", "rejected", "payment_required", "suspended", "closed"],
-                "description": "Target account status"
-              }
-            },
-            "required": ["account_id", "status"]
-          }
+      "title": "ForceAccountStatus",
+      "description": "Transition an account to the specified status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_account_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "account_id": { "type": "string", "description": "Account to transition" },
+            "status": {
+              "type": "string",
+              "enum": ["active", "pending_approval", "rejected", "payment_required", "suspended", "closed"],
+              "description": "Target account status"
+            }
+          },
+          "required": ["account_id", "status"],
+          "additionalProperties": true
         },
-        "required": ["params"]
-      }
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
     },
     {
-      "if": {
-        "properties": { "scenario": { "const": "force_media_buy_status" } },
-        "required": ["scenario"]
-      },
-      "then": {
-        "properties": {
-          "params": {
-            "properties": {
-              "media_buy_id": { "type": "string", "description": "Media buy to transition" },
-              "status": { "$ref": "/schemas/enums/media-buy-status.json" },
-              "rejection_reason": { "type": "string", "description": "Reason for rejection. Required when status = rejected." }
-            },
-            "required": ["media_buy_id", "status"]
-          }
+      "title": "ForceMediaBuyStatus",
+      "description": "Transition a media buy to the specified status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_media_buy_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "media_buy_id": { "type": "string", "description": "Media buy to transition" },
+            "status": { "$ref": "/schemas/enums/media-buy-status.json" },
+            "rejection_reason": { "type": "string", "description": "Reason for rejection. Required when status = rejected." }
+          },
+          "required": ["media_buy_id", "status"],
+          "additionalProperties": true
         },
-        "required": ["params"]
-      }
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
     },
     {
-      "if": {
-        "properties": { "scenario": { "const": "force_session_status" } },
-        "required": ["scenario"]
+      "title": "ForceSessionStatus",
+      "description": "Transition an SI session to a terminal status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_session_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "session_id": { "type": "string", "description": "Session to transition" },
+            "status": {
+              "type": "string",
+              "enum": ["complete", "terminated"],
+              "description": "Target terminal session status"
+            },
+            "termination_reason": {
+              "type": "string",
+              "description": "Reason for termination (e.g., session_timeout, host_terminated, policy_violation). Required when status = terminated."
+            }
+          },
+          "required": ["session_id", "status"],
+          "additionalProperties": true
+        },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
-      "then": {
-        "properties": {
-          "params": {
-            "properties": {
-              "session_id": { "type": "string", "description": "Session to transition" },
-              "status": {
-                "type": "string",
-                "enum": ["complete", "terminated"],
-                "description": "Target terminal session status"
+      "required": ["scenario", "params"],
+      "additionalProperties": true
+    },
+    {
+      "title": "SimulateDelivery",
+      "description": "Inject synthetic delivery data for a media buy",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "simulate_delivery" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "media_buy_id": { "type": "string", "description": "Media buy to add delivery to" },
+            "impressions": { "type": "integer", "minimum": 0, "description": "Impressions to simulate" },
+            "clicks": { "type": "integer", "minimum": 0, "description": "Clicks to simulate" },
+            "reported_spend": {
+              "type": "object",
+              "description": "Spend as reported in delivery data. Does not affect budget.",
+              "properties": {
+                "amount": { "type": "number", "minimum": 0 },
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
               },
-              "termination_reason": {
-                "type": "string",
-                "description": "Reason for termination (e.g., session_timeout, host_terminated, policy_violation). Required when status = terminated."
-              }
+              "required": ["amount", "currency"]
             },
-            "required": ["session_id", "status"]
-          }
+            "conversions": { "type": "integer", "minimum": 0, "description": "Conversions to simulate" }
+          },
+          "required": ["media_buy_id"],
+          "additionalProperties": true
         },
-        "required": ["params"]
-      }
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
     },
     {
-      "if": {
-        "properties": { "scenario": { "const": "simulate_delivery" } },
-        "required": ["scenario"]
-      },
-      "then": {
-        "properties": {
-          "params": {
-            "properties": {
-              "media_buy_id": { "type": "string", "description": "Media buy to add delivery to" },
-              "impressions": { "type": "integer", "minimum": 0, "description": "Impressions to simulate" },
-              "clicks": { "type": "integer", "minimum": 0, "description": "Clicks to simulate" },
-              "reported_spend": {
-                "type": "object",
-                "description": "Spend as reported in delivery data. Does not affect budget.",
-                "properties": {
-                  "amount": { "type": "number", "minimum": 0 },
-                  "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
-                },
-                "required": ["amount", "currency"]
-              },
-              "conversions": { "type": "integer", "minimum": 0, "description": "Conversions to simulate" }
-            },
-            "required": ["media_buy_id"]
-          }
+      "title": "SimulateBudgetSpend",
+      "description": "Simulate budget consumption to a specified percentage",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "simulate_budget_spend" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "account_id": { "type": "string", "description": "Account (for account-level budget)" },
+            "media_buy_id": { "type": "string", "description": "Media buy (for buy-level budget)" },
+            "spend_percentage": { "type": "number", "minimum": 0, "maximum": 100, "description": "Spend to this percentage of budget (0–100)" }
+          },
+          "required": ["spend_percentage"],
+          "anyOf": [
+            { "required": ["account_id"] },
+            { "required": ["media_buy_id"] }
+          ],
+          "additionalProperties": true
         },
-        "required": ["params"]
-      }
-    },
-    {
-      "if": {
-        "properties": { "scenario": { "const": "simulate_budget_spend" } },
-        "required": ["scenario"]
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
-      "then": {
-        "properties": {
-          "params": {
-            "properties": {
-              "account_id": { "type": "string", "description": "Account (for account-level budget)" },
-              "media_buy_id": { "type": "string", "description": "Media buy (for buy-level budget)" },
-              "spend_percentage": { "type": "number", "minimum": 0, "maximum": 100, "description": "Spend to this percentage of budget (0–100)" }
-            },
-            "required": ["spend_percentage"],
-            "anyOf": [
-              { "required": ["account_id"] },
-              { "required": ["media_buy_id"] }
-            ]
-          }
-        },
-        "required": ["params"]
-      }
+      "required": ["scenario", "params"],
+      "additionalProperties": true
     }
   ],
   "examples": [
