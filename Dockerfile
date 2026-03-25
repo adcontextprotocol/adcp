@@ -30,7 +30,7 @@ COPY <<'CLONE' /repos/clone.sh
 set -e
 pids=""
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp.git adcp & pids="$pids $!"
-git clone --depth=1 --branch main https://github.com/adcontextprotocol/salesagent.git salesagent & pids="$pids $!"
+git clone --depth=1 --branch main https://github.com/prebid/salesagent.git salesagent & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/signals-agent.git signals-agent & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-client.git adcp-client & pids="$pids $!"
 git clone --depth=1 --branch main https://github.com/adcontextprotocol/adcp-client-python.git adcp-client-python & pids="$pids $!"
