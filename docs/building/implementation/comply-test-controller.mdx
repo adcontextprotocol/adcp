@@ -450,7 +450,7 @@ Comply distinguishes three outcome categories in deterministic mode:
 
 1. **Sellers validate transition ordering.** The controller enforces the same state machine rules as production. Calling `force_creative_status(approved)` on a creative that was never `processing` is an error — the controller rejects it just as production would. The lifecycle state machines referenced here are defined in the respective protocol specifications (see [creative lifecycle](/docs/creative/specification#creative-status-lifecycle), [account lifecycle](/docs/accounts/overview#account-status-lifecycle), [media buy lifecycle](/docs/media-buy/specification), [SI session lifecycle](/docs/sponsored-intelligence/specification#session-states)).
 
-2. **Tests are self-contained.** Each test creates its own entities, so there is no shared state to clean up between runs. No `reset` scenario is needed.
+2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. No `reset` scenario is needed.
 
 3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. Comply ignores this marker — it validates `get_media_buy_delivery` responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
 

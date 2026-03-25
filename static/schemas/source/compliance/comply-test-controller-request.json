@@ -49,11 +49,7 @@
           "type": "object",
           "properties": {
             "account_id": { "type": "string", "description": "Account to transition" },
-            "status": {
-              "type": "string",
-              "enum": ["active", "pending_approval", "rejected", "payment_required", "suspended", "closed"],
-              "description": "Target account status"
-            }
+            "status": { "$ref": "/schemas/enums/account-status.json" }
           },
           "required": ["account_id", "status"],
           "additionalProperties": true
@@ -96,11 +92,7 @@
           "type": "object",
           "properties": {
             "session_id": { "type": "string", "description": "Session to transition" },
-            "status": {
-              "type": "string",
-              "enum": ["complete", "terminated"],
-              "description": "Target terminal session status"
-            },
+            "status": { "$ref": "/schemas/enums/si-session-status.json" },
             "termination_reason": {
               "type": "string",
               "description": "Reason for termination (e.g., session_timeout, host_terminated, policy_violation). Required when status = terminated."
