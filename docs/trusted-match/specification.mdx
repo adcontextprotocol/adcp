@@ -45,7 +45,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context and
 |---|---|---|---|
 | `package_id` | string | Yes | Package identifier from the media buy. |
 | `media_buy_id` | string | Yes | Parent media buy identifier. |
-| `format_ids` | List\<string\> | No | Creative format IDs this package supports. |
+| `format_ids` | List\<FormatId\> | No | Creative format identifiers this package supports. Uses the standard AdCP `{ agent_url, id }` format-id object. |
 | `catalogs` | List\<Catalog\> | No | The buyer's catalogs attached to this package, with selectors (`ids`, `gtins`, `tags`, `category`, `query`) scoping which items are in play. References synced catalogs by `catalog_id`. The provider resolves items from its cached copy. See `catalog` schema. |
 
 #### ContextSignals

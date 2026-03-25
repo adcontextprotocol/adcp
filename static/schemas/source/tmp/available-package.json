@@ -15,9 +15,9 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Creative format identifier strings eligible for this package. Uses the format ID string (e.g., 'display_300x250', 'video_30s') rather than the full format-id object to keep the real-time payload minimal.",
+      "description": "Creative format identifiers eligible for this package. Uses the standard AdCP format-id object with agent_url and id for unambiguous format resolution across namespaces.",
       "items": {
-        "type": "string"
+        "$ref": "/schemas/core/format-id.json"
       }
     },
     "catalogs": {

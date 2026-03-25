@@ -3925,5 +3925,249 @@
         }
       }
     ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "sponsored_recommendation"
+    },
+    "name": "Sponsored Recommendation",
+    "description": "AI assistant sponsored recommendation woven into the conversation response. The LLM integrates the brand message naturally into its reply.",
+    "type": "native",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "headline",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Short headline for the recommendation (50 chars max)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "body",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Body text describing the product or service. The AI assistant may paraphrase this to fit the conversation tone."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "cta_text",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Call-to-action text (e.g., 'Shop now', 'Learn more')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "cta_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Destination URL for the recommendation"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "image",
+        "required": false,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Product or brand image (square, 400x400 recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "sponsored_by",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Sponsor attribution text (e.g., 'Sponsored by Meridian Foods')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "Impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL"
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "native_product_card"
+    },
+    "name": "Native Product Card",
+    "description": "Product card for AI assistants and retail media surfaces. Displays a product with image, price, and catalog items. Rendered as a card within the conversation or search results.",
+    "type": "native",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "headline",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Product or offer headline (60 chars max)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "body",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Product description or promotional text"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "image",
+        "required": true,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Product image (square, 800x800 recommended)"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "price",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display price (e.g., '$24.99', 'From $12/mo')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "cta_text",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Call-to-action text"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "cta_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Product page URL"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "sponsored_by",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Sponsor attribution text"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "badge",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Promotional badge (e.g., 'SALE', 'NEW', 'BEST SELLER')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "Impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL"
+    ],
+    "catalog_requirements": [
+      {
+        "catalog_type": "product",
+        "required": false,
+        "required_fields": ["name"]
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "native_mention"
+    },
+    "name": "Native Brand Mention",
+    "description": "Minimal brand mention for AI assistants. A single line referencing the brand, suitable for light integration where a full product card would be intrusive.",
+    "type": "native",
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "mention_text",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Brand mention text (100 chars max). Should read naturally in conversation context."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "cta_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "clickthrough",
+          "description": "Destination URL if user clicks the mention"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "sponsored_by",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Sponsor attribution text"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "url_type": "tracker_pixel",
+          "description": "Impression tracking pixel URL"
+        }
+      }
+    ],
+    "supported_macros": [
+      "MEDIA_BUY_ID",
+      "CREATIVE_ID",
+      "CACHEBUSTER",
+      "CLICK_URL"
+    ]
   }
 ]
