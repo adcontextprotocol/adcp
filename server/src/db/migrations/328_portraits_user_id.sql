@@ -5,7 +5,8 @@
 ALTER TABLE member_portraits ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(workos_user_id);
 
 -- 2. Add portrait_id to users table (active portrait pointer, like member_profiles has)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS portrait_id UUID REFERENCES member_portraits(id);
+-- ON DELETE SET NULL: if a portrait is cascade-deleted via member_profiles, clear the pointer
+ALTER TABLE users ADD COLUMN IF NOT EXISTS portrait_id UUID REFERENCES member_portraits(id) ON DELETE SET NULL;
 
 -- 3. Backfill user_id on existing portraits from org membership
 -- For each portrait, find the user whose avatar_url matches (set by migration 324),
@@ -40,10 +41,16 @@ WHERE u.workos_user_id = om.workos_user_id
 -- 5. Make member_profile_id nullable (portraits no longer require a member profile)
 ALTER TABLE member_portraits ALTER COLUMN member_profile_id DROP NOT NULL;
 
--- 6. Index on user_id
+-- 6. Delete any orphaned portraits that couldn't be assigned to a user
+DELETE FROM member_portraits WHERE user_id IS NULL;
+
+-- 7. Make user_id NOT NULL now that backfill is complete
+ALTER TABLE member_portraits ALTER COLUMN user_id SET NOT NULL;
+
+-- 8. Index on user_id
 CREATE INDEX IF NOT EXISTS idx_member_portraits_user_id ON member_portraits(user_id);
 
--- 7. Update content_with_authors view to resolve portraits from users table
+-- 9. Update content_with_authors view to resolve portraits from users table
 DROP VIEW IF EXISTS content_with_authors;
 CREATE VIEW content_with_authors AS
 SELECT

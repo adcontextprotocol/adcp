@@ -169,6 +169,15 @@ export async function removeFromUser(userId: string): Promise<void> {
   }
 }
 
+/** Get the active portrait ID for a user */
+export async function getActivePortraitId(userId: string): Promise<string | null> {
+  const result = await query(
+    `SELECT portrait_id FROM users WHERE workos_user_id = $1`,
+    [userId]
+  );
+  return result.rows[0]?.portrait_id ?? null;
+}
+
 /** Soft-delete a portrait (set status to rejected) */
 export async function rejectPortrait(id: string): Promise<boolean> {
   const result = await query(

@@ -304,9 +304,12 @@ export function createAdminPortraitRouter(): Router {
         return res.status(404).json({ error: 'Portrait not found' });
       }
 
-      // Remove from user if it's the active one
+      // Only clear from user if this is their active portrait
       if (portrait.user_id) {
-        await portraitDb.removeFromUser(portrait.user_id);
+        const user = await portraitDb.getActivePortraitId(portrait.user_id);
+        if (user === req.params.id) {
+          await portraitDb.removeFromUser(portrait.user_id);
+        }
       }
       await portraitDb.rejectPortrait(req.params.id);
 
