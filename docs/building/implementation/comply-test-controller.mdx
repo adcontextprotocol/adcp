@@ -325,7 +325,7 @@ Controllers MUST use structured error codes so comply can assert on specific fai
 
 State transition scenarios (`force_*`) are idempotent: forcing a status that matches the current state returns success with `previous_state` equal to `current_state`. This avoids flaky tests when comply retries after transient failures.
 
-Simulation scenarios (`simulate_*`) are NOT idempotent — each call adds to or replaces state as defined by the scenario.
+Simulation scenarios (`simulate_*`) are NOT idempotent — `simulate_delivery` adds to existing totals, while `simulate_budget_spend` replaces the current spend level.
 
 ## Compliance testing modes
 
