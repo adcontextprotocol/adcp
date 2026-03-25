@@ -15,7 +15,7 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 const CREATIVE_TRANSITIONS: Record<string, string[]> = {
   processing: ['pending_review', 'rejected'],
   pending_review: ['approved', 'rejected'],
-  approved: ['archived'],
+  approved: ['pending_review', 'archived'],
   rejected: ['processing'],
   archived: ['approved'],
 };
@@ -24,7 +24,7 @@ const CREATIVE_TRANSITIONS: Record<string, string[]> = {
 const ACCOUNT_TRANSITIONS: Record<string, string[]> = {
   pending_approval: ['active', 'rejected'],
   active: ['payment_required', 'suspended', 'closed'],
-  payment_required: ['active', 'suspended', 'closed'],
+  payment_required: ['active'],
   suspended: ['active', 'payment_required', 'closed'],
   rejected: [],   // terminal
   closed: [],     // terminal
@@ -56,16 +56,52 @@ const SI_SESSION_TERMINAL = new Set(['complete', 'terminated']);
 
 // ── All supported scenarios ───────────────────────────────────────
 
-const SUPPORTED_SCENARIOS = [
-  'force_creative_status',
-  'force_account_status',
-  'force_media_buy_status',
-  'force_session_status',
-  'simulate_delivery',
-  'simulate_budget_spend',
-] as const;
+const SCENARIO_METADATA = {
+  force_creative_status: {
+    description: 'Force a creative to a new review status',
+    required_params: ['creative_id', 'status'],
+    optional_params: ['rejection_reason'],
+    valid_statuses: ['processing', 'pending_review', 'approved', 'rejected', 'archived'],
+    notes: 'rejection_reason required when status=rejected',
+  },
+  force_account_status: {
+    description: 'Force an account to a new status',
+    required_params: ['account_id', 'status'],
+    optional_params: [],
+    valid_statuses: ['pending_approval', 'active', 'payment_required', 'suspended', 'rejected', 'closed'],
+    notes: 'rejected and closed are terminal',
+  },
+  force_media_buy_status: {
+    description: 'Force a media buy to a new status',
+    required_params: ['media_buy_id', 'status'],
+    optional_params: ['rejection_reason'],
+    valid_statuses: ['pending_activation', 'active', 'paused', 'completed', 'rejected', 'canceled'],
+    notes: 'rejection_reason required when status=rejected; completed/rejected/canceled are terminal',
+  },
+  force_session_status: {
+    description: 'Force an SI session to a terminal status',
+    required_params: ['session_id', 'status'],
+    optional_params: ['termination_reason'],
+    valid_statuses: ['complete', 'terminated'],
+    notes: 'termination_reason required when status=terminated; only terminal statuses are valid targets',
+  },
+  simulate_delivery: {
+    description: 'Inject synthetic delivery data for a media buy (additive across calls)',
+    required_params: ['media_buy_id'],
+    optional_params: ['impressions', 'clicks', 'reported_spend', 'conversions'],
+    notes: 'reported_spend is { amount, currency }; values accumulate across calls',
+  },
+  simulate_budget_spend: {
+    description: 'Simulate budget consumption to a percentage (replaces, not additive)',
+    required_params: ['spend_percentage'],
+    optional_params: ['account_id', 'media_buy_id'],
+    notes: 'At least one of account_id or media_buy_id required; spend_percentage 0-100',
+  },
+} as const;
 
-type Scenario = typeof SUPPORTED_SCENARIOS[number] | 'list_scenarios';
+const SUPPORTED_SCENARIOS = Object.keys(SCENARIO_METADATA) as Array<keyof typeof SCENARIO_METADATA>;
+
+type Scenario = keyof typeof SCENARIO_METADATA | 'list_scenarios';
 
 // ── Session extensions for comply test controller ─────────────────
 // We store account status, SI sessions, delivery simulation data, and
@@ -134,7 +170,7 @@ interface ComplyRequest extends ToolArgs {
 
 export const COMPLY_TEST_CONTROLLER_TOOL = {
   name: 'comply_test_controller',
-  description: 'Triggers seller-side state transitions for compliance testing. Sandbox only. Call with scenario: "list_scenarios" to discover available scenarios and their required params.',
+  description: 'Forces seller-side state transitions that a buyer agent cannot trigger directly — creative review outcomes, account status changes, delivery data, budget consumption. Sandbox only (requires account.sandbox: true). NOT for normal buyer operations. Call with scenario: "list_scenarios" first to see available scenarios and required params.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   execution: { taskSupport: 'forbidden' as const },
   inputSchema: {
@@ -155,7 +191,7 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
       },
       params: {
         type: 'object',
-        description: 'Scenario-specific parameters. Omit for list_scenarios.',
+        description: 'Scenario-specific parameters. Call list_scenarios to see required and optional params per scenario. Omit for list_scenarios.',
       },
       account: { type: 'object' },
       brand: { type: 'object' },
@@ -182,10 +218,10 @@ export function handleComplyTestController(args: ToolArgs, ctx: TrainingContext)
   const scenario = req.scenario;
 
   if (scenario === 'list_scenarios') {
-    return { success: true, scenarios: [...SUPPORTED_SCENARIOS] };
+    return { success: true, scenarios: SCENARIO_METADATA };
   }
 
-  if (!SUPPORTED_SCENARIOS.includes(scenario as typeof SUPPORTED_SCENARIOS[number])) {
+  if (!(scenario in SCENARIO_METADATA)) {
     return {
       success: false,
       error: 'UNKNOWN_SCENARIO',
@@ -551,6 +587,15 @@ function handleSimulateDelivery(session: SessionState, params: Record<string, un
       error: 'NOT_FOUND',
       error_detail: `Media buy ${mediaBuyId} not found`,
       current_state: null,
+    };
+  }
+
+  if (MEDIA_BUY_TERMINAL.has(mb.status)) {
+    return {
+      success: false,
+      error: 'INVALID_STATE',
+      error_detail: `Cannot simulate delivery for media buy in ${mb.status} state`,
+      current_state: mb.status,
     };
   }
 

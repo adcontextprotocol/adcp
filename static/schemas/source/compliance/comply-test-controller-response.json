@@ -81,7 +81,7 @@
         "success": { "type": "boolean", "const": false },
         "error": {
           "type": "string",
-          "enum": ["INVALID_TRANSITION", "NOT_FOUND", "UNKNOWN_SCENARIO", "INVALID_PARAMS", "INTERNAL_ERROR"],
+          "enum": ["INVALID_TRANSITION", "INVALID_STATE", "NOT_FOUND", "UNKNOWN_SCENARIO", "INVALID_PARAMS", "FORBIDDEN", "INTERNAL_ERROR"],
           "description": "Structured error code"
         },
         "error_detail": { "type": "string", "description": "Human-readable explanation of the failure" },

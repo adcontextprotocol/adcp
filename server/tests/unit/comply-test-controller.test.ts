@@ -119,7 +119,8 @@ describe('comply_test_controller', () => {
         brand: BRAND,
       });
       expect(result.success).toBe(true);
-      expect(result.scenarios).toEqual([
+      const scenarios = result.scenarios as Record<string, unknown>;
+      expect(Object.keys(scenarios)).toEqual([
         'force_creative_status',
         'force_account_status',
         'force_media_buy_status',
@@ -127,6 +128,11 @@ describe('comply_test_controller', () => {
         'simulate_delivery',
         'simulate_budget_spend',
       ]);
+      // Each scenario includes parameter documentation
+      const creative = scenarios.force_creative_status as Record<string, unknown>;
+      expect(creative.required_params).toContain('creative_id');
+      expect(creative.required_params).toContain('status');
+      expect(creative.valid_statuses).toContain('approved');
     });
   });
 
@@ -240,8 +246,6 @@ describe('comply_test_controller', () => {
 
     it('rejects transition to rejected from approved (no valid path)', async () => {
       const creativeId = await syncCreative(server);
-      // Training agent auto-approves on sync. No valid transition from approved → rejected,
-      // so transition validation fires before rejection_reason check.
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_creative_status',
         params: { creative_id: creativeId, status: 'rejected' },
@@ -250,6 +254,39 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(false);
       expect(result.error).toBe('INVALID_TRANSITION');
+    });
+
+    it('allows approved -> pending_review (seller re-review)', async () => {
+      const creativeId = await syncCreative(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_creative_status',
+        params: { creative_id: creativeId, status: 'pending_review' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(true);
+      expect(result.previous_state).toBe('approved');
+      expect(result.current_state).toBe('pending_review');
+    });
+
+    it('requires rejection_reason when rejecting from pending_review', async () => {
+      const creativeId = await syncCreative(server);
+      // approved -> pending_review -> rejected (without reason)
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_creative_status',
+        params: { creative_id: creativeId, status: 'pending_review' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_creative_status',
+        params: { creative_id: creativeId, status: 'rejected' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+      expect(result.error_detail).toContain('rejection_reason');
     });
   });
 
@@ -578,6 +615,27 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('rejects delivery simulation for terminal media buy', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+
+      // Complete the media buy (terminal state)
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: mediaBuyId, status: 'completed' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, impressions: 1000 },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_STATE');
     });
   });
 
