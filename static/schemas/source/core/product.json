@@ -313,6 +313,33 @@
         "type": "string"
       }
     },
+    "material_submission": {
+      "type": "object",
+      "description": "Instructions for submitting physical creative materials (print, static OOH, cinema). Present only for products requiring physical delivery outside the digital creative assignment flow. Buyer agents MUST validate url and email domains against the seller's known domains (from adagents.json) before submitting materials. Never auto-submit without human confirmation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL for uploading or submitting physical creative materials"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address for creative material submission"
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Human-readable instructions for material submission (file naming conventions, shipping address, etc.)",
+          "maxLength": 2000
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": true
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
