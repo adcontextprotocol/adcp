@@ -1,0 +1,276 @@
+---
+title: Quickstart
+description: "Make your first AdCP call in 5 minutes. One MCP tool call, one error case, one media buy — with copy-pasteable curl commands and expected output."
+"og:title": "AdCP — Quickstart"
+---
+
+Make your first AdCP call in 5 minutes against the public test agent.
+
+## Setup
+
+Get your API key from the [AAO dashboard](https://agenticadvertising.org/settings) under API Keys, then:
+
+```bash
+export ADCP_AUTH_TOKEN="sk_your_api_key_here"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+```
+
+## 1. Discover products
+
+AdCP over MCP uses JSON-RPC 2.0. The transport is [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) — responses arrive as server-sent events.
+
+```bash
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_products",
+      "arguments": {
+        "brief": "Video ads for pet food brand",
+        "brand": { "domain": "premiumpetfoods.com" }
+      }
+    }
+  }'
+```
+
+**Response** (SSE envelope omitted for clarity):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"products\":[{\"product_id\":\"pinnacle_news_video_premium\",\"name\":\"Pinnacle News Group video guaranteed\",\"channels\":[\"olv\",\"ctv\"],\"pricing_options\":[{\"pricing_option_id\":\"pinnacle_news_video_premium_pricing_0\",\"pricing_model\":\"cpm\",\"currency\":\"USD\",\"fixed_price\":15}],\"delivery_type\":\"guaranteed\"}, ...],\"sandbox\":true}"
+      }
+    ]
+  }
+}
+```
+
+**Extract the result** — the AdCP payload is JSON-encoded inside `content[0].text`:
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+const payload = JSON.parse(response.result.content[0].text);
+
+console.log(payload.products[0].product_id);    // "pinnacle_news_video_premium"
+console.log(payload.products[0].channels);      // ["olv", "ctv"]
+console.log(payload.products[0].pricing_options[0].pricing_option_id); // "pinnacle_news_video_premium_pricing_0"
+console.log(payload.products[0].pricing_options[0].fixed_price);       // 15
+```
+
+## 2. Handle errors
+
+Send an invalid tool name to see what errors look like:
+
+```bash
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "nonexistent_tool",
+      "arguments": {}
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"code\":\"INVALID_REQUEST\",\"message\":\"Unknown tool: nonexistent_tool\"}"
+      }
+    ],
+    "isError": true
+  }
+}
+```
+
+**Handle it** — check `isError`, then parse the error payload:
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+
+if (response.result.isError) {
+  const err = JSON.parse(response.result.content[0].text);
+  console.log(err.code);     // "INVALID_REQUEST"
+  console.log(err.message);  // "Unknown tool: nonexistent_tool"
+}
+```
+
+Common error codes: `INVALID_REQUEST` (bad input), `RATE_LIMITED` (retry with backoff), `UNAUTHORIZED` (check credentials).
+
+## 3. Create a media buy
+
+Use the product IDs from step 1 to create a campaign:
+
+```bash
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "create_media_buy",
+      "arguments": {
+        "account": { "account_id": "test_account" },
+        "brand": { "domain": "premiumpetfoods.com" },
+        "start_time": "asap",
+        "end_time": "2026-04-30T00:00:00Z",
+        "packages": [{
+          "product_id": "pinnacle_news_video_premium",
+          "budget": 5000,
+          "pricing_option_id": "pinnacle_news_video_premium_pricing_0"
+        }]
+      }
+    }
+  }'
+```
+
+**Response** (IDs will differ on each call):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"media_buy_id\":\"mb_f4139524\",\"status\":\"active\",\"revision\":1,\"packages\":[{\"package_id\":\"pkg_3df649f0\",\"product_id\":\"pinnacle_news_video_premium\",\"budget\":5000,\"pricing_option_id\":\"pinnacle_news_video_premium_pricing_0\"}],\"valid_actions\":[\"pause\",\"cancel\",\"update_budget\",\"update_dates\",\"update_packages\",\"add_packages\",\"sync_creatives\"],\"sandbox\":true}"
+      }
+    ]
+  }
+}
+```
+
+**Extract the result:**
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+const buy = JSON.parse(response.result.content[0].text);
+
+console.log(buy.media_buy_id);     // "mb_f4139524"
+console.log(buy.status);           // "active"
+console.log(buy.packages[0].budget); // 5000
+console.log(buy.valid_actions);    // ["pause", "cancel", "update_budget", ...]
+```
+
+## 4. Push notifications (webhooks)
+
+Production agents support push notifications for long-running operations. The sandbox test agent does not send webhooks, but you can include the configuration to see how it works.
+
+Add `push_notification_config` to your tool arguments:
+
+```json
+{
+  "name": "create_media_buy",
+  "arguments": {
+    "account": { "account_id": "your_account" },
+    "brand": { "domain": "premiumpetfoods.com" },
+    "start_time": "asap",
+    "end_time": "2026-04-30T00:00:00Z",
+    "packages": [{ "..." : "..." }],
+    "push_notification_config": {
+      "url": "https://you.example.com/webhooks/adcp",
+      "authentication": {
+        "schemes": ["HMAC-SHA256"],
+        "credentials": "your_shared_secret_min_32_chars_long"
+      }
+    }
+  }
+}
+```
+
+When the operation completes, the agent POSTs to your URL:
+
+```json
+{
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [{ "package_id": "pkg_001" }]
+  }
+}
+```
+
+Verify the HMAC signature before processing:
+
+```javascript
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function handleWebhook(req) {
+  const signature = req.headers['x-adcp-signature'];
+  const expected = createHmac('sha256', 'your_shared_secret_min_32_chars_long')
+    .update(JSON.stringify(req.body))
+    .digest('hex');
+
+  if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    throw new Error('Invalid signature');
+  }
+
+  const { task_type, status, result } = req.body;
+  console.log(result.media_buy_id); // "mb_12345"
+}
+```
+
+## Using the client library
+
+The examples above use raw HTTP for clarity. In practice, use the AdCP client library which handles SSE parsing, retries, and authentication:
+
+```bash
+npm install @adcp/client  # JavaScript/TypeScript
+pip install adcp          # Python
+```
+
+```javascript
+import { AdCPClient } from '@adcp/client';
+
+const client = new AdCPClient([{
+  id: 'test',
+  name: 'Test Agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth_token: process.env.ADCP_AUTH_TOKEN,
+}]);
+
+const result = await client.agent('test').executeTask('get_products', {
+  brief: 'Video ads for pet food brand',
+  brand: { domain: 'premiumpetfoods.com' },
+});
+
+console.log(result.data.products);
+```
+
+## What's next
+
+- **[MCP integration guide](/docs/building/integration/mcp-guide)** — transport, sessions, auth details
+- **[A2A integration guide](/docs/building/integration/a2a-guide)** — streaming, artifacts, push notifications
+- **[Task reference](/docs/media-buy/task-reference)** — all available tasks with testable examples
+- **[Error handling](/docs/building/implementation/transport-errors)** — error codes, recovery strategies
+- **[Authentication](/docs/building/integration/authentication)** — production credential setup
