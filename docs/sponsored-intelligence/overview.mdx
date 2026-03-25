@@ -95,12 +95,23 @@ flowchart LR
     I --> K[Checkout Flow]
 ```
 
+### Connection to TMP
+
+On AI assistant surfaces, the [Trusted Match Protocol (TMP)](/docs/trusted-match) triggers SI sessions. TMP handles ad selection; SI handles engagement:
+
+1. TMP Context Match determines which packages match the conversation context
+2. TMP Identity Match confirms user eligibility
+3. The host joins both results and selects the winning package
+4. The winning offer's `brand`, `creative_manifest`, and `media_buy_id` flow into SI's `initiate` call
+
+This separation means SI never needs to evaluate ad relevance or user targeting — TMP handles that upstream. SI receives a pre-selected package and focuses on the conversational experience.
+
 ### The Flow
 
-1. **User expresses interest** → Host identifies opportunity
+1. **TMP selects** → Context Match + Identity Match determine the winning package (see [AI Assistants surface](/docs/trusted-match/surfaces/ai-assistants))
 2. **Get offering details** (optional) → Host retrieves offering info and matching products (`si_get_offering`)
 3. **Consent prompt** → User decides whether to share identity
-4. **Session initiation** → Host invokes brand agent with context + capabilities (`si_initiate_session`)
+4. **Session initiation** → Host invokes brand agent with context + capabilities (`si_initiate_session`), passing `media_buy_id` and `package_id` from the TMP offer
 5. **Conversational engagement** → Brand agent interacts via text, voice, video, or embedded UI (`si_send_message`)
 6. **Session termination** → Handoff back for transaction (via ACP) or conversation complete (`si_terminate_session`)
 
