@@ -426,6 +426,178 @@ For flat_rate DOOH inventory, publishers may include a `parameters` object with 
 
 ---
 
+## Price Breakdown
+
+When buyer and seller have negotiated discounts and commissions, the `price_breakdown` object discloses how `fixed_price` was derived from the rate card. This is optional — sellers who don't need breakdowns omit it entirely, with zero overhead to existing implementations.
+
+`price_breakdown` is a planning-layer construct. It exists on pricing options and confirmed packages within AdCP — it does not propagate into impression-level OpenRTB bid requests or responses.
+
+### Structure
+
+```json
+{
+  "pricing_option_id": "cpm_eur_premium",
+  "pricing_model": "cpm",
+  "fixed_price": 11.90,
+  "currency": "EUR",
+  "price_breakdown": {
+    "list_price": 14.00,
+    "adjustments": [
+      { "kind": "discount", "name": "volume", "rate": 0.15, "description": "12x frequency discount" },
+      { "kind": "commission", "name": "agency", "rate": 0.15, "description": "Agency commission" },
+      { "kind": "settlement", "name": "cash_discount", "rate": 0.02, "description": "2% discount for payment within 10 days" }
+    ]
+  }
+}
+```
+
+- `list_price` — the rate card or base price before any adjustments
+- `adjustments` — ordered list of adjustments, each categorized by `kind`
+- `fixed_price` (on the parent pricing option) — must equal the result of applying all `fee` and `discount` adjustments sequentially to `list_price`
+
+Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility.
+
+### Adjustment Kinds
+
+Adjustments fall into four kinds based on their economic effect:
+
+| Kind | Effect on buyer price | Effect on publisher revenue | When applied |
+|------|----------------------|----------------------------|--------------|
+| `fee` | Increases it | Increases it | Before quoting — walks `list_price` up toward `fixed_price` |
+| `discount` | Reduces it | Reduces it | Before quoting — walks `list_price` down toward `fixed_price` |
+| `commission` | None — budget includes it | Reduces it (revenue split) | Revenue allocation between intermediary and publisher |
+| `settlement` | None — post-invoice | Reduces actual payment | At invoicing or payment time |
+
+**Fees** increase what the buyer pays. Ad serving fees, data/targeting surcharges, and brand safety verification costs are additive to the base price. Without fee adjustments, these would be opaque within `list_price`.
+
+**Discounts** reduce what the buyer pays. Volume discounts, negotiated rates, and early booking discounts all lower both the buyer's cost and the publisher's revenue.
+
+**Commissions** are revenue splits. The buyer's price and budget don't change — commission determines how the payment is divided between the intermediary (e.g., agency) and the publisher. Budgets are always managed inclusive of commissions. Multiple commission adjustments compound sequentially, like discounts — e.g., a 15% agency commission followed by a 5% trading desk fee means the publisher receives `budget × 0.85 × 0.95`.
+
+**Settlement adjustments** are applied at invoicing or payment time (e.g., a cash discount for early payment). They don't affect the committed price or budget. Retroactive rebates and performance incentives are out of scope for `price_breakdown` and would be handled through reconciliation workflows.
+
+### Beneficiary
+
+Each adjustment may include an optional `beneficiary` field identifying who receives the adjustment's value. This is most useful for commission adjustments in multi-intermediary chains:
+
+```json
+{ "kind": "commission", "name": "agency", "rate": 0.15, "beneficiary": "mediaagency.example.com" },
+{ "kind": "commission", "name": "trading_desk", "rate": 0.05, "beneficiary": "tradingdesk.example.com" }
+```
+
+The value can be a sellers.json domain, an AdCP account ID, or a human-readable party name.
+
+### Invariant
+
+The invariant is: `list_price` with all `fee` and `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no fee or discount adjustments are present, `fixed_price` must equal `list_price`.
+
+This invariant applies only when `fixed_price` is present on the parent object. For auction-based packages (where only `bid_price` exists), `price_breakdown` is informational — see [On Confirmed Packages](#on-confirmed-packages).
+
+Fee and discount adjustments compound in array order using these formulas:
+
+```
+For rate-based fees:        running = running × (1 + rate)
+For amount-based fees:      running = running + amount
+For rate-based discounts:   running = running × (1 − rate)
+For amount-based discounts: running = running − amount
+```
+
+All monetary values are rounded to the precision of the currency (e.g., 2 decimal places for EUR/USD) at each step. The invariant holds after rounding.
+
+Example with mixed adjustments:
+
+```
+list_price: 12.00
+  fee, amount: 2.00          → 12.00 + 2.00 = 14.00
+  discount, rate: 0.15       → 14.00 × 0.85 = 11.90
+fixed_price: 11.90 ✓
+```
+
+For the structure example above: 14.00 × (1 − 0.15) = 11.90 ✓ (no fee adjustments in that example)
+
+### Rate vs. Amount
+
+Each adjustment must include exactly one of `rate` or `amount`:
+
+- `rate` — decimal proportion, strictly between 0 and 1 exclusive (0 < rate < 1), e.g., 0.15 for 15%
+- `amount` — positive number (> 0) in the pricing option's currency
+
+```json
+{ "kind": "discount", "name": "volume", "rate": 0.15 }
+{ "kind": "discount", "name": "negotiated", "amount": 2.00, "description": "Flat rate reduction" }
+```
+
+### Budgets and Commission
+
+Budgets are always denominated at the `fixed_price` level, inclusive of commissions. If a buyer commits €10,000 at an €11.90 CPM, that €10,000 is the buyer's cost. The agency takes their commission from that amount; the publisher receives the remainder.
+
+This means a buyer agent comparing rates across sellers can use `fixed_price` directly — it's the actual cost per unit, regardless of the underlying commission structure.
+
+### On Confirmed Packages
+
+The `price_breakdown` field also appears on the package response (confirmed line item). It is seller-populated — buyer agents should treat it as read-only.
+
+**Fixed-price packages** echo the pricing option's breakdown:
+
+```json
+{
+  "package_id": "pkg_12345",
+  "product_id": "premium_display",
+  "pricing_option_id": "cpm_eur_premium",
+  "fixed_price": 11.90,
+  "budget": 10000,
+  "price_breakdown": {
+    "list_price": 14.00,
+    "adjustments": [
+      { "kind": "discount", "name": "volume", "rate": 0.15, "description": "12x frequency discount" },
+      { "kind": "commission", "name": "agency", "rate": 0.15, "description": "Agency commission" },
+      { "kind": "settlement", "name": "cash_discount", "rate": 0.02, "description": "2% for payment within 10 days" }
+    ]
+  }
+}
+```
+
+**Auction-based packages** use `price_breakdown` to disclose commission and settlement terms against the clearing price. For auction packages, `list_price` is set to the clearing price since there is no rate card derivation to disclose. The discount invariant does not apply — the breakdown is informational only:
+
+```json
+{
+  "package_id": "pkg_67890",
+  "product_id": "premium_display",
+  "pricing_option_id": "cpm_eur_auction",
+  "bid_price": 12.50,
+  "budget": 10000,
+  "price_breakdown": {
+    "list_price": 12.50,
+    "adjustments": [
+      { "kind": "commission", "name": "agency", "rate": 0.15, "description": "Agency commission" },
+      { "kind": "settlement", "name": "cash_discount", "rate": 0.02, "description": "2% for payment within 10 days" }
+    ]
+  }
+}
+```
+
+---
+
+## Eligible Adjustments
+
+Publishers can declare which adjustment kinds apply to a pricing option using `eligible_adjustments`. This tells buyer agents upfront whether discounts, commissions, or settlement terms are available — before any negotiation begins.
+
+```json
+{
+  "pricing_option_id": "cpm_eur_standard",
+  "pricing_model": "cpm",
+  "fixed_price": 14.00,
+  "currency": "EUR",
+  "eligible_adjustments": ["fee", "discount", "commission", "settlement"]
+}
+```
+
+When `eligible_adjustments` is present, the buyer knows which kinds of adjustments to expect or request. When absent, no adjustments are pre-declared — the buyer should check `price_breakdown` if present for any adjustments that were already applied.
+
+This field pairs with `price_breakdown`: `eligible_adjustments` signals what is *possible*, while `price_breakdown` shows what was *applied*.
+
+---
+
 ## Multi-Currency Support
 
 Publishers can offer the same product in multiple currencies:
