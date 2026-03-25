@@ -1053,7 +1053,7 @@ export class HTTPServer {
 
     // Mount portrait routes
     this.app.use('/api/portraits', createPublicPortraitRouter());
-    this.app.use('/api/me/portrait', createPortraitRouter({ orgDb, invalidateMemberContextCache }));
+    this.app.use('/api/me/portrait', createPortraitRouter({ orgDb, memberDb, invalidateMemberContextCache }));
     this.app.use('/api/admin/portraits', createAdminPortraitRouter());
 
     // Mount community routes
