@@ -183,16 +183,6 @@ Creative agents MUST reject operations that reference a `rejected` creative for 
 
 Creative agents MUST include `status` and `rejection_reason` (when rejected) in `list_creatives` responses.
 
-## Creative Lead Time
-
-Products MAY declare a `creative_lead_time` as an ISO 8601 duration (e.g., `"P7D"` for 7 days before package start). The seller resolves this to an absolute `creative_deadline` per package at creation time.
-
-This avoids forcing one package per episode for episodic or broadcast inventory — a single product definition can express "materials due 7 days before air." The buyer always sees absolute timestamps on packages via `creative_deadline` in `create_media_buy` and `get_media_buys` responses.
-
-- `creative_lead_time` is seller-declared on the product, not buyer-set
-- The resolved `creative_deadline` appears on packages in create and get responses
-- When both a product-level `creative_lead_time` and an explicit `creative_deadline` are present on a package, the explicit deadline takes precedence
-
 ## Tasks
 
 The Creative Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
