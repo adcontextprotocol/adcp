@@ -1063,6 +1063,10 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   let totalImpressions = 0;
   let totalSpend = 0;
   let totalClicks = 0;
+  let totalCompletedViews = 0;
+  let totalViews = 0;
+  let totalReach = 0;
+  let totalReachUnit: string | undefined;
 
   const byPackage = mb.packages.map(pkg => {
     // Paused or canceled packages stop accruing delivery
@@ -1106,11 +1110,48 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
     totalSpend += spend;
     totalClicks += clicks;
 
+    // Audio/video metrics — completion rates vary by channel
+    // Accumulators for totals rollup are updated after audioMetrics is built
+    const isAudioVideo = channels?.some(c =>
+      ['streaming_audio', 'podcast', 'radio', 'ctv', 'linear_tv', 'olv'].includes(c),
+    );
+    let completionRate = 0.65;
+    if (channels?.some(c => ['podcast'].includes(c))) completionRate = 0.87;
+    else if (channels?.some(c => ['streaming_audio', 'radio'].includes(c))) completionRate = 0.72;
+    else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) completionRate = 0.82;
+
+    const reachUnit = channels?.some(c => ['streaming_audio', 'podcast'].includes(c)) ? 'accounts' as const : 'devices' as const;
+    const audioMetrics = isAudioVideo && impressions > 0
+      ? {
+        views: Math.round(impressions * 0.9),
+        completed_views: Math.round(impressions * completionRate),
+        completion_rate: completionRate,
+        reach: Math.round(impressions * 0.72),
+        reach_unit: reachUnit,
+        frequency: +(impressions / Math.round(impressions * 0.72)).toFixed(1),
+        ...(channels?.some(c => ['streaming_audio', 'podcast'].includes(c))
+          ? {
+            follows: Math.round(impressions * 0.002),
+            conversions: Math.round(impressions * 0.006),
+          }
+          : {}),
+      }
+      : {};
+
+    if (isAudioVideo && impressions > 0) {
+      totalCompletedViews += Math.round(impressions * completionRate);
+      totalViews += Math.round(impressions * 0.9);
+      totalReach += Math.round(impressions * 0.72);
+      if (!totalReachUnit) totalReachUnit = reachUnit;
+      else if (totalReachUnit !== reachUnit) totalReachUnit = 'mixed';
+    }
+
     return {
       package_id: pkg.packageId,
       spend,
       impressions,
       clicks,
+      ...audioMetrics,
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/client < 4.11.0
       rate,
@@ -1133,6 +1174,16 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
         impressions: totalImpressions,
         spend: Math.round(totalSpend * 100) / 100,
         clicks: totalClicks,
+        ...(totalCompletedViews > 0 ? {
+          views: totalViews,
+          completed_views: totalCompletedViews,
+          completion_rate: +(totalCompletedViews / totalImpressions).toFixed(3),
+        } : {}),
+        ...(totalReach > 0 && totalReachUnit && totalReachUnit !== 'mixed' ? {
+          reach: totalReach,
+          reach_unit: totalReachUnit,
+          frequency: +(totalImpressions / totalReach).toFixed(1),
+        } : {}),
       },
       by_package: byPackage,
     }],
