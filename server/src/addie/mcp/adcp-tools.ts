@@ -229,8 +229,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             legal_name: { type: 'string', description: 'Registered legal name of the business entity' },
             vat_id: { type: 'string', description: 'VAT identification number' },
             tax_id: { type: 'string', description: 'Tax identification number (non-VAT jurisdictions)' },
-            address: { type: 'object', description: 'Postal address for invoicing' },
-            contact: { type: 'object', description: 'Primary billing contact' },
+            registration_number: { type: 'string', description: 'Company registration number (e.g., HRB 12345)' },
+            address: { type: 'object', description: 'Postal address: street, city, postal_code (required), optional region, country (ISO 3166-1 alpha-2)' },
+            contacts: { type: 'array', description: 'Billing, legal, creative, or general contacts', items: { type: 'object' } },
+            bank: { type: 'object', description: 'Bank details for payment (write-only, never echoed in responses). Supports SEPA (iban/bic) and non-SEPA (routing_number/account_number).' },
           },
           required: ['legal_name'],
         },
@@ -793,7 +795,8 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         },
         canceled: {
           type: 'boolean',
-          description: 'Cancel the entire media buy (irreversible, must be true when present). Seller may reject with NOT_CANCELLABLE.',
+          enum: [true],
+          description: 'Cancel the entire media buy (irreversible). Seller may reject with NOT_CANCELLABLE.',
         },
         cancellation_reason: {
           type: 'string',
@@ -808,7 +811,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             properties: {
               package_id: { type: 'string', description: 'Package ID to update' },
               paused: { type: 'boolean', description: 'Pause/resume this package' },
-              canceled: { type: 'boolean', description: 'Cancel this package (irreversible, must be true when present). Seller may reject with NOT_CANCELLABLE.' },
+              canceled: { type: 'boolean', enum: [true], description: 'Cancel this package (irreversible). Seller may reject with NOT_CANCELLABLE.' },
               cancellation_reason: { type: 'string', description: 'Reason for canceling this package', maxLength: 500 },
               budget: { type: 'number', description: 'Updated budget' },
               bid_price: { type: 'number', description: 'Updated bid price (auction only)' },
@@ -835,8 +838,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             legal_name: { type: 'string', description: 'Registered legal name of the business entity' },
             vat_id: { type: 'string', description: 'VAT identification number' },
             tax_id: { type: 'string', description: 'Tax identification number (non-VAT jurisdictions)' },
-            address: { type: 'object', description: 'Postal address for invoicing' },
-            contact: { type: 'object', description: 'Primary billing contact' },
+            registration_number: { type: 'string', description: 'Company registration number (e.g., HRB 12345)' },
+            address: { type: 'object', description: 'Postal address: street, city, postal_code (required), optional region, country (ISO 3166-1 alpha-2)' },
+            contacts: { type: 'array', description: 'Billing, legal, creative, or general contacts', items: { type: 'object' } },
+            bank: { type: 'object', description: 'Bank details for payment (write-only, never echoed in responses). Supports SEPA (iban/bic) and non-SEPA (routing_number/account_number).' },
           },
           required: ['legal_name'],
         },
@@ -2314,10 +2319,19 @@ export function createAdcpToolHandlers(
 
             // Build auth URL with pending request context for auto-retry
             // Note: URLSearchParams handles encoding, so don't double-encode
+            // Strip bank details from params before URL serialization — bank data
+            // in URLs leaks to browser history, access logs, and referrer headers.
+            const safeParams = structuredClone(params);
+            for (const key of ['billing_entity', 'invoice_recipient'] as const) {
+              const obj = (safeParams as Record<string, unknown>)[key];
+              if (obj && typeof obj === 'object' && 'bank' in (obj as Record<string, unknown>)) {
+                delete (obj as Record<string, unknown>).bank;
+              }
+            }
             const authParams = new URLSearchParams({
               agent_context_id: agentContext.id,
               pending_task: task,
-              pending_params: JSON.stringify(params),
+              pending_params: JSON.stringify(safeParams),
             });
             const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
 

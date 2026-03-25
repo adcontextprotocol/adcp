@@ -20,6 +20,10 @@
           "items": {
             "type": "object",
             "properties": {
+              "account_id": {
+                "type": "string",
+                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations."
+              },
               "brand": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Brand reference, echoed from the request"
@@ -220,6 +224,7 @@
       "data": {
         "accounts": [
           {
+            "account_id": "acc_spark_001",
             "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
             "operator": "pinnacle-media.com",
             "name": "Spark (via Pinnacle)",
@@ -229,6 +234,7 @@
             "account_scope": "operator_brand"
           },
           {
+            "account_id": "acc_glow_pending",
             "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
             "operator": "pinnacle-media.com",
             "name": "Glow",
@@ -285,6 +291,7 @@
       "data": {
         "accounts": [
           {
+            "account_id": "acc_acme_direct_bill",
             "brand": { "domain": "acme-corp.com" },
             "operator": "pinnacle-media.com",
             "name": "Acme Corp (billed direct)",

@@ -168,7 +168,12 @@
     },
     "modification_summary": {
       "type": "string",
-      "description": "Human-readable summary of what changed. SHOULD be present for 'modification' phase."
+      "description": "Human-readable summary of what changed. SHOULD be present for 'modification' phase.",
+      "maxLength": 1000
+    },
+    "invoice_recipient": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Per-buy invoice recipient from create_media_buy or update_media_buy. MUST be present when the tool payload includes invoice_recipient, so the governance agent can validate billing changes."
     }
   },
   "required": [
