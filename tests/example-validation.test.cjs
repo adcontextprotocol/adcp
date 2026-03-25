@@ -21,8 +21,8 @@ addFormats(ajv);
 
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
-  if (uri.startsWith('/schemas/source/')) {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/source/', ''));
+  if (uri.startsWith('/schemas/')) {
+    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
     try {
       const content = fs.readFileSync(schemaPath, 'utf8');
       return JSON.parse(content);
@@ -120,11 +120,10 @@ const exampleData = {
     "product_id": "ctv_sports_premium",
     "name": "CTV Sports Premium",
     "description": "Premium CTV inventory on sports content",
-    "format_ids": ["video_16x9_30s"],
+    "publisher_properties": [{ "publisher_domain": "sportsnetwork.com", "selection_type": "all" }],
+    "format_ids": [{ "agent_url": "https://creative.example.com", "id": "video_16x9_30s" }],
     "delivery_type": "guaranteed",
-    "is_fixed_price": true,
-    "cpm": 45.00,
-    "min_spend": 10000
+    "pricing_options": [{ "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "price": 45.00, "currency": "USD" }]
   },
   
   mediaBuy: {
@@ -142,7 +141,8 @@ const exampleData = {
   creativeAsset: {
     "creative_id": "hero_video_30s",
     "name": "Nike Air Max Hero 30s",
-    "format": "video"
+    "format_id": { "agent_url": "https://creative.example.com", "id": "video_16x9_30s" },
+    "assets": { "main_video": { "type": "video", "url": "https://cdn.example.com/hero_30s.mp4" } }
   },
   
   targeting: {
@@ -163,7 +163,7 @@ const exampleData = {
   },
   
   format: {
-    "format_id": "video_standard_30s",
+    "format_id": { "agent_url": "https://creative.example.com", "id": "video_standard_30s" },
     "name": "Standard Video - 30 seconds"
   },
   
@@ -200,29 +200,27 @@ const exampleData = {
         "product_id": "ctv_sports_premium",
         "name": "CTV Sports Premium",
         "description": "Premium CTV inventory on sports content",
-        "format_ids": ["video_16x9_30s"],
+        "publisher_properties": [{ "publisher_domain": "sportsnetwork.com", "selection_type": "all" }],
+        "format_ids": [{ "agent_url": "https://creative.example.com", "id": "video_16x9_30s" }],
         "delivery_type": "guaranteed",
-        "is_fixed_price": true,
-        "cpm": 45.00,
-        "min_spend": 10000
+        "pricing_options": [{ "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "price": 45.00, "currency": "USD" }]
       }
     ]
   },
   
   createMediaBuyRequest: {
-    "account_id": "acc_nike_001",
+    "account": { "account_id": "acc_nike_001" },
+    "brand": { "domain": "nike.com" },
     "packages": [
       {
-        "products": ["ctv_sports_premium"]
+        "product_id": "ctv_sports_premium",
+        "pricing_option_id": "cpm_fixed",
+        "budget": 50000,
+        "format_ids": [{ "agent_url": "https://creative.example.com", "id": "video_16x9_30s" }]
       }
     ],
-    "po_number": "PO-2024-001",
     "start_time": "2024-01-01T00:00:00Z",
-    "end_time": "2024-01-31T23:59:59Z",
-    "budget": {
-      "total": 50000,
-      "currency": "USD"
-    }
+    "end_time": "2024-01-31T23:59:59Z"
   },
   
   createMediaBuyResponse: {
@@ -235,33 +233,32 @@ const exampleData = {
   },
 
   createMediaBuyRequestNoAccountId: {
+    "account": { "brand": { "domain": "acmecorp.com" }, "operator": "acmecorp.com" },
+    "brand": { "domain": "acmecorp.com" },
     "packages": [
       {
-        "products": ["display_premium_sites"]
+        "product_id": "display_premium_sites",
+        "pricing_option_id": "cpm_standard",
+        "budget": 25000
       }
     ],
     "start_time": "2024-01-01T00:00:00Z",
-    "end_time": "2024-01-31T23:59:59Z",
-    "brand": {
-      "domain": "acmecorp.com"
-    }
+    "end_time": "2024-01-31T23:59:59Z"
   },
 
   createMediaBuyRequestAsap: {
-    "account_id": "acc_acme_001",
+    "account": { "account_id": "acc_acme_001" },
+    "brand": { "domain": "acmecorp.com" },
     "packages": [
       {
-        "products": ["display_premium_sites"],
-        "format_ids": ["display_300x250"]
+        "product_id": "display_premium_sites",
+        "pricing_option_id": "cpm_standard",
+        "budget": 25000,
+        "format_ids": [{ "agent_url": "https://creative.example.com", "id": "display_300x250" }]
       }
     ],
     "start_time": "asap",
-    "end_time": "2024-10-03T23:59:59Z",
-    "budget": {
-      "total": 25000,
-      "currency": "USD",
-      "pacing": "asap"
-    }
+    "end_time": "2024-10-03T23:59:59Z"
   },
   
   // Signals examples
@@ -285,31 +282,37 @@ const exampleData = {
         "coverage_percentage": 12,
         "deployments": [
           {
+            "type": "platform",
             "platform": "the-trade-desk",
-            "account": null,
             "is_live": true,
             "scope": "platform-wide",
             "decisioning_platform_segment_id": "ttd_exp_lux_auto_123"
           }
         ],
-        "pricing": {
-          "cpm": 3.50,
-          "currency": "USD"
-        }
+        "pricing_options": [
+          { "pricing_option_id": "cpm_standard", "model": "cpm", "cpm": 3.50, "currency": "USD" }
+        ]
       }
     ]
   },
   
   activateSignalRequest: {
     "signal_agent_segment_id": "luxury_auto_intenders",
-    "platform": "the-trade-desk",
-    "account": "agency-123-ttd"
+    "destinations": [
+      { "type": "platform", "platform": "the-trade-desk" }
+    ],
+    "account": { "account_id": "agency-123-ttd" }
   },
   
   activateSignalResponse: {
-    "task_id": "activation_789",
-    "status": "pending",
-    "decisioning_platform_segment_id": "ttd_agency123_lux_auto"
+    "deployments": [
+      {
+        "type": "platform",
+        "platform": "the-trade-desk",
+        "is_live": true,
+        "decisioning_platform_segment_id": "ttd_agency123_lux_auto"
+      }
+    ]
   }
 };
 
@@ -325,7 +328,7 @@ async function runTests() {
   test('Product example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.product, 
-    '/schemas/source/core/product.json', 
+    '/schemas/core/product.json', 
     'Product example'
   );
 });
@@ -333,7 +336,7 @@ async function runTests() {
 test('Media Buy example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.mediaBuy, 
-    '/schemas/source/core/media-buy.json', 
+    '/schemas/core/media-buy.json', 
     'Media Buy example'
   );
 });
@@ -341,7 +344,7 @@ test('Media Buy example validates against schema', () => {
 test('Package example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.package, 
-    '/schemas/source/core/package.json', 
+    '/schemas/core/package.json', 
     'Package example'
   );
 });
@@ -349,7 +352,7 @@ test('Package example validates against schema', () => {
 test('Creative Asset example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.creativeAsset, 
-    '/schemas/source/core/creative-asset.json', 
+    '/schemas/core/creative-asset.json', 
     'Creative Asset example'
   );
 });
@@ -357,7 +360,7 @@ test('Creative Asset example validates against schema', () => {
 test('Targeting example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.targeting, 
-    '/schemas/source/core/targeting.json', 
+    '/schemas/core/targeting.json', 
     'Targeting example'
   );
 });
@@ -365,7 +368,7 @@ test('Targeting example validates against schema', () => {
 test('Frequency Cap example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.frequencyCap, 
-    '/schemas/source/core/frequency-cap.json', 
+    '/schemas/core/frequency-cap.json', 
     'Frequency Cap example'
   );
 });
@@ -373,7 +376,7 @@ test('Frequency Cap example validates against schema', () => {
 test('Format example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.format, 
-    '/schemas/source/core/format.json', 
+    '/schemas/core/format.json', 
     'Format example'
   );
 });
@@ -381,7 +384,7 @@ test('Format example validates against schema', () => {
 test('Outcome Measurement example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.outcome_measurement,
-    '/schemas/source/core/outcome-measurement.json',
+    '/schemas/core/outcome-measurement.json',
     'Outcome Measurement example'
   );
 });
@@ -389,7 +392,7 @@ test('Outcome Measurement example validates against schema', () => {
 test('Creative Policy example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.creativePolicy, 
-    '/schemas/source/core/creative-policy.json', 
+    '/schemas/core/creative-policy.json', 
     'Creative Policy example'
   );
 });
@@ -397,7 +400,7 @@ test('Creative Policy example validates against schema', () => {
 test('Error example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.error, 
-    '/schemas/source/core/error.json', 
+    '/schemas/core/error.json', 
     'Error example'
   );
 });
@@ -405,7 +408,7 @@ test('Error example validates against schema', () => {
 test('Response example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.response, 
-    '/schemas/source/core/response.json', 
+    '/schemas/core/response.json', 
     'Response example'
   );
 });
@@ -414,7 +417,7 @@ test('Response example validates against schema', () => {
 test('get_products request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getProductsRequest, 
-    '/schemas/source/media-buy/get-products-request.json', 
+    '/schemas/media-buy/get-products-request.json', 
     'get_products request'
   );
 });
@@ -422,7 +425,7 @@ test('get_products request validates against schema', () => {
 test('get_products response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getProductsResponse, 
-    '/schemas/source/media-buy/get-products-response.json', 
+    '/schemas/media-buy/get-products-response.json', 
     'get_products response'
   );
 });
@@ -430,7 +433,7 @@ test('get_products response validates against schema', () => {
 test('create_media_buy request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.createMediaBuyRequest, 
-    '/schemas/source/media-buy/create-media-buy-request.json', 
+    '/schemas/media-buy/create-media-buy-request.json', 
     'create_media_buy request'
   );
 });
@@ -438,7 +441,7 @@ test('create_media_buy request validates against schema', () => {
 test('create_media_buy response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.createMediaBuyResponse,
-    '/schemas/source/media-buy/create-media-buy-response.json',
+    '/schemas/media-buy/create-media-buy-response.json',
     'create_media_buy response'
   );
 });
@@ -446,7 +449,7 @@ test('create_media_buy response validates against schema', () => {
 test('create_media_buy request without account_id validates against schema', () => {
   return validateAgainstSchema(
     exampleData.createMediaBuyRequestNoAccountId,
-    '/schemas/source/media-buy/create-media-buy-request.json',
+    '/schemas/media-buy/create-media-buy-request.json',
     'create_media_buy request without account_id'
   );
 });
@@ -454,7 +457,7 @@ test('create_media_buy request without account_id validates against schema', () 
 test('create_media_buy request with ASAP start validates against schema', () => {
   return validateAgainstSchema(
     exampleData.createMediaBuyRequestAsap,
-    '/schemas/source/media-buy/create-media-buy-request.json',
+    '/schemas/media-buy/create-media-buy-request.json',
     'create_media_buy request with ASAP start'
   );
 });
@@ -462,7 +465,7 @@ test('create_media_buy request with ASAP start validates against schema', () => 
 test('get_signals request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getSignalsRequest, 
-    '/schemas/source/signals/get-signals-request.json', 
+    '/schemas/signals/get-signals-request.json', 
     'get_signals request'
   );
 });
@@ -470,7 +473,7 @@ test('get_signals request validates against schema', () => {
 test('get_signals response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getSignalsResponse, 
-    '/schemas/source/signals/get-signals-response.json', 
+    '/schemas/signals/get-signals-response.json', 
     'get_signals response'
   );
 });
@@ -478,7 +481,7 @@ test('get_signals response validates against schema', () => {
 test('activate_signal request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.activateSignalRequest, 
-    '/schemas/source/signals/activate-signal-request.json', 
+    '/schemas/signals/activate-signal-request.json', 
     'activate_signal request'
   );
 });
@@ -486,7 +489,7 @@ test('activate_signal request validates against schema', () => {
 test('activate_signal response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.activateSignalResponse, 
-    '/schemas/source/signals/activate-signal-response.json', 
+    '/schemas/signals/activate-signal-response.json', 
     'activate_signal response'
   );
 });

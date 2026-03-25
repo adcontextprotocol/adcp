@@ -63,6 +63,7 @@ console.log(`Created media buy ${created.media_buy_id}`);
 
 // Now update it - pause the campaign
 const updateResult = await testAgent.updateMediaBuy({
+  media_buy_id: created.media_buy_id,
   paused: true
 });
 
@@ -115,6 +116,7 @@ async def create_and_pause_campaign():
 
     # Now update it - pause the campaign
     update_result = await test_agent.simple.update_media_buy(
+        media_buy_id=create_result.media_buy_id,
         paused=True
     )
 
@@ -142,6 +144,8 @@ asyncio.run(create_and_pause_campaign())
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
+| `invoice_recipient` | [BusinessEntity](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
+| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
 `media_buy_id` is required to identify the media buy to update.
@@ -196,6 +200,8 @@ Configure automated delivery reporting for this media buy:
 | `status` | Media buy status after the update (present when status changes, e.g., cancellation) |
 | `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
+| `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
+| `valid_actions` | Actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. |
 | `affected_packages` | Array of full Package objects showing complete state after update |
 
 ### Error Response
@@ -221,6 +227,7 @@ import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
+    package_id: 'pkg_001',
     budget: 50000  // Increased from 30000
   }]
 });
@@ -251,7 +258,7 @@ async def increase_budget():
         UpdateMediaBuyRequest(
             media_buy_id='mb_12345',
             packages=[
-                {'package_id': result.packages[0]['package_id'], 'budget': 50000}
+                {'package_id': 'pkg_001', 'budget': 50000}
             ]
         )
     )
@@ -279,6 +286,7 @@ import { testAgent } from '@adcp/client/testing';
 import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
+  media_buy_id: 'mb_12345',
   end_time: '2025-09-30T23:59:59Z'
 });
 
@@ -304,6 +312,7 @@ from adcp.types import UpdateMediaBuyRequest
 async def extend_campaign():
     result = await test_agent.update_media_buy(
         UpdateMediaBuyRequest(
+            media_buy_id='mb_12345',
             end_time='2025-09-30T23:59:59Z'
         )
     )
@@ -332,6 +341,7 @@ import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
+    package_id: 'pkg_001',
     targeting_overlay: {
       geo_countries: ['US', 'CA'],
       geo_regions: ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
@@ -363,6 +373,7 @@ async def update_targeting():
             media_buy_id='mb_12345',
             packages=[
                 {
+                    'package_id': 'pkg_001',
                     'targeting_overlay': {
                         'geo_countries': ['US', 'CA'],
                         'geo_regions': ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
@@ -395,6 +406,7 @@ import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
+    package_id: 'pkg_001',
     creative_assignments: [
       { creative_id: 'creative_video_v2' },
       { creative_id: 'creative_display_v2', weight: 60 }
@@ -428,6 +440,7 @@ async def replace_creatives():
             media_buy_id='mb_12345',
             packages=[
                 {
+                    'package_id': 'pkg_001',
                     'creative_assignments': [
                         {'creative_id': 'creative_video_v2'},
                         {'creative_id': 'creative_display_v2', 'weight': 60}
@@ -463,10 +476,12 @@ const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [
     {
+      package_id: 'pkg_001',
       budget: 50000,
       pacing: 'front_loaded'
     },
     {
+      package_id: 'pkg_002',
       budget: 30000,
       paused: true
     }
@@ -497,10 +512,12 @@ async def update_multiple_packages():
             media_buy_id='mb_12345',
             packages=[
                 {
+                    'package_id': 'pkg_001',
                     'budget': 50000,
                     'pacing': 'front_loaded'
                 },
                 {
+                    'package_id': 'pkg_002',
                     'budget': 30000,
                     'paused': True
                 }
@@ -677,7 +694,9 @@ Only specified fields are updated - omitted fields remain unchanged:
 
 ```json
 {
+  "media_buy_id": "mb_12345",
   "packages": [{
+    "package_id": "pkg_001",
     "budget": 50000
   }]
 }
@@ -687,7 +706,9 @@ Only specified fields are updated - omitted fields remain unchanged:
 
 ```json
 {
+  "media_buy_id": "mb_12345",
   "packages": [{
+    "package_id": "pkg_001",
     "creative_assignments": [
       { "creative_id": "creative_video_v2" },
       { "creative_id": "creative_display_v2", "weight": 60 }

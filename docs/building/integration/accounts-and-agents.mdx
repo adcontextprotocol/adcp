@@ -367,7 +367,7 @@ The agent manages the buying relationship. It calls `sync_accounts` to tell the 
 | `brand` (`domain` + optional `brand_id`) | Which brand is advertising |
 | `operator` | Who operates on the brand's behalf (agency, trading desk, or the brand itself) |
 | `billing` | Who gets the invoice — `operator`, `agent`, or `advertiser` |
-| `billing_entity` | Structured business entity details for the party responsible for payment — legal name, VAT ID, tax ID, address, contact, and bank details. Used for formal B2B invoicing. Bank details are write-only (never echoed in responses). |
+| `billing_entity` | Structured business entity details for the party responsible for payment — legal name, VAT ID, tax ID, address, contacts, and bank details. Used for formal B2B invoicing. Bank details are write-only (never echoed in responses). |
 | `payment_terms` | Payment terms for this account (`net_15`, `net_30`, `net_45`, `net_60`, `net_90`, `prepay`). The seller must accept these terms or reject the account — terms are never silently remapped. |
 | `sandbox` | Whether this is a sandbox (test) account — no real spend. Only used with implicit accounts; explicit sandbox accounts are pre-existing. |
 
