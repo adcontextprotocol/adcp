@@ -28,7 +28,7 @@
     },
     "views": {
       "type": "number",
-      "description": "Views at threshold (for CPV)",
+      "description": "Content engagements counted toward the billable view threshold. For video this is a platform-defined view event (e.g., 30 seconds or video midpoint); for audio/podcast it is a stream start; for other formats it follows the pricing model's view definition. When the package uses CPV pricing, spend = views × rate.",
       "minimum": 0
     },
     "completed_views": {
@@ -112,17 +112,21 @@
     },
     "reach": {
       "type": "number",
-      "description": "Unique reach - units depend on measurement provider (e.g., individuals, households, devices, cookies). See delivery_measurement.provider for methodology.",
+      "description": "Unique reach in the units specified by reach_unit. When reach_unit is omitted, units are unspecified — do not compare reach values across packages or media buys without a common reach_unit.",
       "minimum": 0
+    },
+    "reach_unit": {
+      "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
+      "description": "Unit of measurement for the reach field. Aligns with the reach_unit declared on optimization goals and delivery forecasts. Required when reach is present to enable cross-platform comparison."
     },
     "frequency": {
       "type": "number",
-      "description": "Average frequency per individual (typically measured over campaign duration, but can vary by measurement provider)",
+      "description": "Average frequency per reach unit (typically measured over campaign duration, but can vary by measurement provider). When reach_unit is 'households', this is average exposures per household; when 'accounts', per logged-in account; etc.",
       "minimum": 0
     },
     "quartile_data": {
       "type": "object",
-      "description": "Video quartile completion data",
+      "description": "Audio/video quartile completion data",
       "properties": {
         "q1_views": {
           "type": "number",
@@ -310,6 +314,9 @@
         "additionalProperties": true
       }
     }
+  },
+  "dependencies": {
+    "reach": ["reach_unit"]
   },
   "additionalProperties": true
 }

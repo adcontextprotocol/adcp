@@ -83,9 +83,14 @@
           "description": "Total clicks across all media buys (if applicable)",
           "minimum": 0
         },
-        "video_completions": {
+        "completed_views": {
           "type": "number",
-          "description": "Total video completions across all media buys (if applicable)",
+          "description": "Total audio/video completions across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "views": {
+          "type": "number",
+          "description": "Total views across all media buys (if applicable)",
           "minimum": 0
         },
         "conversions": {
@@ -112,6 +117,26 @@
         "cost_per_acquisition": {
           "type": "number",
           "description": "Aggregate cost per conversion across all media buys (total spend / total conversions)",
+          "minimum": 0
+        },
+        "completion_rate": {
+          "type": "number",
+          "description": "Aggregate completion rate across all media buys (weighted by impressions, not a simple average of per-buy rates)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reach": {
+          "type": "number",
+          "description": "Deduplicated reach across all media buys (if the seller can deduplicate across buys; otherwise sum of per-buy reach). Only present when all media buys share the same reach_unit. Omitted when reach units are heterogeneous — use per-buy reach values instead.",
+          "minimum": 0
+        },
+        "reach_unit": {
+          "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
+          "description": "Unit of measurement for reach. Only present when all aggregated media buys use the same reach_unit."
+        },
+        "frequency": {
+          "type": "number",
+          "description": "Average frequency per reach unit across all media buys (impressions / reach when cross-buy deduplication is available). Only present when reach is present.",
           "minimum": 0
         },
         "media_buy_count": {
