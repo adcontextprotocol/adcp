@@ -113,6 +113,7 @@ import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
+  getAccountStatus,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 
@@ -852,6 +853,24 @@ function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
 function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
   const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+
+  // Enforce account status gates set by comply_test_controller
+  const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
+  if (accountId?.account_id) {
+    const acctStatus = getAccountStatus(session, accountId.account_id);
+    if (acctStatus && acctStatus !== 'active') {
+      const BLOCKED_STATUSES: Record<string, string> = {
+        suspended: 'Account is suspended — contact the seller to resolve.',
+        payment_required: 'Account requires payment before new media buys can be created.',
+        closed: 'Account is closed and cannot create new media buys.',
+        rejected: 'Account was rejected and cannot create media buys.',
+      };
+      return {
+        errors: [{ code: 'ACCOUNT_STATUS_BLOCKED', message: BLOCKED_STATUSES[acctStatus] || `Account status "${acctStatus}" does not permit new media buys.` }] as TaskError[],
+      };
+    }
+  }
+
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 

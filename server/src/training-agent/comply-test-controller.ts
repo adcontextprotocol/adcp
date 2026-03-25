@@ -20,8 +20,6 @@ const CREATIVE_TRANSITIONS: Record<string, string[]> = {
   archived: ['approved'],
 };
 
-const CREATIVE_TERMINAL: Set<string> = new Set(); // no terminal states — rejected can resubmit, archived can unarchive
-
 /** Valid transitions per account status. */
 const ACCOUNT_TRANSITIONS: Record<string, string[]> = {
   pending_approval: ['active', 'rejected'],

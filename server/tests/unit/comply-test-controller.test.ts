@@ -314,6 +314,43 @@ describe('comply_test_controller', () => {
       expect(result.previous_state).toBe('active');
       expect(result.current_state).toBe('active');
     });
+
+    it('blocks create_media_buy when account is suspended', async () => {
+      const accountId = 'acct-gated';
+      const ACCT_WITH_ID = { ...ACCOUNT, account_id: accountId };
+
+      // Suspend the account
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_account_status',
+        params: { account_id: accountId, status: 'suspended' },
+        account: ACCT_WITH_ID,
+        brand: BRAND,
+      });
+
+      // Try to create a media buy — should be blocked
+      const { result: products } = await simulateCallTool(server, 'get_products', {
+        buying_mode: 'wholesale',
+        account: ACCT_WITH_ID,
+        brand: BRAND,
+      });
+      const product = (products as any).products[0];
+      const now = new Date();
+      const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCT_WITH_ID,
+        brand: BRAND,
+        start_time: now.toISOString(),
+        end_time: end.toISOString(),
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: product.pricing_options[0].pricing_option_id,
+          budget: 5000,
+        }],
+      });
+      expect(isError).toBe(true);
+      expect((result as any).code).toBe('ACCOUNT_STATUS_BLOCKED');
+    });
   });
 
   describe('force_media_buy_status', () => {
