@@ -16,7 +16,6 @@ import type { SlackBlockMessage } from '../slack/types.js';
 const logger = baseLogger.child({ module: 'compliance-notifications' });
 
 const CHANNEL_ID = process.env.REGISTRY_EDITS_CHANNEL_ID;
-const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 const notificationDb = new NotificationDatabase();
 
 interface ComplianceChangeInput {
