@@ -94,9 +94,10 @@
                 "type": "string",
                 "enum": [
                   "include",
-                  "omit"
+                  "omit",
+                  "finalize"
                 ],
-                "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response."
+                "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold — transitions a draft proposal to committed with an expires_at hold window. May trigger seller-side approval (HITL). The buyer should not set a time_budget for finalize requests — they represent a commitment to wait for the result."
               },
               "ask": {
                 "type": "string",

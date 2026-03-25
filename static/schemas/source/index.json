@@ -158,6 +158,10 @@
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
         },
+        "insertion-order": {
+          "$ref": "/schemas/core/insertion-order.json",
+          "description": "A formal insertion order attached to a committed proposal for agreement signing"
+        },
         "product-allocation": {
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
@@ -435,6 +439,10 @@
         "delivery-type": {
           "$ref": "/schemas/enums/delivery-type.json",
           "description": "Type of inventory delivery"
+        },
+        "proposal-status": {
+          "$ref": "/schemas/enums/proposal-status.json",
+          "description": "Lifecycle status of a proposal (draft or committed)"
         },
         "media-buy-status": {
           "$ref": "/schemas/enums/media-buy-status.json",

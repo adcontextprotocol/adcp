@@ -68,7 +68,16 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         refine: {
           type: 'array',
           description: 'Change requests for iterating on a previous get_products response. Each entry has scope (request/product/proposal), an action, and an ask.',
-          items: { type: 'object' },
+          items: {
+            type: 'object',
+            properties: {
+              scope: { type: 'string', enum: ['request', 'product', 'proposal'] },
+              action: { type: 'string', enum: ['include', 'omit', 'adjust', 'finalize'] },
+              id: { type: 'string', description: 'Product or proposal ID to act on' },
+              ask: { type: 'string', description: 'Free-text instruction for the refinement' },
+            },
+            required: ['scope', 'action'],
+          },
         },
         catalog: {
           type: 'object',
@@ -236,6 +245,17 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             bank: { type: 'object', description: 'Bank details for payment (write-only, never echoed in responses). Supports SEPA (iban/bic) and non-SEPA (routing_number/account_number).' },
           },
           required: ['legal_name'],
+        },
+        io_acceptance: {
+          type: 'object',
+          description: 'Acceptance of an insertion order from a committed proposal. Required when the proposal has requires_signature: true.',
+          properties: {
+            io_id: { type: 'string', description: 'The io_id from the proposal insertion_order' },
+            accepted_at: { type: 'string', description: 'ISO 8601 timestamp when the IO was accepted' },
+            signatory: { type: 'string', description: 'Who accepted — agent identifier or human name' },
+            signature_id: { type: 'string', description: 'Reference to electronic signature from signing service' },
+          },
+          required: ['io_id', 'accepted_at', 'signatory'],
         },
         po_number: {
           type: 'string',
