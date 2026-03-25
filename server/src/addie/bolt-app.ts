@@ -112,7 +112,7 @@ import {
 } from './services/community-articles.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import { getDigestByReviewMessage, approveDigest, updateDigestContent } from '../db/digest-db.js';
+import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft } from '../db/digest-db.js';
 import { applyDigestEdit } from './services/digest-editor.js';
 import { renderDigestReview } from './templates/weekly-digest.js';
 import * as relationshipDb from '../db/relationship-db.js';
@@ -3802,18 +3802,7 @@ async function handleDigestEditReply(
     return false;
   }
 
-  if (digest.status !== 'draft') {
-    if (boltApp) {
-      await boltApp.client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: `This digest has already been ${digest.status}. Edits can only be made to drafts.`,
-      });
-    }
-    return true;
-  }
-
-  // Verify editor is an Editorial working group leader or member
+  // Verify editor is an Editorial working group leader or member before any state changes
   const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
   if (!editorial) {
     logger.warn('Editorial working group not found for digest edit');
@@ -3829,6 +3818,37 @@ async function handleDigestEditReply(
         channel: channelId,
         thread_ts: threadTs,
         text: 'Only Editorial working group members can edit the digest.',
+      });
+    }
+    return true;
+  }
+
+  if (digest.status === 'skipped') {
+    // Revive skipped digest so editorial can continue collaborating
+    const revived = await revertToDraft(digest.id);
+    if (!revived) {
+      if (boltApp) {
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: `Could not reopen this digest. It may have already been sent.`,
+        });
+      }
+      return true;
+    }
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `Digest reopened as a draft. Applying your edit...`,
+      });
+    }
+  } else if (digest.status !== 'draft') {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `This digest has already been sent. Edits can only be made to drafts.`,
       });
     }
     return true;
@@ -3908,11 +3928,11 @@ async function handleDigestRegenerate(
   messageTs: string,
 ): Promise<boolean> {
   const digest = await getDigestByReviewMessage(channelId, messageTs);
-  if (!digest || digest.status !== 'draft') {
+  if (!digest || (digest.status !== 'draft' && digest.status !== 'skipped')) {
     return false;
   }
 
-  // Verify reactor is an Editorial working group leader or member
+  // Verify reactor is an Editorial working group leader or member before any state changes
   const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
   if (!editorial) {
     logger.warn('Editorial working group not found for digest regenerate');
@@ -3933,7 +3953,7 @@ async function handleDigestRegenerate(
     return true;
   }
 
-  // Delegate to applyDigestEdit which handles regeneration and edit history
+  // Delegate to handleDigestEditReply which handles revert, regeneration, and edit history
   return handleDigestEditReply(channelId, messageTs, 'regenerate', reactingUserId);
 }
 
@@ -3948,7 +3968,7 @@ async function handleDigestApproval(
   messageTs: string,
 ): Promise<boolean> {
   const digest = await getDigestByReviewMessage(channelId, messageTs);
-  if (!digest || digest.status !== 'draft') {
+  if (!digest || (digest.status !== 'draft' && digest.status !== 'skipped')) {
     return false;
   }
 
@@ -3977,6 +3997,12 @@ async function handleDigestApproval(
     return true;
   }
 
+  // Revive skipped digest before approving
+  if (digest.status === 'skipped') {
+    const revived = await revertToDraft(digest.id);
+    if (!revived) return false;
+  }
+
   // Store canonical (WorkOS) user ID for audit trail
   const approverUserId = matchedLeader.canonical_user_id || reactingUserId;
   const approved = await approveDigest(digest.id, approverUserId);
@@ -3986,11 +4012,32 @@ async function handleDigestApproval(
     const resolved = await resolveSlackUserDisplayName(reactingUserId);
     const name = resolved?.display_name || 'An editor';
 
-    await boltApp.client.chat.postMessage({
-      channel: channelId,
-      thread_ts: messageTs,
-      text: `Approved by ${name}! Will send at 10am ET.`,
-    });
+    // If approved after the normal 10am send window, send immediately
+    const { getETHour, sendDigest } = await import('./jobs/weekly-digest.js');
+    const etHour = getETHour();
+
+    if (etHour >= 10) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: `Approved by ${name}! Sending now...`,
+      });
+
+      const sendResult = await sendDigest(approved);
+      if (sendResult.sent === 0) {
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: messageTs,
+          text: `Delivery failed — nothing was sent. The digest is still approved and will retry on the next scheduled check.`,
+        });
+      }
+    } else {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: `Approved by ${name}! Will send at 10am ET.`,
+      });
+    }
 
     logger.info(
       { digestId: digest.id, approvedBy: approverUserId },
