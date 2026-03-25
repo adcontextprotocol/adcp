@@ -33,7 +33,7 @@
     },
     "session_status": {
       "$ref": "/schemas/enums/si-session-status.json",
-      "description": "Session status after initiation. Always 'active' on success."
+      "description": "Current session lifecycle state. Returned in initiation, message, and termination responses."
     },
     "session_ttl_seconds": {
       "type": "integer",
