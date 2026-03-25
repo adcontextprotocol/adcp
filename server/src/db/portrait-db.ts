@@ -1,8 +1,8 @@
 /**
- * Member Portrait Database
+ * Portrait Database
  *
  * Manages illustrated member portraits — creation, approval, serving,
- * and rate-limit tracking.
+ * and rate-limit tracking. Portraits belong to users (not member profiles).
  */
 
 import { query, getPool } from './client.js';
@@ -12,7 +12,8 @@ const logger = createLogger('portrait-db');
 
 export interface MemberPortrait {
   id: string;
-  member_profile_id: string;
+  user_id: string | null;
+  member_profile_id: string | null;
   image_url: string;
   portrait_data: Buffer | null;
   prompt_used: string | null;
@@ -26,7 +27,7 @@ export interface MemberPortrait {
 
 type PortraitMetadata = Omit<MemberPortrait, 'portrait_data'>;
 
-const METADATA_COLUMNS = `id, member_profile_id, image_url, prompt_used, vibe, palette, status, approved_at, created_at, updated_at`;
+const METADATA_COLUMNS = `id, user_id, member_profile_id, image_url, prompt_used, vibe, palette, status, approved_at, created_at, updated_at`;
 
 /** Get portrait metadata by ID (no binary data) */
 export async function getPortraitById(id: string): Promise<PortraitMetadata | null> {
@@ -46,33 +47,34 @@ export async function getPortraitData(id: string): Promise<{ portrait_data: Buff
   return result.rows[0] || null;
 }
 
-/** Get the active (approved) portrait for a member profile */
-export async function getActivePortrait(profileId: string): Promise<PortraitMetadata | null> {
+/** Get the active (approved) portrait for a user */
+export async function getActivePortrait(userId: string): Promise<PortraitMetadata | null> {
   const prefixed = METADATA_COLUMNS.split(', ').map(c => `p.${c}`).join(', ');
   const result = await query<PortraitMetadata>(
     `SELECT ${prefixed}
      FROM member_portraits p
-     JOIN member_profiles mp ON mp.portrait_id = p.id
-     WHERE mp.id = $1`,
-    [profileId]
+     JOIN users u ON u.portrait_id = p.id
+     WHERE u.workos_user_id = $1`,
+    [userId]
   );
   return result.rows[0] || null;
 }
 
-/** Get the latest generated (not yet approved) portrait for a profile */
-export async function getLatestGenerated(profileId: string): Promise<PortraitMetadata | null> {
+/** Get the latest generated (not yet approved) portrait for a user */
+export async function getLatestGenerated(userId: string): Promise<PortraitMetadata | null> {
   const result = await query<PortraitMetadata>(
     `SELECT ${METADATA_COLUMNS} FROM member_portraits
-     WHERE member_profile_id = $1 AND status = 'generated'
+     WHERE user_id = $1 AND status = 'generated'
      ORDER BY created_at DESC LIMIT 1`,
-    [profileId]
+    [userId]
   );
   return result.rows[0] || null;
 }
 
 /** Create a new portrait record */
 export async function createPortrait(data: {
-  member_profile_id: string;
+  user_id: string;
+  member_profile_id?: string | null;
   image_url: string;
   portrait_data?: Buffer;
   prompt_used?: string;
@@ -81,11 +83,12 @@ export async function createPortrait(data: {
   status?: 'pending' | 'generated' | 'approved';
 }): Promise<PortraitMetadata> {
   const result = await query<PortraitMetadata>(
-    `INSERT INTO member_portraits (member_profile_id, image_url, portrait_data, prompt_used, vibe, palette, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO member_portraits (user_id, member_profile_id, image_url, portrait_data, prompt_used, vibe, palette, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING ${METADATA_COLUMNS}`,
     [
-      data.member_profile_id,
+      data.user_id,
+      data.member_profile_id || null,
       data.image_url,
       data.portrait_data || null,
       data.prompt_used || null,
@@ -97,37 +100,34 @@ export async function createPortrait(data: {
   return result.rows[0];
 }
 
-/** Approve a portrait and set it as the profile's active portrait and community avatar */
-export async function approvePortrait(portraitId: string, profileId: string): Promise<PortraitMetadata | null> {
+/** Approve a portrait and set it as the user's active portrait and community avatar */
+export async function approvePortrait(portraitId: string, userId: string): Promise<PortraitMetadata | null> {
   const portraitUrl = `/api/portraits/${portraitId}.png`;
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
     const updateResult = await client.query(
       `UPDATE member_portraits SET status = 'approved', approved_at = NOW(), updated_at = NOW()
-       WHERE id = $1 AND member_profile_id = $2`,
-      [portraitId, profileId]
+       WHERE id = $1 AND user_id = $2`,
+      [portraitId, userId]
     );
     if ((updateResult.rowCount ?? 0) === 0) {
       await client.query('ROLLBACK');
       return null;
     }
+    // Set as user's active portrait and avatar
     await client.query(
-      `UPDATE member_profiles SET portrait_id = $1, updated_at = NOW() WHERE id = $2`,
-      [portraitId, profileId]
+      `UPDATE users SET portrait_id = $1, avatar_url = $2 WHERE workos_user_id = $3`,
+      [portraitId, portraitUrl, userId]
     );
-    // Set the portrait as the community avatar for users in this org
-    // Only overwrite if they have no avatar or already have a portrait-based one
+    // Also sync to member_profiles if the user has one (for directory display)
     await client.query(
-      `UPDATE users SET avatar_url = $1
-       WHERE workos_user_id IN (
-         SELECT om.workos_user_id
-         FROM member_profiles mp
-         JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.id = $2
-       )
-       AND (avatar_url IS NULL OR avatar_url = '' OR avatar_url LIKE '/api/portraits/%')`,
-      [portraitUrl, profileId]
+      `UPDATE member_profiles mp
+       SET portrait_id = $1, updated_at = NOW()
+       FROM organization_memberships om
+       WHERE om.workos_user_id = $2
+         AND om.workos_organization_id = mp.workos_organization_id`,
+      [portraitId, userId]
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -140,26 +140,25 @@ export async function approvePortrait(portraitId: string, profileId: string): Pr
   return getPortraitById(portraitId);
 }
 
-/** Remove portrait from a profile (sets portrait_id to NULL) and clears community avatars */
-export async function removeFromProfile(profileId: string): Promise<void> {
+/** Remove portrait from a user and clear their avatar */
+export async function removeFromUser(userId: string): Promise<void> {
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
-    // Clear avatar_url for users whose avatar points to a portrait from this profile
     await client.query(
-      `UPDATE users SET avatar_url = NULL
-       WHERE workos_user_id IN (
-         SELECT om.workos_user_id
-         FROM member_profiles mp
-         JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.id = $1
-       )
-       AND avatar_url LIKE '/api/portraits/%'`,
-      [profileId]
+      `UPDATE users SET portrait_id = NULL, avatar_url = NULL
+       WHERE workos_user_id = $1 AND avatar_url LIKE '/api/portraits/%'`,
+      [userId]
     );
+    // Also clear from member_profiles if user has one
     await client.query(
-      `UPDATE member_profiles SET portrait_id = NULL, updated_at = NOW() WHERE id = $1`,
-      [profileId]
+      `UPDATE member_profiles mp
+       SET portrait_id = NULL, updated_at = NOW()
+       FROM organization_memberships om
+       WHERE om.workos_user_id = $1
+         AND om.workos_organization_id = mp.workos_organization_id
+         AND mp.portrait_id IS NOT NULL`,
+      [userId]
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -179,13 +178,13 @@ export async function rejectPortrait(id: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
-/** Count generations for a profile in the current month (for rate limiting) */
-export async function countMonthlyGenerations(profileId: string): Promise<number> {
+/** Count generations for a user in the current month (for rate limiting) */
+export async function countMonthlyGenerations(userId: string): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*) as count FROM member_portraits
-     WHERE member_profile_id = $1
+     WHERE user_id = $1
        AND created_at >= date_trunc('month', NOW())`,
-    [profileId]
+    [userId]
   );
   return parseInt(result.rows[0].count, 10);
 }
@@ -212,9 +211,13 @@ export async function listPortraits(options?: {
 
   const prefixed = METADATA_COLUMNS.split(', ').map(c => `p.${c}`).join(', ');
   const result = await query<PortraitMetadata & { display_name: string; slug: string }>(
-    `SELECT ${prefixed}, mp.display_name, mp.slug
+    `SELECT ${prefixed},
+            COALESCE(mp.display_name, u.first_name || ' ' || u.last_name) as display_name,
+            COALESCE(mp.slug, cp.slug) as slug
      FROM member_portraits p
-     JOIN member_profiles mp ON mp.id = p.member_profile_id
+     LEFT JOIN users u ON u.workos_user_id = p.user_id
+     LEFT JOIN member_profiles mp ON mp.id = p.member_profile_id
+     LEFT JOIN community_profiles cp ON cp.user_id = p.user_id
      ${where}
      ORDER BY p.created_at DESC
      LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
@@ -254,10 +257,9 @@ export async function getPublicBuilders(): Promise<Array<{
 /** Map workos_user_id to portrait_id (for admin users page) */
 export async function getUserPortraitMap(): Promise<Record<string, string>> {
   const result = await query<{ workos_user_id: string; portrait_id: string }>(
-    `SELECT om.workos_user_id, mp.portrait_id::text
-     FROM member_profiles mp
-     JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
-     WHERE mp.portrait_id IS NOT NULL`
+    `SELECT workos_user_id, portrait_id::text
+     FROM users
+     WHERE portrait_id IS NOT NULL`
   );
   const map: Record<string, string> = {};
   for (const row of result.rows) {

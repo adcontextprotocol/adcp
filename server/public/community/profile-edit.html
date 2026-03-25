@@ -771,6 +771,18 @@
             // No member profile yet, but check if the requested org is personal
             const targetOrg = orgs.find(o => o.id === orgParam);
             isPersonalAccount = targetOrg?.is_personal || false;
+
+            // Load billing even without a member profile (for subscription status)
+            if (orgParam) {
+              try {
+                const billingResp = await fetch(`/api/organizations/${orgParam}/billing`);
+                if (billingResp.ok) {
+                  memberBillingData = await billingResp.json();
+                }
+              } catch (e) {
+                console.warn('Could not load billing info:', e);
+              }
+            }
           }
         }
 
@@ -796,22 +808,30 @@
     }
 
     function populateMemberFields(memberProfile, billingData) {
+      const isSubscribed = billingData?.subscription?.status === 'active';
+
       if (!memberProfile) {
-        // No member profile yet — show informational status
         const statusEl = document.getElementById('member-directory-status');
         statusEl.style.display = 'block';
         statusEl.style.background = 'var(--color-gray-50)';
         statusEl.style.color = 'var(--color-text-secondary)';
         statusEl.style.border = 'var(--border-1) solid var(--color-gray-200)';
-        statusEl.innerHTML = 'You don\'t have a member directory listing yet. <a href="/dashboard/settings" style="color: var(--color-brand); font-weight: var(--font-medium);">Subscribe</a> to create one and appear in the directory.';
 
-        // Disable offerings checkboxes — they can't be saved without a member profile
-        document.getElementById('offering-consulting').disabled = true;
-        document.getElementById('offering-other').disabled = true;
-        const offeringsHint = document.getElementById('offerings-hint');
-        if (offeringsHint) {
-          offeringsHint.textContent = 'Subscribe to a membership to set your offerings.';
-          offeringsHint.style.display = '';
+        if (isSubscribed) {
+          // Active subscriber without a member profile — offerings still work
+          // (community profile save creates the member profile automatically)
+          statusEl.innerHTML = 'Save your profile to create your member directory listing.';
+        } else {
+          statusEl.innerHTML = 'You don\'t have a member directory listing yet. <a href="/dashboard/settings" style="color: var(--color-brand); font-weight: var(--font-medium);">Subscribe</a> to create one and appear in the directory.';
+
+          // Disable offerings checkboxes for non-subscribers
+          document.getElementById('offering-consulting').disabled = true;
+          document.getElementById('offering-other').disabled = true;
+          const offeringsHint = document.getElementById('offerings-hint');
+          if (offeringsHint) {
+            offeringsHint.textContent = 'Subscribe to a membership to set your offerings.';
+            offeringsHint.style.display = '';
+          }
         }
         return;
       }
@@ -825,7 +845,6 @@
       // Show visibility status
       const statusEl = document.getElementById('member-directory-status');
       statusEl.style.display = 'block';
-      const isSubscribed = billingData?.subscription?.status === 'active';
       if (memberProfile.is_public && isSubscribed) {
         statusEl.style.background = 'var(--color-success-50)';
         statusEl.style.color = 'var(--color-success-700)';
@@ -886,8 +905,7 @@
       try {
         const resp = await fetch(url);
         if (!resp.ok) {
-          // No member profile — portrait generation unavailable
-          if (resp.status === 404) {
+          if (resp.status === 402 || resp.status === 404) {
             document.getElementById('portrait-ineligible').style.display = '';
             document.getElementById('portrait-ineligible-msg').textContent =
               'Subscribe to a membership to generate a portrait.';

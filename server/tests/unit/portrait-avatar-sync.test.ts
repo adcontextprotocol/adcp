@@ -10,30 +10,38 @@ const portraitDbSource = readFileSync(portraitDbPath, "utf-8");
 /**
  * Portrait-Avatar Sync Tests
  *
- * When a portrait is approved, the user's community avatar_url should be set
- * to the portrait serving URL. When a portrait is removed, avatar_url should
- * be cleared (only if it pointed to a portrait).
+ * Portraits belong to users (not member profiles). When a portrait is approved,
+ * the user's avatar_url and portrait_id should be set. When removed, both should
+ * be cleared (only if avatar pointed to a portrait).
  *
  * These tests validate the SQL in portrait-db.ts to ensure the sync logic
  * is correct without requiring a live database.
  */
 
 describe("approvePortrait", () => {
-  it("sets avatar_url on users table via org membership join", () => {
-    // The approve function should update users.avatar_url
-    expect(portraitDbSource).toContain("UPDATE users SET avatar_url");
-    // It should join through member_profiles -> organization_memberships -> users
-    expect(portraitDbSource).toContain("organization_memberships");
-    expect(portraitDbSource).toContain("member_profiles mp");
+  it("sets avatar_url and portrait_id on users table", () => {
+    const approveSection = portraitDbSource.slice(
+      portraitDbSource.indexOf("async function approvePortrait"),
+      portraitDbSource.indexOf("return getPortraitById(portraitId)")
+    );
+    expect(approveSection).toContain("UPDATE users SET portrait_id");
+    expect(approveSection).toContain("avatar_url");
+  });
+
+  it("syncs portrait_id to member_profiles for directory display", () => {
+    const approveSection = portraitDbSource.slice(
+      portraitDbSource.indexOf("async function approvePortrait"),
+      portraitDbSource.indexOf("return getPortraitById(portraitId)")
+    );
+    expect(approveSection).toContain("UPDATE member_profiles");
+    expect(approveSection).toContain("organization_memberships");
   });
 
   it("constructs portrait URL from portrait ID", () => {
-    // The URL pattern should be /api/portraits/{id}.png
     expect(portraitDbSource).toContain("/api/portraits/${portraitId}.png");
   });
 
   it("runs within the same transaction as the portrait approval", () => {
-    // The approve function should use BEGIN/COMMIT
     const approveSection = portraitDbSource.slice(
       portraitDbSource.indexOf("async function approvePortrait"),
       portraitDbSource.indexOf("return getPortraitById(portraitId)")
@@ -41,11 +49,10 @@ describe("approvePortrait", () => {
     expect(approveSection).toContain("BEGIN");
     expect(approveSection).toContain("COMMIT");
     expect(approveSection).toContain("ROLLBACK");
-    // The avatar_url update should be inside the transaction
-    expect(approveSection).toContain("UPDATE users SET avatar_url");
+    expect(approveSection).toContain("UPDATE users SET portrait_id");
   });
 
-  it("aborts if the portrait does not belong to the profile", () => {
+  it("aborts if the portrait does not belong to the user", () => {
     const approveSection = portraitDbSource.slice(
       portraitDbSource.indexOf("async function approvePortrait"),
       portraitDbSource.indexOf("return getPortraitById(portraitId)")
@@ -54,12 +61,12 @@ describe("approvePortrait", () => {
     expect(approveSection).toContain("return null");
   });
 
-  it("does not overwrite external avatars", () => {
+  it("uses user_id to match portrait ownership", () => {
     const approveSection = portraitDbSource.slice(
       portraitDbSource.indexOf("async function approvePortrait"),
       portraitDbSource.indexOf("return getPortraitById(portraitId)")
     );
-    expect(approveSection).toContain("avatar_url LIKE '/api/portraits/%'");
+    expect(approveSection).toContain("user_id");
   });
 });
 
@@ -69,21 +76,28 @@ describe("getPortraitData", () => {
   });
 });
 
-describe("removeFromProfile", () => {
+describe("removeFromUser", () => {
   it("clears avatar_url only when it points to a portrait", () => {
     const removeSection = portraitDbSource.slice(
-      portraitDbSource.indexOf("async function removeFromProfile"),
+      portraitDbSource.indexOf("async function removeFromUser"),
       portraitDbSource.indexOf("/** Soft-delete")
     );
-    // Should clear avatar_url
-    expect(removeSection).toContain("UPDATE users SET avatar_url = NULL");
-    // Should only clear portrait-based avatars, not external URLs
+    expect(removeSection).toContain("UPDATE users SET portrait_id = NULL, avatar_url = NULL");
     expect(removeSection).toContain("avatar_url LIKE '/api/portraits/%'");
+  });
+
+  it("also clears member_profiles portrait_id for directory sync", () => {
+    const removeSection = portraitDbSource.slice(
+      portraitDbSource.indexOf("async function removeFromUser"),
+      portraitDbSource.indexOf("/** Soft-delete")
+    );
+    expect(removeSection).toContain("UPDATE member_profiles");
+    expect(removeSection).toContain("portrait_id = NULL");
   });
 
   it("runs within a transaction", () => {
     const removeSection = portraitDbSource.slice(
-      portraitDbSource.indexOf("async function removeFromProfile"),
+      portraitDbSource.indexOf("async function removeFromUser"),
       portraitDbSource.indexOf("/** Soft-delete")
     );
     expect(removeSection).toContain("BEGIN");
@@ -121,5 +135,31 @@ describe("backfill migration", () => {
 
   it("only uses approved portraits", () => {
     expect(migration).toContain("status = 'approved'");
+  });
+});
+
+describe("user_id migration", () => {
+  const migrationPath = resolve(__dirname, "../../src/db/migrations/328_portraits_user_id.sql");
+  const migration = readFileSync(migrationPath, "utf-8");
+
+  it("adds user_id column to member_portraits", () => {
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS user_id TEXT");
+  });
+
+  it("adds portrait_id column to users table", () => {
+    expect(migration).toContain("ALTER TABLE users ADD COLUMN IF NOT EXISTS portrait_id UUID");
+  });
+
+  it("backfills user_id from existing org membership data", () => {
+    expect(migration).toContain("UPDATE member_portraits");
+    expect(migration).toContain("organization_memberships");
+  });
+
+  it("makes member_profile_id nullable", () => {
+    expect(migration).toContain("ALTER COLUMN member_profile_id DROP NOT NULL");
+  });
+
+  it("creates index on user_id", () => {
+    expect(migration).toContain("idx_member_portraits_user_id");
   });
 });
