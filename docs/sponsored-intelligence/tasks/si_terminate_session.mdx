@@ -67,9 +67,10 @@ For transaction terminations, includes data needed for ACP checkout:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `checkout_url` | string | Brand's ACP checkout endpoint |
-| `payload` | object | Data to pass to ACP |
-| `expires_at` | string | ISO 8601 expiration for the checkout context |
+| `checkout_url` | uri | Brand's ACP checkout endpoint. Hosts MUST validate this is HTTPS. |
+| `checkout_token` | string | Opaque token to pass to the checkout endpoint |
+| `payload` | object | Rich checkout context (product details, applied offers, pricing). Alternative to `checkout_token` for structured data. |
+| `expires_at` | datetime | When this handoff data expires |
 
 ### Follow-Up Object
 
@@ -262,13 +263,13 @@ sequenceDiagram
     participant A as ACP
 
     H->>B: si_terminate_session(handoff_transaction)
-    B->>H: { acp_handoff: { checkout_url, payload } }
-    H->>A: Initiate checkout with payload
+    B->>H: { acp_handoff: { checkout_url, checkout_token/payload } }
+    H->>A: Initiate checkout with token/payload
     A->>H: Checkout flow
 ```
 
 1. Host receives `acp_handoff` in the termination response
-2. Host initiates ACP checkout using the provided `checkout_url` and `payload`
+2. Host initiates ACP checkout using the provided `checkout_url` and `checkout_token` or `payload`
 3. ACP handles the transaction while maintaining the user's trust with the host
 4. Brand is not the merchant of record - ACP handles payment
 
