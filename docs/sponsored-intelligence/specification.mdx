@@ -277,13 +277,14 @@ Hosts MUST include:
 
 When `reason` is `handoff_transaction`, the brand agent SHOULD return an `acp_handoff` object in the termination response:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `checkout_url` | uri | No | URL for completing the purchase |
-| `checkout_token` | string | No | Opaque token for the checkout flow |
-| `product` | object | No | Product details relevant to the purchase |
+| Field | Type | Description |
+|-------|------|-------------|
+| `checkout_url` | uri | Brand's ACP checkout endpoint. Hosts MUST validate this is HTTPS before opening (see Security Considerations). |
+| `checkout_token` | string | Opaque token to pass to the checkout endpoint. Correlates the SI session with the transaction. |
+| `payload` | object | Rich checkout context (product details, applied offers, pricing). Alternative to `checkout_token` for integrations that need structured data. |
+| `expires_at` | datetime | When this handoff data expires. Hosts SHOULD initiate checkout before this time. |
 
-Hosts SHOULD use `acp_handoff` data to initiate the appropriate commerce flow. The `checkout_token` is opaque to the host — it correlates the SI session with the subsequent transaction on the brand's side.
+Brand agents SHOULD include either `checkout_token` or `payload` (or both) so the host can pass session context to the checkout endpoint.
 
 Brand agents MAY also return a `follow_up` object with post-session context (e.g., summary of what was discussed, next steps).
 

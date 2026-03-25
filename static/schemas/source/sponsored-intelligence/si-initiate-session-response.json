@@ -35,6 +35,11 @@
       "$ref": "/schemas/enums/si-session-status.json",
       "description": "Session status after initiation. Always 'active' on success."
     },
+    "session_ttl_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Session inactivity timeout in seconds. After this duration without a message, the brand agent may terminate the session. Hosts SHOULD warn users before timeout when possible."
+    },
     "errors": {
       "type": "array",
       "items": {

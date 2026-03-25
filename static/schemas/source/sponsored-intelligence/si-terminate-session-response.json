@@ -19,20 +19,26 @@
     },
     "acp_handoff": {
       "type": "object",
-      "description": "ACP checkout handoff data (for handoff_transaction)",
+      "description": "ACP checkout handoff data. Present when reason is handoff_transaction.",
       "properties": {
         "checkout_url": {
           "type": "string",
           "format": "uri",
-          "description": "ACP checkout initiation URL"
+          "description": "Brand's ACP checkout endpoint. Hosts MUST validate this is HTTPS before opening."
         },
         "checkout_token": {
           "type": "string",
-          "description": "Token for ACP checkout flow"
+          "description": "Opaque token for the checkout flow. The host passes this to the checkout endpoint to correlate the SI session with the transaction."
         },
-        "product": {
+        "payload": {
           "type": "object",
-          "description": "Product details for checkout"
+          "description": "Rich checkout context to pass to the ACP endpoint (product details, applied offers, pricing). Alternative to checkout_token for integrations that need structured data.",
+          "additionalProperties": true
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this handoff data expires. Hosts should initiate checkout before this time."
         }
       },
       "additionalProperties": true
