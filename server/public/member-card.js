@@ -110,7 +110,7 @@ function renderMemberCard(member, options = {}) {
       </div>
       <div class="member-card-body">
         ${taglineText ? `<div class="member-tagline">${escapeHtmlSafe(taglineText)}</div>` : ''}
-        ${truncatedDesc ? `<div class="member-description">${truncatedDesc}</div>` : ''}
+        ${truncatedDesc ? `<div class="member-description">${escapeHtmlSafe(truncatedDesc)}</div>` : ''}
         <div class="member-offerings">${offeringsHtml}</div>
       </div>
       <div class="member-card-footer">

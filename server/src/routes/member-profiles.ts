@@ -189,6 +189,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
+      // Validate tagline length
+      if (tagline && typeof tagline === 'string' && tagline.length > 200) {
+        return res.status(400).json({
+          error: 'Invalid tagline',
+          message: 'Tagline must be 200 characters or fewer',
+        });
+      }
+
       // Validate slug format and reserved words
       if (!isValidSlug(slug)) {
         return res.status(400).json({
@@ -415,6 +423,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return res.status(404).json({
           error: 'Profile not found',
           message: 'No member profile exists for your organization. Use POST to create one.',
+        });
+      }
+
+      // Validate tagline length
+      if (updates.tagline && typeof updates.tagline === 'string' && updates.tagline.length > 200) {
+        return res.status(400).json({
+          error: 'Invalid tagline',
+          message: 'Tagline must be 200 characters or fewer',
         });
       }
 

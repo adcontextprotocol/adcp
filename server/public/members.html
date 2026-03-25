@@ -1436,7 +1436,7 @@
               <h1>${member.display_name}</h1>
               ${foundingBadgeHtml}
             </div>
-            ${member.tagline ? `<p class="tagline">${member.tagline}</p>` : ''}
+            ${member.tagline ? `<p class="tagline">${escapeHtml(member.tagline)}</p>` : ''}
           </div>
         </div>
 
