@@ -4843,7 +4843,7 @@ Disallow: /api/admin/
     // ========================================
 
     // GET /api/perspectives - List published perspectives (excludes working group posts and RSS)
-    // ?authored=true filters to only authored content (excludes RSS feed articles)
+    // ?authored=true filters to only authored content (excludes RSS and email feed articles)
     this.app.get('/api/perspectives', async (req, res) => {
       try {
         const pool = getPool();
@@ -4856,7 +4856,7 @@ Disallow: /api/admin/
             published_at, display_order, tags, like_count
           FROM perspectives
           WHERE status = 'published' AND working_group_id IS NULL
-            ${authored ? "AND (source_type IS NULL OR source_type != 'rss')" : ''}
+            ${authored ? "AND (source_type IS NULL OR source_type NOT IN ('rss', 'email'))" : ''}
           ORDER BY published_at DESC NULLS LAST`
         );
 
