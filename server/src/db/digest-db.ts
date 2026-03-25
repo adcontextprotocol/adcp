@@ -170,13 +170,15 @@ export async function setReviewMessage(
 /**
  * Mark a digest as sent with stats
  */
-export async function markSent(id: number, stats: DigestSendStats): Promise<void> {
-  await query(
+export async function markSent(id: number, stats: DigestSendStats): Promise<boolean> {
+  const result = await query(
     `UPDATE weekly_digests
      SET status = 'sent', sent_at = NOW(), send_stats = $2
-     WHERE id = $1`,
+     WHERE id = $1 AND status = 'approved'
+     RETURNING id`,
     [id, JSON.stringify(stats)],
   );
+  return result.rows.length > 0;
 }
 
 /**
@@ -187,6 +189,20 @@ export async function markSkipped(id: number): Promise<void> {
     `UPDATE weekly_digests SET status = 'skipped' WHERE id = $1`,
     [id],
   );
+}
+
+/**
+ * Revert a skipped digest back to draft so it can be edited and re-approved.
+ */
+export async function revertToDraft(id: number): Promise<DigestRecord | null> {
+  const result = await query<DigestRecord>(
+    `UPDATE weekly_digests
+     SET status = 'draft', approved_by = NULL, approved_at = NULL
+     WHERE id = $1 AND status = 'skipped'
+     RETURNING *`,
+    [id],
+  );
+  return result.rows[0] || null;
 }
 
 /**
