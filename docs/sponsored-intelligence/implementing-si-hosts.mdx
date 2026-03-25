@@ -103,7 +103,8 @@ When a session returns `session_status: "pending_handoff"`:
 
 - Implement session timeouts (recommended: 5 minutes of inactivity)
 - Track session state locally and clean up on termination
-- Handle error codes: `SESSION_NOT_FOUND`, `SESSION_TERMINATED`, `RATE_LIMITED`, `offer_unavailable`
+- Handle standard error codes: `SESSION_NOT_FOUND`, `SESSION_TERMINATED`, `RATE_LIMITED`
+- Handle SI-specific error codes: `offer_unavailable`, `capability_unsupported`
 
 ## Testing Your Implementation
 

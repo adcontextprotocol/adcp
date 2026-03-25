@@ -13,6 +13,10 @@
       "type": "boolean",
       "description": "Whether session was successfully terminated"
     },
+    "session_status": {
+      "$ref": "/schemas/enums/si-session-status.json",
+      "description": "Resulting session state. 'complete' for handoff_transaction/handoff_complete, 'terminated' for user_exit/session_timeout/host_terminated."
+    },
     "acp_handoff": {
       "type": "object",
       "description": "ACP checkout handoff data (for handoff_transaction)",

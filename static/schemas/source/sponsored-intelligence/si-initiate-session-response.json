@@ -31,6 +31,10 @@
       "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
       "description": "Intersection of brand and host capabilities for this session"
     },
+    "session_status": {
+      "$ref": "/schemas/enums/si-session-status.json",
+      "description": "Session status after initiation. Always 'active' on success."
+    },
     "errors": {
       "type": "array",
       "items": {
@@ -42,6 +46,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["session_id"],
+  "required": ["session_id", "session_status"],
   "additionalProperties": true
 }
