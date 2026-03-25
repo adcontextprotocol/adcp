@@ -201,7 +201,7 @@ body {
 }
 
 .homepage-hero h1 {
-  font-size: var(--text-4xl);
+  font-size: 3rem;
   font-weight: var(--font-bold);
   color: var(--color-text-heading);
   line-height: var(--leading-tight);
@@ -219,10 +219,10 @@ body {
 }
 
 .homepage-hero .subtitle {
-  font-size: var(--text-xl);
+  font-size: 1.375rem;
   color: var(--color-gray-600);
   line-height: var(--leading-relaxed);
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
 }
 
@@ -321,7 +321,10 @@ body {
 }
 
 .homepage-hero--dark .hero-audience {
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: var(--text-lg);
+  font-weight: var(--font-medium);
+  margin-top: var(--space-6);
 }
 
 .homepage-hero--dark .hero-cta-primary {
@@ -344,9 +347,7 @@ body {
 }
 
 .homepage-hero--dark .hero-free-note {
-  font-size: var(--text-sm);
-  color: rgba(255, 255, 255, 0.75);
-  margin-top: var(--space-4);
+  display: none;
 }
 
 .hero-logos {
@@ -359,7 +360,7 @@ body {
   font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wider);
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.7);
   font-weight: var(--font-semibold);
   margin-bottom: var(--space-6);
 }
