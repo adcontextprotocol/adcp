@@ -451,37 +451,53 @@ When buyer and seller have negotiated discounts and commissions, the `price_brea
 }
 ```
 
-- `list_price` — the fully-loaded rate card (gross) starting point, inclusive of any surcharges or fees. The breakdown only models reductions from this starting point.
+- `list_price` — the rate card or base price before any adjustments
 - `adjustments` — ordered list of adjustments, each categorized by `kind`
-- `fixed_price` (on the parent pricing option) — must equal the result of applying all `discount` adjustments to `list_price`
+- `fixed_price` (on the parent pricing option) — must equal the result of applying all `fee` and `discount` adjustments sequentially to `list_price`
 
 Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility.
 
 ### Adjustment Kinds
 
-Adjustments fall into three kinds based on their economic effect:
+Adjustments fall into four kinds based on their economic effect:
 
 | Kind | Effect on buyer price | Effect on publisher revenue | When applied |
 |------|----------------------|----------------------------|--------------|
-| `discount` | Reduces it | Reduces it | Before quoting — walks `list_price` to `fixed_price` |
+| `fee` | Increases it | Increases it | Before quoting — walks `list_price` up toward `fixed_price` |
+| `discount` | Reduces it | Reduces it | Before quoting — walks `list_price` down toward `fixed_price` |
 | `commission` | None — budget includes it | Reduces it (revenue split) | Revenue allocation between intermediary and publisher |
 | `settlement` | None — post-invoice | Reduces actual payment | At invoicing or payment time |
 
-**Discounts** change what the buyer pays. Volume discounts, negotiated rates, and early booking discounts all reduce both the buyer's cost and the publisher's revenue.
+**Fees** increase what the buyer pays. Ad serving fees, data/targeting surcharges, and brand safety verification costs are additive to the base price. Without fee adjustments, these would be opaque within `list_price`.
+
+**Discounts** reduce what the buyer pays. Volume discounts, negotiated rates, and early booking discounts all lower both the buyer's cost and the publisher's revenue.
 
 **Commissions** are revenue splits. The buyer's price and budget don't change — commission determines how the payment is divided between the intermediary (e.g., agency) and the publisher. Budgets are always managed inclusive of commissions. Multiple commission adjustments compound sequentially, like discounts — e.g., a 15% agency commission followed by a 5% trading desk fee means the publisher receives `budget × 0.85 × 0.95`.
 
 **Settlement adjustments** are applied at invoicing or payment time (e.g., a cash discount for early payment). They don't affect the committed price or budget. Retroactive rebates and performance incentives are out of scope for `price_breakdown` and would be handled through reconciliation workflows.
 
+### Beneficiary
+
+Each adjustment may include an optional `beneficiary` field identifying who receives the adjustment's value. This is most useful for commission adjustments in multi-intermediary chains:
+
+```json
+{ "kind": "commission", "name": "agency", "rate": 0.15, "beneficiary": "mediaagency.example.com" },
+{ "kind": "commission", "name": "trading_desk", "rate": 0.05, "beneficiary": "tradingdesk.example.com" }
+```
+
+The value can be a sellers.json domain, an AdCP account ID, or a human-readable party name.
+
 ### Invariant
 
-The invariant is: `list_price` with all `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no `discount` adjustments are present, `fixed_price` must equal `list_price`.
+The invariant is: `list_price` with all `fee` and `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no fee or discount adjustments are present, `fixed_price` must equal `list_price`.
 
 This invariant applies only when `fixed_price` is present on the parent object. For auction-based packages (where only `bid_price` exists), `price_breakdown` is informational — see [On Confirmed Packages](#on-confirmed-packages).
 
-Multiple discounts compound in array order using these formulas:
+Fee and discount adjustments compound in array order using these formulas:
 
 ```
+For rate-based fees:        running = running × (1 + rate)
+For amount-based fees:      running = running + amount
 For rate-based discounts:   running = running × (1 − rate)
 For amount-based discounts: running = running − amount
 ```
@@ -491,13 +507,13 @@ All monetary values are rounded to the precision of the currency (e.g., 2 decima
 Example with mixed adjustments:
 
 ```
-list_price: 20.00
-  discount, rate: 0.10       → 20.00 × 0.90 = 18.00
-  discount, amount: 2.00     → 18.00 − 2.00 = 16.00
-fixed_price: 16.00 ✓
+list_price: 12.00
+  fee, amount: 2.00          → 12.00 + 2.00 = 14.00
+  discount, rate: 0.15       → 14.00 × 0.85 = 11.90
+fixed_price: 11.90 ✓
 ```
 
-For the structure example above, only the volume discount (kind `discount`) applies: 14.00 × (1 − 0.15) = 11.90 ✓
+For the structure example above: 14.00 × (1 − 0.15) = 11.90 ✓ (no fee adjustments in that example)
 
 ### Rate vs. Amount
 
@@ -572,7 +588,7 @@ Publishers can declare which adjustment kinds apply to a pricing option using `e
   "pricing_model": "cpm",
   "fixed_price": 14.00,
   "currency": "EUR",
-  "eligible_adjustments": ["discount", "commission", "settlement"]
+  "eligible_adjustments": ["fee", "discount", "commission", "settlement"]
 }
 ```
 
