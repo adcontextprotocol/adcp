@@ -7,7 +7,8 @@
   "properties": {
     "io_id": {
       "type": "string",
-      "description": "Unique identifier for this insertion order. Referenced by io_acceptance on create_media_buy."
+      "description": "Unique identifier for this insertion order. Referenced by io_acceptance on create_media_buy.",
+      "maxLength": 255
     },
     "terms": {
       "type": "object",
@@ -15,11 +16,13 @@
       "properties": {
         "advertiser": {
           "type": "string",
-          "description": "Advertiser name or identifier"
+          "description": "Advertiser name or identifier",
+          "maxLength": 500
         },
         "publisher": {
           "type": "string",
-          "description": "Publisher name or identifier"
+          "description": "Publisher name or identifier",
+          "maxLength": 500
         },
         "total_budget": {
           "type": "object",
@@ -31,7 +34,9 @@
             },
             "currency": {
               "type": "string",
-              "description": "ISO 4217 currency code"
+              "description": "ISO 4217 currency code",
+              "minLength": 3,
+              "maxLength": 3
             }
           },
           "required": ["amount", "currency"]
@@ -48,7 +53,8 @@
         },
         "payment_terms": {
           "type": "string",
-          "description": "Payment terms (e.g., 'net_30', 'net_60', 'prepaid')"
+          "description": "Payment terms",
+          "enum": ["net_30", "net_60", "net_90", "prepaid", "due_on_receipt"]
         }
       },
       "additionalProperties": true

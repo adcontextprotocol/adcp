@@ -75,6 +75,7 @@
         "signatory": {
           "type": "string",
           "description": "Who accepted the IO — agent identifier or human name",
+          "minLength": 1,
           "maxLength": 250
         },
         "signature_id": {

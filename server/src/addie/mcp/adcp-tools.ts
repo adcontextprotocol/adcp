@@ -68,7 +68,16 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         refine: {
           type: 'array',
           description: 'Change requests for iterating on a previous get_products response. Each entry has scope (request/product/proposal), an action, and an ask.',
-          items: { type: 'object' },
+          items: {
+            type: 'object',
+            properties: {
+              scope: { type: 'string', enum: ['request', 'product', 'proposal'] },
+              action: { type: 'string', enum: ['include', 'omit', 'adjust', 'finalize'] },
+              id: { type: 'string', description: 'Product or proposal ID to act on' },
+              ask: { type: 'string', description: 'Free-text instruction for the refinement' },
+            },
+            required: ['scope', 'action'],
+          },
         },
         catalog: {
           type: 'object',

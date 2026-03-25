@@ -3976,6 +3976,27 @@ describe('proposal lifecycle', () => {
     expect(result.media_buy_id).toBeDefined();
   });
 
+  it('returns unable when finalizing a nonexistent proposal', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'video news',
+      account,
+    });
+    expect(initial.proposals).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: 'nonexistent_proposal_id' }],
+    });
+
+    const applied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(applied).toBeDefined();
+    expect(applied[0].status).toBe('unable');
+  });
+
   it('omits proposals via refine action', async () => {
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: initial } = await simulateCallTool(server1, 'get_products', {

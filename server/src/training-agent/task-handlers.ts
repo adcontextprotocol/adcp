@@ -18,6 +18,7 @@ import { createLogger } from '../logger.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs } from './types.js';
 import type {
   Product,
+  Proposal,
   FormatID,
   CreateMediaBuyRequest,
   UpdateMediaBuyRequest,
@@ -85,8 +86,8 @@ interface ProposalLifecycle {
   proposal_status?: 'draft' | 'committed';
   insertion_order?: { io_id: string; requires_signature: boolean; terms?: Record<string, unknown> };
 }
-function proposalLifecycle(proposal: unknown): ProposalLifecycle {
-  return proposal as ProposalLifecycle;
+function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
+  return proposal as unknown as ProposalLifecycle;
 }
 
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
@@ -742,7 +743,10 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
             }
 
             // Update proposal in session context
-            const sessionProposals = session.lastGetProductsContext?.proposals || [];
+            if (!session.lastGetProductsContext) {
+              session.lastGetProductsContext = { products: [...products], proposals: [] };
+            }
+            const sessionProposals = session.lastGetProductsContext.proposals || [];
             const idx = sessionProposals.findIndex(p => p.proposal_id === proposalOp.id);
             const updatedProposal = committed as unknown as import('@adcp/client').Proposal;
             if (idx >= 0) {
@@ -750,9 +754,7 @@ function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
             } else {
               sessionProposals.push(updatedProposal);
             }
-            if (session.lastGetProductsContext) {
-              session.lastGetProductsContext.proposals = sessionProposals;
-            }
+            session.lastGetProductsContext.proposals = sessionProposals;
 
             refinementApplied.push({ status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
           } else {
