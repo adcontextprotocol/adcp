@@ -10,6 +10,7 @@ import multer from 'multer';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin, isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
 import { OrganizationDatabase } from '../db/organization-db.js';
+import { MemberDatabase } from '../db/member-db.js';
 import { query as dbQuery } from '../db/client.js';
 import * as portraitDb from '../db/portrait-db.js';
 import { generatePortrait, VIBE_OPTIONS } from '../services/portrait-generator.js';
@@ -32,6 +33,7 @@ const MAX_MONTHLY_GENERATIONS = 3;
 
 export interface PortraitRoutesConfig {
   orgDb: OrganizationDatabase;
+  memberDb: MemberDatabase;
   invalidateMemberContextCache: () => void;
 }
 
@@ -45,11 +47,14 @@ function resolveUserId(req: any): string | null {
 }
 
 /**
- * Check if the user has a paid subscription.
+ * Check if the user belongs to a member organization.
+ * Checks both subscription status and member profile existence,
+ * since founding/invoice members may not have a Stripe subscription.
  */
 async function isPaidMember(
   req: any,
   orgDb: OrganizationDatabase,
+  memberDb: MemberDatabase,
 ): Promise<boolean> {
   if (isDevModeEnabled()) return true;
 
@@ -61,6 +66,9 @@ async function isPaidMember(
     const orgId = m.organization?.id || m.organizationId;
     if (requestedOrgId && orgId !== requestedOrgId) continue;
     if (await orgDb.hasActiveSubscription(orgId)) return true;
+    // Founding/invoice members may not have a subscription record
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    if (profile) return true;
   }
 
   return false;
@@ -123,7 +131,7 @@ export function createPublicPortraitRouter(): Router {
 // =============================================================================
 
 export function createPortraitRouter(config: PortraitRoutesConfig): Router {
-  const { orgDb, invalidateMemberContextCache } = config;
+  const { orgDb, memberDb, invalidateMemberContextCache } = config;
   const router = Router();
 
   // GET / — get current portrait metadata
@@ -159,7 +167,7 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
         return res.status(401).json({ error: 'Not authenticated' });
       }
 
-      if (!await isPaidMember(req, orgDb)) {
+      if (!await isPaidMember(req, orgDb, memberDb)) {
         return res.status(402).json({ error: 'Active subscription required for portrait generation' });
       }
 

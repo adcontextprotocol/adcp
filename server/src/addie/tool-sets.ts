@@ -455,6 +455,18 @@ export function requiresPrecision(selectedSets: string[]): boolean {
 }
 
 /**
+ * Get the set of valid tool set names for a given user context.
+ * Used to filter LLM routing output against actual permitted sets.
+ */
+export function getValidToolSetNames(isAAOAdmin: boolean = false): Set<string> {
+  return new Set(
+    Object.entries(TOOL_SETS)
+      .filter(([_, set]) => !set.adminOnly || isAAOAdmin)
+      .map(([name]) => name)
+  );
+}
+
+/**
  * Get tool set descriptions for the router prompt
  */
 export function getToolSetDescriptionsForRouter(isAAOAdmin: boolean = false): string {

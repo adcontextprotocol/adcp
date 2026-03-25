@@ -27,6 +27,7 @@ import { MEMBER_TOOLS } from './mcp/member-tools.js';
 import { trackApiCall, ApiPurpose } from './services/api-tracker.js';
 import {
   getToolSetDescriptionsForRouter,
+  getValidToolSetNames,
   requiresPrecision as checkPrecision,
 } from './tool-sets.js';
 
@@ -490,6 +491,19 @@ export class AddieRouter {
 
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
+
+      // Filter tool sets to only valid/permitted sets for this user
+      if (parsedPlan.action === 'respond') {
+        const validSets = getValidToolSetNames(ctx.isAAOAdmin ?? false);
+        const filtered = parsedPlan.tool_sets.filter(s => validSets.has(s));
+        if (filtered.length !== parsedPlan.tool_sets.length) {
+          logger.warn({
+            requested: parsedPlan.tool_sets,
+            allowed: filtered,
+          }, 'Router: stripped invalid tool sets from LLM response');
+        }
+        parsedPlan.tool_sets = filtered;
+      }
 
       // Check if any selected tool sets require precision mode (billing, financial)
       let requiresPrecisionMode = false;
