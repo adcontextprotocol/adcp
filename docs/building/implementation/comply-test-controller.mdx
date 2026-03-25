@@ -40,6 +40,7 @@ Sellers that implement compliance test controller MUST:
       "scenario": {
         "type": "string",
         "enum": [
+          "list_scenarios",
           "force_creative_status",
           "force_account_status",
           "force_media_buy_status",
@@ -51,10 +52,113 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. See per-scenario definitions below."
+        "description": "Scenario-specific parameters. Shape depends on scenario — see per-scenario definitions below."
       }
     },
-    "required": ["scenario", "params"]
+    "required": ["scenario", "params"],
+    "allOf": [
+      {
+        "if": { "properties": { "scenario": { "const": "force_creative_status" } } },
+        "then": {
+          "properties": {
+            "params": {
+              "properties": {
+                "creative_id": { "type": "string" },
+                "status": { "$ref": "#/$defs/CreativeStatus" },
+                "rejection_reason": { "type": "string" }
+              },
+              "required": ["creative_id", "status"]
+            }
+          }
+        }
+      },
+      {
+        "if": { "properties": { "scenario": { "const": "force_account_status" } } },
+        "then": {
+          "properties": {
+            "params": {
+              "properties": {
+                "account_id": { "type": "string" },
+                "status": { "$ref": "#/$defs/AccountStatus" }
+              },
+              "required": ["account_id", "status"]
+            }
+          }
+        }
+      },
+      {
+        "if": { "properties": { "scenario": { "const": "force_media_buy_status" } } },
+        "then": {
+          "properties": {
+            "params": {
+              "properties": {
+                "media_buy_id": { "type": "string" },
+                "status": { "$ref": "#/$defs/MediaBuyStatus" },
+                "rejection_reason": { "type": "string" }
+              },
+              "required": ["media_buy_id", "status"]
+            }
+          }
+        }
+      },
+      {
+        "if": { "properties": { "scenario": { "const": "force_session_status" } } },
+        "then": {
+          "properties": {
+            "params": {
+              "properties": {
+                "session_id": { "type": "string" },
+                "status": { "type": "string", "enum": ["expired", "terminated"] }
+              },
+              "required": ["session_id", "status"]
+            }
+          }
+        }
+      },
+      {
+        "if": { "properties": { "scenario": { "const": "simulate_delivery" } } },
+        "then": {
+          "properties": {
+            "params": {
+              "properties": {
+                "media_buy_id": { "type": "string" },
+                "impressions": { "type": "integer" },
+                "clicks": { "type": "integer" },
+                "spend": {
+                  "type": "object",
+                  "properties": {
+                    "amount": { "type": "number" },
+                    "currency": { "type": "string" }
+                  },
+                  "required": ["amount", "currency"]
+                },
+                "conversions": { "type": "integer" }
+              },
+              "required": ["media_buy_id"]
+            }
+          }
+        }
+      },
+      {
+        "if": { "properties": { "scenario": { "const": "simulate_budget_spend" } } },
+        "then": {
+          "properties": {
+            "params": {
+              "properties": {
+                "account_id": { "type": "string" },
+                "media_buy_id": { "type": "string" },
+                "spend_percentage": { "type": "number", "minimum": 0, "maximum": 100 }
+              },
+              "required": ["spend_percentage"],
+              "anyOf": [
+                { "required": ["account_id"] },
+                { "required": ["media_buy_id"] }
+              ]
+            }
+          }
+        }
+      }
+    ]
   }
 }
 ```
@@ -159,7 +263,9 @@ Transitions an SI session to the specified status. Enables testing timeout and e
 
 ### `simulate_delivery`
 
-Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_buy_delivery` MUST reflect this data.
+Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_buy_delivery` MUST reflect this data. Delivery simulation is additive — each call adds to existing delivery totals.
+
+`simulate_delivery` affects delivery reporting only. It does NOT update budget consumption. To test budget thresholds, use `simulate_budget_spend` separately.
 
 **Params:**
 
@@ -168,7 +274,7 @@ Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_
 | `media_buy_id` | string | Yes | Media buy to add delivery to |
 | `impressions` | integer | No | Impressions to simulate |
 | `clicks` | integer | No | Clicks to simulate |
-| `spend` | object | No | `{ amount: number, currency: string }` |
+| `spend` | object | No | `{ amount: number, currency: string }` — reported spend in delivery, does not affect budget |
 | `conversions` | integer | No | Conversions to simulate |
 
 **Example:**
@@ -187,7 +293,7 @@ Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_
 
 ### `simulate_budget_spend`
 
-Simulates budget consumption to a specified percentage. Enables testing budget threshold alerts and `payment_required` transitions without waiting for real spend.
+Simulates budget consumption to a specified percentage. Enables testing budget threshold alerts and `payment_required` transitions without waiting for real spend. This is the only scenario that affects account-level financial state (as returned by `get_account_financials`).
 
 **Params:**
 
@@ -246,11 +352,48 @@ All scenarios return the same envelope:
 }
 ```
 
-For `simulate_delivery` and `simulate_budget_spend`, `previous_state` and `current_state` may be omitted. The `message` field should describe what was simulated.
+**Simulation response** (`simulate_delivery`, `simulate_budget_spend`):
+
+```json
+{
+  "success": true,
+  "simulated": {
+    "impressions": 10000,
+    "clicks": 150,
+    "spend": { "amount": 150.00, "currency": "USD" }
+  },
+  "message": "Delivery simulated for mb-789: 10000 impressions, 150 clicks, $150.00 spend"
+}
+```
+
+The `simulated` field echoes back the values that were recorded, so the caller can verify what was injected before checking `get_media_buy_delivery`.
+
+### Idempotency
+
+State transition scenarios (`force_*`) are idempotent: forcing a status that matches the current state returns success with `previous_state` equal to `current_state`. This avoids flaky tests when comply retries after transient failures.
+
+Simulation scenarios (`simulate_*`) are NOT idempotent — each call adds to or replaces state as defined by the scenario.
 
 ## Compliance testing modes
 
 The presence of `comply_test_controller` in a seller's tool list determines which mode a compliance tester uses:
+
+### Capability discovery
+
+A seller may implement the test controller without supporting every scenario. Comply SHOULD call `comply_test_controller` with `scenario: "list_scenarios"` as the first interaction. Sellers that support this return the list of implemented scenarios:
+
+```json
+{
+  "success": true,
+  "scenarios": [
+    "force_creative_status",
+    "force_account_status",
+    "force_media_buy_status"
+  ]
+}
+```
+
+Sellers that do not implement `list_scenarios` SHOULD return an error with `"unknown scenario"`. Comply treats any error response as "all declared enum values are supported" (backwards-compatible behavior).
 
 ### Observational mode (default)
 
@@ -271,14 +414,16 @@ When `comply_test_controller` is available:
 
 ```
 1. sync_creatives(creative)
-2. force_creative_status(creative_id, "approved")
-3. list_creatives() → verify status = "approved"
-4. force_creative_status(creative_id, "archived")
-5. list_creatives() → verify status = "archived"
-6. force_creative_status(creative_id, "processing") → expect error (terminal)
-7. sync_creatives(same creative) → verify resubmission accepted
+2. force_creative_status(creative_id, "pending_review")
+3. force_creative_status(creative_id, "approved")
+4. list_creatives() → verify status = "approved"
+5. force_creative_status(creative_id, "archived")
+6. list_creatives() → verify status = "archived"
+7. sync_creatives(same creative) → verify unarchive (→ approved or pending_review)
 8. force_creative_status(creative_id, "rejected", reason)
 9. list_creatives() → verify rejection_reason persisted
+10. sync_creatives(same creative) → verify resubmission (rejected → processing)
+11. force_creative_status(creative_id, "approved") → expect error (must go through pending_review)
 ```
 
 ### Example: account operation gates in deterministic mode
@@ -332,10 +477,10 @@ When `comply_test_controller` is available:
 4. Report which mode was used so compliance results are clear about coverage
 5. Test the controller's transition validation itself — invalid transitions should fail, not silently succeed
 
-## Open questions
+## Design decisions
 
-1. **Should sellers validate transition ordering?** For example, if comply calls `force_creative_status(approved)` on a creative that was never `processing`, should the seller reject it? Recommendation: yes — the controller should enforce the same state machine rules as production.
+1. **Sellers validate transition ordering.** The controller enforces the same state machine rules as production. Calling `force_creative_status(approved)` on a creative that was never `processing` is an error — the controller rejects it just as production would.
 
-2. **Cleanup between tests.** Should comply call a `reset` scenario between test runs, or should each scenario be self-contained? Recommendation: self-contained — each test creates its own entities, so there's no shared state to clean up.
+2. **Tests are self-contained.** Each test creates its own entities, so there is no shared state to clean up between runs. No `reset` scenario is needed.
 
-3. **Delivery simulation fidelity.** Should `simulate_delivery` create records indistinguishable from real delivery, or is a synthetic marker acceptable? Recommendation: indistinguishable — the point is to test that `get_media_buy_delivery` works correctly with real-shaped data.
+3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. Comply ignores this marker — it validates `get_media_buy_delivery` responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
