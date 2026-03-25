@@ -109,6 +109,11 @@ import {
   handleAcquireRights,
   handleUpdateRights,
 } from './brand-handlers.js';
+import {
+  COMPLY_TEST_CONTROLLER_TOOL,
+  handleComplyTestController,
+  getDeliverySimulation,
+} from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
@@ -590,6 +595,7 @@ const TOOLS = [
   },
   ...GOVERNANCE_TOOLS,
   ...BRAND_TOOLS,
+  COMPLY_TEST_CONTROLLER_TOOL,
   {
     name: 'get_adcp_capabilities',
     description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
@@ -1322,6 +1328,14 @@ function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
     };
   });
+
+  // Add simulated delivery data from comply_test_controller
+  const simDelivery = getDeliverySimulation(session, mb.mediaBuyId);
+  if (simDelivery) {
+    totalImpressions += simDelivery.impressions;
+    totalClicks += simDelivery.clicks;
+    totalSpend += simDelivery.reportedSpend.amount;
+  }
 
   return {
     reporting_period: {
@@ -2093,6 +2107,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   acquire_rights: handleAcquireRights,
   update_rights: handleUpdateRights,
   get_adcp_capabilities: handleGetAdcpCapabilities,
+  comply_test_controller: handleComplyTestController,
 };
 
 /**

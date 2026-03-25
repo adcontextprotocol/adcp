@@ -787,7 +787,8 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('acquire_rights');
     expect(toolNames).toContain('update_rights');
     expect(toolNames).toContain('get_adcp_capabilities');
-    expect(toolNames).toHaveLength(20);
+    expect(toolNames).toContain('comply_test_controller');
+    expect(toolNames).toHaveLength(21);
   });
 
   it('returns error for unknown tool', async () => {
