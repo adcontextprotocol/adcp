@@ -92,7 +92,11 @@
           "type": "object",
           "properties": {
             "session_id": { "type": "string", "description": "Session to transition" },
-            "status": { "$ref": "/schemas/enums/si-session-status.json" },
+            "status": {
+              "type": "string",
+              "enum": ["complete", "terminated"],
+              "description": "Target terminal status. Only terminal statuses are valid — active and pending_handoff are session-internal transitions."
+            },
             "termination_reason": {
               "type": "string",
               "description": "Reason for termination (e.g., session_timeout, host_terminated, policy_violation). Required when status = terminated."

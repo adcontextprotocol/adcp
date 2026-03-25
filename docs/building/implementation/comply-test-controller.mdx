@@ -27,6 +27,8 @@ Without a test controller, compliance testing is observational: fire an action, 
 
 Sellers MUST NOT include `comply_test_controller` in the `tools/list` response for production connections. The tool should only appear when the connection is established with sandbox credentials (a sandbox API key, a sandbox OAuth scope, or a sandbox URL). This ensures production context windows are not taxed by test-only tooling and prevents accidental state manipulation.
 
+The mechanism for provisioning sandbox credentials is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so comply implementations can connect appropriately.
+
 Comply SHOULD verify that `comply_test_controller` is absent from `tools/list` on a production connection as a basic safety check.
 
 ## Tool definition
@@ -219,7 +221,7 @@ After calling `simulate_budget_spend`, the seller MUST reflect the simulated con
 | `media_buy_id` | string | No | Media buy (for buy-level budget) |
 | `spend_percentage` | number | Yes | Spend to this % of budget (0–100) |
 
-At least one of `account_id` or `media_buy_id` is required.
+At least one of `account_id` or `media_buy_id` is required. The target entity MUST have a non-zero budget configured — the controller SHOULD return `INVALID_PARAMS` if it does not.
 
 **Example:**
 
@@ -314,9 +316,10 @@ Controllers MUST use structured error codes so comply can assert on specific fai
 | Error code | When |
 |---|---|
 | `INVALID_TRANSITION` | Transition violates the state machine rules |
-| `NOT_FOUND` | Entity does not exist |
-| `UNKNOWN_SCENARIO` | Scenario not implemented |
-| `INVALID_PARAMS` | Missing or malformed params |
+| `NOT_FOUND` | Entity does not exist or caller does not have access (multi-tenant sandboxes SHOULD treat "not yours" as "not found") |
+| `UNKNOWN_SCENARIO` | Scenario not implemented by this seller |
+| `INVALID_PARAMS` | Missing or malformed params, or precondition not met (e.g., `simulate_budget_spend` on an entity with no budget configured) |
+| `INTERNAL_ERROR` | Transient seller-side failure (e.g., sandbox database unavailable). Comply SHOULD retry once before treating as a failure. |
 
 ### Idempotency
 
@@ -343,7 +346,7 @@ A seller may implement the test controller without supporting every scenario. Co
 }
 ```
 
-Sellers that do not implement `list_scenarios` SHOULD return an error with `UNKNOWN_SCENARIO`. Comply treats this as "all declared enum values are supported" — this fallback exists so early implementers who skip `list_scenarios` are not penalized.
+Sellers that do not implement `list_scenarios` SHOULD return an error with `UNKNOWN_SCENARIO`. When this happens, comply runs each scenario individually and treats `UNKNOWN_SCENARIO` responses as coverage gaps (not failures). This means early implementers who skip `list_scenarios` are not penalized — comply discovers supported scenarios through trial.
 
 ### Observational mode (default)
 
@@ -414,8 +417,9 @@ Comply distinguishes three outcome categories in deterministic mode:
 1. create_media_buy(budget: $1000)
 2. simulate_delivery(impressions: 10000, reported_spend: $500)
 3. get_media_buy_delivery() → verify delivery reflects simulated data
+   (reported_spend is delivery-only; does not affect account budget)
 4. simulate_budget_spend(spend_percentage: 95)
-5. get_account_financials() → verify total_spend reflects 95% of budget
+5. get_account_financials() → verify total_spend reflects 95% ($950, not $500 from delivery)
 6. simulate_budget_spend(spend_percentage: 100)
 7. force_account_status("payment_required")
 8. create_media_buy() → expect ACCOUNT_PAYMENT_REQUIRED
@@ -450,7 +454,7 @@ Comply distinguishes three outcome categories in deterministic mode:
 
 1. **Sellers validate transition ordering.** The controller enforces the same state machine rules as production. Calling `force_creative_status(approved)` on a creative that was never `processing` is an error — the controller rejects it just as production would. The lifecycle state machines referenced here are defined in the respective protocol specifications (see [creative lifecycle](/docs/creative/specification#creative-status-lifecycle), [account lifecycle](/docs/accounts/overview#account-status-lifecycle), [media buy lifecycle](/docs/media-buy/specification), [SI session lifecycle](/docs/sponsored-intelligence/specification#session-states)).
 
-2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. No `reset` scenario is needed.
+2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. No `reset` scenario is needed. Compliance testers SHOULD use unique identifiers (e.g., UUIDs) for test entities to avoid collisions when multiple comply instances run against the same sandbox concurrently. Sandbox entity cleanup (e.g., TTL-based expiration) is the seller's responsibility.
 
 3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. Comply ignores this marker — it validates `get_media_buy_delivery` responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
 
