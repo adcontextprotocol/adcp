@@ -1446,6 +1446,21 @@
         "description": "Schema that all extension files must follow. Defines valid_from, valid_until, and extension data structure."
       },
       "schemas": {}
+    },
+    "compliance": {
+      "description": "Compliance testing tool schemas. The test controller is an optional sandbox-only tool that lets comply walk full lifecycle state machines by triggering seller-side transitions deterministically.",
+      "tasks": {
+        "comply-test-controller": {
+          "request": {
+            "$ref": "/schemas/compliance/comply-test-controller-request.json",
+            "description": "Request payload for the comply_test_controller tool — scenario selection and scenario-specific params"
+          },
+          "response": {
+            "$ref": "/schemas/compliance/comply-test-controller-response.json",
+            "description": "Response payload — state transition results, simulation results, scenario list, or structured errors"
+          }
+        }
+      }
     }
   },
   "usage": {
