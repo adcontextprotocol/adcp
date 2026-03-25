@@ -99,8 +99,8 @@ export interface AgentWithStats extends Agent {
   health?: AgentHealth;
   stats?: AgentStats;
   capabilities?: AgentCapabilities;
+  compliance?: AgentCompliance;
   propertiesError?: string;
-  // Property summary (counts, not full list to avoid millions of records)
   publisher_domains?: string[];
   property_summary?: PropertySummary;
 }
@@ -855,6 +855,17 @@ export interface CommitteeDocumentActivity {
   content_hash_after?: string;
   change_summary?: string;
   detected_at: Date;
+}
+
+// Agent Compliance Types
+
+export interface AgentCompliance {
+  status: 'passing' | 'degraded' | 'failing' | 'unknown';
+  lifecycle_stage: 'development' | 'testing' | 'production' | 'deprecated';
+  tracks: Record<string, string>;
+  streak_days: number;
+  last_checked_at: string | null;
+  headline: string | null;
 }
 
 // Federated Discovery Types

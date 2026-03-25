@@ -382,6 +382,8 @@ components:
           $ref: "#/components/schemas/AgentStats"
         capabilities:
           $ref: "#/components/schemas/AgentCapabilities"
+        compliance:
+          $ref: "#/components/schemas/AgentCompliance"
         publisher_domains:
           type: array
           items:
@@ -482,6 +484,47 @@ components:
             - can_preview
       required:
         - tools_count
+    AgentCompliance:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - passing
+            - degraded
+            - failing
+            - unknown
+        lifecycle_stage:
+          type: string
+          enum:
+            - development
+            - testing
+            - production
+            - deprecated
+        tracks:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            core: pass
+            products: fail
+        streak_days:
+          type: integer
+        last_checked_at:
+          type:
+            - string
+            - "null"
+        headline:
+          type:
+            - string
+            - "null"
+      required:
+        - status
+        - lifecycle_stage
+        - tracks
+        - streak_days
+        - last_checked_at
+        - headline
     PropertySummary:
       type: object
       properties:
@@ -1857,6 +1900,13 @@ paths:
               - "true"
           required: false
           name: properties
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "true"
+          required: false
+          name: compliance
           in: query
       responses:
         "200":

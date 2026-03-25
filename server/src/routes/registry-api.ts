@@ -49,10 +49,12 @@ import { AAO_HOST, aaoHostedBrandJsonUrl } from "../config/aao.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
+import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
+const complianceDb = new ComplianceDatabase();
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
 function extractDomain(raw: string): string {
@@ -482,6 +484,7 @@ registry.registerPath({
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
+      compliance: z.enum(["true"]).optional(),
     }),
   },
   responses: {
@@ -1879,6 +1882,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const withHealth = req.query.health === "true";
       const withCapabilities = req.query.capabilities === "true";
       const withProperties = req.query.properties === "true";
+      const withCompliance = req.query.compliance === "true";
 
       const federatedAgents = await federatedIndex.listAllAgents(type);
 
@@ -1905,9 +1909,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         discovered: federatedAgents.filter((a) => a.source === "discovered").length,
       };
 
-      if (!withHealth && !withCapabilities && !withProperties) {
+      if (!withHealth && !withCapabilities && !withProperties && !withCompliance) {
         return res.json({ agents, count: agents.length, sources: bySource });
       }
+
+      // Bulk-fetch compliance status if requested
+      const complianceMap = withCompliance
+        ? await complianceDb.bulkGetComplianceStatus(agents.map(a => a.url))
+        : null;
 
       const enriched = await Promise.all(
         agents.map(async (agent): Promise<AgentWithStats> => {
@@ -1988,6 +1997,20 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             }
           }
 
+          if (complianceMap) {
+            const cs = complianceMap.get(agent.url);
+            if (cs) {
+              enrichedAgent.compliance = {
+                status: cs.status,
+                lifecycle_stage: cs.lifecycle_stage,
+                tracks: cs.tracks_summary_json || {},
+                streak_days: cs.streak_days,
+                last_checked_at: cs.last_checked_at?.toISOString() || null,
+                headline: cs.headline,
+              };
+            }
+          }
+
           return enrichedAgent;
         })
       );
@@ -1998,6 +2021,176 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       res.status(500).json({ error: "Failed to list agents" });
     }
   });
+
+  // ── Agent Compliance Endpoints ──────────────────────────────────
+
+  router.get("/registry/agents/:encodedUrl/compliance", async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      const status = await complianceDb.getComplianceStatus(agentUrl);
+      const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+
+      if (!status) {
+        return res.json({
+          agent_url: agentUrl,
+          status: "unknown",
+          lifecycle_stage: metadata?.lifecycle_stage || "production",
+          tracks: {},
+          streak_days: 0,
+          last_checked_at: null,
+          headline: null,
+        });
+      }
+
+      res.json({
+        agent_url: agentUrl,
+        status: status.status,
+        lifecycle_stage: metadata?.lifecycle_stage || "production",
+        tracks: status.tracks_summary_json || {},
+        streak_days: status.streak_days,
+        last_checked_at: status.last_checked_at?.toISOString() || null,
+        last_passed_at: status.last_passed_at?.toISOString() || null,
+        last_failed_at: status.last_failed_at?.toISOString() || null,
+        headline: status.headline,
+        status_changed_at: status.status_changed_at?.toISOString() || null,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get compliance status");
+      res.status(500).json({ error: "Failed to get compliance status" });
+    }
+  });
+
+  router.get("/registry/agents/:encodedUrl/compliance/history", async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+      const history = await complianceDb.getComplianceHistory(agentUrl, limit);
+
+      res.json({
+        agent_url: agentUrl,
+        runs: history.map(run => ({
+          id: run.id,
+          overall_status: run.overall_status,
+          headline: run.headline,
+          tracks_passed: run.tracks_passed,
+          tracks_failed: run.tracks_failed,
+          tracks_skipped: run.tracks_skipped,
+          tracks_partial: run.tracks_partial,
+          total_duration_ms: run.total_duration_ms,
+          triggered_by: run.triggered_by,
+          tested_at: run.tested_at,
+        })),
+        count: history.length,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to get compliance history");
+      res.status(500).json({ error: "Failed to get compliance history" });
+    }
+  });
+
+  const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
+
+  /**
+   * Verify the authenticated user belongs to the organization that owns this agent.
+   * Returns true if ownership is confirmed, false otherwise.
+   */
+  async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
+    try {
+      const result = await query(
+        `SELECT 1 FROM member_profiles mp
+         JOIN organization_memberships om
+           ON om.workos_organization_id = mp.workos_organization_id
+         WHERE mp.agents @> $1::jsonb
+           AND om.workos_user_id = $2
+         LIMIT 1`,
+        [JSON.stringify([{ url: agentUrl }]), userId],
+      );
+      return result.rows.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  function validateAgentUrlParam(raw: string): string | null {
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+      return raw;
+    } catch {
+      return null;
+    }
+  }
+
+  router.put("/registry/agents/:encodedUrl/lifecycle", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+
+      if (req.user) {
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to modify this agent" });
+        }
+      }
+
+      const { lifecycle_stage } = req.body;
+
+      const validStages = ["development", "testing", "production", "deprecated"];
+      if (!lifecycle_stage || !validStages.includes(lifecycle_stage)) {
+        return res.status(400).json({ error: `lifecycle_stage must be one of: ${validStages.join(", ")}` });
+      }
+
+      const metadata = await complianceDb.upsertRegistryMetadata(agentUrl, {
+        lifecycle_stage: lifecycle_stage as LifecycleStage,
+      });
+
+      res.json(metadata);
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to update lifecycle stage");
+      res.status(500).json({ error: "Failed to update lifecycle stage" });
+    }
+  });
+
+  router.put("/registry/agents/:encodedUrl/compliance/opt-out", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+
+      if (req.user) {
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to modify this agent" });
+        }
+      }
+
+      const { opt_out } = req.body;
+
+      if (typeof opt_out !== "boolean") {
+        return res.status(400).json({ error: "opt_out must be a boolean" });
+      }
+
+      const metadata = await complianceDb.upsertRegistryMetadata(agentUrl, {
+        compliance_opt_out: opt_out,
+      });
+
+      res.json(metadata);
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to update compliance opt-out");
+      res.status(500).json({ error: "Failed to update compliance opt-out" });
+    }
+  });
+
+  // ── Publishers ──────────────────────────────────────────────────
 
   router.get("/registry/publishers", async (_req, res) => {
     try {
