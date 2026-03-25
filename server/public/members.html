@@ -1511,31 +1511,31 @@
               ${member.contact_email ? `
                 <div class="contact-item">
                   <span>Email:</span>
-                  <a href="mailto:${member.contact_email}">${member.contact_email}</a>
+                  <a href="mailto:${escapeHtml(member.contact_email)}">${escapeHtml(member.contact_email)}</a>
                 </div>
               ` : ''}
               ${member.contact_phone ? `
                 <div class="contact-item">
                   <span>Phone:</span>
-                  <span>${member.contact_phone}</span>
+                  <span>${escapeHtml(member.contact_phone)}</span>
                 </div>
               ` : ''}
               ${member.contact_website ? `
                 <div class="contact-item">
                   <span>Website:</span>
-                  <a href="${member.contact_website}" target="_blank">${new URL(member.contact_website).hostname}</a>
+                  <a href="${escapeHtml(member.contact_website)}" target="_blank">${new URL(member.contact_website).hostname}</a>
                 </div>
               ` : ''}
               ${member.linkedin_url ? `
                 <div class="contact-item">
                   <span>LinkedIn:</span>
-                  <a href="${member.linkedin_url}" target="_blank">View Profile</a>
+                  <a href="${escapeHtml(member.linkedin_url)}" target="_blank">View Profile</a>
                 </div>
               ` : ''}
               ${member.twitter_url ? `
                 <div class="contact-item">
                   <span>Twitter/X:</span>
-                  <a href="${member.twitter_url}" target="_blank">View Profile</a>
+                  <a href="${escapeHtml(member.twitter_url)}" target="_blank">View Profile</a>
                 </div>
               ` : ''}
             </div>
