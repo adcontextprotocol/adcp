@@ -1124,85 +1124,92 @@ export function createOrganizationsRouter(): Router {
       // Use trimmed name for consistency
       const trimmedName = organization_name.trim();
 
-      // Check if an org with this domain already exists BEFORE creating
+      // Check if an org with this domain already exists BEFORE creating.
+      // Uses FOR UPDATE to prevent concurrent adoption races.
       if (verifiedDomain) {
-        const existingOrgResult = await pool.query(
-          `SELECT o.workos_organization_id, o.name, o.prospect_status, o.subscription_status
-           FROM organization_domains od
-           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
-           WHERE LOWER(od.domain) = LOWER($1)`,
-          [verifiedDomain]
-        );
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
 
-        if (existingOrgResult.rows.length > 0) {
-          const existing = existingOrgResult.rows[0];
-          const existingOrgId = existing.workos_organization_id;
-          const existingOrgName = existing.name;
+          const existingOrgResult = await client.query(
+            `SELECT o.workos_organization_id, o.name, o.prospect_status, o.subscription_status
+             FROM organization_domains od
+             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+             WHERE LOWER(od.domain) = LOWER($1)
+             FOR UPDATE OF o`,
+            [verifiedDomain]
+          );
 
-          // Only auto-adopt prospect orgs. Active orgs (with subscriptions or
-          // that have already been joined/converted) should use the join-request flow.
-          const isAdoptable = !existing.subscription_status
-            && (!existing.prospect_status || !['joined', 'declined'].includes(existing.prospect_status));
+          if (existingOrgResult.rows.length > 0) {
+            const existing = existingOrgResult.rows[0];
+            const existingOrgId = existing.workos_organization_id;
+            const existingOrgName = existing.name;
 
-          if (!isAdoptable) {
-            return res.status(409).json({
-              error: 'Organization exists',
-              message: `An organization for ${verifiedDomain} already exists: "${existingOrgName}". Please search for it and request to join instead of creating a new one.`,
-              existing_org_id: existingOrgId,
-              existing_org_name: existingOrgName,
-            });
-          }
+            // Only auto-adopt prospect orgs. Active orgs (with subscriptions or
+            // that have already been joined/converted) should use the join-request flow.
+            const isAdoptable = !existing.subscription_status
+              && (!existing.prospect_status || !['joined', 'declined'].includes(existing.prospect_status));
 
-          // Prospect org — check if user is already a member
-          const isDevUser = isDevModeEnabled() && getDevUser(req);
-          let existingMembership: { id: string; role?: { slug: string } } | null = null;
-          if (!isDevUser) {
-            const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+            if (!isAdoptable) {
+              await client.query('ROLLBACK');
+              client.release();
+              return res.status(409).json({
+                error: 'Organization exists',
+                message: `An organization for ${verifiedDomain} already exists: "${existingOrgName}". Please search for it and request to join instead of creating a new one.`,
+                existing_org_id: existingOrgId,
+                existing_org_name: existingOrgName,
+              });
+            }
+
+            // Prospect org — check if user is already a member
+            const isDevUser = isDevModeEnabled() && getDevUser(req);
+            let existingMembership: { id: string; role?: { slug: string } } | null = null;
+            if (!isDevUser) {
+              const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+                userId: user.id,
+                organizationId: existingOrgId,
+                statuses: ['active', 'inactive', 'pending'],
+              });
+              existingMembership = userMemberships.data[0] ?? null;
+            }
+            const alreadyMember = !!existingMembership;
+
+            // Adopting a prospect org always makes the user the owner.
+            // They may already have a membership (e.g. from Slack domain sync)
+            // with a lower role — upgrade it.
+            const roleSlug = 'owner';
+
+            if (existingMembership && existingMembership.role?.slug !== 'owner') {
+              await workos!.userManagement.updateOrganizationMembership(existingMembership.id, {
+                roleSlug: 'owner',
+              });
+            }
+
+            logger.info({
               userId: user.id,
-              organizationId: existingOrgId,
-              statuses: ['active', 'inactive', 'pending'],
-            });
-            existingMembership = userMemberships.data[0] ?? null;
-          }
-          const alreadyMember = !!existingMembership;
+              orgId: existingOrgId,
+              orgName: existingOrgName,
+              domain: verifiedDomain,
+              role: roleSlug,
+              wasAlreadyMember: alreadyMember,
+            }, 'User adopting prospect organization via registration');
 
-          // Adopting a prospect org always makes the user the owner.
-          // They may already have a membership (e.g. from Slack domain sync)
-          // with a lower role — upgrade it.
-          const roleSlug = 'owner';
+            if (!alreadyMember && !isDevUser) {
+              await workos!.userManagement.createOrganizationMembership({
+                userId: user.id,
+                organizationId: existingOrgId,
+                roleSlug,
+              });
+            }
 
-          if (existingMembership && existingMembership.role?.slug !== 'owner') {
-            await workos!.userManagement.updateOrganizationMembership(existingMembership.id, {
-              roleSlug: 'owner',
-            });
-          }
-
-          logger.info({
-            userId: user.id,
-            orgId: existingOrgId,
-            orgName: existingOrgName,
-            domain: verifiedDomain,
-            role: roleSlug,
-            wasAlreadyMember: alreadyMember,
-          }, 'User adopting prospect organization via registration');
-
-          if (!alreadyMember && !isDevUser) {
-            await workos!.userManagement.createOrganizationMembership({
-              userId: user.id,
-              organizationId: existingOrgId,
-              roleSlug,
-            });
-          }
-
-          // Mirror membership and update prospect status locally
-          try {
-            await pool.query(`
+            // Mirror membership and update prospect status locally (within the same transaction)
+            await client.query(`
               INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
               VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
               ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
             `, [user.id, existingOrgId, user.email, roleSlug]);
 
-            await pool.query(`
+            await client.query(`
               UPDATE organizations SET prospect_status = 'joined', updated_at = NOW()
               WHERE workos_organization_id = $1
                 AND prospect_status IS NOT NULL
@@ -1221,19 +1228,23 @@ export function createOrganizationsRouter(): Router {
                 role: roleSlug,
               },
             });
-          } catch (dbError) {
-            logger.error({
-              userId: user.id,
-              orgId: existingOrgId,
-              error: dbError,
-            }, 'Local DB failed after WorkOS membership created — needs reconciliation');
+
+            await client.query('COMMIT');
+            client.release();
+
+            return res.status(200).json({
+              id: existingOrgId,
+              name: existingOrgName,
+              adopted: true,
+            });
           }
 
-          return res.status(200).json({
-            id: existingOrgId,
-            name: existingOrgName,
-            adopted: true,
-          });
+          await client.query('ROLLBACK');
+          client.release();
+        } catch (adoptError) {
+          await client.query('ROLLBACK').catch(() => {});
+          client.release();
+          throw adoptError;
         }
       }
 
