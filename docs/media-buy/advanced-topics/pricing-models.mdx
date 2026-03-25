@@ -475,9 +475,20 @@ Adjustments fall into three kinds based on their economic effect:
 
 ### Invariant
 
-The invariant is: `list_price` with all `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency.
+The invariant is: `list_price` with all `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no `discount` adjustments are present, `fixed_price` must equal `list_price`.
 
-Multiple discounts compound in array order. Rate-based discounts multiply the running price; amount-based discounts subtract from it:
+This invariant applies only when `fixed_price` is present on the parent object. For auction-based packages (where only `bid_price` exists), `price_breakdown` is informational — see [On Confirmed Packages](#on-confirmed-packages).
+
+Multiple discounts compound in array order using these formulas:
+
+```
+For rate-based discounts:   running = running × (1 − rate)
+For amount-based discounts: running = running − amount
+```
+
+All monetary values are rounded to the precision of the currency (e.g., 2 decimal places for EUR/USD) at each step. The invariant holds after rounding.
+
+Example with mixed adjustments:
 
 ```
 list_price: 20.00
@@ -492,8 +503,8 @@ For the structure example above, only the volume discount (kind `discount`) appl
 
 Each adjustment must include exactly one of `rate` or `amount`:
 
-- `rate` — decimal proportion in the range (0, 1), e.g., 0.15 for 15%
-- `amount` — positive number in the pricing option's currency
+- `rate` — decimal proportion, strictly between 0 and 1 exclusive (0 < rate < 1), e.g., 0.15 for 15%
+- `amount` — positive number (> 0) in the pricing option's currency
 
 ```json
 { "kind": "discount", "name": "volume", "rate": 0.15 }
@@ -508,7 +519,7 @@ This means a buyer agent comparing rates across sellers can use `fixed_price` di
 
 ### On Confirmed Packages
 
-The `price_breakdown` field also appears on the package response (confirmed line item).
+The `price_breakdown` field also appears on the package response (confirmed line item). It is seller-populated — buyer agents should treat it as read-only.
 
 **Fixed-price packages** echo the pricing option's breakdown:
 
@@ -530,7 +541,7 @@ The `price_breakdown` field also appears on the package response (confirmed line
 }
 ```
 
-**Auction-based packages** use `price_breakdown` to disclose commission and settlement terms against the clearing price. The discount invariant does not apply — the clearing price is the price. The breakdown is informational only:
+**Auction-based packages** use `price_breakdown` to disclose commission and settlement terms against the clearing price. For auction packages, `list_price` is set to the clearing price since there is no rate card derivation to disclose. The discount invariant does not apply — the breakdown is informational only:
 
 ```json
 {
@@ -557,7 +568,7 @@ Publishers can declare which adjustment kinds apply to a pricing option using `e
 
 ```json
 {
-  "pricing_option_id": "cpm_eur_premium",
+  "pricing_option_id": "cpm_eur_standard",
   "pricing_model": "cpm",
   "fixed_price": 14.00,
   "currency": "EUR",

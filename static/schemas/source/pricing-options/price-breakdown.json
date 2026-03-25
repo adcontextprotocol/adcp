@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/pricing-options/price-breakdown.json",
   "title": "Price Breakdown",
-  "description": "Breaks down the composition of fixed_price from a list (rate card) price through adjustments. Adjustments fall into three kinds: discounts (change what the buyer pays), commissions (revenue splits that don't affect buyer price), and settlement terms (applied at invoicing). The invariant is: list_price with all discount adjustments applied equals fixed_price. Budgets are always denominated at the fixed_price level, inclusive of commissions.",
+  "description": "Breaks down the composition of fixed_price from a list (rate card) price through adjustments. Adjustments fall into three kinds: discounts (change what the buyer pays), commissions (revenue splits that don't affect buyer price), and settlement terms (applied at invoicing). The invariant is: list_price with all discount adjustments applied equals fixed_price. This invariant applies only when fixed_price is present on the parent object; on auction-based packages the breakdown is informational only. All monetary values are rounded to currency precision at each step. Budgets are always denominated at the fixed_price level, inclusive of commissions.",
   "type": "object",
   "properties": {
     "list_price": {
