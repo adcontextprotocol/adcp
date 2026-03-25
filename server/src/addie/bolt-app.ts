@@ -83,7 +83,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser } from './thread-utils.js';
+import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import {
@@ -1827,6 +1827,13 @@ async function handleAppMention({
           ? 'The user is replying in a Slack thread. Here are the previous messages in this thread for context:'
           : 'The user mentioned you in a conversation. Here are the recent messages leading up to the mention:';
         threadContext = `\n\n## ${contextLabel} Context\n${header}\n${contextMessages.join('\n')}\n\n---\n`;
+
+        // Calibrate response length to match the thread's conversational register
+        const styleHint = buildThreadStyleHint(rawMessages, context.botUserId || '');
+        if (styleHint) {
+          threadContext += `\n${styleHint}\n`;
+        }
+
         logger.debug({ messageCount: contextMessages.length, resolvedUsers: userNameMap.size }, `Addie Bolt: Fetched ${contextLabel.toLowerCase()} context for mention`);
       }
     }
@@ -2849,6 +2856,13 @@ async function handleActiveThreadReply({
 
     if (contextMessages.length > 0) {
       threadContext = `\n\n## Thread Context\nThis is a continuation of a conversation in a Slack thread. Here are the previous messages:\n${contextMessages.join('\n')}\n\n---\n`;
+
+      // Calibrate response length to match the thread's conversational register
+      const styleHint = buildThreadStyleHint(slackThreadMessages, context.botUserId || '');
+      if (styleHint) {
+        threadContext += `\n${styleHint}\n`;
+      }
+
       logger.debug({ messageCount: contextMessages.length }, 'Addie Bolt: Built thread context for active reply');
     }
   }
