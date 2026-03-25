@@ -1368,6 +1368,8 @@ async function handleUserMessage({
     ...(certIterations && { maxIterations: certIterations }),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
     ...(hasCertificationContext && { maxMessages: 50 }),
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude using streaming
@@ -1936,6 +1938,8 @@ async function handleAppMention({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -2608,6 +2612,8 @@ async function handleDirectMessage(
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -2953,6 +2959,8 @@ async function handleActiveThreadReply({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -3459,6 +3467,8 @@ async function handleChannelMessage({
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
       requestContext,
+      slackUserId: userId,
+      threadId: thread.thread_id,
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -4187,7 +4197,12 @@ async function handleReactionAdded({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+  const processOptions = {
+    ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+    requestContext,
+    slackUserId: reactingUserId,
+    threadId: thread.thread_id,
+  };
 
   // Process with Claude
   let response;

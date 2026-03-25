@@ -15,6 +15,7 @@ import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.j
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, type MessageTurn } from '../utils/token-limiter.js';
+import { notifyToolError } from './error-notifier.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -224,6 +225,10 @@ export interface ProcessMessageOptions {
   requestContext?: string;
   /** Override max messages for conversation history (default: 20, certification sessions use 50) */
   maxMessages?: number;
+  /** Slack user ID — used for error notifications so admins know who was affected */
+  slackUserId?: string;
+  /** Thread ID — used for error notification links to admin view */
+  threadId?: string;
 }
 
 /**
@@ -961,6 +966,7 @@ export class AddieClaudeClient {
                 result.includes('need to be logged in');
               if (looksLikeError) {
                 logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie: Tool returned error result');
+                notifyToolError({ toolName, errorMessage: result.substring(0, 500), slackUserId: options?.slackUserId, threadId: options?.threadId, threw: false });
               }
               toolResults.push({ tool_use_id: toolUseId, content: result });
               toolExecutions.push({
@@ -977,6 +983,7 @@ export class AddieClaudeClient {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw exception');
+            notifyToolError({ toolName, errorMessage, slackUserId: options?.slackUserId, threadId: options?.threadId, threw: true });
             toolResults.push({
               tool_use_id: toolUseId,
               content: `Error: ${errorMessage}`,
@@ -1427,23 +1434,33 @@ export class AddieClaudeClient {
                   yield { type: 'tool_end', tool_name: toolName, result: 'Error: Failed to process file content', is_error: true };
                 }
               } else {
-                // Regular text result
+                // Regular text result — detect error strings
+                const looksLikeError = result.startsWith('Error:') ||
+                  result.startsWith('Failed to') ||
+                  result.includes('not found') ||
+                  result.includes('need to be logged in');
+                if (looksLikeError) {
+                  logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie Stream: Tool returned error result');
+                  notifyToolError({ toolName, errorMessage: result.substring(0, 500), slackUserId: options?.slackUserId, threadId: options?.threadId, threw: false });
+                }
                 toolResults.push({ tool_use_id: toolUseId, content: result });
                 toolExecutions.push({
                   tool_name: toolName,
                   parameters: toolInput,
                   result,
                   result_summary: this.summarizeToolResult(toolName, result),
-                  is_error: false,
+                  is_error: looksLikeError,
                   duration_ms: durationMs,
                   sequence: executionSequence,
                 });
-                yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
+                yield { type: 'tool_end', tool_name: toolName, result, is_error: looksLikeError };
               }
             } catch (error) {
               const durationMs = Date.now() - startTime;
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
               const errorResult = `Error: ${errorMessage}`;
+              logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool threw exception');
+              notifyToolError({ toolName, errorMessage, slackUserId: options?.slackUserId, threadId: options?.threadId, threw: true });
               toolResults.push({
                 tool_use_id: toolUseId,
                 content: errorResult,
