@@ -246,11 +246,17 @@
       const track = document.getElementById('member-logos');
       if (members.length > 0) {
         // Build logo HTML once, then duplicate for seamless loop
-        const logosHtml = members.map(member => `
-          <a href="/members/${encodeURIComponent(member.slug)}" title="${escapeHtml(member.display_name)}" class="logo-carousel-item">
-            <img src="${escapeHtml(safeUrl(member.resolved_brand.logo_url))}" alt="${escapeHtml(member.display_name)}">
-          </a>
-        `).join('');
+        const logosHtml = members.map(member => {
+          const logoUrl = safeUrl(member.resolved_brand.logo_url_dark || member.resolved_brand.logo_url);
+          const name = escapeHtml(member.display_name);
+          const slug = encodeURIComponent(member.slug);
+          return `
+          <a href="/members/${slug}" title="${name}" class="logo-carousel-item">
+            <img src="${escapeHtml(logoUrl)}" alt="${name}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display=''">
+            <span class="logo-placeholder" style="display:none">${name}</span>
+          </a>`;
+        }).join('');
         // Duplicate the set so the scroll loops seamlessly
         track.innerHTML = logosHtml + logosHtml;
 

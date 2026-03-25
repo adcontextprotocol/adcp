@@ -400,10 +400,9 @@ body {
 }
 
 .logo-carousel-item img {
-  max-height: 36px;
-  max-width: 110px;
+  height: 28px;
+  max-width: 120px;
   width: auto;
-  height: auto;
   object-fit: contain;
   opacity: 0.5;
   filter: brightness(0) invert(1);
