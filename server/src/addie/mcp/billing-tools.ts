@@ -269,10 +269,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     // Require org context to ensure the subscription gets linked
     const orgId = memberContext?.organization?.workos_organization_id;
     if (!orgId) {
-      return JSON.stringify({
-        success: false,
-        error: 'Cannot create a payment link without an account. Please ask the user to sign up at https://agenticadvertising.org first, then try again.',
-      });
+      // Distinguish "no account at all" from "account exists but no workspace"
+      const hasAccount = !!memberContext?.workos_user?.workos_user_id;
+      const error = hasAccount
+        ? 'This user has an account but no workspace yet. They need to complete onboarding at https://agenticadvertising.org/dashboard to create their workspace before a payment link can be generated. Please escalate this if the user needs help.'
+        : 'Cannot create a payment link without an account. Please ask the user to sign up at https://agenticadvertising.org first, then try again.';
+      return JSON.stringify({ success: false, error });
     }
 
     // Use actual member email from context, falling back to AI-provided email.

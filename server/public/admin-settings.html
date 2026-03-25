@@ -269,6 +269,32 @@
           </div>
         </div>
 
+        <!-- Error Notifications Channel -->
+        <div class="setting-section">
+          <h3>Error notifications channel</h3>
+          <p>
+            Choose which Slack channel receives error notifications.
+            Tool failures, background job errors, and other actionable errors are posted here.
+          </p>
+
+          <div class="current-value" id="currentErrorChannel">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="errorChannel">Select channel</label>
+              <select id="errorChannel" disabled>
+                <option value="">Loading channels...</option>
+              </select>
+              <small>Only private channels are shown. Invite Addie to your error channel first.</small>
+            </div>
+            <button class="btn btn-primary" id="saveErrorChannelBtn" onclick="saveErrorChannel()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
         <!-- Prospect Triage Toggle -->
         <div class="setting-section">
           <h3>Automatic prospect triage</h3>
@@ -322,6 +348,7 @@
         updateCurrentEscalationChannelDisplay();
         updateCurrentAdminChannelDisplay();
         updateCurrentProspectChannelDisplay();
+        updateCurrentErrorChannelDisplay();
         updateTriageDisplay();
 
         document.getElementById('loading').style.display = 'none';
@@ -342,6 +369,7 @@
       const escalationSelect = document.getElementById('escalationChannel');
       const adminSelect = document.getElementById('adminChannel');
       const prospectSelect = document.getElementById('prospectChannel');
+      const errorSelect = document.getElementById('errorChannel');
 
       try {
         const response = await fetch('/api/admin/settings/slack-channels');
@@ -358,6 +386,7 @@
         let escalationHtml = '<option value="">-- No channel (disabled) --</option>';
         let adminHtml = '<option value="">-- No channel (disabled) --</option>';
         let prospectHtml = '<option value="">-- No channel (disabled) --</option>';
+        let errorHtml = '<option value="">-- No channel (disabled) --</option>';
 
         if (slackChannels.length === 0) {
           const emptyOption = '<option value="">No private channels found - invite Addie first</option>';
@@ -365,6 +394,7 @@
           escalationSelect.innerHTML = emptyOption;
           adminSelect.innerHTML = emptyOption;
           prospectSelect.innerHTML = emptyOption;
+          errorSelect.innerHTML = emptyOption;
           showStatusMessage('Addie is not in any private channels. Invite @Addie to your channels and refresh.', 'error');
         } else {
           slackChannels.forEach(ch => {
@@ -372,10 +402,12 @@
             const escalationSelected = currentSettings?.escalation_channel?.channel_id === ch.id ? 'selected' : '';
             const adminSelected = currentSettings?.admin_channel?.channel_id === ch.id ? 'selected' : '';
             const prospectSelected = currentSettings?.prospect_channel?.channel_id === ch.id ? 'selected' : '';
+            const errorSelected = currentSettings?.error_channel?.channel_id === ch.id ? 'selected' : '';
             billingHtml += `<option value="${ch.id}" ${billingSelected}>#${escapeHtml(ch.name)}</option>`;
             escalationHtml += `<option value="${ch.id}" ${escalationSelected}>#${escapeHtml(ch.name)}</option>`;
             adminHtml += `<option value="${ch.id}" ${adminSelected}>#${escapeHtml(ch.name)}</option>`;
             prospectHtml += `<option value="${ch.id}" ${prospectSelected}>#${escapeHtml(ch.name)}</option>`;
+            errorHtml += `<option value="${ch.id}" ${errorSelected}>#${escapeHtml(ch.name)}</option>`;
           });
           billingSelect.innerHTML = billingHtml;
           billingSelect.disabled = false;
@@ -392,6 +424,10 @@
           prospectSelect.innerHTML = prospectHtml;
           prospectSelect.disabled = false;
           document.getElementById('saveProspectChannelBtn').disabled = false;
+
+          errorSelect.innerHTML = errorHtml;
+          errorSelect.disabled = false;
+          document.getElementById('saveErrorChannelBtn').disabled = false;
         }
       } catch (error) {
         console.error('Error loading Slack channels:', error);
@@ -399,6 +435,7 @@
         escalationSelect.innerHTML = '<option value="">Error loading channels</option>';
         adminSelect.innerHTML = '<option value="">Error loading channels</option>';
         prospectSelect.innerHTML = '<option value="">Error loading channels</option>';
+        errorSelect.innerHTML = '<option value="">Error loading channels</option>';
         showStatusMessage('Failed to load Slack channels: ' + error.message, 'error');
       }
     }
@@ -647,6 +684,68 @@
         }, 2000);
       } catch (error) {
         console.error('Error saving prospect channel:', error);
+        showStatusMessage('Failed to save: ' + error.message, 'error');
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    // Update the current error channel display
+    function updateCurrentErrorChannelDisplay() {
+      const el = document.getElementById('currentErrorChannel');
+      const channel = currentSettings?.error_channel;
+
+      if (channel?.channel_id && channel?.channel_name) {
+        el.className = 'current-value';
+        el.innerHTML = `<strong>Current:</strong> #${escapeHtml(channel.channel_name)}`;
+      } else {
+        el.className = 'current-value not-set';
+        el.innerHTML = '<strong>Current:</strong> Not configured (error notifications disabled)';
+      }
+    }
+
+    // Save error channel
+    async function saveErrorChannel() {
+      const select = document.getElementById('errorChannel');
+      const saveBtn = document.getElementById('saveErrorChannelBtn');
+      const channelId = select.value || null;
+
+      let channelName = null;
+      if (channelId) {
+        const channel = slackChannels.find(c => c.id === channelId);
+        channelName = channel?.name || null;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/settings/error-channel', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel_id: channelId, channel_name: channelName }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        const data = await response.json();
+        currentSettings.error_channel = data.error_channel;
+        updateCurrentErrorChannelDisplay();
+
+        saveBtn.textContent = 'Saved!';
+        saveBtn.classList.add('btn-success');
+        showStatusMessage('Error channel updated successfully', 'success');
+
+        setTimeout(() => {
+          saveBtn.textContent = 'Save';
+          saveBtn.classList.remove('btn-success');
+          saveBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        console.error('Error saving error channel:', error);
         showStatusMessage('Failed to save: ' + error.message, 'error');
         saveBtn.textContent = 'Save';
         saveBtn.disabled = false;

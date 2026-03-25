@@ -199,6 +199,34 @@ describe('billing-tools', () => {
       expect(parsed.error).toContain('Cannot create a payment link without an account');
     });
 
+    test('returns workspace-specific error when user has account but no organization', async () => {
+      const contextWithUserNoOrg: MemberContext = {
+        is_mapped: true,
+        is_member: false,
+        slack_linked: true,
+        workos_user: {
+          workos_user_id: 'user_no_org_123',
+          email: 'james@example.com',
+          first_name: 'James',
+          last_name: 'Test',
+        },
+      };
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(contextWithUserNoOrg);
+      const createLink = handlers.get('create_payment_link')!;
+
+      const result = await createLink({
+        lookup_key: 'aao_membership_individual',
+        customer_email: 'james@example.com',
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('no workspace');
+      expect(parsed.error).toContain('complete onboarding');
+    });
+
     test('creates payment link using memberContext email by default', async () => {
       const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as jest.Mock<any>).mockResolvedValue('price_abc123');

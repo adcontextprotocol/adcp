@@ -21,6 +21,8 @@ import {
   setProspectChannel,
   getProspectTriageEnabled,
   setProspectTriageEnabled,
+  getErrorChannel,
+  setErrorChannel,
 } from '../../db/system-settings-db.js';
 import { getSlackChannels, getChannelInfo, isSlackConfigured } from '../../slack/client.js';
 
@@ -38,6 +40,7 @@ export function createAdminSettingsRouter(): Router {
       const adminChannel = await getAdminChannel();
       const prospectChannel = await getProspectChannel();
       const prospectTriageEnabled = await getProspectTriageEnabled();
+      const errorChannel = await getErrorChannel();
 
       res.json({
         settings,
@@ -46,6 +49,7 @@ export function createAdminSettingsRouter(): Router {
         admin_channel: adminChannel,
         prospect_channel: prospectChannel,
         prospect_triage_enabled: prospectTriageEnabled,
+        error_channel: errorChannel,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to get system settings');
@@ -305,6 +309,57 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update prospect channel');
       res.status(500).json({
         error: 'Failed to update prospect channel',
+      });
+    }
+  });
+
+  // PUT /api/admin/settings/error-channel - Update error notification channel
+  router.put('/error-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { channel_id, channel_name } = req.body;
+
+      if (channel_id !== null && channel_id !== undefined) {
+        if (typeof channel_id !== 'string' || !/^[CG][A-Z0-9]+$/.test(channel_id)) {
+          res.status(400).json({
+            error: 'Invalid channel ID format',
+            message: 'Channel ID should start with C or G followed by alphanumeric characters',
+          });
+          return;
+        }
+
+        if (isSlackConfigured()) {
+          const channelInfo = await getChannelInfo(channel_id);
+          if (channelInfo && !channelInfo.is_private) {
+            res.status(400).json({
+              error: 'Invalid channel',
+              message: 'Only private channels are allowed for error notifications',
+            });
+            return;
+          }
+        }
+      }
+
+      if (channel_name !== null && channel_name !== undefined) {
+        if (typeof channel_name !== 'string' || channel_name.length > 200) {
+          res.status(400).json({
+            error: 'Invalid channel name',
+            message: 'Channel name must be a string under 200 characters',
+          });
+          return;
+        }
+      }
+
+      const userId = req.user?.id;
+      await setErrorChannel(channel_id ?? null, channel_name ?? null, userId);
+
+      logger.info({ channel_id, channel_name, userId }, 'Error channel updated');
+
+      const updated = await getErrorChannel();
+      res.json({ success: true, error_channel: updated });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update error channel');
+      res.status(500).json({
+        error: 'Failed to update error channel',
       });
     }
   });
