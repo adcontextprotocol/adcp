@@ -27,6 +27,7 @@ const offeringLabels = {
 function renderMemberCard(member, options = {}) {
   const { isPreview = false, showVisibilityBadge = false } = options;
 
+  const taglineText = member.tagline || '';
   const truncatedDesc = member.description
     ? (member.description.length > 200 ? member.description.substring(0, 200) + '...' : member.description)
     : '';
@@ -108,6 +109,7 @@ function renderMemberCard(member, options = {}) {
         </div>
       </div>
       <div class="member-card-body">
+        ${taglineText ? `<div class="member-tagline">${escapeHtmlSafe(taglineText)}</div>` : ''}
         ${truncatedDesc ? `<div class="member-description">${truncatedDesc}</div>` : ''}
         <div class="member-offerings">${offeringsHtml}</div>
       </div>
@@ -195,6 +197,13 @@ function getMemberCardStyles() {
     }
     .member-card-body {
       padding: 1.5rem;
+    }
+    .member-tagline {
+      color: #333;
+      font-size: 0.95rem;
+      font-weight: 500;
+      line-height: 1.4;
+      margin-bottom: 0.5rem;
     }
     .member-description {
       color: #666;

@@ -802,6 +802,12 @@
           </div>
 
           <div class="form-group">
+            <label for="tagline">Tagline</label>
+            <input type="text" id="tagline" name="tagline" maxlength="200" placeholder="e.g. AdCP implementation partner for buyers and publishers">
+            <div class="hint">A short headline that appears on your directory card and helps Addie match you with the right people</div>
+          </div>
+
+          <div class="form-group">
             <label for="description">Description</label>
             <textarea id="description" name="description" placeholder="Tell people about your company and what you offer..."></textarea>
             <div class="hint">The first 200 characters will appear in the directory card</div>
@@ -1692,6 +1698,7 @@
     function populateForm(profile) {
       document.getElementById('display_name').value = profile.display_name || '';
       document.getElementById('slug').value = profile.slug || '';
+      document.getElementById('tagline').value = profile.tagline || '';
       document.getElementById('description').value = profile.description || '';
       // For individuals, photo_url uses the same field as resolved_brand logo
       const photoUrlField = document.getElementById('photo_url');
@@ -2116,6 +2123,7 @@
       // Build member object from form values
       const member = {
         display_name: document.getElementById('display_name').value || 'Your Company',
+        tagline: document.getElementById('tagline').value || '',
         description: document.getElementById('description').value || '',
         resolved_brand: currentResolvedBrand || null,
         contact_website: document.getElementById('contact_website').value || null,
@@ -2141,7 +2149,7 @@
 
       const formData = {
         display_name: document.getElementById('display_name').value,
-        tagline: null, // No longer using separate tagline - description is truncated where needed
+        tagline: document.getElementById('tagline').value || null,
         description,
         contact_email: document.getElementById('contact_email').value || null,
         contact_phone: document.getElementById('contact_phone').value || null,
