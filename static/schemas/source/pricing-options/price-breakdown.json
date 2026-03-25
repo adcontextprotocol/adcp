@@ -37,7 +37,7 @@
             "type": "number",
             "description": "Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive — kind determines the economic effect. Mutually exclusive with amount.",
             "exclusiveMinimum": 0,
-            "maximum": 1
+            "exclusiveMaximum": 1
           },
           "amount": {
             "type": "number",
