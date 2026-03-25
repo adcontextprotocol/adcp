@@ -7,7 +7,7 @@
  * Run with: npx jest tests/addie/admin-prompt-routing.test.ts
  */
 
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from '@jest/globals';
 
 /**
  * Expected tool routing for different admin query patterns.
