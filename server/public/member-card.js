@@ -85,19 +85,19 @@ function renderMemberCard(member, options = {}) {
   // Markets display - show regions served if available
   const markets = member.markets || [];
   const marketsHtml = markets.length > 0
-    ? `<div class="member-markets">${markets.map(m => `<span class="market-tag">${m}</span>`).join('')}</div>`
+    ? `<div class="member-markets">${markets.map(m => `<span class="market-tag">${escapeHtmlSafe(m)}</span>`).join('')}</div>`
     : '';
 
   return `
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
         ${member.resolved_brand?.logo_url
-          ? `<img src="${member.resolved_brand.logo_url}" alt="${member.display_name}" class="member-logo">`
-          : `<div class="member-logo-placeholder">${member.display_name.charAt(0)}</div>`
+          ? `<img src="${escapeHtmlSafe(member.resolved_brand.logo_url)}" alt="${escapeHtmlSafe(member.display_name)}" class="member-logo">`
+          : `<div class="member-logo-placeholder">${escapeHtmlSafe(member.display_name.charAt(0))}</div>`
         }
         <div class="member-info">
           <div class="member-name-row">
-            <div class="member-name">${member.display_name}</div>
+            <div class="member-name">${escapeHtmlSafe(member.display_name)}</div>
             ${foundingBadge}
             ${credentialBadges}
             ${agentBadge}

@@ -1428,12 +1428,12 @@
       content.innerHTML = `
         <div class="detail-header">
           ${(member.resolved_brand?.logo_url || member.logo_url)
-            ? `<img src="${member.resolved_brand?.logo_url || member.logo_url}" alt="${member.display_name}" class="detail-logo">`
-            : `<div class="detail-logo-placeholder">${member.display_name.charAt(0)}</div>`
+            ? `<img src="${escapeHtml(member.resolved_brand?.logo_url || member.logo_url)}" alt="${escapeHtml(member.display_name)}" class="detail-logo">`
+            : `<div class="detail-logo-placeholder">${escapeHtml(member.display_name.charAt(0))}</div>`
           }
           <div class="detail-title">
             <div class="detail-title-row">
-              <h1>${member.display_name}</h1>
+              <h1>${escapeHtml(member.display_name)}</h1>
               ${foundingBadgeHtml}
             </div>
             ${member.tagline ? `<p class="tagline">${escapeHtml(member.tagline)}</p>` : ''}
@@ -1443,7 +1443,7 @@
         ${member.markets && member.markets.length > 0 ? `
           <div class="detail-markets">
             <span class="markets-label">Markets:</span>
-            ${member.markets.map(m => `<span class="market-badge">${m}</span>`).join('')}
+            ${member.markets.map(m => `<span class="market-badge">${escapeHtml(m)}</span>`).join('')}
           </div>
         ` : ''}
 
@@ -1453,7 +1453,7 @@
           ${member.description ? `
             <div class="detail-section">
               <h2>About</h2>
-              <p class="detail-description">${member.description}</p>
+              <p class="detail-description">${escapeHtml(member.description)}</p>
             </div>
           ` : ''}
 
@@ -1461,7 +1461,7 @@
             <div class="detail-section">
               <h2>Services & Offerings</h2>
               <div class="detail-offerings">
-                ${member.offerings.map(o => `<span class="offering-tag">${offeringLabels[o] || o}</span>`).join('')}
+                ${member.offerings.map(o => `<span class="offering-tag">${escapeHtml(offeringLabels[o] || o)}</span>`).join('')}
               </div>
             </div>
           ` : ''}
