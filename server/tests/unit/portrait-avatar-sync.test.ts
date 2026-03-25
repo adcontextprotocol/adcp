@@ -139,7 +139,7 @@ describe("backfill migration", () => {
 });
 
 describe("user_id migration", () => {
-  const migrationPath = resolve(__dirname, "../../src/db/migrations/328_portraits_user_id.sql");
+  const migrationPath = resolve(__dirname, "../../src/db/migrations/329_portraits_user_id.sql");
   const migration = readFileSync(migrationPath, "utf-8");
 
   it("adds user_id column to member_portraits", () => {
