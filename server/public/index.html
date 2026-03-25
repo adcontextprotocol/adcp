@@ -241,7 +241,7 @@
       if (!response.ok) throw new Error('Failed to load members');
 
       const data = await response.json();
-      const members = (data.members || []).filter(m => m.resolved_brand?.logo_url);
+      const members = (data.members || []).filter(m => m.resolved_brand?.logo_url || m.resolved_brand?.logo_url_dark);
 
       const track = document.getElementById('member-logos');
       if (members.length > 0) {
