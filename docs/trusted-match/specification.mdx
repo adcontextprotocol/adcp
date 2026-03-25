@@ -54,11 +54,13 @@ Pre-computed classifier outputs for the content environment. MUST NOT contain ra
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `topics` | List\<string\> | No | Topic taxonomy identifiers (e.g., `cooking.pasta`, `fitness.running`). |
+| `topics` | List\<string\> | No | Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs when `topic_taxonomy` is 7 (default), or human-readable strings for custom taxonomies. |
+| `taxonomy_source` | enum | No | Organization that defines the topic taxonomy. Default: `iab`. |
+| `taxonomy_id` | integer | No | Taxonomy version within the source. For IAB, follows the AdCOM cattax enum: `7` = Content Taxonomy 3.0 (CC-BY-3.0). Default: `7`. |
 | `sentiment` | enum | No | Content sentiment: `positive`, `negative`, `neutral`, `mixed`. |
 | `keywords` | List\<string\> | No | Content keywords extracted by the publisher's classifier. |
 | `language` | string | No | ISO 639-1 language code. |
-| `brand_safety_tier` | enum | No | Publisher's brand safety classification: `safe`, `sensitive`, `unsafe`. |
+| `content_policies` | List\<string\> | No | Policy IDs from the AdCP policy registry that this content satisfies (e.g., `common_sense_brand_safety` for Common Sense Brand Standards). Buyers filter on policies they require. |
 | `summary` | string | No | Natural language summary for relevance judgment. Useful for LLM-native buyers that evaluate semantically. |
 | `embedding` | string | No | Content embedding as base64-encoded int8 vector. Captures semantic content beyond topics and keywords. |
 | `embedding_model` | string | No | Embedding model identifier (e.g., `nomic-embed-text-v1.5`). Required when `embedding` is present. |
@@ -133,6 +135,7 @@ Sent by the publisher (via router) to buyer agents. Contains an opaque user toke
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
 | `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
 | `uid_type` | enum | No | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
+| `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information. |
 | `package_ids` | List\<string\> | Yes | ALL active packages for this buyer. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
 
 ### IdentityMatchResponse
@@ -153,6 +156,17 @@ The buyer computes eligibility from whatever identity signals they have (frequen
 | `package_id` | string | Yes | Package being evaluated. |
 | `eligible` | bool | Yes | Whether the user is eligible for this package. |
 | `intent_score` | number | No | Buyer's estimate of user intent for this package, 0.0-1.0. Helps the publisher rank when multiple packages are eligible. |
+
+#### Consent
+
+Privacy consent signals for the identity match. Publishers MUST include consent information when operating in regulated jurisdictions (EU/EEA, California, etc.). Buyers MUST NOT process user tokens without consent information when required by applicable law.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `gdpr` | bool | No | Whether GDPR applies to this request. |
+| `tcf_consent` | string | No | IAB TCF v2.2 consent string. Present when `gdpr` is true. |
+| `gpp` | string | No | IAB Global Privacy Platform string. |
+| `us_privacy` | string | No | US Privacy string (CCPA). Deprecated in favor of GPP but still widely used. |
 
 ### Error Response
 
@@ -222,6 +236,26 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 
 - User tokens MUST be opaque to buyer agents. Tokens may originate from identity providers (ID5, LiveRamp, UID2) or be publisher-generated.
 - User tokens MUST NOT contain PII or be reversible to PII by the buyer agent.
+
+## Request Authentication
+
+TMP requests carry a `signature` field to prove the request originated from an authorized router. This prevents unauthorized parties from sending forged requests to providers to probe their targeting logic or extract sponsored content.
+
+### Signing model
+
+The router signs each context match request using Ed25519. The signature covers the static parts of the request (property_id, placement_id, sorted package_ids, daily epoch) — not the request_id or per-request fields. This enables signature caching: the same placement with the same packages produces the same signature for up to 24 hours.
+
+Signatures are base64-encoded (URL-safe, no padding) and included in the `signature` field on the request. The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
+
+### Verification model
+
+Providers verify signatures using the publisher's public key, obtained from the property registry. Providers SHOULD sample-verify rather than verify every request — Ed25519 verification costs ~30μs while the full pipeline costs ~1μs. A 5% sample rate detects fraudulent publishers within seconds at volume while adding negligible overhead.
+
+On verification failure, the provider SHOULD suppress the property for a configurable period (recommended: 24 hours) and alert operations.
+
+### Key distribution
+
+Publisher public keys are distributed via the property registry. Each property record includes the publisher's Ed25519 public key. Providers download the registry at startup and keep it current via incremental sync.
 
 ## Wire Format
 

@@ -22,6 +22,29 @@
       "$ref": "/schemas/enums/uid-type.json",
       "description": "Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching."
     },
+    "consent": {
+      "type": "object",
+      "description": "Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information.",
+      "properties": {
+        "gdpr": {
+          "type": "boolean",
+          "description": "Whether GDPR applies to this request."
+        },
+        "tcf_consent": {
+          "type": "string",
+          "description": "IAB TCF v2.2 consent string. Present when gdpr is true."
+        },
+        "gpp": {
+          "type": "string",
+          "description": "IAB Global Privacy Platform string."
+        },
+        "us_privacy": {
+          "type": "string",
+          "description": "US Privacy string (CCPA). Deprecated in favor of GPP but still widely used."
+        }
+      },
+      "additionalProperties": false
+    },
     "package_ids": {
       "type": "array",
       "description": "ALL active package identifiers for this buyer. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.",

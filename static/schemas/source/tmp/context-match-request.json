@@ -77,10 +77,21 @@
       "properties": {
         "topics": {
           "type": "array",
-          "description": "Topic taxonomy identifiers describing the content (e.g., 'cooking.pasta', 'fitness.running'). Publishers use a consistent taxonomy across requests.",
+          "description": "Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs (e.g., '632' for Food & Drink) when topic_taxonomy is 7, or human-readable strings (e.g., 'cooking.pasta') for custom taxonomies.",
           "items": {
             "type": "string"
           }
+        },
+        "taxonomy_source": {
+          "type": "string",
+          "description": "Organization that defines the topic taxonomy. Default: 'iab'. Other sources can be added as the ecosystem evolves.",
+          "enum": ["iab"],
+          "default": "iab"
+        },
+        "taxonomy_id": {
+          "type": "integer",
+          "description": "Taxonomy version within the source. For IAB, follows the AdCOM cattax enum: 7 = Content Taxonomy 3.0. Default: 7.",
+          "default": 7
         },
         "sentiment": {
           "type": "string",
@@ -99,10 +110,12 @@
           "description": "Content language in ISO 639-1 format (e.g., 'en', 'ja', 'de').",
           "pattern": "^[a-z]{2}$"
         },
-        "brand_safety_tier": {
-          "type": "string",
-          "description": "Publisher's brand safety classification of the content.",
-          "enum": ["safe", "sensitive", "unsafe"]
+        "content_policies": {
+          "type": "array",
+          "description": "Policy IDs from the AdCP policy registry that this content satisfies (e.g., 'common_sense_brand_safety' for Common Sense Brand Standards baseline). Buyers filter on policies they require. An empty array means no policies have been evaluated.",
+          "items": {
+            "type": "string"
+          }
         },
         "summary": {
           "type": "string",
