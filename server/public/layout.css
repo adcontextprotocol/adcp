@@ -321,7 +321,7 @@ body {
 }
 
 .homepage-hero--dark .hero-audience {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .homepage-hero--dark .hero-cta-primary {
@@ -345,7 +345,7 @@ body {
 
 .homepage-hero--dark .hero-free-note {
   font-size: var(--text-sm);
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.75);
   margin-top: var(--space-4);
 }
 
@@ -359,7 +359,7 @@ body {
   font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wider);
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.75);
   font-weight: var(--font-semibold);
   margin-bottom: var(--space-6);
 }

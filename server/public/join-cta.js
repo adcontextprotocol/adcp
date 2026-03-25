@@ -394,40 +394,38 @@ async function renderJoinCta(options = {}) {
   const priceExplorer = escapeHtml(explorerProduct ? formatCurrency(explorerProduct.amount_cents, explorerProduct.currency) : '$50');
 
   const explorerBenefits = [
-    '1 Addie seat — your AI guide to agentic advertising',
+    '1 community-only seat — Addie, certification, training',
     'Start your first certification module free',
     'Newsletter and industry updates'
   ];
 
   const professionalBenefits = [
-    '1 Slack seat — community, working groups, events',
-    '1 Addie seat — personalized AI + certification',
-    'Participate in councils',
+    '1 contributor seat — includes community access',
+    'Slack, working groups, councils, product summit',
     'Voting rights',
     'Directory listing'
   ];
 
   const builderBenefits = [
-    '5 Slack seats — community, working groups, events',
-    '10 Addie seats — personalized AI + certification',
-    'API access — registry, agents, brands',
-    'Participate in councils',
+    '5 contributor seats — includes community access',
+    '5 community-only seats — Addie, certification, training',
+    'API access — registry, agent testing, sandbox',
     'Board eligible — voting rights',
     'Marketing opportunities available'
   ];
 
   const memberBenefits = [
-    '10 Slack seats — community, working groups, events',
-    '100 Addie seats — train your whole team',
-    'API access — registry, agents, brands',
+    '10 contributor seats — includes community access',
+    '50 community-only seats — train your whole team',
+    'API access — registry, agent testing, sandbox',
     'Featured directory placement',
     'Board eligible — voting rights'
   ];
 
   const leaderBenefits = [
-    '20+ Slack seats',
-    'Unlimited Addie seats',
-    'API access — registry, agents, brands',
+    '20+ contributor seats — includes community access',
+    'Unlimited community-only seats',
+    'API access — registry, agent testing, sandbox',
     'Lead councils — chair and set agendas',
     'Board eligible — voting rights',
     'First access to sponsorships, white papers, co-branded research'
@@ -578,16 +576,16 @@ function renderMemberConfirmation(userContext, showContactLine) {
   const isPersonal = userContext.isPersonal;
 
   const orgBenefits = [
-    'Slack seats — community, working groups, events',
-    'Addie seats — AI access and certification for your team',
+    'Contributor seats — includes community access',
+    'Community-only seats — Addie, certification, training',
     'API access',
     'Board eligible — voting rights',
     'Directory listing'
   ];
 
   const individualBenefits = [
-    'Slack seat — community, working groups, events',
-    'Addie seat — AI access and certification',
+    'Contributor seat — includes community access',
+    'Slack, working groups, councils, product summit',
     'Voting rights',
     'Directory listing'
   ];
