@@ -99,8 +99,6 @@ const SCENARIO_METADATA = {
   },
 } as const;
 
-const SUPPORTED_SCENARIOS = Object.keys(SCENARIO_METADATA) as Array<keyof typeof SCENARIO_METADATA>;
-
 type Scenario = keyof typeof SCENARIO_METADATA | 'list_scenarios';
 
 // ── Session extensions for comply test controller ─────────────────
