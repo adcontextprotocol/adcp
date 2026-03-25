@@ -27,6 +27,7 @@ const offeringLabels = {
 function renderMemberCard(member, options = {}) {
   const { isPreview = false, showVisibilityBadge = false } = options;
 
+  const taglineText = member.tagline || '';
   const truncatedDesc = member.description
     ? (member.description.length > 200 ? member.description.substring(0, 200) + '...' : member.description)
     : '';
@@ -84,19 +85,19 @@ function renderMemberCard(member, options = {}) {
   // Markets display - show regions served if available
   const markets = member.markets || [];
   const marketsHtml = markets.length > 0
-    ? `<div class="member-markets">${markets.map(m => `<span class="market-tag">${m}</span>`).join('')}</div>`
+    ? `<div class="member-markets">${markets.map(m => `<span class="market-tag">${escapeHtmlSafe(m)}</span>`).join('')}</div>`
     : '';
 
   return `
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
         ${member.resolved_brand?.logo_url
-          ? `<img src="${member.resolved_brand.logo_url}" alt="${member.display_name}" class="member-logo">`
-          : `<div class="member-logo-placeholder">${member.display_name.charAt(0)}</div>`
+          ? `<img src="${escapeHtmlSafe(member.resolved_brand.logo_url)}" alt="${escapeHtmlSafe(member.display_name)}" class="member-logo">`
+          : `<div class="member-logo-placeholder">${escapeHtmlSafe(member.display_name.charAt(0))}</div>`
         }
         <div class="member-info">
           <div class="member-name-row">
-            <div class="member-name">${member.display_name}</div>
+            <div class="member-name">${escapeHtmlSafe(member.display_name)}</div>
             ${foundingBadge}
             ${credentialBadges}
             ${agentBadge}
@@ -108,7 +109,8 @@ function renderMemberCard(member, options = {}) {
         </div>
       </div>
       <div class="member-card-body">
-        ${truncatedDesc ? `<div class="member-description">${truncatedDesc}</div>` : ''}
+        ${taglineText ? `<div class="member-tagline">${escapeHtmlSafe(taglineText)}</div>` : ''}
+        ${truncatedDesc ? `<div class="member-description">${escapeHtmlSafe(truncatedDesc)}</div>` : ''}
         <div class="member-offerings">${offeringsHtml}</div>
       </div>
       <div class="member-card-footer">
@@ -195,6 +197,13 @@ function getMemberCardStyles() {
     }
     .member-card-body {
       padding: 1.5rem;
+    }
+    .member-tagline {
+      color: #333;
+      font-size: 0.95rem;
+      font-weight: 500;
+      line-height: 1.4;
+      margin-bottom: 0.5rem;
     }
     .member-description {
       color: #666;
