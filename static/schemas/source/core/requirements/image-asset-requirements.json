@@ -96,6 +96,11 @@
       "type": "integer",
       "minimum": 0,
       "description": "Maximum animation duration in milliseconds (if animation_allowed is true)"
+    },
+    "max_weight_grams": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "description": "Maximum weight in grams for the finished physical piece (print inserts, flyers). Affects postage calculations and production constraints. Only applicable to print channels."
     }
   },
   "if": { "required": ["min_dpi"] },
