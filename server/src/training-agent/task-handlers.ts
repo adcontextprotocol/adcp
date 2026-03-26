@@ -2207,13 +2207,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let isError = false;
     try {
       const result = handler((args as ToolArgs) || {}, ctx);
-      const resultObj = result as { errors?: Array<{ code: string; message: string }> };
+      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
         isError = true;
         const firstError = resultObj.errors![0];
         toolResult = adcpError(firstError.code, {
           message: firstError.message,
+          ...(firstError.field && { field: firstError.field }),
           details: resultObj.errors!.length > 1
             ? { all_errors: resultObj.errors }
             : undefined,
