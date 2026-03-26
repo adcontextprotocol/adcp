@@ -6,6 +6,7 @@
  */
 
 import type { WgDigestContent } from '../../db/wg-digest-db.js';
+import { markdownToEmailHtml } from '../../utils/markdown.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
@@ -43,7 +44,7 @@ export function renderWgDigestEmail(
     htmlSections.push(`
     <div style="margin-bottom: 24px;">
       <h2 style="font-size: 16px; color: #1a1a2e; margin-bottom: 8px;">What's Happening</h2>
-      <p style="font-size: 14px; color: #444; line-height: 1.6;">${escapeHtml(content.summary)}</p>
+      <div style="font-size: 14px; color: #444; line-height: 1.6;">${markdownToEmailHtml(content.summary)}</div>
     </div>
     `);
   }
@@ -54,7 +55,7 @@ export function renderWgDigestEmail(
       <div style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
         <p style="font-size: 14px; font-weight: 600; color: #1a1a2e; margin: 0 0 4px 0;">${escapeHtml(m.title)}</p>
         <p style="font-size: 12px; color: #888; margin: 0 0 8px 0;">${escapeHtml(m.date)}</p>
-        <p style="font-size: 14px; color: #444; line-height: 1.5; margin: 0;">${escapeHtml(m.summary)}</p>
+        <div style="font-size: 14px; color: #444; line-height: 1.5; margin: 0;">${markdownToEmailHtml(m.summary)}</div>
       </div>
     `).join('');
 
