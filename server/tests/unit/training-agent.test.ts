@@ -67,8 +67,11 @@ async function simulateCallTool(
     {},
   );
   const text = response.content?.[0]?.text;
+  const parsed = text ? JSON.parse(text) : {};
+  // Unwrap adcp_error envelope for error responses (L3 compliance format)
+  const result = parsed.adcp_error ?? parsed;
   return {
-    result: text ? JSON.parse(text) : {},
+    result,
     isError: response.isError,
   };
 }
@@ -1437,6 +1440,40 @@ describe('get_media_buys handler', () => {
     expect(buys.length).toBe(1);
     // Future dates => pending_activation status
     expect(buys[0].status).toBe('pending_activation');
+  });
+
+  it('persists governance_context from create and returns it on get', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'govctx.example' }, operator: 'govctx.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    // Create with governance_context
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'govctx.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      governance_context: 'gc-round-trip-test',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    expect(created.media_buy_id).toBeDefined();
+
+    // Retrieve and verify governance_context is returned
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+
+    const buys = result.media_buys as Array<Record<string, unknown>>;
+    expect(buys.length).toBe(1);
+    expect(buys[0].governance_context).toBe('gc-round-trip-test');
   });
 });
 
