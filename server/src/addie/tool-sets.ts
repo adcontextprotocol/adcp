@@ -78,6 +78,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: [
       'get_my_profile',
       'update_my_profile',
+      'get_company_listing',
+      'update_company_listing',
       'list_working_groups',
       'get_working_group',
       'join_working_group',

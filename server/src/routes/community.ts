@@ -422,8 +422,6 @@ async function syncIndividualMemberProfile(
   // Build mapped fields for member_profiles
   const memberUpdates: Record<string, unknown> = {
     display_name: displayName,
-    tagline: communityProfile.headline || null,
-    description: communityProfile.bio || null,
     logo_url: communityProfile.avatar_url || null,
     linkedin_url: communityProfile.linkedin_url || null,
     twitter_url: communityProfile.twitter_url || null,
@@ -436,6 +434,20 @@ async function syncIndividualMemberProfile(
   const existingProfile = await memberDb.getProfileByOrgId(user.primary_organization_id);
 
   if (existingProfile) {
+    // Only sync headline→tagline and bio→description if the listing field hasn't been
+    // independently customized (i.e., it's empty or already matches the community value).
+    const newTagline = communityProfile.headline || null;
+    const currentTagline = existingProfile.tagline || null;
+    if (!currentTagline || currentTagline === newTagline) {
+      memberUpdates.tagline = newTagline;
+    }
+
+    const newDescription = communityProfile.bio || null;
+    const currentDescription = existingProfile.description || null;
+    if (!currentDescription || currentDescription === newDescription) {
+      memberUpdates.description = newDescription;
+    }
+
     // Merge offerings: the form only edits individual-relevant offerings (consulting, other).
     // Preserve any other offerings the existing profile has (e.g. data_provider).
     if (memberFields.offerings !== undefined) {

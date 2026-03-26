@@ -221,6 +221,7 @@ export interface MemberContext {
     logo_url?: string;
     offerings: string[];
     headquarters?: string;
+    listing_type: 'personal' | 'company';
   };
 
   /** Subscription details */
@@ -489,14 +490,15 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       }
     }
 
-    // Process member profile (only for non-personal workspaces)
-    if (profile && !org?.is_personal) {
+    // Process member profile / directory listing
+    if (profile) {
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
         logo_url: profile.resolved_brand?.logo_url,
         offerings: profile.offerings,
         headquarters: profile.headquarters,
+        listing_type: org?.is_personal ? 'personal' : 'company',
       };
     }
 
@@ -778,15 +780,16 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       }
     }
 
-    // Step 6: Get member profile if exists (only for non-personal workspaces)
+    // Step 6: Get member profile / directory listing if exists
     const profile = await memberDb.getProfileByOrgId(organizationId);
-    if (profile && !org?.is_personal) {
+    if (profile) {
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
         logo_url: profile.resolved_brand?.logo_url,
         offerings: profile.offerings,
         headquarters: profile.headquarters,
+        listing_type: org?.is_personal ? 'personal' : 'company',
       };
     }
 

@@ -159,7 +159,7 @@ export const ROUTING_RULES = {
     },
     membership: {
       patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group', 'api key', 'api keys', 'api token'],
-      tools: ['get_my_profile', 'list_working_groups', 'join_working_group'],
+      tools: ['get_my_profile', 'update_my_profile', 'get_company_listing', 'update_company_listing', 'list_working_groups', 'join_working_group'],
       description: 'AgenticAdvertising.org membership and API key management',
     },
     find_help: {
@@ -192,7 +192,12 @@ export const ROUTING_RULES = {
     community_directory: {
       patterns: ['community directory', 'community profile', 'people directory', 'community hub', 'coffee chat', 'connection request', 'connect with'],
       tools: ['get_my_profile', 'update_my_profile'],
-      description: 'Community directory, people profiles, connections, and coffee chats',
+      description: 'Community directory, personal profiles, connections, and coffee chats',
+    },
+    company_listing: {
+      patterns: ['company listing', 'company tagline', 'company profile', 'directory listing', 'our tagline', 'company description', 'company offerings'],
+      tools: ['get_company_listing', 'update_company_listing'],
+      description: 'Company directory listing — tagline, description, offerings, contact info',
     },
     community: {
       patterns: ['community', 'discussion', 'slack', 'chat history', 'what did', 'who said'],
