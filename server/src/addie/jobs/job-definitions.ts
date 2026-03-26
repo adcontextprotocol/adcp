@@ -34,6 +34,7 @@ import { runConversationInsightsJob } from './conversation-insights.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { runCredentialDigestJob } from './credential-digest.js';
 import { runWgDigestJob } from './wg-digest.js';
+import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -348,6 +349,17 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.briefsCreated > 0,
   });
 
+  // Compliance heartbeat - runs comply() against registered agents
+  jobScheduler.register({
+    name: 'compliance-heartbeat',
+    description: 'Agent compliance heartbeat',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    runner: runComplianceHeartbeatJob,
+    options: { limit: 10 },
+    shouldLogResult: (r) => r.checked > 0,
+  });
+
   // Event reminder - sends notifications ~24h before events start
   jobScheduler.register({
     name: 'event-reminder',
@@ -416,6 +428,7 @@ export const JOB_NAMES = {
   CONVERSATION_INSIGHTS: 'conversation-insights',
   SLACK_AUTO_LINK: 'slack-auto-link',
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
+  COMPLIANCE_HEARTBEAT: 'compliance-heartbeat',
   EVENT_REMINDER: 'event-reminder',
   GEO_MONITOR: 'geo-monitor',
   GEO_SNAPSHOT: 'geo-snapshot',
