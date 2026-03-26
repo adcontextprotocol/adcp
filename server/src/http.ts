@@ -24,7 +24,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, getUserSeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -5842,12 +5842,17 @@ Disallow: /api/admin/
         // Check if user is admin
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
-        // Check Slack sync status
+        // Check Slack sync status and seat type
         let isLinkedToSlack = false;
+        let seatType: string | null = null;
         try {
           const slackDb = new SlackDatabase();
-          const slackMapping = await slackDb.getByWorkosUserId(user.id);
+          const [slackMapping, userSeatType] = await Promise.all([
+            slackDb.getByWorkosUserId(user.id),
+            getUserSeatType(user.id),
+          ]);
           isLinkedToSlack = !!slackMapping?.slack_user_id;
+          seatType = userSeatType;
         } catch {
           // Default to not linked if lookup fails
         }
@@ -5861,6 +5866,7 @@ Disallow: /api/admin/
             last_name: user.lastName,
             isAdmin,
             isLinkedToSlack,
+            seat_type: seatType,
           },
           organizations,
         };
