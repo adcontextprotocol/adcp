@@ -526,7 +526,7 @@
       }
     }
 
-    function renderSettings() {
+    async function renderSettings() {
       document.getElementById('currentOrgName').textContent = currentOrg.name;
       document.getElementById('orgId').textContent = currentOrg.id;
 
@@ -547,6 +547,24 @@
         workspaceHintEl.textContent = 'For organizations with team members';
         convertToTeamBtn.style.display = 'none';
         convertToIndividualBtn.style.display = 'block';
+
+        // Disable "Switch to Individual" if org has other team members
+        try {
+          const teamRes = await fetch(`/api/organizations/${currentOrg.id}/team`, { credentials: 'include' });
+          if (teamRes.ok) {
+            const teamData = await teamRes.json();
+            const memberCount = teamData.members?.length || 0;
+            if (memberCount > 1) {
+              convertToIndividualBtn.disabled = true;
+              convertToIndividualBtn.style.opacity = '0.5';
+              convertToIndividualBtn.style.cursor = 'not-allowed';
+              convertToIndividualBtn.onclick = null;
+              convertToIndividualBtn.title = 'Remove all other team members first';
+              workspaceHintEl.textContent = 'Remove all other team members before switching to individual';
+            }
+          }
+        } catch (e) { /* ignore — button stays enabled as fallback, server still validates */ }
+
         // Load business info for company accounts
         loadBillingInfo();
       }

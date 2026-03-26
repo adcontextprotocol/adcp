@@ -743,6 +743,19 @@
     };
     var DEFAULT_TIER = { label: 'Explorer', contributor: 0, community: 1, price: 'Free' };
 
+    function renderTeamCertProgress(summary) {
+      if (!summary || !summary.total_members) return '';
+      const pct = summary.total_members > 0
+        ? Math.round((summary.certified_members / summary.total_members) * 100)
+        : 0;
+      return `
+        <div style="border-left: 1px solid var(--color-border); padding-left: var(--space-6);">
+          <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${pct}%</div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Team certified</div>
+          <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">${summary.certified_members} of ${summary.total_members} members</div>
+        </div>`;
+    }
+
     function renderHub(data, profile, orgId, certSummary) {
       const {
         organization_name,
@@ -760,6 +773,9 @@
       const communityLimit = tier.community === -1 ? '&infin;' : tier.community;
       const isFreeTier = !membership_tier || membership_tier === 'individual_academic';
 
+      // Build team cert progress if available
+      const teamCertHtml = certSummary ? renderTeamCertProgress(certSummary) : '';
+
       el.innerHTML = `
         <!-- Header -->
         <div class="hub-header">
@@ -772,36 +788,66 @@
           </div>
         </div>
 
-        <!-- Membership + Directory listing -->
-        <div class="hub-grid">
+        <!-- ===== Membership ===== -->
+        <section id="membership" class="dashboard-section">
+          <div class="hub-grid">
+            <div class="hub-card">
+              <div class="hub-card-header">
+                <span class="hub-card-title">Membership</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
+                <div style="padding: var(--space-4); background: var(--color-primary-50); border-radius: var(--radius-lg);">
+                  <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.contributor} / ${tier.contributor}</div>
+                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Contributor seats</div>
+                  <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Slack, working groups, councils</div>
+                </div>
+                <div style="padding: var(--space-4); background: var(--color-success-50); border-radius: var(--radius-lg);">
+                  <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.community_only} / ${communityLimit}</div>
+                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Community seats</div>
+                  <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Addie, certification, training</div>
+                </div>
+              </div>
+              ${isFreeTier ? `
+                <button onclick="openBillingPortal('${orgId}')" class="btn btn-primary" style="width: 100%; text-align: center; cursor: pointer;">Upgrade membership</button>
+              ` : `
+                <button onclick="openBillingPortal('${orgId}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
+              `}
+            </div>
+
+            <div class="hub-card">${renderPersona(persona, persona_source, persona_aspiration)}</div>
+          </div>
+        </section>
+
+        <!-- ===== Team ===== -->
+        <section id="team" class="dashboard-section">
           <div class="hub-card">
             <div class="hub-card-header">
-              <span class="hub-card-title">Membership</span>
+              <span class="hub-card-title">Team</span>
+              <a href="/dashboard/team?org=${orgId}" class="hub-card-link">Manage team &rarr;</a>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
-              <div style="padding: var(--space-4); background: var(--color-primary-50); border-radius: var(--radius-lg);">
-                <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.contributor} / ${tier.contributor}</div>
-                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Contributor seats</div>
-                <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Slack, working groups, councils</div>
+            <div style="display: flex; align-items: center; gap: var(--space-6); padding: var(--space-2) 0;">
+              <div>
+                <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${team_size || 0}</div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Team members</div>
               </div>
-              <div style="padding: var(--space-4); background: var(--color-success-50); border-radius: var(--radius-lg);">
-                <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.community_only} / ${communityLimit}</div>
-                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Community seats</div>
-                <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Addie, certification, training</div>
-              </div>
+              ${teamCertHtml}
             </div>
-            ${isFreeTier ? `
-              <button onclick="openBillingPortal('${orgId}')" class="btn btn-primary" style="width: 100%; text-align: center; cursor: pointer;">Upgrade membership</button>
-            ` : `
-              <div style="display: flex; gap: var(--space-3);">
-                <a href="/dashboard/team" class="btn btn-ghost btn-sm">Manage team</a>
-                <button onclick="openBillingPortal('${orgId}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
-              </div>
-            `}
           </div>
+        </section>
 
-          <div class="hub-card">${renderPersona(persona, persona_source, persona_aspiration)}</div>
-        </div>
+        <!-- ===== Directory listing ===== -->
+        <section id="directory" class="dashboard-section">
+          <div class="hub-card">
+            <div class="hub-card-header">
+              <span class="hub-card-title">Directory listing</span>
+              <div style="display: flex; gap: var(--space-3);">
+                ${profile?.slug ? `<a href="/members/${escapeHtml(profile.slug)}" class="hub-card-link" target="_blank">View public listing &rarr;</a>` : ''}
+                <a href="${orgId ? '/member-profile?org=' + orgId : '/member-profile'}" class="hub-card-link">Edit &rarr;</a>
+              </div>
+            </div>
+            ${renderProfileCard(profile, orgId)}
+          </div>
+        </section>
       `;
     }
 
@@ -919,11 +965,7 @@
 
     function renderProfileCard(profile, orgId) {
       const profileUrl = orgId ? `/member-profile?org=${orgId}` : '/member-profile';
-      const hdr = `
-        <div class="hub-card-header">
-          <span class="hub-card-title">Directory listing</span>
-          <a href="${profileUrl}" class="hub-card-link">Edit listing →</a>
-        </div>`;
+      const hdr = '';
 
       if (!profile) {
         return `${hdr}
