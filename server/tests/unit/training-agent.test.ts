@@ -1637,6 +1637,54 @@ describe('list_creatives handler', () => {
     expect(pg.has_more).toBe(false);
     expect(pg.total_count).toBe(1);
   });
+
+  it('returns zero counts when no creatives synced', async () => {
+    const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'list_creatives', { account });
+
+    expect(result.creatives).toEqual([]);
+
+    const qs = result.query_summary as Record<string, unknown>;
+    expect(qs.total_matching).toBe(0);
+    expect(qs.returned).toBe(0);
+
+    const pg = result.pagination as Record<string, unknown>;
+    expect(pg.has_more).toBe(false);
+    expect(pg.total_count).toBe(0);
+  });
+
+  it('query_summary reflects filtered count', async () => {
+    const account = { brand: { domain: 'filteredcreatives.example' }, operator: 'filteredcreatives.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        { creative_id: 'cr_a', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'A' },
+        { creative_id: 'cr_b', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'B' },
+        { creative_id: 'cr_c', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'C' },
+      ],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      creative_ids: ['cr_a'],
+    });
+
+    const creatives = result.creatives as Array<Record<string, unknown>>;
+    expect(creatives).toHaveLength(1);
+    expect(creatives[0].creative_id).toBe('cr_a');
+
+    const qs = result.query_summary as Record<string, unknown>;
+    expect(qs.total_matching).toBe(1);
+    expect(qs.returned).toBe(1);
+
+    const pg = result.pagination as Record<string, unknown>;
+    expect(pg.has_more).toBe(false);
+    expect(pg.total_count).toBe(1);
+  });
 });
 
 // ── update_media_buy handler ───────────────────────────────────────
