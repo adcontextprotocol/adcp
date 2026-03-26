@@ -67,8 +67,11 @@ async function simulateCallTool(
     {},
   );
   const text = response.content?.[0]?.text;
+  const parsed = text ? JSON.parse(text) : {};
+  // Unwrap adcp_error envelope for error responses (L3 compliance format)
+  const result = parsed.adcp_error ?? parsed;
   return {
-    result: text ? JSON.parse(text) : {},
+    result,
     isError: response.isError,
   };
 }
@@ -543,6 +546,17 @@ describe('buildFormats', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('accepts_parameters uses valid FormatIDParameter enum values', () => {
+    const validValues = new Set(['dimensions', 'duration']);
+    for (const fmt of formats) {
+      const params = (fmt as Record<string, unknown>).accepts_parameters as string[] | undefined;
+      if (!params) continue;
+      for (const p of params) {
+        expect(validValues.has(p)).toBe(true);
+      }
+    }
+  });
+
   it('every format with assets has items with required fields', () => {
     for (const fmt of formats) {
       const assets = fmt.assets as Array<Record<string, unknown>> | undefined;
@@ -787,7 +801,8 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('acquire_rights');
     expect(toolNames).toContain('update_rights');
     expect(toolNames).toContain('get_adcp_capabilities');
-    expect(toolNames).toHaveLength(20);
+    expect(toolNames).toContain('comply_test_controller');
+    expect(toolNames).toHaveLength(21);
   });
 
   it('returns error for unknown tool', async () => {
@@ -795,6 +810,27 @@ describe('createTrainingAgentServer', () => {
     const { result, isError } = await simulateCallTool(server, 'nonexistent_tool', {});
     expect(isError).toBe(true);
     expect(result.message).toContain('Unknown tool');
+  });
+
+  it('error responses use L3 adcp_error envelope with structuredContent', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // Call the raw handler to inspect wire format before unwrapping
+    const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+    const handler = requestHandlers.get('tools/call')!;
+    const response = await handler(
+      { method: 'tools/call', params: { name: 'nonexistent_tool', arguments: {} } },
+      {},
+    );
+    // L1: isError flag
+    expect(response.isError).toBe(true);
+    // L2: JSON text fallback with adcp_error key
+    const text = response.content?.[0]?.text;
+    const parsed = JSON.parse(text);
+    expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.adcp_error.code).toBe('INVALID_REQUEST');
+    // L3: structuredContent with same error
+    expect(response.structuredContent).toBeDefined();
+    expect(response.structuredContent.adcp_error.code).toBe('INVALID_REQUEST');
   });
 });
 
@@ -1218,6 +1254,62 @@ describe('create_media_buy handler', () => {
     expect(result.message).toContain('below floor price');
   });
 
+  it('rejects auction pricing without bid_price', async () => {
+    const catalog = buildCatalog();
+    let targetProduct: Record<string, unknown> | undefined;
+    let targetPricing: Record<string, unknown> | undefined;
+
+    for (const cp of catalog) {
+      const opts = cp.product.pricing_options as Array<Record<string, unknown>>;
+      const auction = opts.find(o =>
+        !('fixed_price' in o) && ((o.floor_price as number) > 0 || o.price_guidance !== undefined),
+      );
+      if (auction) {
+        targetProduct = cp.product;
+        targetPricing = auction;
+        break;
+      }
+    }
+    expect(targetProduct).toBeDefined();
+    expect(targetPricing).toBeDefined();
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'test.example' }, operator: 'test.example' },
+      brand: { domain: 'test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: targetProduct!.product_id,
+        pricing_option_id: targetPricing!.pricing_option_id,
+        budget: 50000,
+        // No bid_price — should be rejected
+      }],
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toContain('bid_price is required');
+  });
+
+  it('uses deterministic package IDs (pkg-0, pkg-1)', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'pkgid.example' }, operator: 'pkgid.example' },
+      brand: { domain: 'pkgid.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: productId, pricing_option_id: pricingOptionId, budget: 50000, bid_price: 100 },
+        { product_id: productId, pricing_option_id: pricingOptionId, budget: 50000, bid_price: 100 },
+      ],
+    });
+    expect(isError).toBeFalsy();
+    const pkgs = result.packages as Array<Record<string, unknown>>;
+    expect(pkgs[0].package_id).toBe('pkg-0');
+    expect(pkgs[1].package_id).toBe('pkg-1');
+  });
+
   it('includes status field in create response', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -1436,6 +1528,71 @@ describe('get_media_buys handler', () => {
     expect(buys.length).toBe(1);
     // Future dates => pending_activation status
     expect(buys[0].status).toBe('pending_activation');
+  });
+
+  it('persists governance_context from create and returns it on get', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'govctx.example' }, operator: 'govctx.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    // Create with governance_context
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'govctx.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      governance_context: 'gc-round-trip-test',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    expect(created.media_buy_id).toBeDefined();
+
+    // Retrieve and verify governance_context is returned
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+
+    const buys = result.media_buys as Array<Record<string, unknown>>;
+    expect(buys.length).toBe(1);
+    expect(buys[0].governance_context).toBe('gc-round-trip-test');
+  });
+
+  it('returns SNAPSHOT_UNSUPPORTED when include_snapshot is true', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'snapshot.example' }, operator: 'snapshot.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'snapshot.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buys', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+      include_snapshot: true,
+    });
+
+    const buys = result.media_buys as Array<Record<string, unknown>>;
+    const pkgs = buys[0].packages as Array<Record<string, unknown>>;
+    expect(pkgs[0].snapshot_unavailable_reason).toBe('SNAPSHOT_UNSUPPORTED');
   });
 });
 
@@ -3628,5 +3785,395 @@ describe('MCP Tasks protocol', () => {
     // Direct result — no task wrapper
     expect(result.products).toBeDefined();
     expect(Array.isArray(result.products)).toBe(true);
+  });
+});
+
+// ── Proposal lifecycle: draft/committed workflow ────────────────────
+
+describe('proposal lifecycle', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  const account = { brand: { domain: 'proposal-test.example' }, operator: 'proposal-test.example' };
+
+  async function getProductsWithProposals() {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'video and display',
+      account,
+    });
+    return result;
+  }
+
+  it('returns draft status on proposals containing guaranteed products', async () => {
+    const result = await getProductsWithProposals();
+    const proposals = result.proposals as Array<Record<string, unknown>>;
+    expect(proposals).toBeDefined();
+    expect(proposals.length).toBeGreaterThan(0);
+
+    // Find a proposal with guaranteed products
+    const products = result.products as Array<Record<string, unknown>>;
+    const guaranteedProductIds = new Set(
+      products.filter(p => p.delivery_type === 'guaranteed').map(p => p.product_id),
+    );
+
+    for (const proposal of proposals) {
+      const allocations = proposal.allocations as Array<{ product_id: string }>;
+      const hasGuaranteed = allocations.some(a => guaranteedProductIds.has(a.product_id));
+      if (hasGuaranteed) {
+        expect(proposal.proposal_status).toBe('draft');
+        expect(proposal.expires_at).toBeDefined();
+      }
+    }
+  });
+
+  it('omits proposal_status on proposals with only non-guaranteed products', async () => {
+    const result = await getProductsWithProposals();
+    const proposals = result.proposals as Array<Record<string, unknown>>;
+    const products = result.products as Array<Record<string, unknown>>;
+    const guaranteedProductIds = new Set(
+      products.filter(p => p.delivery_type === 'guaranteed').map(p => p.product_id),
+    );
+
+    for (const proposal of proposals) {
+      const allocations = proposal.allocations as Array<{ product_id: string }>;
+      const hasGuaranteed = allocations.some(a => guaranteedProductIds.has(a.product_id));
+      if (!hasGuaranteed) {
+        expect(proposal.proposal_status).toBeUndefined();
+      }
+    }
+  });
+
+  it('finalizes a draft proposal to committed via refine', async () => {
+    // Get proposals first
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const proposals = initial.proposals as Array<Record<string, unknown>>;
+    const draftProposal = proposals?.find(p => p.proposal_status === 'draft');
+    expect(draftProposal).toBeDefined();
+
+    // Finalize it
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+    });
+
+    const refinedProposals = refined.proposals as Array<Record<string, unknown>>;
+    const committed = refinedProposals?.find(p => p.proposal_id === draftProposal!.proposal_id);
+    expect(committed).toBeDefined();
+    expect(committed!.proposal_status).toBe('committed');
+    expect(committed!.expires_at).toBeDefined();
+    // Committed hold window should be ~24 hours from now
+    const expiresAt = new Date(committed!.expires_at as string);
+    expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
+
+    // refinement_applied should confirm success
+    const applied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(applied).toBeDefined();
+    expect(applied[0].status).toBe('applied');
+  });
+
+  it('attaches insertion_order to committed proposals with guaranteed products', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const draftProposal = (initial.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_status === 'draft',
+    );
+    expect(draftProposal).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+    });
+
+    const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_id === draftProposal!.proposal_id,
+    );
+    const io = committed!.insertion_order as Record<string, unknown>;
+    expect(io).toBeDefined();
+    expect(io.io_id).toBeDefined();
+    expect(io.requires_signature).toBe(true);
+    expect(io.terms).toBeDefined();
+  });
+
+  it('rejects create_media_buy for draft proposal with PROPOSAL_NOT_COMMITTED', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const draftProposal = (initial.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_status === 'draft',
+    );
+    expect(draftProposal).toBeDefined();
+
+    // Try to buy the draft directly
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server2, 'create_media_buy', {
+      account,
+      brand: { domain: 'proposal-test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: draftProposal!.proposal_id,
+      total_budget: { amount: 75000, currency: 'USD' },
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('PROPOSAL_NOT_COMMITTED');
+  });
+
+  it('rejects create_media_buy for expired proposal with PROPOSAL_EXPIRED', async () => {
+    // Get and finalize a proposal
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const draftProposal = (initial.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_status === 'draft',
+    );
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+    });
+
+    // Manually expire the proposal in session state
+    const sessionKey = `open:proposal-test.example`;
+    const session = getSession(sessionKey);
+    const committedProposal = session.lastGetProductsContext?.proposals?.find(
+      p => p.proposal_id === draftProposal!.proposal_id,
+    );
+    if (committedProposal) {
+      (committedProposal as Record<string, unknown>).expires_at = '2020-01-01T00:00:00Z';
+    }
+
+    // Try to buy the expired proposal
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server3, 'create_media_buy', {
+      account,
+      brand: { domain: 'proposal-test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: draftProposal!.proposal_id,
+      total_budget: { amount: 75000, currency: 'USD' },
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('PROPOSAL_EXPIRED');
+  });
+
+  it('rejects create_media_buy without io_acceptance when IO required', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const draftProposal = (initial.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_status === 'draft',
+    );
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+    });
+
+    const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_id === draftProposal!.proposal_id,
+    );
+    const io = committed!.insertion_order as Record<string, unknown>;
+    expect(io.requires_signature).toBe(true);
+
+    // Try to buy without io_acceptance
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server3, 'create_media_buy', {
+      account,
+      brand: { domain: 'proposal-test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed!.proposal_id,
+      total_budget: { amount: 75000, currency: 'USD' },
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('IO_REQUIRED');
+  });
+
+  it('succeeds create_media_buy with valid io_acceptance', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const draftProposal = (initial.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_status === 'draft',
+    );
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+    });
+
+    const committed = (refined.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_id === draftProposal!.proposal_id,
+    );
+    const io = committed!.insertion_order as Record<string, unknown>;
+
+    // Buy with valid io_acceptance
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server3, 'create_media_buy', {
+      account,
+      brand: { domain: 'proposal-test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed!.proposal_id,
+      total_budget: { amount: 75000, currency: 'USD' },
+      io_acceptance: {
+        io_id: io.io_id,
+        accepted_at: new Date().toISOString(),
+        signatory: 'test-agent',
+      },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.media_buy_id).toBeDefined();
+  });
+
+  it('rejects create_media_buy with mismatched io_id', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const draftProposal = (initial.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_status === 'draft',
+    );
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: draftProposal!.proposal_id }],
+    });
+
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server3, 'create_media_buy', {
+      account,
+      brand: { domain: 'proposal-test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: draftProposal!.proposal_id,
+      total_budget: { amount: 75000, currency: 'USD' },
+      io_acceptance: {
+        io_id: 'wrong_io_id',
+        accepted_at: new Date().toISOString(),
+        signatory: 'test-agent',
+      },
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
+  });
+
+  it('allows create_media_buy without proposal_status (backward compat)', async () => {
+    // Non-guaranteed proposals have no proposal_status and should work as before
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'social engagement display',
+      account,
+    });
+    const proposals = initial.proposals as Array<Record<string, unknown>> | undefined;
+
+    // sparq_social_amplification has only non-guaranteed products → no proposal_status
+    const readyProposal = proposals?.find(p => !p.proposal_status);
+    expect(readyProposal).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server2, 'create_media_buy', {
+      account,
+      brand: { domain: 'proposal-test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: readyProposal.proposal_id,
+      total_budget: { amount: 50000, currency: 'USD' },
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.media_buy_id).toBeDefined();
+  });
+
+  it('returns unable when finalizing a nonexistent proposal', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'video news',
+      account,
+    });
+    expect(initial.proposals).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', id: 'nonexistent_proposal_id' }],
+    });
+
+    const applied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(applied).toBeDefined();
+    expect(applied[0].status).toBe('unable');
+  });
+
+  it('omits proposals via refine action', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'video and display news',
+      account,
+    });
+    const proposals = initial.proposals as Array<Record<string, unknown>>;
+    expect(proposals.length).toBeGreaterThan(0);
+    const firstId = proposals[0].proposal_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'omit', id: firstId }],
+    });
+
+    const refinedProposals = refined.proposals as Array<Record<string, unknown>> | undefined;
+    const refinedIds = refinedProposals?.map(p => p.proposal_id) || [];
+    expect(refinedIds).not.toContain(firstId);
   });
 });

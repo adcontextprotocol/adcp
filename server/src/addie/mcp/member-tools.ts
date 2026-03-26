@@ -459,13 +459,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
   },
 
   // ============================================
-  // MEMBER PROFILE (user-scoped only)
+  // PERSONAL PROFILE (the person)
   // ============================================
   {
     name: 'get_my_profile',
     description:
-      "Get the current user's member profile. Shows their public profile information, organization details, and any published agents or properties.",
-    usage_hints: 'use for "what\'s my profile?", account/membership questions',
+      "Get the current user's personal profile — who they are as a person. Shows headline, bio, expertise, interests, and social links.",
+    usage_hints: 'use for "what\'s my profile?", "my bio", "my headline"',
     input_schema: {
       type: 'object',
       properties: {},
@@ -475,17 +475,61 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'update_my_profile',
     description:
-      "Update the current user's member profile. Can update headline, bio, focus areas, website, LinkedIn, and other profile fields. Only updates fields that are provided - omitted fields are unchanged.",
-    usage_hints: 'use when user wants to update their profile information',
+      "Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided.",
+    usage_hints: 'use when user wants to update their personal info, headline, bio, or expertise',
     input_schema: {
       type: 'object',
       properties: {
-        headline: { type: 'string', description: 'Short headline/title' },
+        headline: { type: 'string', description: 'Short headline (e.g., "VP of Programmatic at Acme Corp")' },
         bio: { type: 'string', description: 'Bio in markdown' },
-        focus_areas: { type: 'array', items: { type: 'string' }, description: 'Areas of focus' },
-        website: { type: 'string', description: 'Website URL' },
-        linkedin: { type: 'string', description: 'LinkedIn URL' },
-        location: { type: 'string', description: 'Location' },
+        expertise: { type: 'array', items: { type: 'string' }, description: 'Areas of expertise' },
+        interests: { type: 'array', items: { type: 'string' }, description: 'Professional interests' },
+        city: { type: 'string', description: 'City/location' },
+        linkedin_url: { type: 'string', description: 'LinkedIn profile URL' },
+        twitter_url: { type: 'string', description: 'Twitter/X profile URL' },
+      },
+      required: [],
+    },
+  },
+
+  // ============================================
+  // COMPANY LISTING (the org's directory entry)
+  // ============================================
+  {
+    name: 'get_company_listing',
+    description:
+      "Get the company's directory listing — how the organization appears in the member directory and to Addie. Shows tagline, description, offerings, headquarters, and contact info.",
+    usage_hints: 'use for "what\'s our company listing?", "our tagline", "company profile", "our directory entry"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'update_company_listing',
+    description:
+      "Update the company's directory listing — how the organization appears in the member directory and to Addie. Can update tagline, description, contact info, social links, and headquarters. Only updates fields that are provided.",
+    usage_hints: 'use when user wants to update company tagline, description, contact info, or directory listing',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tagline: { type: 'string', description: 'Short tagline shown on directory card and used by Addie for search matching. Omit to leave unchanged.' },
+        description: { type: 'string', description: 'Longer company description' },
+        offerings: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'si_agent', 'governance_agent', 'publisher', 'data_provider', 'consulting', 'other'],
+          },
+          description: 'Service offerings (replaces existing list)',
+        },
+        contact_email: { type: 'string', description: 'Contact email address' },
+        contact_website: { type: 'string', description: 'Company website URL' },
+        contact_phone: { type: 'string', description: 'Contact phone number' },
+        linkedin_url: { type: 'string', description: 'LinkedIn company page URL' },
+        twitter_url: { type: 'string', description: 'Twitter/X profile URL' },
+        headquarters: { type: 'string', description: 'Headquarters location (e.g., "New York, NY")' },
       },
       required: [],
     },
@@ -1376,56 +1420,60 @@ export function createMemberToolHandlers(
   });
 
   // ============================================
-  // MEMBER PROFILE
+  // PERSONAL PROFILE (the person)
   // ============================================
   handlers.set('get_my_profile', async () => {
     if (!memberContext?.workos_user?.workos_user_id) {
       return 'You need to be logged in to see your profile. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/member-profile', memberContext);
+    const result = await callApi('GET', '/api/me/community/hub', memberContext);
 
     if (!result.ok) {
-      if (result.status === 404) {
-        return "You don't have a member profile yet. Visit https://agenticadvertising.org/member-profile to create one!";
-      }
       return `Failed to fetch your profile: ${result.error}`;
     }
 
     const data = result.data as { profile: {
-      name: string;
-      slug: string;
+      slug?: string;
       headline?: string;
       bio?: string;
-      focus_areas?: string[];
-      website?: string;
-      linkedin?: string;
-      location?: string;
-      is_visible: boolean;
-    } | null; organization_name?: string };
+      expertise?: string[];
+      interests?: string[];
+      city?: string;
+      country?: string;
+      linkedin_url?: string;
+      twitter_url?: string;
+      is_public?: boolean;
+      first_name?: string;
+      last_name?: string;
+    } | null };
 
     if (!data.profile) {
-      return "You don't have a member profile yet. Visit https://agenticadvertising.org/member-profile to create one!";
+      return "You don't have a profile yet. Visit https://agenticadvertising.org/community/profile/edit to create one!";
     }
 
-    const profile = data.profile;
+    const p = data.profile;
+    const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Member';
 
-    let response = `## Your Member Profile\n\n`;
-    response += `**Name:** ${profile.name}\n`;
-    response += `**Profile URL:** https://agenticadvertising.org/members/${profile.slug}\n`;
-    response += `**Visibility:** ${profile.is_visible ? '🌐 Public' : '🔒 Hidden'}\n\n`;
+    let response = `## Your Profile\n\n`;
+    response += `**Name:** ${name}\n`;
+    if (p.slug) response += `**Profile URL:** https://agenticadvertising.org/community/people/${p.slug}\n`;
+    if (p.is_public !== undefined) response += `**Visibility:** ${p.is_public ? 'Public' : 'Hidden'}\n`;
 
-    if (profile.headline) response += `**Headline:** ${profile.headline}\n`;
-    if (profile.location) response += `**Location:** ${profile.location}\n`;
-    if (profile.website) response += `**Website:** ${profile.website}\n`;
-    if (profile.linkedin) response += `**LinkedIn:** ${profile.linkedin}\n`;
+    if (p.headline) response += `**Headline:** ${p.headline}\n`;
+    if (p.city) response += `**Location:** ${p.city}${p.country ? `, ${p.country}` : ''}\n`;
+    if (p.linkedin_url) response += `**LinkedIn:** ${p.linkedin_url}\n`;
+    if (p.twitter_url) response += `**Twitter:** ${p.twitter_url}\n`;
 
-    if (profile.focus_areas && profile.focus_areas.length > 0) {
-      response += `**Focus Areas:** ${profile.focus_areas.join(', ')}\n`;
+    if (p.expertise && p.expertise.length > 0) {
+      response += `**Expertise:** ${p.expertise.join(', ')}\n`;
+    }
+    if (p.interests && p.interests.length > 0) {
+      response += `**Interests:** ${p.interests.join(', ')}\n`;
     }
 
-    if (profile.bio) {
-      response += `\n### Bio\n${profile.bio}\n`;
+    if (p.bio) {
+      response += `\n### Bio\n${p.bio}\n`;
     }
 
     return response;
@@ -1436,30 +1484,129 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to update your profile. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    // Only include fields that were provided
     const updates: Record<string, unknown> = {};
-    if (input.headline !== undefined) updates.headline = input.headline;
-    if (input.bio !== undefined) updates.bio = input.bio;
-    if (input.focus_areas !== undefined) updates.focus_areas = input.focus_areas;
-    if (input.website !== undefined) updates.website = input.website;
-    if (input.linkedin !== undefined) updates.linkedin = input.linkedin;
-    if (input.location !== undefined) updates.location = input.location;
+    const stringFields = ['headline', 'bio', 'city', 'linkedin_url', 'twitter_url'] as const;
+    for (const field of stringFields) {
+      if (input[field] !== undefined) {
+        updates[field] = (input[field] as string) || null;
+      }
+    }
+    const arrayFields = ['expertise', 'interests'] as const;
+    for (const field of arrayFields) {
+      if (input[field] !== undefined) {
+        updates[field] = input[field];
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
-      return 'No fields to update. Provide at least one field (headline, bio, focus_areas, website, linkedin, or location).';
+      return 'No fields to update. Provide at least one field (headline, bio, expertise, interests, city, linkedin_url, or twitter_url).';
+    }
+
+    const result = await callApi('PUT', '/api/me/community-profile', memberContext, updates);
+
+    if (!result.ok) {
+      return `Failed to update profile: ${result.error}`;
+    }
+
+    const updatedFields = Object.keys(updates).join(', ');
+    return `Profile updated! Updated: ${updatedFields}\n\nEdit at https://agenticadvertising.org/community/profile/edit`;
+  });
+
+  // ============================================
+  // COMPANY LISTING (the org's directory entry)
+  // ============================================
+  handlers.set('get_company_listing', async () => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your company listing. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const result = await callApi('GET', '/api/me/member-profile', memberContext);
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
+      }
+      return `Failed to fetch company listing: ${result.error}`;
+    }
+
+    const data = result.data as { profile: {
+      display_name: string;
+      slug: string;
+      tagline?: string;
+      description?: string;
+      contact_email?: string;
+      contact_website?: string;
+      contact_phone?: string;
+      linkedin_url?: string;
+      twitter_url?: string;
+      headquarters?: string;
+      offerings?: string[];
+      is_public: boolean;
+    } | null; organization_name?: string };
+
+    if (!data.profile) {
+      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
+    }
+
+    const listing = data.profile;
+
+    let response = `## Company Listing\n\n`;
+    response += `**Name:** ${listing.display_name}\n`;
+    response += `**Directory URL:** https://agenticadvertising.org/members/${listing.slug}\n`;
+    response += `**Visibility:** ${listing.is_public ? 'Public' : 'Hidden'}\n\n`;
+
+    if (listing.tagline) response += `**Tagline:** ${listing.tagline}\n`;
+    if (listing.headquarters) response += `**Headquarters:** ${listing.headquarters}\n`;
+    if (listing.contact_website) response += `**Website:** ${listing.contact_website}\n`;
+    if (listing.contact_email) response += `**Email:** ${listing.contact_email}\n`;
+    if (listing.linkedin_url) response += `**LinkedIn:** ${listing.linkedin_url}\n`;
+    if (listing.twitter_url) response += `**Twitter:** ${listing.twitter_url}\n`;
+
+    if (listing.offerings && listing.offerings.length > 0) {
+      response += `**Offerings:** ${listing.offerings.join(', ')}\n`;
+    }
+
+    if (listing.description) {
+      response += `\n### Description\n${listing.description}\n`;
+    }
+
+    return response;
+  });
+
+  handlers.set('update_company_listing', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to update your company listing. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const updates: Record<string, unknown> = {};
+    const stringFields = [
+      'tagline', 'description', 'contact_email', 'contact_website',
+      'contact_phone', 'linkedin_url', 'twitter_url', 'headquarters',
+    ] as const;
+    for (const field of stringFields) {
+      if (input[field] !== undefined) {
+        updates[field] = (input[field] as string) || null;
+      }
+    }
+    if (input.offerings !== undefined) {
+      updates.offerings = input.offerings;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return 'No fields to update. Provide at least one field (tagline, description, offerings, contact_email, contact_website, contact_phone, linkedin_url, twitter_url, or headquarters).';
     }
 
     const result = await callApi('PUT', '/api/me/member-profile', memberContext, updates);
 
     if (!result.ok) {
       if (result.status === 404) {
-        return "You don't have a member profile yet. Visit https://agenticadvertising.org/member-profile to create one first!";
+        return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
       }
-      return `Failed to update profile: ${result.error}`;
+      return `Failed to update company listing: ${result.error}`;
     }
 
     const updatedFields = Object.keys(updates).join(', ');
-    return `✅ Profile updated successfully! Updated fields: ${updatedFields}\n\nView your profile at https://agenticadvertising.org/members/`;
+    return `Company listing updated! Updated: ${updatedFields}\n\nView at https://agenticadvertising.org/members/`;
   });
 
   // ============================================

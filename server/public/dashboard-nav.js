@@ -64,25 +64,24 @@
   // Navigation configuration
   // When on dashboard page, use anchor links; otherwise use full page links
   const isDashboardPage = window.location.pathname === '/dashboard' || window.location.pathname === '/dashboard/';
+  const isOrgPage = window.location.pathname === '/dashboard/organization' || window.location.pathname === '/dashboard/organization/';
+  const isAnchorPage = isDashboardPage || isOrgPage;
 
   const NAV_CONFIG = {
-    logo: 'Dashboard',
+    logo: isOrgPage ? 'My organization' : 'Dashboard',
     sections: [
       {
         label: 'Organization',
         items: [
-          { href: '/dashboard/organization', label: 'Journey & overview', icon: '📊' },
+          { href: isOrgPage ? '#membership' : '/dashboard/organization#membership', label: 'Membership', icon: '⭐', anchor: isOrgPage ? 'membership' : null },
+          { href: isOrgPage ? '#team' : '/dashboard/organization#team', label: 'Team', icon: '👥', anchor: isOrgPage ? 'team' : null },
+          { href: isOrgPage ? '#directory' : '/dashboard/organization#directory', label: 'Directory listing', icon: '🏢', anchor: isOrgPage ? 'directory' : null },
         ]
       },
       {
         label: 'Account',
         items: [
-          { href: isDashboardPage ? '#profile' : '/dashboard#profile', label: 'Profile', icon: '🏢', anchor: 'profile' },
-          { href: isDashboardPage ? '#team' : '/dashboard#team', label: 'Team', icon: '👥', anchor: 'team' },
-          { href: isDashboardPage ? '#certification' : '/dashboard#certification', label: 'Certification', icon: '🎓', anchor: 'certification' },
-          { href: isDashboardPage ? '#membership' : '/dashboard#membership', label: 'Membership', icon: '⭐', anchor: 'membership' },
           { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
-          { href: '/dashboard/emails', label: 'Email preferences', icon: '📧' },
           { href: '/dashboard/api-keys', label: 'API keys', icon: '🔑' },
         ]
       }
@@ -550,33 +549,23 @@
 
     const sectionsHTML = NAV_CONFIG.sections.map(section => {
       const itemsHTML = section.items.map(item => {
-        // Hide Team nav item for personal workspaces (no team features allowed)
-        if (item.anchor === 'team' && isPersonal) {
+        // Hide Team and Directory listing for personal workspaces
+        if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing')) {
           return '';
         }
 
-        // Customize Profile item based on account type
         let itemLabel = item.label;
         let itemHref = item.href;
         let itemAnchor = item.anchor;
         let itemIcon = item.icon;
-        if (item.anchor === 'profile') {
-          if (isPersonal) {
-            itemLabel = 'Your profile';
-            itemIcon = '👤';
-            itemHref = orgId ? `/community/profile/edit?org=${orgId}` : '/community/profile/edit';
-            itemAnchor = null; // Full page link, not an anchor
-          } else {
-            itemLabel = 'Directory listing';
-          }
-        }
 
         // For anchor links on dashboard, check hash; for page links, check path
         let isActive = false;
-        if (itemAnchor && isDashboardPage) {
+        if (itemAnchor && isAnchorPage) {
           // On dashboard with anchor links - check if hash matches or default to profile
+          const defaultAnchor = isOrgPage ? 'membership' : 'profile';
           isActive = currentHash === `#${itemAnchor}` ||
-                    (itemAnchor === 'profile' && (!currentHash || currentHash === ''));
+                    (itemAnchor === defaultAnchor && (!currentHash || currentHash === ''));
         } else if (!itemAnchor) {
           // Regular page links
           isActive = currentPath === itemHref ||
@@ -589,12 +578,17 @@
         // Build href with org param for cross-page links
         let href = itemHref;
         if (orgId) {
-          if (itemAnchor && !isDashboardPage) {
+          if (itemAnchor && !isAnchorPage) {
             // e.g., /dashboard#profile -> /dashboard?org=xyz#profile
             href = `/dashboard?org=${orgId}#${itemAnchor}`;
           } else if (!itemAnchor && !href.includes('?org=')) {
             // e.g., /dashboard/settings -> /dashboard/settings?org=xyz
-            href = `${itemHref}?org=${orgId}`;
+            // Handle hrefs that contain a hash fragment
+            if (href.includes('#')) {
+              href = href.replace('#', `?org=${orgId}#`);
+            } else {
+              href = `${itemHref}?org=${orgId}`;
+            }
           }
         }
 
@@ -814,15 +808,16 @@
 
   // Update active nav item when hash changes (for anchor-based navigation)
   function updateActiveNavItem() {
-    if (!isDashboardPage) return;
+    if (!isAnchorPage) return;
 
     const currentHash = window.location.hash;
     const navItems = document.querySelectorAll('.dashboard-nav-item[data-anchor]');
 
     navItems.forEach(item => {
       const anchor = item.getAttribute('data-anchor');
+      const defaultAnchor = isOrgPage ? 'membership' : 'profile';
       const isActive = currentHash === `#${anchor}` ||
-                      (anchor === 'profile' && (!currentHash || currentHash === ''));
+                      (anchor === defaultAnchor && (!currentHash || currentHash === ''));
       item.classList.toggle('active', isActive);
     });
   }
@@ -831,7 +826,7 @@
   window.addEventListener('hashchange', updateActiveNavItem);
 
   // Also handle smooth scrolling and intersection observer for scroll-based updates
-  if (isDashboardPage) {
+  if (isAnchorPage) {
     // Set up intersection observer for sections to update nav on scroll
     document.addEventListener('DOMContentLoaded', () => {
       const sections = document.querySelectorAll('.dashboard-section[id]');

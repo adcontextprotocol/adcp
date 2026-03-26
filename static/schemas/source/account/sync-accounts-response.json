@@ -20,6 +20,10 @@
           "items": {
             "type": "object",
             "properties": {
+              "account_id": {
+                "type": "string",
+                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations."
+              },
               "brand": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Brand reference, echoed from the request"
@@ -58,9 +62,14 @@
                 "type": "string",
                 "enum": [
                   "operator",
-                  "agent"
+                  "agent",
+                  "advertiser"
                 ],
                 "description": "Who is invoiced on this account. Matches the requested billing model."
+              },
+              "billing_entity": {
+                "$ref": "/schemas/core/business-entity.json",
+                "description": "Business entity details for the party responsible for payment, echoed from the request. Sellers MAY add fields the agent omitted (e.g., filling in registration_number from a credit check), but MUST NOT return data from a different entity. Bank details are omitted (write-only)."
               },
               "account_scope": {
                 "type": "string",
@@ -215,6 +224,7 @@
       "data": {
         "accounts": [
           {
+            "account_id": "acc_spark_001",
             "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
             "operator": "pinnacle-media.com",
             "name": "Spark (via Pinnacle)",
@@ -224,6 +234,7 @@
             "account_scope": "operator_brand"
           },
           {
+            "account_id": "acc_glow_pending",
             "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
             "operator": "pinnacle-media.com",
             "name": "Glow",
@@ -271,6 +282,42 @@
                 "message": "Operator billing is not supported. This seller only accepts agent billing."
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Advertiser billed directly with billing entity (bank details omitted in response)",
+      "data": {
+        "accounts": [
+          {
+            "account_id": "acc_acme_direct_bill",
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "pinnacle-media.com",
+            "name": "Acme Corp (billed direct)",
+            "action": "created",
+            "status": "active",
+            "billing": "advertiser",
+            "billing_entity": {
+              "legal_name": "Acme Corporation GmbH",
+              "vat_id": "DE987654321",
+              "registration_number": "HRB 67890",
+              "address": {
+                "street": "Hauptstrasse 42",
+                "city": "Munich",
+                "postal_code": "80331",
+                "country": "DE"
+              },
+              "contacts": [
+                {
+                  "role": "billing",
+                  "name": "AP Department",
+                  "email": "billing@acme-corp.com"
+                }
+              ]
+            },
+            "account_scope": "operator_brand",
+            "payment_terms": "net_30"
           }
         ]
       }

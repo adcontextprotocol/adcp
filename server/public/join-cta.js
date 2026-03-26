@@ -35,6 +35,18 @@ function injectJoinCtaStyles() {
       margin: 0 auto;
     }
 
+    .join-cta-grid--four {
+      grid-template-columns: repeat(4, 1fr);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .join-cta-grid--five {
+      grid-template-columns: repeat(5, 1fr);
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
     .join-cta-card {
       background: var(--color-bg-card);
       border-radius: var(--radius-lg);
@@ -80,6 +92,12 @@ function injectJoinCtaStyles() {
       font-size: var(--text-2xl);
       font-weight: var(--font-bold);
       color: var(--aao-black);
+      margin-bottom: var(--space-1);
+    }
+
+    .join-cta-card-audience {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
       margin-bottom: var(--space-4);
     }
 
@@ -272,6 +290,23 @@ function injectJoinCtaStyles() {
         grid-template-columns: 1fr;
         max-width: var(--container-sm);
       }
+
+      .join-cta-grid--four {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: var(--container-lg);
+      }
+
+      .join-cta-grid--five {
+        grid-template-columns: repeat(3, 1fr);
+        max-width: var(--container-xl);
+      }
+    }
+
+    @media (max-width: 900px) {
+      .join-cta-grid--five {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: var(--container-lg);
+      }
     }
 
     @media (max-width: 768px) {
@@ -280,6 +315,16 @@ function injectJoinCtaStyles() {
       }
 
       .join-cta-grid--three {
+        max-width: 100%;
+      }
+
+      .join-cta-grid--four {
+        grid-template-columns: 1fr;
+        max-width: 100%;
+      }
+
+      .join-cta-grid--five {
+        grid-template-columns: 1fr;
         max-width: 100%;
       }
 
@@ -310,7 +355,7 @@ function injectJoinCtaStyles() {
 async function renderJoinCta(options = {}) {
   const {
     containerId = 'join-cta-container',
-    showFoundingNote = true,
+    showFoundingNote = new Date() < new Date('2026-04-01T04:00:00Z'),
     showContactLine = true
   } = options;
 
@@ -334,134 +379,169 @@ async function renderJoinCta(options = {}) {
   // Fetch pricing from Stripe
   const products = await fetchBillingProducts();
 
-  // Find specific products by lookup key (subscription versions for display)
-  const industryCouncilLeader = products.find(p => p.lookup_key === 'aao_membership_industry_council_leader_50000');
-  const corporate5m = products.find(p => p.lookup_key === 'aao_membership_corporate_5m');
-  const corporateUnder5m = products.find(p => p.lookup_key === 'aao_membership_corporate_under5m');
-  const individual = products.find(p => p.lookup_key === 'aao_membership_individual');
-  const individualDiscounted = products.find(p => p.lookup_key === 'aao_membership_individual_discounted');
+  // Find specific products by lookup key
+  const leaderProduct = products.find(p => p.lookup_key === 'aao_membership_leader_50000');
+  const memberProduct = products.find(p => p.lookup_key === 'aao_membership_member_15000');
+  const builderProduct = products.find(p => p.lookup_key === 'aao_membership_builder_3000');
+  const professionalProduct = products.find(p => p.lookup_key === 'aao_membership_professional_250');
+  const explorerProduct = products.find(p => p.lookup_key === 'aao_membership_explorer_50');
 
   // Format prices (fallback to defaults if API fails)
-  const priceCouncilLeader = industryCouncilLeader ? formatCurrency(industryCouncilLeader.amount_cents, industryCouncilLeader.currency) : '$50,000';
-  const price5m = corporate5m ? formatCurrency(corporate5m.amount_cents, corporate5m.currency) : '$10,000';
-  const priceUnder5m = corporateUnder5m ? formatCurrency(corporateUnder5m.amount_cents, corporateUnder5m.currency) : '$2,500';
-  const priceIndividual = individual ? formatCurrency(individual.amount_cents, individual.currency) : '$250';
-  const priceDiscounted = individualDiscounted ? formatCurrency(individualDiscounted.amount_cents, individualDiscounted.currency) : '$50';
+  const priceLeader = escapeHtml(leaderProduct ? formatCurrency(leaderProduct.amount_cents, leaderProduct.currency) : '$50,000');
+  const priceMember = escapeHtml(memberProduct ? formatCurrency(memberProduct.amount_cents, memberProduct.currency) : '$15,000');
+  const priceBuilder = escapeHtml(builderProduct ? formatCurrency(builderProduct.amount_cents, builderProduct.currency) : '$3,000');
+  const priceProfessional = escapeHtml(professionalProduct ? formatCurrency(professionalProduct.amount_cents, professionalProduct.currency) : '$250');
+  const priceExplorer = escapeHtml(explorerProduct ? formatCurrency(explorerProduct.amount_cents, explorerProduct.currency) : '$50');
 
-  // Always show all price tiers - no personalization
-
-  const industryCouncilBenefits = [
-    'Seat on Industry Council with strategic input on roadmap',
-    'Speaking opportunities at key industry events',
-    'Priority attendance at flagship events',
-    'Featured recognition on website and at events',
-    'All Company Membership benefits included'
-  ];
-
-  const companyBenefits = [
-    'Eligibility to serve on Board',
-    'Right to vote for Board',
-    'Help build standards, practices, protocols, and policies',
-    'Right to vote on standards adoption',
-    'Serve on interim Advisory Council',
-    'Participate in working groups',
-    'All team members can participate in association activities'
-  ];
-
-  const individualBenefits = [
-    'Help build standards, practices, protocols, and policies',
-    'AdCP Academy — earn Basics, Practitioner & Specialist credentials',
-    'Personal listing in member directory',
-    'Working group participation',
-    'Community Slack access',
-    'Event discounts and early access',
+  const explorerBenefits = [
+    '1 community-only seat — Addie, certification, training',
+    'Start your first certification module free',
     'Newsletter and industry updates'
   ];
 
-  // Always show both company tiers
-  const companyPricingHtml = `
-    <div class="join-cta-pricing-tier">
-      <div class="join-cta-pricing-label">$5M+ annual revenue</div>
-      <div class="join-cta-pricing-amount">${price5m}<span class="join-cta-pricing-period">/year</span></div>
-    </div>
-    <div class="join-cta-pricing-secondary">
-      <div class="join-cta-pricing-secondary-label">Under $5M annual revenue</div>
-      <div class="join-cta-pricing-secondary-amount">${priceUnder5m}<span class="join-cta-pricing-period">/year</span></div>
-    </div>
-  `;
+  const professionalBenefits = [
+    '1 contributor seat — includes community access',
+    'Slack, working groups, councils, product summit',
+    'Voting rights',
+    'Directory listing'
+  ];
+
+  const builderBenefits = [
+    '5 contributor seats — includes community access',
+    '5 community-only seats — Addie, certification, training',
+    'API access — registry, agent testing, sandbox',
+    'Board eligible — voting rights',
+    'Marketing opportunities available'
+  ];
+
+  const memberBenefits = [
+    '10 contributor seats — includes community access',
+    '50 community-only seats — train your whole team',
+    'API access — registry, agent testing, sandbox',
+    'Featured directory placement',
+    'Board eligible — voting rights'
+  ];
+
+  const leaderBenefits = [
+    '20+ contributor seats — includes community access',
+    'Unlimited community-only seats',
+    'API access — registry, agent testing, sandbox',
+    'Lead councils — chair and set agendas',
+    'Board eligible — voting rights',
+    'First access to sponsorships, white papers, co-branded research'
+  ];
 
   // All tiers use the same signup flow
   const signupUrl = userContext.isLoggedIn
-    ? `/dashboard/membership${userContext.orgId ? `?org=${userContext.orgId}` : ''}`
+    ? `/dashboard/membership${userContext.orgId ? `?org=${encodeURIComponent(userContext.orgId)}` : ''}`
     : '/auth/signup?return_to=/onboarding?signup=true';
 
   container.innerHTML = `
-    <div class="join-cta-grid join-cta-grid--three">
-      <!-- Industry Council Leader -->
-      <div class="join-cta-card join-cta-card--featured">
-        <div class="join-cta-featured-badge" aria-hidden="true">Industry Leadership</div>
-        <div class="join-cta-card-header">
-          <div class="join-cta-card-title">Industry Council Leader</div>
-        </div>
-        <div class="join-cta-pricing-tier" style="padding-bottom: var(--space-4); margin-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
-          <div class="join-cta-pricing-label">For industry-leading organizations</div>
-          <div class="join-cta-pricing-amount">${priceCouncilLeader}<span class="join-cta-pricing-period">/year</span></div>
-        </div>
-
-        <div class="join-cta-benefits-header">Industry Council Benefits</div>
-        <ul class="join-cta-benefits-list">
-          ${industryCouncilBenefits.map(b => `<li>${b}</li>`).join('')}
-        </ul>
-
-        <div class="join-cta-button-wrapper">
-          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
-        </div>
-        <p class="join-cta-card-footer">
-          Questions? <a href="mailto:membership@agenticadvertising.org">Contact us</a>
-        </p>
-      </div>
-
-      <!-- Company Membership -->
+    <div class="join-cta-grid join-cta-grid--five">
+      <!-- Explorer -->
       <div class="join-cta-card">
         <div class="join-cta-card-header">
-          <div class="join-cta-card-title">Company Membership</div>
+          <div class="join-cta-card-title">Explorer</div>
+          <div class="join-cta-card-audience">Getting started</div>
         </div>
-        ${companyPricingHtml}
 
-        <div class="join-cta-benefits-header">Company Membership Benefits</div>
         <ul class="join-cta-benefits-list">
-          ${companyBenefits.map(b => `<li>${b}</li>`).join('')}
+          ${explorerBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
         </ul>
 
-        <div class="join-cta-button-wrapper">
-          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
-        </div>
-        <p class="join-cta-card-footer">Open to brands, publishers, agencies, and ad tech providers</p>
-      </div>
-
-      <!-- Individual Membership -->
-      <div class="join-cta-card">
-        <div class="join-cta-card-header">
-          <div class="join-cta-card-title">Individual Membership</div>
-        </div>
         <div class="join-cta-pricing-tier">
-          <div class="join-cta-pricing-label">Industry professionals</div>
-          <div class="join-cta-pricing-amount">${priceIndividual}<span class="join-cta-pricing-period">/year</span></div>
+          <div class="join-cta-pricing-amount">${priceExplorer}<span class="join-cta-pricing-period">/year</span></div>
         </div>
-        <div class="join-cta-pricing-secondary">
-          <div class="join-cta-pricing-secondary-label">Students, academics & non-profits</div>
-          <div class="join-cta-pricing-secondary-amount">${priceDiscounted}<span class="join-cta-pricing-period">/year</span></div>
-        </div>
-
-        <div class="join-cta-benefits-header">Individual Membership Benefits</div>
-        <ul class="join-cta-benefits-list">
-          ${individualBenefits.map(b => `<li>${b}</li>`).join('')}
-        </ul>
 
         <div class="join-cta-button-wrapper">
           <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
         </div>
-        <p class="join-cta-card-footer">For consultants, professionals, and enthusiasts</p>
+        <p class="join-cta-card-footer">Credit card</p>
+      </div>
+
+      <!-- Professional -->
+      <div class="join-cta-card">
+        <div class="join-cta-card-header">
+          <div class="join-cta-card-title">Professional</div>
+          <div class="join-cta-card-audience">Working practitioners</div>
+        </div>
+
+        <ul class="join-cta-benefits-list">
+          ${professionalBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+
+        <div class="join-cta-pricing-tier">
+          <div class="join-cta-pricing-amount">${priceProfessional}<span class="join-cta-pricing-period">/year</span></div>
+        </div>
+
+        <div class="join-cta-button-wrapper">
+          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
+        </div>
+        <p class="join-cta-card-footer">Credit card</p>
+      </div>
+
+      <!-- Builder -->
+      <div class="join-cta-card">
+        <div class="join-cta-card-header">
+          <div class="join-cta-card-title">Builder</div>
+          <div class="join-cta-card-audience">Growing teams &amp; startups</div>
+        </div>
+
+        <ul class="join-cta-benefits-list">
+          ${builderBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+
+        <div class="join-cta-pricing-tier">
+          <div class="join-cta-pricing-amount">${priceBuilder}<span class="join-cta-pricing-period">/year</span></div>
+        </div>
+
+        <div class="join-cta-button-wrapper">
+          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
+        </div>
+        <p class="join-cta-card-footer">Credit card</p>
+      </div>
+
+      <!-- Member -->
+      <div class="join-cta-card join-cta-card--featured">
+        <div class="join-cta-featured-badge" aria-hidden="true">Recommended</div>
+        <div class="join-cta-card-header">
+          <div class="join-cta-card-title">Member</div>
+          <div class="join-cta-card-audience">Organizations &amp; established teams</div>
+        </div>
+
+        <ul class="join-cta-benefits-list">
+          ${memberBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+
+        <div class="join-cta-pricing-tier">
+          <div class="join-cta-pricing-amount">${priceMember}<span class="join-cta-pricing-period">/year</span></div>
+        </div>
+
+        <div class="join-cta-button-wrapper">
+          <a href="/chat?topic=membership&tier=member" class="btn btn-primary">Talk to Addie</a>
+        </div>
+        <p class="join-cta-card-footer">Credit card or invoice</p>
+      </div>
+
+      <!-- Leader -->
+      <div class="join-cta-card">
+        <div class="join-cta-card-header">
+          <div class="join-cta-card-title">Leader</div>
+          <div class="join-cta-card-audience">Industry-shaping organizations</div>
+        </div>
+
+        <ul class="join-cta-benefits-list">
+          ${leaderBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+
+        <div class="join-cta-pricing-tier">
+          <div class="join-cta-pricing-amount">${priceLeader}<span class="join-cta-pricing-period">/year</span></div>
+        </div>
+
+        <div class="join-cta-button-wrapper">
+          <a href="/chat?topic=membership&tier=leader" class="btn btn-primary">Talk to Addie</a>
+        </div>
+        <p class="join-cta-card-footer">Credit card or invoice</p>
       </div>
     </div>
 
@@ -472,7 +552,7 @@ async function renderJoinCta(options = {}) {
     ` : ''}
 
     <p class="join-cta-custom-packages">
-      Custom membership packages available. <a href="mailto:membership@agenticadvertising.org?subject=Custom%20Membership%20Package">Contact us</a> for more information.
+      Need more seats or a custom package? <a href="mailto:membership@agenticadvertising.org?subject=Custom%20Membership%20Package">Contact us</a>
     </p>
 
     ${showContactLine ? `
@@ -495,28 +575,23 @@ let userContextCache = null;
 function renderMemberConfirmation(userContext, showContactLine) {
   const isPersonal = userContext.isPersonal;
 
-  const companyBenefits = [
-    'Eligibility to serve on Board',
-    'Right to vote for Board',
-    'Help build standards, practices, protocols, and policies',
-    'Right to vote on standards adoption',
-    'Serve on interim Advisory Council',
-    'Participate in working groups',
-    'All team members can participate in association activities'
+  const orgBenefits = [
+    'Contributor seats — includes community access',
+    'Community-only seats — Addie, certification, training',
+    'API access',
+    'Board eligible — voting rights',
+    'Directory listing'
   ];
 
   const individualBenefits = [
-    'Help build standards, practices, protocols, and policies',
-    'AdCP Academy — earn Basics, Practitioner & Specialist credentials',
-    'Personal listing in member directory',
-    'Working group participation',
-    'Community Slack access',
-    'Event discounts and early access',
-    'Newsletter and industry updates'
+    'Contributor seat — includes community access',
+    'Slack, working groups, councils, product summit',
+    'Voting rights',
+    'Directory listing'
   ];
 
-  const benefits = isPersonal ? individualBenefits : companyBenefits;
-  const memberType = isPersonal ? 'Individual' : 'Company';
+  const benefits = isPersonal ? individualBenefits : orgBenefits;
+  const memberType = isPersonal ? 'Individual' : 'Organization';
 
   return `
     <div class="join-cta-member-confirmed">

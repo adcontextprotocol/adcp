@@ -22,9 +22,8 @@
       "description": "Optional intermediary who receives invoices on behalf of the advertiser (e.g., agency)"
     },
     "status": {
-      "type": "string",
-      "enum": ["active", "pending_approval", "rejected", "payment_required", "suspended", "closed"],
-      "description": "Account status. pending_approval: seller reviewing (credit, contracts). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
+      "$ref": "/schemas/enums/account-status.json",
+      "description": "Account lifecycle status. See the Accounts Protocol overview for the operations matrix showing which tasks are permitted in each state."
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
@@ -37,8 +36,12 @@
     },
     "billing": {
       "type": "string",
-      "enum": ["operator", "agent"],
-      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing."
+      "enum": ["operator", "agent", "advertiser"],
+      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. See billing_entity for the invoiced party's business details."
+    },
+    "billing_entity": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Business entity details for the party responsible for payment. Contains the legal name, tax IDs, address, and bank details needed for formal B2B invoicing. Corresponds to whoever billing points to (operator, agent, or advertiser). When this account appears in a response, bank details MUST be omitted (write-only)."
     },
     "rate_card": {
       "type": "string",
@@ -197,6 +200,37 @@
         "operator": "pinnacle-media.com",
         "billing": "operator",
         "account_scope": "brand"
+      }
+    },
+    {
+      "description": "Agency operates but advertiser is billed directly with structured billing entity",
+      "data": {
+        "account_id": "acc_acme_direct_bill",
+        "name": "Acme (billed direct)",
+        "advertiser": "Acme Corp",
+        "brand": { "domain": "acme-corp.com" },
+        "operator": "pinnacle-media.com",
+        "status": "active",
+        "billing": "advertiser",
+        "billing_entity": {
+          "legal_name": "Acme Corporation GmbH",
+          "vat_id": "DE987654321",
+          "address": {
+            "street": "Hauptstrasse 42",
+            "city": "Munich",
+            "postal_code": "80331",
+            "country": "DE"
+          },
+          "contacts": [
+            {
+              "role": "billing",
+              "name": "AP Department",
+              "email": "billing@acme-corp.com"
+            }
+          ]
+        },
+        "account_scope": "operator_brand",
+        "payment_terms": "net_30"
       }
     }
   ]

@@ -1,4 +1,45 @@
 /**
+ * Analyze human messages in a thread and return a response-calibration hint.
+ *
+ * When humans in the thread are writing short, direct messages, Addie should
+ * match that register — not respond with essays. This function measures the
+ * median length of human messages (excluding Addie's) and produces a hint
+ * that gets injected into the request context.
+ *
+ * Returns null when there aren't enough human messages to calibrate from,
+ * or when human messages are already long-form.
+ */
+export function buildThreadStyleHint(
+  messages: Array<{ user?: string; text?: string }>,
+  botUserId: string
+): string | null {
+  const humanMessages = messages
+    .filter(msg => msg.user && msg.user !== botUserId && msg.text)
+    .map(msg => msg.text!.trim())
+    .filter(text => text.length > 0);
+
+  if (humanMessages.length < 1) return null;
+
+  // Measure median character length of human messages (true median for even counts)
+  const lengths = humanMessages.map(t => t.length).sort((a, b) => a - b);
+  const mid = Math.floor(lengths.length / 2);
+  const median = lengths.length % 2 === 0
+    ? (lengths[mid - 1] + lengths[mid]) / 2
+    : lengths[mid];
+
+  // If humans are writing short messages (under ~400 chars ≈ 3-4 sentences),
+  // tell Addie to be concise. Over 400 is long-form enough that Addie's
+  // normal style is fine.
+  if (median > 400) return null;
+
+  return [
+    '## Response Style — Thread Calibration',
+    `Humans in this thread are averaging ~${Math.round(median)}-character replies. Keep yours proportional.`,
+    'Your baseline conciseness rules apply with extra force here — lead with the answer, not background.',
+  ].join('\n');
+}
+
+/**
  * Check if a thread has multiple human participants.
  * Used to avoid auto-responding when humans are talking to each other.
  *

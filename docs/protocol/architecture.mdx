@@ -26,7 +26,12 @@ Three protocol domains establish who the parties are before any transaction occu
 
 ### Transaction domains
 
-Four protocol domains handle core advertising operations.
+Four protocol domains handle core advertising operations. The [Trusted Match Protocol (TMP)](/docs/trusted-match) serves as the execution layer, connecting planning-time decisions to real-time activation through a four-phase lifecycle:
+
+1. **Planning** — `get_products` and `create_media_buy` establish packages, budgets, and targeting criteria.
+2. **Execution** — TMP Context Match determines content fit; TMP Identity Match checks user eligibility. Both operations run at serve time with structural privacy separation.
+3. **Engagement** — Sponsored Intelligence sessions deliver conversational brand experiences.
+4. **Reporting** — `get_media_buy_delivery` aggregates delivery data across sellers.
 
 **Media Buy** covers inventory discovery (`get_products`), campaign creation (`create_media_buy`), and delivery reporting (`get_media_buy_delivery`). Publishers return structured media products with pricing, targeting options, and delivery forecasts. Buyers can request proposals — structured media plans that encode publisher expertise. See [Media Buy](/docs/media-buy).
 
@@ -70,7 +75,9 @@ These parties exchange impressions and money through the orchestration layer.
 
 ### Technical execution
 
-**Agentic eXecution Engine (AXE)** — real-time execution layer for brand suitability, frequency capping, first-party data activation, and dynamic audience targeting. Connects via key-value pairs or RTB protocols. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine).
+**Trusted Match Protocol (TMP)** — real-time execution layer that determines which pre-negotiated packages should activate for a given impression. Two structurally separated operations — Context Match (content fit) and Identity Match (user eligibility) — connect planning-time media buys to serve-time decisions across web, mobile, CTV, AI assistants, and retail media. See [TMP documentation](/docs/trusted-match).
+
+**Agentic eXecution Engine (AXE)** — deprecated predecessor to TMP. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine).
 
 **Decisioning platform** — the infrastructure that selects which ad to serve, via direct campaigns or programmatic (RTB). Examples include DSPs, SSPs, and ad servers.
 

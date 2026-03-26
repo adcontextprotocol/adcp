@@ -149,6 +149,40 @@ AdCP defines universal macros for cross-platform tracking. Creative agents MUST 
 
 Sales agents MUST translate universal macros to their ad server's native syntax.
 
+## Creative Status Lifecycle
+
+**Schema**: [`enums/creative-status.json`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)
+
+Creatives in a library progress through a defined set of states. `archived` is the only buyer-initiated state change; all others are seller-initiated (processing, review, approval/rejection).
+
+```
+sync_creatives ──▶ processing ──▶ pending_review ──▶ approved
+                       │                                │
+                       │ (processing failure)            │ (buyer archives)
+                       ▼                                ▼
+                   rejected ◀── (policy failure) ── pending_review
+                       │                            archived
+                       │ (buyer fixes + resubmits        │
+                       │  via sync_creatives)             │ (buyer unarchives)
+                       ▼                                ▼
+                   processing                       approved
+```
+
+**Rules:**
+
+- `processing` → `pending_review`: automatic when ingestion and transcoding succeed
+- `processing` → `rejected`: automatic when processing fails (corrupt file, unsupported codec, constraint violation)
+- `pending_review` → `approved`: seller approves after content policy review
+- `pending_review` → `rejected`: seller rejects with `rejection_reason`
+- `approved` → `archived`: buyer-initiated via `sync_creatives`
+- `archived` → `approved`: buyer-initiated via `sync_creatives` (unarchive). Sellers MAY require re-review, transitioning to `pending_review` instead.
+- `rejected` → `processing`: buyer fixes the creative and resubmits via `sync_creatives`. The creative re-enters the full processing and review pipeline.
+- `approved` → `pending_review`: seller-initiated re-review (e.g., policy change). Sellers SHOULD notify the buyer when a previously approved creative is pulled back for re-review.
+
+Creative agents MUST reject operations that reference a `rejected` creative for delivery (e.g., assigning it to a package) with error code `CREATIVE_REJECTED`.
+
+Creative agents MUST include `status` and `rejection_reason` (when rejected) in `list_creatives` responses.
+
 ## Tasks
 
 The Creative Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.

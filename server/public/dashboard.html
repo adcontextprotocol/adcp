@@ -1043,9 +1043,9 @@
           margin-bottom: var(--space-5);
         ">
           <div style="flex: 1;">
-            <strong style="color: var(--color-text-heading);">Join us on Slack</strong>
+            <strong style="color: var(--color-text-heading);">Your contributor seat includes Slack access</strong>
             <p style="margin: var(--space-1) 0 0 0; font-size: 14px; color: var(--color-text-secondary);">
-              Connect with the community, get help from Addie, and stay up to date on AdCP developments.
+              Connect with other members, join working group channels, and participate in community discussions.
             </p>
           </div>
           <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA"
@@ -4021,10 +4021,8 @@
         const isAdmin = data.user?.isAdmin || false;
         const hasMultipleOrgs = data.organizations && data.organizations.length > 1;
 
-        // Show Slack banner for users not linked to Slack
-        if (!data.user?.isLinkedToSlack && !localStorage.getItem('slackBannerDismissed')) {
-          document.getElementById('slackBanner').style.display = 'block';
-        }
+        // Slack banner is shown later, after we know the user's seat type
+        // Only contributor seats get Slack access
 
         if (data.organizations && data.organizations.length > 0) {
           // Check if multi-org user needs to pick an org before we fetch billing
@@ -4108,6 +4106,12 @@
             showAdmin: isAdmin,
             orgId: selectedOrgId
           });
+
+          // Show Slack banner only for contributor seats not yet linked to Slack
+          const isContributor = data.user?.seat_type === 'contributor';
+          if (isContributor && !data.user?.isLinkedToSlack && !localStorage.getItem('slackBannerDismissed')) {
+            document.getElementById('slackBanner').style.display = 'block';
+          }
 
           // Set up org switcher in sidebar if multiple orgs
           if (hasMultipleOrgs) {

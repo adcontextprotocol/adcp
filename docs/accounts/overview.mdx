@@ -16,7 +16,7 @@ Six questions underlie every AdCP transaction:
 | Who is the advertiser? | Brand registry | `brand.domain` resolves to `brand.json` |
 | Who operates on the brand's behalf? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
 | How does the operator authenticate? | Seller capabilities | `require_operator_auth` determines the account model: `true` means explicit accounts (operator credentials required, discover via `list_accounts`), `false` means implicit accounts (agent trusted, declare via `sync_accounts`) |
-| Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator` or `agent`. Seller accepts or rejects. |
+| Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator`, `agent`, or `advertiser`. Seller accepts or rejects. |
 | What was consumed? | Usage reporting | `report_usage` informs vendor agents how their services were used after delivery |
 
 The seller declares the account model in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) via `require_operator_auth`. When `true` (**explicit accounts**), operators authenticate independently and the buyer discovers accounts via [`list_accounts`](/docs/accounts/tasks/list_accounts). When `false` (**implicit accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) to provision accounts.
@@ -38,6 +38,62 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator estab
 
 The account reference may be a seller-assigned `account_id` (explicit accounts, `require_operator_auth: true`) or a natural key — `brand` + `operator` (implicit accounts, `require_operator_auth: false`). For sandbox, the path depends on the account model: explicit accounts discover pre-existing test accounts via `list_accounts`, while implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/integration/accounts-and-agents#account-references) for details.
 
+## Account Status Lifecycle
+
+Accounts progress through a defined set of states. Terminal states (`rejected`, `closed`) allow no further transitions.
+
+```
+sync_accounts ──▶ pending_approval ──▶ active
+                       │                  │
+                       │ (seller declines) ├── (credit limit / funds depleted)
+                       ▼                  │    ▼
+                   rejected (terminal)    │  payment_required
+                                          │    │ (buyer resolves billing)
+                                          │    ▼
+                                          │  active
+                                          │
+                                          ├── (seller suspends) ──▶ suspended
+                                          │                           │
+                                          │    (seller reactivates) ◀─┤
+                                          │                           │
+                                          │                           └──▶ closed (terminal)
+                                          │
+                                          └── (seller or buyer closes) ──▶ closed (terminal)
+```
+
+**Transition rules:**
+
+- `pending_approval` → `active`: seller approves after credit/contract/identity review
+- `pending_approval` → `rejected`: seller declines. Terminal — buyer must submit a new account request.
+- `active` → `payment_required`: automatic when credit limit is reached or funds are depleted
+- `payment_required` → `active`: when the buyer resolves the outstanding balance. Sellers MAY auto-transition or MAY require manual re-activation.
+- `active` → `suspended`: seller-initiated (policy violation, billing dispute, fraud review). Sellers MUST notify orchestrators via webhook.
+- `suspended` → `active`: seller-initiated reactivation
+- `suspended` → `closed`: seller-initiated permanent closure
+- `active` → `closed`: seller or buyer-initiated permanent closure. Terminal.
+- Sellers MUST reject operations on accounts in terminal states with `ACCOUNT_NOT_FOUND` or an appropriate error
+
+### Operations by Account Status
+
+Account status acts as a gate on which tasks are permitted. Read-only operations are always available; mutation operations are restricted based on status.
+
+| Task | `active` | `pending_approval` | `payment_required` | `suspended` | `rejected` / `closed` |
+|------|----------|-------------------|-------------------|------------|----------------------|
+| `list_accounts` | Yes | Yes | Yes | Yes | Yes |
+| `get_account_financials` | Yes | Yes | Yes | Yes | No |
+| `get_products` | Yes | No | Yes | No | No |
+| `create_media_buy` | Yes | No | No | No | No |
+| `update_media_buy` | Yes | No | Yes | No | No |
+| `get_media_buys` | Yes | No | Yes | Yes | No |
+| `sync_creatives` | Yes | No | Yes | No | No |
+| `sync_catalogs` | Yes | No | Yes | No | No |
+| `sync_event_sources` | Yes | No | Yes | No | No |
+| `report_usage` | Yes | No | Yes | Yes | No |
+
+- `payment_required` blocks new spend (`create_media_buy`) but allows managing existing buys and resolving setup. Sellers SHOULD also reject `new_packages` within `update_media_buy` when the account is in `payment_required`, since adding packages is functionally equivalent to new spend.
+- `suspended` allows read-only access to existing data but blocks all mutations
+- Sellers MUST return `ACCOUNT_SUSPENDED` for blocked operations on suspended accounts and `ACCOUNT_PAYMENT_REQUIRED` for blocked operations on payment-required accounts
+
 ## Transaction lifecycle
 
 ```
@@ -57,7 +113,7 @@ The account reference may be a seller-assigned `account_id` (explicit accounts, 
    Explicit (require_operator_auth: true):
      list_accounts() → find existing account_id for this brand/operator
    Implicit (require_operator_auth: false):
-     sync_accounts({ accounts: [{ brand, operator, billing }] }) → status, billing terms
+     sync_accounts({ accounts: [{ brand, operator, billing, billing_entity? }] }) → status, billing terms
 
 6. Execute
    Protocol tasks use the account reference to apply correct rates and terms

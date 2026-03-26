@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/offer-price.json",
+  "title": "Offer Price",
+  "description": "Lightweight price for a TMP offer. Used when the product supports variable pricing and the buyer specifies a price at match time.",
+  "type": "object",
+  "properties": {
+    "amount": {
+      "type": "number",
+      "description": "Price amount in the specified currency",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "default": "USD"
+    },
+    "model": {
+      "type": "string",
+      "description": "Pricing model for this offer",
+      "enum": ["cpm", "cpc", "cpcv", "cpa", "flat"]
+    }
+  },
+  "required": [
+    "amount",
+    "model"
+  ],
+  "additionalProperties": false
+}

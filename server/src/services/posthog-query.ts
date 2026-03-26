@@ -25,9 +25,11 @@ const AI_REFERRER_DOMAINS = [
 ];
 
 // Derive regex from domain list to prevent drift
-// lgtm[js/incomplete-sanitization] -- domains are hardcoded literals above; only dots need regex escaping
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 const AI_REFERRER_REGEX = AI_REFERRER_DOMAINS
-  .map((d) => d.replace(/\./g, "\\."))
+  .map(escapeRegExp)
   .join("|");
 
 // PostHog's query API lives on the dashboard host (us.posthog.com),

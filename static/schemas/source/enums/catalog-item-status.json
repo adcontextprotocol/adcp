@@ -9,5 +9,11 @@
     "pending",
     "rejected",
     "warning"
-  ]
+  ],
+  "enumDescriptions": {
+    "approved": "Item passed platform review and is eligible for use in campaigns",
+    "pending": "Item is awaiting platform review. Items enter this state on initial sync and when re-synced after rejection.",
+    "rejected": "Item failed platform review (missing fields, policy violation, invalid data). Not terminal — fix the issue in the catalog and re-sync to reset the item to pending.",
+    "warning": "Item is approved and serving but has issues worth fixing (e.g., low-quality image, missing optional fields). The item remains eligible for delivery."
+  }
 }

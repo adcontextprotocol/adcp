@@ -78,6 +78,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: [
       'get_my_profile',
       'update_my_profile',
+      'get_company_listing',
+      'update_company_listing',
       'list_working_groups',
       'get_working_group',
       'join_working_group',
@@ -452,6 +454,18 @@ export function requiresPrecision(selectedSets: string[]): boolean {
     const set = TOOL_SETS[setName];
     return set?.requiresPrecision === true;
   });
+}
+
+/**
+ * Get the set of valid tool set names for a given user context.
+ * Used to filter LLM routing output against actual permitted sets.
+ */
+export function getValidToolSetNames(isAAOAdmin: boolean = false): Set<string> {
+  return new Set(
+    Object.entries(TOOL_SETS)
+      .filter(([_, set]) => !set.adminOnly || isAAOAdmin)
+      .map(([name]) => name)
+  );
 }
 
 /**

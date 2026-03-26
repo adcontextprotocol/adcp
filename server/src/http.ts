@@ -24,7 +24,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -1053,7 +1053,7 @@ export class HTTPServer {
 
     // Mount portrait routes
     this.app.use('/api/portraits', createPublicPortraitRouter());
-    this.app.use('/api/me/portrait', createPortraitRouter({ memberDb, orgDb, invalidateMemberContextCache }));
+    this.app.use('/api/me/portrait', createPortraitRouter({ orgDb, memberDb, invalidateMemberContextCache }));
     this.app.use('/api/admin/portraits', createAdminPortraitRouter());
 
     // Mount community routes
@@ -4843,7 +4843,7 @@ Disallow: /api/admin/
     // ========================================
 
     // GET /api/perspectives - List published perspectives (excludes working group posts and RSS)
-    // ?authored=true filters to only authored content (excludes RSS feed articles)
+    // ?authored=true filters to only authored content (excludes RSS and email feed articles)
     this.app.get('/api/perspectives', async (req, res) => {
       try {
         const pool = getPool();
@@ -4856,7 +4856,7 @@ Disallow: /api/admin/
             published_at, display_order, tags, like_count
           FROM perspectives
           WHERE status = 'published' AND working_group_id IS NULL
-            ${authored ? "AND (source_type IS NULL OR source_type != 'rss')" : ''}
+            ${authored ? "AND (source_type IS NULL OR source_type NOT IN ('rss', 'email'))" : ''}
           ORDER BY published_at DESC NULLS LAST`
         );
 
@@ -5842,12 +5842,17 @@ Disallow: /api/admin/
         // Check if user is admin
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
-        // Check Slack sync status
+        // Check Slack sync status and seat type
         let isLinkedToSlack = false;
+        let seatType: SeatType | null = null;
         try {
           const slackDb = new SlackDatabase();
-          const slackMapping = await slackDb.getByWorkosUserId(user.id);
+          const [slackMapping, userSeatType] = await Promise.all([
+            slackDb.getByWorkosUserId(user.id),
+            getUserSeatType(user.id),
+          ]);
           isLinkedToSlack = !!slackMapping?.slack_user_id;
+          seatType = userSeatType;
         } catch {
           // Default to not linked if lookup fails
         }
@@ -5861,6 +5866,7 @@ Disallow: /api/admin/
             last_name: user.lastName,
             isAdmin,
             isLinkedToSlack,
+            seat_type: seatType,
           },
           organizations,
         };

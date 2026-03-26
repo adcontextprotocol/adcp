@@ -5,9 +5,9 @@ import {
   getDigestByDate,
   setReviewMessage,
   markSent,
-  markSkipped,
   getDigestEmailRecipients,
   getUserWorkingGroupMap,
+  type DigestRecord,
   type DigestSendStats,
 } from '../../db/digest-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -31,7 +31,7 @@ interface WeeklyDigestResult {
 /**
  * Get the current hour in US Eastern time
  */
-function getETHour(): number {
+export function getETHour(): number {
   const now = new Date();
   const etString = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false });
   return parseInt(etString, 10);
@@ -54,7 +54,7 @@ function getTodayEditionDate(): string {
  * Main weekly digest job runner.
  * Runs hourly. On Tuesdays:
  * - 7-8am ET: Generates a draft and posts to Editorial channel for review
- * - 10-11am ET: Sends the digest if approved, or marks it skipped
+ * - 10am+ ET: Sends the digest if approved, or nudges at 10am if still waiting
  */
 export async function runWeeklyDigestJob(): Promise<WeeklyDigestResult> {
   const result: WeeklyDigestResult = { generated: false, sent: 0, skipped: false };
@@ -74,9 +74,9 @@ export async function runWeeklyDigestJob(): Promise<WeeklyDigestResult> {
     return generateDraft(editionDate);
   }
 
-  // Phase 2: Send if approved (10-11am ET)
-  if (etHour >= 10 && etHour < 11) {
-    return sendApprovedDigest(editionDate);
+  // Phase 2: Send if approved, or nudge at 10am (rest of Tuesday)
+  if (etHour >= 10) {
+    return sendApprovedDigest(editionDate, etHour);
   }
 
   return result;
@@ -134,9 +134,11 @@ async function generateDraft(editionDate: string): Promise<WeeklyDigestResult> {
 }
 
 /**
- * Send the approved digest to all segments, or mark as skipped
+ * Check if the approved digest is ready to send, or nudge if still waiting.
+ * No longer auto-skips — the draft stays editable until someone approves or
+ * a new edition is generated next week.
  */
-async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResult> {
+async function sendApprovedDigest(editionDate: string, etHour: number): Promise<WeeklyDigestResult> {
   const result: WeeklyDigestResult = { generated: false, sent: 0, skipped: false };
 
   const digest = await getDigestByDate(editionDate);
@@ -149,24 +151,34 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
     return result;
   }
 
-  // Not approved yet - skip
+  // Still a draft — nudge once at 10am, then leave it alone
   if (digest.status === 'draft') {
-    await markSkipped(digest.id);
-    result.skipped = true;
-
-    // Notify Editorial channel
-    if (digest.review_channel_id && digest.review_message_ts) {
+    if (etHour >= 10 && etHour < 11 && digest.review_channel_id && digest.review_message_ts) {
       await sendChannelMessage(digest.review_channel_id, {
-        text: `This week's digest was not approved in time and has been skipped.`,
+        text: `This week's digest is still waiting for approval. React with :white_check_mark: to send now, or reply in this thread with edits.`,
         thread_ts: digest.review_message_ts,
       });
     }
-
-    logger.info({ editionDate }, 'Digest skipped - no approval received');
     return result;
   }
 
   // Status is 'approved' - send it
+  const sendResult = await sendDigest(digest);
+  result.sent = sendResult.sent;
+  return result;
+}
+
+/**
+ * Deliver an approved digest via email and Slack.
+ * Called from the scheduled job and from the approval handler (for late approvals).
+ */
+export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }> {
+  if (digest.status !== 'approved') {
+    logger.error({ digestId: digest.id, status: digest.status }, 'sendDigest called on non-approved digest');
+    return { sent: 0 };
+  }
+
+  const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
   const stats: DigestSendStats = { email_count: 0, slack_count: 0, by_segment: {} };
 
   // Post to Slack #announcements
@@ -217,7 +229,6 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
   // Only mark as sent if at least something was delivered
   if (stats.email_count > 0 || stats.slack_count > 0) {
     await markSent(digest.id, stats);
-    result.sent = stats.email_count + stats.slack_count;
   } else {
     logger.error({ editionDate, batchResult }, 'Digest delivery failed - nothing delivered, leaving as approved for retry');
   }
@@ -235,5 +246,5 @@ async function sendApprovedDigest(editionDate: string): Promise<WeeklyDigestResu
     });
   }
 
-  return result;
+  return { sent: stats.email_count + stats.slack_count };
 }

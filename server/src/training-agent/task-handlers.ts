@@ -15,11 +15,11 @@ import {
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs } from './types.js';
 import type {
   Product,
+  Proposal,
   FormatID,
-  Format,
   CreateMediaBuyRequest,
   UpdateMediaBuyRequest,
   GetProductsRequest,
@@ -33,18 +33,65 @@ import type {
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
 } from '@adcp/client';
-/** Build a structured MCP error response for tool calls. */
-function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string }) {
+/** Build a structured MCP error response for tool calls (L3 error compliance). */
+function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }) {
+  const errorObj = { code, ...opts };
   return {
     isError: true,
-    content: [{ type: 'text' as const, text: JSON.stringify({ code, ...opts }) }],
+    content: [{ type: 'text' as const, text: JSON.stringify({ adcp_error: errorObj }) }],
+    structuredContent: { adcp_error: errorObj },
   };
 }
 
 // Derive types from SDK request types that aren't re-exported from main entry
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
+type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
+type PricingOption = Product['pricing_options'][number];
+type AuctionPricingOption = Exclude<PricingOption, { pricing_model: 'cpa' }>;
+
+type GetMediaBuysArgs = GetMediaBuysRequest & ToolArgs & {
+  status_filter?: string[];
+  include_history?: number;
+  include_snapshot?: boolean;
+};
+
+type UpdateMediaBuyArgs = UpdateMediaBuyRequest & ToolArgs & {
+  revision?: number;
+  canceled?: boolean;
+  cancellation_reason?: string;
+  paused?: boolean;
+  new_packages?: PackageInput[];
+};
+
+interface PackageInput {
+  product_id: string;
+  pricing_option_id: string;
+  budget: number;
+  bid_price?: number;
+  impressions?: number;
+  paused?: boolean;
+  start_time?: string;
+  end_time?: string;
+  format_ids?: FormatID[];
+}
+
+interface CreativeAssignmentInput {
+  creative_id: string;
+  package_id: string;
+  media_buy_id: string;
+}
+
+// Proposal lifecycle fields not yet in @adcp/client — remove after client update
+interface ProposalLifecycle {
+  proposal_status?: 'draft' | 'committed';
+  insertion_order?: { io_id: string; requires_signature: boolean; terms?: Record<string, unknown> };
+}
+function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
+  return proposal as unknown as ProposalLifecycle;
+}
+
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
@@ -64,6 +111,12 @@ import {
   handleAcquireRights,
   handleUpdateRights,
 } from './brand-handlers.js';
+import {
+  COMPLY_TEST_CONTROLLER_TOOL,
+  handleComplyTestController,
+  getDeliverySimulation,
+  getAccountStatus,
+} from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
 
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
@@ -159,7 +212,7 @@ interface PackageDeliveryMetrics {
 interface CreativeVariant {
   variant_id: string;
   generation_context: { context_type: string; topic: string; device_class: string };
-  manifest: { format_id: FormatID; assets: Record<string, unknown> };
+  manifest: CreativeManifest;
   impressions: number;
   spend: number;
   clicks: number;
@@ -404,6 +457,7 @@ const TOOLS = [
         channel: { type: 'string', description: 'Primary channel for governance compliance (display, video, native, audio)' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
@@ -545,6 +599,7 @@ const TOOLS = [
   },
   ...GOVERNANCE_TOOLS,
   ...BRAND_TOOLS,
+  COMPLY_TEST_CONTROLLER_TOOL,
   {
     name: 'get_adcp_capabilities',
     description: 'Discover the capabilities of this AdCP agent — supported tasks, features, and protocol version. Call once per session; capabilities are static.',
@@ -559,10 +614,10 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as GetProductsRequest;
+function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
@@ -621,16 +676,19 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     }
   }
 
-  // Refine mode: apply include/omit/more_like_this
+  // Refine mode: apply include/omit/more_like_this/finalize
+  const refinementApplied: Array<{ status: string; notes?: string }> = [];
+  const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
     const previousProducts = session.lastGetProductsContext?.products || products;
+    const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
 
     for (const op of req.refine) {
       if (op.scope === 'product') {
-        if (op.action === 'omit') omitIds.add(op.id);
-        else if (op.action === 'include') includeIds.add(op.id);
+        if (op.action === 'omit') { omitIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
+        else if (op.action === 'include') { includeIds.add(op.id); refinementApplied.push({ status: 'applied' }); }
         // more_like_this: include the product plus similar channel products
         else if (op.action === 'more_like_this') {
           includeIds.add(op.id);
@@ -643,11 +701,83 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
               }
             }
           }
+          refinementApplied.push({ status: 'applied' });
         }
+      } else if (op.scope === 'proposal') {
+        const proposalOp = op as { scope: 'proposal'; id: string; action: string; ask?: string };
+        const proposal = previousProposals.find(p => p.proposal_id === proposalOp.id);
+        if (!proposal) {
+          refinementApplied.push({ status: 'unable', notes: `Proposal not found: ${proposalOp.id}` });
+          continue;
+        }
+        if (proposalOp.action === 'omit') {
+          proposalOmitIds.add(proposalOp.id);
+          refinementApplied.push({ status: 'applied' });
+        } else if (proposalOp.action === 'include') {
+          // Include is a no-op for proposals already in the response
+          refinementApplied.push({ status: 'applied' });
+        } else if (proposalOp.action === 'finalize') {
+          const status = proposalLifecycle(proposal).proposal_status;
+          if (status === 'committed') {
+            refinementApplied.push({ status: 'applied', notes: 'Proposal already committed' });
+          } else if (status === 'draft') {
+            // Transition draft → committed: firm pricing, inventory hold, IO
+            const committed = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
+            committed.proposal_status = 'committed';
+            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h hold
+
+            // Attach insertion order for proposals with guaranteed products
+            const hasGuaranteed = proposal.allocations.some(alloc => {
+              const cp = getCatalog().find(c => c.product.product_id === alloc.product_id);
+              return cp?.product.delivery_type === 'guaranteed';
+            });
+            if (hasGuaranteed) {
+              const publisherCp = getCatalog().find(c => c.product.product_id === proposal.allocations[0].product_id);
+              const accountBrand = (req as unknown as Record<string, unknown>).account as Record<string, unknown> | undefined;
+              const brandDomain = ((accountBrand?.brand as Record<string, unknown>)?.domain as string) || 'advertiser.example';
+              committed.insertion_order = {
+                io_id: `io_${randomUUID().replace(/-/g, '')}`,
+                terms: {
+                  advertiser: brandDomain,
+                  publisher: publisherCp?.publisherId || 'unknown',
+                  total_budget: {
+                    amount: proposal.total_budget_guidance?.recommended ?? 0,
+                    currency: proposal.total_budget_guidance?.currency ?? 'USD',
+                  },
+                  flight_start: new Date().toISOString(),
+                  flight_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                  payment_terms: 'net_30',
+                },
+                requires_signature: true,
+              };
+            }
+
+            // Update proposal in session context
+            if (!session.lastGetProductsContext) {
+              session.lastGetProductsContext = { products: [...products], proposals: [] };
+            }
+            const sessionProposals = session.lastGetProductsContext.proposals || [];
+            const idx = sessionProposals.findIndex(p => p.proposal_id === proposalOp.id);
+            const updatedProposal = committed as unknown as import('@adcp/client').Proposal;
+            if (idx >= 0) {
+              sessionProposals[idx] = updatedProposal;
+            } else {
+              sessionProposals.push(updatedProposal);
+            }
+            session.lastGetProductsContext.proposals = sessionProposals;
+
+            refinementApplied.push({ status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
+          } else {
+            // No proposal_status means already ready to buy — finalize is a no-op
+            refinementApplied.push({ status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
+          }
+        }
+      } else if (op.scope === 'request') {
+        refinementApplied.push({ status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
       }
     }
 
-    // Apply includes first (expand), then omits (filter)
+    // Apply includes first (expand), then omits (filter) for products
     if (includeIds.size > 0) {
       products = getCatalog()
         .filter(cp => includeIds.has(cp.product.product_id))
@@ -678,8 +808,14 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
     }
   }
 
-  const proposals = getProposals().filter(proposal =>
-    proposal.allocations.every(a => productIds.has(a.product_id)),
+  // In refine mode, use session proposals (which may include finalized versions)
+  const sourceProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
+    ? session.lastGetProductsContext.proposals
+    : getProposals();
+
+  const proposals = sourceProposals.filter(proposal =>
+    proposal.allocations.every(a => productIds.has(a.product_id)) &&
+    !proposalOmitIds.has(proposal.proposal_id),
   );
 
   // Store context for refine
@@ -688,11 +824,12 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   return {
     products,
     ...(proposals.length > 0 && { proposals }),
+    ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
     sandbox: true,
   };
 }
 
-function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
+function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext) {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
   let formats = getFormats();
 
@@ -716,20 +853,70 @@ function handleListCreativeFormats(args: Record<string, unknown>, _ctx: Training
   return { formats, sandbox: true };
 }
 
-function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as CreateMediaBuyRequest;
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+
+  // Enforce account status gates set by comply_test_controller
+  const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
+  if (accountId?.account_id) {
+    const acctStatus = getAccountStatus(session, accountId.account_id);
+    if (acctStatus && acctStatus !== 'active') {
+      const BLOCKED_STATUSES: Record<string, string> = {
+        suspended: 'Account is suspended — contact the seller to resolve.',
+        payment_required: 'Account requires payment before new media buys can be created.',
+        closed: 'Account is closed and cannot create new media buys.',
+        rejected: 'Account was rejected and cannot create media buys.',
+      };
+      return {
+        errors: [{ code: 'ACCOUNT_STATUS_BLOCKED', message: BLOCKED_STATUSES[acctStatus] || `Account status "${acctStatus}" does not permit new media buys.` }] as TaskError[],
+      };
+    }
+  }
+
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
-    const proposal = getProposals().find(p => p.proposal_id === req.proposal_id);
+    // Check session proposals first (may have finalized versions), then global catalog
+    const proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
+      || getProposals().find(p => p.proposal_id === req.proposal_id);
     if (!proposal) {
       return {
         errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
       };
     }
+
+    // Enforce proposal lifecycle: draft proposals cannot be purchased directly
+    const proposalStatus = proposalLifecycle(proposal).proposal_status;
+    if (proposalStatus === 'draft') {
+      return {
+        errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" has draft status — finalize it first using get_products with buying_mode "refine" and action "finalize".` }] as TaskError[],
+      };
+    }
+
+    // Enforce proposal expiry
+    if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
+      return {
+        errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Re-discover with get_products to get a fresh proposal.` }] as TaskError[],
+      };
+    }
+
+    // Enforce IO acceptance when required
+    const insertionOrder = proposalLifecycle(proposal).insertion_order;
+    const ioAcceptance = (req as unknown as Record<string, unknown>).io_acceptance as { io_id: string; accepted_at: string; signatory: string } | undefined;
+    if (insertionOrder?.requires_signature && !ioAcceptance) {
+      return {
+        errors: [{ code: 'IO_REQUIRED', message: `Proposal "${req.proposal_id}" requires a signed insertion order. Include io_acceptance with io_id "${insertionOrder.io_id}" on create_media_buy.` }] as TaskError[],
+      };
+    }
+    if (ioAcceptance && insertionOrder && ioAcceptance.io_id !== insertionOrder.io_id) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: `io_acceptance.io_id "${ioAcceptance.io_id}" does not match proposal insertion order io_id "${insertionOrder.io_id}".` }] as TaskError[],
+      };
+    }
+
     const totalBudget = req.total_budget?.amount;
     if (!totalBudget) {
       return {
@@ -737,7 +924,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       };
     }
     // Expand proposal allocations into packages
-    (req as unknown as Record<string, unknown>).packages = proposal.allocations.map((alloc, i) => {
+    (req as { packages?: unknown[] }).packages = proposal.allocations.map((alloc, i) => {
       const product = productMap.get(alloc.product_id);
       const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
       const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
@@ -745,11 +932,10 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       // Auction pricing needs a bid_price — use price_guidance p50 or floor_price
       let bidPrice: number | undefined;
       if (pricing && pricing.pricing_model !== 'cpa') {
-        const po = pricing as unknown as Record<string, unknown>;
+        const po = pricing as AuctionPricingOption;
         const hasFixed = po.fixed_price !== undefined;
         if (!hasFixed) {
-          const pg = po.price_guidance as Record<string, number> | undefined;
-          bidPrice = pg?.p50 ?? (po.floor_price as number | undefined);
+          bidPrice = po.price_guidance?.p50 ?? po.floor_price;
         }
       }
 
@@ -791,7 +977,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
   for (let i = 0; i < req.packages.length; i++) {
-    const pkg = req.packages[i] as unknown as { product_id: string; pricing_option_id: string; budget: number; bid_price?: number; impressions?: number; paused?: boolean; start_time?: string; end_time?: string; format_ids?: FormatID[] };
+    const pkg = req.packages[i] as unknown as PackageInput;
     const pkgLabel = `Package ${i}`;
 
     // Check negative budget before product lookup (budget is always validatable)
@@ -803,6 +989,12 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const product = productMap.get(pkg.product_id);
     if (!product) {
       errors.push({ code: 'PRODUCT_NOT_FOUND', message: `${pkgLabel}: Product not found: ${pkg.product_id}` });
+      continue;
+    }
+
+    // Enforce product expiry
+    if (product.expires_at && new Date(product.expires_at) < new Date()) {
+      errors.push({ code: 'PRODUCT_EXPIRED', message: `${pkgLabel}: Product "${pkg.product_id}" expired at ${product.expires_at}. Re-discover with get_products.` });
       continue;
     }
 
@@ -819,13 +1011,14 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     // Check bid vs floor price (floor_price exists on all pricing models except CPA)
     const floorPrice = pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined;
     const isAuction = pricing.pricing_model !== 'cpa'
-      && !('fixed_price' in pricing && (pricing as unknown as Record<string, unknown>).fixed_price !== undefined);
+      && !('fixed_price' in pricing && (pricing as AuctionPricingOption).fixed_price !== undefined);
 
     if (isAuction && pkg.bid_price === undefined) {
-      // Auto-assign bid from price guidance (training agent convenience)
-      const guidance = (pricing as unknown as Record<string, unknown>).price_guidance as Record<string, number> | undefined;
-      const autoBid = guidance?.p50 ?? (floorPrice ? floorPrice * 1.2 : 10);
-      (pkg as Record<string, unknown>).bid_price = autoBid;
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: bid_price is required for auction pricing (pricing option ${pkg.pricing_option_id})`,
+        field: `packages[${i}].bid_price`,
+      } as TaskError);
     }
 
     if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice) {
@@ -861,7 +1054,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
 
     createdPackages.push({
-      packageId: `pkg_${randomUUID().slice(0, 8)}`,
+      packageId: `pkg-${i}`,
       productId: pkg.product_id,
       budget: pkg.budget,
       pricingOptionId: pkg.pricing_option_id,
@@ -883,6 +1076,10 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
+  // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
+
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
     accountRef: req.account,
@@ -894,6 +1091,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     endTime: buyEnd,
     revision: 1,
     confirmedAt: now,
+    ...(governanceContext && { governanceContext }),
     createdAt: now,
     updatedAt: now,
     history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Media buy created with ${createdPackages.length} package(s)` }],
@@ -925,9 +1123,9 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   };
 }
 
-function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as GetMediaBuysRequest;
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as GetMediaBuysArgs;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
@@ -952,7 +1150,7 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
   }
 
   // Apply status_filter (default to ['active'] when no IDs provided)
-  const statusFilter = (args as Record<string, unknown>).status_filter as string[] | undefined;
+  const statusFilter = req.status_filter;
   if (!filterIds?.length) {
     const effectiveFilter = statusFilter || ['active'];
     buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb)));
@@ -960,13 +1158,13 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
     buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb)));
   }
 
-  const includeSnapshot = (args as Record<string, unknown>).include_snapshot === true;
-  const includeHistory = Number((args as Record<string, unknown>).include_history) || 0;
+  const includeSnapshot = req.include_snapshot === true;
+  const includeHistory = Number(req.include_history) || 0;
 
   return {
     media_buys: buys.map(mb => {
       const status = deriveStatus(mb);
-      const buy: Record<string, unknown> = {
+      const buy = {
         media_buy_id: mb.mediaBuyId,
         status,
         revision: mb.revision,
@@ -978,6 +1176,7 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
         start_time: mb.startTime,
         end_time: mb.endTime,
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
+        ...(mb.governanceContext && { governance_context: mb.governanceContext }),
         ...(mb.canceledAt && {
           cancellation: {
             canceled_at: mb.canceledAt,
@@ -986,7 +1185,7 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
           },
         }),
         packages: mb.packages.map(pkg => {
-          const pkgData: Record<string, unknown> = {
+          const pkgData = {
             package_id: pkg.packageId,
             product_id: pkg.productId,
             budget: pkg.budget,
@@ -996,7 +1195,7 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
             end_time: pkg.endTime,
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
-              approval_status: 'approved',
+              approval_status: 'approved' as const,
             })),
             ...(pkg.canceledAt && {
               cancellation: {
@@ -1005,32 +1204,30 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
                 reason: pkg.cancellationReason,
               },
             }),
+            ...(includeSnapshot && { snapshot_unavailable_reason: 'SNAPSHOT_UNSUPPORTED' as const }),
           };
-          if (includeSnapshot) {
-            pkgData.snapshot_unavailable_reason = 'Sandbox training agent does not track real delivery';
-          }
           return pkgData;
         }),
-      };
-      if (includeHistory > 0 && mb.history?.length) {
-        buy.history = mb.history.slice(-includeHistory).reverse().map(h => ({
+        ...(includeHistory > 0 && mb.history?.length && {
+          history: mb.history.slice(-includeHistory).reverse().map(h => ({
           revision: h.revision,
           timestamp: h.timestamp,
           actor: h.actor,
           action: h.action,
           summary: h.summary,
           ...(h.packageId && { package_id: h.packageId }),
-        }));
-      }
+        })),
+        }),
+      };
       return buy;
     }),
     sandbox: true,
   };
 }
 
-function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as GetMediaBuyDeliveryRequest & { media_buy_id?: string };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
@@ -1063,6 +1260,10 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   let totalImpressions = 0;
   let totalSpend = 0;
   let totalClicks = 0;
+  let totalCompletedViews = 0;
+  let totalViews = 0;
+  let totalReach = 0;
+  let totalReachUnit: string | undefined;
 
   const byPackage = mb.packages.map(pkg => {
     // Paused or canceled packages stop accruing delivery
@@ -1106,11 +1307,48 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
     totalSpend += spend;
     totalClicks += clicks;
 
+    // Audio/video metrics — completion rates vary by channel
+    // Accumulators for totals rollup are updated after audioMetrics is built
+    const isAudioVideo = channels?.some(c =>
+      ['streaming_audio', 'podcast', 'radio', 'ctv', 'linear_tv', 'olv'].includes(c),
+    );
+    let completionRate = 0.65;
+    if (channels?.some(c => ['podcast'].includes(c))) completionRate = 0.87;
+    else if (channels?.some(c => ['streaming_audio', 'radio'].includes(c))) completionRate = 0.72;
+    else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) completionRate = 0.82;
+
+    const reachUnit = channels?.some(c => ['streaming_audio', 'podcast'].includes(c)) ? 'accounts' as const : 'devices' as const;
+    const audioMetrics = isAudioVideo && impressions > 0
+      ? {
+        views: Math.round(impressions * 0.9),
+        completed_views: Math.round(impressions * completionRate),
+        completion_rate: completionRate,
+        reach: Math.round(impressions * 0.72),
+        reach_unit: reachUnit,
+        frequency: +(impressions / Math.round(impressions * 0.72)).toFixed(1),
+        ...(channels?.some(c => ['streaming_audio', 'podcast'].includes(c))
+          ? {
+            follows: Math.round(impressions * 0.002),
+            conversions: Math.round(impressions * 0.006),
+          }
+          : {}),
+      }
+      : {};
+
+    if (isAudioVideo && impressions > 0) {
+      totalCompletedViews += Math.round(impressions * completionRate);
+      totalViews += Math.round(impressions * 0.9);
+      totalReach += Math.round(impressions * 0.72);
+      if (!totalReachUnit) totalReachUnit = reachUnit;
+      else if (totalReachUnit !== reachUnit) totalReachUnit = 'mixed';
+    }
+
     return {
       package_id: pkg.packageId,
       spend,
       impressions,
       clicks,
+      ...audioMetrics,
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/client < 4.11.0
       rate,
@@ -1119,6 +1357,14 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
     };
   });
+
+  // Add simulated delivery data from comply_test_controller
+  const simDelivery = getDeliverySimulation(session, mb.mediaBuyId);
+  if (simDelivery) {
+    totalImpressions += simDelivery.impressions;
+    totalClicks += simDelivery.clicks;
+    totalSpend += simDelivery.reportedSpend.amount;
+  }
 
   return {
     reporting_period: {
@@ -1133,6 +1379,16 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
         impressions: totalImpressions,
         spend: Math.round(totalSpend * 100) / 100,
         clicks: totalClicks,
+        ...(totalCompletedViews > 0 ? {
+          views: totalViews,
+          completed_views: totalCompletedViews,
+          completion_rate: +(totalCompletedViews / totalImpressions).toFixed(3),
+        } : {}),
+        ...(totalReach > 0 && totalReachUnit && totalReachUnit !== 'mixed' ? {
+          reach: totalReach,
+          reach_unit: totalReachUnit,
+          frequency: +(totalImpressions / totalReach).toFixed(1),
+        } : {}),
       },
       by_package: byPackage,
     }],
@@ -1151,9 +1407,9 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
   };
 }
 
-function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as SyncCreativesRequest;
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as SyncCreativesRequest & ToolArgs;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.creatives?.length) {
     return {
@@ -1170,7 +1426,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
   // Build a set of valid format IDs for validation
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
 
-  const results: Record<string, unknown>[] = [];
+  const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
     if (!creative.creative_id) {
       return {
@@ -1202,7 +1458,7 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
       status: 'approved',
       syncedAt: new Date().toISOString(),
       // manifest is a training-agent extension, not in SDK CreativeAsset type
-      manifest: (creative as unknown as Record<string, unknown>).manifest as CreativeState['manifest'],
+      manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
     });
 
     results.push({
@@ -1212,10 +1468,10 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
   }
 
   // Process creative assignments
-  const assignmentResults: Record<string, unknown>[] = [];
+  const assignmentResults: AssignmentResult[] = [];
   if (req.assignments?.length) {
     for (const assignment of req.assignments) {
-      const mediaBuyId = (assignment as Record<string, unknown>).media_buy_id as string;
+      const mediaBuyId = (assignment as unknown as CreativeAssignmentInput).media_buy_id;
       const packageId = assignment.package_id;
       const creativeId = assignment.creative_id;
 
@@ -1247,9 +1503,9 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
   };
 }
 
-function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as ListCreativesRequest & { creative_ids?: string[] };
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[] };
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
   let creatives = Array.from(session.creatives.values());
@@ -1269,9 +1525,9 @@ function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext
   };
 }
 
-function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as UpdateMediaBuyRequest;
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as UpdateMediaBuyArgs;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || '';
   let mb = session.mediaBuys.get(mediaBuyId);
 
@@ -1295,7 +1551,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   }
 
   // Revision check for optimistic concurrency
-  const reqRevision = (args as Record<string, unknown>).revision as number | undefined;
+  const reqRevision = req.revision;
   if (reqRevision !== undefined && reqRevision !== mb.revision) {
     return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
   }
@@ -1306,9 +1562,9 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   mb.revision += 1;
 
   // Media buy cancellation
-  const isCanceled = (args as Record<string, unknown>).canceled === true;
+  const isCanceled = req.canceled === true;
   if (isCanceled) {
-    const reason = (args as Record<string, unknown>).cancellation_reason as string | undefined;
+    const reason = req.cancellation_reason;
     mb.canceledAt = now;
     mb.canceledBy = 'buyer';
     mb.cancellationReason = reason;
@@ -1327,7 +1583,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   }
 
   // Pause/resume at media buy level
-  const pausedValue = (args as Record<string, unknown>).paused;
+  const pausedValue = req.paused;
   if (pausedValue === true) {
     mb.status = 'paused';
     mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'paused', summary: 'Media buy paused' });
@@ -1350,7 +1606,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   const warnings: string[] = [];
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
-    for (const update of req.packages as (PackageUpdate & { canceled?: boolean; cancellation_reason?: string })[]) {
+    for (const update of req.packages as PackageUpdateExt[]) {
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) {
@@ -1358,11 +1614,11 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       }
 
       // Package cancellation
-      if ((update as Record<string, unknown>).canceled === true) {
+      if ((update as PackageUpdateExt).canceled === true) {
         pkg.canceled = true;
         pkg.canceledAt = now;
         pkg.canceledBy = 'buyer';
-        pkg.cancellationReason = (update as Record<string, unknown>).cancellation_reason as string | undefined;
+        pkg.cancellationReason = (update as PackageUpdateExt).cancellation_reason;
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
         continue;
       }
@@ -1394,31 +1650,31 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   }
 
   // Add new packages
-  const newPackages = (args as Record<string, unknown>).new_packages as Array<Record<string, unknown>> | undefined;
+  const newPackages = req.new_packages;
   if (newPackages?.length) {
     const catalog = getCatalog();
     const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
 
     for (let i = 0; i < newPackages.length; i++) {
       const npkg = newPackages[i];
-      const productId = npkg.product_id as string;
+      const productId = npkg.product_id;
       const product = productMap.get(productId);
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
 
-      const pkgId = `pkg_${randomUUID().slice(0, 8)}`;
+      const pkgId = `pkg-${mb.packages.length + i}`;
       const newPkg: PackageState = {
         packageId: pkgId,
         productId,
-        budget: npkg.budget as number,
-        pricingOptionId: npkg.pricing_option_id as string,
-        bidPrice: npkg.bid_price as number | undefined,
-        impressions: npkg.impressions as number | undefined,
-        paused: (npkg.paused as boolean) || false,
-        startTime: (npkg.start_time as string) || mb.startTime,
-        endTime: (npkg.end_time as string) || mb.endTime,
-        formatIds: npkg.format_ids as FormatID[] | undefined,
+        budget: npkg.budget,
+        pricingOptionId: npkg.pricing_option_id,
+        bidPrice: npkg.bid_price,
+        impressions: npkg.impressions,
+        paused: npkg.paused || false,
+        startTime: npkg.start_time || mb.startTime,
+        endTime: npkg.end_time || mb.endTime,
+        formatIds: npkg.format_ids,
         creativeAssignments: [],
       };
       mb.packages.push(newPkg);
@@ -1429,7 +1685,7 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
   mb.updatedAt = now;
 
   const status = deriveStatus(mb);
-  const result: Record<string, unknown> = {
+  const result = {
     media_buy_id: mb.mediaBuyId,
     status,
     revision: mb.revision,
@@ -1450,12 +1706,12 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       }),
     })),
     sandbox: true,
+    ...(warnings.length > 0 && { warnings }),
   };
-  if (warnings.length) result.warnings = warnings;
   return result;
 }
 
-function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
+function handleGetAdcpCapabilities(_args: ToolArgs, _ctx: TrainingContext): { adcp: { major_versions: number[] }; supported_protocols: string[]; protocol_version: string; tasks: string[]; media_buy: unknown; agent: { name: string; description: string } } {
   const tasks = TOOLS
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
@@ -1484,12 +1740,12 @@ function handleGetAdcpCapabilities(_args: Record<string, unknown>, _ctx: Trainin
 
 const MAX_SIGNAL_RESULTS = 10;
 
-function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as GetSignalsRequest & { brief?: string };
+function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as GetSignalsRequest & ToolArgs & { brief?: string };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const signalSpec = req.signal_spec || req.brief;
   const maxResults = Math.min(Math.max(req.max_results || MAX_SIGNAL_RESULTS, 1), 50);
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!signalSpec && !req.signal_ids?.length) {
     return {
@@ -1621,8 +1877,8 @@ function handleGetSignals(args: Record<string, unknown>, ctx: TrainingContext): 
   return response;
 }
 
-function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as ActivateSignalRequest & {
+function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as ActivateSignalRequest & ToolArgs & {
     signal_id?: string;
     destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
   };
@@ -1641,7 +1897,7 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
     }
   }
   const pricingOptionId = req.pricing_option_id;
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!segmentId) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'signal_agent_segment_id is required' }] };
@@ -1733,9 +1989,9 @@ function handleActivateSignal(args: Record<string, unknown>, ctx: TrainingContex
   return { deployments, sandbox: true };
 }
 
-function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
-  const req = args as unknown as GetCreativeDeliveryRequest;
-  const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as unknown as GetCreativeDeliveryRequest & ToolArgs;
+  const session = getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
 
   // Resolve media buy IDs from multiple input formats
@@ -1784,7 +2040,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
   }
 
   const now = new Date();
-  const creatives: Array<Record<string, unknown>> = [];
+  const creatives: CreativeDeliveryEntry[] = [];
 
   for (const cid of relevantCreativeIds) {
     const creative = session.creatives.get(cid);
@@ -1796,7 +2052,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
     const totalImpressions = 50000 + Math.abs(idHash % 100000);
     const totalSpend = Math.round(totalImpressions * 0.05 * 100) / 100;
     const totalClicks = Math.round(totalImpressions * 0.03);
-    const variants: Array<Record<string, unknown>> = [];
+    const variants: CreativeVariant[] = [];
 
     const topics = ['technology', 'lifestyle', 'finance', 'health', 'sports'];
     const devices = ['mobile', 'desktop', 'tablet'];
@@ -1857,7 +2113,7 @@ function handleGetCreativeDelivery(args: Record<string, unknown>, ctx: TrainingC
 
 // ── Handler dispatch ──────────────────────────────────────────────
 
-type ToolHandler = (args: Record<string, unknown>, ctx: TrainingContext) => Record<string, unknown>;
+type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object;
 
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
@@ -1880,6 +2136,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   acquire_rights: handleAcquireRights,
   update_rights: handleUpdateRights,
   get_adcp_capabilities: handleGetAdcpCapabilities,
+  comply_test_controller: handleComplyTestController,
 };
 
 /**
@@ -1888,16 +2145,16 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
  */
 export function executeTrainingAgentTool(
   toolName: string,
-  args: Record<string, unknown>,
+  args: ToolArgs,
   ctx: TrainingContext,
-): { success: boolean; data?: Record<string, unknown>; error?: string } {
+): { success: boolean; data?: object; error?: string } {
   const handler = HANDLER_MAP[toolName];
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
     const result = handler(args, ctx);
-    return { success: true, data: result as Record<string, unknown> };
+    return { success: true, data: result };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -1949,15 +2206,17 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let toolResult: CallToolResult;
     let isError = false;
     try {
-      const result = handler((args as Record<string, unknown>) || {}, ctx);
-      const hasErrors = result && 'errors' in result && Array.isArray(result.errors) && result.errors.length > 0;
+      const result = handler((args as ToolArgs) || {}, ctx);
+      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
+      const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
         isError = true;
-        const firstError = (result as { errors: Array<{ code: string; message: string }> }).errors[0];
+        const firstError = resultObj.errors![0];
         toolResult = adcpError(firstError.code, {
           message: firstError.message,
-          details: (result as { errors: Array<unknown> }).errors.length > 1
-            ? { all_errors: (result as { errors: Array<unknown> }).errors }
+          ...(firstError.field && { field: firstError.field }),
+          details: resultObj.errors!.length > 1
+            ? { all_errors: resultObj.errors }
             : undefined,
         });
       } else {
@@ -2007,7 +2266,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     }
     logger.info({ taskId: task.taskId, tool: name, status: terminalStatus }, 'Created MCP task');
 
-    return { task } as Record<string, unknown>;
+    return { task } as object;
   });
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered

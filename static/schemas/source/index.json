@@ -158,6 +158,10 @@
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
         },
+        "insertion-order": {
+          "$ref": "/schemas/core/insertion-order.json",
+          "description": "A formal insertion order attached to a committed proposal for agreement signing"
+        },
         "product-allocation": {
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
@@ -435,6 +439,10 @@
         "delivery-type": {
           "$ref": "/schemas/enums/delivery-type.json",
           "description": "Type of inventory delivery"
+        },
+        "proposal-status": {
+          "$ref": "/schemas/enums/proposal-status.json",
+          "description": "Lifecycle status of a proposal (draft or committed)"
         },
         "media-buy-status": {
           "$ref": "/schemas/enums/media-buy-status.json",
@@ -1394,6 +1402,53 @@
       "file_location": "/.well-known/brand.json",
       "purpose": "Declares brand identity and agent for a domain, enabling brand discovery and verification"
     },
+    "trusted-match": {
+      "description": "Trusted Match Protocol (TMP) — real-time execution layer for activating pre-negotiated packages across any surface",
+      "supporting-schemas": {
+        "available-package": {
+          "$ref": "/schemas/tmp/available-package.json",
+          "description": "A package available for contextual matching on a given impression opportunity"
+        },
+        "offer": {
+          "$ref": "/schemas/tmp/offer.json",
+          "description": "Buyer's response to a context match — ranges from simple activation (package_id only) to rich offers with brand, price, summary, and creative manifest"
+        },
+        "offer-price": {
+          "$ref": "/schemas/tmp/offer-price.json",
+          "description": "Lightweight price for variable-priced offers"
+        },
+        "package-eligibility": {
+          "$ref": "/schemas/tmp/package-eligibility.json",
+          "description": "Identity-based eligibility determination for a package — boolean eligible plus optional intent score"
+        },
+        "error": {
+          "$ref": "/schemas/tmp/error.json",
+          "description": "Error response from a TMP provider or router when a request cannot be processed"
+        }
+      },
+      "operations": {
+        "context-match": {
+          "request": {
+            "$ref": "/schemas/tmp/context-match-request.json",
+            "description": "Evaluate available packages against content context. Contains no user identity."
+          },
+          "response": {
+            "$ref": "/schemas/tmp/context-match-response.json",
+            "description": "Offers for matched packages with optional brand, price, summary, creative manifest, and targeting signals"
+          }
+        },
+        "identity-match": {
+          "request": {
+            "$ref": "/schemas/tmp/identity-match-request.json",
+            "description": "Evaluate user eligibility for packages using an opaque identity token. Contains no page context."
+          },
+          "response": {
+            "$ref": "/schemas/tmp/identity-match-response.json",
+            "description": "Per-package eligibility — boolean eligible plus optional intent score"
+          }
+        }
+      }
+    },
     "brand-protocol": {
       "description": "Brand protocol schemas for identity retrieval, rights discovery, and rights acquisition",
       "schemas": {
@@ -1438,6 +1493,21 @@
         "description": "Schema that all extension files must follow. Defines valid_from, valid_until, and extension data structure."
       },
       "schemas": {}
+    },
+    "compliance": {
+      "description": "Compliance testing tool schemas. The test controller is an optional sandbox-only tool that lets comply walk full lifecycle state machines by triggering seller-side transitions deterministically.",
+      "tasks": {
+        "comply-test-controller": {
+          "request": {
+            "$ref": "/schemas/compliance/comply-test-controller-request.json",
+            "description": "Request payload for the comply_test_controller tool — scenario selection and scenario-specific params"
+          },
+          "response": {
+            "$ref": "/schemas/compliance/comply-test-controller-response.json",
+            "description": "Response payload — state transition results, simulation results, scenario list, or structured errors"
+          }
+        }
+      }
     }
   },
   "usage": {

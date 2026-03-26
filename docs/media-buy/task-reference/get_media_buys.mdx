@@ -43,14 +43,13 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's media buy identifier |
+| `invoice_recipient` | Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `status` | Current status (`pending_activation`, `active`, `paused`, `completed`, `rejected`, `canceled`) |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Total campaign budget (in `currency`) |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
 | `confirmed_at` | ISO 8601 timestamp when the seller confirmed this media buy |
-| `canceled_at` | ISO 8601 timestamp when canceled (present only when `status` is `canceled`) |
-| `canceled_by` | `"buyer"` or `"seller"` — who initiated cancellation |
-| `cancellation_reason` | Reason for cancellation (present only when `status` is `canceled`) |
+| `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `revision` | Current revision number. Pass in `update_media_buy` for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
@@ -67,9 +66,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `end_time` | Flight end time (ISO 8601) |
 | `paused` | Whether buyer has paused this package |
 | `canceled` | Whether this package has been canceled (irreversible) |
-| `canceled_at` | ISO 8601 timestamp when canceled (present only when `canceled` is true) |
-| `canceled_by` | `"buyer"` or `"seller"` — who initiated cancellation |
-| `cancellation_reason` | Reason for cancellation (present only when `canceled` is true) |
+| `cancellation` | Cancellation metadata (present only when `canceled` is true). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `creative_deadline` | Per-package creative deadline (ISO 8601). When absent, the media buy's `creative_deadline` applies. |
 | `creative_approvals` | Array of creative approval states (see below) |
 | `format_ids_pending` | Format IDs from `format_ids_to_provide` not yet uploaded |

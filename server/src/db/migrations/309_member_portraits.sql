@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_member_portraits_profile
 CREATE INDEX IF NOT EXISTS idx_member_portraits_status
   ON member_portraits(status);
 
+DROP TRIGGER IF EXISTS update_member_portraits_updated_at ON member_portraits;
 CREATE TRIGGER update_member_portraits_updated_at
   BEFORE UPDATE ON member_portraits
   FOR EACH ROW

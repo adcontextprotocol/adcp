@@ -454,7 +454,6 @@ function buildProduct(
       const builtEpisodes: Episode[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const epAny = ep as Record<string, unknown>;
           const episode = {
             episode_id: ep.episodeId,
             show_id: show.showId,
@@ -462,7 +461,7 @@ function buildProduct(
             status: ep.status as EpisodeStatus,
             ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
             ...(ep.durationSeconds && { duration_seconds: ep.durationSeconds }),
-            ...(epAny.special ? { special: epAny.special } : {}),
+            ...(ep.special ? { special: ep.special } : {}),
           } as Episode;
           builtEpisodes.push(episode);
         }
@@ -670,6 +669,12 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
 
     if (!valid) continue;
 
+    // Proposals containing guaranteed products are drafts (indicative pricing, needs finalization)
+    const hasGuaranteed = allocations.some(alloc => {
+      const cp = catalog.find(c => c.product.product_id === alloc.product_id);
+      return cp?.product.delivery_type === 'guaranteed';
+    });
+
     proposals.push({
       proposal_id: def.proposalId,
       name: def.name,
@@ -677,7 +682,11 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       brief_alignment: def.briefAlignment,
       total_budget_guidance: def.budgetGuidance,
       allocations,
-    });
+      ...(hasGuaranteed && {
+        proposal_status: 'draft' as const,
+        expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours indicative window
+      }),
+    } as Proposal);
   }
 
   return proposals;

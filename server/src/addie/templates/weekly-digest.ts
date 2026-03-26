@@ -2,6 +2,7 @@ import type { DigestContent } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { FOUNDING_DEADLINE } from '../founding-deadline.js';
 import { trackedUrl } from '../../notifications/email.js';
+import { markdownToEmailHtmlInline } from '../../utils/markdown.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
@@ -183,7 +184,7 @@ function renderWorkingGroupsHtml(
     return `
     <div style="margin-bottom: 12px;${isMember ? ' border-left: 3px solid #2563eb; padding-left: 12px;' : ''}">
       <p style="font-size: 14px; margin: 0;">
-        <strong>${escapeHtml(wg.name)}</strong>: ${escapeHtml(wg.summary.slice(0, 150))}
+        <strong>${escapeHtml(wg.name)}</strong>: ${markdownToEmailHtmlInline(wg.summary.slice(0, 150))}
         ${wg.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(wg.nextMeeting)}</span>` : ''}
       </p>
     </div>`;

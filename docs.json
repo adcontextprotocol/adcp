@@ -70,6 +70,7 @@
             "group": "Documentation",
             "pages": [
               "docs/intro",
+              "docs/quickstart",
               {
                 "group": "Building with AdCP",
                 "expanded": false,
@@ -510,7 +511,8 @@
           {
             "group": "Getting Started",
             "pages": [
-              "docs/intro"
+              "docs/intro",
+              "docs/quickstart"
             ]
           },
           {

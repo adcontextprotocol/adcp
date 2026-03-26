@@ -206,6 +206,7 @@ export interface DevUserConfig {
   lastName: string;
   isAdmin: boolean;
   isMember: boolean; // Has an organization membership
+  organizationId?: string; // Override org assignment (defaults to org_dev_company_001)
   description: string;
 }
 
@@ -229,6 +230,17 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     isAdmin: false,
     isMember: true,
     description: 'Regular member with organization access',
+  },
+  // Personal account user (individual member with portrait and offerings)
+  personal: {
+    id: 'user_dev_personal_001',
+    email: 'personal@test.local',
+    firstName: 'Personal',
+    lastName: 'Account',
+    isAdmin: false,
+    isMember: true,
+    organizationId: 'org_dev_personal_001',
+    description: 'Individual member with personal account',
   },
   // Non-member user (no organization, just signed up)
   nonmember: {

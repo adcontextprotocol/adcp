@@ -80,7 +80,7 @@ const EXTERNAL_REPOS: ExternalRepo[] = [
   },
   {
     id: 'salesagent',
-    url: 'https://github.com/adcontextprotocol/salesagent',
+    url: 'https://github.com/prebid/salesagent',
     name: 'AdCP Sales Agent',
     description: 'Reference implementation of an AdCP sales agent for publishers',
     indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md'],

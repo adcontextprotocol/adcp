@@ -55,6 +55,37 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for this media buy. Resolved to full brand identity at execution time from brand.json or the registry."
     },
+    "invoice_recipient": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "io_acceptance": {
+      "type": "object",
+      "description": "Acceptance of an insertion order from a committed proposal. Required when the proposal's insertion_order has requires_signature: true. References the io_id from the proposal's insertion_order.",
+      "properties": {
+        "io_id": {
+          "type": "string",
+          "description": "The io_id from the proposal's insertion_order being accepted"
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the IO was accepted"
+        },
+        "signatory": {
+          "type": "string",
+          "description": "Who accepted the IO — agent identifier or human name",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "signature_id": {
+          "type": "string",
+          "description": "Reference to the electronic signature from the signing service, when signing_url was used"
+        }
+      },
+      "required": ["io_id", "accepted_at", "signatory"],
+      "additionalProperties": true
+    },
     "po_number": {
       "type": "string",
       "description": "Purchase order number for tracking"

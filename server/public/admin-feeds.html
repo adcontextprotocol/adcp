@@ -1065,8 +1065,7 @@
                   <div class="discovered-feed-title">${escapeHtml(feed.title)}</div>
                   <div class="discovered-feed-url">${escapeHtml(feed.url)}</div>
                 </div>
-                <!-- lgtm[js/incomplete-sanitization] -- values are escapeHtml'd first; backslashes are not a concern in HTML-escaped strings -->
-                <button type="button" class="btn btn-small btn-primary" onclick="selectDiscoveredFeed('${escapeHtml(feed.url).replace(/'/g, "\\'")}', '${escapeHtml(feed.title).replace(/'/g, "\\'")}')">
+                <button type="button" class="btn btn-small btn-primary select-feed-btn" data-feed-url="${escapeHtml(feed.url)}" data-feed-title="${escapeHtml(feed.title)}">
                   Use
                 </button>
               </div>
@@ -1074,6 +1073,11 @@
           });
 
           discoveredFeedsList.innerHTML = html;
+          discoveredFeedsList.querySelectorAll('.select-feed-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              selectDiscoveredFeed(btn.dataset.feedUrl, btn.dataset.feedTitle);
+            });
+          });
           discoveredFeeds.style.display = 'block';
         } else {
           statusMessage.className = 'status-message error';

@@ -32,7 +32,23 @@ export class StripeCustomerConflictError extends Error {
 
 export type CompanyType = CompanyTypeValue;
 export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
-export type MembershipTier = 'individual_professional' | 'individual_academic' | 'company_standard' | 'company_icl';
+export type MembershipTier = 'individual_professional' | 'individual_academic' | 'company_standard' | 'company_icl' | 'company_leader';
+export type SeatType = 'contributor' | 'community_only';
+
+export interface SeatLimits {
+  contributor: number;
+  community: number; // -1 = unlimited
+}
+
+export const SEAT_LIMITS: Record<string, SeatLimits> = {
+  individual_professional: { contributor: 1, community: 0 },
+  individual_academic:     { contributor: 0, community: 1 },
+  company_standard:        { contributor: 5, community: 5 },
+  company_icl:             { contributor: 10, community: 50 },
+  company_leader:          { contributor: 20, community: -1 },
+};
+
+export const DEFAULT_SEAT_LIMITS: SeatLimits = { contributor: 0, community: 1 };
 
 /**
  * Valid revenue tier values for runtime validation
@@ -48,16 +64,13 @@ export const VALID_REVENUE_TIERS: readonly RevenueTier[] = [
 
 /**
  * Valid membership tier values for runtime validation
- * - individual_professional: $250/year for industry professionals
- * - individual_academic: $50/year for students, academics, and non-profits
- * - company_standard: $2,500/year (<$5M revenue) or $10,000/year (>=$5M revenue)
- * - company_icl: $50,000/year Industry Council Leader
  */
 export const VALID_MEMBERSHIP_TIERS: readonly MembershipTier[] = [
   'individual_professional',
   'individual_academic',
   'company_standard',
   'company_icl',
+  'company_leader',
 ] as const;
 
 export interface Organization {
@@ -110,6 +123,73 @@ export interface AuditLogEntry {
   resource_type: string;
   resource_id: string;
   details: Record<string, any>;
+}
+
+/**
+ * Get seat limits for a membership tier.
+ */
+export function getSeatLimits(tier: string | null): SeatLimits {
+  if (!tier) return DEFAULT_SEAT_LIMITS;
+  return SEAT_LIMITS[tier] || DEFAULT_SEAT_LIMITS;
+}
+
+/**
+ * Count current seat usage by type for an organization.
+ */
+export async function getSeatUsage(orgId: string): Promise<{ contributor: number; community_only: number }> {
+  const pool = getPool();
+  const result = await pool.query<{ seat_type: string; count: string }>(
+    `SELECT seat_type, COUNT(*) as count FROM organization_memberships
+     WHERE workos_organization_id = $1 GROUP BY seat_type`,
+    [orgId]
+  );
+  const usage = { contributor: 0, community_only: 0 };
+  for (const row of result.rows) {
+    if (row.seat_type === 'contributor') usage.contributor = parseInt(row.count, 10);
+    if (row.seat_type === 'community_only') usage.community_only = parseInt(row.count, 10);
+  }
+  return usage;
+}
+
+/**
+ * Check whether a new seat of the given type can be added to an organization.
+ */
+export async function canAddSeat(
+  orgId: string,
+  seatType: SeatType
+): Promise<{ allowed: boolean; reason?: string }> {
+  const pool = getPool();
+  const orgResult = await pool.query<{ membership_tier: string | null }>(
+    'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+    [orgId]
+  );
+  const tier = orgResult.rows[0]?.membership_tier ?? null;
+  const limits = getSeatLimits(tier);
+  const usage = await getSeatUsage(orgId);
+
+  const limit = seatType === 'contributor' ? limits.contributor : limits.community;
+  const used = seatType === 'contributor' ? usage.contributor : usage.community_only;
+
+  if (limit === -1) return { allowed: true }; // unlimited
+  if (limit === 0) return { allowed: false, reason: `Your membership tier does not include ${seatType === 'contributor' ? 'contributor' : 'community'} seats. Upgrade at /membership.` };
+  if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at /membership to add more.` };
+  return { allowed: true };
+}
+
+/**
+ * Get a user's seat type from their primary organization membership.
+ */
+export async function getUserSeatType(userId: string): Promise<SeatType | null> {
+  const pool = getPool();
+  const result = await pool.query<{ seat_type: SeatType }>(
+    `SELECT om.seat_type FROM organization_memberships om
+     JOIN users u ON u.primary_organization_id = om.workos_organization_id
+       AND u.workos_user_id = om.workos_user_id
+     WHERE om.workos_user_id = $1
+     LIMIT 1`,
+    [userId]
+  );
+  return result.rows[0]?.seat_type ?? null;
 }
 
 export class OrganizationDatabase {

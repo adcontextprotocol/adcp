@@ -83,7 +83,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser } from './thread-utils.js';
+import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import {
@@ -112,7 +112,7 @@ import {
 } from './services/community-articles.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import { getDigestByReviewMessage, approveDigest, updateDigestContent } from '../db/digest-db.js';
+import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft } from '../db/digest-db.js';
 import { applyDigestEdit } from './services/digest-editor.js';
 import { renderDigestReview } from './templates/weekly-digest.js';
 import * as relationshipDb from '../db/relationship-db.js';
@@ -1368,6 +1368,8 @@ async function handleUserMessage({
     ...(certIterations && { maxIterations: certIterations }),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
     ...(hasCertificationContext && { maxMessages: 50 }),
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude using streaming
@@ -1825,6 +1827,13 @@ async function handleAppMention({
           ? 'The user is replying in a Slack thread. Here are the previous messages in this thread for context:'
           : 'The user mentioned you in a conversation. Here are the recent messages leading up to the mention:';
         threadContext = `\n\n## ${contextLabel} Context\n${header}\n${contextMessages.join('\n')}\n\n---\n`;
+
+        // Calibrate response length to match the thread's conversational register
+        const styleHint = buildThreadStyleHint(rawMessages, context.botUserId || '');
+        if (styleHint) {
+          threadContext += `\n${styleHint}\n`;
+        }
+
         logger.debug({ messageCount: contextMessages.length, resolvedUsers: userNameMap.size }, `Addie Bolt: Fetched ${contextLabel.toLowerCase()} context for mention`);
       }
     }
@@ -1936,6 +1945,8 @@ async function handleAppMention({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -2608,6 +2619,8 @@ async function handleDirectMessage(
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -2843,6 +2856,13 @@ async function handleActiveThreadReply({
 
     if (contextMessages.length > 0) {
       threadContext = `\n\n## Thread Context\nThis is a continuation of a conversation in a Slack thread. Here are the previous messages:\n${contextMessages.join('\n')}\n\n---\n`;
+
+      // Calibrate response length to match the thread's conversational register
+      const styleHint = buildThreadStyleHint(slackThreadMessages, context.botUserId || '');
+      if (styleHint) {
+        threadContext += `\n${styleHint}\n`;
+      }
+
       logger.debug({ messageCount: contextMessages.length }, 'Addie Bolt: Built thread context for active reply');
     }
   }
@@ -2953,6 +2973,8 @@ async function handleActiveThreadReply({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -3459,6 +3481,8 @@ async function handleChannelMessage({
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
       requestContext,
+      slackUserId: userId,
+      threadId: thread.thread_id,
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -3778,18 +3802,7 @@ async function handleDigestEditReply(
     return false;
   }
 
-  if (digest.status !== 'draft') {
-    if (boltApp) {
-      await boltApp.client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: `This digest has already been ${digest.status}. Edits can only be made to drafts.`,
-      });
-    }
-    return true;
-  }
-
-  // Verify editor is an Editorial working group leader or member
+  // Verify editor is an Editorial working group leader or member before any state changes
   const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
   if (!editorial) {
     logger.warn('Editorial working group not found for digest edit');
@@ -3805,6 +3818,37 @@ async function handleDigestEditReply(
         channel: channelId,
         thread_ts: threadTs,
         text: 'Only Editorial working group members can edit the digest.',
+      });
+    }
+    return true;
+  }
+
+  if (digest.status === 'skipped') {
+    // Revive skipped digest so editorial can continue collaborating
+    const revived = await revertToDraft(digest.id);
+    if (!revived) {
+      if (boltApp) {
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: `Could not reopen this digest. It may have already been sent.`,
+        });
+      }
+      return true;
+    }
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `Digest reopened as a draft. Applying your edit...`,
+      });
+    }
+  } else if (digest.status !== 'draft') {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `This digest has already been sent. Edits can only be made to drafts.`,
       });
     }
     return true;
@@ -3884,11 +3928,11 @@ async function handleDigestRegenerate(
   messageTs: string,
 ): Promise<boolean> {
   const digest = await getDigestByReviewMessage(channelId, messageTs);
-  if (!digest || digest.status !== 'draft') {
+  if (!digest || (digest.status !== 'draft' && digest.status !== 'skipped')) {
     return false;
   }
 
-  // Verify reactor is an Editorial working group leader or member
+  // Verify reactor is an Editorial working group leader or member before any state changes
   const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
   if (!editorial) {
     logger.warn('Editorial working group not found for digest regenerate');
@@ -3909,7 +3953,7 @@ async function handleDigestRegenerate(
     return true;
   }
 
-  // Delegate to applyDigestEdit which handles regeneration and edit history
+  // Delegate to handleDigestEditReply which handles revert, regeneration, and edit history
   return handleDigestEditReply(channelId, messageTs, 'regenerate', reactingUserId);
 }
 
@@ -3924,7 +3968,7 @@ async function handleDigestApproval(
   messageTs: string,
 ): Promise<boolean> {
   const digest = await getDigestByReviewMessage(channelId, messageTs);
-  if (!digest || digest.status !== 'draft') {
+  if (!digest || (digest.status !== 'draft' && digest.status !== 'skipped')) {
     return false;
   }
 
@@ -3953,6 +3997,12 @@ async function handleDigestApproval(
     return true;
   }
 
+  // Revive skipped digest before approving
+  if (digest.status === 'skipped') {
+    const revived = await revertToDraft(digest.id);
+    if (!revived) return false;
+  }
+
   // Store canonical (WorkOS) user ID for audit trail
   const approverUserId = matchedLeader.canonical_user_id || reactingUserId;
   const approved = await approveDigest(digest.id, approverUserId);
@@ -3962,11 +4012,32 @@ async function handleDigestApproval(
     const resolved = await resolveSlackUserDisplayName(reactingUserId);
     const name = resolved?.display_name || 'An editor';
 
-    await boltApp.client.chat.postMessage({
-      channel: channelId,
-      thread_ts: messageTs,
-      text: `Approved by ${name}! Will send at 10am ET.`,
-    });
+    // If approved after the normal 10am send window, send immediately
+    const { getETHour, sendDigest } = await import('./jobs/weekly-digest.js');
+    const etHour = getETHour();
+
+    if (etHour >= 10) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: `Approved by ${name}! Sending now...`,
+      });
+
+      const sendResult = await sendDigest(approved);
+      if (sendResult.sent === 0) {
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: messageTs,
+          text: `Delivery failed — nothing was sent. The digest is still approved and will retry on the next scheduled check.`,
+        });
+      }
+    } else {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: `Approved by ${name}! Will send at 10am ET.`,
+      });
+    }
 
     logger.info(
       { digestId: digest.id, approvedBy: approverUserId },
@@ -4187,7 +4258,12 @@ async function handleReactionAdded({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+  const processOptions = {
+    ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+    requestContext,
+    slackUserId: reactingUserId,
+    threadId: thread.thread_id,
+  };
 
   // Process with Claude
   let response;

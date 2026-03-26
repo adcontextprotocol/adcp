@@ -35,6 +35,11 @@ export interface ProspectChannelSetting {
   channel_name: string | null;
 }
 
+export interface ErrorChannelSetting {
+  channel_id: string | null;
+  channel_name: string | null;
+}
+
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
@@ -43,6 +48,7 @@ export const SETTING_KEYS = {
   ADMIN_SLACK_CHANNEL: 'admin_slack_channel',
   PROSPECT_SLACK_CHANNEL: 'prospect_slack_channel',
   PROSPECT_TRIAGE_ENABLED: 'prospect_triage_enabled',
+  ERROR_SLACK_CHANNEL: 'error_slack_channel',
 } as const;
 
 // ============== Generic Operations ==============
@@ -205,6 +211,31 @@ export async function setProspectTriageEnabled(
   await setSetting<{ enabled: boolean }>(
     SETTING_KEYS.PROSPECT_TRIAGE_ENABLED,
     { enabled },
+    updatedBy
+  );
+}
+
+// ============== Error Channel Operations ==============
+
+/**
+ * Get the configured error notification Slack channel
+ */
+export async function getErrorChannel(): Promise<ErrorChannelSetting> {
+  const result = await getSetting<ErrorChannelSetting>(SETTING_KEYS.ERROR_SLACK_CHANNEL);
+  return result ?? { channel_id: null, channel_name: null };
+}
+
+/**
+ * Set the error notification Slack channel
+ */
+export async function setErrorChannel(
+  channelId: string | null,
+  channelName: string | null,
+  updatedBy?: string
+): Promise<void> {
+  await setSetting<ErrorChannelSetting>(
+    SETTING_KEYS.ERROR_SLACK_CHANNEL,
+    { channel_id: channelId, channel_name: channelName },
     updatedBy
   );
 }

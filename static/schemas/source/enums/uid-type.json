@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/uid-type.json",
   "title": "UID Type",
-  "description": "Universal ID types for user matching",
+  "description": "Type of user identifier. Used in audience sync, event logging, and TMP identity match requests to tell the receiver which identity graph to resolve against.",
   "type": "string",
   "enum": [
     "rampid",
@@ -11,6 +11,8 @@
     "euid",
     "pairid",
     "maid",
+    "hashed_email",
+    "publisher_first_party",
     "other"
   ],
   "enumDescriptions": {
@@ -20,6 +22,8 @@
     "euid": "European Unified ID",
     "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR protocol",
     "maid": "Mobile Advertising ID (IDFA/GAID)",
+    "hashed_email": "SHA-256 hashed email address",
+    "publisher_first_party": "Publisher's own first-party identifier, opaque to buyers",
     "other": "Other universal ID type (specify in ext)"
   }
 }

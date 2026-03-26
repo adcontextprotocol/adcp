@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser } from '../../src/addie/thread-utils.js';
+import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint } from '../../src/addie/thread-utils.js';
 
 const BOT_ID = 'UBOT123';
 const BRIAN = 'UBRIAN';
@@ -98,6 +98,93 @@ describe('isDirectedAtAddie', () => {
       { user: BRIAN, ts: '2' },
     ];
     expect(isDirectedAtAddie('hello?', thread, '3', BRIAN, BOT_ID)).toBe(false);
+  });
+});
+
+describe('buildThreadStyleHint', () => {
+  it('returns null when no human messages exist', () => {
+    const messages = [
+      { user: BOT_ID, text: 'Hello!' },
+    ];
+    expect(buildThreadStyleHint(messages, BOT_ID)).toBeNull();
+  });
+
+  it('returns a hint when even one human wrote a short reply', () => {
+    const messages = [
+      { user: BOT_ID, text: 'Here is a long explanation about how things work in the protocol...' },
+      { user: BRIAN, text: 'Yes — the auction happens in GAM, not upstream.' },
+    ];
+    const hint = buildThreadStyleHint(messages, BOT_ID);
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('Thread Calibration');
+  });
+
+  it('returns a hint when humans write short messages', () => {
+    const messages = [
+      { user: BRIAN, text: 'AdCP creates buys on programmatic platforms if they accept creative + budget + targeting.' },
+      { user: ALICE, text: 'So it competes in the GAM auction like everything else?' },
+      { user: BRIAN, text: 'Yes, exactly. The auction happens in GAM.' },
+      { user: BOT_ID, text: 'This is a very long response from Addie that goes on and on with lots of detail and background and context and explanation and more detail and even more context and then some disclaimers and then a closing statement and then more context.' },
+    ];
+    const hint = buildThreadStyleHint(messages, BOT_ID);
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('Thread Calibration');
+    expect(hint).toContain('lead with the answer');
+  });
+
+  it('returns null when humans write long messages', () => {
+    const longText = 'A'.repeat(500);
+    const messages = [
+      { user: BRIAN, text: longText },
+      { user: ALICE, text: longText },
+    ];
+    expect(buildThreadStyleHint(messages, BOT_ID)).toBeNull();
+  });
+
+  it('fires when mixed short and long messages average under threshold', () => {
+    // [100, 500] → true median = 300, under 400 → hint fires
+    const messages = [
+      { user: BRIAN, text: 'A'.repeat(100) },
+      { user: ALICE, text: 'A'.repeat(500) },
+    ];
+    const hint = buildThreadStyleHint(messages, BOT_ID);
+    expect(hint).not.toBeNull();
+  });
+
+  it('returns null when median is exactly at the boundary (401 chars)', () => {
+    const messages = [
+      { user: BRIAN, text: 'A'.repeat(401) },
+      { user: ALICE, text: 'A'.repeat(401) },
+    ];
+    expect(buildThreadStyleHint(messages, BOT_ID)).toBeNull();
+  });
+
+  it('fires at exactly 400 chars median', () => {
+    const messages = [
+      { user: BRIAN, text: 'A'.repeat(400) },
+      { user: ALICE, text: 'A'.repeat(400) },
+    ];
+    const hint = buildThreadStyleHint(messages, BOT_ID);
+    expect(hint).not.toBeNull();
+  });
+
+  it('includes the median length in the hint', () => {
+    const messages = [
+      { user: BRIAN, text: 'A'.repeat(80) },
+      { user: ALICE, text: 'A'.repeat(120) },
+    ];
+    const hint = buildThreadStyleHint(messages, BOT_ID);
+    expect(hint).toContain('~100-character');
+  });
+
+  it('ignores bot messages in length calculation', () => {
+    const messages = [
+      { user: BOT_ID, text: 'A'.repeat(1000) },
+      { user: BRIAN, text: 'Short reply one.' },
+      { user: ALICE, text: 'Short reply two.' },
+    ];
+    const hint = buildThreadStyleHint(messages, BOT_ID);
+    expect(hint).not.toBeNull();
   });
 });
 

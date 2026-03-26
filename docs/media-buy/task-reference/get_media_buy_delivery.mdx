@@ -46,7 +46,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | `reporting_period` | Date range for report (start/end timestamps) |
 | `currency` | ISO 4217 currency code (USD, EUR, GBP, etc.) |
 | `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
-| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, video_completions, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, media_buy_count) |
+| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, views, completed_views, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, completion_rate, reach, reach_unit, frequency, media_buy_count) |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
 ### Media Buy Delivery Object
@@ -487,13 +487,18 @@ asyncio.run(main())
 | **Spend** | Amount spent in specified currency |
 | **Clicks** | Number of ad clicks (if available) |
 | **CTR** | Click-through rate (clicks/impressions) |
-| **Video Completions** | Videos watched to completion |
-| **Completion Rate** | Video completions/video impressions |
-| **Conversions** | Attributed conversions/orders |
+| **Views** | Content engagements at the billable view threshold — video views, audio/podcast stream starts, or format-specific view events |
+| **Completed Views** | Audio/video completions (at threshold or 100%) |
+| **Completion Rate** | Completion rate (completed_views/impressions) |
+| **Conversions** | Attributed conversions (purchases, new listeners, app installs, etc.) |
 | **Conversion Value** | Total monetary value of attributed conversions |
 | **ROAS** | Return on ad spend (conversion_value / spend) |
 | **New-to-Brand Rate** | Fraction of conversions from first-time brand buyers (0-1) |
 | **Cost per Acquisition** | Cost per conversion (spend / conversions) |
+| **Reach** | Unique users reached (see `reach_unit` for measurement unit: individuals, households, devices, accounts, cookies) |
+| **Reach Unit** | Unit of measurement for reach — required when reach is present |
+| **Frequency** | Average ad exposures per reach unit |
+| **Follows** | New followers, subscribes, or page likes attributed to delivery |
 | **Pacing Index** | Actual vs. expected delivery rate (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead) |
 | **CPM** | Cost per thousand impressions (spend/impressions * 1000) |
 
@@ -522,8 +527,10 @@ asyncio.run(main())
 
 ### Metric Availability
 - **Universal**: Impressions, spend (available on all platforms)
-- **Format-dependent**: Clicks, video completions (depends on inventory type and platform capabilities)
-- **Commerce attribution**: Conversions, conversion_value, roas, new_to_brand_rate (available on commerce media platforms)
+- **Format-dependent**: Clicks, completed_views, completion_rate (depends on inventory type and platform capabilities)
+- **Audience**: Reach, frequency (available on platforms with deduplicated measurement)
+- **Commerce attribution**: Conversions, conversion_value, roas, new_to_brand_rate (available on commerce media and streaming platforms)
+- **Engagement**: Follows, saves, engagements, profile_visits (available on social and streaming platforms)
 - **Attribution window**: `attribution_window` describes the lookback windows and model used for conversion attribution (e.g., 14-day click, 1-day view, last_touch)
 - **Package-level**: All metrics broken down by package with pacing_index
 

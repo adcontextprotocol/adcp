@@ -2,7 +2,7 @@
  * Portrait routes module
  *
  * Public serving, member self-service, and admin management of
- * illustrated member portraits.
+ * illustrated member portraits. Portraits belong to users.
  */
 
 import { Router } from 'express';
@@ -32,49 +32,29 @@ const upload = multer({
 const MAX_MONTHLY_GENERATIONS = 3;
 
 export interface PortraitRoutesConfig {
-  memberDb: MemberDatabase;
   orgDb: OrganizationDatabase;
+  memberDb: MemberDatabase;
   invalidateMemberContextCache: () => void;
 }
 
 /**
- * Resolve the member profile ID for the authenticated user.
- * Handles both production (WorkOS) and dev mode.
+ * Resolve the user ID for portrait operations.
  */
-async function resolveProfileId(
-  req: any,
-  memberDb: MemberDatabase,
-  orgDb: OrganizationDatabase,
-): Promise<string | null> {
+function resolveUserId(req: any): string | null {
   const user = req.user;
   if (!user) return null;
-
-  const requestedOrgId = req.query.org as string | undefined;
-
-  // Dev mode: look up profile from the seeded dev org
-  if (isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id)) {
-    const devOrgId = requestedOrgId?.startsWith('org_dev_') ? requestedOrgId : 'org_dev_company_001';
-    const profile = await memberDb.getProfileByOrgId(devOrgId);
-    return profile?.id || null;
-  }
-
-  const memberships = user.organizationMemberships || [];
-  for (const m of memberships) {
-    const orgId = m.organization?.id || m.organizationId;
-    if (requestedOrgId && orgId !== requestedOrgId) continue;
-    const profile = await memberDb.getProfileByOrgId(orgId);
-    if (profile) return profile.id;
-  }
-
-  return null;
+  return user.id;
 }
 
 /**
- * Check if the user has a paid subscription.
+ * Check if the user belongs to a member organization.
+ * Checks both subscription status and member profile existence,
+ * since founding/invoice members may not have a Stripe subscription.
  */
 async function isPaidMember(
   req: any,
   orgDb: OrganizationDatabase,
+  memberDb: MemberDatabase,
 ): Promise<boolean> {
   if (isDevModeEnabled()) return true;
 
@@ -86,6 +66,9 @@ async function isPaidMember(
     const orgId = m.organization?.id || m.organizationId;
     if (requestedOrgId && orgId !== requestedOrgId) continue;
     if (await orgDb.hasActiveSubscription(orgId)) return true;
+    // Founding/invoice members may not have a subscription record
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    if (profile) return true;
   }
 
   return false;
@@ -148,20 +131,20 @@ export function createPublicPortraitRouter(): Router {
 // =============================================================================
 
 export function createPortraitRouter(config: PortraitRoutesConfig): Router {
-  const { memberDb, orgDb, invalidateMemberContextCache } = config;
+  const { orgDb, memberDb, invalidateMemberContextCache } = config;
   const router = Router();
 
   // GET / — get current portrait metadata
   router.get('/', requireAuth, async (req, res) => {
     try {
-      const profileId = await resolveProfileId(req, memberDb, orgDb);
-      if (!profileId) {
-        return res.status(404).json({ error: 'No member profile found' });
+      const userId = resolveUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
       }
 
-      const portrait = await portraitDb.getActivePortrait(profileId);
-      const pending = await portraitDb.getLatestGenerated(profileId);
-      const monthlyCount = await portraitDb.countMonthlyGenerations(profileId);
+      const portrait = await portraitDb.getActivePortrait(userId);
+      const pending = await portraitDb.getLatestGenerated(userId);
+      const monthlyCount = await portraitDb.countMonthlyGenerations(userId);
 
       res.json({
         portrait: portrait || null,
@@ -179,16 +162,16 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
   // POST /generate — upload photo + vibe, generate portrait
   router.post('/generate', requireAuth, upload.single('photo'), async (req, res) => {
     try {
-      const profileId = await resolveProfileId(req, memberDb, orgDb);
-      if (!profileId) {
-        return res.status(404).json({ error: 'No member profile found' });
+      const userId = resolveUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
       }
 
-      if (!await isPaidMember(req, orgDb)) {
+      if (!await isPaidMember(req, orgDb, memberDb)) {
         return res.status(402).json({ error: 'Active subscription required for portrait generation' });
       }
 
-      const monthlyCount = await portraitDb.countMonthlyGenerations(profileId);
+      const monthlyCount = await portraitDb.countMonthlyGenerations(userId);
       if (monthlyCount >= MAX_MONTHLY_GENERATIONS) {
         return res.status(429).json({
           error: 'Monthly generation limit reached',
@@ -209,7 +192,7 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
       });
 
       const portrait = await portraitDb.createPortrait({
-        member_profile_id: profileId,
+        user_id: userId,
         image_url: '', // Will be set after we know the ID
         portrait_data: result.imageBuffer,
         prompt_used: result.promptUsed,
@@ -224,7 +207,7 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
         [`/api/portraits/${portrait.id}.png`, portrait.id]
       );
 
-      logger.info({ profileId, portraitId: portrait.id, vibe }, 'Portrait generated');
+      logger.info({ userId, portraitId: portrait.id, vibe }, 'Portrait generated');
 
       res.json({
         id: portrait.id,
@@ -241,9 +224,9 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
   // POST /approve — accept the latest generated portrait
   router.post('/approve', requireAuth, async (req, res) => {
     try {
-      const profileId = await resolveProfileId(req, memberDb, orgDb);
-      if (!profileId) {
-        return res.status(404).json({ error: 'No member profile found' });
+      const userId = resolveUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
       }
 
       const portraitId = req.body.portraitId as string;
@@ -251,13 +234,13 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
         return res.status(400).json({ error: 'portraitId required' });
       }
 
-      const portrait = await portraitDb.approvePortrait(portraitId, profileId);
+      const portrait = await portraitDb.approvePortrait(portraitId, userId);
       if (!portrait) {
         return res.status(404).json({ error: 'Portrait not found' });
       }
 
       invalidateMemberContextCache();
-      logger.info({ profileId, portraitId }, 'Portrait approved');
+      logger.info({ userId, portraitId }, 'Portrait approved');
 
       res.json({ portrait });
     } catch (err) {
@@ -266,17 +249,17 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
     }
   });
 
-  // DELETE / — remove portrait from profile
+  // DELETE / — remove portrait from user
   router.delete('/', requireAuth, async (req, res) => {
     try {
-      const profileId = await resolveProfileId(req, memberDb, orgDb);
-      if (!profileId) {
-        return res.status(404).json({ error: 'No member profile found' });
+      const userId = resolveUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
       }
 
-      await portraitDb.removeFromProfile(profileId);
+      await portraitDb.removeFromUser(userId);
       invalidateMemberContextCache();
-      logger.info({ profileId }, 'Portrait removed from profile');
+      logger.info({ userId }, 'Portrait removed');
 
       res.json({ success: true });
     } catch (err) {
@@ -329,8 +312,13 @@ export function createAdminPortraitRouter(): Router {
         return res.status(404).json({ error: 'Portrait not found' });
       }
 
-      // Remove from profile if it's the active one
-      await portraitDb.removeFromProfile(portrait.member_profile_id);
+      // Only clear from user if this is their active portrait
+      if (portrait.user_id) {
+        const user = await portraitDb.getActivePortraitId(portrait.user_id);
+        if (user === req.params.id) {
+          await portraitDb.removeFromUser(portrait.user_id);
+        }
+      }
       await portraitDb.rejectPortrait(req.params.id);
 
       logger.info({ portraitId: req.params.id }, 'Portrait removed by admin');

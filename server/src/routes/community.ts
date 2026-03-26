@@ -422,8 +422,6 @@ async function syncIndividualMemberProfile(
   // Build mapped fields for member_profiles
   const memberUpdates: Record<string, unknown> = {
     display_name: displayName,
-    tagline: communityProfile.headline || null,
-    description: communityProfile.bio || null,
     logo_url: communityProfile.avatar_url || null,
     linkedin_url: communityProfile.linkedin_url || null,
     twitter_url: communityProfile.twitter_url || null,
@@ -433,20 +431,50 @@ async function syncIndividualMemberProfile(
   if (memberFields.contact_website !== undefined) memberUpdates.contact_website = memberFields.contact_website;
   if (memberFields.contact_phone !== undefined) memberUpdates.contact_phone = memberFields.contact_phone;
 
-  // Only sync if a member profile already exists — don't auto-create
   const existingProfile = await memberDb.getProfileByOrgId(user.primary_organization_id);
-  if (!existingProfile) return;
 
-  // Merge offerings: the form only edits individual-relevant offerings (consulting, other).
-  // Preserve any other offerings the existing profile has (e.g. data_provider).
-  if (memberFields.offerings !== undefined) {
-    const individualOfferings: MemberOffering[] = ['consulting', 'other'];
-    const preserved = (existingProfile.offerings || []).filter(
-      (o: MemberOffering) => !individualOfferings.includes(o)
-    );
-    memberUpdates.offerings = [...preserved, ...memberFields.offerings];
+  if (existingProfile) {
+    // Only sync headline→tagline and bio→description if the listing field hasn't been
+    // independently customized (i.e., it's empty or already matches the community value).
+    const newTagline = communityProfile.headline || null;
+    const currentTagline = existingProfile.tagline || null;
+    if (!currentTagline || currentTagline === newTagline) {
+      memberUpdates.tagline = newTagline;
+    }
+
+    const newDescription = communityProfile.bio || null;
+    const currentDescription = existingProfile.description || null;
+    if (!currentDescription || currentDescription === newDescription) {
+      memberUpdates.description = newDescription;
+    }
+
+    // Merge offerings: the form only edits individual-relevant offerings (consulting, other).
+    // Preserve any other offerings the existing profile has (e.g. data_provider).
+    if (memberFields.offerings !== undefined) {
+      const individualOfferings: MemberOffering[] = ['consulting', 'other'];
+      const preserved = (existingProfile.offerings || []).filter(
+        (o: MemberOffering) => !individualOfferings.includes(o)
+      );
+      memberUpdates.offerings = [...preserved, ...memberFields.offerings];
+    }
+
+    await memberDb.updateProfileByOrgId(user.primary_organization_id, memberUpdates);
+  } else {
+    // Auto-create member profile for personal accounts on first save
+    const slug = communityProfile.slug || displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    await memberDb.createProfile({
+      workos_organization_id: user.primary_organization_id,
+      display_name: displayName,
+      slug,
+      tagline: communityProfile.headline || undefined,
+      description: communityProfile.bio || undefined,
+      contact_email: memberFields.contact_email,
+      contact_website: memberFields.contact_website,
+      contact_phone: memberFields.contact_phone,
+      offerings: memberFields.offerings || [],
+      is_public: false,
+    });
   }
 
-  await memberDb.updateProfileByOrgId(user.primary_organization_id, memberUpdates);
   invalidateMemberContextCache?.();
 }

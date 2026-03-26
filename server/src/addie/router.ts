@@ -27,6 +27,7 @@ import { MEMBER_TOOLS } from './mcp/member-tools.js';
 import { trackApiCall, ApiPurpose } from './services/api-tracker.js';
 import {
   getToolSetDescriptionsForRouter,
+  getValidToolSetNames,
   requiresPrecision as checkPrecision,
 } from './tool-sets.js';
 
@@ -158,7 +159,7 @@ export const ROUTING_RULES = {
     },
     membership: {
       patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group', 'api key', 'api keys', 'api token'],
-      tools: ['get_my_profile', 'list_working_groups', 'join_working_group'],
+      tools: ['get_my_profile', 'update_my_profile', 'get_company_listing', 'update_company_listing', 'list_working_groups', 'join_working_group'],
       description: 'AgenticAdvertising.org membership and API key management',
     },
     find_help: {
@@ -191,7 +192,12 @@ export const ROUTING_RULES = {
     community_directory: {
       patterns: ['community directory', 'community profile', 'people directory', 'community hub', 'coffee chat', 'connection request', 'connect with'],
       tools: ['get_my_profile', 'update_my_profile'],
-      description: 'Community directory, people profiles, connections, and coffee chats',
+      description: 'Community directory, personal profiles, connections, and coffee chats',
+    },
+    company_listing: {
+      patterns: ['company listing', 'company tagline', 'company profile', 'directory listing', 'our tagline', 'company description', 'company offerings'],
+      tools: ['get_company_listing', 'update_company_listing'],
+      description: 'Company directory listing — tagline, description, offerings, contact info',
     },
     community: {
       patterns: ['community', 'discussion', 'slack', 'chat history', 'what did', 'who said'],
@@ -490,6 +496,19 @@ export class AddieRouter {
 
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
+
+      // Filter tool sets to only valid/permitted sets for this user
+      if (parsedPlan.action === 'respond') {
+        const validSets = getValidToolSetNames(ctx.isAAOAdmin ?? false);
+        const filtered = parsedPlan.tool_sets.filter(s => validSets.has(s));
+        if (filtered.length !== parsedPlan.tool_sets.length) {
+          logger.warn({
+            requested: parsedPlan.tool_sets,
+            allowed: filtered,
+          }, 'Router: stripped invalid tool sets from LLM response');
+        }
+        parsedPlan.tool_sets = filtered;
+      }
 
       // Check if any selected tool sets require precision mode (billing, financial)
       let requiresPrecisionMode = false;
