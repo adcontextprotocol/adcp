@@ -24,7 +24,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, CompanyType, RevenueTier, getUserSeatType, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
