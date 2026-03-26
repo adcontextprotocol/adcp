@@ -204,6 +204,18 @@ The same protocol tasks work on both paths. Priya calls `get_products`, `create_
   Network topology, implicit account chains, catalog forwarding, and SI Chat Protocol routing through intermediaries.
 </Card>
 
+## Connection to TMP
+
+On AI assistant surfaces, the [Trusted Match Protocol (TMP)](/docs/trusted-match) triggers SI sessions. TMP handles package selection; SI handles the conversational engagement that follows:
+
+1. **TMP Context Match** determines which packages match the conversation context
+2. **TMP Identity Match** confirms user eligibility
+3. The host joins both results and selects the winning package
+4. The winning offer's `brand`, `creative_manifest`, and `media_buy_id` flow into SI's `si_initiate_session` call
+5. SI takes over — managing the conversation between user and brand agent
+
+This separation keeps selection (TMP) and engagement (SI) as distinct concerns. TMP decides *which* brand appears. SI defines *what happens* when it does.
+
 ## Protocol architecture
 
 SI uses two protocol layers:

@@ -46,7 +46,7 @@ describe('training agent formats', () => {
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(49);
+    expect(formats.length).toBe(52);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
@@ -107,7 +107,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(49);
+    expect(returned.length).toBe(52);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -120,7 +120,7 @@ describe('handleListCreativeFormats', () => {
     const result = handleListCreativeFormats({ type: 'display' }, formats);
     const returned = result.formats as Array<{ format_id: { id: string } }>;
     expect(returned.length).toBeGreaterThan(0);
-    expect(returned.length).toBeLessThan(49);
+    expect(returned.length).toBeLessThan(52);
   });
 
   it('filters by type: video', () => {

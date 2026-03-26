@@ -283,6 +283,16 @@ For sellers that generate creative — AI assistants, conversational ad platform
 
 ---
 
+## Match at serve time
+
+The campaign is live. When a user loads a StreamHaus page, opens OutdoorNet's mobile app, or asks an AI assistant about hiking gear, the publisher needs to know which of Sam's packages should activate — right now, for this content, for this user.
+
+The [Trusted Match Protocol (TMP)](/docs/trusted-match) handles this with two structurally separated operations. **Context Match** evaluates content signals against the available packages — no user identity crosses this boundary. **Identity Match** checks user eligibility using an opaque token — no page context crosses this boundary. The publisher joins both responses locally. Buyers never see identity and content together.
+
+One protocol, every surface: web, mobile, CTV, AI assistants, retail media.
+
+---
+
 ## Add your data
 
 <img src="/images/walkthrough/intro-06-add-data.png" alt="Sam and Kai sit side by side with laptops as translucent teal data streams arc between their screens — combining campaign and signal data" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
@@ -564,7 +574,8 @@ Here's what Alex's team does now:
 3. **Compare proposals**: Products come back in a standard format — pricing, forecasts, targeting — all comparable
 4. **Agents build creatives**: `build_creative` adapts assets to each seller's formats
 5. **Approve and launch**: `create_media_buy` executes across platforms in one call
-6. **Monitor delivery**: `get_media_buy_delivery` aggregates performance from every seller into one view
+6. **Match at serve time**: TMP Context Match + Identity Match activate packages at each impression, with structural privacy separation
+7. **Monitor delivery**: `get_media_buy_delivery` aggregates performance from every seller into one view
 
 Each step uses a standard AdCP task with a JSON Schema-defined request and response. No platform-specific code. No manual translation between systems.
 
@@ -615,9 +626,12 @@ Governance isn't a gate that slows things down. It's the safety net that lets yo
 
 ## See it in action
 
-<CardGroup cols={3}>
+<CardGroup cols={4}>
   <Card title="Media buy" icon="cart-shopping" href="/docs/media-buy">
     Follow Sam through a complete campaign — brief to delivery
+  </Card>
+  <Card title="Trusted Match" icon="link" href="/docs/trusted-match">
+    Real-time package activation with structural privacy separation
   </Card>
   <Card title="Creative" icon="paintbrush" href="/docs/creative/index">
     Follow Maya through creative generation and distribution

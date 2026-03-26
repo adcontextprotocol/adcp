@@ -175,7 +175,29 @@ if (check.status === "denied" || check.status === "escalated") {
 
 </Accordion>
 
-## Step 6: Monitor delivery
+## Step 6: Match at serve time
+
+The campaign is approved and live. When a user loads a StreamHaus page, opens OutdoorNet's app, or asks an AI assistant a question, the publisher's TMP Router evaluates which of Sam's packages should activate.
+
+Two operations run separately — Context Match asks "does this content fit the package's targeting?" while Identity Match asks "is this user eligible?" The publisher joins both responses locally. Sam's buyer agent never sees user identity and content context together — the structural separation is built into the protocol.
+
+The same flow works on every surface. Sam didn't write surface-specific activation code for CTV versus web versus AI. TMP handles all of them.
+
+<Accordion title="How TMP activates a package">
+
+When a user visits a StreamHaus article about hiking gear:
+
+1. StreamHaus sends a Context Match request with the article's content signals and Sam's available packages
+2. Sam's buyer agent responds: "Activate pkg-outdoor-display — this hiking content matches the targeting"
+3. StreamHaus sends a separate Identity Match request with a user token and ALL of Sam's active packages
+4. Sam's buyer agent responds: "This user is eligible for pkg-outdoor-display (intent_score: 0.82)"
+5. StreamHaus joins the results locally and activates the line item
+
+See the [Trusted Match Protocol](/docs/trusted-match) for the full specification.
+
+</Accordion>
+
+## Step 7: Monitor delivery
 
 <img src="/images/walkthrough/media-buy-07-delivery.png" alt="Sam leans back at his desk, relaxed, with a single clean dashboard showing unified performance charts from all three sellers — bar charts rising, line graphs converging, all in teal" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
@@ -204,6 +226,7 @@ Sam went from four dashboards to one protocol. The same tasks that bought CTV in
 | Platform-specific creative specs | `list_creative_formats` on any seller |
 | 4 campaign setup workflows | `create_media_buy` everywhere |
 | Manual reporting reconciliation | `get_media_buy_delivery` aggregated |
+| Per-surface activation ad-ops | TMP matches packages on any surface automatically |
 
 ## Go deeper
 
@@ -212,4 +235,5 @@ Sam went from four dashboards to one protocol. The same tasks that bought CTV in
 - **Optimization**: [Delivery and reporting](/docs/media-buy/media-buys/optimization-reporting) — metrics, dimensional breakdowns, and feedback loops
 - **Governance**: [Campaign governance](/docs/governance/overview) — how the three-party trust model protects Sam's spend
 - **Creative**: [Creative walkthrough](/docs/creative/index) — how Maya builds the creatives Sam uses
+- **Real-time matching**: [Trusted Match Protocol](/docs/trusted-match) — how packages activate at serve time via Context Match and Identity Match
 - **Get certified**: The [Buyer track](/docs/learning/tracks/buyer) teaches the full media buy workflow through interactive modules

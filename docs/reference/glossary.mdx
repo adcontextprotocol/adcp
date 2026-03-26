@@ -53,6 +53,9 @@ Total monetary allocation for a media buy, which can be distributed across multi
 
 ## C
 
+**Context Match**
+TMP operation that evaluates available packages against content context. Contains artifact IDs, context signals (topics, sentiment, keywords, embedding), and available packages. Carries no user identity. See [Trusted Match Protocol](/docs/trusted-match).
+
 **Conversion Tracking**
 The mechanism for sending buyer-side marketing events to a seller for attribution. Involves two steps: configure event sources on the seller account (`sync_event_sources`), then send events (`log_event`). Seller-level capabilities (supported event types, UID types, attribution windows) are declared in `get_adcp_capabilities`; product-level support is declared in `product.conversion_tracking`. See also [Event](#event) and [Optimization Goal](#optimization-goal).
 
@@ -152,6 +155,9 @@ Protocol feature allowing publishers to require manual approval for operations.
 
 ## I
 
+**Identity Match**
+TMP operation that evaluates user eligibility against package criteria using an opaque user token. Returns a boolean `eligible` flag and optional `intent_score` per package. Carries no page context. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. See [Trusted Match Protocol](/docs/trusted-match).
+
 **Impressions** (Media Buy Protocol)
 The number of times an ad is displayed, used for pricing and delivery tracking.
 
@@ -189,6 +195,9 @@ A complete advertising campaign containing packages, budget, targeting, and crea
 The AI capability that allows audience discovery through conversational descriptions rather than technical parameters.
 
 ## O
+
+**Offer** (TMP)
+A buyer's response to a TMP context match request. Ranges from simple activation (`package_id` only, for GAM key-value targeting) to rich proposals with brand, price, summary, and inline creative manifest (for AI assistants and dynamic surfaces). See [TMP Specification](/docs/trusted-match/specification).
 
 **Optimization Goal**
 A single entry in a package's `optimization_goals` array. Two kinds: `kind: "event"` (optimize for advertiser-tracked conversion events via an `event_sources` array of source-type pairs, with optional `cost_per`, `per_ad_spend`, or `maximize_value` target) and `kind: "metric"` (optimize for a seller-native delivery metric — clicks, views, completed views, engagements, attention, etc. — with optional `cost_per` or `threshold_rate` target). Event goals with `per_ad_spend` or `maximize_value` targets require `value_field` on event source entries. When the seller supports `multi_source_event_dedup` (declared in `get_adcp_capabilities`), they deduplicate by `event_id` across sources; otherwise buyers should use a single event source per goal. When multiple goals are present, `priority` (1 = highest) controls which the seller treats as primary.
@@ -314,6 +323,12 @@ Signal data licensed from external providers, also known as marketplace signals.
 **Time-Based Pricing**
 Pricing structure based on duration (hourly, daily, or daypart) rather than impressions. Common in DOOH advertising using flat_rate model.
 
+**TMP Router**
+Infrastructure that fans out TMP requests to buyer agents and merges responses. A single binary with structurally separate code paths for context and identity. The router enriches requests (adding property registry IDs, signing), enforces privacy constraints (rejecting requests with identity data in the context path), and applies adaptive timeouts. See [Router Architecture](/docs/trusted-match/router-architecture).
+
+**Trusted Match Protocol (TMP)**
+AdCP's real-time execution layer. Determines which pre-negotiated packages should activate for a given impression using two structurally separated operations: Context Match (content fit, no user identity) and Identity Match (user eligibility, no page context). The publisher joins both responses locally. Works across web, mobile, CTV, AI assistants, and retail media. Replaces AXE. See [Trusted Match Protocol](/docs/trusted-match).
+
 ## U
 
 **UID (Universal ID)**
@@ -354,6 +369,7 @@ Named collection of DOOH screens across specific venues (e.g., 'times_square_net
 - **RTB**: Real-Time Bidding
 - **SI**: Sponsored Intelligence
 - **SSP**: Supply-Side Platform
+- **TMP**: Trusted Match Protocol
 - **TTD**: The Trade Desk
 - **UCP**: Universal Commerce Protocol
 - **UID**: Universal Identifier

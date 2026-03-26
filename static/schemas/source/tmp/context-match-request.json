@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/context-match-request.json",
+  "title": "Context Match Request",
+  "description": "Sent by publisher to router or provider to evaluate available packages against contextual signals. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id.",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
+      "default": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Unique request identifier. MUST NOT correlate with any identity match request_id."
+    },
+    "property_id": {
+      "$ref": "/schemas/core/property-id.json",
+      "description": "Publisher property identifier from the registry"
+    },
+    "property_type": {
+      "$ref": "/schemas/enums/property-type.json",
+      "description": "Type of the publisher property"
+    },
+    "placement_id": {
+      "type": "string",
+      "description": "Placement identifier from the property's registered placements. Identifies where on the property this ad opportunity exists. One placement per request."
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Content artifact IDs adjacent to this ad opportunity. References artifacts registered with the property (articles, episodes, shows, videos, conversation turns). All packages in the request are evaluated against these artifacts.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "geo": {
+      "type": "object",
+      "description": "Geographic context for this impression. Publisher controls granularity — country is sufficient for volume filtering and regulatory compliance, finer granularity helps with valuation. This describes where the ad is serving, not where the user is (user location is identity data). All fields optional.",
+      "properties": {
+        "country": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'GB', 'DE').",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "region": {
+          "type": "string",
+          "description": "ISO 3166-2 subdivision code (e.g., 'US-CA', 'GB-SCT').",
+          "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+        },
+        "metro": {
+          "type": "object",
+          "description": "Metro area, using the same classification systems as AdCP targeting.",
+          "properties": {
+            "system": {
+              "$ref": "/schemas/enums/metro-system.json",
+              "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')."
+            },
+            "value": {
+              "type": "string",
+              "description": "Metro code within the system (e.g., '501' for New York DMA)."
+            }
+          },
+          "required": ["system", "value"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "url_hash": {
+      "type": "string",
+      "description": "Blake3 hash of the canonicalized URL, base64-encoded. For URL-addressable content, the buyer checks this against their pre-crawled content index. Canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments."
+    },
+    "context_signals": {
+      "type": "object",
+      "description": "Pre-computed classifier outputs for the content environment. Use when artifact pre-registration is not feasible (e.g., real-time conversation turns, search queries) or to supplement artifact-based matching. Raw content (conversation text, article body, URLs) MUST NOT be included — only classified outputs. The publisher is the classifier boundary.",
+      "properties": {
+        "topics": {
+          "type": "array",
+          "description": "Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs (e.g., '632' for Food & Drink) when taxonomy_id is 7, or human-readable strings (e.g., 'cooking.pasta') for custom taxonomies.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "taxonomy_source": {
+          "type": "string",
+          "description": "Organization that defines the topic taxonomy. Default: 'iab'. Other sources can be added as the ecosystem evolves.",
+          "enum": ["iab"],
+          "default": "iab"
+        },
+        "taxonomy_id": {
+          "type": "integer",
+          "description": "Taxonomy version within the source. For IAB, follows the AdCOM cattax enum: 7 = Content Taxonomy 3.0. Default: 7.",
+          "default": 7
+        },
+        "sentiment": {
+          "type": "string",
+          "description": "Content sentiment classification.",
+          "enum": ["positive", "negative", "neutral", "mixed"]
+        },
+        "keywords": {
+          "type": "array",
+          "description": "Content keywords extracted by the publisher's classifier.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "language": {
+          "type": "string",
+          "description": "Content language in ISO 639-1 format (e.g., 'en', 'ja', 'de').",
+          "pattern": "^[a-z]{2}$"
+        },
+        "content_policies": {
+          "type": "array",
+          "description": "Policy IDs from the AdCP policy registry that this content satisfies (e.g., 'common_sense_brand_safety' for Common Sense Brand Standards baseline). Buyers filter on policies they require. An empty array means no policies have been evaluated.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string",
+          "description": "Publisher-generated natural language summary of the content for relevance judgment (e.g., 'User exploring Italian cookware options for home pasta making'). Useful for LLM-native buyers that evaluate relevance semantically."
+        },
+        "embedding": {
+          "type": "string",
+          "description": "Content embedding as base64-encoded int8 vector. Captures semantic content beyond what topics and keywords express. Publishers declare the model used. For standardized matching, use the protocol-recommended model (nomic-embed-text-v1.5, 256 dims, int8 quantized = 256 bytes)."
+        },
+        "embedding_model": {
+          "type": "string",
+          "description": "Embedding model identifier (e.g., 'nomic-embed-text-v1.5'). Required when embedding is present."
+        },
+        "embedding_dims": {
+          "type": "integer",
+          "description": "Number of dimensions in the embedding vector. Required when embedding is present.",
+          "minimum": 64,
+          "maximum": 2048
+        }
+      },
+      "additionalProperties": false
+    },
+    "available_packages": {
+      "type": "array",
+      "description": "ALL packages eligible for this placement. MUST NOT be filtered by user identity or audience — that filtering happens via Identity Match. Sending only user-relevant packages leaks identity into the context path. Using a stable per-placement set also enables caching.",
+      "items": {
+        "$ref": "/schemas/tmp/available-package.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "request_id",
+    "property_id",
+    "property_type",
+    "placement_id",
+    "available_packages"
+  ],
+  "additionalProperties": false
+}

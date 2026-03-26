@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/tmp/package-eligibility.json",
+  "title": "Package Eligibility",
+  "description": "Identity-based eligibility determination for a package. The buyer computes eligibility from whatever signals they have (frequency caps, audience membership, purchase history) and returns a single boolean. The publisher does not need to know why a user is or isn't eligible — just whether they are.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Identifier of the evaluated package"
+    },
+    "eligible": {
+      "type": "boolean",
+      "description": "Whether the user is eligible for this package. The buyer computes this from frequency caps, audience targeting, purchase history, and any other identity-based signals. The reasons are opaque to the publisher."
+    },
+    "intent_score": {
+      "type": "number",
+      "description": "Buyer's estimate of user intent for this package, 0.0 (no signal) to 1.0 (high intent). Helps the publisher rank when multiple packages are eligible.",
+      "minimum": 0.0,
+      "maximum": 1.0
+    }
+  },
+  "required": [
+    "package_id",
+    "eligible"
+  ],
+  "additionalProperties": false
+}
