@@ -173,6 +173,51 @@
             gap: var(--space-2);
             flex-wrap: wrap;
         }
+        /* Compliance indicators */
+        .compliance-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: var(--space-1);
+        }
+        .compliance-dot--passing { background: var(--color-success-500); }
+        .compliance-dot--degraded { background: var(--color-warning-500); }
+        .compliance-dot--failing { background: var(--color-error-500); }
+        .compliance-dot--unknown { background: var(--color-gray-400); }
+
+        .compliance-summary {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+        }
+        .streak-badge {
+            padding: var(--space-1) var(--space-2);
+            background: var(--color-success-50);
+            color: var(--color-success-700);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
+            font-weight: var(--font-semibold);
+        }
+        .track-pills {
+            display: flex;
+            gap: 3px;
+            flex-wrap: wrap;
+            margin-top: var(--space-2);
+        }
+        .track-pill {
+            padding: 1px var(--space-2);
+            border-radius: var(--radius-full);
+            font-size: 10px;
+            font-weight: var(--font-semibold);
+        }
+        .track-pill--pass { background: var(--color-success-100); color: var(--color-success-700); }
+        .track-pill--fail { background: var(--color-error-100); color: var(--color-error-700); }
+        .track-pill--partial { background: var(--color-warning-100); color: var(--color-warning-700); }
+        .track-pill--skip { background: var(--color-gray-100); color: var(--color-gray-600); }
+
         .format-badge {
             padding: var(--space-1) var(--space-3);
             background: var(--color-primary-100);
@@ -453,6 +498,12 @@
                     <button class="filter-btn" data-status="online" onclick="setStatusFilter('online')">Active</button>
                     <button class="filter-btn" data-status="offline" onclick="setStatusFilter('offline')">Issues</button>
                 </div>
+                <div class="filter-group">
+                    <label>Compliance:</label>
+                    <button class="filter-btn active" data-compliance="all" onclick="setComplianceFilter('all')">All</button>
+                    <button class="filter-btn" data-compliance="passing" onclick="setComplianceFilter('passing')">Passing</button>
+                    <button class="filter-btn" data-compliance="failing" onclick="setComplianceFilter('failing')">Failing</button>
+                </div>
             </div>
         </div>
         <div id="agents-grid" class="agent-grid"></div>
@@ -477,7 +528,7 @@
 
 <script type="module">
     let allAgents = [];
-    let filters = { type: 'all', status: 'all', search: '' };
+    let filters = { type: 'all', status: 'all', compliance: 'all', search: '' };
     let isLoading = true;
 
     function escapeHtml(str) {
@@ -505,7 +556,7 @@
 
     async function loadAllAgents() {
         try {
-            const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
+            const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true&compliance=true');
             const data = await response.json();
             const agents = data.agents || data;
 
@@ -516,6 +567,7 @@
                     properties: agent.properties || [],
                     formats: agent.capabilities?.creative_capabilities?.formats_supported || [],
                     propertiesError: agent.propertiesError,
+                    compliance: agent.compliance || null,
                     health: hasPropertyError
                         ? { ...agent.health, online: false, error: `Missing required tool: ${agent.propertiesError}` }
                         : agent.health
@@ -570,6 +622,11 @@
                 const online = agent.health?.online || false;
                 if (filters.status === 'online' && !online) return false;
                 if (filters.status === 'offline' && online) return false;
+            }
+            if (filters.compliance !== 'all') {
+                const cs = agent.compliance?.status || 'unknown';
+                if (filters.compliance === 'passing' && cs !== 'passing') return false;
+                if (filters.compliance === 'failing' && cs !== 'failing' && cs !== 'degraded') return false;
             }
             if (filters.search) {
                 const query = filters.search.toLowerCase();
@@ -645,6 +702,32 @@
                 `;
             }
 
+            // Compliance summary in meta
+            let complianceHtml = '';
+            if (agent.compliance && agent.compliance.status !== 'unknown') {
+                const cs = agent.compliance;
+                const dotClass = 'compliance-dot--' + cs.status;
+                complianceHtml = `<div class="compliance-summary">
+                    <span class="compliance-dot ${dotClass}"></span>
+                    ${escapeHtml(cs.status)}${cs.streak_days > 0 ? ` <span class="streak-badge">${parseInt(cs.streak_days, 10)}d</span>` : ''}
+                </div>`;
+
+                // Track pills
+                const tracks = cs.tracks || {};
+                const trackEntries = Object.entries(tracks);
+                if (trackEntries.length > 0) {
+                    complianceHtml += '<div class="track-pills">';
+                    for (const [track, status] of trackEntries) {
+                        const pillClass = status === 'pass' ? 'track-pill--pass'
+                            : status === 'fail' ? 'track-pill--fail'
+                            : status === 'partial' ? 'track-pill--partial'
+                            : 'track-pill--skip';
+                        complianceHtml += '<span class="track-pill ' + pillClass + '">' + escapeHtml(track) + '</span>';
+                    }
+                    complianceHtml += '</div>';
+                }
+            }
+
             let extrasHtml = '';
 
             if (agent.type === 'sales' && agent.properties.length > 0) {
@@ -704,6 +787,7 @@
                     </div>
                     ${agent.description ? `<p class="agent-description">${escapeHtml(agent.description)}</p>` : ''}
                     <div class="agent-meta">${metaHtml}</div>
+                    ${complianceHtml}
                     ${extrasHtml}
                 </div>
             `;
@@ -726,6 +810,14 @@
         filters.status = status;
         document.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.status === status);
+        });
+        renderAgents();
+    };
+
+    window.setComplianceFilter = function(compliance) {
+        filters.compliance = compliance;
+        document.querySelectorAll('.filter-btn[data-compliance]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.compliance === compliance);
         });
         renderAgents();
     };
@@ -767,7 +859,7 @@
             const [type, ...nameParts] = agentId.split('/');
             const name = nameParts.join('/');
 
-            const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true');
+            const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true&compliance=true');
             const capsData = await capsResp.json();
             const allAgents = capsData.agents || [];
 
@@ -857,6 +949,43 @@
                         </div>
                     `;
                 }
+            }
+
+            // Continuous compliance monitoring section
+            if (agent.compliance && agent.compliance.status !== 'unknown') {
+                const cs = agent.compliance;
+                const statusColors = {
+                    passing: { bg: 'var(--color-success-50)', border: 'var(--color-success-500)', label: 'Passing' },
+                    degraded: { bg: 'var(--color-warning-50)', border: 'var(--color-warning-500)', label: 'Degraded' },
+                    failing: { bg: 'var(--color-error-50)', border: 'var(--color-error-500)', label: 'Failing' },
+                };
+                const sc = statusColors[cs.status] || { bg: 'var(--color-gray-100)', border: 'var(--color-gray-400)', label: 'Unknown' };
+
+                let trackPillsHtml = '';
+                const tracks = cs.tracks || {};
+                for (const [track, status] of Object.entries(tracks)) {
+                    const pillClass = status === 'pass' ? 'track-pill--pass'
+                        : status === 'fail' ? 'track-pill--fail'
+                        : status === 'partial' ? 'track-pill--partial'
+                        : 'track-pill--skip';
+                    trackPillsHtml += `<span class="track-pill ${pillClass}">${escapeHtml(track)}</span>`;
+                }
+
+                html += `
+                    <div class="compliance-badge" style="background: ${sc.bg}; border-color: ${sc.border};">
+                        <div>
+                            <div class="compliance-badge__title">
+                                Compliance: ${sc.label}
+                                ${cs.streak_days > 0 ? `<span class="streak-badge">${parseInt(cs.streak_days, 10)}d streak</span>` : ''}
+                            </div>
+                            <div class="compliance-badge__subtitle">
+                                ${cs.headline ? escapeHtml(cs.headline) : ''}
+                                ${cs.last_checked_at ? ` &middot; Last checked: ${new Date(cs.last_checked_at).toLocaleString()}` : ''}
+                            </div>
+                            ${trackPillsHtml ? `<div class="track-pills" style="margin-top: var(--space-2);">${trackPillsHtml}</div>` : ''}
+                        </div>
+                    </div>
+                `;
             }
 
             // Type-specific sections

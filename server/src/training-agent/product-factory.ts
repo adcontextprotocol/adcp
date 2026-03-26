@@ -454,15 +454,15 @@ function buildProduct(
       const builtInstallments: Installment[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const installment = {
+          const installment: Installment = {
             installment_id: ep.episodeId,
             collection_id: show.showId,
             name: ep.title,
             status: ep.status as InstallmentStatus,
-            ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
-            ...(ep.durationSeconds && { duration_seconds: ep.durationSeconds }),
-            ...(ep.special ? { special: ep.special } : {}),
-          } as Installment;
+            scheduled_at: ep.scheduledAt,
+            duration_seconds: ep.durationSeconds,
+            ...(ep.special && { special: ep.special as Installment['special'] }),
+          };
           builtInstallments.push(installment);
         }
       }
@@ -545,7 +545,7 @@ function buildShowObject(show: ShowDefinition): ShowResponse {
 
 /**
  * Build the top-level shows array for a get_products response,
- * scoped to only shows referenced by the given products.
+ * scoped to only collections referenced by the given products.
  */
 export function buildShowsForProducts(products: Product[]): ShowResponse[] {
   const referencedIds = new Set<string>();
