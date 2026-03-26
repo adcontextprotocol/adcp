@@ -1514,6 +1514,14 @@ function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   }
 
   return {
+    query_summary: {
+      total_matching: creatives.length,
+      returned: creatives.length,
+    },
+    pagination: {
+      has_more: false,
+      total_count: creatives.length,
+    },
     creatives: creatives.map(c => ({
       creative_id: c.creativeId,
       format_id: c.formatId,

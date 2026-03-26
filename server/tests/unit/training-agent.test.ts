@@ -1628,6 +1628,14 @@ describe('list_creatives handler', () => {
     expect(creatives[0].name).toBe('Test');
     expect(creatives[0].status).toBe('approved');
     expect(creatives[0].format_id).toBeDefined();
+
+    const qs = result.query_summary as Record<string, unknown>;
+    expect(qs.total_matching).toBe(1);
+    expect(qs.returned).toBe(1);
+
+    const pg = result.pagination as Record<string, unknown>;
+    expect(pg.has_more).toBe(false);
+    expect(pg.total_count).toBe(1);
   });
 });
 
