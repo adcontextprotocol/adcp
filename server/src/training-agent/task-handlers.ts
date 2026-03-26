@@ -33,11 +33,13 @@ import type {
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
 } from '@adcp/client';
-/** Build a structured MCP error response for tool calls. */
-function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string }) {
+/** Build a structured MCP error response for tool calls (L3 error compliance). */
+function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }) {
+  const errorObj = { code, ...opts };
   return {
     isError: true,
-    content: [{ type: 'text' as const, text: JSON.stringify({ code, ...opts }) }],
+    content: [{ type: 'text' as const, text: JSON.stringify({ adcp_error: errorObj }) }],
+    structuredContent: { adcp_error: errorObj },
   };
 }
 
@@ -455,6 +457,7 @@ const TOOLS = [
         channel: { type: 'string', description: 'Primary channel for governance compliance (display, video, native, audio)' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from a prior check_governance response. Persisted and returned on get_media_buys.' },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
     },
@@ -1011,10 +1014,11 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
       && !('fixed_price' in pricing && (pricing as AuctionPricingOption).fixed_price !== undefined);
 
     if (isAuction && pkg.bid_price === undefined) {
-      // Auto-assign bid from price guidance (training agent convenience)
-      const auctionPricing = pricing as AuctionPricingOption;
-      const autoBid = auctionPricing.price_guidance?.p50 ?? (floorPrice ? floorPrice * 1.2 : 10);
-      pkg.bid_price = autoBid;
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: bid_price is required for auction pricing (pricing option ${pkg.pricing_option_id})`,
+        field: `packages[${i}].bid_price`,
+      } as TaskError);
     }
 
     if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice) {
@@ -1050,7 +1054,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
 
     createdPackages.push({
-      packageId: `pkg_${randomUUID().slice(0, 8)}`,
+      packageId: `pkg-${i}`,
       productId: pkg.product_id,
       budget: pkg.budget,
       pricingOptionId: pkg.pricing_option_id,
@@ -1072,6 +1076,10 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
 
+  // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
+  const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
+  const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
+
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
     accountRef: req.account,
@@ -1083,6 +1091,7 @@ function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
     endTime: buyEnd,
     revision: 1,
     confirmedAt: now,
+    ...(governanceContext && { governanceContext }),
     createdAt: now,
     updatedAt: now,
     history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Media buy created with ${createdPackages.length} package(s)` }],
@@ -1167,6 +1176,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         start_time: mb.startTime,
         end_time: mb.endTime,
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
+        ...(mb.governanceContext && { governance_context: mb.governanceContext }),
         ...(mb.canceledAt && {
           cancellation: {
             canceled_at: mb.canceledAt,
@@ -1194,7 +1204,7 @@ function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
                 reason: pkg.cancellationReason,
               },
             }),
-            ...(includeSnapshot && { snapshot_unavailable_reason: 'Sandbox training agent does not track real delivery' }),
+            ...(includeSnapshot && { snapshot_unavailable_reason: 'SNAPSHOT_UNSUPPORTED' as const }),
           };
           return pkgData;
         }),
@@ -1653,7 +1663,7 @@ function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
 
-      const pkgId = `pkg_${randomUUID().slice(0, 8)}`;
+      const pkgId = `pkg-${mb.packages.length + i}`;
       const newPkg: PackageState = {
         packageId: pkgId,
         productId,
@@ -2197,13 +2207,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let isError = false;
     try {
       const result = handler((args as ToolArgs) || {}, ctx);
-      const resultObj = result as { errors?: Array<{ code: string; message: string }> };
+      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string }> };
       const hasErrors = resultObj.errors && resultObj.errors.length > 0;
       if (hasErrors) {
         isError = true;
         const firstError = resultObj.errors![0];
         toolResult = adcpError(firstError.code, {
           message: firstError.message,
+          ...(firstError.field && { field: firstError.field }),
           details: resultObj.errors!.length > 1
             ? { all_errors: resultObj.errors }
             : undefined,

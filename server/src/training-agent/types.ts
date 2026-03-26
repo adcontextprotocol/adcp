@@ -204,6 +204,7 @@ export interface MediaBuyState {
   canceledBy?: string;
   cancellationReason?: string;
   creativeDeadline?: string;
+  governanceContext?: string;
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];

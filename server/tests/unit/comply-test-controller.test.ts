@@ -26,7 +26,10 @@ async function simulateCallTool(
     {},
   );
   const text = response.content?.[0]?.text;
-  return { result: text ? JSON.parse(text) : {}, isError: response.isError };
+  const parsed = text ? JSON.parse(text) : {};
+  // Unwrap adcp_error envelope for error responses (L3 compliance format)
+  const result = parsed.adcp_error ?? parsed;
+  return { result, isError: response.isError };
 }
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>) {

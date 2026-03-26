@@ -75,7 +75,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       format_id: { agent_url: agentUrl, id: 'display_static' },
       name: 'Static display',
       description: 'Static image display ad. Provide width and height in format_id to specify dimensions (e.g., 300x250, 728x90, 160x600, 320x50).',
-      accepts_parameters: ['width', 'height'],
+      accepts_parameters: ['dimensions'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
@@ -131,7 +131,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       format_id: { agent_url: agentUrl, id: 'video_preroll' },
       name: 'Pre-roll video',
       description: 'In-stream pre-roll video ad. Provide duration_ms in format_id (15000 or 30000). Accepts VAST tags or hosted video.',
-      accepts_parameters: ['duration_ms'],
+      accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'video', asset_type: 'vast', asset_role: 'video_ad', required: true,
@@ -167,7 +167,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       format_id: { agent_url: agentUrl, id: 'audio_spot' },
       name: 'Audio spot',
       description: 'Audio ad spot for streaming platforms. Provide duration_ms in format_id (15000, 30000, or 60000).',
-      accepts_parameters: ['duration_ms'],
+      accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'audio', asset_type: 'daast', asset_role: 'audio_ad', required: true,
@@ -449,7 +449,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
       format_id: { agent_url: agentUrl, id: 'radio_spot' },
       name: 'Radio spot',
       description: 'Terrestrial radio ad spot. 15s, 30s, or 60s audio. Delivered as broadcast-quality audio file.',
-      accepts_parameters: ['duration_ms'],
+      accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'audio', asset_type: 'file', asset_role: 'radio_spot', required: true,
