@@ -672,12 +672,9 @@ export async function checkAndAssignOrganizationByDomain(
 
     await pool.query(`
       INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
-      SELECT $1, $2, email, $3, NOW(), NOW(), NOW()
-      FROM organization_memberships
-      WHERE workos_user_id = $1
-      LIMIT 1
+      VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
       ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING
-    `, [workosUserId, targetOrgId, role]);
+    `, [workosUserId, targetOrgId, email, role]);
 
     return {
       assigned: true,
