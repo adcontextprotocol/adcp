@@ -68,7 +68,7 @@
   const isAnchorPage = isDashboardPage || isOrgPage;
 
   const NAV_CONFIG = {
-    logo: 'My organization',
+    logo: isOrgPage ? 'My organization' : 'Dashboard',
     sections: [
       {
         label: 'Organization',
@@ -549,11 +549,6 @@
 
     const sectionsHTML = NAV_CONFIG.sections.map(section => {
       const itemsHTML = section.items.map(item => {
-        // Hide Team nav item for personal workspaces (no team features allowed)
-        if (item.anchor === 'team' && isPersonal) {
-          return '';
-        }
-
         // Hide Team and Directory listing for personal workspaces
         if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing')) {
           return '';
@@ -588,7 +583,12 @@
             href = `/dashboard?org=${orgId}#${itemAnchor}`;
           } else if (!itemAnchor && !href.includes('?org=')) {
             // e.g., /dashboard/settings -> /dashboard/settings?org=xyz
-            href = `${itemHref}?org=${orgId}`;
+            // Handle hrefs that contain a hash fragment
+            if (href.includes('#')) {
+              href = href.replace('#', `?org=${orgId}#`);
+            } else {
+              href = `${itemHref}?org=${orgId}`;
+            }
           }
         }
 

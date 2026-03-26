@@ -563,7 +563,7 @@
               workspaceHintEl.textContent = 'Remove all other team members before switching to individual';
             }
           }
-        } catch (e) { /* ignore — button stays enabled as fallback, server still validates */ }
+        } catch (e) { console.warn('Could not check team size:', e); }
 
         // Load business info for company accounts
         loadBillingInfo();

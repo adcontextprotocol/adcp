@@ -24,7 +24,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, CompanyType, RevenueTier, getUserSeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, getUserSeatType, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -5844,7 +5844,7 @@ Disallow: /api/admin/
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
         // Check Slack sync status and seat type
         let isLinkedToSlack = false;
-        let seatType: string | null = null;
+        let seatType: SeatType | null = null;
         try {
           const slackDb = new SlackDatabase();
           const [slackMapping, userSeatType] = await Promise.all([
