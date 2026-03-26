@@ -187,7 +187,9 @@ describe('MCP response unwrapping for evaluator', () => {
 
       const unwrapped = unwrapProtocolResponse(mcpResponse);
       expect(isAdcpError(unwrapped)).toBe(true);
-      expect(unwrapped.errors[0].code).toBe('RATE_LIMITED');
+      if (isAdcpError(unwrapped)) {
+        expect(unwrapped.errors[0].code).toBe('RATE_LIMITED');
+      }
     });
   });
 });
