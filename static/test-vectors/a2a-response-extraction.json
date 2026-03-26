@@ -1,0 +1,441 @@
+{
+  "version": 1,
+  "description": "Test vectors for extracting AdCP responses from A2A Task objects. Each vector contains an A2A response and the expected extracted AdCP data.",
+  "vectors": [
+    {
+      "id": "completed-single-datapart",
+      "description": "Completed task — single artifact, single DataPart (happy path)",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_001",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:30:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "text", "text": "Found 3 products matching your brief."},
+            {
+              "kind": "data",
+              "data": {
+                "status": "completed",
+                "products": [
+                  {"product_id": "ctv_sports_premium", "name": "Premium Sports CTV"},
+                  {"product_id": "ctv_news_standard", "name": "Standard News CTV"},
+                  {"product_id": "display_ros", "name": "Run of Site Display"}
+                ]
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [
+          {"product_id": "ctv_sports_premium", "name": "Premium Sports CTV"},
+          {"product_id": "ctv_news_standard", "name": "Standard News CTV"},
+          {"product_id": "display_ros", "name": "Run of Site Display"}
+        ]
+      }
+    },
+    {
+      "id": "completed-multiple-dataparts",
+      "description": "Completed task — multiple DataParts, last one wins",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_002",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:35:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "text", "text": "Found products"},
+            {"kind": "data", "data": {"progress": 25}},
+            {
+              "kind": "data",
+              "data": {
+                "status": "completed",
+                "products": [{"product_id": "ctv_final"}],
+                "total": 1
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [{"product_id": "ctv_final"}],
+        "total": 1
+      }
+    },
+    {
+      "id": "failed-adcp-error",
+      "description": "Failed task — adcp_error in artifact DataPart",
+      "status": "failed",
+      "path": "artifact",
+      "response": {
+        "id": "task_003",
+        "status": {
+          "state": "failed",
+          "timestamp": "2025-01-22T10:40:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "error-result",
+          "parts": [
+            {"kind": "text", "text": "Rate limit exceeded."},
+            {
+              "kind": "data",
+              "data": {
+                "adcp_error": {
+                  "code": "RATE_LIMITED",
+                  "message": "Request rate exceeded",
+                  "recovery": "transient",
+                  "retry_after": 5
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": {
+        "adcp_error": {
+          "code": "RATE_LIMITED",
+          "message": "Request rate exceeded",
+          "recovery": "transient",
+          "retry_after": 5
+        }
+      }
+    },
+    {
+      "id": "working-status-message",
+      "description": "Working status — progress data in status.message.parts",
+      "status": "working",
+      "path": "status_message",
+      "response": {
+        "id": "task_004",
+        "status": {
+          "state": "working",
+          "timestamp": "2025-01-22T10:31:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Processing inventory search..."},
+              {"kind": "data", "data": {"percentage": 45, "current_step": "analyzing_inventory"}}
+            ]
+          }
+        }
+      },
+      "expected_data": {"percentage": 45, "current_step": "analyzing_inventory"}
+    },
+    {
+      "id": "input-required-status-message",
+      "description": "Input-required status — reason data in status.message.parts",
+      "status": "input-required",
+      "path": "status_message",
+      "response": {
+        "id": "task_005",
+        "status": {
+          "state": "input-required",
+          "timestamp": "2025-01-22T10:32:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Media buy exceeds auto-approval limit ($100K). Please approve."},
+              {
+                "kind": "data",
+                "data": {
+                  "reason": "budget_approval",
+                  "media_buy_id": "mb_pending_456",
+                  "total_budget": 150000
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected_data": {
+        "reason": "budget_approval",
+        "media_buy_id": "mb_pending_456",
+        "total_budget": 150000
+      }
+    },
+    {
+      "id": "completed-no-artifacts",
+      "description": "Completed task — no artifacts, fallback to status.message.parts",
+      "status": "completed",
+      "path": "status_message",
+      "response": {
+        "id": "task_006",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:33:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Task completed."},
+              {"kind": "data", "data": {"status": "completed", "products": []}}
+            ]
+          }
+        }
+      },
+      "expected_data": {"status": "completed", "products": []}
+    },
+    {
+      "id": "completed-empty-artifacts",
+      "description": "Completed task — empty artifacts array, fallback to status.message.parts",
+      "status": "completed",
+      "path": "status_message",
+      "response": {
+        "id": "task_007",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:34:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "data", "data": {"status": "completed", "media_buy_id": "mb_789"}}
+            ]
+          }
+        },
+        "artifacts": []
+      },
+      "expected_data": {"status": "completed", "media_buy_id": "mb_789"}
+    },
+    {
+      "id": "wrapper-rejected",
+      "description": "Completed task — wrapper object {response: {...}} is rejected",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_008",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:35:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {
+              "kind": "data",
+              "data": {
+                "response": {
+                  "products": [{"product_id": "ctv_001"}]
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_data": null,
+      "expected_error_type": "wrapper_detected"
+    },
+    {
+      "id": "text-only-no-datapart",
+      "description": "Task with TextPart only, no DataPart — returns null",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_009",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:36:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "text", "text": "Operation completed successfully."}
+          ]
+        }]
+      },
+      "expected_data": null
+    },
+    {
+      "id": "multiple-artifacts",
+      "description": "Multiple artifacts — first artifact used",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_010",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:37:00Z"
+        },
+        "artifacts": [
+          {
+            "artifactId": "primary",
+            "parts": [
+              {"kind": "data", "data": {"products": [{"product_id": "primary_001"}]}}
+            ]
+          },
+          {
+            "artifactId": "secondary",
+            "parts": [
+              {"kind": "data", "data": {"report": "trafficking_report.pdf"}}
+            ]
+          }
+        ]
+      },
+      "expected_data": {"products": [{"product_id": "primary_001"}]}
+    },
+    {
+      "id": "datapart-null-data",
+      "description": "DataPart with null data — skip to next DataPart",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_011",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:38:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "data", "data": null},
+            {"kind": "data", "data": {"status": "completed", "products": [{"product_id": "ctv_real"}]}}
+          ]
+        }]
+      },
+      "expected_data": {"status": "completed", "products": [{"product_id": "ctv_real"}]}
+    },
+    {
+      "id": "submitted-minimal",
+      "description": "Submitted status — minimal acknowledgment data",
+      "status": "submitted",
+      "path": "status_message",
+      "response": {
+        "id": "task_012",
+        "status": {
+          "state": "submitted",
+          "timestamp": "2025-01-22T10:39:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Task queued for processing."},
+              {"kind": "data", "data": {"queue_position": 3}}
+            ]
+          }
+        }
+      },
+      "expected_data": {"queue_position": 3}
+    },
+    {
+      "id": "failed-no-artifacts-no-message",
+      "description": "Failed task — no artifacts, no status message data — returns null",
+      "status": "failed",
+      "path": "none",
+      "response": {
+        "id": "task_013",
+        "status": {
+          "state": "failed",
+          "timestamp": "2025-01-22T10:40:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Authentication failed: Invalid API token"}
+            ]
+          }
+        }
+      },
+      "expected_data": null
+    },
+    {
+      "id": "working-no-datapart",
+      "description": "Working status — text only, no DataPart — returns null",
+      "status": "working",
+      "path": "status_message",
+      "response": {
+        "id": "task_014",
+        "status": {
+          "state": "working",
+          "timestamp": "2025-01-22T10:41:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Processing..."}
+            ]
+          }
+        }
+      },
+      "expected_data": null
+    },
+    {
+      "id": "canceled-no-data",
+      "description": "Canceled task — no data to extract, returns null",
+      "status": "canceled",
+      "path": "none",
+      "response": {
+        "id": "task_015",
+        "status": {
+          "state": "canceled",
+          "timestamp": "2025-01-22T10:42:00Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Task canceled by user."}
+            ]
+          }
+        }
+      },
+      "expected_data": null
+    },
+    {
+      "id": "proto-pollution-payload",
+      "description": "Payload containing __proto__ key — extraction succeeds but clients MUST NOT merge via Object.assign",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_016",
+        "status": {"state": "completed", "timestamp": "2025-01-22T10:43:00Z"},
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [{
+            "kind": "data",
+            "data": {"products": [], "__proto__": {"isAdmin": true}}
+          }]
+        }]
+      },
+      "expected_data": {"products": [], "__proto__": {"isAdmin": true}}
+    },
+    {
+      "id": "datapart-non-object-data",
+      "description": "DataPart with non-object data (number) — skip, must be object",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_017",
+        "status": {"state": "completed", "timestamp": "2025-01-22T10:44:00Z"},
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "data", "data": 42},
+            {"kind": "data", "data": {"products": [{"product_id": "real_data"}]}}
+          ]
+        }]
+      },
+      "expected_data": {"products": [{"product_id": "real_data"}]}
+    },
+    {
+      "id": "datapart-string-data",
+      "description": "DataPart with string data — skip, must be object",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_018",
+        "status": {"state": "completed", "timestamp": "2025-01-22T10:45:00Z"},
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "data", "data": "not an object"}
+          ]
+        }]
+      },
+      "expected_data": null
+    }
+  ]
+}

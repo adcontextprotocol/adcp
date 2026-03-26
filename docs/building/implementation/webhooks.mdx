@@ -162,7 +162,7 @@ If the task completes synchronously (initial response is already `completed` or 
 
 ### A2A
 
-A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for progress). The AdCP result data is in `status.message.parts[].data`:
+A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for progress). For final states (`completed`, `failed`), AdCP result data is in `.artifacts[0].parts[]`. For interim states (`working`, `input-required`), data is in `status.message.parts[]`.
 
 ```json
 {
@@ -170,23 +170,23 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
   "contextId": "ctx_123",
   "status": {
     "state": "completed",
-    "message": {
-      "role": "agent",
-      "parts": [
-        { "kind": "text", "text": "Media buy created successfully" },
-        {
-          "kind": "data",
-          "data": {
-            "media_buy_id": "mb_12345",
-            "packages": [
-              { "package_id": "pkg_001", "context": { "line_item": "li_ctv_sports" } }
-            ]
-          }
-        }
-      ]
-    },
     "timestamp": "2025-01-22T10:30:00Z"
-  }
+  },
+  "artifacts": [{
+    "artifactId": "result",
+    "parts": [
+      { "kind": "text", "text": "Media buy created successfully" },
+      {
+        "kind": "data",
+        "data": {
+          "media_buy_id": "mb_12345",
+          "packages": [
+            { "package_id": "pkg_001", "context": { "line_item": "li_ctv_sports" } }
+          ]
+        }
+      }
+    ]
+  }]
 }
 ```
 
@@ -196,7 +196,7 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
 |---|---|---|
 | **Config field** | `push_notification_config` (in task args) | `configuration.pushNotificationConfig` (separate from skill params) |
 | **Envelope** | `mcp-webhook-payload.json` | Native `Task` / `TaskStatusUpdateEvent` |
-| **Result location** | `result` field | `status.message.parts[].data` |
+| **Result location** | `result` field | `.artifacts[0].parts[].data` (final) / `status.message.parts[].data` (interim) |
 | **Data schemas** | Identical AdCP schemas | Identical AdCP schemas |
 
 ### Status-specific result data
@@ -363,6 +363,51 @@ async function processWebhook(payload) {
 4. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
 5. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
 6. **Use HMAC-SHA256 in production** — Bearer tokens are simpler but don't protect against payload tampering
+
+## Payload extraction
+
+Webhook receivers need to detect the format and extract AdCP data. The buyer typically knows the format because it configured the transport, but defensive detection is useful for multi-format receivers.
+
+### Format detection
+
+| Signal | Format |
+|---|---|
+| `status` is a string, `task_id` present | MCP |
+| `status` is an object with `.state` | A2A |
+
+### Extraction
+
+**MCP webhooks:** Extract data from the `result` field directly.
+
+**A2A webhooks:** Use the [A2A response extraction](/docs/building/implementation/a2a-response-extraction) algorithm — final states extract from `.artifacts[0].parts[]` (last DataPart), interim states from `status.message.parts[]` (first DataPart).
+
+```javascript
+function extractAdcpResponseFromWebhook(payload, knownFormat) {
+  const format = knownFormat || detectFormat(payload);
+
+  if (format === 'mcp') return payload.result ?? null;
+  if (format === 'a2a') return extractAdcpResponseFromA2A(payload);
+  return null;
+}
+
+function detectFormat(payload) {
+  if (payload.status && typeof payload.status === 'object'
+      && !Array.isArray(payload.status) && payload.status.state) return 'a2a';
+  if (typeof payload.status === 'string' && payload.task_id) return 'mcp';
+  return null;
+}
+```
+
+### Security requirements
+
+- **Content-Type validation**: Publishers MUST send `application/json`. Receivers MUST reject other types before HMAC verification.
+- **Payload size limit**: Receivers SHOULD enforce a 1MB limit. Reject before HMAC computation — computing HMAC over large payloads is a DoS vector. Return `413 Payload Too Large`.
+- **Deduplication**: `task_id` + `timestamp` dedup provides defense-in-depth against replay attacks within the timestamp window.
+- **Format detection**: Auto-detection is a defensive fallback. Receivers SHOULD use the known format from their transport configuration (`knownFormat` parameter) rather than relying solely on payload inspection. A compromised intermediary could craft an ambiguous payload that routes extraction to the wrong path.
+
+### Test vectors
+
+Machine-readable test vectors are available at [`/static/test-vectors/webhook-payload-extraction.json`](https://adcontextprotocol.org/test-vectors/webhook-payload-extraction.json). Client libraries SHOULD validate their format detection and extraction logic against these vectors.
 
 ## Reporting webhooks
 
