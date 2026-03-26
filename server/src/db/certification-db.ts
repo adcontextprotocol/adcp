@@ -38,12 +38,17 @@ export interface LessonPlan {
   demo_scenarios?: Array<{ description: string; tools: string[]; expected_outcome: string }>;
 }
 
+export interface SuccessCriterion {
+  id: string;
+  text: string;
+}
+
 export interface ExerciseDefinition {
   id: string;
   title: string;
   description: string;
   sandbox_actions: Array<{ tool: string; guidance: string }>;
-  success_criteria: string[];
+  success_criteria: SuccessCriterion[];
 }
 
 export interface AssessmentCriteria {
@@ -72,6 +77,7 @@ export interface CertificationAttempt {
   id: string;
   workos_user_id: string;
   track_id: string;
+  module_id: string | null;
   status: 'in_progress' | 'passed' | 'failed';
   started_at: string;
   completed_at: string | null;
@@ -165,6 +171,25 @@ export async function getProgress(userId: string): Promise<LearnerProgress[]> {
   return result.rows;
 }
 
+export async function getAbandonedModule(userId: string): Promise<{ module_id: string; title: string } | null> {
+  const result = await query<{ module_id: string; title: string }>(
+    `SELECT lp.module_id, m.title
+     FROM learner_progress lp
+     JOIN certification_modules m ON m.id = lp.module_id
+     WHERE lp.workos_user_id = $1
+       AND lp.status = 'in_progress'
+       AND COALESCE(
+         (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+          WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+         lp.started_at
+       ) < NOW() - INTERVAL '3 days'
+     ORDER BY lp.started_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
 export async function getModuleProgress(userId: string, moduleId: string): Promise<LearnerProgress | null> {
   const result = await query<LearnerProgress>(
     'SELECT * FROM learner_progress WHERE workos_user_id = $1 AND module_id = $2',
@@ -182,10 +207,18 @@ export async function startModule(
     `INSERT INTO learner_progress (workos_user_id, module_id, status, started_at, addie_thread_id)
      VALUES ($1, $2, 'in_progress', NOW(), $3)
      ON CONFLICT (workos_user_id, module_id) DO UPDATE
-       SET status = 'in_progress',
+       SET status = CASE
+             WHEN learner_progress.status IN ('completed', 'tested_out')
+               THEN learner_progress.status
+             ELSE 'in_progress'
+           END,
            started_at = COALESCE(learner_progress.started_at, NOW()),
            addie_thread_id = COALESCE($3, learner_progress.addie_thread_id),
-           attempts = learner_progress.attempts + 1,
+           attempts = CASE
+             WHEN learner_progress.status IN ('completed', 'tested_out')
+               THEN learner_progress.attempts
+             ELSE learner_progress.attempts + 1
+           END,
            updated_at = NOW()
      RETURNING *`,
     [userId, moduleId, addieThreadId || null]
@@ -208,6 +241,8 @@ export async function completeModule(
   if (!result.rows[0]) {
     throw new Error(`No progress record found for user ${userId}, module ${moduleId}`);
   }
+  // Refresh engagement time view so admin metrics reflect the completion (errors logged internally)
+  void refreshEngagementTime();
   return result.rows[0];
 }
 
@@ -259,13 +294,14 @@ export async function checkPrerequisites(userId: string, moduleId: string): Prom
 export async function createAttempt(
   userId: string,
   trackId: string,
-  addieThreadId?: string
+  addieThreadId: string | undefined,
+  moduleId: string
 ): Promise<CertificationAttempt> {
   const result = await query<CertificationAttempt>(
-    `INSERT INTO certification_attempts (workos_user_id, track_id, addie_thread_id)
-     VALUES ($1, $2, $3)
+    `INSERT INTO certification_attempts (workos_user_id, track_id, addie_thread_id, module_id)
+     VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [userId, trackId, addieThreadId || null]
+    [userId, trackId, addieThreadId || null, moduleId]
   );
   return result.rows[0];
 }
@@ -570,11 +606,17 @@ export async function getOrgMemberCredentials(workosOrgId: string): Promise<Publ
 // ORGANIZATION CERTIFICATION SUMMARY
 // =====================================================
 
+export interface OrgMemberCredential {
+  id: string;
+  name: string;
+  tier: number;
+}
+
 export interface OrgMemberCertification {
   user_id: string;
   first_name: string;
   last_name: string;
-  credentials: string[];
+  credentials: OrgMemberCredential[];
   modules_completed: number;
   modules_in_progress: number;
 }
@@ -590,12 +632,14 @@ export interface OrgCertificationSummary {
  * Get certification summary for all members of an organization.
  */
 export async function getOrgCertificationSummary(orgId: string): Promise<OrgCertificationSummary> {
-  // Get all org members
+  // Get all org members — prefer users.name, fall back to org_membership.name, then email
   const membersResult = await query<{ workos_user_id: string; first_name: string; last_name: string }>(
-    `SELECT om.workos_user_id, u.first_name, u.last_name
+    `SELECT om.workos_user_id,
+       COALESCE(NULLIF(u.first_name, ''), NULLIF(om.first_name, '')) AS first_name,
+       COALESCE(NULLIF(u.last_name, ''), NULLIF(om.last_name, ''), u.email) AS last_name
      FROM organization_memberships om
      JOIN users u ON u.workos_user_id = om.workos_user_id
-     WHERE om.workos_organization_id = $1 AND om.status = 'active'`,
+     WHERE om.workos_organization_id = $1`,
     [orgId]
   );
 
@@ -623,10 +667,10 @@ export async function getOrgCertificationSummary(orgId: string): Promise<OrgCert
   );
 
   // Build per-member data
-  const credsByUser = new Map<string, string[]>();
+  const credsByUser = new Map<string, OrgMemberCredential[]>();
   for (const row of credsResult.rows) {
     const list = credsByUser.get(row.workos_user_id) || [];
-    list.push(row.credential_id);
+    list.push({ id: row.credential_id, name: row.credential_name, tier: row.tier });
     credsByUser.set(row.workos_user_id, list);
   }
 
@@ -667,6 +711,222 @@ export async function getOrgCertificationSummary(orgId: string): Promise<OrgCert
 }
 
 // =====================================================
+// CERTIFICATION EXPECTATIONS
+// =====================================================
+
+export interface CertExpectation {
+  id: string;
+  workos_organization_id: string;
+  email: string;
+  invited_by: string;
+  workos_user_id: string | null;
+  credential_target: string | null;
+  status: 'invited' | 'joined' | 'started' | 'completed' | 'declined';
+  invited_at: string;
+  joined_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  declined_at: string | null;
+  snooze_until: string | null;
+  last_resent_at: string | null;
+}
+
+/**
+ * Create a certification expectation. Returns null if one already exists for this org+email.
+ */
+export async function createCertExpectation(
+  orgId: string,
+  email: string,
+  invitedBy: string,
+  opts?: { credentialTarget?: string; status?: CertExpectation['status']; workosUserId?: string }
+): Promise<CertExpectation | null> {
+  const result = await query<CertExpectation>(
+    `INSERT INTO certification_expectations (workos_organization_id, email, invited_by, credential_target, status, workos_user_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (workos_organization_id, email) DO NOTHING
+     RETURNING *`,
+    [orgId, email.toLowerCase().trim(), invitedBy, opts?.credentialTarget || null, opts?.status || 'invited', opts?.workosUserId || null]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Get all expectations for an org, with inviter name.
+ */
+export async function getCertExpectations(orgId: string): Promise<Array<CertExpectation & { invited_by_name: string }>> {
+  const result = await query<CertExpectation & { invited_by_name: string }>(
+    `SELECT ce.*,
+            COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.email, 'Unknown') AS invited_by_name
+     FROM certification_expectations ce
+     LEFT JOIN users u ON u.workos_user_id = ce.invited_by
+     WHERE ce.workos_organization_id = $1
+     ORDER BY ce.invited_at DESC`,
+    [orgId]
+  );
+  return result.rows;
+}
+
+/**
+ * Match a newly-joined org member to a pending expectation by email.
+ */
+export async function matchExpectationToUser(
+  orgId: string,
+  email: string,
+  workosUserId: string
+): Promise<CertExpectation | null> {
+  const result = await query<CertExpectation>(
+    `UPDATE certification_expectations
+     SET workos_user_id = $3, status = 'joined', joined_at = NOW()
+     WHERE workos_organization_id = $1
+       AND LOWER(email) = LOWER($2)
+       AND status = 'invited'
+     RETURNING *`,
+    [orgId, email, workosUserId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Get a user's expectation for an org (by workos_user_id).
+ */
+export async function getCertExpectationForUser(
+  orgId: string,
+  workosUserId: string
+): Promise<CertExpectation | null> {
+  const result = await query<CertExpectation>(
+    `SELECT * FROM certification_expectations
+     WHERE workos_organization_id = $1 AND workos_user_id = $2
+     LIMIT 1`,
+    [orgId, workosUserId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Reconcile expectation status based on actual learner progress and credentials.
+ * Called lazily when the certification summary is loaded.
+ */
+export async function reconcileExpectationProgress(workosUserId: string, orgId: string): Promise<void> {
+  const expectation = await getCertExpectationForUser(orgId, workosUserId);
+  if (!expectation || expectation.status === 'completed' || expectation.status === 'declined') return;
+
+  // Check if they have any credentials
+  const creds = await getUserCredentials(workosUserId);
+  if (creds.length > 0) {
+    await query(
+      `UPDATE certification_expectations SET status = 'completed', completed_at = NOW()
+       WHERE id = $1 AND status != 'completed'`,
+      [expectation.id]
+    );
+    return;
+  }
+
+  // Check if they started any modules
+  const progress = await getProgress(workosUserId);
+  const hasStarted = progress.some(p => p.status === 'in_progress' || p.status === 'completed' || p.status === 'tested_out');
+  if (hasStarted && expectation.status !== 'started') {
+    await query(
+      `UPDATE certification_expectations SET status = 'started', started_at = COALESCE(started_at, NOW())
+       WHERE id = $1 AND status IN ('invited', 'joined')`,
+      [expectation.id]
+    );
+  }
+}
+
+/**
+ * Get team cert progress counts for an org.
+ */
+export async function getOrgCertProgress(orgId: string): Promise<{ certified: number; total: number }> {
+  const result = await query<{ certified: string; total: string }>(
+    `SELECT
+       COUNT(DISTINCT CASE WHEN uc.id IS NOT NULL THEN om.workos_user_id END)::text AS certified,
+       COUNT(DISTINCT om.workos_user_id)::text AS total
+     FROM organization_memberships om
+     LEFT JOIN user_credentials uc ON uc.workos_user_id = om.workos_user_id
+     WHERE om.workos_organization_id = $1`,
+    [orgId]
+  );
+  const row = result.rows[0];
+  return {
+    certified: parseInt(row?.certified || '0'),
+    total: parseInt(row?.total || '0'),
+  };
+}
+
+/**
+ * Decline a certification expectation (learner opts out).
+ */
+export async function declineCertExpectation(
+  orgId: string,
+  workosUserId: string
+): Promise<CertExpectation | null> {
+  const result = await query<CertExpectation>(
+    `UPDATE certification_expectations
+     SET status = 'declined', declined_at = NOW(), snooze_until = NULL
+     WHERE workos_organization_id = $1 AND workos_user_id = $2
+       AND status NOT IN ('completed', 'declined')
+     RETURNING *`,
+    [orgId, workosUserId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Snooze certification nudges for a period.
+ */
+export async function snoozeCertExpectation(
+  orgId: string,
+  workosUserId: string,
+  days: number = 7
+): Promise<CertExpectation | null> {
+  const result = await query<CertExpectation>(
+    `UPDATE certification_expectations
+     SET snooze_until = NOW() + INTERVAL '1 day' * $3
+     WHERE workos_organization_id = $1 AND workos_user_id = $2
+       AND status NOT IN ('completed', 'declined')
+     RETURNING *`,
+    [orgId, workosUserId, days]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Mark an invitation as re-sent. Only allowed once (last_resent_at must be null).
+ */
+export async function resendCertExpectation(
+  expectationId: string,
+  orgId: string
+): Promise<CertExpectation | null> {
+  const result = await query<CertExpectation>(
+    `UPDATE certification_expectations
+     SET last_resent_at = NOW()
+     WHERE id = $1 AND workos_organization_id = $2
+       AND status = 'invited' AND last_resent_at IS NULL
+     RETURNING *`,
+    [expectationId, orgId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Get aggregate certification stats (for public social proof).
+ */
+export async function getCertAggregateStats(): Promise<{ totalCertified: number; totalOrgs: number }> {
+  const result = await query<{ certified: string; orgs: string }>(
+    `SELECT
+       COUNT(DISTINCT uc.workos_user_id)::text AS certified,
+       COUNT(DISTINCT om.workos_organization_id)::text AS orgs
+     FROM user_credentials uc
+     JOIN organization_memberships om ON om.workos_user_id = uc.workos_user_id`
+  );
+  const row = result.rows[0];
+  return {
+    totalCertified: parseInt(row?.certified || '0'),
+    totalOrgs: parseInt(row?.orgs || '0'),
+  };
+}
+
+// =====================================================
 // TEACHING CHECKPOINTS
 // =====================================================
 
@@ -681,6 +941,8 @@ export interface TeachingCheckpoint {
   learner_gaps: string[];
   current_phase: string;
   preliminary_scores: Record<string, number> | null;
+  demonstrations_verified: string[];
+  demonstration_evidence: Record<string, string> | null;
   notes: string | null;
   created_at: string;
 }
@@ -695,24 +957,29 @@ export async function saveTeachingCheckpoint(checkpoint: {
   learner_gaps?: string[];
   current_phase: string;
   preliminary_scores?: Record<string, number>;
+  demonstrations_verified?: string[];
+  demonstration_evidence?: Record<string, string>;
   notes?: string;
 }): Promise<TeachingCheckpoint> {
   const result = await query<TeachingCheckpoint>(
     `INSERT INTO teaching_checkpoints
        (workos_user_id, module_id, thread_id, concepts_covered, concepts_remaining,
-        learner_strengths, learner_gaps, current_phase, preliminary_scores, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        learner_strengths, learner_gaps, current_phase, preliminary_scores,
+        demonstrations_verified, demonstration_evidence, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       checkpoint.workos_user_id,
       checkpoint.module_id,
       checkpoint.thread_id || null,
-      checkpoint.concepts_covered,
-      checkpoint.concepts_remaining,
-      checkpoint.learner_strengths || [],
-      checkpoint.learner_gaps || [],
+      Array.isArray(checkpoint.concepts_covered) ? checkpoint.concepts_covered : [],
+      Array.isArray(checkpoint.concepts_remaining) ? checkpoint.concepts_remaining : [],
+      Array.isArray(checkpoint.learner_strengths) ? checkpoint.learner_strengths : [],
+      Array.isArray(checkpoint.learner_gaps) ? checkpoint.learner_gaps : [],
       checkpoint.current_phase,
       checkpoint.preliminary_scores ? JSON.stringify(checkpoint.preliminary_scores) : null,
+      Array.isArray(checkpoint.demonstrations_verified) ? checkpoint.demonstrations_verified : [],
+      checkpoint.demonstration_evidence ? JSON.stringify(checkpoint.demonstration_evidence) : null,
       checkpoint.notes || null,
     ]
   );
@@ -745,7 +1012,7 @@ export interface AdminOverviewMetrics {
     abandoned: number;
     total_sessions: number;
   };
-  credentials_by_tier: Array<{ tier: number; name: string; count: number }>;
+  credentials_by_tier: Array<{ tier: number; name: string; count: number; badges_issued: number }>;
   module_completion: Array<{
     module_id: string;
     title: string;
@@ -754,6 +1021,8 @@ export interface AdminOverviewMetrics {
     rate: number;
     avg_score: number | null;
     avg_duration_minutes: number | null;
+    avg_engagement_minutes: number | null;
+    avg_session_count: number | null;
     abandoned: number;
     sessions: number;
     dimensions: Array<{ name: string; avg_score: number }>;
@@ -772,25 +1041,34 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
        (SELECT COUNT(*) FROM user_credentials)::text AS credentials_issued,
        (SELECT COUNT(*) FROM learner_progress WHERE status IN ('completed', 'tested_out'))::text AS modules_completed,
        (SELECT COUNT(*) FROM learner_progress)::text AS modules_started,
-       (SELECT COUNT(*) FROM learner_progress WHERE status = 'in_progress' AND started_at < NOW() - INTERVAL '7 days')::text AS abandoned,
+       (SELECT COUNT(*) FROM learner_progress lp WHERE lp.status = 'in_progress'
+          AND COALESCE(
+            (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+             WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+            lp.started_at
+          ) < NOW() - INTERVAL '3 days')::text AS abandoned,
        (SELECT COUNT(DISTINCT thread_id) FROM teaching_checkpoints)::text AS total_sessions`
   );
   const t = totalsResult.rows[0];
 
   // Credentials by tier
-  const credResult = await query<{ tier: number; name: string; count: string }>(
-    `SELECT cc.tier, cc.name, COUNT(uc.id)::text AS count
+  const credResult = await query<{ tier: number; name: string; count: string; badges_issued: string }>(
+    `SELECT cc.tier, cc.name, COUNT(uc.id)::text AS count,
+            CASE WHEN cc.certifier_group_id IS NULL THEN COUNT(uc.id)
+                 ELSE COUNT(CASE WHEN uc.certifier_credential_id IS NOT NULL THEN 1 END)
+            END::text AS badges_issued
      FROM certification_credentials cc
      LEFT JOIN user_credentials uc ON uc.credential_id = cc.id
-     GROUP BY cc.id, cc.tier, cc.name, cc.sort_order
+     GROUP BY cc.id, cc.tier, cc.name, cc.sort_order, cc.certifier_group_id
      ORDER BY cc.sort_order`
   );
 
-  // Module completion with dimension averages
+  // Module completion with dimension averages and engagement time
   const moduleResult = await query<{
     module_id: string; title: string; started: string; completed: string;
-    avg_score: string | null; avg_duration_minutes: string | null; abandoned: string;
-    sessions: string;
+    avg_score: string | null; avg_duration_minutes: string | null;
+    avg_engagement_minutes: string | null; avg_session_count: string | null;
+    abandoned: string; sessions: string;
   }>(
     `SELECT
        m.id AS module_id,
@@ -800,13 +1078,28 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
        ROUND(AVG(CASE WHEN lp.score IS NOT NULL
          THEN (SELECT AVG(v::numeric) FROM jsonb_each_text(lp.score) AS x(k, v))
        END))::text AS avg_score,
-       ROUND(AVG(CASE WHEN lp.completed_at IS NOT NULL AND lp.started_at IS NOT NULL
-         THEN EXTRACT(EPOCH FROM (lp.completed_at - lp.started_at)) / 60
+       ROUND(AVG(CASE WHEN lp.status IN ('completed', 'tested_out') AND lp.started_at IS NOT NULL
+         THEN EXTRACT(EPOCH FROM (
+           COALESCE(
+             (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+              WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+             lp.completed_at
+           ) - lp.started_at
+         )) / 60
        END))::text AS avg_duration_minutes,
-       COUNT(CASE WHEN lp.status = 'in_progress' AND lp.started_at < NOW() - INTERVAL '7 days' THEN 1 END)::text AS abandoned,
+       ROUND(AVG(et.engagement_minutes) FILTER (WHERE lp.status IN ('completed', 'tested_out')), 1)::text AS avg_engagement_minutes,
+       ROUND(AVG(et.session_count) FILTER (WHERE lp.status IN ('completed', 'tested_out')), 1)::text AS avg_session_count,
+       COUNT(CASE WHEN lp.status = 'in_progress'
+         AND COALESCE(
+           (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+            WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+           lp.started_at
+         ) < NOW() - INTERVAL '3 days' THEN 1
+       END)::text AS abandoned,
        COALESCE((SELECT COUNT(DISTINCT tc.thread_id) FROM teaching_checkpoints tc WHERE tc.module_id = m.id), 0)::text AS sessions
      FROM certification_modules m
      LEFT JOIN learner_progress lp ON lp.module_id = m.id
+     LEFT JOIN learner_engagement_time et ON et.progress_id = lp.id
      GROUP BY m.id, m.title, m.track_id, m.sort_order
      ORDER BY m.track_id, m.sort_order`
   );
@@ -837,7 +1130,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
       total_sessions: parseInt(t.total_sessions),
     },
     credentials_by_tier: credResult.rows.map(r => ({
-      tier: r.tier, name: r.name, count: parseInt(r.count),
+      tier: r.tier, name: r.name, count: parseInt(r.count), badges_issued: parseInt(r.badges_issued),
     })),
     module_completion: moduleResult.rows.map(r => {
       const started = parseInt(r.started);
@@ -850,6 +1143,8 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
         rate: started > 0 ? Math.round((completed / started) * 100) : 0,
         avg_score: r.avg_score ? parseInt(r.avg_score) : null,
         avg_duration_minutes: r.avg_duration_minutes ? parseInt(r.avg_duration_minutes) : null,
+        avg_engagement_minutes: r.avg_engagement_minutes ? parseFloat(r.avg_engagement_minutes) : null,
+        avg_session_count: r.avg_session_count ? parseFloat(r.avg_session_count) : null,
         abandoned: parseInt(r.abandoned),
         sessions: parseInt(r.sessions),
         dimensions: dimsByModule.get(r.module_id) || [],
@@ -981,7 +1276,7 @@ export interface AdminLearnerDetail {
     score: Record<string, number> | null;
     attempts: number;
   }>;
-  credentials: Array<{ name: string; tier: number; awarded_at: string }>;
+  credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
   checkpoints: Array<{
     module_id: string;
     current_phase: string;
@@ -1013,8 +1308,8 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
        ORDER BY m.track_id, m.sort_order`,
       [userId]
     ),
-    query<{ name: string; tier: number; awarded_at: string }>(
-      `SELECT cc.name, cc.tier, uc.awarded_at
+    query<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>(
+      `SELECT cc.name, cc.tier, uc.awarded_at, uc.certifier_credential_id
        FROM user_credentials uc
        JOIN certification_credentials cc ON cc.id = uc.credential_id
        WHERE uc.workos_user_id = $1
@@ -1043,4 +1338,330 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
     credentials: credsResult.rows,
     checkpoints: checkpointsResult.rows,
   };
+}
+
+// =====================================================
+// ENGAGEMENT TIME
+// =====================================================
+
+/**
+ * Refresh the learner_engagement_time materialized view.
+ * Called after module completion so admin metrics reflect the latest data.
+ * Uses CONCURRENTLY to avoid locking reads during refresh.
+ */
+export async function refreshEngagementTime(): Promise<void> {
+  try {
+    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY learner_engagement_time');
+  } catch (error) {
+    // Non-critical — view will be stale until next refresh
+    logger.warn({ error }, 'Failed to refresh engagement time view');
+  }
+}
+
+// =====================================================
+// ABANDONMENT ANALYSIS
+// =====================================================
+
+export interface AbandonmentSegment {
+  module_id: string;
+  segment: 'bounced' | 'early_drop' | 'shallow_drop' | 'deep_drop';
+  count: number;
+  avg_user_messages: number;
+}
+
+/**
+ * Segment abandoned learners by engagement depth.
+ * - bounced: 0-2 messages (barely engaged)
+ * - early_drop: 3-5 messages (engaged briefly)
+ * - shallow_drop: 6-9 messages (moderate engagement)
+ * - deep_drop: 10+ messages (engaged significantly then left)
+ */
+export async function getAbandonmentSegments(): Promise<AbandonmentSegment[]> {
+  const result = await query<{
+    module_id: string; segment: string; count: string; avg_user_messages: string;
+  }>(
+    `WITH abandoned AS (
+      SELECT lp.module_id, lp.workos_user_id, lp.addie_thread_id
+      FROM learner_progress lp
+      WHERE lp.status = 'in_progress'
+        AND COALESCE(
+          (SELECT MAX(tc.created_at) FROM teaching_checkpoints tc
+           WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
+          lp.started_at
+        ) < NOW() - INTERVAL '3 days'
+    ),
+    msg_counts AS (
+      SELECT a.module_id, a.workos_user_id,
+        COUNT(*) FILTER (WHERE m.role = 'user') AS user_msgs
+      FROM abandoned a
+      LEFT JOIN addie_threads t ON t.thread_id::text = a.addie_thread_id OR t.external_id = a.addie_thread_id
+      LEFT JOIN addie_thread_messages m ON m.thread_id = t.thread_id
+      GROUP BY a.module_id, a.workos_user_id
+    )
+    SELECT
+      module_id,
+      CASE
+        WHEN user_msgs <= 2 THEN 'bounced'
+        WHEN user_msgs <= 5 THEN 'early_drop'
+        WHEN user_msgs <= 9 THEN 'shallow_drop'
+        ELSE 'deep_drop'
+      END AS segment,
+      COUNT(*)::text AS count,
+      ROUND(AVG(user_msgs), 1)::text AS avg_user_messages
+    FROM msg_counts
+    GROUP BY module_id, segment
+    ORDER BY module_id, segment`
+  );
+
+  return result.rows.map(r => ({
+    module_id: r.module_id,
+    segment: r.segment as AbandonmentSegment['segment'],
+    count: parseInt(r.count),
+    avg_user_messages: parseFloat(r.avg_user_messages),
+  }));
+}
+
+/**
+ * Where in the module do learners abandon? Uses last checkpoint to determine
+ * how far they got (phase, concepts covered vs remaining).
+ */
+export async function getAbandonPoints(): Promise<Array<{
+  module_id: string;
+  current_phase: string;
+  concepts_covered: number;
+  concepts_remaining: number;
+  count: number;
+}>> {
+  const result = await query<{
+    module_id: string; current_phase: string;
+    concepts_covered: string; concepts_remaining: string; count: string;
+  }>(
+    `SELECT
+       tc.module_id,
+       tc.current_phase,
+       array_length(tc.concepts_covered, 1)::text AS concepts_covered,
+       COALESCE(array_length(tc.concepts_remaining, 1), 0)::text AS concepts_remaining,
+       COUNT(*)::text AS count
+     FROM learner_progress lp
+     JOIN LATERAL (
+       SELECT * FROM teaching_checkpoints tc2
+       WHERE tc2.workos_user_id = lp.workos_user_id AND tc2.module_id = lp.module_id
+       ORDER BY tc2.created_at DESC LIMIT 1
+     ) tc ON true
+     WHERE lp.status = 'in_progress'
+       AND COALESCE(tc.created_at, lp.started_at) < NOW() - INTERVAL '3 days'
+     GROUP BY tc.module_id, tc.current_phase,
+       array_length(tc.concepts_covered, 1), array_length(tc.concepts_remaining, 1)
+     ORDER BY COUNT(*) DESC`
+  );
+
+  return result.rows.map(r => ({
+    module_id: r.module_id,
+    current_phase: r.current_phase,
+    concepts_covered: parseInt(r.concepts_covered || '0'),
+    concepts_remaining: parseInt(r.concepts_remaining || '0'),
+    count: parseInt(r.count),
+  }));
+}
+
+// =====================================================
+// COACHING INTENSITY & ANALYTICS
+// =====================================================
+
+/**
+ * Get coaching intensity per module: how many user messages on average
+ * before completion. Higher = more coaching needed.
+ */
+export async function getCoachingIntensity(): Promise<Array<{
+  module_id: string;
+  avg_user_messages: number;
+  avg_total_messages: number;
+  completions: number;
+}>> {
+  const result = await query<{
+    module_id: string; avg_user: string; avg_total: string; completions: string;
+  }>(
+    `SELECT
+       lp.module_id,
+       ROUND(AVG(msg.user_count), 1)::text AS avg_user,
+       ROUND(AVG(msg.total_count), 1)::text AS avg_total,
+       COUNT(*)::text AS completions
+     FROM learner_progress lp
+     JOIN LATERAL (
+       SELECT
+         COUNT(*) FILTER (WHERE m.role = 'user') AS user_count,
+         COUNT(*) AS total_count
+       FROM addie_threads t
+       JOIN addie_thread_messages m ON m.thread_id = t.thread_id
+       WHERE (t.thread_id::text = lp.addie_thread_id OR t.external_id = lp.addie_thread_id)
+         AND m.created_at >= lp.started_at
+     ) msg ON true
+     WHERE lp.status IN ('completed', 'tested_out')
+       AND lp.addie_thread_id IS NOT NULL
+     GROUP BY lp.module_id
+     ORDER BY lp.module_id`
+  );
+
+  return result.rows.map(r => ({
+    module_id: r.module_id,
+    avg_user_messages: parseFloat(r.avg_user),
+    avg_total_messages: parseFloat(r.avg_total),
+    completions: parseInt(r.completions),
+  }));
+}
+
+/**
+ * Completion velocity by cohort week. Tracks whether the learning experience
+ * is improving over time.
+ */
+export async function getCohortVelocity(): Promise<Array<{
+  cohort_week: string;
+  module_id: string;
+  started: number;
+  completed: number;
+  completion_rate: number;
+}>> {
+  const result = await query<{
+    cohort_week: string; module_id: string;
+    started: string; completed: string;
+  }>(
+    `SELECT
+       DATE_TRUNC('week', lp.started_at)::date::text AS cohort_week,
+       lp.module_id,
+       COUNT(*)::text AS started,
+       COUNT(*) FILTER (WHERE lp.status IN ('completed', 'tested_out'))::text AS completed
+     FROM learner_progress lp
+     WHERE lp.started_at IS NOT NULL
+     GROUP BY 1, 2
+     ORDER BY 1, 2`
+  );
+
+  return result.rows.map(r => {
+    const started = parseInt(r.started);
+    const completed = parseInt(r.completed);
+    return {
+      cohort_week: r.cohort_week,
+      module_id: r.module_id,
+      started,
+      completed,
+      completion_rate: started > 0 ? Math.round((completed / started) * 100) : 0,
+    };
+  });
+}
+
+// =====================================================
+// CERTIFICATION GOALS
+// =====================================================
+
+export interface CertGoal {
+  id: string;
+  workos_organization_id: string;
+  credential_id: string;
+  target_count: number;
+  deadline: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  credential_name?: string;
+  credential_tier?: number;
+  current_count?: number;
+}
+
+/**
+ * Create or update a certification goal for an organization.
+ */
+export async function createOrUpdateCertGoal(
+  orgId: string,
+  credentialId: string,
+  targetCount: number,
+  deadline: string | null,
+  createdBy: string,
+): Promise<CertGoal> {
+  const result = await query<CertGoal>(
+    `INSERT INTO certification_goals (workos_organization_id, credential_id, target_count, deadline, created_by)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (workos_organization_id, credential_id) DO UPDATE
+       SET target_count = EXCLUDED.target_count,
+           deadline = EXCLUDED.deadline,
+           updated_at = NOW()
+     RETURNING *`,
+    [orgId, credentialId, targetCount, deadline, createdBy]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get all certification goals for an org with current progress.
+ */
+export async function getCertGoals(orgId: string): Promise<CertGoal[]> {
+  const result = await query<CertGoal>(
+    `SELECT cg.*, cc.name AS credential_name, cc.tier AS credential_tier,
+       (SELECT COUNT(DISTINCT uc.workos_user_id)
+        FROM user_credentials uc
+        JOIN organization_memberships om ON om.workos_user_id = uc.workos_user_id
+        WHERE om.workos_organization_id = cg.workos_organization_id
+          AND uc.credential_id = cg.credential_id
+       )::int AS current_count
+     FROM certification_goals cg
+     JOIN certification_credentials cc ON cc.id = cg.credential_id
+     WHERE cg.workos_organization_id = $1
+     ORDER BY cc.tier, cc.sort_order`,
+    [orgId]
+  );
+  return result.rows;
+}
+
+/**
+ * Delete a certification goal.
+ */
+export async function deleteCertGoal(id: string, orgId: string): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM certification_goals WHERE id = $1 AND workos_organization_id = $2`,
+    [id, orgId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Get stalled learners for an org: users with expectations (joined/started)
+ * who have no module progress update in the last 14 days.
+ */
+export async function getStalledLearners(orgId: string): Promise<Array<{
+  workos_user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  status: string;
+  last_activity: string | null;
+}>> {
+  const result = await query<{
+    workos_user_id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    status: string;
+    last_activity: string | null;
+  }>(
+    `SELECT ce.workos_user_id, ce.email, u.first_name, u.last_name, ce.status,
+       (SELECT MAX(COALESCE(lp.completed_at, lp.started_at))
+        FROM learner_progress lp
+        WHERE lp.workos_user_id = ce.workos_user_id
+       ) AS last_activity
+     FROM certification_expectations ce
+     LEFT JOIN users u ON u.workos_user_id = ce.workos_user_id
+     WHERE ce.workos_organization_id = $1
+       AND ce.status IN ('joined', 'started')
+       AND ce.workos_user_id IS NOT NULL
+       AND (ce.snooze_until IS NULL OR ce.snooze_until < NOW())
+       AND NOT EXISTS (
+         SELECT 1 FROM learner_progress lp
+         WHERE lp.workos_user_id = ce.workos_user_id
+           AND (lp.completed_at > NOW() - INTERVAL '14 days'
+                OR lp.started_at > NOW() - INTERVAL '14 days')
+       )
+     ORDER BY ce.status, ce.invited_at`,
+    [orgId]
+  );
+  return result.rows;
 }

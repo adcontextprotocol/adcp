@@ -31,6 +31,15 @@
       "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
       "description": "Intersection of brand and host capabilities for this session"
     },
+    "session_status": {
+      "$ref": "/schemas/enums/si-session-status.json",
+      "description": "Current session lifecycle state. Returned in initiation, message, and termination responses."
+    },
+    "session_ttl_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Session inactivity timeout in seconds. After this duration without a message, the brand agent may terminate the session. Hosts SHOULD warn users before timeout when possible."
+    },
     "errors": {
       "type": "array",
       "items": {
@@ -42,6 +51,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["session_id"],
+  "required": ["session_id", "session_status"],
   "additionalProperties": true
 }

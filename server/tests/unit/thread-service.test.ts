@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
@@ -11,7 +11,9 @@ import {
   type ThreadListFilters,
 } from '../../src/addie/thread-service.js';
 
-describe('ThreadService Unit Tests', () => {
+// These tests require a running PostgreSQL instance (integration tests).
+// Skip in unit test context; run with DATABASE_URL set in integration test env.
+describe.skipIf(!process.env.DATABASE_URL)('ThreadService Unit Tests', () => {
   let pool: Pool;
   let threadService: ThreadService;
   const TEST_THREAD_EXTERNAL_ID = 'test-channel:test-thread-ts';

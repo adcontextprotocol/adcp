@@ -7,11 +7,7 @@
   "properties": {
     "package_id": {
       "type": "string",
-      "description": "Publisher's unique identifier for the package"
-    },
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
+      "description": "Seller's unique identifier for the package"
     },
     "product_id": {
       "type": "string",
@@ -33,6 +29,10 @@
       "type": "number",
       "description": "Bid price for auction-based pricing. This is the exact bid/price to honor unless the selected pricing option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
       "minimum": 0
+    },
+    "price_breakdown": {
+      "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",
+      "$ref": "/schemas/pricing-options/price-breakdown.json"
     },
     "impressions": {
       "type": "number",
@@ -93,6 +93,46 @@
       "type": "boolean",
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
+    },
+    "canceled": {
+      "type": "boolean",
+      "description": "Whether this package has been canceled. Canceled packages stop delivery and cannot be reactivated. Defaults to false.",
+      "default": false
+    },
+    "cancellation": {
+      "type": "object",
+      "description": "Cancellation metadata. Present only when canceled is true.",
+      "required": ["canceled_at", "canceled_by"],
+      "properties": {
+        "canceled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this package was canceled."
+        },
+        "canceled_by": {
+          "$ref": "/schemas/enums/canceled-by.json",
+          "description": "Which party initiated the package cancellation."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason the package was canceled.",
+          "maxLength": 500
+        },
+        "acknowledged_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inventory has been released and billing stopped. Absent until the seller processes the cancellation."
+        }
+      },
+      "additionalProperties": false
+    },
+    "creative_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

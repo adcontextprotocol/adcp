@@ -90,11 +90,11 @@
           },
           "minItems": 1
         },
-        "shows": {
+        "collections": {
           "type": "array",
-          "description": "Shows produced or distributed by this publisher. Declares the content programs whose inventory is sold through authorized agents. Products in get_products responses reference these shows by show_id.",
+          "description": "Collections produced or distributed by this publisher. Declares the content programs whose inventory is sold through authorized agents. Products in get_products responses reference these collections by collection_id.",
           "items": {
-            "$ref": "/schemas/core/show.json"
+            "$ref": "/schemas/core/collection.json"
           }
         },
         "tags": {

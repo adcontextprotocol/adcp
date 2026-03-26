@@ -96,6 +96,10 @@ const envConfig: EnvConfig = {
       name: 'POSTHOG_PROJECT_ID',
       description: 'PostHog project ID for analytics queries',
     },
+    {
+      name: 'WORKOS_WEBHOOK_SECRET',
+      description: 'WorkOS webhook signing secret — webhooks are rejected without this',
+    },
   ],
 };
 

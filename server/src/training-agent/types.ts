@@ -1,8 +1,18 @@
 /**
  * Internal types for the training agent.
- * Schema-level types (Product, Format, etc.) are used as plain objects
- * matching the JSON schemas in static/schemas/source/.
+ * Schema-level types (Product, Format, etc.) come from @adcp/client.
  */
+import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/client';
+
+// SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/client types
+type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
+
+/** Matches the talent-role.json enum in static/schemas/source/enums/ */
+export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'producer', 'correspondent', 'commentator', 'analyst'] as const;
+export type TalentRole = typeof TALENT_ROLES[number];
+
+/** AccountReference from SDK — identifies an account on create_media_buy */
+type AccountReference = CreateMediaBuyRequest['account'];
 
 export interface TrainingContext {
   mode: 'open' | 'training';
@@ -12,6 +22,19 @@ export interface TrainingContext {
   learnerLevel?: 'basics' | 'practitioner' | 'specialist';
 }
 
+export interface ShowSpecial {
+  name: string;
+  category?: SpecialCategory;
+  starts?: string;
+  ends?: string;
+}
+
+export interface ShowLimitedSeries {
+  totalEpisodes?: number;
+  starts?: string;
+  ends?: string;
+}
+
 export interface ShowDefinition {
   showId: string;
   name: string;
@@ -19,9 +42,11 @@ export interface ShowDefinition {
   cadence: string;
   status: string;
   contentRatings?: Array<{ system: string; rating: string }>;
-  talent?: Array<{ name: string; role: string }>;
+  talent?: Array<{ name: string; role: TalentRole }>;
   distribution?: Array<{ publisherDomain: string; identifiers: Array<{ type: string; value: string }> }>;
   description?: string;
+  special?: ShowSpecial;
+  limitedSeries?: ShowLimitedSeries;
   /** Channels this show's products should appear on */
   channels: string[];
   /** Episode templates to generate for this show */
@@ -30,7 +55,8 @@ export interface ShowDefinition {
     title: string;
     status: string;
     scheduledAt?: string;
-    duration?: string;
+    durationSeconds?: number;
+    special?: ShowSpecial;
   }>;
 }
 
@@ -71,22 +97,47 @@ export interface PricingTemplate {
   priceGuidance?: { suggested: number; range: { min: number; max: number } };
   minSpendPerPackage?: number;
   /** For DOOH flat_rate with parameters */
-  doohParameters?: Record<string, unknown>;
+  doohParameters?: {
+    type: 'dooh';
+    sov_percentage?: number;
+    loop_duration_seconds?: number;
+    min_plays_per_hour?: number;
+    venue_package?: string;
+    duration_hours?: number;
+    daypart?: string;
+    estimated_impressions?: number;
+  };
   /** For CPA: the event type that triggers billing */
-  eventType?: string;
+  eventType?: EventType;
   /** For CPP: demographic targeting parameters */
   cppParameters?: { demographic: string };
   /** For CPV: view threshold parameters */
-  cpvParameters?: { view_threshold: Record<string, unknown> };
+  cpvParameters?: { view_threshold: number | { duration_seconds: number } };
   /** For time: the time unit and duration constraints */
-  timeParameters?: { unit: string; min_duration: number; max_duration: number };
+  timeParameters?: { time_unit: 'hour' | 'day' | 'week' | 'month'; min_duration: number; max_duration: number };
 }
 
 export interface CatalogProduct {
-  product: Record<string, unknown>;
+  product: import('@adcp/client').Product;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];
+}
+
+/** Show data included in get_products responses (not part of the AdCP schema — supplementary data) */
+export interface ShowResponse {
+  show_id: string;
+  name: string;
+  genre: string[];
+  cadence: string;
+  status: string;
+  description?: string;
+  content_rating?: Array<{ system: string; rating: string }>;
+  talent?: Array<{ name: string; role: TalentRole }>;
+  distribution?: Array<{
+    publisher_domain: string;
+    identifiers: Array<{ type: string; value: string }>;
+  }>;
 }
 
 export interface SessionState {
@@ -97,8 +148,8 @@ export interface SessionState {
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
   lastGetProductsContext?: {
-    products: Record<string, unknown>[];
-    proposals?: Record<string, unknown>[];
+    products: Product[];
+    proposals?: Proposal[];
   };
   createdAt: Date;
   lastAccessedAt: Date;
@@ -114,43 +165,91 @@ export interface SignalActivationState {
   activatedAt: string;
 }
 
+/** MCP tool args arrive as untyped JSON. Handlers cast to specific request types internally. */
+export interface ToolArgs { account?: AccountRef; brand?: BrandRef }
+
+export interface AccountRef {
+  account_id?: string;
+  brand?: { domain: string };
+  operator?: string;
+  sandbox?: boolean;
+}
+
+export interface BrandRef {
+  domain: string;
+  name?: string;
+}
+
+export interface MediaBuyHistoryEntry {
+  revision: number;
+  timestamp: string;
+  actor: string;
+  action: string;
+  summary: string;
+  packageId?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
-  buyerRef: string;
-  buyerCampaignRef?: string;
-  accountRef: Record<string, unknown>;
-  brandRef?: Record<string, unknown>;
+  accountRef: AccountRef;
+  brandRef?: BrandRef;
   status: string;
   currency: string;
   packages: PackageState[];
   startTime: string;
   endTime: string;
+  revision: number;
+  confirmedAt: string;
+  canceledAt?: string;
+  canceledBy?: string;
+  cancellationReason?: string;
+  creativeDeadline?: string;
+  governanceContext?: string;
   createdAt: string;
   updatedAt: string;
+  history: MediaBuyHistoryEntry[];
 }
 
 export interface PackageState {
   packageId: string;
-  buyerRef: string;
   productId: string;
   budget: number;
   pricingOptionId: string;
   bidPrice?: number;
   impressions?: number;
   paused: boolean;
+  canceled?: boolean;
+  canceledAt?: string;
+  canceledBy?: string;
+  cancellationReason?: string;
   startTime: string;
   endTime: string;
-  formatIds?: Record<string, unknown>[];
+  formatIds?: FormatID[];
   creativeAssignments: string[];
+}
+
+/** A single asset slot inside a creative manifest (e.g., headline, hero_image). */
+export interface ManifestAsset {
+  asset_type: string;
+  content?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+/** Creative manifest with format and named asset slots. */
+export interface CreativeManifest {
+  format_id: FormatID;
+  assets: Record<string, ManifestAsset>;
 }
 
 export interface CreativeState {
   creativeId: string;
-  formatId: { agent_url: string; id: string };
+  formatId: FormatID;
   name?: string;
   status: string;
   syncedAt: string;
-  manifest?: Record<string, unknown>;
+  manifest?: CreativeManifest;
 }
 
 // ── Governance types ────────────────────────────────────────────
@@ -167,7 +266,7 @@ export interface GovernancePlanState {
   planId: string;
   version: number;
   status: 'active' | 'suspended' | 'completed';
-  brand: Record<string, unknown>;
+  brand: BrandReference;
   objectives: string;
   budget: {
     total: number;
@@ -196,7 +295,7 @@ export interface GovernancePlanState {
 export interface GovernanceCheckState {
   checkId: string;
   planId: string;
-  buyerCampaignRef: string;
+  governanceContext?: string;
   binding: 'proposed' | 'committed';
   status: 'approved' | 'denied' | 'conditions' | 'escalated';
   caller: string;
@@ -204,7 +303,7 @@ export interface GovernanceCheckState {
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
-  escalation?: Record<string, unknown>;
+  escalation?: { reason: string; action?: string };
   explanation: string;
   mode: string;
   categoriesEvaluated: string[];
@@ -220,7 +319,7 @@ export interface GovernanceFinding {
   explanation: string;
   policyId?: string;
   confidence?: number;
-  details?: Record<string, unknown>;
+  details?: { field?: string; expected?: unknown; actual?: unknown };
 }
 
 export interface GovernanceCondition {
@@ -233,7 +332,7 @@ export interface GovernanceOutcomeState {
   outcomeId: string;
   planId: string;
   checkId?: string;
-  buyerCampaignRef: string;
+  governanceContext?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
   mediaBuyId?: string;

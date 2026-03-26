@@ -6,7 +6,7 @@ description: "AdCP documentation test personas for evaluating how content serves
 
 # Learner test personas
 
-Six personas for testing how well the AdCP documentation, website, and Addie serve different user types. Personas 1-3 are build-side (engineering implementation). Personas 4-6 are buy-side (strategy and adoption at different scales). Each represents a realistic browsing session and set of questions.
+Seven personas for testing how well the AdCP documentation, website, and Addie serve different user types. Personas 1-3 are build-side (engineering implementation). Personas 4-6 are buy-side (strategy and adoption at different scales). Persona 7 tests the certification build project experience for non-coders. Each represents a realistic session and set of questions.
 
 > **Relationship to character bible**: The character bible (see `specs/character-bible.md`) defines the illustrated characters used in walkthrough panels (Alex, Sam, Jordan, Maya, etc.). Test personas here are a separate concept — they simulate real user journeys to evaluate content quality. Where a test persona maps to a walkthrough character's role, we note the connection.
 
@@ -107,7 +107,7 @@ He knows ad tech deeply (ran ad ops at a mid-size SSP before this) and has built
 - OAuth, API key management, multi-tenant architecture
 
 ### What he doesn't know
-- That AdCP has a specific `ai_media` channel for his use case
+- That AdCP has a specific `sponsored_intelligence` channel for his use case
 - How `sync_catalogs` standardizes the catalog pipe he's been building custom for each platform
 - How the accounts model works for a network (implicit accounts, agent-trusted model) vs. a first-party platform (explicit accounts, walled garden)
 - How `adagents.json` works — he needs it for buyer agents to discover his network, and he needs to understand it from the AI platforms he connects to
@@ -139,8 +139,8 @@ Determine whether AdCP works for a network topology (buyer → network → platf
 10. "Are there other networks using AdCP or am I the first?"
 
 ### Pages he'd likely visit
-1. `/docs/guides/ai-media` — Core page, looking for network-specific guidance
-2. `/docs/guides/seller-integration` — How to appear as a seller to buyer agents
+1. `/docs/sponsored-intelligence/overview` — Core page, looking for network-specific guidance
+2. `/docs/building/implementation/seller-integration` — How to appear as a seller to buyer agents
 3. `/docs/accounts/overview` — Network account model (agent-trusted, implicit accounts)
 4. `/docs/building/integration/accounts-and-agents` — Multi-level account delegation
 5. `/docs/creative/catalogs` — Catalog sync mechanics for pass-through
@@ -150,7 +150,7 @@ Determine whether AdCP works for a network topology (buyer → network → platf
 9. `/docs/protocol/get_adcp_capabilities` — What capabilities a network declares
 10. `/docs/sponsored-intelligence/overview` — SI through a network intermediary
 11. `/docs/building/integration/mcp-guide` — MCP server patterns (he's familiar but wants AdCP-specific guidance)
-12. `/docs/reference/media-channel-taxonomy` — `ai_media` channel definition
+12. `/docs/reference/media-channel-taxonomy` — `sponsored_intelligence` channel definition
 
 ### Success criteria
 - He understands how his network appears to buyers (seller agent with implicit accounts) and how it interacts with AI platforms (operator with explicit accounts on each platform)
@@ -183,7 +183,7 @@ She's evaluated two approaches: (1) build a proprietary API and let each buyer i
 - OAuth, API design, webhook patterns — she's technical enough to evaluate protocol specs
 
 ### What she doesn't know
-- That AdCP has a specific `ai_media` channel designed for her platform's use case
+- That AdCP has a specific `sponsored_intelligence` channel designed for her platform's use case
 - How `sync_catalogs` works as the standard pipe for getting advertiser product data in at scale
 - How `sync_event_sources` lets advertisers push conversion signals in so the platform can optimize on real outcomes
 - How governance policies let brands push content standards in — suitability rules the platform enforces at generation time
@@ -220,9 +220,9 @@ Decide whether to adopt AdCP as the standard interface for her platform's demand
 
 ### Pages she'd likely visit
 1. `/docs/intro` — Starting point, looking for AI-specific framing
-2. `/docs/guides/ai-media` — The core page for her use case — expects to find the reversed data flow argument, catalog sync, governance, and product modeling
+2. `/docs/sponsored-intelligence/overview` — The core page for her use case — expects to find the reversed data flow argument, catalog sync, governance, and product modeling
 3. `/docs/creative/catalogs` — Deep dive on catalog sync — this is her biggest operational pain point
-4. `/docs/guides/seller-integration` — What she'd need to build as a seller agent
+4. `/docs/building/implementation/seller-integration` — What she'd need to build as a seller agent
 5. `/docs/governance/overview` — How content standards work as an "oracle" the platform queries/receives
 6. `/docs/media-buy/media-buys/optimization-reporting` — How optimization goals and conversion events work
 7. `/docs/accounts/overview` — Understanding account models (walled garden vs. agent-trusted)
@@ -304,13 +304,13 @@ Understand whether AdCP is the right standard for her agency to adopt for AI med
 1. `/` — Homepage, looking for "what is this and why should I care"
 2. `/docs/intro` — Orientation, hoping for a clear value prop
 3. `/docs/building/understanding/adcp-vs-openrtb` — Directly answers her "how is this different" question
-4. `/docs/guides/ai-media` — The core guide for her use case (she's the buyer)
-5. `/docs/quickstart` — Wants to see what the workflow looks like, even if she won't code it
-6. `/docs/guides/seller-integration` — Might read this to understand the other side
+4. `/docs/sponsored-intelligence/overview` — The core guide for her use case (she's the buyer)
+5. `/docs/sponsored-intelligence/workflow` — Wants to see what the workflow looks like, even if she won't code it
+6. `/docs/building/implementation/seller-integration` — Might read this to understand the other side
 7. `/docs/governance/overview` — How brand safety works in this world
 8. `/docs/creative/catalogs` — Understanding the catalog workflow
 9. `/docs/accounts/overview` — How multi-platform billing works
-10. `/docs/reference/media-channel-taxonomy` — Looking for `ai_media` in the channel list
+10. `/docs/reference/media-channel-taxonomy` — Looking for `sponsored_intelligence` in the channel list
 
 ### Success criteria
 - She can explain to her CEO why AI media is different from adding a new DSP, and why adopting a standard matters
@@ -382,7 +382,7 @@ Understand what AI advertising is, whether his brand should invest, and what org
 ### Pages he'd likely visit
 1. `/` — Homepage, looking for the big picture
 2. `/docs/intro` — "Explain this to me like I'm a CMO"
-3. `/docs/guides/ai-media` — Core guide, but may bounce if it's too technical
+3. `/docs/sponsored-intelligence/overview` — Core guide, but may bounce if it's too technical
 4. `/docs/building/understanding/adcp-vs-openrtb` — Wants the comparison to what he knows
 5. `/docs/creative/catalogs` — Understanding what data his team needs to provide
 6. `/docs/governance/overview` — Brand safety and content standards (high priority for him)
@@ -458,7 +458,7 @@ Figure out if she can advertise on AI platforms without hiring an agency or an e
 ### Pages she'd likely visit
 1. `/` — Homepage, looking for plain-language explanation
 2. `/docs/intro` — Might bounce if too technical
-3. `/docs/guides/ai-media` — If the buyer section catches her, she'll read it
+3. `/docs/sponsored-intelligence/overview` — If the buyer section catches her, she'll read it
 4. `/docs/creative/catalogs` — Wants to know if her Shopify feed works
 5. `/docs/brand-protocol/brand-json` — Wants to control her brand representation
 6. `/docs/governance/overview` — Wants to prevent AI from making wrong claims about her products
@@ -472,3 +472,50 @@ Figure out if she can advertise on AI platforms without hiring an agency or an e
 - She's not scared off by protocol jargon — the content meets her where she is
 - She has a clear next step: find an AdCP-connected partner that works with Shopify
 - Total time from landing to "I know what to do next": under 20 minutes
+
+---
+
+## Persona 7: Lisa Tran — Non-coder doing a build project
+
+### Role
+VP of Digital at a mid-market retail brand. Manages the brand's digital media strategy and vendor relationships. Comfortable with AI coding assistants (uses Cursor daily for internal tooling prototypes) but has never written TypeScript or JavaScript by hand.
+
+### Background
+Lisa completed the C-track certification modules (C1-C3) and is starting the C4 build project. She's used Cursor to build small internal tools — Slack bots, spreadsheet automations, simple dashboards — by describing what she wants and iterating on the output. She's never read a stack trace, doesn't know what `npm` is, and thinks of "running code" as "it works when I press play in Cursor."
+
+She passed C1-C3 because the material is conceptual — buying workflows, product discovery, campaign strategy. C4 asks her to build a working buyer agent. She understands what the agent should do (discover products, create media buys, sync creatives) but the gap between "I can describe it" and "it runs" is where she'll struggle.
+
+### What she already knows
+- AdCP buying concepts from C1-C3: product discovery, media buys, creative sync, targeting, optimization goals
+- How to describe what she wants to an AI coding assistant in plain language
+- The iterate-with-AI workflow: describe → generate → test → describe again
+- Her brand's media buying needs — she has real context for the scenario
+- That `@cptestagent` is the sandbox seller she'll test against
+
+### What she doesn't know
+- What a "running MCP server" means or how to verify one is running
+- How to read error messages — she'll see `TypeError: Cannot read properties of undefined` and not know what to do
+- That `npm install` or `pip install` might be needed before the code runs
+- How to "paste JSON responses back" — she may not know what JSON looks like vs. other terminal output
+- That her AI coding assistant needs the adcp client library specified in the prompt
+- How to connect her local agent to Addie for the validation phase
+
+### Where she'll get stuck
+- **First build attempt fails.** Her AI coding assistant produces code that doesn't run. She sees an error in the terminal but doesn't know which part is the error vs. normal output.
+- **Doesn't know how to iterate.** She knows how to iterate in Cursor for simple tools, but a multi-file TypeScript project with dependencies is different from a single-file Slack bot.
+- **Confuses specification problems with code problems.** If the agent doesn't handle error cases, is that because her specification was incomplete or because the AI coding assistant made a mistake? She can't tell.
+- **Validation phase is confusing.** "Run this MCP tool call against your local agent" — she doesn't know what that means mechanically.
+
+### What she needs from Sage
+- **Phase 1 (Specify)**: She'll do well here. She can describe a buying workflow in AdCP terms. Sage should confirm her specification is complete enough for the coding assistant.
+- **Phase 2 (Build)**: When the build fails, she needs Sage to teach the debug loop — not debug for her. "Copy that error message, paste it back to Cursor, and say 'this error appeared when I tried to run it.'" If it fails again, "Tell Cursor what you're trying to build and that it should fix the error." She needs to learn that 2-3 cycles is normal, not a sign she's failing.
+- **Phase 3 (Validate)**: She needs clear, mechanical instructions. Not "run get_products against your agent" but guidance on exactly how to invoke the tool and what output to copy back.
+- **Phase 4 (Explain)**: She'll do well here — she understands the concepts.
+- **Phase 5 (Extend)**: Same pattern as Phase 2 — specify the change, iterate with the coding assistant, bring back results.
+
+### Success criteria
+- She completes the build project without anyone writing code for her
+- She learns the debug loop: error → paste to assistant → iterate
+- She's not blocked for more than 5 minutes on any mechanical step
+- The experience feels like coaching, not like failing at engineering
+- She'd recommend the certification to a peer who also doesn't code

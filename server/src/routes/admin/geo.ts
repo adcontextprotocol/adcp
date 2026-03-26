@@ -8,7 +8,7 @@
 
 import { Router } from "express";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireManage } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { query } from "../../db/client.js";
 import {
   fetchAllLLMPulsePages,
@@ -461,7 +461,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/geo-visibility",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (_req, res) => {
       try {
         const apiKey = getLLMPulseApiKey();
@@ -504,7 +504,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/geo-visibility/refresh",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (_req, res) => {
       try {
         const apiKey = getLLMPulseApiKey();
@@ -534,7 +534,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/geo-referrers",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (_req, res) => {
       try {
         if (!getPostHogQueryConfig()) {
@@ -565,7 +565,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/geo-article-sov",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (_req, res) => {
       try {
         // Total articles and AdCP/agentic mention counts
@@ -672,7 +672,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/geo-monitor",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (_req, res) => {
       try {
         // Fetch all prompts with their latest result

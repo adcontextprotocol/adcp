@@ -19,7 +19,7 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     user: config.user,
     password: config.password,
     ssl: config.ssl,
-    max: config.maxPoolSize || 20,
+    max: config.maxPoolSize || 10,
     idleTimeoutMillis: config.idleTimeoutMillis || 30000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 5000,
   });
@@ -43,7 +43,8 @@ export function getPool(): Pool {
 }
 
 /**
- * Execute a query
+ * Execute a parameterized query. All callers must use $1, $2, etc. placeholders
+ * with the params array -- never concatenate user input into the text argument.
  */
 export async function query<T extends QueryResultRow = any>(
   text: string,
@@ -77,4 +78,9 @@ export async function closeDatabase(): Promise<void> {
  */
 export function isDatabaseInitialized(): boolean {
   return pool !== null;
+}
+
+/** Escape SQL LIKE pattern metacharacters (\\, %, _) in a single pass. */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }

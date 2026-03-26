@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title id="pageTitle">Loading... | AgenticAdvertising.org</title>
   <meta name="description" id="pageDescription" content="Loading...">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="canonical" id="canonicalUrl" href="">
 
   <!-- Open Graph / Facebook (updated dynamically) -->
@@ -1144,6 +1144,9 @@
     <div id="documentsSection" class="content-section" style="display: none;">
       <div class="section-header">
         <h2 class="section-title">Documents</h2>
+        <a id="manageDocsBtn" href="#" style="display: none; font-size: var(--text-sm); padding: var(--space-2) var(--space-4);" class="btn btn-secondary">
+          Manage Documents
+        </a>
       </div>
       <div id="documentsList" class="documents-list"></div>
     </div>
@@ -1744,12 +1747,24 @@
         const documentsSection = document.getElementById('documentsSection');
         const documentsList = document.getElementById('documentsList');
 
-        // Only show the section if there are documents
-        if (documents.length === 0) {
+        // Show manage button for members
+        if (isMember || isLeader) {
+          const manageDocsBtn = document.getElementById('manageDocsBtn');
+          manageDocsBtn.href = `/working-groups/${currentSlug}/manage?tab=documents`;
+          manageDocsBtn.style.display = 'inline-flex';
+        }
+
+        // Only show the section if there are documents or user is a member
+        if (documents.length === 0 && !isMember && !isLeader) {
           return;
         }
 
         documentsSection.style.display = 'block';
+
+        if (documents.length === 0) {
+          documentsList.innerHTML = '<p style="color: var(--color-text-muted);">No documents yet. Click "Manage Documents" to add one.</p>';
+          return;
+        }
 
         documentsList.innerHTML = documents.map(doc => {
           const icon = getDocumentIcon(doc.document_type);
@@ -1764,7 +1779,7 @@
               </div>
               <div class="document-info">
                 <div class="document-title">
-                  <a href="${escapeHtml(doc.document_url)}" target="_blank" rel="noopener">
+                  <a href="${doc.file_name ? `/api/working-groups/${currentSlug}/documents/${doc.id}/file` : escapeHtml(doc.document_url || '#')}" target="_blank" rel="noopener">
                     ${escapeHtml(doc.title)}
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;">
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>

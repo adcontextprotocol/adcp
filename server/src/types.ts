@@ -776,7 +776,7 @@ export interface AddWorkingGroupMemberInput {
 
 // Committee Documents Types
 
-export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'other';
+export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'pptx' | 'other';
 export type DocumentIndexStatus = 'pending' | 'success' | 'access_denied' | 'error' | 'disabled';
 
 export interface CommitteeDocument {
@@ -784,7 +784,7 @@ export interface CommitteeDocument {
   working_group_id: string;
   title: string;
   description?: string;
-  document_url: string;
+  document_url?: string;
   document_type: CommitteeDocumentType;
   display_order: number;
   is_featured: boolean;
@@ -797,6 +797,9 @@ export interface CommitteeDocument {
   index_status: DocumentIndexStatus;
   index_error?: string;
   added_by_user_id?: string;
+  file_data?: Buffer;
+  file_name?: string;
+  file_mime_type?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -805,11 +808,14 @@ export interface CreateCommitteeDocumentInput {
   working_group_id: string;
   title: string;
   description?: string;
-  document_url: string;
+  document_url?: string;
   document_type?: CommitteeDocumentType;
   display_order?: number;
   is_featured?: boolean;
   added_by_user_id?: string;
+  file_data?: Buffer;
+  file_name?: string;
+  file_mime_type?: string;
 }
 
 export interface UpdateCommitteeDocumentInput {

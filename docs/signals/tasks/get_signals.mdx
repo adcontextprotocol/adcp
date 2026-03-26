@@ -9,8 +9,8 @@ description: "get_signals is the AdCP task for discovering audience and contextu
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v3/signals/get-signals-response.json)
 
 The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
 
@@ -507,29 +507,34 @@ Discover all available deployments across platforms:
         "platform": "index-exchange",
         "account": "agency-123-ix",
         "is_live": true,
-        "scope": "account-specific",
-        "decisioning_platform_segment_id": "ix_agency123_peer39_lux_auto"
+        "activation_key": {
+          "type": "segment_id",
+          "segment_id": "ix_agency123_peer39_lux_auto"
+        }
       },
       {
         "type": "platform",
         "platform": "index-exchange",
         "is_live": true,
-        "scope": "platform-wide",
-        "decisioning_platform_segment_id": "ix_peer39_luxury_auto_gen"
+        "activation_key": {
+          "type": "segment_id",
+          "segment_id": "ix_peer39_luxury_auto_gen"
+        }
       },
       {
         "type": "platform",
         "platform": "openx",
         "is_live": true,
-        "scope": "platform-wide",
-        "decisioning_platform_segment_id": "ox_peer39_lux_auto_456"
+        "activation_key": {
+          "type": "segment_id",
+          "segment_id": "ox_peer39_lux_auto_456"
+        }
       },
       {
         "type": "platform",
         "platform": "pubmatic",
         "account": "brand-456-pm",
         "is_live": false,
-        "scope": "account-specific",
         "estimated_activation_duration_minutes": 60
       }
     ],
@@ -559,8 +564,7 @@ Discover all available deployments across platforms:
     - **platform** (string): Target platform name
     - **account** (string, nullable): Specific account if account-specific
     - **is_live** (boolean): Whether signal is currently active
-    - **scope** (string): "platform-wide" or "account-specific"
-    - **decisioning_platform_segment_id** (string): Platform-specific ID to use
+    - **activation_key** (object): The key to use for targeting. Only present when `is_live=true` and the caller has access. See Activation Key Object above.
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
   - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
     - **pricing_option_id** (string): Unique identifier for this pricing option
@@ -642,16 +646,20 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
           "platform": "index-exchange",
           "account": "agency-123-ix",
           "is_live": true,
-          "scope": "account-specific",
-          "decisioning_platform_segment_id": "ix_agency123_acme_aff_shop"
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ix_agency123_acme_aff_shop"
+          }
         },
         {
           "type": "platform",
           "platform": "openx",
           "account": "agency-123-ox",
           "is_live": true,
-          "scope": "account-specific",
-          "decisioning_platform_segment_id": "ox_agency123_affluent_789"
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ox_agency123_affluent_789"
+          }
         }
       ],
       "pricing_options": [
@@ -688,8 +696,10 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
           "type": "platform",
           "platform": "the-trade-desk",
           "is_live": true,
-          "scope": "platform-wide",
-          "decisioning_platform_segment_id": "ttd_exp_auto_premium"
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ttd_exp_auto_premium"
+          }
         }
       ],
       "pricing_options": [

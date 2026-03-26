@@ -276,62 +276,87 @@ export function createCreativeAgentServer(agentBaseUrl: string) {
     version: '1.0.0',
   });
 
-  server.tool(
+  server.registerTool(
     'list_creative_formats',
-    'List supported creative formats with asset requirements, dimensions, and rendering specifications. Use filters to avoid large responses. Do not call without filters if you already know the format_id.',
     {
-      format_ids: z.array(z.union([z.string(), z.object({ id: z.string() })])).optional().describe('Filter by specific format IDs'),
-      type: z.enum(['display', 'video', 'audio', 'dooh']).optional().describe('Filter by format type'),
-      asset_types: z.array(z.string()).optional().describe('Filter by asset types: image, video, audio, text, html, vast, etc.'),
-      name_search: z.string().optional().describe('Case-insensitive partial match on name or description'),
-      min_width: z.number().optional().describe('Minimum width in pixels'),
-      max_width: z.number().optional().describe('Maximum width in pixels'),
-      min_height: z.number().optional().describe('Minimum height in pixels'),
-      max_height: z.number().optional().describe('Maximum height in pixels'),
-      is_responsive: z.boolean().optional().describe('Filter for responsive formats'),
+      description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Use filters to avoid large responses. Do not call without filters if you already know the format_id.',
+      inputSchema: {
+        format_ids: z.array(z.union([z.string(), z.object({ id: z.string() })])).optional().describe('Filter by specific format IDs'),
+        type: z.enum(['display', 'video', 'audio', 'dooh']).optional().describe('Filter by format type'),
+        asset_types: z.array(z.string()).optional().describe('Filter by asset types: image, video, audio, text, html, vast, etc.'),
+        name_search: z.string().optional().describe('Case-insensitive partial match on name or description'),
+        min_width: z.number().optional().describe('Minimum width in pixels'),
+        max_width: z.number().optional().describe('Maximum width in pixels'),
+        min_height: z.number().optional().describe('Minimum height in pixels'),
+        max_height: z.number().optional().describe('Maximum height in pixels'),
+        is_responsive: z.boolean().optional().describe('Filter for responsive formats'),
+      },
+      outputSchema: {
+        formats: z.array(z.record(z.string(), z.unknown())),
+      },
     },
-    async (args) => ({
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify(handleListCreativeFormats(args as Record<string, unknown>, formats)),
-      }],
-    }),
+    async (args) => {
+      const data = handleListCreativeFormats(args as Record<string, unknown>, formats);
+      return {
+        structuredContent: data,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(data),
+        }],
+      };
+    },
   );
 
-  server.tool(
+  server.registerTool(
     'preview_creative',
-    'Generate HTML previews of creative manifests. Supports single and batch modes. Returns preview URLs (iframe-embeddable) and/or raw HTML. Previews expire after 1 hour. Not for production ad serving.',
     {
-      request_type: z.enum(['single', 'batch', 'variant']).optional().describe('Request type. Defaults to single.'),
-      creative_manifest: z.record(z.string(), z.unknown()).optional().describe('Creative manifest with format_id and assets (required for single mode)'),
-      format_id: z.object({
-        agent_url: z.string().optional(),
-        id: z.string().optional(),
-        width: z.number().optional(),
-        height: z.number().optional(),
-      }).optional().describe('Format identifier for rendering. Defaults to manifest format_id.'),
-      inputs: z.array(z.object({
-        name: z.string(),
-        macros: z.record(z.string(), z.string()).optional(),
-        context_description: z.string().optional(),
-      })).optional().describe('Array of input sets for multiple preview variants'),
-      output_format: z.enum(['url', 'html', 'both']).optional().describe('Output format. Defaults to url.'),
-      requests: z.array(z.object({
-        creative_manifest: z.record(z.string(), z.unknown()),
-        format_id: z.object({ agent_url: z.string().optional(), id: z.string().optional() }).optional(),
-        output_format: z.enum(['url', 'html', 'both']).optional(),
-        inputs: z.array(z.object({ name: z.string() })).optional(),
-      })).optional().describe('Array of preview requests (batch mode, max 20)'),
-      variant_id: z.string().optional().describe('Variant ID (variant mode — not supported by reference agent)'),
-      template_id: z.string().optional().describe('Custom template ID'),
-      item_limit: z.number().optional().describe('Max catalog items to render'),
+      description: 'Generate HTML previews of creative manifests. Supports single and batch modes. Returns preview URLs (iframe-embeddable) and/or raw HTML. Previews expire after 1 hour. Not for production ad serving.',
+      inputSchema: {
+        request_type: z.enum(['single', 'batch', 'variant']).optional().describe('Request type. Defaults to single.'),
+        creative_manifest: z.record(z.string(), z.unknown()).optional().describe('Creative manifest with format_id and assets (required for single mode)'),
+        format_id: z.object({
+          agent_url: z.string().optional(),
+          id: z.string().optional(),
+          width: z.number().optional(),
+          height: z.number().optional(),
+        }).optional().describe('Format identifier for rendering. Defaults to manifest format_id.'),
+        inputs: z.array(z.object({
+          name: z.string(),
+          macros: z.record(z.string(), z.string()).optional(),
+          context_description: z.string().optional(),
+        })).optional().describe('Array of input sets for multiple preview variants'),
+        output_format: z.enum(['url', 'html', 'both']).optional().describe('Output format. Defaults to url.'),
+        requests: z.array(z.object({
+          creative_manifest: z.record(z.string(), z.unknown()),
+          format_id: z.object({ agent_url: z.string().optional(), id: z.string().optional() }).optional(),
+          output_format: z.enum(['url', 'html', 'both']).optional(),
+          inputs: z.array(z.object({ name: z.string() })).optional(),
+        })).optional().describe('Array of preview requests (batch mode, max 20)'),
+        variant_id: z.string().optional().describe('Variant ID (variant mode — not supported by reference agent)'),
+        template_id: z.string().optional().describe('Custom template ID'),
+        item_limit: z.number().optional().describe('Max catalog items to render'),
+      },
+      outputSchema: {
+        response_type: z.string().optional(),
+        previews: z.array(z.record(z.string(), z.unknown())).optional(),
+        results: z.array(z.record(z.string(), z.unknown())).optional(),
+        errors: z.array(z.object({
+          code: z.string(),
+          message: z.string(),
+        })).optional(),
+        expires_at: z.string().optional(),
+      },
     },
-    async (args) => ({
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify(handlePreviewCreative(args as Record<string, unknown>, formats, agentBaseUrl)),
-      }],
-    }),
+    async (args) => {
+      const data = handlePreviewCreative(args as Record<string, unknown>, formats, agentBaseUrl);
+      return {
+        structuredContent: data,
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(data),
+        }],
+      };
+    },
   );
 
   return server;

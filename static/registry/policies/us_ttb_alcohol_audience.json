@@ -1,0 +1,30 @@
+{
+  "policy_id": "us_ttb_alcohol_audience",
+  "version": "1.0.0",
+  "name": "US TTB — Alcohol Advertising Audience Restrictions",
+  "description": "Requires alcohol advertising to target legal drinking age audiences and comply with TTB advertising regulations (27 CFR Parts 4, 5, 7).",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["age_restricted"],
+  "governance_domains": ["campaign"],
+  "effective_date": "1935-08-29",
+  "source_url": "https://www.ttb.gov/advertising/beverage-alcohol-advertising",
+  "source_name": "US Alcohol and Tobacco Tax and Trade Bureau",
+  "policy": "Alcohol advertising must not target audiences below the legal drinking age (21 in the US).\n\nRequirements:\n1. Digital advertising must use age-gating or age-verified audience targeting to ensure at least 71.6% of the audience is of legal drinking age (industry standard from the Distilled Spirits Council's Code of Responsible Practices).\n2. Content, imagery, and placement must not primarily appeal to persons under 21.\n3. Audience segments associated with minors (children's content, teen interests) must be excluded.\n4. Platforms that cannot verify age must not be used for alcohol advertising without additional safeguards.\n\nState laws may impose additional restrictions beyond federal requirements.",
+  "guidance": "The 71.6% composition threshold reflects industry self-regulation (DISCUS Code). Governance agents should validate that audience targeting includes age verification or age-gating. Campaigns without explicit age targeting in alcohol campaigns should be flagged. Some states have additional restrictions on alcohol advertising near schools or in certain media.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A beer brand runs digital video ads targeting adults 21+ with platform age verification, achieving 85% legal-age audience composition.",
+        "explanation": "Age-verified targeting exceeding the 71.6% threshold meets industry standards and TTB requirements."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A spirits brand runs social media ads without age-gating on a platform popular with teenagers, using no demographic targeting.",
+        "explanation": "Alcohol advertising without age-gating or verified targeting on platforms with significant underage audiences violates responsible advertising requirements."
+      }
+    ]
+  }
+}

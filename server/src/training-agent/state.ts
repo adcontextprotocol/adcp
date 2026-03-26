@@ -6,7 +6,7 @@
  * TTL-based cleanup runs every 5 minutes.
  */
 
-import type { SessionState } from './types.js';
+import type { SessionState, AccountRef, BrandRef } from './types.js';
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -60,6 +60,11 @@ export function getSession(key: string): SessionState {
 
 export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION };
 
+/** Read-only access to all sessions (for cross-session lookups). */
+export function getAllSessions(): ReadonlyMap<string, SessionState> {
+  return sessions;
+}
+
 /**
  * Derive a session key from the request context.
  *
@@ -71,7 +76,7 @@ export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION };
  * Training mode: keyed by userId + moduleId for per-learner isolation.
  */
 export function sessionKeyFromArgs(
-  args: Record<string, unknown>,
+  args: { account?: AccountRef; brand?: BrandRef },
   mode: 'open' | 'training',
   userId?: string,
   moduleId?: string,
@@ -79,9 +84,10 @@ export function sessionKeyFromArgs(
   if (mode === 'training' && userId) {
     return `training:${userId}:${moduleId || 'default'}`;
   }
-  const account = args.account as Record<string, unknown> | undefined;
-  const brand = account?.brand as Record<string, unknown> | undefined;
-  const domain = brand?.domain as string | undefined;
+  const account = args.account;
+  // account-ref is either {account_id} or {brand: {domain}, operator}
+  if (account?.account_id) return `open:${account.account_id}`;
+  const domain = account?.brand?.domain ?? args.brand?.domain;
   return `open:${domain || 'default'}`;
 }
 

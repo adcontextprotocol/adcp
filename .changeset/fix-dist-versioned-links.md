@@ -1,4 +1,4 @@
 ---
 ---
 
-Fix internal links and schema references in dist doc snapshots to point to their own versioned paths instead of the live /docs/ tree.
+Add CI check to detect stale schema version references in docs, preventing outdated /schemas/v{old}/ links from being merged.

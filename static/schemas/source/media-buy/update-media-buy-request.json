@@ -7,15 +7,26 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
-      "description": "Publisher's ID of the media buy to update"
+      "description": "Seller's ID of the media buy to update"
     },
-    "buyer_ref": {
-      "type": "string",
-      "description": "Buyer's reference for the media buy to update"
+    "revision": {
+      "type": "integer",
+      "description": "Expected current revision for optimistic concurrency. When provided, sellers MUST reject the update with CONFLICT if the media buy's current revision does not match. Obtain from get_media_buys or the most recent update response.",
+      "minimum": 1
     },
     "paused": {
       "type": "boolean",
       "description": "Pause/resume the entire media buy (true = paused, false = active)"
+    },
+    "canceled": {
+      "type": "boolean",
+      "description": "Cancel the entire media buy. Cancellation is irreversible — canceled media buys cannot be reactivated. Sellers MAY reject with NOT_CANCELLABLE if the media buy cannot be canceled in its current state.",
+      "const": true
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "description": "Reason for cancellation. Sellers SHOULD store this and return it in subsequent get_media_buys responses.",
+      "maxLength": 500
     },
     "start_time": {
       "$ref": "/schemas/core/start-timing.json"
@@ -27,9 +38,21 @@
     },
     "packages": {
       "type": "array",
-      "description": "Package-specific updates",
+      "description": "Package-specific updates for existing packages",
       "items": {
         "$ref": "/schemas/media-buy/package-update.json"
+      },
+      "minItems": 1
+    },
+    "invoice_recipient": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Update who receives the invoice for this buy. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "new_packages": {
+      "type": "array",
+      "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. Sellers that support mid-flight package additions advertise add_packages in valid_actions. Sellers that do not support this MUST reject with UNSUPPORTED_FEATURE.",
+      "items": {
+        "$ref": "/schemas/media-buy/package-request.json"
       },
       "minItems": 1
     },
@@ -43,8 +66,8 @@
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once.",
-      "minLength": 8,
+      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
       "maxLength": 255
     },
     "context": {
@@ -54,17 +77,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "required": [
-        "media_buy_id"
-      ]
-    },
-    {
-      "required": [
-        "buyer_ref"
-      ]
-    }
+  "required": [
+    "media_buy_id"
   ],
   "additionalProperties": true
 }

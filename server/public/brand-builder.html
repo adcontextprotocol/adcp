@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>brand.json Builder - AdCP Brand Protocol</title>
-    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
     <link rel="stylesheet" href="/layout.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -3199,8 +3199,8 @@
         dashboard.classList.remove('hidden');
         list.innerHTML = files.map(file => `
           <div class="file-row">
-            <span class="file-type">${file.type}</span>
-            <span class="file-path">${file.path}</span>
+            <span class="file-type">${escapeHtml(file.type)}</span>
+            <span class="file-path">${escapeHtml(file.path)}</span>
             <span class="status-indicator" id="status-${escapeHtml(file.domain).replace(/\./g, '-')}"></span>
             <button class="btn btn-secondary" onclick="copyFileJson('${escapeAttr(file.type)}', '${escapeAttr(file.domain)}')" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Copy JSON</button>
             <button class="btn" onclick="validateFile('${escapeAttr(file.domain)}')" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Validate</button>

@@ -4,19 +4,78 @@
  * Each format is a schema-compliant object matching
  * static/schemas/source/core/format.json.
  */
+import type { Format, FormatID } from '@adcp/client';
+
+// The SDK's BaseIndividualAsset omits asset_type and requirements which are
+// part of the full protocol schema. We extend Format to include these fields
+// on assets so the training agent can declare complete format specifications.
+interface AssetRequirements {
+  mime_types?: string[];
+  max_file_size_bytes?: number;
+  min_width?: number;
+  min_height?: number;
+  max_length?: number;
+  min_length?: number;
+  url_type?: string;
+  vast_versions?: string[];
+  daast_versions?: string[];
+  min_bitrate_kbps?: number;
+  min_duration_ms?: number;
+  max_duration_ms?: number;
+  min_resolution_dpi?: number;
+  catalog_types?: string[];
+}
+
+interface IndividualAsset {
+  item_type: 'individual';
+  asset_id: string;
+  asset_type: string;
+  asset_role: string;
+  required: boolean;
+  requirements?: AssetRequirements;
+}
+
+interface GroupAsset {
+  asset_id: string;
+  asset_type: string;
+  required: boolean;
+  requirements?: AssetRequirements;
+}
+
+interface RepeatableGroup {
+  item_type: 'repeatable_group';
+  asset_group_id: string;
+  required: boolean;
+  min_count: number;
+  max_count: number;
+  selection_mode?: 'sequential' | 'optimize';
+  assets: GroupAsset[];
+}
+
+type FormatAsset = IndividualAsset | RepeatableGroup;
+
+interface TrainingFormat {
+  format_id: FormatID;
+  name: string;
+  description: string;
+  type?: Format['type'];
+  accepts_parameters?: string[];
+  renders: Array<Record<string, unknown>>;
+  assets: FormatAsset[];
+}
 
 /**
  * Build all format definitions for the given agent URL.
  * Called once at startup with the resolved base URL.
  */
-export function buildFormats(agentUrl: string): Record<string, unknown>[] {
+export function buildFormats(agentUrl: string): TrainingFormat[] {
   return [
     // ── Display ──────────────────────────────────────────────
     {
       format_id: { agent_url: agentUrl, id: 'display_static' },
       name: 'Static display',
       description: 'Static image display ad. Provide width and height in format_id to specify dimensions (e.g., 300x250, 728x90, 160x600, 320x50).',
-      accepts_parameters: ['width', 'height'],
+      accepts_parameters: ['dimensions'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
@@ -72,7 +131,7 @@ export function buildFormats(agentUrl: string): Record<string, unknown>[] {
       format_id: { agent_url: agentUrl, id: 'video_preroll' },
       name: 'Pre-roll video',
       description: 'In-stream pre-roll video ad. Provide duration_ms in format_id (15000 or 30000). Accepts VAST tags or hosted video.',
-      accepts_parameters: ['duration_ms'],
+      accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'video', asset_type: 'vast', asset_role: 'video_ad', required: true,
@@ -108,7 +167,7 @@ export function buildFormats(agentUrl: string): Record<string, unknown>[] {
       format_id: { agent_url: agentUrl, id: 'audio_spot' },
       name: 'Audio spot',
       description: 'Audio ad spot for streaming platforms. Provide duration_ms in format_id (15000, 30000, or 60000).',
-      accepts_parameters: ['duration_ms'],
+      accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'audio', asset_type: 'daast', asset_role: 'audio_ad', required: true,
@@ -390,7 +449,7 @@ export function buildFormats(agentUrl: string): Record<string, unknown>[] {
       format_id: { agent_url: agentUrl, id: 'radio_spot' },
       name: 'Radio spot',
       description: 'Terrestrial radio ad spot. 15s, 30s, or 60s audio. Delivered as broadcast-quality audio file.',
-      accepts_parameters: ['duration_ms'],
+      accepts_parameters: ['duration'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'audio', asset_type: 'file', asset_role: 'radio_spot', required: true,

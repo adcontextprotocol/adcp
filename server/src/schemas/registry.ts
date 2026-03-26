@@ -340,7 +340,7 @@ export const PolicySchema = z
     enforcement: z.enum(["must", "should", "may"]),
     jurisdictions: z.array(z.string()).openapi({ example: ["EU", "EEA"] }),
     region_aliases: z.record(z.string(), z.array(z.string())).openapi({ example: { EU: ["DE", "FR", "IT"] } }),
-    verticals: z.array(z.string()).openapi({ example: ["finance", "healthcare"] }),
+    policy_categories: z.array(z.string()).openapi({ example: ["age_restricted", "pharmaceutical_advertising"] }),
     channels: z.array(z.string()).nullable().openapi({ example: ["display", "video"] }),
     governance_domains: z.array(z.string()).openapi({ example: ["campaign", "creative"] }),
     effective_date: z.string().nullable().openapi({ example: "2025-05-25" }),

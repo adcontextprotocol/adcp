@@ -40,22 +40,22 @@ function getClient(): Anthropic {
 const CATEGORY_PAGE_MAP: Record<string, string[]> = {
   brand: [
     "docs/intro.mdx",
-    "docs/guides/how-agents-communicate.mdx",
+    "docs/building/understanding/how-agents-communicate.mdx",
   ],
   competitive: [
     "docs/building/understanding/adcp-vs-openrtb.mdx",
     "docs/building/understanding/protocol-comparison.mdx",
   ],
   intent: [
-    "docs/guides/seller-integration.mdx",
-    "docs/guides/ai-media-buying.mdx",
+    "docs/building/implementation/seller-integration.mdx",
+    "docs/media-buy/index.mdx",
   ],
   buyer: [
-    "docs/guides/ai-media-buying.mdx",
-    "docs/guides/commerce-media.mdx",
+    "docs/media-buy/index.mdx",
+    "docs/media-buy/commerce-media.mdx",
   ],
   executive: [
-    "docs/guides/industry-landscape.mdx",
+    "docs/building/understanding/industry-landscape.mdx",
   ],
   audience: [
     "docs/signals/data-providers.mdx",

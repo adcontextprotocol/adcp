@@ -74,6 +74,18 @@
           "$ref": "/schemas/core/creative-policy.json",
           "description": "Creative requirements and restrictions for a product"
         },
+        "deadline-policy": {
+          "$ref": "/schemas/core/deadline-policy.json",
+          "description": "Default deadline rules for installments based on lead times from scheduled_at"
+        },
+        "installment-deadlines": {
+          "$ref": "/schemas/core/installment-deadlines.json",
+          "description": "Booking, cancellation, and material submission deadlines for an installment"
+        },
+        "material-deadline": {
+          "$ref": "/schemas/core/material-deadline.json",
+          "description": "A deadline for creative material submission at a specific stage"
+        },
         "response": {
           "$ref": "/schemas/core/response.json",
           "description": "Standard response structure (MCP)"
@@ -145,6 +157,10 @@
         "proposal": {
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
+        },
+        "insertion-order": {
+          "$ref": "/schemas/core/insertion-order.json",
+          "description": "A formal insertion order attached to a committed proposal for agreement signing"
         },
         "product-allocation": {
           "$ref": "/schemas/core/product-allocation.json",
@@ -423,6 +439,10 @@
         "delivery-type": {
           "$ref": "/schemas/enums/delivery-type.json",
           "description": "Type of inventory delivery"
+        },
+        "proposal-status": {
+          "$ref": "/schemas/enums/proposal-status.json",
+          "description": "Lifecycle status of a proposal (draft or committed)"
         },
         "media-buy-status": {
           "$ref": "/schemas/enums/media-buy-status.json",
@@ -1473,6 +1493,21 @@
         "description": "Schema that all extension files must follow. Defines valid_from, valid_until, and extension data structure."
       },
       "schemas": {}
+    },
+    "compliance": {
+      "description": "Compliance testing tool schemas. The test controller is an optional sandbox-only tool that lets comply walk full lifecycle state machines by triggering seller-side transitions deterministically.",
+      "tasks": {
+        "comply-test-controller": {
+          "request": {
+            "$ref": "/schemas/compliance/comply-test-controller-request.json",
+            "description": "Request payload for the comply_test_controller tool — scenario selection and scenario-specific params"
+          },
+          "response": {
+            "$ref": "/schemas/compliance/comply-test-controller-response.json",
+            "description": "Response payload — state transition results, simulation results, scenario list, or structured errors"
+          }
+        }
+      }
     }
   },
   "usage": {

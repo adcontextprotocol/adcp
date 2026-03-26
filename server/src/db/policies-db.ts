@@ -9,7 +9,7 @@ export interface Policy {
   enforcement: 'must' | 'should' | 'may';
   jurisdictions: string[];
   region_aliases: Record<string, string[]>;
-  verticals: string[];
+  policy_categories: string[];
   channels: string[] | null;
   governance_domains: string[];
   effective_date: string | null;
@@ -45,7 +45,7 @@ export interface ListPoliciesOptions {
   category?: 'regulation' | 'standard';
   enforcement?: 'must' | 'should' | 'may';
   jurisdiction?: string;
-  vertical?: string;
+  policy_category?: string;
   domain?: string;
   limit?: number;
   offset?: number;
@@ -60,7 +60,7 @@ export interface SavePolicyInput {
   enforcement: 'must' | 'should' | 'may';
   jurisdictions?: string[];
   region_aliases?: Record<string, string[]>;
-  verticals?: string[];
+  policy_categories?: string[];
   channels?: string[];
   effective_date?: string;
   sunset_date?: string;
@@ -84,7 +84,7 @@ function deserializePolicy(row: any): Policy {
     ...row,
     jurisdictions: typeof row.jurisdictions === 'string' ? JSON.parse(row.jurisdictions) : (row.jurisdictions || []),
     region_aliases: typeof row.region_aliases === 'string' ? JSON.parse(row.region_aliases) : (row.region_aliases || {}),
-    verticals: typeof row.verticals === 'string' ? JSON.parse(row.verticals) : (row.verticals || []),
+    policy_categories: typeof row.policy_categories === 'string' ? JSON.parse(row.policy_categories) : (row.policy_categories || []),
     channels: row.channels == null ? null : (typeof row.channels === 'string' ? JSON.parse(row.channels) : row.channels),
     governance_domains: typeof row.governance_domains === 'string' ? JSON.parse(row.governance_domains) : (row.governance_domains || []),
     exemplars: row.exemplars == null ? null : (typeof row.exemplars === 'string' ? JSON.parse(row.exemplars) : row.exemplars),
@@ -129,9 +129,9 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
     values.push(JSON.stringify([options.jurisdiction]));
     paramIndex++;
   }
-  if (options.vertical) {
-    conditions.push(`verticals @> $${paramIndex}::jsonb`);
-    values.push(JSON.stringify([options.vertical]));
+  if (options.policy_category) {
+    conditions.push(`policy_categories @> $${paramIndex}::jsonb`);
+    values.push(JSON.stringify([options.policy_category]));
     paramIndex++;
   }
   if (options.domain) {
@@ -147,7 +147,7 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
   const [dataResult, statsResult] = await Promise.all([
     query<any>(
       `SELECT policy_id, version, name, description, category, enforcement,
-              jurisdictions, region_aliases, verticals, channels,
+              jurisdictions, region_aliases, policy_categories, channels,
               governance_domains, effective_date, sunset_date,
               source_url, source_name, source_type, review_status,
               created_at, updated_at
@@ -195,10 +195,13 @@ export async function bulkResolve(policyIds: string[]): Promise<Record<string, P
     'SELECT * FROM policies WHERE policy_id = ANY($1)',
     [policyIds]
   );
-  const map: Record<string, Policy | null> = {};
+  const map: Record<string, Policy | null> = Object.create(null);
   const rows = result.rows.map(deserializePolicy);
   for (const id of policyIds) {
-    map[id] = rows.find(r => r.policy_id === id) || null;
+    // Validate property name to prevent prototype pollution
+    if (typeof id === 'string' && !['__proto__', 'constructor', 'prototype'].includes(id)) {
+      map[id] = rows.find(r => r.policy_id === id) || null;
+    }
   }
   return map;
 }
@@ -256,7 +259,7 @@ export async function savePolicy(
       const updateResult = await client.query<any>(
         `UPDATE policies SET
           version = $2, name = $3, description = $4, category = $5, enforcement = $6,
-          jurisdictions = $7, region_aliases = $8, verticals = $9, channels = $10,
+          jurisdictions = $7, region_aliases = $8, policy_categories = $9, channels = $10,
           effective_date = $11, sunset_date = $12, governance_domains = $13,
           source_url = $14, source_name = $15, policy = $16,
           guidance = $17, exemplars = $18, ext = $19, updated_at = NOW()
@@ -266,7 +269,7 @@ export async function savePolicy(
           input.category, input.enforcement,
           JSON.stringify(input.jurisdictions || []),
           JSON.stringify(input.region_aliases || {}),
-          JSON.stringify(input.verticals || []),
+          JSON.stringify(input.policy_categories || []),
           input.channels ? JSON.stringify(input.channels) : null,
           input.effective_date || null, input.sunset_date || null,
           JSON.stringify(input.governance_domains || []),
@@ -285,7 +288,7 @@ export async function savePolicy(
     const insertResult = await client.query<any>(
       `INSERT INTO policies (
         policy_id, version, name, description, category, enforcement,
-        jurisdictions, region_aliases, verticals, channels,
+        jurisdictions, region_aliases, policy_categories, channels,
         effective_date, sunset_date, governance_domains,
         source_url, source_name, policy,
         guidance, exemplars, ext, source_type, review_status
@@ -296,7 +299,7 @@ export async function savePolicy(
         input.category, input.enforcement,
         JSON.stringify(input.jurisdictions || []),
         JSON.stringify(input.region_aliases || {}),
-        JSON.stringify(input.verticals || []),
+        JSON.stringify(input.policy_categories || []),
         input.channels ? JSON.stringify(input.channels) : null,
         input.effective_date || null, input.sunset_date || null,
         JSON.stringify(input.governance_domains || []),

@@ -176,3 +176,35 @@ export class UsersDatabase {
     return result.rows;
   }
 }
+
+/**
+ * Resolve the preferred organization for a user from their memberships.
+ * Prefers paying orgs, then most recently created membership.
+ * Returns null if the user has no memberships.
+ */
+export async function resolvePreferredOrganization(workosUserId: string): Promise<string | null> {
+  const result = await query<{ workos_organization_id: string }>(
+    `SELECT om.workos_organization_id
+     FROM organization_memberships om
+     JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+     WHERE om.workos_user_id = $1
+     ORDER BY
+       CASE WHEN o.subscription_status = 'active' THEN 0 ELSE 1 END,
+       om.created_at DESC
+     LIMIT 1`,
+    [workosUserId]
+  );
+  return result.rows[0]?.workos_organization_id ?? null;
+}
+
+/**
+ * Backfill primary_organization_id for a user if not already set.
+ * No-op if primary_organization_id is already set (idempotent).
+ */
+export async function backfillPrimaryOrganization(workosUserId: string, orgId: string): Promise<void> {
+  await query(
+    `UPDATE users SET primary_organization_id = $1, updated_at = NOW()
+     WHERE workos_user_id = $2 AND primary_organization_id IS NULL`,
+    [orgId, workosUserId]
+  );
+}

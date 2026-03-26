@@ -75,6 +75,8 @@ export function initOtelLogs(): boolean {
     [ATTR_SERVICE_NAME]: serviceName,
     [ATTR_SERVICE_VERSION]: getPackageVersion(),
     'deployment.environment': process.env.NODE_ENV || 'development',
+    'host.id': process.env.FLY_MACHINE_ID || 'unknown',
+    'cloud.region': process.env.FLY_REGION || 'unknown',
   });
 
   // Configure OTLP exporter for PostHog

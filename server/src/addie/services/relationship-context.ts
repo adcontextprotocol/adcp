@@ -6,6 +6,15 @@ import type { PersonRelationship } from '../../db/relationship-db.js';
 import type { MemberCapabilities } from '../types.js';
 import type { CertificationSummary } from './engagement-planner.js';
 
+// Cache aggregate cert stats for 5 minutes (changes slowly)
+let _certStatsCache: { value: { totalCertified: number; totalOrgs: number }; expiry: number } | null = null;
+async function getCachedCertAggregateStats() {
+  if (_certStatsCache && Date.now() < _certStatsCache.expiry) return _certStatsCache.value;
+  const stats = await certDb.getCertAggregateStats();
+  _certStatsCache = { value: stats, expiry: Date.now() + 5 * 60 * 1000 };
+  return stats;
+}
+
 // =====================================================
 // TYPES
 // =====================================================
@@ -187,18 +196,63 @@ async function loadCompanyInfo(
 
 async function loadCertificationSummary(workosUserId: string): Promise<CertificationSummary | null> {
   try {
-    const [progress, credentials, modules] = await Promise.all([
+    const [progress, credentials, modules, abandoned] = await Promise.all([
       certDb.getProgress(workosUserId),
       certDb.getUserCredentials(workosUserId),
       certDb.getModules(),
+      certDb.getAbandonedModule(workosUserId),
     ]);
 
-    return {
+    const summary: CertificationSummary = {
       modulesCompleted: progress.filter(p => p.status === 'completed' || p.status === 'tested_out').length,
       totalModules: modules.length,
       credentialsEarned: credentials.map(c => c.credential_id),
       hasInProgressTrack: progress.some(p => p.status === 'in_progress'),
+      abandonedModuleTitle: abandoned?.title ?? null,
     };
+
+    // Load expectation and team progress if user belongs to an org
+    try {
+      const orgResult = await query<{ workos_organization_id: string }>(
+        `SELECT workos_organization_id FROM organization_memberships
+         WHERE workos_user_id = $1 LIMIT 1`,
+        [workosUserId]
+      );
+      const orgId = orgResult.rows[0]?.workos_organization_id;
+      if (orgId) {
+        const [expectation, teamProgress, globalStats] = await Promise.all([
+          certDb.getCertExpectationForUser(orgId, workosUserId),
+          certDb.getOrgCertProgress(orgId),
+          getCachedCertAggregateStats(),
+        ]);
+        if (expectation) {
+          summary.expectationStatus = expectation.status;
+          summary.snoozedUntil = expectation.snooze_until;
+        }
+        if (teamProgress.total > 1) {
+          summary.teamCertProgress = teamProgress;
+        }
+        if (globalStats.totalCertified >= 10) {
+          summary.globalCertifiedCount = globalStats.totalCertified;
+        }
+
+        // Check if completion was already celebrated
+        if (expectation?.status === 'completed') {
+          const celebratedResult = await query<{ count: string }>(
+            `SELECT COUNT(*)::text AS count FROM person_events
+             WHERE person_id = (SELECT id FROM person_relationships WHERE workos_user_id = $1 LIMIT 1)
+               AND event_type = 'message_sent'
+               AND data->>'goal_hint' = 'cert_completion_congrats'`,
+            [workosUserId]
+          );
+          summary.completionCelebrated = parseInt(celebratedResult.rows[0]?.count || '0') > 0;
+        }
+      }
+    } catch {
+      // Non-critical — expectation/team data is optional
+    }
+
+    return summary;
   } catch {
     return null;
   }

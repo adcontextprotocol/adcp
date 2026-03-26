@@ -9,6 +9,7 @@ import {
   type DigestConversation,
   type DigestWorkingGroup,
   type DigestSocialPostIdea,
+  type DigestSpotlightAction,
 } from '../../db/digest-db.js';
 import { getRecentSocialPostIdeas } from '../jobs/social-post-ideas.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -30,12 +31,13 @@ const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agentica
 export async function buildDigestContent(): Promise<DigestContent> {
   logger.info('Building weekly digest content');
 
-  const [news, newMembers, conversations, workingGroups, socialPostIdeas] = await Promise.all([
+  const [news, newMembers, conversations, workingGroups, socialPostIdeas, spotlightAction] = await Promise.all([
     buildNewsSection(),
     buildNewMembersSection(),
     buildConversationsSection(),
     buildWorkingGroupsSection(),
     buildSocialPostIdeasSection(),
+    buildSpotlightAction(),
   ]);
 
   const intro = await generateIntro(news, newMembers, conversations, workingGroups);
@@ -47,6 +49,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
     conversations,
     workingGroups,
     ...(socialPostIdeas.length > 0 ? { socialPostIdeas } : {}),
+    ...(spotlightAction ? { spotlightAction } : {}),
     generatedAt: new Date().toISOString(),
   };
 
@@ -100,10 +103,18 @@ async function buildNewsSection(): Promise<DigestNewsItem[]> {
     .join('\n');
 
   const result = await complete({
-    system: `You are Addie, the AI assistant for AgenticAdvertising.org, a standards organization for AI-powered advertising.
+    system: `You are Addie, the AI assistant for AgenticAdvertising.org (AAO), a membership organization building the Ad Context Protocol (AdCP) for agentic advertising.
+
 Select the 3 most relevant articles for our weekly digest and write a brief "why it matters" take for each.
+
+Editorial guidelines:
+- Frame every "why it matters" from AAO's perspective — how does this affect our members, our protocol work, or the agentic advertising ecosystem?
+- Do NOT promote competitor organizations' initiatives (e.g., IAB Tech Lab, AAMP) as industry leadership. If covering competitor news, frame it in terms of what it means for AAO members and where AAO's approach differs.
+- Prefer articles about trends, adoption, and real-world applications of agentic advertising over articles about other organizations' announcements.
+- Be direct and opinionated. Our members are practitioners who want signal, not press releases.
+
 Respond in JSON format: [{"index": 1, "whyItMatters": "..."}]
-Keep each "whyItMatters" to 1-2 sentences. Be opinionated and specific about relevance to agentic advertising.`,
+Keep each "whyItMatters" to 1-2 sentences.`,
     prompt: `Select the top 3 articles from this list for our weekly digest:\n\n${articleList}`,
     maxTokens: 500,
     model: 'fast',
@@ -124,7 +135,7 @@ Keep each "whyItMatters" to 1-2 sentences. Be opinionated and specific about rel
         tags: article.relevance_tags || [],
         knowledgeId: article.id,
       };
-    }).filter((item): item is NonNullable<typeof item> => item !== null) as DigestNewsItem[];
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
   } catch {
     logger.warn('Failed to parse LLM news selection, using top 3 by score');
     return articles.slice(0, 3).map((a) => ({
@@ -284,17 +295,18 @@ async function generateIntro(
   workingGroups: DigestWorkingGroup[],
 ): Promise<string> {
   if (!isLLMConfigured()) {
-    return `This week at AgenticAdvertising.org: ${news.length} industry stories, ${newMembers.length} new members, and ${conversations.length} notable conversations.`;
+    return `This week at AgenticAdvertising.org: ${workingGroups.length} working group updates, ${newMembers.length} new members, ${conversations.length} notable conversations, and ${news.length} industry stories.`;
   }
 
+  // Lead with community activity, industry news last
   const context = [];
-  if (news.length > 0) context.push(`${news.length} industry stories (top: "${news[0].title}")`);
+  if (workingGroups.length > 0) context.push(`${workingGroups.length} working group update${workingGroups.length > 1 ? 's' : ''}`);
   if (newMembers.length > 0) context.push(`${newMembers.length} new member${newMembers.length > 1 ? 's' : ''}`);
   if (conversations.length > 0) context.push(`${conversations.length} notable conversation${conversations.length > 1 ? 's' : ''}`);
-  if (workingGroups.length > 0) context.push(`${workingGroups.length} working group update${workingGroups.length > 1 ? 's' : ''}`);
+  if (news.length > 0) context.push(`${news.length} industry stories`);
 
   const result = await complete({
-    system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org. Write a 1-2 sentence intro for the weekly digest. Be warm, concise, and specific. No emojis.`,
+    system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org (AAO). Write a 1-2 sentence intro for the weekly digest. Lead with what's happening in our community — working groups, members, conversations. Mention industry news second. Be warm, concise, and specific. No emojis.`,
     prompt: `Write an intro for this week's digest. Content: ${context.join(', ')}.`,
     maxTokens: 150,
     model: 'fast',
@@ -302,6 +314,42 @@ async function generateIntro(
   });
 
   return result.text;
+}
+
+// --- Spotlight Action ---
+
+const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+async function buildSpotlightAction(): Promise<DigestSpotlightAction | null> {
+  try {
+    const upcoming = await meetingsDb.getUpcomingMeetings(5);
+    // Find the soonest meeting that's within the next 7 days
+    const oneWeekOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const soonest = upcoming.find((m) => new Date(m.start_time) <= oneWeekOut);
+
+    if (!soonest) return null;
+
+    const meetingDate = new Date(soonest.start_time);
+    const dayStr = meetingDate.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' });
+    const timeStr = meetingDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/New_York',
+      timeZoneName: 'short',
+    });
+
+    const groupName = soonest.working_group_name || 'a working group';
+    const title = soonest.title || 'meeting';
+
+    return {
+      text: `This week: ${groupName} meets ${dayStr} at ${timeStr} for ${title}.`,
+      linkUrl: `${BASE_URL}/working-groups`,
+      linkLabel: 'See all meetings',
+    };
+  } catch (err) {
+    logger.warn({ error: err }, 'Failed to build spotlight action');
+    return null;
+  }
 }
 
 // --- Social Post Ideas Section ---
@@ -318,4 +366,43 @@ async function buildSocialPostIdeasSection(): Promise<DigestSocialPostIdea[]> {
     logger.warn({ error }, 'Failed to build social post ideas section');
     return [];
   }
+}
+
+// --- Subject Line Generation ---
+
+/**
+ * Generate a community-focused email subject line for the digest.
+ * Uses a template with the most concrete content item — no AI generation.
+ */
+export function generateDigestSubject(content: DigestContent): string {
+  // If editor set a custom subject, use it
+  if (content.emailSubject) {
+    return content.emailSubject;
+  }
+
+  // Template: "This week: [single concrete thing] | AAO Weekly"
+  // Pick the most specific item available
+  if (content.spotlightAction) {
+    // e.g., "This week: Measurement WG meets Thursday | AAO Weekly"
+    const short = content.spotlightAction.text
+      .replace(/^This week:\s*/i, '')
+      .replace(/\.\s*$/, '');
+    if (short.length <= 50) {
+      return `This week: ${short} | AAO Weekly`;
+    }
+  }
+
+  if (content.workingGroups.length > 0) {
+    const topWG = content.workingGroups[0].name;
+    if (content.workingGroups.length === 1) {
+      return `This week: ${topWG} update | AAO Weekly`;
+    }
+    return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AAO Weekly`;
+  }
+
+  if (content.newMembers.length > 0) {
+    return `This week: ${content.newMembers.length} new members joined | AAO Weekly`;
+  }
+
+  return 'This week at AgenticAdvertising.org';
 }

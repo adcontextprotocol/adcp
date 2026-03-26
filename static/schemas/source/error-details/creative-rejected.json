@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/creative-rejected.json",
+  "title": "CREATIVE_REJECTED Details",
+  "description": "Recommended details shape for CREATIVE_REJECTED errors. Provides policy reference and rejection reasons so agents can revise.",
+  "type": "object",
+  "properties": {
+    "policy_id": {
+      "type": "string",
+      "description": "Identifier for the violated policy"
+    },
+    "policy_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where the full policy can be reviewed"
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Specific reasons the creative was rejected"
+    }
+  },
+  "additionalProperties": true
+}

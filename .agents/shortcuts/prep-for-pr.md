@@ -7,8 +7,10 @@ request.
 
 1. Run the change through all relevant subagents and thoughtfully address the
    feedback.
-2. If there are UI changes outside documentation, test them in a browser with
-   Vibium or Playwright.
+2. If there are UI changes outside documentation, test them in a browser:
+   - **Vibium** (preferred for quick checks): `vibium go <url>`, `vibium map`,
+     `vibium click "Button text"`, `vibium type "field" "value"`, `vibium screenshot`
+   - **Playwright** (for scripted flows): use the `/playwright-skill` skill
 3. If API or MCP logic changed, run the server locally and verify the behavior
    directly.
 4. Check for the right changeset. If none exists, or the type is wrong, fix it.

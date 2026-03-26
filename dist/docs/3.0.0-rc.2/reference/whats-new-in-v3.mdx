@@ -21,7 +21,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Visual guidelines** | No structured brand visuals | `visual_guidelines` on `brand.json` for generative creative systems |
 | **Creative governance** | No creative evaluation protocol | `get_creative_features` for security scanning, quality, content categorization |
 | **Shows and episodes** | No content programming model | `shows` on products with distribution IDs, episode lifecycle, break-based inventory |
-| **Channel model** | 9 channels | 20 planning-oriented channels (including `ai_media`) |
+| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
 | **Geo targeting** | Implicit US-centric | Explicit named systems (global) |
@@ -251,7 +251,7 @@ All code that reads or writes channel values must be updated.
 | `dooh` | `dooh` | Unchanged |
 | `retail` | `retail_media` | Renamed for clarity |
 
-New channels in v3 (no v2 equivalent): `search`, `linear_tv`, `radio`, `streaming_audio`, `ooh`, `print`, `cinema`, `email`, `gaming`, `retail_media`, `influencer`, `affiliate`, `product_placement`, `ai_media`.
+New channels in v3 (no v2 equivalent): `search`, `linear_tv`, `radio`, `streaming_audio`, `ooh`, `print`, `cinema`, `email`, `gaming`, `retail_media`, `influencer`, `affiliate`, `product_placement`, `sponsored_intelligence`.
 
 <Note>
 The `gaming` channel covers intrinsic in-game ads, rewarded video, and playable ads. Rewarded video in gaming apps could also be classified as `olv` — use `gaming` when the inventory comes from a gaming budget.

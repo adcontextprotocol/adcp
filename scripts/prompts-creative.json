@@ -33,5 +33,10 @@
     "filename": "images/walkthrough/panel-07-variant-replay.png",
     "prompt": "Maya (South Asian woman, late 20s, brown skin, loose braid, bold patterned scarf, chunky rings) views a grid of ad variant cards on a large display. Each card shows a different creative variant — different imagery, different layouts, different community-adapted versions. One card is highlighted with a golden glow as the top performer. Maya points at it with interest, leaning in to examine the winning variant. The grid shows the richness of AI-generated variations and the ability to replay exactly what was served. Do not include any text, words, or labels in the image.",
     "alt_text": "Maya views a grid of ad variants with one highlighted as the top performer — she leans in to examine the winning creative variant"
+  },
+  {
+    "filename": "images/walkthrough/diagram-format-manifest-render.png",
+    "prompt": "A technical diagram with three columns separated by thin vertical lines. Left column: 'Format' — shows a wireframe template with labeled empty slots (video area, headline area, logo area) using dashed outlines. Middle column: 'Manifest' — shows the same template with the slots now filled: a video thumbnail, a headline, and a logo placed into the dashed outlines. Right column: 'Rendered Creative' — shows the final polished ad creative as it would appear on a phone screen, with all assets rendered together. An arrow flows left to right across the columns. Below the diagram, a single sentence: 'Format defines the shape. Manifest fills it in.' Clean white background, teal accent color. Do not include any other text, words, or labels in the image besides the column headers and the sentence below.",
+    "alt_text": "Three columns showing how a format defines required slots, a manifest fills them with concrete values, and the result is a rendered creative"
   }
 ]

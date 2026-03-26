@@ -11,14 +11,12 @@ async def create_campaign():
     print(f"End time: {end_date.isoformat().replace('+00:00', 'Z')}")
 
     result = await test_agent.simple.create_media_buy(
-        buyer_ref='summer_campaign_2025',
         brand_manifest={
             'name': 'Nike',
             'url': 'https://nike.com'
         },
         packages=[
             {
-                'buyer_ref': 'ctv_package',
                 'product_id': 'prod_d979b543',
                 'pricing_option_id': 'cpm_usd_auction',
                 'format_ids': [
@@ -31,7 +29,6 @@ async def create_campaign():
                 'bid_price': 5.00
             },
             {
-                'buyer_ref': 'audio_package',
                 'product_id': 'prod_e8fd6012',
                 'pricing_option_id': 'cpm_usd_auction',
                 'format_ids': [

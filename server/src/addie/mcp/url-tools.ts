@@ -9,6 +9,7 @@
  */
 
 import { logger } from '../../logger.js';
+import { validateFetchUrl, validateRedirectTarget } from '../../utils/url-security.js';
 import type { AddieTool } from '../types.js';
 
 // Maximum content size to prevent memory issues (500KB for text, 20MB for images/PDFs)
@@ -152,28 +153,39 @@ async function fetchUrlContent(
     return `Error: Invalid URL format: ${url}`;
   }
 
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    return `Error: Only HTTP and HTTPS URLs are supported`;
-  }
-
-  // Block obvious problematic domains
-  const blockedDomains = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
-  if (blockedDomains.some(d => parsedUrl.hostname === d || parsedUrl.hostname.endsWith(`.${d}`))) {
-    return `Error: Cannot fetch from local addresses`;
+  try {
+    await validateFetchUrl(parsedUrl);
+  } catch (err) {
+    return `Error: ${err instanceof Error ? err.message : 'URL validation failed'}`;
   }
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(url, {
+    let response = await fetch(parsedUrl.toString(), {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Addie/1.0 (AgenticAdvertising.org AI Assistant)',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
       },
-      redirect: 'follow',
+      redirect: 'manual',
     });
+
+    // Follow up to 3 redirects with SSRF validation on each target
+    for (let i = 0; i < 3 && [301, 302, 303, 307, 308].includes(response.status); i++) {
+      const location = response.headers.get('location');
+      if (!location) break;
+      const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+      response = await fetch(redirectUrl.toString(), {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Addie/1.0 (AgenticAdvertising.org AI Assistant)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
+        },
+        redirect: 'manual',
+      });
+    }
 
     clearTimeout(timeout);
 
@@ -246,30 +258,41 @@ async function fetchUrlContent(
  * Extract readable text from HTML
  */
 function extractTextFromHtml(html: string): string {
-  // Remove script and style tags completely
-  let text = html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  // Remove script, style, and noscript tags completely (loop to handle nested cases)
+  let text = html;
+  let prev = '';
+  let iterations = 0;
+  while (prev !== text && iterations++ < 100) {
+    prev = text;
+    text = text
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  }
 
   // Replace block elements with newlines
   text = text
     .replace(/<\/?(p|div|br|h[1-6]|li|tr|td|th|blockquote|pre|hr)[^>]*>/gi, '\n')
     .replace(/<\/?(ul|ol|table|thead|tbody)[^>]*>/gi, '\n\n');
 
-  // Remove remaining tags
-  text = text.replace(/<[^>]+>/g, '');
+  // Remove remaining tags (loop to handle nested/malformed markup like "<<script>script>")
+  let textPrev = '';
+  let textIterations = 0;
+  while (textPrev !== text && textIterations++ < 100) {
+    textPrev = text;
+    text = text.replace(/<[^>]+>/g, '');
+  }
 
-  // Decode HTML entities
+  // Decode HTML entities (&amp; must be last to avoid double-decoding e.g. &amp;lt; -> &lt; -> <)
   text = text
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&amp;/g, '&');
 
   // Clean up whitespace
   text = text
@@ -286,10 +309,16 @@ function extractTextFromHtml(html: string): string {
  * Convert HTML to basic Markdown
  */
 function convertHtmlToMarkdown(html: string): string {
-  let md = html
-    // Remove script and style
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  let md = html;
+  // Remove script and style (loop to handle nested cases)
+  let mdPrev = '';
+  let mdIterations = 0;
+  while (mdPrev !== md && mdIterations++ < 100) {
+    mdPrev = md;
+    md = md
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  }
 
   // Headers
   md = md.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n');
@@ -317,16 +346,21 @@ function convertHtmlToMarkdown(html: string): string {
   md = md.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
   md = md.replace(/<pre[^>]*>(.*?)<\/pre>/gis, '```\n$1\n```\n');
 
-  // Remove remaining tags
-  md = md.replace(/<[^>]+>/g, '');
+  // Remove remaining tags (loop to handle nested/malformed markup)
+  let mdPrev2 = '';
+  let mdIterations2 = 0;
+  while (mdPrev2 !== md && mdIterations2++ < 100) {
+    mdPrev2 = md;
+    md = md.replace(/<[^>]+>/g, '');
+  }
 
-  // Decode entities and clean up
+  // Decode entities and clean up (&amp; must be last to avoid double-decoding)
   md = md
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
@@ -346,8 +380,13 @@ async function readSlackFile(
     return { type: 'text', error: 'Slack bot token not available for file access' };
   }
 
-  // Validate it's a Slack URL
-  if (!fileUrl.includes('slack.com') && !fileUrl.includes('files.slack.com')) {
+  // Validate it's a Slack URL by parsing hostname
+  try {
+    const parsed = new URL(fileUrl);
+    if (parsed.hostname !== 'slack.com' && !parsed.hostname.endsWith('.slack.com')) {
+      return { type: 'text', error: 'Not a valid Slack file URL' };
+    }
+  } catch {
     return { type: 'text', error: 'Not a valid Slack file URL' };
   }
 
@@ -602,7 +641,7 @@ export function extractMultimodalContent(content: string): FileReadResult | null
     return null;
   }
   try {
-    const jsonStr = content.replace('__MULTIMODAL_CONTENT__', '').replace('__END_MULTIMODAL__', '');
+    const jsonStr = content.replace(/__MULTIMODAL_CONTENT__/g, '').replace(/__END_MULTIMODAL__/g, '');
     const parsed = JSON.parse(jsonStr);
 
     // Validate required fields exist

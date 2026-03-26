@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agents | AgenticAdvertising.org</title>
     <meta name="description" content="Sales, creative, and signals agents implementing AdCP.">
-    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
     <link rel="stylesheet" href="/layout.css">
     <style>
@@ -900,7 +900,7 @@
                     <details>
                         <summary class="detail-section__summary">
                             <span class="detail-section__arrow">&#9654;</span>
-                            Tools (${agentWithCaps?.capabilities?.tools_count || 0})
+                            Tools (${Number(agentWithCaps?.capabilities?.tools_count) || 0})
                         </summary>
                         <div id="tools-section" class="detail-section__content"><div class="loading">Loading tools...</div></div>
                     </details>

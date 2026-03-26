@@ -423,12 +423,13 @@ export async function getStripeSubscriptionInfo(
 
 /**
  * Find or create a Stripe customer for an organization.
- * Checks for existing customer by email first to avoid duplicates.
+ * Checks for existing customer by org ID first, then by email, to avoid duplicates.
  */
 export async function createStripeCustomer(data: {
   email: string;
   name: string;
   metadata?: Record<string, string>;
+  updateEmail?: boolean;
 }): Promise<string | null> {
   if (!stripe) {
     logger.warn('Stripe not initialized - cannot create customer');
@@ -448,13 +449,14 @@ export async function createStripeCustomer(data: {
       if (searchResult.data.length > 0) {
         const existing = searchResult.data[0];
         await stripe.customers.update(existing.id, {
+          ...(data.updateEmail && { email: data.email }),
           name: data.name,
           metadata: {
             ...existing.metadata,
             ...data.metadata,
           },
         });
-        logger.info({ customerId: existing.id, orgId, email: data.email }, 'Found existing Stripe customer by org ID');
+        logger.info({ customerId: existing.id, orgId, email: data.email }, 'Updated existing Stripe customer found by org ID');
         return existing.id;
       }
     }
@@ -852,6 +854,7 @@ export async function createAndSendInvoice(
     const customerId = await createStripeCustomer({
       email: data.contactEmail,
       name: data.companyName,
+      updateEmail: true,
       metadata: {
         contact_name: data.contactName,
         invoice_request: 'true',
@@ -1195,6 +1198,16 @@ export async function createCheckoutSession(
       sessionParams.allow_promotion_codes = true;
     }
     sessionParams.billing_address_collection = 'required';
+
+    // For subscriptions, copy org metadata to the subscription so webhook handlers
+    // can resolve the org even if checkout.session.completed hasn't linked the customer yet.
+    if (mode === 'subscription') {
+      sessionParams.subscription_data = {
+        metadata: {
+          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        },
+      };
+    }
 
     // For one-time payments, also create invoices and customers
     // Note: customer_creation is not allowed in subscription mode - Stripe creates customers automatically
@@ -1781,7 +1794,7 @@ export async function createEventSponsorshipProduct(input: EventSponsorshipProdu
       const product = existingPrice.product as Stripe.Product;
 
       // Update the product name if it changed
-      if (product && typeof product !== 'string' && !product.deleted) {
+      if (product && typeof product !== 'string' && !('deleted' in product)) {
         if (product.name !== productName) {
           await stripe.products.update(product.id, { name: productName });
           logger.info({ productId: product.id, lookupKey }, 'Updated existing event sponsorship product name');
@@ -1845,7 +1858,7 @@ export async function getProductWithEventInfo(productId: string): Promise<{
 
   try {
     const product = await stripe.products.retrieve(productId);
-    if (product.deleted) return null;
+    if ('deleted' in product) return null;
 
     return {
       product_id: product.id,

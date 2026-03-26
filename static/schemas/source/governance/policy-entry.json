@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/policy-entry.json",
   "title": "Policy Entry",
-  "description": "A complete policy in the policy registry. Policies use natural language text evaluated by governance agents (LLMs), following the same pattern as Content Standards. The registry's value is in structured metadata (jurisdiction, vertical, source, enforcement level) and calibration exemplars.",
+  "description": "A complete policy in the policy registry. Policies use natural language text evaluated by governance agents (LLMs), following the same pattern as Content Standards. The registry's value is in structured metadata (jurisdiction, policy category, source, enforcement level) and calibration exemplars.",
   "type": "object",
   "properties": {
     "policy_id": {
@@ -42,10 +42,10 @@
         "items": { "type": "string" }
       }
     },
-    "verticals": {
+    "policy_categories": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Industry verticals this policy applies to (e.g., [\"alcohol\", \"beverage\"]). Used for automatic matching against a brand's declared verticals."
+      "description": "Regulatory categories this policy belongs to (e.g., [\"children_directed\", \"age_restricted\"]). Used for automatic matching against a campaign plan's declared policy_categories. A single policy can belong to multiple categories."
     },
     "channels": {
       "type": "array",

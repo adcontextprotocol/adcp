@@ -3,7 +3,7 @@
   "name": "AdCP - Ad Context Protocol",
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
   "metadata": {
-    "og:site_name": "AdCP — Ad Context Protocol",
+    "og:site_name": "AdCP \u2014 Ad Context Protocol",
     "og:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png",
     "og:image:width": "1200",
     "og:image:height": "630",
@@ -70,6 +70,7 @@
             "group": "Documentation",
             "pages": [
               "docs/intro",
+              "docs/quickstart",
               {
                 "group": "Building with AdCP",
                 "expanded": false,
@@ -99,7 +100,9 @@
                     "pages": [
                       "docs/building/understanding/index",
                       "docs/building/understanding/protocol-comparison",
-                      "docs/building/understanding/adcp-vs-openrtb"
+                      "docs/building/understanding/adcp-vs-openrtb",
+                      "docs/building/understanding/how-agents-communicate",
+                      "docs/building/understanding/industry-landscape"
                     ]
                   },
                   "docs/building/schemas-and-sdks",
@@ -127,7 +130,9 @@
                       "docs/building/implementation/webhooks",
                       "docs/building/implementation/orchestrator-design",
                       "docs/building/implementation/error-handling",
-                      "docs/building/implementation/security"
+                      "docs/building/implementation/transport-errors",
+                      "docs/building/implementation/security",
+                      "docs/building/implementation/seller-integration"
                     ]
                   },
                   {
@@ -138,25 +143,10 @@
                       "docs/accounts/tasks/sync_accounts",
                       "docs/accounts/tasks/list_accounts",
                       "docs/accounts/tasks/report_usage",
+                      "docs/accounts/tasks/sync_governance",
                       "docs/accounts/tasks/get_account_financials"
                     ]
                   }
-                ]
-              },
-              {
-                "group": "Industry Guides",
-                "expanded": false,
-                "pages": [
-                  "docs/guides/index",
-                  "docs/guides/buying-ai-media",
-                  "docs/guides/commerce-media",
-                  "docs/guides/ai-media",
-                  "docs/guides/ai-media-networks",
-                  "docs/guides/ai-media-buying",
-                  "docs/guides/seller-integration",
-                  "docs/guides/how-agents-communicate",
-                  "docs/guides/signals-ecosystem",
-                  "docs/guides/industry-landscape"
                 ]
               },
               {
@@ -168,6 +158,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/media-buy/index",
+                      "docs/media-buy/commerce-media",
                       {
                         "group": "Concepts",
                         "pages": [
@@ -175,7 +166,7 @@
                           "docs/media-buy/product-discovery/brief-expectations",
                           "docs/media-buy/product-discovery/example-briefs",
                           "docs/media-buy/product-discovery/media-products",
-                          "docs/media-buy/product-discovery/shows-and-episodes",
+                          "docs/media-buy/product-discovery/collections-and-installments",
                           "docs/media-buy/product-discovery/refinement",
                           "docs/media-buy/media-buys/index",
                           "docs/media-buy/media-buys/optimization-reporting",
@@ -271,21 +262,6 @@
                         ]
                       },
                       {
-                        "group": "Sponsored Intelligence",
-                        "expanded": false,
-                        "pages": [
-                          "docs/sponsored-intelligence/overview",
-                          "docs/sponsored-intelligence/implementing-si-agents",
-                          "docs/sponsored-intelligence/implementing-si-hosts",
-                          "docs/sponsored-intelligence/specification",
-                          "docs/sponsored-intelligence/tasks/index",
-                          "docs/sponsored-intelligence/tasks/si_get_offering",
-                          "docs/sponsored-intelligence/tasks/si_initiate_session",
-                          "docs/sponsored-intelligence/tasks/si_send_message",
-                          "docs/sponsored-intelligence/tasks/si_terminate_session"
-                        ]
-                      },
-                      {
                         "group": "Reference",
                         "expanded": false,
                         "pages": [
@@ -374,6 +350,43 @@
                     ]
                   },
                   {
+                    "group": "Sponsored Intelligence",
+                    "expanded": false,
+                    "pages": [
+                      "docs/sponsored-intelligence/overview",
+                      "docs/sponsored-intelligence/monetizing-ai",
+                      {
+                        "group": "Concepts",
+                        "pages": [
+                          "docs/sponsored-intelligence/product-spectrum",
+                          "docs/sponsored-intelligence/networks",
+                          "docs/sponsored-intelligence/workflow",
+                          "docs/sponsored-intelligence/measurement"
+                        ]
+                      },
+                      {
+                        "group": "SI Chat Protocol",
+                        "pages": [
+                          "docs/sponsored-intelligence/si-chat-protocol",
+                          "docs/sponsored-intelligence/implementing-si-agents",
+                          "docs/sponsored-intelligence/implementing-si-hosts"
+                        ]
+                      },
+                      {
+                        "group": "Reference",
+                        "expanded": false,
+                        "pages": [
+                          "docs/sponsored-intelligence/specification",
+                          "docs/sponsored-intelligence/tasks/index",
+                          "docs/sponsored-intelligence/tasks/si_get_offering",
+                          "docs/sponsored-intelligence/tasks/si_initiate_session",
+                          "docs/sponsored-intelligence/tasks/si_send_message",
+                          "docs/sponsored-intelligence/tasks/si_terminate_session"
+                        ]
+                      }
+                    ]
+                  },
+                  {
                     "group": "Brand",
                     "expanded": false,
                     "pages": [
@@ -401,6 +414,7 @@
                     "pages": [
                       "docs/signals/overview",
                       "docs/signals/key-concepts",
+                      "docs/signals/ecosystem",
                       "docs/signals/data-providers",
                       {
                         "group": "Reference",
@@ -497,7 +511,8 @@
           {
             "group": "Getting Started",
             "pages": [
-              "docs/intro"
+              "docs/intro",
+              "docs/quickstart"
             ]
           },
           {
@@ -529,7 +544,9 @@
                 "pages": [
                   "docs/building/understanding/index",
                   "docs/building/understanding/protocol-comparison",
-                  "docs/building/understanding/adcp-vs-openrtb"
+                  "docs/building/understanding/adcp-vs-openrtb",
+                  "docs/building/understanding/how-agents-communicate",
+                  "docs/building/understanding/industry-landscape"
                 ]
               },
               "docs/building/schemas-and-sdks",
@@ -557,7 +574,9 @@
                   "docs/building/implementation/webhooks",
                   "docs/building/implementation/orchestrator-design",
                   "docs/building/implementation/error-handling",
-                  "docs/building/implementation/security"
+                  "docs/building/implementation/transport-errors",
+                  "docs/building/implementation/security",
+                  "docs/building/implementation/seller-integration"
                 ]
               },
               {
@@ -574,22 +593,6 @@
             ]
           },
           {
-            "group": "Industry Guides",
-            "expanded": false,
-            "pages": [
-              "docs/guides/index",
-              "docs/guides/buying-ai-media",
-              "docs/guides/commerce-media",
-              "docs/guides/ai-media",
-              "docs/guides/ai-media-networks",
-              "docs/guides/ai-media-buying",
-              "docs/guides/seller-integration",
-              "docs/guides/how-agents-communicate",
-              "docs/guides/signals-ecosystem",
-              "docs/guides/industry-landscape"
-            ]
-          },
-          {
             "group": "Protocol",
             "expanded": false,
             "pages": [
@@ -598,6 +601,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/media-buy/index",
+                  "docs/media-buy/commerce-media",
                   {
                     "group": "Concepts",
                     "pages": [
@@ -605,7 +609,7 @@
                       "docs/media-buy/product-discovery/brief-expectations",
                       "docs/media-buy/product-discovery/example-briefs",
                       "docs/media-buy/product-discovery/media-products",
-                      "docs/media-buy/product-discovery/shows-and-episodes",
+                      "docs/media-buy/product-discovery/collections-and-installments",
                       "docs/media-buy/product-discovery/refinement",
                       "docs/media-buy/media-buys/index",
                       "docs/media-buy/media-buys/optimization-reporting",
@@ -701,21 +705,6 @@
                     ]
                   },
                   {
-                    "group": "Sponsored Intelligence",
-                    "expanded": false,
-                    "pages": [
-                      "docs/sponsored-intelligence/overview",
-                      "docs/sponsored-intelligence/implementing-si-agents",
-                      "docs/sponsored-intelligence/implementing-si-hosts",
-                      "docs/sponsored-intelligence/specification",
-                      "docs/sponsored-intelligence/tasks/index",
-                      "docs/sponsored-intelligence/tasks/si_get_offering",
-                      "docs/sponsored-intelligence/tasks/si_initiate_session",
-                      "docs/sponsored-intelligence/tasks/si_send_message",
-                      "docs/sponsored-intelligence/tasks/si_terminate_session"
-                    ]
-                  },
-                  {
                     "group": "Reference",
                     "expanded": false,
                     "pages": [
@@ -804,6 +793,43 @@
                 ]
               },
               {
+                "group": "Sponsored Intelligence",
+                "expanded": false,
+                "pages": [
+                  "docs/sponsored-intelligence/overview",
+                  "docs/sponsored-intelligence/monetizing-ai",
+                  {
+                    "group": "Concepts",
+                    "pages": [
+                      "docs/sponsored-intelligence/product-spectrum",
+                      "docs/sponsored-intelligence/networks",
+                      "docs/sponsored-intelligence/workflow",
+                      "docs/sponsored-intelligence/measurement"
+                    ]
+                  },
+                  {
+                    "group": "SI Chat Protocol",
+                    "pages": [
+                      "docs/sponsored-intelligence/si-chat-protocol",
+                      "docs/sponsored-intelligence/implementing-si-agents",
+                      "docs/sponsored-intelligence/implementing-si-hosts"
+                    ]
+                  },
+                  {
+                    "group": "Reference",
+                    "expanded": false,
+                    "pages": [
+                      "docs/sponsored-intelligence/specification",
+                      "docs/sponsored-intelligence/tasks/index",
+                      "docs/sponsored-intelligence/tasks/si_get_offering",
+                      "docs/sponsored-intelligence/tasks/si_initiate_session",
+                      "docs/sponsored-intelligence/tasks/si_send_message",
+                      "docs/sponsored-intelligence/tasks/si_terminate_session"
+                    ]
+                  }
+                ]
+              },
+              {
                 "group": "Brand",
                 "expanded": false,
                 "pages": [
@@ -831,6 +857,7 @@
                 "pages": [
                   "docs/signals/overview",
                   "docs/signals/key-concepts",
+                  "docs/signals/ecosystem",
                   "docs/signals/data-providers",
                   {
                     "group": "Reference",
@@ -1196,6 +1223,62 @@
     {
       "source": "/docs/governance/walkthrough-governance",
       "destination": "/docs/governance/overview"
+    },
+    {
+      "source": "/docs/guides/ai-media",
+      "destination": "/docs/sponsored-intelligence/overview"
+    },
+    {
+      "source": "/docs/guides/ai-media-networks",
+      "destination": "/docs/sponsored-intelligence/networks"
+    },
+    {
+      "source": "/docs/guides/buying-ai-media",
+      "destination": "/docs/sponsored-intelligence/monetizing-ai"
+    },
+    {
+      "source": "/docs/guides/ai-media-buying",
+      "destination": "/docs/media-buy/index"
+    },
+    {
+      "source": "/docs/guides/sponsored-intelligence",
+      "destination": "/docs/sponsored-intelligence/overview"
+    },
+    {
+      "source": "/docs/guides/agent-based-media-buying",
+      "destination": "/docs/media-buy/index"
+    },
+    {
+      "source": "/docs/guides/monetizing-ai",
+      "destination": "/docs/sponsored-intelligence/monetizing-ai"
+    },
+    {
+      "source": "/docs/guides/commerce-media",
+      "destination": "/docs/media-buy/commerce-media"
+    },
+    {
+      "source": "/docs/guides/seller-integration",
+      "destination": "/docs/building/implementation/seller-integration"
+    },
+    {
+      "source": "/docs/guides/how-agents-communicate",
+      "destination": "/docs/building/understanding/how-agents-communicate"
+    },
+    {
+      "source": "/docs/guides/signals-ecosystem",
+      "destination": "/docs/signals/ecosystem"
+    },
+    {
+      "source": "/docs/guides/industry-landscape",
+      "destination": "/docs/building/understanding/industry-landscape"
+    },
+    {
+      "source": "/docs/guides/index",
+      "destination": "/docs/intro"
+    },
+    {
+      "source": "/docs/guides/creator-studios",
+      "destination": "/docs/media-buy/commerce-media"
     }
   ],
   "modeToggle": {

@@ -20,7 +20,8 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 type ErrorHook = (
   message: string,
   error?: Error,
-  context?: Record<string, unknown>
+  context?: Record<string, unknown>,
+  level?: number
 ) => void;
 
 /**
@@ -108,7 +109,7 @@ const hooks: pino.LoggerOptions['hooks'] = {
       }
 
       try {
-        errorHook(message || error?.message || 'Unknown error', error, context);
+        errorHook(message || error?.message || 'Unknown error', error, context, level);
       } catch {
         // Silently ignore hook errors to prevent logging loops
       }

@@ -103,12 +103,9 @@ export function createLatestRouter(): {
   // PAGE ROUTES (mounted at /)
   // =========================================================================
 
-  // Landing page showing all sections
-  pageRouter.get("/latest", optionalAuth, (req, res) => {
-    serveHtmlWithConfig(req, res, "latest/index.html").catch((err) => {
-      logger.error({ err }, "Error serving latest landing page");
-      res.status(500).send("Internal server error");
-    });
+  // Landing page consolidated into /stories
+  pageRouter.get("/latest", (_req, res) => {
+    res.redirect(301, "/stories");
   });
 
   // Legacy redirect from /latest/research to /latest/perspectives

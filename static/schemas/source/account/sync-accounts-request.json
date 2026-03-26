@@ -25,9 +25,14 @@
             "type": "string",
             "enum": [
               "operator",
-              "agent"
+              "agent",
+              "advertiser"
             ],
-            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. The seller must either accept this billing model or reject the request."
+            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The seller must either accept this billing model or reject the request."
+          },
+          "billing_entity": {
+            "$ref": "/schemas/core/business-entity.json",
+            "description": "Business entity details for the party responsible for payment. The agent provides this so the seller has the legal name, tax IDs, address, and bank details needed for formal B2B invoicing."
           },
           "payment_terms": {
             "type": "string",
@@ -44,47 +49,6 @@
           "sandbox": {
             "type": "boolean",
             "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
-          },
-          "governance_agents": {
-            "type": "array",
-            "description": "Governance agent endpoints for this account. When present, the seller MUST call these agents for governance approval before confirming media buy requests. Each agent can be scoped to specific validation categories. The seller routes check_governance calls to the appropriate agent based on the action being validated. All applicable agents must approve for the action to proceed (unanimous approval).",
-            "items": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "Governance agent endpoint URL."
-                },
-                "authentication": {
-                  "type": "object",
-                  "description": "Authentication the seller presents when calling this governance agent.",
-                  "properties": {
-                    "schemes": {
-                      "type": "array",
-                      "items": { "$ref": "/schemas/enums/auth-scheme.json" },
-                      "minItems": 1,
-                      "maxItems": 1
-                    },
-                    "credentials": {
-                      "type": "string",
-                      "description": "Authentication credential (e.g., Bearer token).",
-                      "minLength": 32
-                    }
-                  },
-                  "required": ["schemes", "credentials"],
-                  "additionalProperties": false
-                },
-                "categories": {
-                  "type": "array",
-                  "items": { "type": "string" },
-                  "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories."
-                }
-              },
-              "required": ["url", "authentication"],
-              "additionalProperties": false
-            },
-            "minItems": 1
           }
         },
         "required": [
@@ -167,6 +131,42 @@
             "operator": "pinnacle-media.com",
             "billing": "agent",
             "payment_terms": "net_60"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Advertiser billed directly with structured billing entity (DACH B2B)",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "pinnacle-media.com",
+            "billing": "advertiser",
+            "billing_entity": {
+              "legal_name": "Acme Corporation GmbH",
+              "vat_id": "DE987654321",
+              "registration_number": "HRB 67890",
+              "address": {
+                "street": "Hauptstrasse 42",
+                "city": "Munich",
+                "postal_code": "80331",
+                "country": "DE"
+              },
+              "contacts": [
+                {
+                  "role": "billing",
+                  "name": "AP Department",
+                  "email": "billing@acme-corp.com"
+                }
+              ],
+              "bank": {
+                "account_holder": "Acme Corporation GmbH",
+                "iban": "DE75512108001245126199",
+                "bic": "SOLADEST600"
+              }
+            },
+            "payment_terms": "net_30"
           }
         ]
       }

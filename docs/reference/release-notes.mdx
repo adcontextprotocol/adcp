@@ -19,9 +19,9 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 2. **Visual Guidelines on Brand Manifest** — Structured `visual_guidelines` field on `brand.json`: photography, graphic style, shapes, iconography, composition, motion, logo placement, colorways, type scale, asset libraries, and restrictions. Enables generative creative systems to produce on-brand assets.
 
-3. **Shows and Episodes** — Content dimension for products representing persistent programs (podcasts, TV series, YouTube channels). `show_ids` on products, `shows` array in `get_products` responses. Distribution identifiers for cross-seller matching, episode lifecycle states, break-based ad inventory, talent linking, show relationships, international content ratings.
+3. **Collections and Installments** — Content dimension for products representing persistent programs (podcasts, TV series, YouTube channels). `collections` on products references collections declared in an `adagents.json` by domain and collection ID — collection creators can serve as canonical sources regardless of distribution. `collection_targeting_allowed` controls whether buyers can select a subset or get the bundle. Distribution identifiers for cross-seller matching, installment lifecycle states, break-based ad inventory, talent linking, collection relationships, international content ratings.
 
-4. **AI Media Channel** — `ai_media` added to the media channel taxonomy for AI platform advertising (AI assistants, AI search, generative AI experiences).
+4. **Sponsored Intelligence Channel** — `sponsored_intelligence` added to the media channel taxonomy for AI platform advertising (AI assistants, AI search, generative AI experiences).
 
 5. **Property Governance Integration** — Optional `property_list` parameter on `get_products` for filtering products by governance-evaluated property lists. `property_list_applied` response field confirms filtering.
 
@@ -39,6 +39,8 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 12. **Accounts and Sandbox Refinements** — `sync_accounts` adds `payment_terms`, sandbox capability moves to the account capability block, and sandbox now participates in the account natural key for implicit account flows.
 
+13. **Governance Agent Sync** — `sync_governance` task for syncing governance agent endpoints to specific accounts. Supports both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`) via account references. Replace semantics per call. Governance sync is now a dedicated tool — removed from `sync_accounts` and `list_accounts`.
+
 ### Breaking Changes
 
 | Change | rc.1 | rc.2 |
@@ -49,6 +51,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 | DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present |
 | delete_content_standards | Documented task | Removed — archive standards via `update_content_standards` instead |
 | get_property_features | Standalone task | Removed — use property list filters and `get_adcp_capabilities` for feature discovery |
+| Governance agent sync | `governance_agents` on `sync_accounts` request and `list_accounts` request | Moved to dedicated `sync_governance` task |
 
 ### Migration Notes For rc.1 Adopters
 
@@ -128,7 +131,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 29. **Media Buy Rejection** — `rejected` status added to media-buy-status enum with `rejection_reason` on the MediaBuy object.
 
-30. **Idempotency** — `idempotency_key` on `update_media_buy` and `sync_creatives` for at-most-once execution. `buyer_ref` documented as the idempotency key for `create_media_buy`.
+30. **Idempotency** — `idempotency_key` on `update_media_buy` and `sync_creatives` for at-most-once execution. `idempotency_key` added to `create_media_buy` for at-most-once creation.
 
 ### Breaking Changes
 
@@ -186,7 +189,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 3. **Account Management** - `sync_accounts` task lets agents declare brand portfolios to sellers with upsert semantics. Account capabilities in `get_adcp_capabilities` describe billing requirements and operator authorization. Two billing models (operator, agent) with account lifecycle (active, pending_approval, payment_required, suspended, closed). `account_id` is optional on `create_media_buy` — single-account agents can omit it.
 
-4. **Commerce Media** - Catalog-driven product discovery (`catalog` on `get_products`), catalog-driven packages, per-catalog-item delivery reporting (`by_catalog_item`), store catchment targeting, and `catalog_types` on products. Cross-retailer GTIN matching via catalog selectors. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response. See the [Commerce Media Guide](/docs/guides/commerce-media) and [Catalogs](/docs/creative/catalogs).
+4. **Commerce Media** - Catalog-driven product discovery (`catalog` on `get_products`), catalog-driven packages, per-catalog-item delivery reporting (`by_catalog_item`), store catchment targeting, and `catalog_types` on products. Cross-retailer GTIN matching via catalog selectors. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response. See the [Commerce Media Guide](/docs/media-buy/commerce-media) and [Catalogs](/docs/creative/catalogs).
 
 5. **Creative Delivery Reporting** - Per-creative metrics breakdown within `by_package` in delivery responses. New `get_creative_delivery` task on creative agents for variant-level delivery data with manifests. Three variant tiers: standard (1:1), asset group optimization, and generative creative. Format-level `reported_metrics` declare which metrics each format can provide.
 
@@ -204,7 +207,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 12. **Typed Asset Requirements** - Discriminated union schemas for all 12 asset types (image, video, audio, text, markdown, HTML, CSS, JavaScript, VAST, DAAST, URL, webhook) using `asset_type` as discriminator.
 
-13. **Universal Macros** - `universal-macro.json` enum defining all 54 standard ad-serving macros, including 6 new additions: `GPP_SID`, `IP_ADDRESS`, `STATION_ID`, `SHOW_NAME`, `EPISODE_ID`, `AUDIO_DURATION`.
+13. **Universal Macros** - `universal-macro.json` enum defining all 54 standard ad-serving macros, including 6 new additions: `GPP_SID`, `IP_ADDRESS`, `STATION_ID`, `COLLECTION_NAME`, `INSTALLMENT_ID`, `AUDIO_DURATION`.
 
 14. **Brand Manifest Improvements** - Structured tone object with `voice`, `attributes`, `dos`, `donts` fields. Logo objects gain `orientation`, `background`, `variant`, `usage` fields.
 
@@ -286,7 +289,7 @@ Version 3.0.0 is a **major release** that expands AdCP beyond media buying into 
 
 2. **Governance Protocol** - New protocol domain for property lists, content standards, and brand suitability evaluation with collaborative calibration workflows.
 
-3. **Sponsored Intelligence Protocol** - Conversational brand experiences in AI assistants. Defines how hosts invoke brand agent endpoints for rich engagement without breaking conversational flow. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
+3. **Sponsored Intelligence Protocol** - Conversational brand experiences in AI assistants. Defines how hosts invoke brand agent endpoints for rich engagement without breaking conversational flow. See [Sponsored Intelligence](/docs/sponsored-intelligence/si-chat-protocol).
 
 4. **Protocol-Level Capability Discovery** - `get_adcp_capabilities` task replaces agent card extensions, providing runtime discovery of capabilities, supported protocols, and geo targeting systems.
 
@@ -324,7 +327,7 @@ Conversational brand experiences:
 - **Capability Negotiation** - Brands declare modalities (voice, video, avatar), hosts respond with supported capabilities
 - **Commerce Handoff** - Seamless transition to AdCP for transactions
 
-See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
+See [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) for complete documentation.
 
 ### New Features
 

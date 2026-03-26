@@ -9,14 +9,14 @@ Share performance outcomes with publishers to enable data-driven optimization an
 
 **Response Time**: ~5 seconds (data ingestion)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json)
 
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `media_buy_id` | string | Yes | Publisher's media buy identifier |
+| `media_buy_id` | string | Yes | Seller's media buy identifier |
 | `measurement_period` | object | Yes | Time period for performance measurement |
 | `performance_index` | number | Yes | Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expected) |
 | `package_id` | string | No | Specific package within the media buy (if feedback is package-specific) |

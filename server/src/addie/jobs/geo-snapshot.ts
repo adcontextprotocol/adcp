@@ -111,7 +111,8 @@ export async function runGeoSnapshotJob(): Promise<{
 
   // Get project ID
   const projectsResult = (await fetchLLMPulse(
-    "/dimensions/projects"
+    "/dimensions/projects",
+    { range: "30" }
   )) as { projects: Array<{ id: number }> };
   if (!projectsResult.projects?.length) {
     throw new Error("No LLM Pulse projects found");
@@ -124,6 +125,7 @@ export async function runGeoSnapshotJob(): Promise<{
     breakdown: "model",
     sort: "mentions",
     sort_dir: "desc",
+    range: "30",
   });
 
   const models = aggregateModelMetrics(modelSummaryRows);

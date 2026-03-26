@@ -419,6 +419,30 @@ export async function setOptedOut(personId: string, optedOut: boolean): Promise<
   );
 }
 
+/** Set outreach cadence (opted_out + next_contact_after) in a single transaction. */
+export async function setCadence(
+  personId: string,
+  optedOut: boolean,
+  nextContactAfter: Date | null,
+): Promise<void> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE person_relationships
+       SET opted_out = $2, next_contact_after = $3, updated_at = NOW()
+       WHERE id = $1`,
+      [personId, optedOut, nextContactAfter]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /** Update the sentiment trend for a person. */
 export async function updateSentiment(personId: string, sentiment: SentimentTrend): Promise<void> {
   await query(
@@ -483,6 +507,27 @@ export async function evaluateStageTransitions(personId: string): Promise<void> 
     }
   }
 
+  // Slack activity can drive stage progression even without a workos_user_id.
+  // This lets Slack-only members advance beyond exploring.
+  const slackUserId = person.slack_user_id;
+  if (slackUserId) {
+    const slackResult = await query<{ slack_messages_30d: number }>(
+      `SELECT COALESCE(SUM(message_count), 0) as slack_messages_30d
+       FROM slack_activity_daily
+       WHERE slack_user_id = $1
+       AND activity_date > NOW() - INTERVAL '30 days'`,
+      [slackUserId]
+    );
+    const slackCount = Number(slackResult.rows[0]?.slack_messages_30d ?? 0);
+
+    if (slackCount > 5) {
+      await updateStage(personId, 'participating');
+    }
+    if (slackCount > 20) {
+      await updateStage(personId, 'contributing');
+    }
+  }
+
   if (person.workos_user_id) {
     const wgResult = await query<{ wg_count: number }>(
       `SELECT COUNT(DISTINCT wg.id) as wg_count
@@ -497,21 +542,6 @@ export async function evaluateStageTransitions(personId: string): Promise<void> 
 
     if (wgCount > 0) {
       await updateStage(personId, 'participating');
-    }
-
-    const slackResult = await query<{ slack_messages_30d: number }>(
-      `SELECT COALESCE(SUM(message_count), 0) as slack_messages_30d
-       FROM slack_activity_daily
-       WHERE slack_user_id = (
-         SELECT slack_user_id FROM slack_user_mappings WHERE workos_user_id = $1 LIMIT 1
-       )
-       AND activity_date > NOW() - INTERVAL '30 days'`,
-      [person.workos_user_id]
-    );
-    const slackCount = Number(slackResult.rows[0]?.slack_messages_30d ?? 0);
-
-    if (slackCount > 20) {
-      await updateStage(personId, 'contributing');
     }
 
     const leaderResult = await query<{ is_leader: boolean; council_count: number }>(

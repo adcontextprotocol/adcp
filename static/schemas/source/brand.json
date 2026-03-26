@@ -16,7 +16,7 @@
     },
     "localized_name": {
       "type": "object",
-      "description": "A localized name with language code key and name value",
+      "description": "A localized name with BCP 47 locale code key (e.g., 'en_US', 'fr_CA', 'zh_CN') and name value. Bare language codes ('en') are accepted as wildcards for backwards compatibility.",
       "minProperties": 1,
       "maxProperties": 1,
       "additionalProperties": {
@@ -240,9 +240,11 @@
           "type": "string",
           "description": "Brand description"
         },
-        "industry": {
-          "type": "string",
-          "description": "Industry or vertical (e.g., 'retail', 'automotive', 'cpg')"
+        "industries": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Brand industries (e.g., ['automotive'] or ['pharmaceutical', 'cpg'] for a consumer health company). Describes what the company does — not what regulatory regimes apply (use policy_categories for that)."
         },
         "target_audience": {
           "type": "string",
@@ -287,8 +289,19 @@
           ]
         },
         "tagline": {
-          "type": "string",
-          "description": "Brand tagline or slogan"
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Plain tagline string for backwards compatibility"
+            },
+            {
+              "type": "array",
+              "description": "Localized taglines with BCP 47 locale codes",
+              "items": { "$ref": "#/definitions/localized_name" },
+              "minItems": 1
+            }
+          ],
+          "description": "Brand tagline or slogan. Accepts a plain string or a localized array matching the names pattern."
         },
         "assets": {
           "type": "array",
@@ -359,28 +372,28 @@
             "phone": { "type": "string", "description": "Contact phone number" }
           }
         },
-        "shows": {
+        "collections": {
           "type": "array",
-          "description": "Shows this person or brand is associated with. Enables bidirectional linking: a show's talent references brand.json via brand_url, and brand.json links back to shows.",
+          "description": "Collections this person or brand is associated with. Enables bidirectional linking: a collection's talent references brand.json via brand_url, and brand.json links back to collections.",
           "items": {
             "type": "object",
             "properties": {
-              "show_id": {
+              "collection_id": {
                 "type": "string",
-                "description": "Show identifier as used in the seller's get_products responses"
+                "description": "Collection identifier as used in the seller's get_products responses"
               },
               "name": {
                 "type": "string",
-                "description": "Human-readable show name"
+                "description": "Human-readable collection name"
               },
               "role": {
                 "$ref": "/schemas/enums/talent-role.json",
-                "description": "This person's role on the show"
+                "description": "This person's role on the collection"
               },
               "seller_agent_url": {
                 "type": "string",
                 "format": "uri",
-                "description": "URL of the sales agent that sells inventory for this show. Buyer agents can query this agent for show products."
+                "description": "URL of the sales agent that sells inventory for this collection. Buyer agents can query this agent for collection products."
               }
             },
             "required": ["name"],
@@ -1139,9 +1152,9 @@
         {
           "id": "tide",
           "url": "https://tide.com",
-          "names": [{"en": "Tide"}, {"es": "Tide"}, {"zh": "汰渍"}],
+          "names": [{"en_US": "Tide"}, {"es_MX": "Tide"}, {"zh_CN": "汰渍"}],
           "keller_type": "master",
-          "industry": "cpg",
+          "industries": ["cpg"],
           "description": "Laundry detergent brand",
           "logos": [
             {
@@ -1166,7 +1179,7 @@
             "dos": ["Use simple, direct language", "Emphasize cleaning power"],
             "donts": ["Avoid technical jargon", "Don't be overly serious"]
           },
-          "tagline": "Tide's In, Dirt's Out",
+          "tagline": [{"en_US": "Tide's In, Dirt's Out"}],
           "visual_guidelines": {
             "photography": {
               "realism": "natural",
@@ -1301,9 +1314,9 @@
         {
           "id": "pampers",
           "url": "https://pampers.com",
-          "names": [{"en": "Pampers"}],
+          "names": [{"en_US": "Pampers"}],
           "keller_type": "master",
-          "industry": "cpg",
+          "industries": ["cpg"],
           "logos": [
             {
               "url": "https://cdn.pg.com/pampers/logo.png",
@@ -1335,7 +1348,7 @@
         {
           "id": "nike",
           "url": "https://nike.com",
-          "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
+          "names": [{"en_US": "Nike"}, {"zh_CN": "耐克"}, {"ja_JP": "ナイキ"}],
           "keller_type": "master",
           "logos": [
             {
@@ -1355,7 +1368,7 @@
           ],
           "colors": {"primary": "#111111", "accent": "#FF6600"},
           "tone": "inspirational, bold, athletic",
-          "tagline": "Just Do It",
+          "tagline": [{"en_US": "Just Do It"}],
           "properties": [
             {"type": "website", "identifier": "nike.com", "primary": true},
             {"type": "website", "identifier": "nike.cn", "region": "CN"},
@@ -1365,7 +1378,7 @@
         {
           "id": "air_jordan",
           "url": "https://jordan.com",
-          "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
+          "names": [{"en_US": "Air Jordan"}, {"en_US": "Jordan"}, {"en_US": "Jumpman"}],
           "keller_type": "endorsed",
           "parent_brand": "nike",
           "logos": [
@@ -1389,7 +1402,7 @@
         {
           "id": "converse",
           "url": "https://converse.com",
-          "names": [{"en": "Converse"}],
+          "names": [{"en_US": "Converse"}],
           "keller_type": "independent",
           "logos": [
             {

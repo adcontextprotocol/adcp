@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AdAgents.json Manager - AdCP Testing Framework</title>
-    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
     <link rel="stylesheet" href="/layout.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -1477,6 +1477,13 @@
       // ============================================================================
       // AdAgents.json Management Functions
       // ============================================================================
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
 
       async function validateDomain() {
         const domain = document.getElementById('domain-input').value.trim();
@@ -3966,10 +3973,10 @@
         const instructionsHeading = document.querySelector('#personalized-instructions h4');
         const step2Title = document.getElementById('step-2-title');
         if (isUpdate) {
-          instructionsHeading.innerHTML = `📍 File Update Instructions for <span id="user-domain-display">${normalizedDomain}</span>`;
+          instructionsHeading.innerHTML = `📍 File Update Instructions for <span id="user-domain-display">${escapeHtml(normalizedDomain)}</span>`;
           step2Title.textContent = 'Step 2: Update Authorized Agents';
         } else {
-          instructionsHeading.innerHTML = `📍 File Placement Instructions for <span id="user-domain-display">${normalizedDomain}</span>`;
+          instructionsHeading.innerHTML = `📍 File Placement Instructions for <span id="user-domain-display">${escapeHtml(normalizedDomain)}</span>`;
           step2Title.textContent = 'Step 2: Add Authorized Agents';
         }
       }

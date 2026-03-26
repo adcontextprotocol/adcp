@@ -23,7 +23,7 @@ export function validateOrganizationName(name: unknown): FieldValidationResult {
     return { valid: false, error: 'Organization name must be a string' };
   }
 
-  const trimmed = name.trim();
+  const trimmed = name.trim().normalize('NFC');
 
   if (trimmed.length === 0) {
     return { valid: false, error: 'Organization name cannot be empty' };
@@ -37,13 +37,20 @@ export function validateOrganizationName(name: unknown): FieldValidationResult {
     return { valid: false, error: 'Organization name must be at least 2 characters' };
   }
 
-  // Must start with alphanumeric
-  if (!/^[a-zA-Z0-9]/.test(trimmed)) {
+  // Check for potentially dangerous patterns (XSS prevention) before the allowlist
+  // so we get specific logging for malicious attempts
+  if (/<[^>]*>/.test(trimmed) || /javascript:/i.test(trimmed)) {
+    logger.warn({ name: trimmed }, 'Potentially dangerous organization name rejected');
+    return { valid: false, error: 'Organization name contains invalid characters' };
+  }
+
+  // Must start with a letter or number (Unicode-aware)
+  if (!/^[\p{L}\p{N}]/u.test(trimmed)) {
     return { valid: false, error: 'Organization name must start with a letter or number' };
   }
 
-  // Only allowed characters: letters, numbers, spaces, hyphens, underscores, apostrophes, periods
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9\s\-_'.]*$/.test(trimmed)) {
+  // Only allowed characters: letters, numbers, spaces, hyphens, underscores, apostrophes (straight and curly), periods
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} \-_'.\u2018\u2019]*$/u.test(trimmed)) {
     return {
       valid: false,
       error: 'Organization name can only contain letters, numbers, spaces, hyphens, underscores, apostrophes, and periods',
@@ -51,14 +58,8 @@ export function validateOrganizationName(name: unknown): FieldValidationResult {
   }
 
   // No consecutive spaces
-  if (/\s{2,}/.test(trimmed)) {
+  if (/ {2,}/.test(trimmed)) {
     return { valid: false, error: 'Organization name cannot contain consecutive spaces' };
-  }
-
-  // Check for potentially dangerous patterns (XSS prevention)
-  if (/<[^>]*>/.test(trimmed) || /javascript:/i.test(trimmed)) {
-    logger.warn({ name: trimmed }, 'Potentially dangerous organization name rejected');
-    return { valid: false, error: 'Organization name contains invalid characters' };
   }
 
   return { valid: true };
@@ -79,7 +80,7 @@ export function validateEmail(email: unknown): FieldValidationResult {
   }
 
   // Basic email pattern (not overly strict - let WorkOS do final validation)
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   if (!emailPattern.test(trimmed)) {
     return { valid: false, error: 'Invalid email format' };
   }

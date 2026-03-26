@@ -556,6 +556,34 @@ body {
   border-color: white;
 }
 
+/* Filter Pills - horizontal scrollable tag/filter bar */
+.ds-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-text-secondary);
+  background: var(--color-gray-100);
+  border: 1px solid var(--color-gray-300);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition-all);
+  text-decoration: none;
+}
+.ds-pill:hover {
+  color: var(--color-text-heading);
+  background: var(--color-gray-200);
+}
+.ds-pill.active {
+  color: var(--color-warning-700);
+  background: var(--color-warning-100);
+  border-color: var(--color-warning-500);
+}
+
 /* -----------------------------------------------------------------------------
    9.2 Cards
    ----------------------------------------------------------------------------- */
@@ -900,7 +928,7 @@ body {
 .hero {
   background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
   color: white;
-  padding: var(--space-20) var(--space-8) var(--space-16);
+  padding: var(--space-10) var(--space-8) var(--space-16);
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -958,7 +986,7 @@ body {
 
 /* Smaller hero for article/content pages */
 .hero--article {
-  padding: var(--space-16) var(--space-8) var(--space-12);
+  padding: var(--space-8) var(--space-8) var(--space-12);
 }
 
 .hero--article h1 {
@@ -969,7 +997,7 @@ body {
 .hero--clean {
   background: #fff;
   color: var(--color-text-heading);
-  padding: var(--space-16) var(--space-8) var(--space-10);
+  padding: var(--space-8) var(--space-8) var(--space-10);
 }
 
 .hero--clean::before {
@@ -1499,11 +1527,11 @@ a.btn-success:hover {
    ----------------------------------------------------------------------------- */
 @media (max-width: 768px) {
   .hero {
-    padding: var(--space-12) var(--space-6) var(--space-10);
+    padding: var(--space-8) var(--space-6) var(--space-10);
   }
 
   .hero--article {
-    padding: var(--space-12) var(--space-6) var(--space-8);
+    padding: var(--space-8) var(--space-6) var(--space-8);
   }
 
   .hero--article h1 {

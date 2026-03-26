@@ -232,9 +232,9 @@
           "type": "string",
           "description": "Apple Podcasts ID"
         },
-        "spotify_show_id": {
+        "spotify_collection_id": {
           "type": "string",
-          "description": "Spotify show ID"
+          "description": "Spotify collection ID"
         },
         "podcast_guid": {
           "type": "string",

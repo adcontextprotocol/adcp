@@ -1,8 +1,7 @@
 /**
  * Addie Admin routes module
  *
- * Admin routes for managing Addie's knowledge base, viewing interactions,
- * and managing the approval queue.
+ * Admin routes for managing Addie's knowledge base and viewing interactions.
  */
 
 import { Router } from "express";
@@ -19,7 +18,6 @@ import {
 } from "../addie/thread-service.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { ModelConfig } from "../config/models.js";
-import { getAddieBoltApp } from "../addie/bolt-app.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
@@ -39,6 +37,11 @@ import {
   type EscalationCategory,
 } from "../db/escalation-db.js";
 import * as imageDb from "../db/addie-image-db.js";
+import {
+  listInsights,
+  getInsightByWeek,
+} from "../db/conversation-insights-db.js";
+import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -62,6 +65,22 @@ function getAddieRouter(): AddieRouter {
 function parseNumericId(id: string): number | null {
   const parsed = parseInt(id, 10);
   return isNaN(parsed) || parsed <= 0 ? null : parsed;
+}
+
+/**
+ * Parse a query string limit and clamp to [1, max].
+ */
+function clampLimit(raw: unknown, defaultVal: number, max = 200): number {
+  const parsed = raw ? parseInt(raw as string, 10) : NaN;
+  return isNaN(parsed) ? defaultVal : Math.min(Math.max(parsed, 1), max);
+}
+
+/**
+ * Parse a query string offset and clamp to [0, max].
+ */
+function clampOffset(raw: unknown, max = 1_000_000): number {
+  const parsed = raw ? parseInt(raw as string, 10) : NaN;
+  return isNaN(parsed) ? 0 : Math.min(Math.max(parsed, 0), max);
 }
 
 /**
@@ -93,18 +112,18 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
     try {
       const { category, active_only, source_type, status, limit, offset } = req.query;
 
-      const documents = await addieDb.listKnowledge({
+      const { rows: documents, total } = await addieDb.listKnowledge({
         category: category as string | undefined,
         sourceType: source_type as string | undefined,
         fetchStatus: status as string | undefined,
         activeOnly: active_only !== "false",
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 100, 500),
+        offset: clampOffset(offset),
       });
 
       res.json({
         documents,
-        total: documents.length,
+        total,
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching knowledge documents");
@@ -140,7 +159,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
 
       const results = await addieDb.searchKnowledge(q, {
         category: category as string | undefined,
-        limit: limit ? parseInt(limit as string, 10) : 10,
+        limit: clampLimit(limit, 10, 100),
       });
 
       res.json({
@@ -313,8 +332,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         flaggedOnly: flagged_only === "true",
         unreviewedOnly: unreviewed_only === "true",
         userId: user_id as string | undefined,
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
 
       res.json({
@@ -390,8 +409,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         min_messages: min_messages ? parseInt(min_messages as string, 10) : undefined,
         user_id: user_id as string | undefined,
         since: since ? new Date(since as string) : undefined,
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
         // Search filters (with length limits to prevent performance issues)
         search_text: typeof search === 'string' && search.length <= 500 ? search : undefined,
         tool_name: typeof tool === 'string' && tool.length <= 100 ? tool : undefined,
@@ -935,8 +954,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const { limit, offset } = req.query;
 
       const conversations = await addieDb.getWebConversations({
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
 
       res.json({
@@ -989,130 +1008,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // =========================================================================
-  // APPROVAL QUEUE API (mounted at /api/admin/addie/queue)
-  // =========================================================================
-
-  // GET /api/admin/addie/queue - Get pending approval items
-  apiRouter.get("/queue", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { limit } = req.query;
-
-      const items = await addieDb.getPendingApprovals({
-        limit: limit ? parseInt(limit as string, 10) : 50,
-      });
-
-      res.json({
-        items,
-        total: items.length,
-      });
-    } catch (error) {
-      logger.error({ err: error }, "Error fetching approval queue");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to fetch approval queue",
-      });
-    }
-  });
-
-  // GET /api/admin/addie/queue/stats - Get approval queue statistics
-  apiRouter.get("/queue/stats", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const stats = await addieDb.getApprovalStats();
-      res.json(stats);
-    } catch (error) {
-      logger.error({ err: error }, "Error fetching approval queue stats");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to fetch approval queue statistics",
-      });
-    }
-  });
-
-  // PUT /api/admin/addie/queue/:id/approve - Approve a queued item
-  apiRouter.put("/queue/:id/approve", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const numericId = parseNumericId(req.params.id);
-      if (!numericId) {
-        return res.status(400).json({ error: "Invalid queue item ID" });
-      }
-      const { edit_notes, final_content } = req.body;
-
-      const item = await addieDb.approveItem(numericId, req.user?.id || "admin", {
-        editNotes: edit_notes,
-        finalContent: final_content,
-      });
-
-      if (!item) {
-        return res.status(404).json({ error: "Approval item not found or already processed" });
-      }
-
-      // Execute the approved action (send the message to Slack)
-      const boltApp = getAddieBoltApp();
-      if (boltApp && item.target_channel_id) {
-        try {
-          const contentToSend = final_content || item.proposed_content;
-          const result = await boltApp.client.chat.postMessage({
-            channel: item.target_channel_id,
-            text: contentToSend,
-            thread_ts: item.target_thread_ts || undefined,
-          });
-
-          // Update the item with execution result
-          await addieDb.markExecuted(numericId, {
-            success: true,
-            message_ts: result.ts,
-            channel: result.channel,
-          });
-
-          logger.info({ queueId: numericId, messageTs: result.ts }, "Approved and sent queue item");
-        } catch (sendError) {
-          logger.error({ err: sendError, queueId: numericId }, "Failed to send approved message");
-          // Still return success for approval, but note the send failure
-          await addieDb.markExecuted(numericId, {
-            success: false,
-            error: sendError instanceof Error ? sendError.message : "Unknown error",
-          });
-        }
-      }
-
-      logger.info({ queueId: numericId }, "Approved queue item");
-      res.json(item);
-    } catch (error) {
-      logger.error({ err: error }, "Error approving queue item");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to approve queue item",
-      });
-    }
-  });
-
-  // PUT /api/admin/addie/queue/:id/reject - Reject a queued item
-  apiRouter.put("/queue/:id/reject", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const numericId = parseNumericId(req.params.id);
-      if (!numericId) {
-        return res.status(400).json({ error: "Invalid queue item ID" });
-      }
-      const { reason } = req.body;
-
-      const item = await addieDb.rejectItem(numericId, req.user?.id || "admin", reason);
-
-      if (!item) {
-        return res.status(404).json({ error: "Approval item not found or already processed" });
-      }
-
-      logger.info({ queueId: numericId, reason }, "Rejected queue item");
-      res.json(item);
-    } catch (error) {
-      logger.error({ err: error }, "Error rejecting queue item");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to reject queue item",
-      });
-    }
-  });
-
-  // =========================================================================
   // CONFIG VERSION API (mounted at /api/admin/addie/config)
   // =========================================================================
 
@@ -1133,8 +1028,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/config/history - Get config version history
   apiRouter.get("/config/history", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const limit = parseInt(req.query.limit as string) || 20;
-      const history = await addieDb.getConfigVersionHistory(limit);
+      const history = await addieDb.getConfigVersionHistory(clampLimit(req.query.limit, 20, 100));
       res.json({ versions: history });
     } catch (error) {
       logger.error({ err: error }, "Error fetching config version history");
@@ -1339,7 +1233,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
     try {
       const { limit } = req.query;
       const suggestions = await addieDb.getPendingSuggestions(
-        limit ? parseInt(limit as string, 10) : 50
+        clampLimit(limit, 50)
       );
 
       res.json({
@@ -1626,8 +1520,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
       const resources = await addieDb.listCuratedResources({
         status: status as string | undefined,
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
 
       res.json({
@@ -1802,7 +1696,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
     try {
       const { limit } = req.query;
       const runs = await addieDb.getRecentAnalysisRuns(
-        limit ? parseInt(limit as string, 10) : 10
+        clampLimit(limit, 10, 100)
       );
 
       res.json({
@@ -1974,8 +1868,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const evalService = await getEvalServiceLazy();
 
       const runs = await evalService.listRuns(
-        limit ? parseInt(limit as string, 10) : 20,
-        offset ? parseInt(offset as string, 10) : 0
+        clampLimit(limit, 20, 100),
+        clampOffset(offset)
       );
 
       res.json({
@@ -2031,8 +1925,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
       const results = await evalService.getResults(
         numericId,
-        limit ? parseInt(limit as string, 10) : 100,
-        offset ? parseInt(offset as string, 10) : 0
+        clampLimit(limit, 100, 500),
+        clampOffset(offset)
       );
 
       res.json({
@@ -2421,8 +2315,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         status: status as EscalationStatus | undefined,
         category: category as EscalationCategory | undefined,
       };
-      const parsedLimit = limit ? parseInt(limit as string, 10) : 50;
-      const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+      const parsedLimit = clampLimit(limit, 50);
+      const parsedOffset = clampOffset(offset);
 
       const [escalations, totalCount, stats] = await Promise.all([
         listEscalations({
@@ -2594,8 +2488,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const images = await imageDb.listImages({
         category: category as string | undefined,
         approved: approved !== undefined ? approved === "true" : undefined,
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
       });
       res.json({ images });
     } catch (error) {
@@ -2669,8 +2563,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
     try {
       const { limit, offset, zero_results_only } = req.query;
       const searches = await imageDb.listSearches({
-        limit: limit ? parseInt(limit as string, 10) : undefined,
-        offset: offset ? parseInt(offset as string, 10) : undefined,
+        limit: clampLimit(limit, 50),
+        offset: clampOffset(offset),
         zeroResultsOnly: zero_results_only === "true",
       });
       res.json({ searches });
@@ -2683,12 +2577,54 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/images/misses - Top zero-result queries
   apiRouter.get("/images/misses", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
-      const limit = Math.max(1, Math.min(rawLimit || 20, 100));
-      const misses = await imageDb.getTopMisses(limit);
+      const misses = await imageDb.getTopMisses(clampLimit(req.query.limit, 20, 100));
       res.json({ misses });
     } catch (error) {
       logger.error({ err: error }, "Error fetching image misses");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // =========================================================================
+  // CONVERSATION INSIGHTS
+  // =========================================================================
+
+  // GET /api/admin/addie/conversation-insights - List past insights
+  apiRouter.get("/conversation-insights", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const insights = await listInsights(clampLimit(req.query.limit, 12, 52));
+      res.json({ insights });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching conversation insights");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/addie/conversation-insights/:weekStart - Get specific week
+  apiRouter.get("/conversation-insights/:weekStart", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const weekStart = req.params.weekStart;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        return res.status(400).json({ error: "weekStart must be in YYYY-MM-DD format" });
+      }
+      const insight = await getInsightByWeek(weekStart);
+      if (!insight) {
+        return res.status(404).json({ error: "No insights found for this week" });
+      }
+      res.json(insight);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching conversation insight");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/admin/addie/conversation-insights/run - Manually trigger
+  apiRouter.post("/conversation-insights/run", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await runConversationInsightsJob({ force: true });
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, "Error running conversation insights");
       res.status(500).json({ error: "Internal server error" });
     }
   });

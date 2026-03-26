@@ -55,10 +55,10 @@
         },
         "supported_billing": {
           "type": "array",
-          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. The buyer must pass one of these values in sync_accounts.",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The buyer must pass one of these values in sync_accounts.",
           "items": {
             "type": "string",
-            "enum": ["operator", "agent"]
+            "enum": ["operator", "agent", "advertiser"]
           },
           "minItems": 1
         },

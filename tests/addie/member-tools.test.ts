@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import type { MemberContext } from '../../server/src/addie/member-context.js';
 
 // Import the tool definitions directly (no side effects)
 import { MEMBER_TOOLS, createMemberToolHandlers, extractAdcpVersion } from '../../server/src/addie/mcp/member-tools.js';
@@ -60,21 +61,34 @@ describe('MEMBER_TOOLS definitions', () => {
     expect(tool).toBeDefined();
   });
 
-  it('has get_my_profile tool', () => {
+  it('has get_my_profile tool for personal profile', () => {
     const tool = MEMBER_TOOLS.find(t => t.name === 'get_my_profile');
     expect(tool).toBeDefined();
   });
 
-  it('has update_my_profile tool with optional fields', () => {
+  it('has update_my_profile tool with community profile fields', () => {
     const tool = MEMBER_TOOLS.find(t => t.name === 'update_my_profile');
     expect(tool).toBeDefined();
     expect(tool?.input_schema.properties).toHaveProperty('headline');
     expect(tool?.input_schema.properties).toHaveProperty('bio');
-    expect(tool?.input_schema.properties).toHaveProperty('focus_areas');
-    expect(tool?.input_schema.properties).toHaveProperty('website');
-    expect(tool?.input_schema.properties).toHaveProperty('linkedin');
-    expect(tool?.input_schema.properties).toHaveProperty('location');
-    // All fields are optional
+    expect(tool?.input_schema.properties).toHaveProperty('expertise');
+    expect(tool?.input_schema.properties).toHaveProperty('city');
+    expect(tool?.input_schema.required).toEqual([]);
+  });
+
+  it('has get_company_listing tool for org directory entry', () => {
+    const tool = MEMBER_TOOLS.find(t => t.name === 'get_company_listing');
+    expect(tool).toBeDefined();
+  });
+
+  it('has update_company_listing tool with member profile fields', () => {
+    const tool = MEMBER_TOOLS.find(t => t.name === 'update_company_listing');
+    expect(tool).toBeDefined();
+    expect(tool?.input_schema.properties).toHaveProperty('tagline');
+    expect(tool?.input_schema.properties).toHaveProperty('description');
+    expect(tool?.input_schema.properties).toHaveProperty('offerings');
+    expect(tool?.input_schema.properties).toHaveProperty('contact_website');
+    expect(tool?.input_schema.properties).toHaveProperty('headquarters');
     expect(tool?.input_schema.required).toEqual([]);
   });
 
@@ -150,11 +164,12 @@ describe('createMemberToolHandlers', () => {
       const handlers = createMemberToolHandlers({
         is_mapped: true,
         is_member: true,
+        slack_linked: false,
         workos_user: {
           workos_user_id: 'user_123',
           email: 'test@example.com',
         },
-      });
+      } as MemberContext);
 
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});
@@ -167,7 +182,8 @@ describe('createMemberToolHandlers', () => {
       const handlers = createMemberToolHandlers({
         is_mapped: false,
         is_member: false,
-      });
+        slack_linked: false,
+      } as MemberContext);
 
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});
@@ -181,12 +197,13 @@ describe('createMemberToolHandlers', () => {
       const handlers = createMemberToolHandlers({
         is_mapped: true,
         is_member: false,
+        slack_linked: true,
         slack_user: {
           slack_user_id: 'U12345',
           display_name: 'testuser',
           email: null,
         },
-      });
+      } as MemberContext);
 
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});
@@ -340,6 +357,8 @@ describe('createMemberToolHandlers', () => {
       'get_my_working_groups',
       'get_my_profile',
       'update_my_profile',
+      'get_company_listing',
+      'update_company_listing',
       'create_working_group_post',
     ];
 

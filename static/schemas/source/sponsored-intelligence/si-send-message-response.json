@@ -37,9 +37,8 @@
       "description": "MCP resource URI for hosts with MCP Apps support (e.g., ui://si/session-abc123)"
     },
     "session_status": {
-      "type": "string",
-      "enum": ["active", "pending_handoff", "complete"],
-      "description": "Current session status"
+      "$ref": "/schemas/enums/si-session-status.json",
+      "description": "Current session status. On a successful response, one of: active, pending_handoff, or complete. Terminated sessions return error codes (SESSION_NOT_FOUND or SESSION_TERMINATED) instead of a success response."
     },
     "handoff": {
       "type": "object",

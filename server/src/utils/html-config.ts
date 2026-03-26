@@ -11,6 +11,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getPool } from "../db/client.js";
 import { resolveEffectiveMembership } from "../db/org-filters.js";
+import { resolvePreferredOrganization, backfillPrimaryOrganization } from "../db/users-db.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger('html-config');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,7 +103,10 @@ export function injectConfigIntoHtml(html: string, user?: AppUser | null): strin
     ? `${EARLY_ERROR_BUFFER_SCRIPT}\n<script src="/posthog-init.js" defer></script>`
     : '';
 
-  const injectedScripts = `${configScript}\n${posthogScripts}`;
+  // csrf.js patches fetch() to include X-CSRF-Token on state-changing requests
+  const csrfScript = `<script src="/csrf.js"></script>`;
+
+  const injectedScripts = `${configScript}\n${csrfScript}\n${posthogScripts}`;
 
   if (html.includes("</head>")) {
     return html.replace("</head>", `${injectedScripts}\n</head>`);
@@ -134,6 +141,8 @@ export async function enrichUserWithMembership(user: AppUser | null | undefined)
   if (!user?.id || user.isMember !== undefined) return user;
   try {
     const pool = getPool();
+
+    // Try primary_organization_id first (fast path)
     const result = await pool.query(
       `SELECT u.primary_organization_id
        FROM users u
@@ -141,8 +150,23 @@ export async function enrichUserWithMembership(user: AppUser | null | undefined)
          AND u.primary_organization_id IS NOT NULL`,
       [user.id]
     );
-    if (result.rows.length > 0) {
-      const orgId = result.rows[0].primary_organization_id;
+
+    let orgId: string | null = result.rows[0]?.primary_organization_id ?? null;
+
+    // Fall back to organization_memberships if primary_organization_id is not set.
+    // This handles users who signed up after the initial backfill migration.
+    if (!orgId) {
+      orgId = await resolvePreferredOrganization(user.id);
+
+      // Backfill primary_organization_id so future lookups use the fast path
+      if (orgId) {
+        backfillPrimaryOrganization(user.id, orgId).catch((err) => {
+          logger.warn({ error: err, userId: user.id }, 'Best-effort backfill of primary_organization_id failed');
+        });
+      }
+    }
+
+    if (orgId) {
       const membership = await resolveEffectiveMembership(orgId);
       user.isMember = membership.is_member;
     } else {
@@ -208,6 +232,19 @@ function escapeHtmlAttr(str: string): string {
 }
 
 /**
+ * Replace an HTML tag by its opening prefix, substituting everything between
+ * the prefix and the closing > (exclusive — the > is preserved from the original).
+ * Uses indexOf instead of regex to avoid polynomial backtracking.
+ */
+function replaceTag(html: string, tagPrefix: string, replacement: string): string {
+  const idx = html.toLowerCase().indexOf(tagPrefix.toLowerCase());
+  if (idx === -1) return html;
+  const closeIdx = html.indexOf('>', idx + tagPrefix.length);
+  if (closeIdx === -1) return html;
+  return html.substring(0, idx) + replacement + html.substring(closeIdx);
+}
+
+/**
  * Inject meta tags into HTML for social sharing previews.
  * Replaces placeholder values in og:*, twitter:*, and JSON-LD tags.
  */
@@ -225,53 +262,20 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
     `<title id="pageTitle">${safeTitle} | AgenticAdvertising.org</title>`
   );
 
-  // Replace meta description
-  result = result.replace(
-    /<meta name="description"[^>]*content="Loading\.\.\."/i,
-    `<meta name="description" id="pageDescription" content="${safeDesc}"`
-  );
+  // Replace meta tags and canonical URL using indexOf-based matching
+  result = replaceTag(result, '<meta name="description"', `<meta name="description" id="pageDescription" content="${safeDesc}"`);
 
-  // Replace Open Graph tags
-  result = result.replace(
-    /<meta property="og:url"[^>]*content=""/i,
-    `<meta property="og:url" id="ogUrl" content="${safeUrl}"`
-  );
-  result = result.replace(
-    /<meta property="og:title"[^>]*content=""/i,
-    `<meta property="og:title" id="ogTitle" content="${safeTitle}"`
-  );
-  result = result.replace(
-    /<meta property="og:description"[^>]*content=""/i,
-    `<meta property="og:description" id="ogDescription" content="${safeDesc}"`
-  );
-  result = result.replace(
-    /<meta property="og:image"[^>]*content="[^"]*"/i,
-    `<meta property="og:image" id="ogImage" content="${safeImage}"`
-  );
+  result = replaceTag(result, '<meta property="og:url"', `<meta property="og:url" id="ogUrl" content="${safeUrl}"`);
+  result = replaceTag(result, '<meta property="og:title"', `<meta property="og:title" id="ogTitle" content="${safeTitle}"`);
+  result = replaceTag(result, '<meta property="og:description"', `<meta property="og:description" id="ogDescription" content="${safeDesc}"`);
+  result = replaceTag(result, '<meta property="og:image"', `<meta property="og:image" id="ogImage" content="${safeImage}"`);
 
-  // Replace Twitter tags
-  result = result.replace(
-    /<meta name="twitter:url"[^>]*content=""/i,
-    `<meta name="twitter:url" id="twitterUrl" content="${safeUrl}"`
-  );
-  result = result.replace(
-    /<meta name="twitter:title"[^>]*content=""/i,
-    `<meta name="twitter:title" id="twitterTitle" content="${safeTitle}"`
-  );
-  result = result.replace(
-    /<meta name="twitter:description"[^>]*content=""/i,
-    `<meta name="twitter:description" id="twitterDescription" content="${safeDesc}"`
-  );
-  result = result.replace(
-    /<meta name="twitter:image"[^>]*content="[^"]*"/i,
-    `<meta name="twitter:image" id="twitterImage" content="${safeImage}"`
-  );
+  result = replaceTag(result, '<meta name="twitter:url"', `<meta name="twitter:url" id="twitterUrl" content="${safeUrl}"`);
+  result = replaceTag(result, '<meta name="twitter:title"', `<meta name="twitter:title" id="twitterTitle" content="${safeTitle}"`);
+  result = replaceTag(result, '<meta name="twitter:description"', `<meta name="twitter:description" id="twitterDescription" content="${safeDesc}"`);
+  result = replaceTag(result, '<meta name="twitter:image"', `<meta name="twitter:image" id="twitterImage" content="${safeImage}"`);
 
-  // Replace canonical URL
-  result = result.replace(
-    /<link rel="canonical"[^>]*href=""/i,
-    `<link rel="canonical" id="canonicalUrl" href="${safeUrl}"`
-  );
+  result = replaceTag(result, '<link rel="canonical"', `<link rel="canonical" id="canonicalUrl" href="${safeUrl}"`);
 
   // Update JSON-LD structured data if article type
   if (metaTags.type === 'article') {

@@ -26,7 +26,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
     "name": "Example Publisher Ad Operations",
     "email": "adops@example.com",
@@ -104,7 +104,7 @@ For publishers with complex infrastructure or CDN distribution, `adagents.json` 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
   "last_updated": "2025-01-15T10:00:00Z"
 }
@@ -124,7 +124,7 @@ A publisher with multiple domains can maintain one authoritative file:
 **On each domain** (`https://domain1.com/.well-known/adagents.json`, `https://domain2.com/.well-known/adagents.json`, etc.):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "authoritative_location": "https://cdn.publisher.com/adagents/v2/adagents.json",
   "last_updated": "2025-01-15T10:00:00Z"
 }
@@ -133,7 +133,7 @@ A publisher with multiple domains can maintain one authoritative file:
 **Authoritative file** (`https://cdn.publisher.com/adagents/v2/adagents.json`):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
     "name": "Publisher Ad Operations",
     "email": "adops@publisher.com"
@@ -476,7 +476,7 @@ Publishers can declare which governance agents have data about their properties 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
     "name": "Premium News Publisher",
     "email": "adops@news.example.com",
@@ -756,5 +756,5 @@ After implementing adagents.json validation:
 
 - [AdCP Basics: Authorized Properties](https://bokonads.com/p/adcp-basics-authorized-properties) - Accessible introduction to AdCP authorization
 - [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) - Discover agent capabilities and portfolio
-- [Property Schema](https://adcontextprotocol.org/schemas/v2/core/property.json) - Property definition structure
+- [Property Schema](https://adcontextprotocol.org/schemas/v3/core/property.json) - Property definition structure
 - [AdAgents.json Builder](https://agenticadvertising.org/adagents/builder) - Web-based validator and creator

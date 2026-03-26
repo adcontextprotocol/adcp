@@ -31,16 +31,25 @@ function shouldCheck(url) {
   return !SKIPPED_PATH_PREFIXES.some((prefix) => parsed.pathname.startsWith(prefix));
 }
 
-async function fetchStatus(url, method) {
-  const response = await fetch(url, {
-    method,
-    redirect: 'follow',
-    headers: {
-      'User-Agent': 'adcp-owned-link-check/1.0',
-    },
-  });
-
-  return response.status;
+async function fetchStatus(url, method, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method,
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'adcp-owned-link-check/1.0',
+        },
+      });
+      return response.status;
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 async function checkUrl(url) {

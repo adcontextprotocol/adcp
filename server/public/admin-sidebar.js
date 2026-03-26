@@ -19,7 +19,8 @@
         items: [
           { href: '/admin/users', label: 'Users & Actions', icon: '👤' },
           { href: '/admin/members', label: 'Organizations', icon: '🏢' },
-          { href: '/manage/accounts', label: 'Accounts', icon: '📋' },
+          { href: '/admin/accounts', label: 'Accounts', icon: '📋' },
+          { href: '/admin/referrals', label: 'Referrals', icon: '🔗' },
           { href: '/admin/domain-health', label: 'Domain Health', icon: '🔗' },
         ]
       },
@@ -44,6 +45,7 @@
         items: [
           { href: '/admin/products', label: 'Products', icon: '💳' },
           { href: '/admin/billing', label: 'Stripe Linking', icon: '🔗' },
+          { href: '/admin/analytics', label: 'Revenue Analytics', icon: '📈' },
         ]
       },
       {
@@ -81,6 +83,7 @@
           { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
           { href: '/admin/outreach', label: 'Outreach Config', icon: '📣' },
           { href: '/admin/insights', label: 'Raw Insights', icon: '🧠' },
+          { href: '/admin/geo', label: 'GEO Visibility', icon: '🔍' },
         ]
       }
     ]
@@ -314,9 +317,6 @@
         <div class="admin-sidebar-footer">
           <a href="/dashboard" class="admin-back-link">
             ← Back to dashboard
-          </a>
-          <a href="/manage" class="admin-back-link">
-            Manage AAO →
           </a>
         </div>
       </aside>

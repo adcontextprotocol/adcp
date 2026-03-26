@@ -27,6 +27,7 @@ import { MEMBER_TOOLS } from './mcp/member-tools.js';
 import { trackApiCall, ApiPurpose } from './services/api-tracker.js';
 import {
   getToolSetDescriptionsForRouter,
+  getValidToolSetNames,
   requiresPrecision as checkPrecision,
 } from './tool-sets.js';
 
@@ -45,6 +46,8 @@ export type ExecutionPlanBase = {
   model?: string;
   /** When true, use a more capable model (Opus) for this query - for billing, financial, or precision-critical tasks */
   requires_precision?: boolean;
+  /** When true, use a more capable model (Opus) for depth - protocol design, schema architecture, technical discussions */
+  requires_depth?: boolean;
 };
 
 export type ExecutionPlan = ExecutionPlanBase & (
@@ -130,9 +133,9 @@ export const ROUTING_RULES = {
       description: 'Questions about what Addie can help with - respond with capability overview',
     },
     adcp_protocol: {
-      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief', 'ai media', 'ai platform', 'ai ad network', 'ai assistant', 'sponsored response', 'ad network', 'aggregator', 'migration', 'upgrade', 'breaking change', 'v2 to v3', 'deprecated', 'what changed', 'reversed data flow', 'catalog sync', 'buy ads', 'buying ads', 'advertise on', 'advertising on', 'brand safety', 'content standards', 'product feed', 'shopify', 'agency buying', 'agency integration', 'brand identity'],
+      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief', 'sponsored intelligence', 'si chat', 'ai platform', 'ai ad network', 'ai assistant', 'sponsored response', 'ad network', 'aggregator', 'migration', 'upgrade', 'breaking change', 'v2 to v3', 'deprecated', 'what changed', 'reversed data flow', 'catalog sync', 'buy ads', 'buying ads', 'advertise on', 'advertising on', 'brand safety', 'content standards', 'product feed', 'shopify', 'agency buying', 'agency integration', 'brand identity'],
       tools: ['search_docs'],
-      description: 'AdCP protocol questions - understanding how things work, migration, AI media',
+      description: 'AdCP protocol questions - understanding how things work, migration, Sponsored Intelligence',
     },
     salesagent: {
       patterns: ['salesagent', 'sales agent', 'open source agent', 'reference implementation'],
@@ -156,7 +159,7 @@ export const ROUTING_RULES = {
     },
     membership: {
       patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group', 'api key', 'api keys', 'api token'],
-      tools: ['get_my_profile', 'list_working_groups', 'join_working_group'],
+      tools: ['get_my_profile', 'update_my_profile', 'get_company_listing', 'update_company_listing', 'list_working_groups', 'join_working_group'],
       description: 'AgenticAdvertising.org membership and API key management',
     },
     find_help: {
@@ -189,7 +192,12 @@ export const ROUTING_RULES = {
     community_directory: {
       patterns: ['community directory', 'community profile', 'people directory', 'community hub', 'coffee chat', 'connection request', 'connect with'],
       tools: ['get_my_profile', 'update_my_profile'],
-      description: 'Community directory, people profiles, connections, and coffee chats',
+      description: 'Community directory, personal profiles, connections, and coffee chats',
+    },
+    company_listing: {
+      patterns: ['company listing', 'company tagline', 'company profile', 'directory listing', 'our tagline', 'company description', 'company offerings'],
+      tools: ['get_company_listing', 'update_company_listing'],
+      description: 'Company directory listing — tagline, description, offerings, contact info',
     },
     community: {
       patterns: ['community', 'discussion', 'slack', 'chat history', 'what did', 'who said'],
@@ -344,9 +352,12 @@ IMPORTANT: Select tool SETS based on the user's INTENT:
 - Testing/validating AdCP agent implementations → ["agent_testing"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Content workflows, GitHub issues, proposals → ["content"]
+- Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 - Billing, invoices, payment links, resending invoices → ["billing"]
 - Scheduling meetings, events, calendar, RSVPs, covering topics, joining a call, meeting agendas → ["meetings"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
+- Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
+- Adding/removing committee or working group leaders (admin action) → ["admin"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin"]
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
 - General questions needing no tools → []
@@ -379,10 +390,11 @@ Respond with a JSON object for the execution plan. Choose ONE action:
    - When you need more information to help effectively
    - Use sparingly - only when truly ambiguous
 
-4. {"action": "respond", "tool_sets": ["set1", "set2"], "reason": "brief reason"}
+4. {"action": "respond", "tool_sets": ["set1", "set2"], "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
    - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
+   - Set "requires_depth": true when the discussion involves protocol design, schema architecture, technical implementation details, standards discussion, or multi-stakeholder governance decisions. NOT for simple lookup questions or basic "what is X" questions.
 
 Respond with ONLY the JSON object, no other text.`;
 }
@@ -394,7 +406,7 @@ type ParsedPlan =
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tool_sets: string[]; reason: string };
+  | { action: 'respond'; tool_sets: string[]; reason: string; requires_depth?: boolean };
 
 /**
  * Parse the router response into a partial ExecutionPlan
@@ -434,6 +446,7 @@ function parseRouterResponse(response: string): ParsedPlan {
         action: 'respond',
         tool_sets: toolSets,
         reason: parsed.reason || 'Can help with this topic',
+        ...(parsed.requires_depth && { requires_depth: true }),
       };
     }
 
@@ -484,10 +497,25 @@ export class AddieRouter {
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
 
+      // Filter tool sets to only valid/permitted sets for this user
+      if (parsedPlan.action === 'respond') {
+        const validSets = getValidToolSetNames(ctx.isAAOAdmin ?? false);
+        const filtered = parsedPlan.tool_sets.filter(s => validSets.has(s));
+        if (filtered.length !== parsedPlan.tool_sets.length) {
+          logger.warn({
+            requested: parsedPlan.tool_sets,
+            allowed: filtered,
+          }, 'Router: stripped invalid tool sets from LLM response');
+        }
+        parsedPlan.tool_sets = filtered;
+      }
+
       // Check if any selected tool sets require precision mode (billing, financial)
       let requiresPrecisionMode = false;
+      let requiresDepthMode = false;
       if (parsedPlan.action === 'respond') {
         requiresPrecisionMode = checkPrecision(parsedPlan.tool_sets);
+        requiresDepthMode = !!parsedPlan.requires_depth;
       }
 
       const plan: ExecutionPlan = {
@@ -498,6 +526,7 @@ export class AddieRouter {
         tokens_output: response.usage?.output_tokens,
         model: ModelConfig.fast,
         requires_precision: requiresPrecisionMode,
+        requires_depth: requiresDepthMode,
       };
 
       logger.debug({
@@ -509,6 +538,7 @@ export class AddieRouter {
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
         requiresPrecision: requiresPrecisionMode,
+        requiresDepth: requiresDepthMode,
       }, 'Router: Execution plan generated');
 
       // Track for performance metrics (fire-and-forget, errors handled internally)

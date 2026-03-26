@@ -61,7 +61,7 @@ Formats may be sourced from:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/creative/list-creative-formats-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-response.json",
   "formats": [
     {
       "format_id": {
@@ -90,7 +90,7 @@ Each format includes an `agent_url` that identifies the authoritative creative a
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_hosted"
@@ -127,7 +127,7 @@ This approach allows publishers to present complex formats without constraining 
 **Example**:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/format.json",
   "format_id": {
     "agent_url": "https://publisher.com",
     "id": "homepage_takeover_premium"
@@ -149,7 +149,7 @@ AdCP uses structured format identifiers everywhere to avoid ambiguity and namesp
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format-id.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/format-id.json",
   "agent_url": "https://creative.adcontextprotocol.org",
   "id": "display_300x250"
 }
@@ -220,7 +220,7 @@ Formats are JSON objects with the following key fields:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_hosted"
@@ -440,7 +440,7 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
@@ -466,7 +466,7 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
 **Multi-render example (companion ad):**
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_with_companion_300x250"

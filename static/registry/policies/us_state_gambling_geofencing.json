@@ -1,0 +1,29 @@
+{
+  "policy_id": "us_state_gambling_geofencing",
+  "version": "1.0.0",
+  "name": "US State Gambling — Geofencing Requirements",
+  "description": "Requires gambling advertising to be geofenced to jurisdictions where online gambling is legal, with age restrictions.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["US"],
+  "policy_categories": ["gambling_advertising"],
+  "governance_domains": ["campaign"],
+  "source_url": "https://www.americangaming.org/resources/responsible-marketing-code-for-sports-wagering/",
+  "source_name": "American Gaming Association",
+  "policy": "Online gambling and sports betting advertising must be geofenced to states where the activity is legal and must target only adults of legal gambling age.\n\nRequirements:\n1. Advertising must be geographically restricted to states/territories where the specific gambling activity (sports betting, online casino, daily fantasy) is licensed and legal.\n2. Audience targeting must include age verification — minimum age is 21 in most states, 18 in some.\n3. Self-exclusion lists must be respected where platforms support them.\n4. Ads must not target audiences identified as having gambling problems or addictive behaviors.\n5. Cross-state ad delivery (serving to users in states where the activity is illegal) must be prevented.\n\nState gaming commissions can revoke licenses for advertising violations.",
+  "guidance": "Gambling legality varies significantly by state and activity type. Governance agents must validate that the plan's regions field restricts delivery to legal states for the specific gambling activity. Plans using countries: ['US'] without region restrictions for gambling campaigns should be flagged — gambling is not legal nationwide. The plan's regions field should enumerate specific legal states.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A sports betting app runs ads geofenced to New Jersey, Pennsylvania, and Michigan (states where it holds licenses) targeting adults 21+ with platform age verification.",
+        "explanation": "Geofenced to licensed states with age-verified targeting meets state gambling advertising requirements."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A sports betting company runs nationwide digital ads with countries: ['US'] and no region restrictions.",
+        "explanation": "Online sports betting is not legal in all US states. Advertising must be geofenced to states where the operator is licensed. Nationwide targeting violates state gaming regulations."
+      }
+    ]
+  }
+}

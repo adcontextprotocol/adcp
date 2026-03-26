@@ -9,7 +9,7 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
-import { requireAuth, requireAdmin, requireManage } from "../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
 import { getMemberCapabilities } from "../db/outbound-db.js";
@@ -62,10 +62,6 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // =========================================================================
   // ADMIN PAGE ROUTES (mounted at /admin)
   // =========================================================================
-
-  pageRouter.get("/prospects", (req, res) => {
-    res.redirect(301, "/manage/prospects");
-  });
 
   pageRouter.get("/api-keys", requireAuth, requireAdmin, (req, res) => {
     serveHtmlWithConfig(req, res, "admin-api-keys.html").catch((err) => {

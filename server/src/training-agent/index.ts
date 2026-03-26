@@ -9,18 +9,27 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
+import { WorkOS } from '@workos-inc/node';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
+import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import type { TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-routes');
 
 const TRAINING_AGENT_TOKEN = process.env.TRAINING_AGENT_TOKEN;
+const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN;
 const STARTUP_TIME = new Date().toISOString();
+
+// WorkOS client for API key validation (reuses main app's credentials)
+const workos = process.env.WORKOS_API_KEY && process.env.WORKOS_CLIENT_ID
+  ? new WorkOS(process.env.WORKOS_API_KEY, { clientId: process.env.WORKOS_CLIENT_ID })
+  : null;
 
 // Permissive CORS: this is a sandbox training agent meant to be
 // called from any origin (certification UI, notebooks, CLI tools, etc.)
@@ -37,21 +46,57 @@ function constantTimeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb);
 }
 
-function requireToken(req: Request, res: Response, next: NextFunction): void {
-  if (!TRAINING_AGENT_TOKEN) {
-    // No token configured = dev mode, allow all
+async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!TRAINING_AGENT_TOKEN && !PUBLIC_TEST_AGENT_TOKEN && !workos) {
+    // No tokens configured and no WorkOS = dev mode, allow all
     return next();
   }
   const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ') || !constantTimeEqual(auth.slice(7), TRAINING_AGENT_TOKEN)) {
+  if (!auth || !auth.startsWith('Bearer ')) {
     res.status(401).json({
       jsonrpc: '2.0',
       id: null,
-      error: { code: -32000, message: 'Invalid or missing bearer token' },
+      error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
     });
     return;
   }
-  next();
+  const token = auth.slice(7);
+
+  // Accept static tokens (primary or public test agent)
+  if ((TRAINING_AGENT_TOKEN && constantTimeEqual(token, TRAINING_AGENT_TOKEN)) ||
+      (PUBLIC_TEST_AGENT_TOKEN && constantTimeEqual(token, PUBLIC_TEST_AGENT_TOKEN))) {
+    return next();
+  }
+
+  // Accept WorkOS API keys (AAO dashboard API keys with sk_ or wos_api_key_ prefix)
+  if (workos && isWorkOSApiKeyFormat(token)) {
+    try {
+      const result = await workos.apiKeys.validateApiKey({ value: token });
+      if (result.apiKey) {
+        logger.info({ orgId: result.apiKey.owner.id }, 'Training agent: authenticated via AAO API key');
+        return next();
+      }
+      res.status(401).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Invalid API key. Generate a new key from your AAO dashboard.' },
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Training agent: WorkOS API key validation failed');
+      res.status(401).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'API key validation failed. Please try again.' },
+      });
+    }
+    return;
+  }
+
+  res.status(401).json({
+    jsonrpc: '2.0',
+    id: null,
+    error: { code: -32000, message: 'Invalid or missing bearer token. Use an AAO API key (from your dashboard) or a static test token.' },
+  });
 }
 
 function getBaseUrl(req: Request): string {
@@ -75,7 +120,9 @@ export function createTrainingAgentRouter(): Router {
   // adagents.json discovery
   router.get('/.well-known/adagents.json', (req: Request, res: Response) => {
     const baseUrl = getBaseUrl(req);
-    const agentUrl = `${baseUrl}/api/training-agent`;
+    // req.baseUrl is the mount path (e.g. '/api/training-agent') — empty when
+    // served via host-based routing at root
+    const agentUrl = `${baseUrl}${req.baseUrl}`;
 
     res.json({
       $schema: '/schemas/adagents.json',
@@ -185,6 +232,124 @@ export function createTrainingAgentRouter(): Router {
       id: null,
       error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
     });
+  });
+
+  // --- Legacy SSE transport ---
+  // Some MCP clients (e.g. older SDKs) only support the deprecated SSE transport.
+  // GET /sse establishes the event stream; POST /message delivers JSON-RPC messages.
+  // Rate limiter is shared with /mcp — SSE uses 2 requests per interaction (GET + POST).
+  const sseSessions = new Map<string, SSEServerTransport>();
+  const sseSessionLastSeen = new Map<string, number>();
+  const SSE_MAX_SESSIONS = 200;
+  const SSE_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+  // Sweep stale sessions that didn't trigger a close event (e.g. LB timeout)
+  const sseSweepTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [id, ts] of sseSessionLastSeen) {
+      if (now - ts > SSE_SESSION_TTL_MS) {
+        const transport = sseSessions.get(id);
+        if (transport) transport.close().catch(() => {});
+        sseSessions.delete(id);
+        sseSessionLastSeen.delete(id);
+      }
+    }
+  }, 5 * 60 * 1000);
+  if (sseSweepTimer.unref) sseSweepTimer.unref();
+
+  router.options('/sse', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.status(204).end();
+  });
+
+  router.options('/message', (_req: Request, res: Response) => {
+    setCORSHeaders(res);
+    res.status(204).end();
+  });
+
+  router.get('/sse', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
+    setCORSHeaders(res);
+
+    if (sseSessions.size >= SSE_MAX_SESSIONS) {
+      res.status(503).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Too many active SSE sessions. Please try again later.' },
+      });
+      return;
+    }
+
+    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+    try {
+      const ctx: TrainingContext = { mode: 'open' };
+      server = createTrainingAgentServer(ctx);
+
+      // The endpoint path is relative to the router mount point
+      const transport = new SSEServerTransport(`${req.baseUrl}/message`, res);
+      const sessionId = transport.sessionId;
+      sseSessions.set(sessionId, transport);
+      sseSessionLastSeen.set(sessionId, Date.now());
+
+      transport.onclose = () => {
+        sseSessions.delete(sessionId);
+        sseSessionLastSeen.delete(sessionId);
+        server?.close().catch(() => {});
+        logger.debug({ sessionId }, 'SSE session closed');
+      };
+
+      await server.connect(transport);
+
+      logger.debug({ sessionId, ip: req.ip }, 'SSE session established');
+    } catch (error) {
+      logger.error({ error }, 'Training agent: SSE connection error');
+      await server?.close().catch(() => {});
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32603, message: 'Internal server error' },
+        });
+      }
+    }
+  });
+
+  router.post('/message', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
+    setCORSHeaders(res);
+
+    const sessionId = req.query.sessionId as string;
+    if (!sessionId) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32600, message: 'Missing sessionId query parameter' },
+      });
+      return;
+    }
+
+    const transport = sseSessions.get(sessionId);
+    if (!transport) {
+      res.status(404).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'SSE session not found or expired' },
+      });
+      return;
+    }
+
+    sseSessionLastSeen.set(sessionId, Date.now());
+
+    try {
+      await transport.handlePostMessage(req, res, req.body);
+    } catch (error) {
+      logger.error({ error, sessionId }, 'Training agent: SSE message error');
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32603, message: 'Internal server error' },
+        });
+      }
+    }
   });
 
   logger.info('Training agent routes configured');

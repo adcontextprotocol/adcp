@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Brand Viewer - AgenticAdvertising.org</title>
-    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
     <style>
       body {
@@ -1432,9 +1432,13 @@
         grid.innerHTML = logos.map((logo, i) => {
           const tags = logo.tags || [];
           const dims = (logo.width && logo.height) ? `${logo.width} x ${logo.height}` : '';
-          const isSameOrigin = logo.url.startsWith(window.location.origin) ||
-            logo.url.startsWith('https://agenticadvertising.org') ||
-            logo.url.startsWith('https://adcontextprotocol.org');
+          let isSameOrigin = false;
+          try {
+            const logoHost = new URL(logo.url).hostname;
+            isSameOrigin = logo.url.startsWith(window.location.origin) ||
+              logoHost === 'agenticadvertising.org' || logoHost.endsWith('.agenticadvertising.org') ||
+              logoHost === 'adcontextprotocol.org' || logoHost.endsWith('.adcontextprotocol.org');
+          } catch { /* not a valid URL */ }
 
           const bg = getLogoBackground(logo);
           let previewHtml;

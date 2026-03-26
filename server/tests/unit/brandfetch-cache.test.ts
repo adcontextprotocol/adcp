@@ -261,17 +261,17 @@ describe('Brandfetch DB caching', () => {
     });
   });
 
-  describe('save_brand with industry', () => {
+  describe('save_brand with industries', () => {
     const handler = () => handlers.get('save_brand')!;
 
-    it('sets industry on a new brand via brand_manifest.company.industry', async () => {
+    it('sets industries on a new brand via brand_manifest.company.industries', async () => {
       mockGetDiscoveredBrandByDomain.mockResolvedValue(null);
       mockUpsertDiscoveredBrand.mockResolvedValue({ domain: 'newbrand.com', id: 'test-id' });
 
       const result = JSON.parse(await handler()({
         domain: 'newbrand.com',
         brand_name: 'New Brand',
-        industry: 'Healthcare',
+        industries: ['Healthcare'],
       }));
 
       expect(result.success).toBe(true);
@@ -280,31 +280,31 @@ describe('Brandfetch DB caching', () => {
           domain: 'newbrand.com',
           brand_name: 'New Brand',
           brand_manifest: expect.objectContaining({
-            company: { industry: 'Healthcare' },
+            company: { industries: ['Healthcare'] },
           }),
         })
       );
     });
 
-    it('rejects empty industry string', async () => {
+    it('rejects empty industries array', async () => {
       const result = JSON.parse(await handler()({
         domain: 'test.com',
         brand_name: 'Test',
-        industry: '',
+        industries: [''],
       }));
-      expect(result.error).toContain('industry must be 1-200 characters');
+      expect(result.error).toContain('industries must contain at least one non-empty string');
     });
 
-    it('rejects whitespace-only industry', async () => {
+    it('rejects whitespace-only industries', async () => {
       const result = JSON.parse(await handler()({
         domain: 'test.com',
         brand_name: 'Test',
-        industry: '   ',
+        industries: ['   '],
       }));
-      expect(result.error).toContain('industry must be 1-200 characters');
+      expect(result.error).toContain('industries must contain at least one non-empty string');
     });
 
-    it('merges industry into existing manifest on update', async () => {
+    it('merges industries into existing manifest on update', async () => {
       mockGetDiscoveredBrandByDomain.mockResolvedValue({
         id: 'existing-id',
         domain: 'existing.com',
@@ -326,7 +326,7 @@ describe('Brandfetch DB caching', () => {
       const result = JSON.parse(await handler()({
         domain: 'existing.com',
         brand_name: 'Existing Brand',
-        industry: 'Retail',
+        industries: ['Retail'],
       }));
 
       expect(result.success).toBe(true);
@@ -337,7 +337,7 @@ describe('Brandfetch DB caching', () => {
             company: expect.objectContaining({
               name: 'Existing Corp',
               employees: '100',
-              industry: 'Retail',
+              industries: ['Retail'],
             }),
           }),
         })

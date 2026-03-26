@@ -60,8 +60,8 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["px", "fraction"],
-          "description": "'px' = absolute pixels from asset top-left. 'fraction' = proportional to asset dimensions (x/y: 0.0 = asset edge, 1.0 = opposite edge; width/height: 0.12 = 12% of asset dimension)."
+          "enum": ["px", "fraction", "inches", "cm", "mm", "pt"],
+          "description": "'px' = absolute pixels from asset top-left. 'fraction' = proportional to asset dimensions (0.0 = edge, 1.0 = opposite edge). 'inches', 'cm', 'mm', 'pt' (1/72 inch) = physical units for print overlays, measured from asset top-left."
         }
       },
       "required": ["x", "y", "width", "height", "unit"],

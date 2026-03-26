@@ -22,7 +22,7 @@ import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
-import { getPool } from '../../db/client.js';
+import { getPool, escapeLikePattern } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
 import { BrandDatabase } from '../../db/brand-db.js';
@@ -768,12 +768,12 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'add_committee_leader',
     description: 'Add a user as leader of a committee. Leaders can manage posts, events, and members.',
-    usage_hints: 'Get user_id from Slack mapping or org details.',
+    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: { type: 'string', description: 'Committee slug' },
-        user_id: { type: 'string', description: 'WorkOS user ID' },
+        committee_slug: { type: 'string', description: 'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.' },
+        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
         user_email: { type: 'string', description: 'User email (optional)' },
       },
       required: ['committee_slug', 'user_id'],
@@ -782,11 +782,12 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'remove_committee_leader',
     description: 'Remove a user from committee leadership. User remains a regular member.',
+    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
     input_schema: {
       type: 'object',
       properties: {
         committee_slug: { type: 'string', description: 'Committee slug' },
-        user_id: { type: 'string', description: 'WorkOS user ID' },
+        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
       },
       required: ['committee_slug', 'user_id'],
     },
@@ -4461,7 +4462,7 @@ export function createAdminToolHandlers(
     }
 
     if (!userId) {
-      return '❌ Please provide a user_id (WorkOS user ID).';
+      return '❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).';
     }
 
     try {
@@ -4543,6 +4544,8 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
         if (slackMapping?.workos_user_id) {
           logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
           userId = slackMapping.workos_user_id;
+        } else {
+          return '❌ Could not resolve Slack user <@' + userId + '> to a linked account. They may not have linked their Slack to AgenticAdvertising.org.';
         }
       }
 
@@ -5824,7 +5827,7 @@ Use add_committee_leader to assign a leader.`;
       dueDate = new Date(today);
       dueDate.setDate(dueDate.getDate() + 1);
     } else if (lowerInput.startsWith('next ')) {
-      const dayName = lowerInput.replace('next ', '');
+      const dayName = lowerInput.replace(/next /g, '');
       const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
       const targetDay = days.indexOf(dayName);
       if (targetDay === -1) {
@@ -5856,8 +5859,7 @@ Use add_committee_leader to assign a leader.`;
     try {
       // Look up org by name if no ID provided
       if (!orgId && companyName) {
-        // Escape LIKE pattern special characters (% and _)
-        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const escapedName = escapeLikePattern(companyName);
         const searchResult = await pool.query(`
           SELECT workos_organization_id, name
           FROM organizations
@@ -5982,7 +5984,7 @@ Use add_committee_leader to assign a leader.`;
 
       let targetOrgId = orgId;
       if (!targetOrgId && companyName) {
-        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const escapedName = escapeLikePattern(companyName);
         const searchResult = await pool.query(`
           SELECT workos_organization_id, name
           FROM organizations
@@ -6198,8 +6200,7 @@ Use add_committee_leader to assign a leader.`;
       let orgName: string | undefined;
 
       if (!orgId && companyName) {
-        // Escape LIKE pattern special characters (% and _)
-        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const escapedName = escapeLikePattern(companyName);
         const searchResult = await pool.query(`
           SELECT workos_organization_id, name
           FROM organizations
@@ -7062,7 +7063,7 @@ Use add_committee_leader to assign a leader.`;
         expires_at: expiresAt,
       });
 
-      const scopeLabel = scope === 'platform' ? 'platform-wide' : scope.replace('registry_', '') + ' registry edits';
+      const scopeLabel = scope === 'platform' ? 'platform-wide' : scope.replace(/registry_/g, '') + ' registry edits';
       let response = `**Ban created** (ID: \`${ban.id}\`)\n`;
       response += `- **Type**: ${banType}\n`;
       response += `- **Entity**: \`${entityId}\`\n`;
@@ -7133,7 +7134,7 @@ Use add_committee_leader to assign a leader.`;
 
       let response = `**Active bans** (${bans.length}):\n\n`;
       for (const ban of bans) {
-        const scopeLabel = ban.scope === 'platform' ? 'Platform' : ban.scope.replace('registry_', '').charAt(0).toUpperCase() + ban.scope.replace('registry_', '').slice(1) + ' registry';
+        const scopeLabel = ban.scope === 'platform' ? 'Platform' : ban.scope.replace(/registry_/g, '').charAt(0).toUpperCase() + ban.scope.replace(/registry_/g, '').slice(1) + ' registry';
         response += `- **\`${ban.id}\`** — ${ban.ban_type} \`${ban.entity_id}\`\n`;
         response += `  Scope: ${scopeLabel}${ban.scope_target ? ` (${ban.scope_target})` : ''}\n`;
         response += `  Reason: ${ban.reason}\n`;

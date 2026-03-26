@@ -1,4 +1,45 @@
 /**
+ * Analyze human messages in a thread and return a response-calibration hint.
+ *
+ * When humans in the thread are writing short, direct messages, Addie should
+ * match that register — not respond with essays. This function measures the
+ * median length of human messages (excluding Addie's) and produces a hint
+ * that gets injected into the request context.
+ *
+ * Returns null when there aren't enough human messages to calibrate from,
+ * or when human messages are already long-form.
+ */
+export function buildThreadStyleHint(
+  messages: Array<{ user?: string; text?: string }>,
+  botUserId: string
+): string | null {
+  const humanMessages = messages
+    .filter(msg => msg.user && msg.user !== botUserId && msg.text)
+    .map(msg => msg.text!.trim())
+    .filter(text => text.length > 0);
+
+  if (humanMessages.length < 1) return null;
+
+  // Measure median character length of human messages (true median for even counts)
+  const lengths = humanMessages.map(t => t.length).sort((a, b) => a - b);
+  const mid = Math.floor(lengths.length / 2);
+  const median = lengths.length % 2 === 0
+    ? (lengths[mid - 1] + lengths[mid]) / 2
+    : lengths[mid];
+
+  // If humans are writing short messages (under ~400 chars ≈ 3-4 sentences),
+  // tell Addie to be concise. Over 400 is long-form enough that Addie's
+  // normal style is fine.
+  if (median > 400) return null;
+
+  return [
+    '## Response Style — Thread Calibration',
+    `Humans in this thread are averaging ~${Math.round(median)}-character replies. Keep yours proportional.`,
+    'Your baseline conciseness rules apply with extra force here — lead with the answer, not background.',
+  ].join('\n');
+}
+
+/**
  * Check if a thread has multiple human participants.
  * Used to avoid auto-responding when humans are talking to each other.
  *
@@ -39,10 +80,11 @@ export function isAddressedToAnotherUser(messageText: string, botUserId: string)
  *
  * Returns true if:
  * - The message mentions "Addie" by name (word boundary, case-insensitive)
- * - The sender is continuing a back-and-forth with Addie — the most recent
- *   human message (skipping Addie's messages) is also from the same sender.
- *   This check is NOT self-reinforcing because Addie's own responses don't
- *   change who the last human speaker was.
+ * - The sender is continuing a conversation with Addie — walking backwards
+ *   past the sender's own consecutive messages and then past Addie's
+ *   consecutive responses, the next message is from the sender (meaning
+ *   Addie was responding to them). If it's a different human, the sender
+ *   is talking to that person, not Addie.
  *
  * Returns false if:
  * - The message starts with a Slack @mention of another user (not the bot),
@@ -65,11 +107,23 @@ export function isDirectedAtAddie(
     return false;
   }
 
-  // Find the most recent human message before the current one (skip bot messages).
-  // If it's from the same person, they're continuing a conversation with Addie.
-  const lastHuman = threadMessages
-    .filter(msg => msg.ts !== currentMessageTs && msg.user && msg.user !== botUserId)
-    .at(-1);
+  // Walk backwards: skip the sender's consecutive messages, then skip Addie's
+  // consecutive responses, and check who's underneath. If it's the sender
+  // again, Addie was responding to them (back-and-forth). If it's another
+  // human, the sender is talking to that person.
+  const prior = threadMessages.filter(msg => msg.ts < currentMessageTs && msg.user);
+  let i = prior.length - 1;
 
-  return lastHuman?.user === currentUserId;
+  while (i >= 0 && prior[i].user === currentUserId) {
+    i--;
+  }
+  while (i >= 0 && prior[i].user === botUserId) {
+    i--;
+  }
+
+  if (i < 0) {
+    return prior.some(msg => msg.user === botUserId);
+  }
+
+  return prior[i].user === currentUserId;
 }

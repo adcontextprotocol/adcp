@@ -53,7 +53,7 @@
     },
     "exclusivity": {
       "$ref": "/schemas/enums/exclusivity.json",
-      "description": "Whether this product offers exclusive access to its inventory. Defaults to 'none' when absent. Most relevant for guaranteed products tied to specific shows or placements."
+      "description": "Whether this product offers exclusive access to its inventory. Defaults to 'none' when absent. Most relevant for guaranteed products tied to specific collections or placements."
     },
     "pricing_options": {
       "type": "array",
@@ -169,6 +169,10 @@
       "minimum": 1,
       "description": "Maximum number of optimization_goals this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1 goal — buyers sending arrays longer than this value should expect the seller to use only the highest-priority (lowest priority number) goal."
     },
+    "measurement_readiness": {
+      "$ref": "/schemas/core/measurement-readiness.json",
+      "description": "Assessment of whether the buyer's event source setup is sufficient for this product to optimize effectively. Only present when the seller can evaluate the buyer's account context. Buyers should check this before creating media buys with event-based optimization goals."
+    },
     "conversion_tracking": {
       "type": "object",
       "description": "Conversion event tracking for this product. Presence indicates the product supports optimization_goals with kind: 'event'. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
@@ -240,7 +244,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Expiration timestamp for custom products"
+      "description": "Expiration timestamp. After this time, the product may no longer be available for purchase and create_media_buy may reject packages referencing it."
     },
     "product_card": {
       "type": "object",
@@ -282,18 +286,24 @@
       ],
       "additionalProperties": true
     },
-    "show_ids": {
+    "collections": {
       "type": "array",
-      "description": "References to shows in the response's top-level shows array. When present, the product covers inventory associated with these shows. A product can span multiple shows (e.g., a podcast network bundle).",
+      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json.",
       "items": {
-        "type": "string"
-      }
+        "$ref": "/schemas/core/collection-selector.json"
+      },
+      "minItems": 1
     },
-    "episodes": {
+    "collection_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether buyers can target a subset of this product's collections. When false (default), the product is a bundle — buyers get all listed collections. When true, buyers can select specific collections in the media buy."
+    },
+    "installments": {
       "type": "array",
-      "description": "Specific episodes included in this product. Each episode references its parent show via show_id when the product spans multiple shows. When absent with show_ids present, the product covers the shows broadly (run-of-show).",
+      "description": "Specific installments included in this product. Each installment references its parent collection via collection_id when the product spans multiple collections. When absent with collections present, the product covers the collections broadly (run-of-collection).",
       "items": {
-        "$ref": "/schemas/core/episode.json"
+        "$ref": "/schemas/core/installment.json"
       }
     },
     "enforced_policies": {
@@ -333,6 +343,33 @@
         }
       },
       "required": ["context_match"],
+      "additionalProperties": true
+    },
+    "material_submission": {
+      "type": "object",
+      "description": "Instructions for submitting physical creative materials (print, static OOH, cinema). Present only for products requiring physical delivery outside the digital creative assignment flow. Buyer agents MUST validate url and email domains against the seller's known domains (from adagents.json) before submitting materials. Never auto-submit without human confirmation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL for uploading or submitting physical creative materials"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address for creative material submission"
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Human-readable instructions for material submission (file naming conventions, shipping address, etc.)",
+          "maxLength": 2000
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "minProperties": 1,
       "additionalProperties": true
     },
     "ext": {

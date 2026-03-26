@@ -818,7 +818,7 @@ export async function sendEmailReply(data: {
   let quotedHtml = '';
   let quotedText = '';
   if (data.threadContext.originalText) {
-    const senderName = data.threadContext.from.replace(/<.*>/, '').trim() || data.threadContext.from;
+    const senderName = data.threadContext.from.replace(/<[^>]*>/, '').trim() || data.threadContext.from;
     const dateStr = data.threadContext.originalDate
       ? data.threadContext.originalDate.toLocaleDateString('en-US', {
           weekday: 'short',
@@ -1190,5 +1190,136 @@ ${footerText}
   }
 }
 
-// Re-export for use in routes
-export { emailDb, emailPrefsDb, getUnsubscribeToken };
+// Re-export for use in routes and digest templates
+export { emailDb, emailPrefsDb, getUnsubscribeToken, trackedUrl };
+
+/**
+ * Render callback for tracked batch marketing emails.
+ * Receives the email tracking ID so templates can wrap links with trackedUrl().
+ */
+export type TrackedEmailRenderer = (trackingId: string) => { htmlContent: string; textContent: string };
+
+export interface TrackedBatchMarketingEmail {
+  to: string;
+  subject: string;
+  render: TrackedEmailRenderer;
+  category: string;
+  workosUserId: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Send marketing emails where the template needs the tracking ID for link tracking.
+ * Pre-creates email events to get tracking IDs, renders with them, then sends.
+ */
+export async function sendTrackedBatchMarketingEmails(
+  emails: TrackedBatchMarketingEmail[],
+): Promise<BatchSendResult> {
+  const result: BatchSendResult = { sent: 0, skipped: 0, failed: 0 };
+
+  if (!resend) {
+    logger.debug('Resend not configured, skipping tracked batch marketing emails');
+    return result;
+  }
+
+  const prepared: Array<{
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    headers: Record<string, string>;
+    trackingId: string;
+  }> = [];
+
+  for (const email of emails) {
+    const shouldSend = await emailPrefsDb.shouldSendEmail({
+      workos_user_id: email.workosUserId,
+      category_id: email.category,
+    });
+
+    if (!shouldSend) {
+      result.skipped++;
+      continue;
+    }
+
+    try {
+      const unsubscribeToken = await getUnsubscribeToken(email.workosUserId, email.to);
+      const emailEvent = await emailDb.createEmailEvent({
+        email_type: email.category,
+        recipient_email: email.to,
+        subject: email.subject,
+        workos_user_id: email.workosUserId,
+        metadata: email.metadata || {},
+      });
+
+      const trackingId = emailEvent.tracking_id;
+
+      // Render the email with the real tracking ID so links are tracked
+      const { htmlContent, textContent } = email.render(trackingId);
+
+      const footerHtml = generateFooterHtml(trackingId, unsubscribeToken, email.category);
+      const footerText = generateFooterText(unsubscribeToken, email.category);
+
+      prepared.push({
+        to: email.to,
+        subject: email.subject,
+        html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  ${htmlContent}
+  ${footerHtml}
+</body>
+</html>`,
+        text: `${textContent}\n\n${footerText}`,
+        headers: {
+          'List-Unsubscribe': `<${BASE_URL}/unsubscribe/${unsubscribeToken}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
+        trackingId,
+      });
+    } catch (error) {
+      logger.error({ error, to: email.to }, 'Failed to prepare tracked marketing email');
+      result.failed++;
+    }
+  }
+
+  // Send in batches of 100
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < prepared.length; i += BATCH_SIZE) {
+    const batch = prepared.slice(i, i + BATCH_SIZE);
+
+    try {
+      const { data: batchData, error } = await resend.batch.send(
+        batch.map((e) => ({
+          from: FROM_EMAIL,
+          to: e.to,
+          subject: e.subject,
+          html: e.html,
+          text: e.text,
+          headers: e.headers,
+        })),
+      );
+
+      if (error) {
+        logger.error({ error, batchIndex: i, batchSize: batch.length }, 'Tracked batch send failed');
+        result.failed += batch.length;
+        continue;
+      }
+
+      const batchResults = batchData?.data || [];
+      for (let j = 0; j < batch.length; j++) {
+        const resendId = batchResults[j]?.id;
+        await emailDb.markEmailSent(batch[j].trackingId, resendId);
+        result.sent++;
+      }
+
+      logger.info({ batchIndex: i, count: batch.length }, 'Tracked batch marketing emails sent');
+    } catch (error) {
+      logger.error({ error, batchIndex: i }, 'Error sending tracked batch marketing emails');
+      result.failed += batch.length;
+    }
+  }
+
+  return result;
+}

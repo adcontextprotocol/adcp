@@ -130,6 +130,12 @@ Responses use discriminated unions — you get either `catalogs` or `errors`, ne
 }
 ```
 
+## Item review lifecycle
+
+Catalog items follow a simple review cycle: items enter `pending` on sync, and the platform reviews them asynchronously. Items are either `approved`, `rejected` (with reasons), or `approved` with `warning` (serving but with fixable issues).
+
+Rejection is not terminal — fix the issue in the source catalog and re-sync. Re-syncing an item resets it to `pending` for re-review. The `item_issues` array on the response identifies per-item rejection reasons.
+
 ## Discovery mode
 
 Omit `catalogs` to list all catalogs on the account without modification:

@@ -6,6 +6,18 @@ description: "AdCP error handling: protocol errors, task failures, and validatio
 
 AdCP uses a consistent error handling approach across all operations. Understanding error categories and implementing proper recovery strategies is essential for building robust integrations.
 
+## Compliance Levels
+
+Sellers can adopt error handling incrementally. Each level builds on the previous:
+
+| Level | What to implement | What agents can do |
+|-------|-------------------|-------------------|
+| **Level 1** | Return `code` + `message` on every error | Agents match on error code to classify failures |
+| **Level 2** | Add `recovery`, `retry_after`, `field`, and `suggestion` | Agents auto-retry transient errors and self-correct correctable ones |
+| **Level 3** | Use [transport bindings](/docs/building/implementation/transport-errors) to put errors in `structuredContent` (MCP) or artifact `DataPart` (A2A) | Programmatic clients get typed errors without parsing text |
+
+**Level 1** is the minimum for a conformant implementation. **Level 2** is where agent-driven recovery becomes possible — without `recovery`, agents must guess from the error code. **Level 3** is where client libraries like `@adcp/client` can provide fully typed error objects.
+
 ## Error Categories
 
 ### 1. Protocol Errors
@@ -28,7 +40,7 @@ Business logic failures returned as `status: "failed"`:
 - Budget validation failures
 - Resource not found
 
-**Handling:** Display error to user, may require different request.
+**Handling:** Check the `recovery` field to determine whether to retry, fix the request, or escalate.
 
 ### 3. Validation Errors
 
@@ -42,99 +54,119 @@ Malformed requests that fail schema validation:
 
 ## Error Response Format
 
-Failed operations return status `failed` with error details at the top level:
+Failed operations return status `failed` with error details. The error object follows the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:
 
 ```json
 {
   "status": "failed",
-  "message": "Unable to create media buy: Insufficient inventory available for your targeting criteria",
-  "context_id": "ctx-123",
-  "error_code": "insufficient_inventory",
-  "recovery": "correctable",
-  "requested_impressions": 10000000,
-  "available_impressions": 2500000,
-  "suggestions": [
-    "Expand geographic targeting",
-    "Increase CPM bid",
-    "Adjust date range"
+  "message": "Budget is below the seller's minimum for this product",
+  "errors": [
+    {
+      "code": "BUDGET_TOO_LOW",
+      "message": "Budget is below the seller's minimum for this product",
+      "recovery": "correctable",
+      "field": "budget.total",
+      "suggestion": "Increase budget to at least 500 USD",
+      "details": {
+        "minimum_budget": 500,
+        "currency": "USD"
+      }
+    }
   ]
 }
 ```
 
-### Error Response Fields
+### Error Object Fields
 
-| Field | Description |
-|-------|-------------|
-| `status` | Always `"failed"` for errors |
-| `message` | Human-readable error description |
-| `error_code` | Machine-readable error code |
-| `suggestions` | Optional recovery suggestions |
-| `field` | Field path for validation errors |
-| `retry_after` | Seconds to wait before retry (rate limits) |
-| `details` | Additional context-specific information |
-| `recovery` | Agent recovery classification: `transient` (retry after delay), `correctable` (fix the request and resend), `terminal` (requires human action) |
+These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `code` | string | Yes | Machine-readable error code from the [standard vocabulary](#standard-error-codes) or a seller-specific code |
+| `message` | string | Yes | Human-readable error description |
+| `recovery` | string | No | Agent recovery classification: `transient`, `correctable`, or `terminal` |
+| `retry_after` | number | No | Seconds to wait before retrying (transient errors) |
+| `field` | string | No | Field path that caused the error (e.g., `packages[0].targeting`) |
+| `suggestion` | string | No | Suggested fix for the error |
+| `details` | object | No | Additional context-specific information |
 
 ## Standard Error Codes
 
-### Authentication Errors
+AdCP defines 20 standard error codes in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
 
-| Code | Description | Resolution |
-|------|-------------|------------|
-| `INVALID_CREDENTIALS` | Invalid or malformed authentication credentials | Verify API key is correct and active |
-| `TOKEN_EXPIRED` | Authentication token has expired | Refresh OAuth token or re-authenticate |
-| `INSUFFICIENT_PERMISSIONS` | Account lacks required permissions | Contact administrator to upgrade permissions |
-
-### Validation Errors
-
-| Code | Description | Resolution |
-|------|-------------|------------|
-| `MISSING_REQUIRED_FIELD` | Required parameter is missing | Include all required fields |
-| `INVALID_FIELD_VALUE` | Field value doesn't meet requirements | Provide valid values per specification |
-| `INVALID_FIELD_FORMAT` | Field format is incorrect | Use correct format as specified |
-
-### Resource Errors
-
-| Code | Description | Resolution |
-|------|-------------|------------|
-| `RESOURCE_NOT_FOUND` | Requested resource doesn't exist | Verify ID is correct and current |
-| `PRODUCT_NOT_FOUND` | Product ID doesn't exist | Use `get_products` to find valid IDs |
-| `CREATIVE_NOT_FOUND` | Creative ID doesn't exist | Use `list_creatives` to find valid IDs |
-
-### Operation Errors
+### Authentication and Access
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `INSUFFICIENT_INVENTORY` | correctable | Not enough inventory for request | Expand targeting or reduce impressions |
-| `BUDGET_EXCEEDED` | correctable | Request exceeds budget limits | Reduce budget or request limit increase |
-| `BUDGET_TOO_LOW` | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
-| `INVALID_TARGETING` | correctable | Targeting criteria is invalid | Adjust targeting parameters |
-| `CREATIVE_REJECTED` | correctable | Creative failed policy validation | Revise creative per seller's `advertising_policies` |
-| `PRODUCT_UNAVAILABLE` | correctable | Product sold out or no longer available | Choose a different product |
-| `PROPOSAL_EXPIRED` | correctable | Referenced proposal has expired | Run `get_products` to get a fresh proposal |
-| `UNSUPPORTED_FEATURE` | correctable | Requested feature not supported | Check `get_adcp_capabilities` and remove unsupported fields |
-| `AUDIENCE_TOO_SMALL` | correctable | Audience below minimum size | Broaden targeting or upload more audience members |
-
-### Account Errors
-
-| Code | Recovery | Description | Resolution |
-|------|----------|-------------|------------|
+| `AUTH_REQUIRED` | correctable | Authentication is required or credentials are invalid | Provide credentials via auth header |
 | `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
+| `ACCOUNT_SETUP_REQUIRED` | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
+| `ACCOUNT_AMBIGUOUS` | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
 
-### Rate Limiting Errors
+### Request Validation
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `RATE_LIMITED` | transient | Too many requests | Wait for `retry_after` seconds |
+| `INVALID_REQUEST` | correctable | Request is malformed or violates schema constraints | Check request parameters and fix |
+| `UNSUPPORTED_FEATURE` | correctable | Requested feature not supported by this seller | Check `get_adcp_capabilities` and remove unsupported fields |
+| `POLICY_VIOLATION` | correctable | Request violates content or advertising policies | Review policy requirements in the error details |
+| `COMPLIANCE_UNSATISFIED` | correctable | Required disclosure cannot be satisfied by the target format | Choose a format that supports the required disclosure capabilities |
 
-### System Errors
+### Inventory and Products
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `INTERNAL_SERVER_ERROR` | transient | Unexpected server error | Retry request, contact support if persistent |
-| `SERVICE_UNAVAILABLE` | transient | External service temporarily down | Wait and retry |
-| `TIMEOUT` | transient | Request exceeded processing time | Retry with smaller request or contact support |
+| `PRODUCT_NOT_FOUND` | correctable | Referenced product IDs are unknown or expired | Remove invalid IDs, or re-discover with `get_products` |
+| `PRODUCT_UNAVAILABLE` | correctable | Product is sold out or no longer available | Choose a different product |
+| `PROPOSAL_EXPIRED` | correctable | Referenced proposal has passed its `expires_at` | Run `get_products` to get a fresh proposal |
+| `AUDIENCE_TOO_SMALL` | correctable | Audience segment below minimum size | Broaden targeting or upload more audience members |
+
+### Budget and Creative
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `BUDGET_TOO_LOW` | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
+| `BUDGET_EXHAUSTED` | terminal | Account or campaign budget fully spent | Buyer must add funds or increase budget cap |
+| `CREATIVE_REJECTED` | correctable | Creative failed content policy review | Revise per seller's `advertising_policies` |
+
+### System
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `RATE_LIMITED` | transient | Request rate exceeded | Wait for `retry_after` seconds, then retry |
+| `SERVICE_UNAVAILABLE` | transient | Seller service temporarily unavailable | Retry with exponential backoff |
+| `CONFLICT` | transient | Concurrent modification detected | Re-read the resource and retry with current state |
+
+## Recovery Classification
+
+Use the `recovery` field to determine how to handle errors:
+
+| Recovery | Meaning | Action |
+|----------|---------|--------|
+| `transient` | Temporary failure (rate limit, service unavailable, conflict) | Retry after `retry_after` or with exponential backoff |
+| `correctable` | Request can be fixed and resent (invalid field, budget too low, creative rejected) | Modify the request and retry |
+| `terminal` | Requires human action (account suspended, payment required) | Escalate to a human operator |
+
+For unknown `recovery` values (forward compatibility), treat as `terminal`.
+
+```javascript
+function isRetryable(error) {
+  // Use recovery field when available
+  if (error.recovery) {
+    return error.recovery === 'transient';
+  }
+
+  // Network errors are retryable
+  if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+    return true;
+  }
+
+  // Fall back to error code matching
+  return ['RATE_LIMITED', 'SERVICE_UNAVAILABLE', 'CONFLICT'].includes(error.code);
+}
+```
 
 ## Retry Logic
 
@@ -158,7 +190,7 @@ async function retryWithBackoff(fn, options = {}) {
         throw error;
       }
 
-      // Check for retry_after header/field
+      // Use retry_after when available, otherwise exponential backoff
       const retryAfter = error.retry_after ||
         Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
 
@@ -170,39 +202,12 @@ async function retryWithBackoff(fn, options = {}) {
 }
 ```
 
-### Error Categorization
-
-Use the `recovery` field to determine how to handle errors:
-
-| Recovery | Meaning | Action |
-|----------|---------|--------|
-| `transient` | Temporary failure (rate limit, service unavailable, timeout) | Retry after `retry_after` or with exponential backoff |
-| `correctable` | Request can be fixed and resent (invalid field, budget too low, creative rejected) | Modify the request and retry |
-| `terminal` | Requires human action (account suspended, payment required) | Escalate to a human operator |
-
-```javascript
-function isRetryable(error) {
-  // Use recovery field when available
-  if (error.recovery) {
-    return error.recovery === 'transient';
-  }
-
-  // Network errors are retryable
-  if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-    return true;
-  }
-
-  // Fall back to error code matching
-  return ['RATE_LIMITED', 'SERVICE_UNAVAILABLE'].includes(error.error_code);
-}
-```
-
 ### Rate Limit Handling
 
 ```javascript
 async function handleRateLimit(error, retryFn) {
   if (error.recovery !== 'transient' &&
-      error.error_code !== 'RATE_LIMITED') {
+      error.code !== 'RATE_LIMITED') {
     throw error;
   }
 
@@ -223,7 +228,6 @@ async function handleAdcpError(error) {
   // Use recovery classification when available
   switch (error.recovery) {
     case 'transient':
-      // Retry after delay
       const delay = error.retry_after
         ? error.retry_after * 1000
         : 5000;
@@ -231,24 +235,27 @@ async function handleAdcpError(error) {
       return retry();
 
     case 'correctable':
-      // Show suggestions so the request can be fixed
-      return showSuggestions(error.suggestions);
+      // Surface suggestion so the request can be fixed
+      if (error.suggestion) {
+        console.log('Suggestion:', error.suggestion);
+      }
+      if (error.field) {
+        console.log('Problem field:', error.field);
+      }
+      throw error;
 
     case 'terminal':
-      // Requires human intervention
       console.error('Terminal error:', error.message);
       throw error;
   }
 
-  // Fall back to error_code matching
-  switch (error.error_code) {
-    case 'INVALID_CREDENTIALS':
-    case 'TOKEN_EXPIRED':
+  // Fall back to error code matching
+  switch (error.code) {
+    case 'AUTH_REQUIRED':
       await refreshCredentials();
       return retry();
 
-    case 'MISSING_REQUIRED_FIELD':
-    case 'INVALID_FIELD_VALUE':
+    case 'INVALID_REQUEST':
       console.error('Validation error:', error);
       throw error;
 
@@ -265,17 +272,17 @@ Convert technical errors to user-friendly messages:
 
 ```javascript
 const USER_MESSAGES = {
-  'INSUFFICIENT_INVENTORY': 'There isn\'t enough inventory for your targeting. Try expanding your audience or dates.',
   'RATE_LIMITED': 'Too many requests. Please wait a moment and try again.',
-  'INSUFFICIENT_PERMISSIONS': 'Your account doesn\'t have permission for this. Contact your administrator.',
-  'RESOURCE_NOT_FOUND': 'This item no longer exists or has been removed.',
   'BUDGET_TOO_LOW': 'This is below the seller\'s minimum budget. Increase your budget.',
+  'PRODUCT_NOT_FOUND': 'One or more products could not be found. Try searching again.',
   'ACCOUNT_SUSPENDED': 'Your account has been suspended. Contact the seller to resolve.',
-  'SERVICE_UNAVAILABLE': 'The service is temporarily unavailable. Please try again in a few minutes.'
+  'SERVICE_UNAVAILABLE': 'The service is temporarily unavailable. Please try again in a few minutes.',
+  'CREATIVE_REJECTED': 'Your creative did not pass policy review. Check the suggestion for details.',
+  'AUDIENCE_TOO_SMALL': 'Your target audience is too small. Try broadening your targeting.'
 };
 
-function getUserMessage(errorCode, fallbackMessage) {
-  return USER_MESSAGES[errorCode] || fallbackMessage || 'An unexpected error occurred. Please try again.';
+function getUserMessage(code, fallbackMessage) {
+  return USER_MESSAGES[code] || fallbackMessage || 'An unexpected error occurred. Please try again.';
 }
 ```
 
@@ -286,11 +293,11 @@ Log errors with context for debugging:
 ```javascript
 function logError(error, context = {}) {
   console.error('AdCP Error:', {
-    error_code: error.error_code,
+    code: error.code,
+    recovery: error.recovery,
     message: error.message,
+    field: error.field,
     timestamp: new Date().toISOString(),
-    context_id: error.context_id,
-    task_id: error.task_id,
     ...context,
     // Don't log sensitive data
     // NO: credentials, briefs, PII
@@ -365,7 +372,7 @@ async function callWithContextRecovery(request) {
   try {
     return await adcp.call(request);
   } catch (error) {
-    if (error.error_code === 'CONTEXT_EXPIRED' ||
+    if (error.code === 'INVALID_REQUEST' &&
         error.message?.includes('context not found')) {
       // Clear stale context and retry
       delete request.context_id;
@@ -387,10 +394,10 @@ Some operations may partially succeed:
   "media_buy_id": "mb_123",
   "errors": [
     {
-      "code": "CREATIVE_SIZE_MISMATCH",
-      "message": "Creative dimensions don't match all placements",
-      "field": "creatives[0]",
-      "suggestion": "Upload additional sizes for full coverage"
+      "code": "COMPLIANCE_UNSATISFIED",
+      "message": "Required disclosure position not supported by one placement",
+      "field": "packages[0].placements[2]",
+      "suggestion": "Choose a format that supports the required disclosure positions"
     }
   ]
 }
@@ -414,17 +421,18 @@ function handlePartialSuccess(response) {
 
 ## Best Practices
 
-1. **Categorize errors** - Different errors need different handling
-2. **Implement retries** - Use exponential backoff for transient errors
-3. **Respect rate limits** - Honor `retry_after` values
-4. **Log with context** - Include relevant IDs for debugging
-5. **User-friendly messages** - Convert technical errors for users
-6. **Fallback strategies** - Always have a backup (e.g., polling for webhooks)
-7. **Don't retry permanent errors** - Validation errors need code fixes
-8. **Handle partial success** - Process warnings in successful responses
+1. **Check `recovery` first** — it's the most reliable signal for how to handle an error
+2. **Implement retries** — use exponential backoff for transient errors
+3. **Respect rate limits** — honor `retry_after` values
+4. **Handle unknown codes gracefully** — fall back to the `recovery` classification
+5. **Log with context** — include `code`, `recovery`, and `field` for debugging
+6. **Fallback strategies** — always have a backup (e.g., polling for webhooks)
+7. **Don't retry terminal errors** — escalate to a human operator
+8. **Handle partial success** — process warnings in successful responses
 
 ## Next Steps
 
+- **Transport Bindings**: See [Transport Errors](/docs/building/implementation/transport-errors) for how errors travel over MCP and A2A
 - **Task Lifecycle**: See [Task Lifecycle](/docs/building/implementation/task-lifecycle) for status handling
 - **Webhooks**: See [Webhooks](/docs/building/implementation/webhooks) for webhook error handling
 - **Security**: See [Security](/docs/building/implementation/security) for authentication errors

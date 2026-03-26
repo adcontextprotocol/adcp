@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <title>Admin - Industry Feeds - AdCP Registry</title>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
@@ -1065,7 +1065,7 @@
                   <div class="discovered-feed-title">${escapeHtml(feed.title)}</div>
                   <div class="discovered-feed-url">${escapeHtml(feed.url)}</div>
                 </div>
-                <button type="button" class="btn btn-small btn-primary" onclick="selectDiscoveredFeed('${escapeHtml(feed.url).replace(/'/g, "\\'")}', '${escapeHtml(feed.title).replace(/'/g, "\\'")}')">
+                <button type="button" class="btn btn-small btn-primary select-feed-btn" data-feed-url="${escapeHtml(feed.url)}" data-feed-title="${escapeHtml(feed.title)}">
                   Use
                 </button>
               </div>
@@ -1073,6 +1073,11 @@
           });
 
           discoveredFeedsList.innerHTML = html;
+          discoveredFeedsList.querySelectorAll('.select-feed-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              selectDiscoveredFeed(btn.dataset.feedUrl, btn.dataset.feedTitle);
+            });
+          });
           discoveredFeeds.style.display = 'block';
         } else {
           statusMessage.className = 'status-message error';

@@ -652,13 +652,13 @@ components:
               - DE
               - FR
               - IT
-        verticals:
+        policy_categories:
           type: array
           items:
             type: string
           example:
-            - finance
-            - healthcare
+            - age_restricted
+            - pharmaceutical_advertising
         channels:
           type:
             - array
@@ -719,7 +719,7 @@ components:
         - enforcement
         - jurisdictions
         - region_aliases
-        - verticals
+        - policy_categories
         - channels
         - governance_domains
         - effective_date
@@ -776,13 +776,13 @@ components:
               - DE
               - FR
               - IT
-        verticals:
+        policy_categories:
           type: array
           items:
             type: string
           example:
-            - finance
-            - healthcare
+            - age_restricted
+            - pharmaceutical_advertising
         channels:
           type:
             - array
@@ -888,7 +888,7 @@ components:
         - enforcement
         - jurisdictions
         - region_aliases
-        - verticals
+        - policy_categories
         - channels
         - governance_domains
         - effective_date
@@ -1212,14 +1212,14 @@ paths:
           name: search
           in: query
         - schema:
-            type: string
-            example: "100"
+            type: integer
+            example: 100
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -1269,14 +1269,14 @@ paths:
           name: domain
           in: query
         - schema:
-            type: string
-            example: "20"
+            type: integer
+            example: 20
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -1351,14 +1351,14 @@ paths:
           name: domain
           in: query
         - schema:
-            type: string
-            example: "20"
+            type: integer
+            example: 20
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -1485,14 +1485,14 @@ paths:
           name: search
           in: query
         - schema:
-            type: string
-            example: "100"
+            type: integer
+            example: 100
           required: false
           name: limit
           in: query
         - schema:
-            type: string
-            example: "0"
+            type: integer
+            example: 0
           required: false
           name: offset
           in: query
@@ -2585,7 +2585,7 @@ paths:
     get:
       operationId: listPolicies
       summary: List policies
-      description: Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, vertical, and governance domain.
+      description: Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, policy category, and governance domain.
       tags:
         - Policy Registry
       parameters:
@@ -2623,9 +2623,9 @@ paths:
           in: query
         - schema:
             type: string
-            example: finance
+            example: age_restricted
           required: false
-          name: vertical
+          name: policy_category
           in: query
         - schema:
             type: string
@@ -2636,14 +2636,14 @@ paths:
           name: domain
           in: query
         - schema:
-            type: string
+            type: integer
             description: Results per page (default 20, max 1000)
           required: false
           description: Results per page (default 20, max 1000)
           name: limit
           in: query
         - schema:
-            type: string
+            type: integer
             description: Pagination offset (default 0)
           required: false
           description: Pagination offset (default 0)
@@ -2797,14 +2797,14 @@ paths:
           name: policy_id
           in: query
         - schema:
-            type: string
+            type: integer
             description: Results per page (max 100, default 20)
           required: false
           description: Results per page (max 100, default 20)
           name: limit
           in: query
         - schema:
-            type: string
+            type: integer
             description: Pagination offset (default 0)
           required: false
           description: Pagination offset (default 0)
@@ -2886,7 +2886,7 @@ paths:
                     type: array
                     items:
                       type: string
-                verticals:
+                policy_categories:
                   type: array
                   items:
                     type: string

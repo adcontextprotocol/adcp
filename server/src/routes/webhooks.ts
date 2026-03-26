@@ -15,6 +15,7 @@ import { ModelConfig } from '../config/models.js';
 import { verifyWebhookSignature as verifyZoomSignature } from '../integrations/zoom.js';
 import {
   handleRecordingCompleted,
+  handleTranscriptCompleted,
   handleMeetingStarted,
   handleMeetingEnded,
 } from '../services/meeting-service.js';
@@ -347,7 +348,8 @@ async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null>
   logger.debug({ emailId }, 'Fetching email body from Resend');
 
   try {
-    const response = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+    // CodeQL: emailId comes from Resend webhook payload, URL is always https://api.resend.com
+    const response = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, { // lgtm[js/request-forgery]
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
       },
@@ -1473,6 +1475,7 @@ export function createWebhooksRouter(): Router {
 
         // Handle URL validation challenge from Zoom
         // https://developers.zoom.us/docs/api/rest/webhook-reference/#validate-your-webhook-endpoint
+        // codeql[js/user-controlled-bypass] - Zoom URL validation challenge requires reading event type from webhook body
         if (body.event === 'endpoint.url_validation') {
           const plainToken = body.payload?.plainToken;
           if (!plainToken) {
@@ -1501,6 +1504,7 @@ export function createWebhooksRouter(): Router {
 
         // Verify webhook signature for real events
         const signature = req.headers['x-zm-signature'] as string;
+        // codeql[js/user-controlled-bypass] - webhook signature verification requires reading headers
         const timestamp = req.headers['x-zm-request-timestamp'] as string;
 
         if (!signature || !timestamp) {
@@ -1527,15 +1531,24 @@ export function createWebhooksRouter(): Router {
 
         // Handle different event types
         switch (body.event) {
-          case 'recording.completed':
+          case 'recording.completed': {
+            const recUuid = body.payload?.object?.uuid;
+            const recId = body.payload?.object?.id;
+            if (recUuid && typeof recUuid === 'string' && recUuid.length < 256) {
+              await handleRecordingCompleted(recUuid, recId?.toString());
+            } else if (recUuid) {
+              logger.warn({ meetingUuidType: typeof recUuid }, 'Invalid meetingUuid format');
+            }
+            break;
+          }
+
           case 'recording.transcript_completed': {
-            const meetingUuid = body.payload?.object?.uuid;
-            const meetingId = body.payload?.object?.id;
-            if (meetingUuid && typeof meetingUuid === 'string' && meetingUuid.length < 256) {
-              // Pass both UUID and numeric ID - we store the numeric ID in our DB
-              await handleRecordingCompleted(meetingUuid, meetingId?.toString());
-            } else if (meetingUuid) {
-              logger.warn({ meetingUuidType: typeof meetingUuid }, 'Invalid meetingUuid format');
+            const txUuid = body.payload?.object?.uuid;
+            const txId = body.payload?.object?.id;
+            if (txUuid && typeof txUuid === 'string' && txUuid.length < 256) {
+              await handleTranscriptCompleted(txUuid, txId?.toString());
+            } else if (txUuid) {
+              logger.warn({ meetingUuidType: typeof txUuid }, 'Invalid meetingUuid format');
             }
             break;
           }

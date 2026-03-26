@@ -4,7 +4,7 @@ import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
 import { createLogger } from '../logger.js';
-import { isWebUserAAOAdmin, isWebUserAAOCouncil } from '../addie/mcp/admin-tools.js';
+import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
@@ -205,8 +205,8 @@ export interface DevUserConfig {
   firstName: string;
   lastName: string;
   isAdmin: boolean;
-  isManage: boolean; // Has kitchen cabinet / manage tier access
   isMember: boolean; // Has an organization membership
+  organizationId?: string; // Override org assignment (defaults to org_dev_company_001)
   description: string;
 }
 
@@ -218,7 +218,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Admin',
     lastName: 'Tester',
     isAdmin: true,
-    isManage: true,
     isMember: true,
     description: 'Test admin with full access',
   },
@@ -229,9 +228,19 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Member',
     lastName: 'User',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Regular member with organization access',
+  },
+  // Personal account user (individual member with portrait and offerings)
+  personal: {
+    id: 'user_dev_personal_001',
+    email: 'personal@test.local',
+    firstName: 'Personal',
+    lastName: 'Account',
+    isAdmin: false,
+    isMember: true,
+    organizationId: 'org_dev_personal_001',
+    description: 'Individual member with personal account',
   },
   // Non-member user (no organization, just signed up)
   nonmember: {
@@ -240,20 +249,18 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Visitor',
     lastName: 'User',
     isAdmin: false,
-    isManage: false,
     isMember: false,
     description: 'User without any organization membership',
   },
-  // Committee leader (kitchen cabinet member — manage tier access, not platform admin)
+  // Committee leader (not a platform admin)
   leader: {
     id: 'user_dev_leader_001',
     email: 'leader@test.local',
     firstName: 'Committee',
     lastName: 'Leader',
     isAdmin: false,
-    isManage: true,
     isMember: true,
-    description: 'Kitchen cabinet member with manage-tier access',
+    description: 'Committee leader without admin access',
   },
   // Learner personas for certification testing (isolated user IDs prevent cross-contamination)
   learner1: {
@@ -262,7 +269,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Learner',
     lastName: 'One',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Certification test persona 1',
   },
@@ -272,7 +278,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Learner',
     lastName: 'Two',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Certification test persona 2',
   },
@@ -282,7 +287,6 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     firstName: 'Learner',
     lastName: 'Three',
     isAdmin: false,
-    isManage: false,
     isMember: true,
     description: 'Certification test persona 3',
   },
@@ -479,6 +483,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   logger.debug({ path: req.path, hasCookie: !!sessionCookie, isHtmlRequest }, 'Authentication check');
 
+  // codeql[js/user-controlled-bypass] - auth check must read session cookie to verify identity
   if (!sessionCookie) {
     logger.info({ path: req.path, isHtmlRequest }, 'No wos-session cookie present — user not logged in');
     if (isHtmlRequest) {
@@ -508,14 +513,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         setSessionCookie(res, cached.newSealedSession);
       }
 
-      // Check platform ban for cached session user
-      const cachedUserBan = await checkPlatformBan(
-        `user:${cached.user.id}`,
-        () => bansDb.checkPlatformBan(cached.user.id)
-      );
-      if (cachedUserBan) {
-        logger.info({ userId: cached.user.id, banId: cachedUserBan.id }, 'User request blocked by platform ban');
-        return sendBanResponse(res, cachedUserBan);
+      // Check platform ban for cached session user (fail-open: DB timeout should not log users out)
+      try {
+        const cachedUserBan = await checkPlatformBan(
+          `user:${cached.user.id}`,
+          () => bansDb.checkPlatformBan(cached.user.id)
+        );
+        if (cachedUserBan) {
+          logger.info({ userId: cached.user.id, banId: cachedUserBan.id }, 'User request blocked by platform ban');
+          return sendBanResponse(res, cachedUserBan);
+        }
+      } catch (banError) {
+        logger.warn({ err: banError, userId: cached.user.id, path: req.path }, 'Ban check failed — allowing request through');
       }
 
       return next();
@@ -537,7 +546,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       const reason = !result.authenticated ? 'not_authenticated'
         : !('user' in result) ? 'no_user_field'
         : 'user_null';
-      logger.info({ path: req.path, reason }, 'Session JWT expired, attempting refresh');
+      logger.debug({ path: req.path, reason }, 'Session JWT expired, attempting refresh');
 
       let refreshFailed = false;
 
@@ -547,7 +556,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         });
 
         if (refreshResult.authenticated && refreshResult.sealedSession) {
-          logger.info({ path: req.path }, 'Session refresh succeeded');
+          logger.debug({ path: req.path }, 'Session refresh succeeded');
           newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
 
@@ -572,10 +581,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         refreshFailed = true;
       }
 
-      // If refresh failed (likely consumed by another machine), check DB for a shared refresh
+      // If refresh failed (likely consumed by another machine), check DB for a shared refresh.
+      // Retry once after a short delay to handle the race where the other machine
+      // hasn't written its refreshed session to the DB yet.
       if (refreshFailed) {
         try {
-          const sharedSession = await getRefreshedSession(cacheKey);
+          let sharedSession = await getRefreshedSession(cacheKey);
+          if (!sharedSession) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            sharedSession = await getRefreshedSession(cacheKey);
+          }
           if (sharedSession) {
             logger.info({ path: req.path }, 'Found shared refreshed session from another machine');
 
@@ -673,14 +688,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.user = user;
     req.accessToken = result.accessToken;
 
-    // Check platform ban for cookie-authenticated user
-    const userBan = await checkPlatformBan(
-      `user:${user.id}`,
-      () => bansDb.checkPlatformBan(user.id)
-    );
-    if (userBan) {
-      logger.info({ userId: user.id, banId: userBan.id }, 'User request blocked by platform ban');
-      return sendBanResponse(res, userBan);
+    // Check platform ban for cookie-authenticated user (fail-open: DB timeout should not log users out)
+    try {
+      const userBan = await checkPlatformBan(
+        `user:${user.id}`,
+        () => bansDb.checkPlatformBan(user.id)
+      );
+      if (userBan) {
+        logger.info({ userId: user.id, banId: userBan.id }, 'User request blocked by platform ban');
+        return sendBanResponse(res, userBan);
+      }
+    } catch (banError) {
+      logger.warn({ err: banError, userId: user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
     next();
@@ -1002,124 +1021,6 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   next();
 }
 
-/**
- * Middleware that requires kitchen cabinet (manage tier) or admin access.
- * Must be used after requireAuth.
- * Kitchen cabinet members can access /manage pages; admins pass automatically.
- */
-export async function requireManage(req: Request, res: Response, next: NextFunction) {
-  const isHtmlRequest = req.accepts('html') && !req.originalUrl.startsWith('/api/');
-
-  // Static admin API key has manage access even in dev mode.
-  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
-    logger.debug({ path: req.path, method: req.method }, 'Manage access via static admin API key');
-    return next();
-  }
-
-  // Dev mode: check isManage or isAdmin flag
-  if (DEV_MODE_ENABLED) {
-    const devUser = getDevUser(req);
-    if (!devUser) {
-      if (isHtmlRequest) {
-        return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
-      }
-      return res.status(401).json({ error: 'Authentication required', login_url: '/auth/login' });
-    }
-
-    if (!req.user) {
-      const mockUser = createDevUser(req);
-      if (mockUser) {
-        req.user = mockUser;
-        req.accessToken = 'dev-mode-token';
-      }
-    }
-
-    if (!devUser.isManage && !devUser.isAdmin) {
-      if (isHtmlRequest) {
-        return res.status(403).send(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Access Denied</title>
-            <link rel="stylesheet" href="/design-system.css">
-            <style>
-              body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: var(--color-bg-page, #f5f5f5); }
-              .container { background: var(--color-bg-card, white); padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
-              h1 { color: var(--color-error-600, #c33); margin-bottom: 10px; }
-              p { color: var(--color-text-secondary, #666); margin-bottom: 20px; }
-              a { color: var(--color-brand, #667eea); text-decoration: none; }
-              .dev-hint { margin-top: 20px; padding: 15px; background: var(--color-bg-subtle, #f9fafb); border-radius: 6px; font-size: 13px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <h1>Access Denied</h1>
-              <p>This resource is only accessible to kitchen cabinet members.</p>
-              <p>Current user: <strong>${devUser.email}</strong></p>
-              <div class="dev-hint">
-                <strong>Dev Mode Tip:</strong><br>
-                <a href="/auth/logout">Log out</a> and log in as leader or admin
-              </div>
-              <p><a href="/">← Back to Home</a></p>
-            </div>
-          </body>
-          </html>
-        `);
-      }
-      return res.status(403).json({
-        error: 'Manage access required',
-        message: 'This resource is only accessible to kitchen cabinet members',
-        current_user: devUser.email,
-      });
-    }
-    return next();
-  }
-
-  if (!req.user) {
-    if (isHtmlRequest) {
-      return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
-    }
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const isCouncil = await isWebUserAAOCouncil(req.user.id);
-  const isAdmin = await isWebUserAAOAdmin(req.user.id);
-
-  if (!isCouncil && !isAdmin) {
-    logger.warn({ userId: req.user.id, email: req.user.email }, 'User attempted to access manage endpoint without access');
-    if (isHtmlRequest) {
-      return res.status(403).send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Access Denied</title>
-          <style>
-            body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
-            .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
-            h1 { color: #c33; margin-bottom: 10px; }
-            p { color: #666; margin-bottom: 20px; }
-            a { color: #667eea; text-decoration: none; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>Access Denied</h1>
-            <p>This resource is only accessible to kitchen cabinet members.</p>
-            <a href="/dashboard">← Back to Dashboard</a>
-          </div>
-        </body>
-        </html>
-      `);
-    }
-    return res.status(403).json({
-      error: 'Manage access required',
-      message: 'This resource is only accessible to kitchen cabinet members',
-    });
-  }
-
-  logger.debug({ userId: req.user.id, email: req.user.email }, 'Manage access granted');
-  next();
-}
 
 /**
  * Factory function to create middleware that requires working group leader access
@@ -1183,6 +1084,69 @@ export function createRequireWorkingGroupLeader(
     (req as Request & { workingGroup: typeof workingGroup }).workingGroup = workingGroup;
 
     logger.debug({ userId: req.user.id, slug }, 'Working group leader access granted');
+    next();
+  };
+}
+
+/**
+ * Factory function to create middleware that requires working group membership (member or leader)
+ * Must be used after requireAuth
+ * Checks if user is a member or leader of the specified working group, OR a site admin
+ */
+export function createRequireWorkingGroupMember(
+  workingGroupDb: {
+    getWorkingGroupBySlug: (slug: string) => Promise<{ id: string; leaders?: Array<{ user_id: string }> } | null>;
+    isLeader: (workingGroupId: string, userId: string) => Promise<boolean>;
+    isMember: (workingGroupId: string, userId: string) => Promise<boolean>;
+  }
+) {
+  return async function requireWorkingGroupMember(req: Request, res: Response, next: NextFunction) {
+    if (!req.user) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please log in to access this resource',
+      });
+    }
+
+    const slug = req.params.slug;
+    if (!slug) {
+      return res.status(400).json({
+        error: 'Missing working group slug',
+        message: 'Working group slug is required',
+      });
+    }
+
+    // Check if user is a site admin first
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+    const isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+
+    if (isAdmin) {
+      logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
+      return next();
+    }
+
+    const workingGroup = await workingGroupDb.getWorkingGroupBySlug(slug);
+    if (!workingGroup) {
+      return res.status(404).json({
+        error: 'Working group not found',
+        message: `No working group found with slug '${slug}'`,
+      });
+    }
+
+    const isLeader = await workingGroupDb.isLeader(workingGroup.id, req.user.id);
+    const isMember = isLeader || await workingGroupDb.isMember(workingGroup.id, req.user.id);
+
+    if (!isMember) {
+      logger.warn({ userId: req.user.id, slug }, 'Non-member user attempted to access working group member endpoint');
+      return res.status(403).json({
+        error: 'Working group membership required',
+        message: 'This resource is only accessible to members of this working group',
+      });
+    }
+
+    (req as Request & { workingGroup: typeof workingGroup }).workingGroup = workingGroup;
+
+    logger.debug({ userId: req.user.id, slug }, 'Working group member access granted');
     next();
   };
 }

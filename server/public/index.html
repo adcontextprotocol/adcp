@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgenticAdvertising.org — Making advertising work better for everyone</title>
-<meta name="description" content="AgenticAdvertising.org is the member organization shaping how AI and advertising work together. Open standards, human governance, and education for the future of advertising.">
-<meta property="og:title" content="AgenticAdvertising.org">
-<meta property="og:description" content="The member organization shaping how AI and advertising work together — for consumers, for businesses, and for the people who create the content we all depend on.">
+<title>AgenticAdvertising.org — The open standard for AI-powered advertising</title>
+<meta name="description" content="AgenticAdvertising.org publishes AdCP, the open protocol for AI-powered advertising. We certify the professionals who use it and govern how it evolves. For ad tech companies, agencies, publishers, brand marketers, and practitioners.">
+<meta property="og:title" content="AgenticAdvertising.org — The open standard for AI-powered advertising">
+<meta property="og:description" content="AgenticAdvertising.org publishes AdCP — the protocol that lets AI agents discover, plan, buy, sell, and measure media across every channel. 23+ founding members including Yahoo, PubMatic, Scope3, and Samba TV.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://agenticadvertising.org">
 <meta property="og:image" content="https://agenticadvertising.org/img/aao-social-card.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/AAo.svg" type="image/svg+xml">
+<link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/design-system.css">
 <link rel="stylesheet" href="/layout.css">
 <script type="application/ld+json">
@@ -30,12 +30,13 @@
 }
 </script>
 </head>
-<body data-nav-theme="light">
+<body data-nav-theme="dark">
 
 <!-- Shared navigation -->
 <div id="adcp-nav">
   <noscript>
     <nav>
+      <a href="/stories">Stories</a>
       <a href="/certification">Academy</a>
       <a href="/chat">Ask Addie</a>
       <a href="/registry">Registry</a>
@@ -50,10 +51,46 @@
 </div>
 <script src="/nav.js"></script>
 
-<!-- Panel 1: The world we're in -->
-<section class="homepage-hero">
-  <h1>Making advertising work better for everyone</h1>
-  <p class="subtitle">AgenticAdvertising.org is the member organization shaping how AI and advertising work together — for consumers, for businesses, and for the people who create the content we all depend on.</p>
+<!-- Hero: Who we are — full-screen dark pane -->
+<section class="homepage-hero homepage-hero--dark">
+  <h1>The open standard for AI-powered advertising</h1>
+  <p class="subtitle">AgenticAdvertising.org publishes <a href="https://docs.adcontextprotocol.org">AdCP</a> &mdash; the protocol that lets AI agents discover, plan, buy, sell, and measure media across every channel. We certify the professionals who use it and govern how it evolves.</p>
+  <p class="hero-audience">For ad tech companies, agencies, publishers, brand marketers, and practitioners.</p>
+  <div class="hero-actions">
+    <a href="/membership" class="hero-cta-primary">Become a Member &rarr;</a>
+    <a href="https://docs.adcontextprotocol.org" class="hero-cta-secondary">Read the AdCP Docs &rarr;</a>
+    <a href="/chat" class="hero-cta-secondary">Ask Addie &rarr;</a>
+  </div>
+  <p class="hero-free-note">Free to sign up. Talk to Addie and start your first certification module at no cost.</p>
+  <div class="hero-logos">
+    <p class="hero-logos-label"><span id="member-count">23+</span> founding members including</p>
+    <div class="logo-carousel" id="logo-carousel" aria-label="Founding member logos">
+      <div class="logo-carousel-track" id="member-logos">
+        <span class="logo-placeholder">Yahoo</span>
+        <span class="logo-placeholder">PubMatic</span>
+        <span class="logo-placeholder">Scope3</span>
+        <span class="logo-placeholder">Samba TV</span>
+        <span class="logo-placeholder">LG Ads</span>
+        <span class="logo-placeholder">Kargo</span>
+        <span class="logo-placeholder">Wunderkind</span>
+        <span class="logo-placeholder">Sightly</span>
+        <!-- duplicate for seamless loop -->
+        <span class="logo-placeholder">Yahoo</span>
+        <span class="logo-placeholder">PubMatic</span>
+        <span class="logo-placeholder">Scope3</span>
+        <span class="logo-placeholder">Samba TV</span>
+        <span class="logo-placeholder">LG Ads</span>
+        <span class="logo-placeholder">Kargo</span>
+        <span class="logo-placeholder">Wunderkind</span>
+        <span class="logo-placeholder">Sightly</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Story: Why advertising needs agents -->
+<section class="story-intro">
+  <h2 class="story-headline">Why advertising needs agents</h2>
 </section>
 
 <section>
@@ -82,6 +119,23 @@
   </div>
 </section>
 
+<!-- Proof beat -->
+<section class="proof-beat">
+  <div class="panel panel-wide">
+    <div class="panel-text">
+      <p class="kicker">It's already happening</p>
+    </div>
+    <div class="panel-text">
+      <p class="drop">On October 16, 2025, the first-ever agent-to-agent media buy was executed &mdash; real money, real inventory from LG Ads, real AI agents handling creative, targeting, and approval with human oversight.</p>
+      <blockquote class="proof-quote">
+        <p>&ldquo;It felt like you were watching the first banner ad being served.&rdquo;</p>
+        <cite>&mdash; Adam Broitman, Partner, McKinsey &amp; Company</cite>
+      </blockquote>
+      <p>Since then, <span class="member-count">23+</span> companies have joined &mdash; from Yahoo and PubMatic to Scope3 and Samba TV.</p>
+    </div>
+  </div>
+</section>
+
 <!-- Panel 3: The stakes -->
 <section>
   <div class="panel panel-wide">
@@ -106,7 +160,7 @@
     <div class="panel-text">
       <p class="drop">That's what we're building.</p>
       <p>AgenticAdvertising.org brings together the people and companies shaping how AI and advertising work together. Publishers who want fair value for their content. Brands who want their identity respected at machine speed. Agencies finding better outcomes for their clients. Data providers who believe transparency makes markets work. Builders creating the tools. And the people just entering the field &mdash; learning the language of a profession being reinvented underneath them.</p>
-      <p>We publish <a href="https://docs.adcontextprotocol.org" style="color: var(--color-brand); text-decoration: none; font-weight: var(--font-semibold);">AdCP</a>, the open protocol that gives agents a shared language across every advertising platform. We govern through <span class="accent">Embedded Human Judgment</span> &mdash; the principle that humans stay in the loop on decisions with real consequences. We educate through a certification program taught by Addie, our AI, because the best way to build trust in agentic systems is to make sure people understand them deeply.</p>
+      <p>We publish <a href="https://docs.adcontextprotocol.org" class="accent">AdCP</a>, the open protocol that gives agents a shared language across every advertising platform. We govern through <span class="accent">Embedded Human Judgment</span> &mdash; the principle that humans stay in the loop on decisions with real consequences. We educate through a certification program taught by Addie, our AI, because the best way to build trust in agentic systems is to make sure people understand them deeply.</p>
     </div>
     <img src="/images/homepage/panel-04-community.png" alt="The AgenticAdvertising.org community: Alex, Sam, Jordan, Maya, Priya, Kai, Tomoko, Dayo, and Addie working together" class="panel-image story-panel-image">
   </div>
@@ -127,14 +181,6 @@
       </ul>
     </div>
     <img src="/images/homepage/panel-05-outcomes.png" alt="The same four people from Panel 1, now thriving: the consumer sees a relevant ad, the bakery has expanded, the newsroom is growing, and the Nairobi entrepreneur is shipping across the continent" class="panel-image story-panel-image">
-  </div>
-</section>
-
-<!-- Member logos -->
-<section class="member-logos-section">
-  <p class="member-logos-label">Our members</p>
-  <div class="member-logos-bar" id="member-logos">
-    <noscript><a href="/members">View our members &rarr;</a></noscript>
   </div>
 </section>
 
@@ -182,21 +228,44 @@
     return div.innerHTML;
   }
 
+  function safeUrl(url) {
+    try {
+      const parsed = new URL(url);
+      return ['https:', 'http:'].includes(parsed.protocol) ? url : '';
+    } catch { return ''; }
+  }
+
   document.addEventListener('DOMContentLoaded', async () => {
     try {
       const response = await fetch('/api/members/carousel');
       if (!response.ok) throw new Error('Failed to load members');
 
       const data = await response.json();
-      const members = (data.members || []).filter(m => m.resolved_brand?.logo_url);
+      const members = (data.members || []).filter(m => m.resolved_brand?.logo_url || m.resolved_brand?.logo_url_dark);
 
-      const memberLogosEl = document.getElementById('member-logos');
+      const track = document.getElementById('member-logos');
       if (members.length > 0) {
-        memberLogosEl.innerHTML = members.map(member => `
-          <a href="/members/${encodeURIComponent(member.slug)}" title="${escapeHtml(member.display_name)}">
-            <img src="${escapeHtml(member.resolved_brand.logo_url)}" alt="${escapeHtml(member.display_name)}">
-          </a>
-        `).join('');
+        // Build logo HTML once, then duplicate for seamless loop
+        const logosHtml = members.map(member => {
+          const logoUrl = safeUrl(member.resolved_brand.logo_url_dark || member.resolved_brand.logo_url);
+          const name = escapeHtml(member.display_name);
+          const slug = encodeURIComponent(member.slug);
+          return `
+          <a href="/members/${slug}" title="${name}" class="logo-carousel-item">
+            <img src="${escapeHtml(logoUrl)}" alt="${name}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display=''">
+            <span class="logo-placeholder" style="display:none">${name}</span>
+          </a>`;
+        }).join('');
+        // Duplicate the set so the scroll loops seamlessly
+        track.innerHTML = logosHtml + logosHtml;
+
+        // Update all member count elements
+        if (data.members) {
+          document.querySelectorAll('#member-count, .member-count').forEach(el => {
+            el.textContent = data.members.length + '+';
+          });
+        }
       }
     } catch (error) {
       console.debug('Failed to load dynamic members, keeping static content:', error);

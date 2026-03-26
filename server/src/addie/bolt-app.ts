@@ -29,7 +29,7 @@ import type {
 import type { Router } from 'express';
 import { logger } from '../logger.js';
 import { captureEvent } from '../utils/posthog.js';
-import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { getPool } from '../db/client.js';
 import {
@@ -83,8 +83,8 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser } from './thread-utils.js';
-import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
+import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint } from './thread-utils.js';
+import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import {
   getToolsForSets,
@@ -95,9 +95,7 @@ import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
-import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
-import { BRAND_SANDBOX_TOOLS, createBrandSandboxToolHandlers } from './mcp/brand-sandbox-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
@@ -114,7 +112,9 @@ import {
 } from './services/community-articles.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import { getDigestByReviewMessage, approveDigest } from '../db/digest-db.js';
+import { getDigestByReviewMessage, approveDigest, updateDigestContent, revertToDraft } from '../db/digest-db.js';
+import { applyDigestEdit } from './services/digest-editor.js';
+import { renderDigestReview } from './templates/weekly-digest.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import * as personEvents from '../db/person-events-db.js';
 
@@ -318,6 +318,45 @@ async function checkAddieThreadParticipation(
     logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to check thread participation');
     return { participated: false, messages: [] };
   }
+}
+
+/** Delay (ms) before Addie responds in channel threads when not explicitly mentioned.
+ *  Gives humans time to reply first. After the delay, re-checks the thread
+ *  and skips if a human has already responded. */
+const THREAD_RESPONSE_DELAY_MS = 45_000; // 45 seconds
+
+/**
+ * Wait before responding in a thread, then re-check if a human has already replied.
+ * Returns true if Addie should still respond, false if a human got there first.
+ */
+async function shouldRespondAfterDelay(
+  channelId: string,
+  threadTs: string,
+  triggerMessageTs: string,
+  botUserId: string,
+): Promise<boolean> {
+  await new Promise(resolve => setTimeout(resolve, THREAD_RESPONSE_DELAY_MS));
+
+  try {
+    const freshMessages = await getThreadReplies(channelId, threadTs);
+    // Check if any human message arrived AFTER the triggering message.
+    // Slack timestamps are "epoch.sequence" strings — string comparison is chronologically correct.
+    const hasNewerHumanReply = freshMessages.some(
+      msg => msg.user
+        && msg.user !== botUserId
+        && msg.ts > triggerMessageTs
+    );
+    return !hasNewerHumanReply;
+  } catch (error) {
+    logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to re-check thread after delay');
+    // On error, respond anyway to avoid silently dropping messages
+    return true;
+  }
+}
+
+/** Working group and council channels get Opus for protocol depth. */
+function isDepthChannel(channelName: string | undefined): boolean {
+  return channelName ? /^(wg-|council-)/.test(channelName) : false;
 }
 
 let boltApp: InstanceType<typeof App> | null = null;
@@ -692,6 +731,27 @@ async function buildRequestContext(
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
         certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
+        // If no module is in progress, inject a strong reminder to call start_certification_module.
+        // Without this, Addie can teach certification content in a guardrail-free zone where
+        // demonstrations aren't tracked and no progress is recorded.
+        if (inProgress.length === 0) {
+          const noModuleWarning = [
+            '⚠️ [CERTIFICATION — NO MODULE ACTIVE] ⚠️',
+            'No certification module is currently in progress for this learner.',
+            '',
+            'MANDATORY: If the learner wants to learn about AdCP, start any module, or asks about agentic advertising in the context of certification:',
+            '1. Call start_certification_module with the appropriate module_id IMMEDIATELY',
+            '2. Do NOT teach, explain, demo, or discuss module content before calling it',
+            '3. Do NOT say "the module is active" or "we are already in the module" — that is FALSE unless you have called start_certification_module in THIS conversation and received a success response',
+            '4. Do NOT call get_products, list_creative_formats, get_signals, or any AdCP demo tool for teaching purposes before starting a module',
+            '',
+            'The ONLY pre-module conversation allowed is helping the learner choose WHICH module to start.',
+            'Once they indicate any module (or say "start certification" / "start A1" / "I want to learn"), call the tool FIRST.',
+          ].join('\n');
+          certContextText = certContextText
+            ? `${noModuleWarning}\n\n${certContextText}`
+            : noModuleWarning;
+        }
       } catch (error) {
         logger.warn({ error }, 'Addie Bolt: Failed to get certification progress for context');
       }
@@ -791,27 +851,11 @@ async function createUserScopedTools(
     logger.debug('Addie Bolt: Meeting tools enabled for this user');
   }
 
-  // Add Moltbook tools (for all users - Addie's social network presence)
-  if (process.env.MOLTBOOK_API_KEY) {
-    const moltbookHandlers = createMoltbookToolHandlers();
-    allTools.push(...MOLTBOOK_TOOLS);
-    for (const [name, handler] of Object.entries(moltbookHandlers)) {
-      allHandlers.set(name, handler);
-    }
-    logger.debug('Addie Bolt: Moltbook tools enabled');
-  }
 
   // Add brand tools (brand research and registry management)
   const brandHandlers = createBrandToolHandlers();
   allTools.push(...BRAND_TOOLS);
   for (const [name, handler] of brandHandlers) {
-    allHandlers.set(name, handler);
-  }
-
-  // Add brand sandbox tools (certification exercises)
-  const brandSandboxHandlers = createBrandSandboxToolHandlers();
-  allTools.push(...BRAND_SANDBOX_TOOLS);
-  for (const [name, handler] of brandSandboxHandlers) {
     allHandlers.set(name, handler);
   }
 
@@ -956,6 +1000,7 @@ async function selectRoutedToolsForSlackResponse(
   isAAOAdmin: boolean;
   unavailableHint: string;
   requiresPrecision: boolean;
+  requiresDepth: boolean;
 }> {
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
     memberContext,
@@ -977,6 +1022,7 @@ async function selectRoutedToolsForSlackResponse(
       isAAOAdmin: userIsAdmin,
       unavailableHint,
       requiresPrecision: false,
+      requiresDepth: false,
     };
   }
 
@@ -997,7 +1043,9 @@ async function selectRoutedToolsForSlackResponse(
     ? [...plan.tool_sets]
     : isDirectInteraction ? ['knowledge'] : [];
 
-  if (options?.hasCertificationContext && !selectedSets.includes('certification')) {
+  // Certification sessions use ONLY certification tools — replace whatever the router selected
+  if (options?.hasCertificationContext) {
+    selectedSets.length = 0;
     selectedSets.push('certification');
   }
 
@@ -1018,6 +1066,7 @@ async function selectRoutedToolsForSlackResponse(
       filteredToolCount: filteredTools.tools.length,
       totalToolCount: userTools.tools.length,
       requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
+      requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     },
     'Addie Bolt: Routed conversational tools'
   );
@@ -1027,6 +1076,7 @@ async function selectRoutedToolsForSlackResponse(
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
+    requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
   };
 }
 
@@ -1154,8 +1204,21 @@ async function handleUserMessage({
   const channelId = event.channel;
   const threadService = getThreadService();
 
-  // Build external ID for Slack: channel_id:thread_ts
-  const externalId = `${channelId}:${threadTs}`;
+  // Use permanent thread from person_relationships when available so the
+  // addie_threads record stays unified across all DMs with this person.
+  let resolvedThreadTs = threadTs;
+  if (channelType === 'im') {
+    try {
+      const rel = await relationshipDb.getRelationshipBySlackId(userId);
+      if (rel?.slack_dm_channel_id === channelId && rel.slack_dm_thread_ts) {
+        resolvedThreadTs = rel.slack_dm_thread_ts;
+      }
+    } catch (error) {
+      logger.debug({ error, userId }, 'Addie Bolt: Could not look up permanent thread in assistant handler');
+    }
+  }
+
+  const externalId = `${channelId}:${resolvedThreadTs}`;
 
   // Sanitize input
   const inputValidation = sanitizeInput(messageText || '');
@@ -1295,12 +1358,18 @@ async function handleUserMessage({
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit; certification sessions get more conversation history
+  // Admin users get higher iteration limit; certification sessions get more iterations and conversation history
+  const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
+    ? CERTIFICATION_MAX_ITERATIONS
+    : undefined;
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
-    ...(routedTools.requiresPrecision && { modelOverride: ModelConfig.precision }),
+    ...(certIterations && { maxIterations: certIterations }),
+    ...((routedTools.requiresPrecision || routedTools.requiresDepth) && { modelOverride: ModelConfig.precision }),
     ...(hasCertificationContext && { maxMessages: 50 }),
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude using streaming
@@ -1314,42 +1383,54 @@ async function handleUserMessage({
     const teamId = context.teamId || slackThreadContext.team_id;
 
     // Check if streaming is available (requires teamId and userId)
-    const canStream = teamId && userId && threadTs && 'chatStream' in client;
+    const canStream = teamId && userId && threadTs;
 
     if (canStream) {
       // Use streaming for real-time response
       logger.debug('Addie Bolt: Using streaming response');
 
-      // Initialize the stream
-      // Note: threadTs (line 416) falls back to event.ts for external ID tracking,
-      // but for the API call we only pass thread_ts when continuing an existing thread.
-      // This prevents creating unwanted sub-threads on new DM conversations.
-      const existingThreadTs = 'thread_ts' in event && event.thread_ts ? event.thread_ts : undefined;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const streamer = (client as any).chatStream({
+      // Initialize the stream in the assistant thread
+      const streamer = client.chatStream({
         channel: channelId,
+        thread_ts: threadTs,
         recipient_team_id: teamId,
         recipient_user_id: userId,
-        ...(existingThreadTs && { thread_ts: existingThreadTs }),
       });
 
       // Process Claude response stream (pass conversation history for context)
+      // Track tool invocations for unique task_update IDs (same tool can run multiple times)
+      let toolInvocationCount = 0;
+      const activeToolTaskIds: string[] = [];
+
       for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
         if (event.type === 'text') {
           fullText += event.text;
           // Append text chunk to Slack stream
+          // Note: don't apply wrapUrlsForSlack() per-chunk — URLs can span chunk
+          // boundaries. Slack auto-links bare https:// URLs in streamed messages.
           try {
             await streamer.append({ markdown_text: event.text });
           } catch (streamError) {
-            logger.warn({ streamError }, 'Addie Bolt: Stream append failed, falling back to full response');
+            logger.warn({ streamError }, 'Addie Bolt: Stream append failed for chunk, continuing');
           }
         } else if (event.type === 'tool_start') {
           toolsUsed.push(event.tool_name);
-          // Optionally update status during tool execution
+          toolInvocationCount++;
+          const taskId = `${event.tool_name}_${toolInvocationCount}`;
+          activeToolTaskIds.push(taskId);
+          // Show tool execution as an in-progress task in the streamed message
           try {
-            await setStatus(`Using ${event.tool_name}...`);
+            // chunks is a Slack streaming API feature not yet in the SDK types
+            await streamer.append({
+              chunks: [{
+                type: 'task_update',
+                id: taskId,
+                title: event.tool_name.replace(/_/g, ' '),
+                status: 'in_progress',
+              }],
+            });
           } catch {
-            // Ignore status update errors
+            // Ignore stream errors for status updates
           }
         } else if (event.type === 'tool_end') {
           toolExecutions.push({
@@ -1357,6 +1438,21 @@ async function handleUserMessage({
             parameters: {},
             result: event.result,
           });
+          // Mark tool execution as complete in the streamed message
+          const taskId = activeToolTaskIds.pop() || event.tool_name;
+          try {
+            // chunks is a Slack streaming API feature not yet in the SDK types
+            await streamer.append({
+              chunks: [{
+                type: 'task_update',
+                id: taskId,
+                title: event.tool_name.replace(/_/g, ' '),
+                status: event.is_error ? 'error' : 'complete',
+              }],
+            });
+          } catch {
+            // Ignore stream errors for status updates
+          }
         } else if (event.type === 'retry') {
           // Show retry status to user
           try {
@@ -1372,25 +1468,45 @@ async function handleUserMessage({
       }
 
       // Stop the stream with feedback buttons and any inline images.
-      // The streamed text may contain raw ![alt](url) syntax — we extract
-      // images and replace the message text with a cleaned version.
       try {
-        const { text: cleanedStreamText, images: streamImages } = extractMarkdownImages(fullText);
+        // Extract image URLs from streamed text for Slack Block Kit image blocks
+        const { images: streamImages } = extractMarkdownImages(fullText);
         const MAX_SLACK_IMAGES = 3;
         const imageBlocks = streamImages.slice(0, MAX_SLACK_IMAGES).map(img => ({
           type: 'image' as const,
           image_url: img.url,
           alt_text: img.alt,
         }));
+        // Don't pass markdown_text — the SDK buffer already has all text from
+        // append() calls. Passing it again would duplicate the message.
         await streamer.stop({
-          markdown_text: wrapUrlsForSlack(cleanedStreamText),
           blocks: [
             ...imageBlocks,
             buildFeedbackBlock(),
           ],
         });
       } catch (stopError) {
-        logger.warn({ stopError }, 'Addie Bolt: Stream stop failed');
+        logger.warn({ stopError }, 'Addie Bolt: Stream stop failed, falling back to say()');
+        // Fallback: send via say() so the user isn't left without a response
+        try {
+          const fallbackValidation = validateOutput(fullText);
+          const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
+          const slackText = wrapUrlsForSlack(fallbackText);
+          await say({
+            text: slackText,
+            blocks: [
+              { type: 'section', text: { type: 'mrkdwn', text: slackText } },
+              ...fallbackImages.slice(0, 3).map(img => ({
+                type: 'image' as const,
+                image_url: img.url,
+                alt_text: img.alt,
+              })),
+              buildFeedbackBlock(),
+            ],
+          });
+        } catch (sayError) {
+          logger.error({ sayError }, 'Addie Bolt: Fallback say() also failed');
+        }
       }
     } else {
       // Fall back to non-streaming for compatibility
@@ -1497,6 +1613,7 @@ async function handleUserMessage({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const dmEffectiveModel = (routedTools.requiresPrecision || routedTools.requiresDepth) ? ModelConfig.precision : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -1511,7 +1628,7 @@ async function handleUserMessage({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: AddieModelConfig.chat,
+      model: dmEffectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -1629,74 +1746,99 @@ async function handleAppMention({
   // Fetch channel info for context
   const mentionChannelContext = await buildChannelContext(channelId) as ThreadContext;
 
-  // Fetch thread context if this mention is in a thread
-  const MAX_THREAD_CONTEXT_MESSAGES = 25;
+  // Fetch surrounding conversation context for the mention.
+  // For threaded mentions: fetch thread replies.
+  // For top-level mentions: fetch recent channel messages so Addie understands
+  // the conversation she's being mentioned in.
+  const MAX_CONTEXT_MESSAGES = 25;
   let threadContext = '';
-  if (isInThread && event.thread_ts) {
-    try {
+  try {
+    let rawMessages: Array<{ user?: string; text?: string; ts: string }> = [];
+    let contextLabel = '';
+
+    if (isInThread && event.thread_ts) {
       const threadMessages = await getThreadReplies(channelId, event.thread_ts);
-      if (threadMessages.length > 0) {
-        // Include all messages (including Addie's) for full context
-        const filteredMessages = threadMessages
-          .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
-          .filter(msg => (msg.text || '').trim().length > 0) // Filter out empty messages
-          .slice(-MAX_THREAD_CONTEXT_MESSAGES);
+      rawMessages = threadMessages;
+      contextLabel = 'Thread';
+    } else {
+      // Fetch recent channel messages before this mention.
+      // conversations.history returns newest-first; reverse to chronological order.
+      const { messages: channelMessages } = await getChannelHistory(channelId, {
+        latest: event.ts,
+        limit: MAX_CONTEXT_MESSAGES + 1, // +1 because the current message may be included
+      });
+      rawMessages = channelMessages.reverse();
+      contextLabel = 'Conversation';
+    }
 
-        // Collect all unique user IDs in the thread (senders and @mentions)
-        const mentionedUserIds = new Set<string>();
-        for (const msg of filteredMessages) {
-          if (msg.user && msg.user !== context.botUserId) {
-            mentionedUserIds.add(msg.user);
-          }
-          const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
-          for (const match of mentions) {
-            if (match[1] !== context.botUserId) {
-              mentionedUserIds.add(match[1]);
-            }
-          }
+    if (rawMessages.length > 0) {
+      const filteredMessages = rawMessages
+        .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
+        .filter(msg => (msg.text || '').trim().length > 0)
+        .slice(-MAX_CONTEXT_MESSAGES);
+
+      // Collect all unique user IDs (senders and @mentions)
+      const mentionedUserIds = new Set<string>();
+      for (const msg of filteredMessages) {
+        if (msg.user && msg.user !== context.botUserId) {
+          mentionedUserIds.add(msg.user);
         }
-
-        // Look up display names for mentioned users (in parallel)
-        const userNameMap = new Map<string, string>();
-        if (mentionedUserIds.size > 0) {
-          const lookups = await Promise.all(
-            Array.from(mentionedUserIds).map(async (uid) => {
-              const user = await getSlackUser(uid);
-              return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
-            })
-          );
-          for (const { uid, name } of lookups) {
-            if (name) {
-              userNameMap.set(uid, name);
-            }
+        const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
+        for (const match of mentions) {
+          if (match[1] !== context.botUserId) {
+            mentionedUserIds.add(match[1]);
           }
-        }
-
-        // Format messages with speaker identification
-        const contextMessages = filteredMessages.map(msg => {
-          let text = msg.text || '';
-          const isAddie = msg.user === context.botUserId;
-          const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
-          // Strip Addie's mentions entirely (they're noise)
-          if (context.botUserId) {
-            text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
-          }
-          // Replace user mentions with display names or fallback to [someone]
-          text = text.replace(/<@(U[A-Z0-9]+)>/gi, (match, uid) => {
-            const name = userNameMap.get(uid);
-            return name ? `@${name}` : '[someone]';
-          });
-          return `- ${speaker}: ${text}`;
-        });
-
-        if (contextMessages.length > 0) {
-          threadContext = `\n\n## Thread Context\nThe user is replying in a Slack thread. Here are the previous messages in this thread for context:\n${contextMessages.join('\n')}\n\n---\n`;
-          logger.debug({ messageCount: contextMessages.length, resolvedUsers: userNameMap.size }, 'Addie Bolt: Fetched thread context for mention');
         }
       }
-    } catch (error) {
-      logger.warn({ error, channelId, threadTs: event.thread_ts }, 'Addie Bolt: Failed to fetch thread context');
+
+      // Look up display names for mentioned users (in parallel)
+      const userNameMap = new Map<string, string>();
+      if (mentionedUserIds.size > 0) {
+        const lookups = await Promise.all(
+          Array.from(mentionedUserIds).map(async (uid) => {
+            const user = await getSlackUser(uid);
+            return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
+          })
+        );
+        for (const { uid, name } of lookups) {
+          if (name) {
+            userNameMap.set(uid, name);
+          }
+        }
+      }
+
+      // Format messages with speaker identification
+      const contextMessages = filteredMessages.map(msg => {
+        let text = msg.text || '';
+        const isAddie = msg.user === context.botUserId;
+        const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
+        if (context.botUserId) {
+          text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
+        }
+        text = text.replace(/<@(U[A-Z0-9]+)>/gi, (_match, uid) => {
+          const name = userNameMap.get(uid);
+          return name ? `@${name}` : '[someone]';
+        });
+        return `- ${speaker}: ${text}`;
+      });
+
+      if (contextMessages.length > 0) {
+        const header = isInThread
+          ? 'The user is replying in a Slack thread. Here are the previous messages in this thread for context:'
+          : 'The user mentioned you in a conversation. Here are the recent messages leading up to the mention:';
+        threadContext = `\n\n## ${contextLabel} Context\n${header}\n${contextMessages.join('\n')}\n\n---\n`;
+
+        // Calibrate response length to match the thread's conversational register
+        const styleHint = buildThreadStyleHint(rawMessages, context.botUserId || '');
+        if (styleHint) {
+          threadContext += `\n${styleHint}\n`;
+        }
+
+        logger.debug({ messageCount: contextMessages.length, resolvedUsers: userNameMap.size }, `Addie Bolt: Fetched ${contextLabel.toLowerCase()} context for mention`);
+      }
     }
+  } catch (error) {
+    logger.warn({ error, channelId, threadTs: event.thread_ts }, 'Addie Bolt: Failed to fetch conversation context');
   }
 
   // Fetch member context early so we can store display name on the thread
@@ -1794,11 +1936,17 @@ async function handleAppMention({
     .filter(Boolean)
     .join('\n\n');
 
+  // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
+  const mentionIsDepthChannel = isDepthChannel(mentionChannelContext?.viewing_channel_name);
+  const mentionUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || mentionIsDepthChannel;
+
   // Admin users get higher iteration limit for bulk operations
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    ...(mentionUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -1832,6 +1980,7 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const mentionEffectiveModel = mentionUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -1846,7 +1995,7 @@ async function handleAppMention({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: AddieModelConfig.chat,
+      model: mentionEffectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -2337,7 +2486,7 @@ async function handleDirectMessage(
   }
 
   const channelId = event.channel;
-  const threadTs = event.thread_ts || event.ts;
+  const slackThreadTs = event.thread_ts || event.ts;
 
   // Extract forwarded message content from attachments
   const forwardedContent = extractForwardedContent(event.attachments);
@@ -2356,7 +2505,21 @@ async function handleDirectMessage(
   const startTime = Date.now();
   const threadService = getThreadService();
 
-  // Build external ID for Slack DMs: channel_id:thread_ts
+  // Look up the permanent thread from person_relationships so all DMs with this
+  // person route to a single addie_threads record — even if the Slack event
+  // arrives as a top-level message without thread_ts.
+  let permThreadTs: string | null = null;
+  let cachedRel: Awaited<ReturnType<typeof relationshipDb.getRelationshipBySlackId>> | null = null;
+  try {
+    cachedRel = await relationshipDb.getRelationshipBySlackId(userId);
+    if (cachedRel?.slack_dm_channel_id === channelId && cachedRel.slack_dm_thread_ts) {
+      permThreadTs = cachedRel.slack_dm_thread_ts;
+    }
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not look up permanent thread');
+  }
+
+  const threadTs = permThreadTs || slackThreadTs;
   const externalId = `${channelId}:${threadTs}`;
 
   // Sanitize input
@@ -2454,8 +2617,10 @@ async function handleDirectMessage(
   // Admin users get higher iteration limit for bulk operations
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    ...((routedTools.requiresPrecision || routedTools.requiresDepth) ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -2476,18 +2641,33 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in the DM channel
-  // For AI Assistant apps, Slack treats every DM as a thread. We must use thread_ts
-  // to respond in the same thread as the user's message, otherwise our response
-  // appears as a separate notification in a different thread.
+  // Reply where the user actually is: if they're in a thread, reply there;
+  // if they sent a top-level message, reply at top level. The permanent thread
+  // is still used for conversation history continuity (externalId above).
+  let responseTs: string | undefined;
   try {
-    await boltApp.client.chat.postMessage({
+    const postResult = await boltApp.client.chat.postMessage({
       channel: channelId,
       text: wrapUrlsForSlack(outputValidation.sanitized),
-      thread_ts: event.ts,
+      ...(event.thread_ts ? { thread_ts: event.thread_ts } : {}),
     });
+    responseTs = postResult.ts;
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send DM response');
+  }
+
+  // If no permanent thread existed, save the user's message ts as the permanent
+  // thread so the orchestrator will continue in this same thread later.
+  if (!permThreadTs) {
+    try {
+      const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
+      if (rel && !rel.slack_dm_thread_ts) {
+        await relationshipDb.setSlackDmThread(rel.id, channelId, slackThreadTs);
+        logger.info({ userId, channelId, threadTs: slackThreadTs }, 'Addie Bolt: Saved permanent DM thread from inbound conversation');
+      }
+    } catch (error) {
+      logger.debug({ error, userId }, 'Addie Bolt: Could not save permanent thread');
+    }
   }
 
   // Log assistant response to unified thread
@@ -2676,6 +2856,13 @@ async function handleActiveThreadReply({
 
     if (contextMessages.length > 0) {
       threadContext = `\n\n## Thread Context\nThis is a continuation of a conversation in a Slack thread. Here are the previous messages:\n${contextMessages.join('\n')}\n\n---\n`;
+
+      // Calibrate response length to match the thread's conversational register
+      const styleHint = buildThreadStyleHint(slackThreadMessages, context.botUserId || '');
+      if (styleHint) {
+        threadContext += `\n${styleHint}\n`;
+      }
+
       logger.debug({ messageCount: contextMessages.length }, 'Addie Bolt: Built thread context for active reply');
     }
   }
@@ -2777,11 +2964,17 @@ async function handleActiveThreadReply({
     .filter(Boolean)
     .join('\n\n');
 
+  // Use Opus for protocol-depth channels (wg-*, council-*) or router-flagged depth
+  const threadIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
+  const threadUseOpus = routedTools.requiresPrecision || routedTools.requiresDepth || threadIsDepthChannel;
+
   // Admin users get higher iteration limit
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-    ...(routedTools.requiresPrecision ? { modelOverride: ModelConfig.precision } : {}),
+    ...(threadUseOpus ? { modelOverride: ModelConfig.precision } : {}),
     requestContext,
+    slackUserId: userId,
+    threadId: thread.thread_id,
   };
 
   // Process with Claude
@@ -2816,6 +3009,7 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const activeThreadEffectiveModel = threadUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
 
   try {
     await threadService.addMessage({
@@ -2830,7 +3024,7 @@ async function handleActiveThreadReply({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: AddieModelConfig.chat,
+      model: activeThreadEffectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -2947,6 +3141,13 @@ async function handleChannelMessage({
       ts: 'ts' in event ? event.ts : undefined,
     }, 'Addie Bolt: Received DM in handleChannelMessage');
 
+    // DMs with thread_ts are handled by the Assistant framework (handleUserMessage).
+    // Only handle first DMs (no thread_ts) here to avoid sending duplicate responses.
+    if (hasThreadTs) {
+      logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Skipping threaded DM - handled by Assistant framework');
+      return;
+    }
+
     if (!hasText && !hasAttachments && !hasFiles) {
       logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Ignoring DM without content');
       return;
@@ -3034,6 +3235,13 @@ async function handleChannelMessage({
   logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');
 
+  // Check if this is a reply in a digest review thread — route to digest editor
+  if (isInThread) {
+    const digestThreadTs = 'thread_ts' in event ? event.thread_ts! : event.ts;
+    const digestHandled = await handleDigestEditReply(channelId, digestThreadTs, messageText, userId);
+    if (digestHandled) return;
+  }
+
   // Check if this is a reply in a thread where Addie has already participated.
   // If so, treat it as an implicit @mention and respond directly.
   // This creates natural conversational flow when users reply to Addie's questions.
@@ -3062,6 +3270,22 @@ async function handleChannelMessage({
           'Addie Bolt: Skipping auto-response in thread (message not directed at Addie)'
         );
         return;
+      }
+
+      // In multi-party threads, delay before responding to let humans go first.
+      // Skip delay if user explicitly named Addie (they want her input).
+      const explicitlyNamedAddie = /\baddie\b/i.test(messageText);
+      if (!explicitlyNamedAddie && multiParty) {
+        const shouldRespond = await shouldRespondAfterDelay(
+          channelId, threadTsForCheck, event.ts, context.botUserId
+        );
+        if (!shouldRespond) {
+          logger.info(
+            { channelId, userId, threadTs: threadTsForCheck },
+            'Addie Bolt: Skipping active thread reply — human replied during delay'
+          );
+          return;
+        }
       }
 
       logger.info({ channelId, userId, threadTs: threadTsForCheck },
@@ -3184,33 +3408,51 @@ async function handleChannelMessage({
     }
 
     if (plan.action === 'clarify') {
-      // Queue clarifying question for approval
+      const questionValidation = validateOutput(plan.question);
+      if (questionValidation.flagged) {
+        logger.warn({ channelId, reason: questionValidation.reason }, 'Addie Bolt: Clarifying question flagged');
+        return;
+      }
+
+      // Log clarifying question to unified thread
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: questionValidation.sanitized,
+        router_decision: buildRouterDecision(plan),
+      });
+
+      // Post clarifying question directly to the channel thread
       try {
-        await addieDb.queueForApproval({
-          action_type: 'reply',
-          target_channel_id: channelId,
-          target_thread_ts: threadTs,
-          proposed_content: plan.question,
-          trigger_type: 'channel_message',
-          trigger_context: {
-            original_message: messageText.substring(0, 1000),
-            user_id: userId,
-            user_display_name: memberContext?.slack_user?.display_name || undefined,
-            is_clarifying_question: true,
-            router_reason: plan.reason,
-            router_decision_method: plan.decision_method,
-            router_latency_ms: plan.latency_ms,
-          },
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        await boltApp?.client.chat.postMessage({
+          channel: channelId,
+          text: wrapUrlsForSlack(questionValidation.sanitized),
+          thread_ts: threadTs,
         });
-        logger.info({ channelId, userId }, 'Addie Bolt: Clarifying question queued for approval');
+        logger.info({ channelId, userId }, 'Addie Bolt: Posted clarifying question to channel');
       } catch (error) {
-        logger.error({ error, channelId }, 'Addie Bolt: Failed to queue clarifying question for approval');
+        logger.error({ error, channelId }, 'Addie Bolt: Failed to post clarifying question');
       }
       return;
     }
 
     // action === 'respond'
+    // In threaded channel messages, delay before responding to let humans go first.
+    // Skip delay if user explicitly named Addie (they want her input).
+    // @mentions are handled by handleAppMention (filtered at line 3071), DMs at line 3029.
+    if (isInThread && context.botUserId && !/\baddie\b/i.test(messageText)) {
+      const shouldRespond = await shouldRespondAfterDelay(
+        channelId, threadTs, event.ts, context.botUserId
+      );
+      if (!shouldRespond) {
+        logger.info(
+          { channelId, userId, threadTs },
+          'Addie Bolt: Skipping channel response — human replied during delay'
+        );
+        return;
+      }
+    }
+
     logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
@@ -3231,12 +3473,16 @@ async function handleChannelMessage({
       .filter(Boolean)
       .join('\n\n');
 
-    // Use precision model (Opus) for billing/financial queries
-    const effectiveModel = plan.requires_precision ? ModelConfig.precision : AddieModelConfig.chat;
+    // Use Opus for billing, router-flagged depth, or protocol-depth channels (wg-*, council-*)
+    const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
+    const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
+    const effectiveModel = channelUseOpus ? ModelConfig.precision : AddieModelConfig.chat;
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-      ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
+      ...(channelUseOpus ? { modelOverride: ModelConfig.precision } : {}),
       requestContext,
+      slackUserId: userId,
+      threadId: thread.thread_id,
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
@@ -3252,7 +3498,7 @@ async function handleChannelMessage({
       return;
     }
 
-    // Log assistant response to unified thread (even though it's pending approval)
+    // Log assistant response to unified thread
     await threadService.addMessage({
       thread_id: thread.thread_id,
       role: 'assistant',
@@ -3282,32 +3528,16 @@ async function handleChannelMessage({
       router_decision: buildRouterDecision(plan),
     });
 
-    // Queue the response for admin approval
+    // Post the response directly to the channel thread
     try {
-      await addieDb.queueForApproval({
-        action_type: 'reply',
-        target_channel_id: channelId,
-        target_thread_ts: threadTs,
-        proposed_content: outputValidation.sanitized,
-        trigger_type: 'channel_message',
-        trigger_context: {
-          original_message: messageText.substring(0, 1000),
-          user_id: userId,
-          user_display_name: memberContext?.slack_user?.display_name || undefined,
-          tools_used: response.tools_used,
-          router_tool_sets: plan.tool_sets,
-          router_reason: plan.reason,
-          router_decision_method: plan.decision_method,
-          router_latency_ms: plan.latency_ms,
-          router_tokens_input: plan.tokens_input,
-          router_tokens_output: plan.tokens_output,
-          router_model: plan.model,
-        },
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      await boltApp?.client.chat.postMessage({
+        channel: channelId,
+        text: wrapUrlsForSlack(outputValidation.sanitized),
+        thread_ts: threadTs,
       });
-      logger.info({ channelId, userId }, 'Addie Bolt: Proposed response queued for approval');
+      logger.info({ channelId, userId }, 'Addie Bolt: Posted response to channel');
     } catch (error) {
-      logger.error({ error, channelId }, 'Addie Bolt: Failed to queue response for approval');
+      logger.error({ error, channelId }, 'Addie Bolt: Failed to post response to channel');
     }
 
   } catch (error) {
@@ -3557,6 +3787,177 @@ async function handleViewFlagged({ ack, body, client }: any): Promise<void> {
 }
 
 /**
+ * Handle a thread reply on a digest review message.
+ * Processes editorial feedback and updates the draft.
+ * Returns true if this was a digest review thread (handled), false otherwise.
+ */
+async function handleDigestEditReply(
+  channelId: string,
+  threadTs: string,
+  messageText: string,
+  userId: string,
+): Promise<boolean> {
+  const digest = await getDigestByReviewMessage(channelId, threadTs);
+  if (!digest) {
+    return false;
+  }
+
+  // Verify editor is an Editorial working group leader or member before any state changes
+  const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
+  if (!editorial) {
+    logger.warn('Editorial working group not found for digest edit');
+    return true;
+  }
+  const isLeader = (editorial.leaders || []).some(
+    (l) => l.user_id === userId || l.canonical_user_id === userId,
+  );
+  const isMember = isLeader || await workingGroupDb.isMember(editorial.id, userId);
+  if (!isMember) {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: 'Only Editorial working group members can edit the digest.',
+      });
+    }
+    return true;
+  }
+
+  if (digest.status === 'skipped') {
+    // Revive skipped digest so editorial can continue collaborating
+    const revived = await revertToDraft(digest.id);
+    if (!revived) {
+      if (boltApp) {
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: `Could not reopen this digest. It may have already been sent.`,
+        });
+      }
+      return true;
+    }
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `Digest reopened as a draft. Applying your edit...`,
+      });
+    }
+  } else if (digest.status !== 'draft') {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `This digest has already been sent. Edits can only be made to drafts.`,
+      });
+    }
+    return true;
+  }
+
+  // Resolve editor name
+  let editorName = 'An editor';
+  try {
+    const { resolveSlackUserDisplayName } = await import('../slack/client.js');
+    const resolved = await resolveSlackUserDisplayName(userId);
+    if (resolved?.display_name) {
+      editorName = resolved.display_name;
+    }
+  } catch {
+    // Use default
+  }
+
+  let result;
+  try {
+    result = await applyDigestEdit(digest.content, messageText, editorName);
+  } catch (err) {
+    logger.error({ error: err, digestId: digest.id }, 'Failed to apply digest edit');
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: 'Something went wrong applying that edit. Try again or try a simpler instruction.',
+      });
+    }
+    return true;
+  }
+
+  // Persist the updated content
+  const updated = await updateDigestContent(digest.id, result.content);
+
+  try {
+    if (boltApp) {
+      // Post the edit summary
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: result.summary,
+      });
+
+      // If content was actually changed, post an updated preview
+      if (updated) {
+        const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
+        const preview = renderDigestReview(result.content, editionDate);
+
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: preview.text,
+          blocks: preview.blocks,
+        });
+      }
+    }
+  } catch (err) {
+    logger.warn({ error: err, digestId: digest.id }, 'Failed to post digest edit response to Slack');
+  }
+
+  logger.info(
+    { digestId: digest.id, editorName },
+    'Digest edit applied',
+  );
+
+  return true;
+}
+
+/**
+ * Handle 🔄 (arrows_counterclockwise) reaction on a digest review message.
+ * Verifies the reactor is an Editorial working group member, then regenerates.
+ */
+async function handleDigestRegenerate(
+  reactingUserId: string,
+  channelId: string,
+  messageTs: string,
+): Promise<boolean> {
+  const digest = await getDigestByReviewMessage(channelId, messageTs);
+  if (!digest || (digest.status !== 'draft' && digest.status !== 'skipped')) {
+    return false;
+  }
+
+  // Verify reactor is an Editorial working group leader or member before any state changes
+  const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
+  if (!editorial) {
+    logger.warn('Editorial working group not found for digest regenerate');
+    return true;
+  }
+  const isLeader = (editorial.leaders || []).some(
+    (l) => l.user_id === reactingUserId || l.canonical_user_id === reactingUserId,
+  );
+  const isMember = isLeader || await workingGroupDb.isMember(editorial.id, reactingUserId);
+  if (!isMember) {
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: 'Only Editorial working group members can regenerate the digest.',
+      });
+    }
+    return true;
+  }
+
+  // Delegate to handleDigestEditReply which handles revert, regeneration, and edit history
+  return handleDigestEditReply(channelId, messageTs, 'regenerate', reactingUserId);
+}
+
+/**
  * Handle white_check_mark reaction on a weekly digest review message.
  * Verifies the reactor is an Editorial working group leader, then approves the digest.
  * Returns true if the reaction was for a digest review message (handled), false otherwise.
@@ -3567,7 +3968,7 @@ async function handleDigestApproval(
   messageTs: string,
 ): Promise<boolean> {
   const digest = await getDigestByReviewMessage(channelId, messageTs);
-  if (!digest || digest.status !== 'draft') {
+  if (!digest || (digest.status !== 'draft' && digest.status !== 'skipped')) {
     return false;
   }
 
@@ -3596,6 +3997,12 @@ async function handleDigestApproval(
     return true;
   }
 
+  // Revive skipped digest before approving
+  if (digest.status === 'skipped') {
+    const revived = await revertToDraft(digest.id);
+    if (!revived) return false;
+  }
+
   // Store canonical (WorkOS) user ID for audit trail
   const approverUserId = matchedLeader.canonical_user_id || reactingUserId;
   const approved = await approveDigest(digest.id, approverUserId);
@@ -3605,11 +4012,32 @@ async function handleDigestApproval(
     const resolved = await resolveSlackUserDisplayName(reactingUserId);
     const name = resolved?.display_name || 'An editor';
 
-    await boltApp.client.chat.postMessage({
-      channel: channelId,
-      thread_ts: messageTs,
-      text: `Approved by ${name}! Will send at 10am ET.`,
-    });
+    // If approved after the normal 10am send window, send immediately
+    const { getETHour, sendDigest } = await import('./jobs/weekly-digest.js');
+    const etHour = getETHour();
+
+    if (etHour >= 10) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: `Approved by ${name}! Sending now...`,
+      });
+
+      const sendResult = await sendDigest(approved);
+      if (sendResult.sent === 0) {
+        await boltApp.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: messageTs,
+          text: `Delivery failed — nothing was sent. The digest is still approved and will retry on the next scheduled check.`,
+        });
+      }
+    } else {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: `Approved by ${name}! Will send at 10am ET.`,
+      });
+    }
 
     logger.info(
       { digestId: digest.id, approvedBy: approverUserId },
@@ -3651,6 +4079,12 @@ async function handleReactionAdded({
   // Check for weekly digest approval (white_check_mark on digest review message)
   if (reaction === 'white_check_mark') {
     const handled = await handleDigestApproval(reactingUserId, itemChannel, itemTs);
+    if (handled) return;
+  }
+
+  // Check for weekly digest regeneration (🔄 on digest review message)
+  if (reaction === 'arrows_counterclockwise') {
+    const handled = await handleDigestRegenerate(reactingUserId, itemChannel, itemTs);
     if (handled) return;
   }
 
@@ -3824,7 +4258,12 @@ async function handleReactionAdded({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+  const processOptions = {
+    ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+    requestContext,
+    slackUserId: reactingUserId,
+    threadId: thread.thread_id,
+  };
 
   // Process with Claude
   let response;

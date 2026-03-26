@@ -13,7 +13,7 @@
 import { Router, Request, Response } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
 import {
@@ -52,11 +52,6 @@ export function setupAccountRoutes(
 ): void {
   const workos = config?.workos ?? null;
 
-  // Redirect to manage accounts page
-  pageRouter.get("/accounts", requireAuth, (req, res) => {
-    res.redirect(301, "/manage/accounts");
-  });
-
   // Page route for domain discovery tool
   pageRouter.get(
     "/tools/domain-discovery",
@@ -83,21 +78,13 @@ export function setupAccountRoutes(
     }
   );
 
-  // Redirect account detail to manage
-  pageRouter.get(
-    "/accounts/:orgId",
-    requireAuth,
-    (req, res) => {
-      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
-    }
-  );
-
-  // Redirect old URL to new
+  // Redirect old /admin/organizations URL to /admin/accounts
   pageRouter.get(
     "/organizations/:orgId",
     requireAuth,
+    requireAdmin,
     (req, res) => {
-      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
+      res.redirect(301, `/admin/accounts/${req.params.orgId}`);
     }
   );
 
@@ -106,7 +93,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/view-counts",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const pool = getPool();
@@ -310,7 +297,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/:orgId",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const { orgId } = req.params;
@@ -709,8 +696,13 @@ export function setupAccountRoutes(
               }
             : null,
 
-          // Pricing & discount
+          // Pricing & discount (flat fields for invoice/payment-link modals)
           revenue_tier: org.revenue_tier,
+          discount_percent: org.discount_percent ?? null,
+          discount_amount_cents: org.discount_amount_cents ?? null,
+          stripe_coupon_id: org.stripe_coupon_id || null,
+          stripe_promotion_code: org.stripe_promotion_code || null,
+          // Nested discount object for pricing display
           discount: org.discount_percent || org.discount_amount_cents
             ? {
                 percent: org.discount_percent,
@@ -801,7 +793,7 @@ export function setupAccountRoutes(
   );
 
   // GET /api/admin/accounts - List all accounts with action-based views
-  apiRouter.get("/accounts", requireAuth, requireManage, async (req, res) => {
+  apiRouter.get("/accounts", requireAuth, requireAdmin, async (req, res) => {
     try {
       const pool = getPool();
       const { view, owner, search, limit: limitParam, offset: offsetParam } = req.query;
@@ -1366,7 +1358,7 @@ export function setupAccountRoutes(
   apiRouter.post(
     "/accounts/:orgId/activities/:activityId/complete",
     requireAuth,
-    requireManage,
+    requireAdmin,
     async (req, res) => {
       try {
         const { orgId, activityId } = req.params;
@@ -1922,10 +1914,54 @@ export function setupAccountRoutes(
         const membership = membershipResult.rows[0];
         const previousRole = membership.role || "member";
 
+        // If membership ID is missing locally, look it up from WorkOS and backfill
         if (!membership.workos_membership_id) {
-          return res.status(400).json({
-            error: "Cannot update role: missing WorkOS membership ID",
-          });
+          const { workos: workosClient } = await import("../../auth/workos-client.js");
+          if (!workosClient) {
+            return res.status(500).json({ error: "WorkOS client not configured" });
+          }
+          try {
+            const memberships = await workosClient.userManagement.listOrganizationMemberships({
+              userId,
+              organizationId: orgId,
+            });
+            const match = memberships.data.find(
+              (m) => m.userId === userId && m.organizationId === orgId
+            );
+            if (!match) {
+              return res.status(400).json({
+                error: "Cannot update role: membership not found in WorkOS",
+              });
+            }
+            if (!isValidWorkOSMembershipId(match.id)) {
+              logger.error(
+                { orgId, userId, membershipId: match.id },
+                "WorkOS returned invalid membership ID format"
+              );
+              return res.status(400).json({
+                error: "Cannot update role: invalid membership data from WorkOS",
+              });
+            }
+            membership.workos_membership_id = match.id;
+            // Backfill the local cache
+            await pool.query(
+              `UPDATE organization_memberships SET workos_membership_id = $1
+               WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+              [match.id, orgId, userId]
+            );
+            logger.info(
+              { orgId, userId, membershipId: match.id },
+              "Backfilled missing WorkOS membership ID"
+            );
+          } catch (lookupError) {
+            logger.error(
+              { err: lookupError, orgId, userId },
+              "Failed to look up membership from WorkOS"
+            );
+            return res.status(400).json({
+              error: "Cannot update role: unable to resolve WorkOS membership",
+            });
+          }
         }
 
         // Validate membership ID format
@@ -2161,7 +2197,7 @@ export function setupAccountRoutes(
   // =========================================================================
 
   // POST /api/admin/accounts - Create a new prospect/account
-  apiRouter.post("/accounts", requireAuth, requireManage, async (req, res) => {
+  apiRouter.post("/accounts", requireAuth, requireAdmin, async (req, res) => {
     try {
       const {
         name,
@@ -2406,7 +2442,9 @@ export function setupAccountRoutes(
         }
 
         const org = orgResult.rows[0];
-        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+        // Only fall back to org coupon if coupon_id was not provided;
+        // explicit null means the admin opted out of the discount
+        const effectiveCouponId = coupon_id !== undefined ? coupon_id : org.stripe_coupon_id;
 
         const result = await createAndSendInvoice({
           lookupKey: lookup_key,
@@ -2464,7 +2502,7 @@ export function setupAccountRoutes(
   );
 
   // GET /api/admin/team - Admin team members for assignment dropdowns
-  apiRouter.get("/team", requireAuth, requireManage, async (req, res) => {
+  apiRouter.get("/team", requireAuth, requireAdmin, async (req, res) => {
     try {
       const pool = getPool();
 

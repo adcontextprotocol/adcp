@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/budget-too-low.json",
+  "title": "BUDGET_TOO_LOW Details",
+  "description": "Recommended details shape for BUDGET_TOO_LOW errors. Provides the seller's minimum budget so agents can adjust.",
+  "type": "object",
+  "properties": {
+    "minimum_budget": {
+      "type": "number",
+      "description": "Seller's minimum budget for this product"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code"
+    }
+  },
+  "additionalProperties": true
+}

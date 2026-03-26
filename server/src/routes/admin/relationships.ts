@@ -102,9 +102,8 @@ export function setupRelationshipRoutes(apiRouter: Router): void {
   apiRouter.get('/relationships/events/recent', requireAuth, requireAdmin, async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-      const eventTypes = req.query.types
-        ? (req.query.types as string).split(',')
-        : undefined;
+      const typesParam = (req.query.types ?? req.query.type) as string | undefined;
+      const eventTypes = typesParam ? typesParam.split(',') : undefined;
       const channel = req.query.channel as string | undefined;
 
       const events = await personEvents.getRecentEvents({

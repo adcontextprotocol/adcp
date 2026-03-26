@@ -12,8 +12,8 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
-**Request Schema**: [`/schemas/v2/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json)
-**Response Schema**: [`/schemas/v2/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json)
 
 ## Quick Start
 
@@ -35,10 +35,8 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 37); // End 5 weeks from now
 
 const createResult = await testAgent.createMediaBuy({
-  buyer_ref: uniqueRef,
   brand: { domain: 'acmecorp.com' },
   packages: [{
-    buyer_ref: 'display_pkg',
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_fixed',
     format_ids: [{
@@ -65,7 +63,7 @@ console.log(`Created media buy ${created.media_buy_id}`);
 
 // Now update it - pause the campaign
 const updateResult = await testAgent.updateMediaBuy({
-  buyer_ref: uniqueRef,
+  media_buy_id: created.media_buy_id,
   paused: true
 });
 
@@ -96,10 +94,8 @@ async def create_and_pause_campaign():
     end_date = datetime.utcnow() + timedelta(days=37)
 
     create_result = await test_agent.simple.create_media_buy(
-        buyer_ref=unique_ref,
         brand={'domain': 'acmecorp.com'},
         packages=[{
-            'buyer_ref': 'display_pkg',
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_fixed',
             'format_ids': [{
@@ -120,7 +116,7 @@ async def create_and_pause_campaign():
 
     # Now update it - pause the campaign
     update_result = await test_agent.simple.update_media_buy(
-        buyer_ref=unique_ref,
+        media_buy_id=create_result.media_buy_id,
         paused=True
     )
 
@@ -138,16 +134,21 @@ asyncio.run(create_and_pause_campaign())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `media_buy_id` | string | Yes* | Publisher's media buy identifier to update |
-| `buyer_ref` | string | Yes* | Your reference for the media buy to update |
+| `media_buy_id` | string | Yes* | Seller's media buy identifier to update |
+| `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with `CONFLICT` on mismatch. Obtain from `get_media_buys` or the most recent response. |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
+| `canceled` | boolean | No | Cancel the entire media buy (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | No | Reason for cancellation |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
+| `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
+| `invoice_recipient` | [BusinessEntity](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
+| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
-*Either `media_buy_id` OR `buyer_ref` is required (not both)
+`media_buy_id` is required to identify the media buy to update.
 
 ### Reporting Webhook Object
 
@@ -167,9 +168,10 @@ Configure automated delivery reporting for this media buy:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `package_id` | string | Publisher's package identifier to update |
-| `buyer_ref` | string | Your reference for the package to update |
+| `package_id` | string | Seller's package identifier to update |
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
+| `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | Reason for canceling this package |
 | `budget` | number | Updated budget allocation |
 | `impressions` | number | Updated impression goal for this package |
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
@@ -186,7 +188,7 @@ Configure automated delivery reporting for this media buy:
 | `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
 
-*Either `package_id` OR `buyer_ref` is required for each package update
+`package_id` is required to identify the package to update.
 
 ## Response
 
@@ -195,8 +197,11 @@ Configure automated delivery reporting for this media buy:
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
-| `buyer_ref` | Your reference identifier |
+| `status` | Media buy status after the update (present when status changes, e.g., cancellation) |
+| `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
+| `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
+| `valid_actions` | Actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. |
 | `affected_packages` | Array of full Package objects showing complete state after update |
 
 ### Error Response
@@ -222,7 +227,7 @@ import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
-    buyer_ref: 'ctv_package',
+    package_id: 'pkg_001',
     budget: 50000  // Increased from 30000
   }]
 });
@@ -237,7 +242,7 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
 }
 
-const pkg = validated.affected_packages?.find(p => p.buyer_ref === 'ctv_package');
+const pkg = validated.affected_packages?.find(p => p.package_id === 'pkg_001');
 if (pkg) {
   console.log(`Package budget updated to ${pkg.budget}`);
 }
@@ -253,7 +258,7 @@ async def increase_budget():
         UpdateMediaBuyRequest(
             media_buy_id='mb_12345',
             packages=[
-                {'buyer_ref': 'ctv_package', 'budget': 50000}
+                {'package_id': 'pkg_001', 'budget': 50000}
             ]
         )
     )
@@ -261,7 +266,7 @@ async def increase_budget():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Update failed: {result.errors}")
 
-    pkg = next((p for p in result.affected_packages if p.buyer_ref == 'ctv_package'), None)
+    pkg = next((p for p in result.affected_packages if p.package_id == 'pkg_001'), None)
     if pkg:
         print(f"Package budget updated to {pkg.budget}")
 
@@ -281,7 +286,7 @@ import { testAgent } from '@adcp/client/testing';
 import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'summer_campaign_2025',
+  media_buy_id: 'mb_12345',
   end_time: '2025-09-30T23:59:59Z'
 });
 
@@ -307,7 +312,7 @@ from adcp.types import UpdateMediaBuyRequest
 async def extend_campaign():
     result = await test_agent.update_media_buy(
         UpdateMediaBuyRequest(
-            buyer_ref='summer_campaign_2025',
+            media_buy_id='mb_12345',
             end_time='2025-09-30T23:59:59Z'
         )
     )
@@ -336,7 +341,7 @@ import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
-    buyer_ref: 'ctv_package',
+    package_id: 'pkg_001',
     targeting_overlay: {
       geo_countries: ['US', 'CA'],
       geo_regions: ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
@@ -368,7 +373,7 @@ async def update_targeting():
             media_buy_id='mb_12345',
             packages=[
                 {
-                    'buyer_ref': 'ctv_package',
+                    'package_id': 'pkg_001',
                     'targeting_overlay': {
                         'geo_countries': ['US', 'CA'],
                         'geo_regions': ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
@@ -401,7 +406,7 @@ import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
-    buyer_ref: 'ctv_package',
+    package_id: 'pkg_001',
     creative_assignments: [
       { creative_id: 'creative_video_v2' },
       { creative_id: 'creative_display_v2', weight: 60 }
@@ -419,7 +424,7 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
 }
 
-const pkg = validated.affected_packages?.find(p => p.buyer_ref === 'ctv_package');
+const pkg = validated.affected_packages?.find(p => p.package_id === 'pkg_001');
 const assignmentCount = pkg?.creative_assignments?.length || 0;
 console.log(`Assigned ${assignmentCount} creatives`);
 ```
@@ -435,7 +440,7 @@ async def replace_creatives():
             media_buy_id='mb_12345',
             packages=[
                 {
-                    'buyer_ref': 'ctv_package',
+                    'package_id': 'pkg_001',
                     'creative_assignments': [
                         {'creative_id': 'creative_video_v2'},
                         {'creative_id': 'creative_display_v2', 'weight': 60}
@@ -448,7 +453,7 @@ async def replace_creatives():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Update failed: {result.errors}")
 
-    pkg = next((p for p in result.affected_packages if p.buyer_ref == 'ctv_package'), None)
+    pkg = next((p for p in result.affected_packages if p.package_id == 'pkg_001'), None)
     assignment_count = len(pkg.creative_assignments) if pkg and pkg.creative_assignments else 0
     print(f"Assigned {assignment_count} creatives")
 
@@ -471,12 +476,12 @@ const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [
     {
-      buyer_ref: 'ctv_package',
+      package_id: 'pkg_001',
       budget: 50000,
       pacing: 'front_loaded'
     },
     {
-      buyer_ref: 'audio_package',
+      package_id: 'pkg_002',
       budget: 30000,
       paused: true
     }
@@ -507,12 +512,12 @@ async def update_multiple_packages():
             media_buy_id='mb_12345',
             packages=[
                 {
-                    'buyer_ref': 'ctv_package',
+                    'package_id': 'pkg_001',
                     'budget': 50000,
                     'pacing': 'front_loaded'
                 },
                 {
-                    'buyer_ref': 'audio_package',
+                    'package_id': 'pkg_002',
                     'budget': 30000,
                     'paused': True
                 }
@@ -530,18 +535,79 @@ asyncio.run(update_multiple_packages())
 
 </CodeGroup>
 
+### Cancel a Media Buy
+
+Cancel an entire media buy:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "canceled": true,
+  "cancellation_reason": "Campaign strategy changed"
+}
+```
+
+**Success response:**
+```json
+{
+  "media_buy_id": "mb_12345",
+  "status": "canceled",
+  "revision": 4,
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": []
+}
+```
+
+**`NOT_CANCELLABLE` error response:**
+```json
+{
+  "errors": [{
+    "code": "NOT_CANCELLABLE",
+    "message": "Media buy mb_12345 has contractual obligations preventing cancellation",
+    "suggestion": "Contact seller to discuss cancellation options"
+  }]
+}
+```
+
+**`INVALID_STATE` error response** (e.g., trying to update a completed media buy):
+```json
+{
+  "errors": [{
+    "code": "INVALID_STATE",
+    "message": "Media buy mb_12345 is in terminal state 'completed' and cannot be modified",
+    "suggestion": "Check current status via get_media_buys and adjust request"
+  }]
+}
+```
+
+### Cancel a Package
+
+Cancel a single package while the media buy remains active:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "packages": [
+    {
+      "package_id": "pkg_67890",
+      "canceled": true,
+      "cancellation_reason": "Underperforming — reallocating budget"
+    }
+  ]
+}
+```
+
 ## What Can Be Updated
 
 ### Campaign-Level Updates
 
 ✅ **Can update:**
 - Start/end times (subject to seller approval)
-- Campaign status (active/paused)
+- Campaign status (active/paused/canceled)
 - Reporting webhook configuration (URL, frequency, metrics)
 
 ❌ **Cannot update:**
 - Media buy ID
-- Buyer reference
 - Brand reference
 - Original package product IDs
 
@@ -554,8 +620,9 @@ asyncio.run(update_multiple_packages())
 - Optimization goal (event source, event type, target ROAS/CPA)
 - Targeting overlays
 - Creative assignments
-- Package status (active/paused)
+- Package status (active/paused/canceled)
 - Catalog reference (replace the catalog a catalog-driven package promotes)
+- Creative assignments (before the package's `creative_deadline`)
 
 ❌ **Cannot update:**
 - Package ID
@@ -569,20 +636,26 @@ Common errors and resolutions:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id or buyer_ref |
-| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id or buyer_ref |
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
+| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id |
 | `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
-| `INVALID_STATE` | Operation not allowed in current state | Check campaign status |
+| `INVALID_STATE` | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
+| `NOT_CANCELLABLE` | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
+| `CREATIVE_REJECTED` | Creative failed content policy review | Revise the creative per the seller's advertising policies |
+| `CREATIVE_DEADLINE_EXCEEDED` | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
+| `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
+| `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
+| `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 
 Example error response:
 
 ```json
 {
   "errors": [{
-    "code": "UPDATE_NOT_ALLOWED",
+    "code": "UNSUPPORTED_FEATURE",
     "message": "Cannot change product_id for existing package",
     "field": "packages[0].product_id",
     "suggestion": "Create a new package with the desired product instead"
@@ -604,12 +677,10 @@ When approval is needed, `implementation_date` will be `null` and `affected_pack
 ```json
 {
   "media_buy_id": "mb_12345",
-  "buyer_ref": "summer_campaign_2025",
   "implementation_date": null,
   "affected_packages": [
     {
       "package_id": "pkg_abc123",
-      "buyer_ref": "ctv_package",
       "budget": 50000,
       "status": "pending_activation"
     }
@@ -623,9 +694,9 @@ Only specified fields are updated - omitted fields remain unchanged:
 
 ```json
 {
-  "buyer_ref": "summer_campaign_2025",
+  "media_buy_id": "mb_12345",
   "packages": [{
-    "buyer_ref": "ctv_package",
+    "package_id": "pkg_001",
     "budget": 50000
   }]
 }
@@ -635,8 +706,9 @@ Only specified fields are updated - omitted fields remain unchanged:
 
 ```json
 {
+  "media_buy_id": "mb_12345",
   "packages": [{
-    "buyer_ref": "ctv_package",
+    "package_id": "pkg_001",
     "creative_assignments": [
       { "creative_id": "creative_video_v2" },
       { "creative_id": "creative_display_v2", "weight": 60 }
@@ -655,7 +727,6 @@ Updates may be asynchronous, especially with seller approval.
 ```json
 {
   "media_buy_id": "mb_12345",
-  "buyer_ref": "summer_campaign_2025",
   "implementation_date": "2025-06-15T10:00:00Z",
   "affected_packages": []
 }
@@ -665,12 +736,10 @@ Updates may be asynchronous, especially with seller approval.
 ```json
 {
   "media_buy_id": "mb_12345",
-  "buyer_ref": "summer_campaign_2025",
   "implementation_date": "2025-06-15T10:00:00Z",
   "affected_packages": [
     {
       "package_id": "pkg_abc123",
-      "buyer_ref": "ctv_package",
       "budget": 50000,
       "status": "active"
     }
@@ -729,7 +798,7 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 ## Usage Notes
 
 - Updates are atomic - either all changes apply or none do
-- Both media buys and packages can be referenced by `buyer_ref` or publisher IDs
+- Both media buys and packages can be referenced by publisher IDs
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)

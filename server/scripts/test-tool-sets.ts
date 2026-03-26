@@ -21,7 +21,8 @@ const { Pool } = pg;
 // Database connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('fly.io') ? { rejectUnauthorized: false } : undefined,
+  // CodeQL: substring check on connection string for SSL config, not URL validation
+  ssl: process.env.DATABASE_URL?.includes('fly.io') ? { rejectUnauthorized: false } : undefined, // lgtm[js/incomplete-url-substring-sanitization]
 });
 
 // Anthropic client for router simulation

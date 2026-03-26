@@ -1,3 +1,4 @@
 #!/bin/sh
 
+bash scripts/check-image-quality.sh
 npm run precommit

@@ -418,7 +418,8 @@ Have a great holiday!
 
         // Check CC - should have multiple Charter contacts
         expect(result.originalCc.length).toBeGreaterThan(0);
-        const charterEmails = result.originalCc.filter(c => c.email.includes('charter.com'));
+        // CodeQL: substring check on email domain in test assertion, not URL validation
+        const charterEmails = result.originalCc.filter(c => c.email.includes('charter.com')); // lgtm[js/incomplete-url-substring-sanitization]
         expect(charterEmails.length).toBeGreaterThanOrEqual(1);
 
         // Check subject

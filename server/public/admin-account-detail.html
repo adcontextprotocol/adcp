@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <title>Account - AgenticAdvertising.org</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/js/company-types.js"></script>
   <script src="/nav.js"></script>
-  <script src="/manage-sidebar.js"></script>
+  <script src="/admin-sidebar.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -648,7 +648,7 @@
   <div id="content" style="display: none;">
     <div class="container">
       <div class="breadcrumb">
-        <a href="/manage/accounts">Accounts</a> / <span id="breadcrumbName">Account</span>
+        <a href="/admin/accounts">Accounts</a> / <span id="breadcrumbName">Account</span>
       </div>
 
       <!-- Header Card -->
@@ -1245,6 +1245,20 @@
 
       <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
 
+      <!-- Discount notice -->
+      <div id="invoiceDiscountNotice" style="display: none; margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm);">
+        <div style="font-size: var(--text-sm);">
+          <strong style="color: var(--color-success-700);">Discount available:</strong>
+          <span id="invoiceDiscountText"></span>
+        </div>
+        <div style="margin-top: var(--space-2);">
+          <label style="font-size: var(--text-sm);">
+            <input type="checkbox" id="applyDiscountToInvoice" checked>
+            Apply discount to invoice
+          </label>
+        </div>
+      </div>
+
       <form id="invoiceForm" onsubmit="submitInvoice(event)">
         <!-- Product Selection -->
         <div id="invoiceProductSection">
@@ -1478,7 +1492,7 @@
       const inheritedNotice = document.getElementById('inheritedMembershipNotice');
       if (a.effective_membership?.is_inherited && inheritedNotice) {
         inheritedNotice.style.display = '';
-        inheritedNotice.innerHTML = `Covered by <a href="/manage/accounts/${a.effective_membership.paying_org_id}">${escapeHtml(a.effective_membership.paying_org_name)}</a> membership` +
+        inheritedNotice.innerHTML = `Covered by <a href="/admin/accounts/${a.effective_membership.paying_org_id}">${escapeHtml(a.effective_membership.paying_org_name)}</a> membership` +
           (a.effective_membership.hierarchy_chain?.length > 1
             ? ` <span style="color: var(--color-text-secondary); font-size: var(--text-xs);">(${a.effective_membership.hierarchy_chain.join(' → ')})</span>`
             : '');
@@ -1797,7 +1811,7 @@
                 <li style="padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
                   <span style="font-weight: 500;">${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</span>
                   <span style="color: var(--color-text-muted); font-size: var(--text-sm);"> (${escapeHtml(u.email)})</span>
-                  <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">Currently in: <a href="/manage/accounts/${encodeURIComponent(u.current_org_id)}">${escapeHtml(u.current_org_name)}</a></span>
+                  <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">Currently in: <a href="/admin/accounts/${encodeURIComponent(u.current_org_id)}">${escapeHtml(u.current_org_name)}</a></span>
                 </li>
               `).join('')}
               ${inOtherOrgs.length > 5 ? `<li style="padding: var(--space-2) 0; color: var(--color-text-muted); font-size: var(--text-sm);">...and ${inOtherOrgs.length - 5} more</li>` : ''}
@@ -1820,7 +1834,7 @@
               ${similar_orgs.map(o => `
                 <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
                   <span>
-                    <a href="/manage/accounts/${encodeURIComponent(o.org_id)}" style="font-weight: 500;">${escapeHtml(o.name)}</a>
+                    <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" style="font-weight: 500;">${escapeHtml(o.name)}</a>
                     <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}" style="margin-left: var(--space-2); font-size: var(--text-xs);">
                       ${escapeHtml(o.subscription_status || 'prospect')}
                     </span>
@@ -1875,7 +1889,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin();
+            window.AdminSidebar?.redirectToLogin();
             return;
           }
           const errorData = await response.json().catch(() => ({}));
@@ -1909,7 +1923,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin();
+            window.AdminSidebar?.redirectToLogin();
             return;
           }
           const errorData = await response.json().catch(() => ({}));
@@ -2091,8 +2105,9 @@
 
     async function assignOwner(userId) {
       try {
+        let response;
         if (userId) {
-          await fetch(`/api/admin/organizations/${accountId}/stakeholders`, {
+          response = await fetch(`/api/admin/organizations/${accountId}/stakeholders`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: userId, role: 'owner' })
@@ -2101,15 +2116,19 @@
           // Remove owner
           const currentOwner = accountData.stakeholders?.find(s => s.role === 'owner');
           if (currentOwner) {
-            await fetch(`/api/admin/organizations/${accountId}/stakeholders/${currentOwner.id}`, {
+            response = await fetch(`/api/admin/organizations/${accountId}/stakeholders/${currentOwner.id}`, {
               method: 'DELETE'
             });
           }
         }
+        if (response && !response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || err.message || 'Request failed');
+        }
         location.reload();
       } catch (error) {
         console.error('Error assigning owner:', error);
-        alert('Failed to assign owner');
+        alert('Failed to assign owner: ' + error.message);
       }
     }
 
@@ -2400,7 +2419,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -2432,7 +2451,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -2464,7 +2483,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.ManageSidebar?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -2701,7 +2720,7 @@
         if (accountData.discount_percent) {
           discountText = `${accountData.discount_percent}% off`;
         } else {
-          discountText = `$${(accountData.discount_amount_cents / 100).toFixed(0)} off`;
+          discountText = `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(accountData.discount_amount_cents / 100)} off`;
         }
         if (accountData.stripe_promotion_code) {
           discountText += ` (code: ${accountData.stripe_promotion_code})`;
@@ -2863,6 +2882,28 @@
       document.getElementById('sendInvoiceBtn').style.display = 'none';
       document.getElementById('invoiceForm').reset();
 
+      // Show discount notice if org has a discount
+      const invoiceDiscountNotice = document.getElementById('invoiceDiscountNotice');
+      if (accountData.discount_percent || accountData.discount_amount_cents) {
+        invoiceDiscountNotice.style.display = 'block';
+        let discountText = '';
+        if (accountData.discount_percent) {
+          discountText = `${accountData.discount_percent}% off`;
+        } else {
+          discountText = `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(accountData.discount_amount_cents / 100)} off`;
+        }
+        if (accountData.stripe_promotion_code) {
+          discountText += ` (code: ${accountData.stripe_promotion_code})`;
+        }
+        document.getElementById('invoiceDiscountText').textContent = discountText;
+        document.getElementById('applyDiscountToInvoice').checked = true;
+        document.getElementById('applyDiscountToInvoice').onchange = () => {
+          if (invoiceProductsData.length > 0) renderInvoiceProducts(invoiceProductsData);
+        };
+      } else {
+        invoiceDiscountNotice.style.display = 'none';
+      }
+
       // Pre-fill from account data
       if (accountData) {
         document.getElementById('invoiceContactName').value = accountData.prospect_contact_name || '';
@@ -2890,6 +2931,21 @@
       }
     }
 
+    function invoiceDiscountActive() {
+      return document.getElementById('applyDiscountToInvoice')?.checked &&
+        (accountData.discount_percent || accountData.discount_amount_cents);
+    }
+
+    function applyInvoiceDiscount(amountCents) {
+      if (accountData.discount_percent) {
+        return Math.round(amountCents * (1 - accountData.discount_percent / 100));
+      }
+      if (accountData.discount_amount_cents) {
+        return Math.max(0, amountCents - accountData.discount_amount_cents);
+      }
+      return amountCents;
+    }
+
     function renderInvoiceProducts(products) {
       const container = document.getElementById('invoiceProducts');
 
@@ -2898,11 +2954,17 @@
         return;
       }
 
+      const hasDiscount = invoiceDiscountActive();
+
       container.innerHTML = products.map((product, index) => {
-        const price = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD'
-        }).format(product.amount_cents / 100);
+        const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+        const price = fmt(product.amount_cents);
+
+        let discountedPriceHtml = '';
+        if (hasDiscount) {
+          const discountedCents = applyInvoiceDiscount(product.amount_cents);
+          discountedPriceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted); font-weight: normal;">${price}</span> <span style="color: var(--color-success-700); font-weight: var(--font-semibold);">${fmt(discountedCents)}</span>`;
+        }
 
         const interval = product.billing_interval ? `/${product.billing_interval}` : '';
         const displayName = escapeHtml(product.display_name || product.product_name);
@@ -2923,7 +2985,10 @@
           " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
             <strong>${displayName}</strong>
             <br>
-            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
+            ${hasDiscount
+              ? `${discountedPriceHtml}${interval}`
+              : `<span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>`
+            }
             ${description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${description}</span>` : ''}
           </button>
         `;
@@ -2949,13 +3014,17 @@
         amountCents: product.amount_cents
       };
 
-      const price = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(product.amount_cents / 100);
+      const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+      const price = fmt(product.amount_cents);
+
+      let priceHtml = `<span style="color: var(--color-brand);">${price}</span>`;
+      if (invoiceDiscountActive()) {
+        const discountedCents = applyInvoiceDiscount(product.amount_cents);
+        priceHtml = `<span style="text-decoration: line-through; color: var(--color-text-muted);">${price}</span> <span style="color: var(--color-success-700);">${fmt(discountedCents)}</span>`;
+      }
 
       document.getElementById('selectedProductDisplay').innerHTML = `
-        <strong>${escapeHtml(displayName)}</strong> - <span style="color: var(--color-brand);">${price}</span>
+        <strong>${escapeHtml(displayName)}</strong> - ${priceHtml}
       `;
 
       document.getElementById('invoiceProductSection').style.display = 'none';
@@ -2975,6 +3044,7 @@
       btn.disabled = true;
       btn.textContent = 'Sending...';
 
+      const applyDiscount = document.getElementById('applyDiscountToInvoice')?.checked;
       const data = {
         lookup_key: selectedInvoiceProduct.lookupKey,
         company_name: document.getElementById('invoiceCompanyName').value,
@@ -2987,7 +3057,8 @@
           state: document.getElementById('invoiceState').value,
           postal_code: document.getElementById('invoicePostalCode').value,
           country: document.getElementById('invoiceCountry').value,
-        }
+        },
+        coupon_id: applyDiscount && accountData.stripe_coupon_id ? accountData.stripe_coupon_id : null,
       };
 
       try {
@@ -3006,6 +3077,7 @@
 
         if (result.success && result.invoice_url) {
           document.getElementById('invoiceBillingSection').style.display = 'none';
+          document.getElementById('invoiceDiscountNotice').style.display = 'none';
           document.getElementById('sendInvoiceBtn').style.display = 'none';
           document.getElementById('invoiceUrl').value = result.invoice_url;
           document.getElementById('invoiceResult').style.display = 'block';
@@ -3337,7 +3409,7 @@
       }
 
       try {
-        const response = await ManageSidebar.fetch(`/api/admin/accounts/${accountId}/members/${userId}/role`, {
+        const response = await AdminSidebar.fetch(`/api/admin/accounts/${accountId}/members/${userId}/role`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: newRole })

@@ -12,6 +12,7 @@ const logger = createLogger("dev-setup");
 export async function seedDevData(orgDb: OrganizationDatabase): Promise<void> {
   await seedDevOrganizations(orgDb);
   await seedDevUsers();
+  await seedDevMemberProfiles();
 }
 
 async function seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> {
@@ -55,6 +56,31 @@ async function seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> 
   }
 }
 
+async function seedDevMemberProfiles(): Promise<void> {
+  const pool = getPool();
+  try {
+    await pool.query(
+      `INSERT INTO member_profiles (
+        workos_organization_id, display_name, slug, tagline, description,
+        offerings, is_public
+      ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)
+      ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [
+        'org_dev_personal_001',
+        'Personal Account',
+        'dev-personal',
+        'Dev personal account for testing',
+        'A personal account for testing portrait generation and offerings.',
+        '{consulting}',
+        true,
+      ]
+    );
+    logger.info('Seeded dev personal member profile');
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to seed dev personal member profile');
+  }
+}
+
 async function seedDevUsers(): Promise<void> {
   const pool = getPool();
   for (const [key, devUser] of Object.entries(DEV_USERS)) {
@@ -68,7 +94,7 @@ async function seedDevUsers(): Promise<void> {
           devUser.email,
           devUser.firstName,
           devUser.lastName,
-          devUser.isMember ? 'org_dev_company_001' : null,
+          devUser.isMember ? (devUser.organizationId || 'org_dev_company_001') : null,
         ]
       );
     } catch (error) {

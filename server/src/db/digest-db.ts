@@ -20,6 +20,18 @@ export interface DigestSocialPostIdea {
   description: string;
 }
 
+export interface DigestEditEntry {
+  editedBy: string;
+  editedAt: string;
+  description: string;
+}
+
+export interface DigestSpotlightAction {
+  text: string;
+  linkUrl?: string;
+  linkLabel?: string;
+}
+
 export interface DigestContent {
   intro: string;
   news: DigestNewsItem[];
@@ -27,6 +39,10 @@ export interface DigestContent {
   conversations: DigestConversation[];
   workingGroups: DigestWorkingGroup[];
   socialPostIdeas?: DigestSocialPostIdea[];
+  spotlightAction?: DigestSpotlightAction;
+  editorsNote?: string;
+  emailSubject?: string;
+  editHistory?: DigestEditEntry[];
   generatedAt: string;
 }
 
@@ -154,13 +170,15 @@ export async function setReviewMessage(
 /**
  * Mark a digest as sent with stats
  */
-export async function markSent(id: number, stats: DigestSendStats): Promise<void> {
-  await query(
+export async function markSent(id: number, stats: DigestSendStats): Promise<boolean> {
+  const result = await query(
     `UPDATE weekly_digests
      SET status = 'sent', sent_at = NOW(), send_stats = $2
-     WHERE id = $1`,
+     WHERE id = $1 AND status = 'approved'
+     RETURNING id`,
     [id, JSON.stringify(stats)],
   );
+  return result.rows.length > 0;
 }
 
 /**
@@ -171,6 +189,37 @@ export async function markSkipped(id: number): Promise<void> {
     `UPDATE weekly_digests SET status = 'skipped' WHERE id = $1`,
     [id],
   );
+}
+
+/**
+ * Revert a skipped digest back to draft so it can be edited and re-approved.
+ */
+export async function revertToDraft(id: number): Promise<DigestRecord | null> {
+  const result = await query<DigestRecord>(
+    `UPDATE weekly_digests
+     SET status = 'draft', approved_by = NULL, approved_at = NULL
+     WHERE id = $1 AND status = 'skipped'
+     RETURNING *`,
+    [id],
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Update the content of a draft digest. Only works on drafts.
+ */
+export async function updateDigestContent(
+  id: number,
+  content: DigestContent,
+): Promise<DigestRecord | null> {
+  const result = await query<DigestRecord>(
+    `UPDATE weekly_digests
+     SET content = $2
+     WHERE id = $1 AND status = 'draft'
+     RETURNING *`,
+    [id, JSON.stringify(content)],
+  );
+  return result.rows[0] || null;
 }
 
 /**
@@ -223,15 +272,15 @@ export async function getRecentArticlesForDigest(
  */
 export async function getNewOrganizations(days: number = 7): Promise<Array<{
   name: string;
-  description: string | null;
+  enrichment_description: string | null;
   created_at: Date;
 }>> {
   const result = await query<{
     name: string;
-    description: string | null;
+    enrichment_description: string | null;
     created_at: Date;
   }>(
-    `SELECT name, description, created_at
+    `SELECT name, enrichment_description, created_at
      FROM organizations
      WHERE created_at > NOW() - make_interval(days => $1)
        AND is_personal = FALSE
@@ -294,7 +343,28 @@ export async function recordDigestFeedback(
   trackingId?: string,
 ): Promise<void> {
   await query(
-    `INSERT INTO digest_feedback (edition_date, vote, tracking_id) VALUES ($1, $2, $3)`,
+    `INSERT INTO digest_feedback (edition_date, vote, tracking_id) VALUES ($1, $2, $3)
+     ON CONFLICT (edition_date, tracking_id) WHERE tracking_id IS NOT NULL DO NOTHING`,
     [editionDate, vote, trackingId || null],
   );
+}
+
+/**
+ * Get active WG memberships for all users (for digest personalization).
+ * Returns a map of workos_user_id → array of WG names.
+ */
+export async function getUserWorkingGroupMap(): Promise<Map<string, string[]>> {
+  const result = await query<{ workos_user_id: string; name: string }>(
+    `SELECT wgm.workos_user_id, wg.name
+     FROM working_group_memberships wgm
+     JOIN working_groups wg ON wg.id = wgm.working_group_id
+     WHERE wgm.status = 'active' AND wg.status = 'active'`,
+  );
+  const map = new Map<string, string[]>();
+  for (const row of result.rows) {
+    const groups = map.get(row.workos_user_id) || [];
+    groups.push(row.name);
+    map.set(row.workos_user_id, groups);
+  }
+  return map;
 }

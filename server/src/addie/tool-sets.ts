@@ -74,10 +74,12 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   member: {
     name: 'member',
-    description: 'Manage member profile, working groups, committees, content proposals, and account settings',
+    description: 'Manage member profile, working groups, committees, content proposals, and account settings. Includes listing working group documents.',
     tools: [
       'get_my_profile',
       'update_my_profile',
+      'get_company_listing',
+      'update_company_listing',
       'list_working_groups',
       'get_working_group',
       'join_working_group',
@@ -92,6 +94,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'bookmark_resource',
       'set_outreach_preference',
       'draft_social_posts',
+      'list_committee_documents',
     ],
   },
 
@@ -127,6 +130,10 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'probe_adcp_agent',
       'check_publisher_authorization',
       'test_adcp_agent',
+      'evaluate_agent_quality',
+      'compare_media_kit',
+      'test_rfp_response',
+      'test_io_execution',
       'validate_agent',
       'resolve_property',
       'save_property',
@@ -174,6 +181,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'si_send_message',
       'si_get_offering',
       'si_terminate_session',
+      // Brand Protocol
+      'get_brand_identity',
+      'get_rights',
+      'acquire_rights',
+      'update_rights',
       // Protocol
       'get_adcp_capabilities',
       // Agent management
@@ -186,7 +198,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   content: {
     name: 'content',
-    description: 'Manage content workflows - draft GitHub issues, propose news sources, handle content approvals, manage committee documents',
+    description: 'Manage content workflows - draft GitHub issues, propose news sources, handle content approvals, add or update committee documents (admin actions)',
     tools: [
       'draft_github_issue',
       'propose_news_source',
@@ -194,7 +206,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'approve_content',
       'reject_content',
       'add_committee_document',
-      'list_committee_documents',
       'update_committee_document',
       'delete_committee_document',
     ],
@@ -239,18 +250,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
-  moltbook: {
-    name: 'moltbook',
-    description: 'Interact with Moltbook (social network for AI agents) - search discussions, post content, comment on threads, check stats',
-    tools: [
-      'search_moltbook',
-      'get_moltbook_thread',
-      'post_to_moltbook',
-      'comment_on_moltbook',
-      'get_moltbook_stats',
-      'get_moltbook_feed',
-    ],
-  },
 
   committee_leadership: {
     name: 'committee_leadership',
@@ -259,12 +258,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'add_committee_co_leader',
       'remove_committee_co_leader',
       'list_committee_co_leaders',
+      'list_working_groups',
     ],
   },
 
   admin: {
     name: 'admin',
-    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, member insights and engagement analytics, community-wide engagement ranking (admin only)',
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, member insights and engagement analytics, community-wide engagement ranking (admin only)',
     tools: [
       'list_pending_invoices',
       'get_account',
@@ -286,6 +286,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'list_chapters',
       'create_industry_gathering',
       'list_industry_gatherings',
+      'list_working_groups',
+      'get_working_group',
       'add_committee_leader',
       'remove_committee_leader',
       'list_committee_leaders',
@@ -301,6 +303,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'suggest_prospects',
       'set_reminder',
       'my_upcoming_tasks',
+      'complete_task',
       'log_conversation',
       'get_insight_summary',
       'get_member_search_analytics',
@@ -359,11 +362,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'test_out_modules',
       'start_certification_exam',
       'complete_certification_exam',
-      // Brand sandbox tools for certification exercises
-      'sandbox_get_brand_identity',
-      'sandbox_get_rights',
-      'sandbox_acquire_rights',
-      'sandbox_update_rights',
+      // Brand protocol tools (route to training agent during certification)
+      'get_brand_identity',
+      'get_rights',
+      'acquire_rights',
+      'update_rights',
     ],
   },
 };
@@ -451,6 +454,18 @@ export function requiresPrecision(selectedSets: string[]): boolean {
     const set = TOOL_SETS[setName];
     return set?.requiresPrecision === true;
   });
+}
+
+/**
+ * Get the set of valid tool set names for a given user context.
+ * Used to filter LLM routing output against actual permitted sets.
+ */
+export function getValidToolSetNames(isAAOAdmin: boolean = false): Set<string> {
+  return new Set(
+    Object.entries(TOOL_SETS)
+      .filter(([_, set]) => !set.adminOnly || isAAOAdmin)
+      .map(([name]) => name)
+  );
 }
 
 /**

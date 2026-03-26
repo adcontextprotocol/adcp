@@ -2361,7 +2361,7 @@
                   "influencer",
                   "affiliate",
                   "product_placement",
-                  "ai_media"
+                  "sponsored_intelligence"
                 ],
                 "enumDescriptions": {
                   "display": "Digital display advertising (banners, native, rich media) across web and app",
@@ -2383,7 +2383,7 @@
                   "influencer": "Creator and influencer marketing partnerships",
                   "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
                   "product_placement": "Product placement, branded content, and sponsorship integrations",
-                  "ai_media": "AI platform advertising — ads within AI assistants, AI search results, and generative AI experiences"
+                  "sponsored_intelligence": "AI platform advertising — ads within AI assistants, AI search results, and generative AI experiences"
                 }
               },
               "description": "Channels the seller will deliver on."

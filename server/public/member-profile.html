@@ -802,6 +802,12 @@
           </div>
 
           <div class="form-group">
+            <label for="tagline">Tagline</label>
+            <input type="text" id="tagline" name="tagline" maxlength="200" placeholder="e.g. AdCP implementation partner for buyers and publishers">
+            <div class="hint">A short headline that appears on your directory card and helps Addie match you with the right people</div>
+          </div>
+
+          <div class="form-group">
             <label for="description">Description</label>
             <textarea id="description" name="description" placeholder="Tell people about your company and what you offer..."></textarea>
             <div class="hint">The first 200 characters will appear in the directory card</div>
@@ -1692,6 +1698,7 @@
     function populateForm(profile) {
       document.getElementById('display_name').value = profile.display_name || '';
       document.getElementById('slug').value = profile.slug || '';
+      document.getElementById('tagline').value = profile.tagline || '';
       document.getElementById('description').value = profile.description || '';
       // For individuals, photo_url uses the same field as resolved_brand logo
       const photoUrlField = document.getElementById('photo_url');
@@ -1985,15 +1992,37 @@
 
 
 
+      function setPreviewMessage(msg, color, fontSize) {
+        photoPreview.textContent = msg;
+        photoPreview.style.color = color;
+        photoPreview.style.fontSize = fontSize;
+      }
+
+      function clearPreview() {
+        photoPreview.textContent = '';
+        photoPreview.style.color = '';
+        photoPreview.style.fontSize = '';
+      }
+
       if (photoUrl) {
+        try {
+          const parsed = new URL(photoUrl);
+          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
+            return;
+          }
+        } catch {
+          setPreviewMessage('Invalid URL', 'var(--color-error-500)', '11px');
+          return;
+        }
         const img = document.createElement('img');
         img.src = photoUrl;
         img.alt = 'Profile photo';
         img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
         img.onerror = function() {
-          photoPreview.innerHTML = '<span style="color: var(--color-error-500); font-size: 11px;">Invalid URL</span>';
+          setPreviewMessage('Invalid URL', 'var(--color-error-500)', '11px');
         };
-        photoPreview.innerHTML = '';
+        clearPreview();
         photoPreview.appendChild(img);
       } else if (contactEmail) {
         const gravatarUrl = getGravatarUrl(contactEmail, 160);
@@ -2002,11 +2031,11 @@
           img.src = gravatarUrl;
           img.alt = 'Gravatar';
           img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
-          photoPreview.innerHTML = '';
+          clearPreview();
           photoPreview.appendChild(img);
         }
       } else {
-        photoPreview.innerHTML = '<span style="color: var(--color-text-muted); font-size: 12px;">No photo</span>';
+        setPreviewMessage('No photo', 'var(--color-text-muted)', '12px');
       }
     }
 
@@ -2106,6 +2135,7 @@
       // Build member object from form values
       const member = {
         display_name: document.getElementById('display_name').value || 'Your Company',
+        tagline: document.getElementById('tagline').value || '',
         description: document.getElementById('description').value || '',
         resolved_brand: currentResolvedBrand || null,
         contact_website: document.getElementById('contact_website').value || null,
@@ -2131,7 +2161,7 @@
 
       const formData = {
         display_name: document.getElementById('display_name').value,
-        tagline: null, // No longer using separate tagline - description is truncated where needed
+        tagline: document.getElementById('tagline').value || null,
         description,
         contact_email: document.getElementById('contact_email').value || null,
         contact_phone: document.getElementById('contact_phone').value || null,

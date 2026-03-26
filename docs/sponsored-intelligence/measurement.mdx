@@ -1,0 +1,33 @@
+---
+title: Measurement
+description: "Sponsored Intelligence measurement — engagement metrics, conversion tracking, and commerce in the conversation."
+"og:title": "AdCP — SI measurement"
+sidebarTitle: Measurement
+---
+
+# Measurement
+
+Sponsored Intelligence measurement centers on engagement and intent signals rather than traditional impression-based metrics.
+
+## Key metrics
+
+| Metric | Field | Description |
+|---|---|---|
+| Engagements | `engagements` | User interactions with sponsored content — clicks, expansions, follow-up questions about the brand |
+| Clicks | `clicks` | Outbound clicks to advertiser destination |
+| Cost per click | `rate` (CPC) | Average cost per click — the primary pricing model for most SI products |
+| Cost per engagement | Derived: `spend / engagements` | A reporting metric (not a pricing model) that measures efficiency across all interaction types |
+
+## Conversion tracking
+
+AI platforms that support conversion tracking declare it in `get_adcp_capabilities` under `conversion_tracking`. Buyers set up event sources via `sync_event_sources` and use `kind: "event"` optimization goals on packages — the same pattern as any other channel. See [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) for details.
+
+## Measurement does not change
+
+AdCP changes how you buy media, not how you measure it. Your existing measurement stack — media mix modeling, mobile measurement partners, multi-touch attribution, incrementality testing — works the same way. Sponsored Intelligence is a new channel in your media plan, not a new measurement paradigm.
+
+The protocol does make measurement easier in one specific way: because you push conversion events into platforms via `sync_event_sources`, the platform can optimize toward your real business outcomes instead of proxy metrics. But how you evaluate whether that spend was worth it uses the same tools and frameworks you use today.
+
+## Beyond ads: commerce in the conversation
+
+AI surfaces are uniquely positioned for commerce. A user asking an AI assistant about running shoes is expressing intent in a context where the platform can recommend, compare, and — eventually — help the user buy. Today, AdCP handles the advertising layer: catalogs, media buys, and delivery. Offering catalogs via `sync_catalogs` already enable commerce handoffs through [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) sessions, where the user can browse products and transition to checkout. As commerce protocols mature, the path from "interested" to "purchased" will happen entirely within the conversation.

@@ -45,7 +45,7 @@ uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   list_creative_formats \
   '{}' \
-  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+  --auth $ADCP_AUTH_TOKEN
 ```
 
 ## How Testable Documentation Works
