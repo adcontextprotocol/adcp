@@ -17,13 +17,13 @@ import type {
 // core.generated but not re-exported from @adcp/client's main entry.
 type PricingOption = Product['pricing_options'][number];
 type PriceGuidance = NonNullable<Extract<PricingOption, { pricing_model: 'cpm' }>['price_guidance']>;
-type Episode = NonNullable<Product['episodes']>[number];
-type ShowSelector = NonNullable<Product['shows']>[number];
+type Installment = NonNullable<Product['installments']>[number];
+type CollectionSelector = NonNullable<Product['collections']>[number];
 type MediaChannel = NonNullable<Product['channels']>[number];
 type DeliveryType = Product['delivery_type'];
 type Exclusivity = NonNullable<Product['exclusivity']>;
 type PublisherPropertySelector = Product['publisher_properties'][number];
-type EpisodeStatus = NonNullable<Episode['status']>;
+type InstallmentStatus = NonNullable<Installment['status']>;
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
 import { PUBLISHERS } from './publishers.js';
@@ -431,43 +431,43 @@ function buildProduct(
     };
   }
 
-  // Build show/episode associations
-  let showSelectors: ShowSelector[] | undefined;
+  // Build collection/installment associations
+  let collectionSelectors: CollectionSelector[] | undefined;
   let exclusivity: Exclusivity | undefined;
-  let episodes: Episode[] | undefined;
-  let showTargetingAllowed: boolean | undefined;
+  let installments: Installment[] | undefined;
+  let collectionTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
     const matchingShows = pub.shows.filter(s =>
       s.channels.some(c => template.channels.includes(c)),
     );
     if (matchingShows.length > 0) {
-      showSelectors = [{
+      collectionSelectors = [{
         publisher_domain: pub.domain,
-        show_ids: matchingShows.map(s => s.showId),
+        collection_ids: matchingShows.map(s => s.showId),
       }];
       if (template.deliveryType === 'guaranteed') {
         exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
       }
       if (matchingShows.length > 1 && template.deliveryType === 'non_guaranteed') {
-        showTargetingAllowed = true;
+        collectionTargetingAllowed = true;
       }
-      const builtEpisodes: Episode[] = [];
+      const builtInstallments: Installment[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const episode = {
-            episode_id: ep.episodeId,
-            show_id: show.showId,
+          const installment = {
+            installment_id: ep.episodeId,
+            collection_id: show.showId,
             name: ep.title,
-            status: ep.status as EpisodeStatus,
+            status: ep.status as InstallmentStatus,
             ...(ep.scheduledAt && { scheduled_at: ep.scheduledAt }),
             ...(ep.durationSeconds && { duration_seconds: ep.durationSeconds }),
             ...(ep.special ? { special: ep.special } : {}),
-          } as Episode;
-          builtEpisodes.push(episode);
+          } as Installment;
+          builtInstallments.push(installment);
         }
       }
-      if (builtEpisodes.length > 0) {
-        episodes = builtEpisodes;
+      if (builtInstallments.length > 0) {
+        installments = builtInstallments;
       }
     }
   }
@@ -500,10 +500,10 @@ function buildProduct(
     ...(metricOptimization && { metric_optimization: metricOptimization }),
     ...(forecast && { forecast }),
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
-    ...(showSelectors && { shows: showSelectors }),
+    ...(collectionSelectors && { collections: collectionSelectors }),
     ...(exclusivity && { exclusivity }),
-    ...(episodes && { episodes }),
-    ...(showTargetingAllowed && { show_targeting_allowed: showTargetingAllowed }),
+    ...(installments && { installments }),
+    ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
   };
 
   return {
@@ -550,9 +550,9 @@ function buildShowObject(show: ShowDefinition): ShowResponse {
 export function buildShowsForProducts(products: Product[]): ShowResponse[] {
   const referencedIds = new Set<string>();
   for (const p of products) {
-    if (p.shows) {
-      for (const selector of p.shows) {
-        selector.show_ids.forEach(id => referencedIds.add(id));
+    if (p.collections) {
+      for (const selector of p.collections) {
+        selector.collection_ids.forEach(id => referencedIds.add(id));
       }
     }
   }
