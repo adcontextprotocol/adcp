@@ -1913,9 +1913,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.json({ agents, count: agents.length, sources: bySource });
       }
 
-      // Bulk-fetch compliance status if requested
+      // Bulk-fetch compliance status and metadata if requested
+      const agentUrls = agents.map(a => a.url);
       const complianceMap = withCompliance
-        ? await complianceDb.bulkGetComplianceStatus(agents.map(a => a.url))
+        ? await complianceDb.bulkGetComplianceStatus(agentUrls)
+        : null;
+      const metadataMap = withCompliance
+        ? await complianceDb.bulkGetRegistryMetadata(agentUrls)
         : null;
 
       const enriched = await Promise.all(
@@ -1997,9 +2001,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             }
           }
 
-          if (complianceMap) {
+          if (complianceMap && metadataMap) {
             const cs = complianceMap.get(agent.url);
-            if (cs) {
+            const meta = metadataMap.get(agent.url);
+            const optedOut = meta?.compliance_opt_out ?? false;
+            if (cs && !optedOut) {
               enrichedAgent.compliance = {
                 status: cs.status,
                 lifecycle_stage: cs.lifecycle_stage,
@@ -2033,11 +2039,27 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const status = await complianceDb.getComplianceStatus(agentUrl);
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
 
+      const complianceOptOut = metadata?.compliance_opt_out ?? false;
+
+      // If opted out, only show full data to the agent's owner
+      const isOwner = req.user
+        ? await verifyAgentOwnership(req.user.id, agentUrl)
+        : false;
+
+      if (complianceOptOut && !isOwner) {
+        return res.json({
+          agent_url: agentUrl,
+          status: "opted_out",
+          lifecycle_stage: metadata?.lifecycle_stage || "production",
+        });
+      }
+
       if (!status) {
         return res.json({
           agent_url: agentUrl,
           status: "unknown",
           lifecycle_stage: metadata?.lifecycle_stage || "production",
+          compliance_opt_out: complianceOptOut,
           tracks: {},
           streak_days: 0,
           last_checked_at: null,
@@ -2049,6 +2071,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         agent_url: agentUrl,
         status: status.status,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
+        compliance_opt_out: complianceOptOut,
         tracks: status.tracks_summary_json || {},
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
@@ -2069,6 +2092,17 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (!validateAgentUrlParam(agentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Respect opt-out for non-owners
+      const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+      if (metadata?.compliance_opt_out) {
+        const isOwner = req.user
+          ? await verifyAgentOwnership(req.user.id, agentUrl)
+          : false;
+        if (!isOwner) {
+          return res.json({ agent_url: agentUrl, runs: [], count: 0 });
+        }
+      }
+
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
       const history = await complianceDb.getComplianceHistory(agentUrl, limit);
 

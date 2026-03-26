@@ -257,6 +257,21 @@ export class ComplianceDatabase {
     return result.rows[0] || null;
   }
 
+  async bulkGetRegistryMetadata(agentUrls: string[]): Promise<Map<string, AgentRegistryMetadata>> {
+    if (agentUrls.length === 0) return new Map();
+
+    const result = await query(
+      `SELECT * FROM agent_registry_metadata WHERE agent_url = ANY($1)`,
+      [agentUrls],
+    );
+
+    const map = new Map<string, AgentRegistryMetadata>();
+    for (const row of result.rows) {
+      map.set(row.agent_url, row);
+    }
+    return map;
+  }
+
   async bulkGetComplianceStatus(agentUrls: string[]): Promise<Map<string, AgentComplianceStatus>> {
     if (agentUrls.length === 0) return new Map();
 

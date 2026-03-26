@@ -76,6 +76,7 @@
           { href: isOrgPage ? '#membership' : '/dashboard/organization#membership', label: 'Membership', icon: '⭐', anchor: isOrgPage ? 'membership' : null },
           { href: isOrgPage ? '#team' : '/dashboard/organization#team', label: 'Team', icon: '👥', anchor: isOrgPage ? 'team' : null },
           { href: isOrgPage ? '#directory' : '/dashboard/organization#directory', label: 'Directory listing', icon: '🏢', anchor: isOrgPage ? 'directory' : null },
+          { href: isOrgPage ? '#agents' : '/dashboard/organization#agents', label: 'Agents', icon: '🤖', anchor: isOrgPage ? 'agents' : null },
         ]
       },
       {
@@ -549,8 +550,8 @@
 
     const sectionsHTML = NAV_CONFIG.sections.map(section => {
       const itemsHTML = section.items.map(item => {
-        // Hide Team and Directory listing for personal workspaces
-        if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing')) {
+        // Hide Team, Directory listing, and Agents for personal workspaces
+        if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing' || item.label === 'Agents')) {
           return '';
         }
 

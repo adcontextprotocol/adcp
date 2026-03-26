@@ -317,6 +317,124 @@
     .hub-card-link:hover { text-decoration: underline; }
 
     /* =========================================================================
+       Agent Compliance
+       ========================================================================= */
+    .agent-compliance-card {
+      padding: var(--space-4);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      margin-bottom: var(--space-3);
+    }
+    .agent-compliance-card:last-child { margin-bottom: 0; }
+
+    .agent-compliance-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+
+    .agent-hostname {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+    }
+
+    .agent-status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .agent-status-dot--passing { background: var(--color-success-500); }
+    .agent-status-dot--degraded { background: var(--color-warning-500); }
+    .agent-status-dot--failing { background: var(--color-error-500); }
+    .agent-status-dot--unknown { background: var(--color-gray-400); }
+
+    .agent-status-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .agent-streak {
+      padding: 1px var(--space-2);
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+    }
+
+    .agent-headline {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-2);
+    }
+
+    .agent-tracks {
+      display: flex;
+      gap: 3px;
+      flex-wrap: wrap;
+      margin-top: var(--space-2);
+    }
+
+    .agent-track {
+      padding: 1px var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+    }
+    .agent-track--pass { background: var(--color-success-100); color: var(--color-success-700); }
+    .agent-track--fail { background: var(--color-error-100); color: var(--color-error-700); }
+    .agent-track--partial { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .agent-track--skip { background: var(--color-gray-100); color: var(--color-gray-600); }
+
+    .agent-sparkline {
+      display: flex;
+      gap: 2px;
+      margin-top: var(--space-2);
+      height: 16px;
+      align-items: flex-end;
+    }
+
+    .agent-sparkline-bar {
+      flex: 1;
+      min-width: 4px;
+      max-width: 16px;
+      height: 100%;
+      border-radius: 2px;
+    }
+
+    .agent-meta-row {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
+    }
+
+    .agent-lifecycle-select {
+      font-size: var(--text-xs);
+      padding: 2px var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+
+    .agent-toggle {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      cursor: pointer;
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .agent-toggle input { cursor: pointer; }
+    .agent-toggle-label { user-select: none; }
+
+    /* =========================================================================
        Persona
        ========================================================================= */
     .persona-display { text-align: center; padding: var(--space-4) 0; }
@@ -662,7 +780,30 @@
           } catch (e) { /* ignore cert fetch errors */ }
         }
 
-        renderHub(data, profileData?.profile || null, currentOrg?.id || null, certSummary);
+        // Fetch compliance data for org's agents
+        const agentCompliance = new Map();
+        const agents = profileData?.profile?.agents || [];
+        if (agents.length > 0) {
+          const results = await Promise.allSettled(
+            agents.map(async (agent) => {
+              const encoded = encodeURIComponent(agent.url);
+              const [statusRes, historyRes] = await Promise.all([
+                fetch(`/api/registry/agents/${encoded}/compliance`, { credentials: 'include' }),
+                fetch(`/api/registry/agents/${encoded}/compliance/history?limit=10`, { credentials: 'include' }),
+              ]);
+              const status = statusRes.ok ? await statusRes.json() : null;
+              const history = historyRes.ok ? await historyRes.json() : null;
+              return { url: agent.url, status, history };
+            }),
+          );
+          for (const r of results) {
+            if (r.status === 'fulfilled' && r.value.status) {
+              agentCompliance.set(r.value.url, r.value);
+            }
+          }
+        }
+
+        renderHub(data, profileData?.profile || null, currentOrg?.id || null, certSummary, agentCompliance);
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
@@ -754,7 +895,7 @@
         </div>`;
     }
 
-    function renderHub(data, profile, orgId, certSummary) {
+    function renderHub(data, profile, orgId, certSummary, agentCompliance) {
       const {
         organization_name,
         membership_tier, team_size,
@@ -846,10 +987,116 @@
             ${renderProfileCard(profile, orgId)}
           </div>
         </section>
+
+        <!-- ===== Agents ===== -->
+        <section id="agents" class="dashboard-section">
+          <div class="hub-card">
+            <div class="hub-card-header">
+              <span class="hub-card-title">Agents</span>
+              <a href="${orgId ? '/member-profile?org=' + encodeURIComponent(orgId) + '#agents' : '/member-profile#agents'}" class="hub-card-link">Manage agents &rarr;</a>
+            </div>
+            ${renderAgentsSection(profile?.agents || [], agentCompliance, orgId)}
+          </div>
+        </section>
       `;
     }
 
     // -------------------------------------------------------------------------
+
+    function renderAgentsSection(agents, complianceMap, orgId) {
+      if (!agents || agents.length === 0) {
+        return `
+          <div style="text-align: center; padding: var(--space-6); color: var(--color-text-secondary);">
+            <p>No agents registered.</p>
+            <a href="${orgId ? '/member-profile?org=' + encodeURIComponent(orgId) : '/member-profile'}" class="hub-card-link">Add agents in your directory listing &rarr;</a>
+          </div>
+        `;
+      }
+
+      return agents.map(agent => {
+        const data = complianceMap?.get(agent.url);
+        const cs = data?.status;
+        const history = data?.history;
+        const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
+
+        // Status dot
+        const statusClass = cs?.status || 'unknown';
+        const statusLabel = cs?.status || 'unknown';
+
+        // Track pills
+        const tracks = cs?.tracks || {};
+        const trackPills = Object.entries(tracks).map(([track, status]) => {
+          const cls = status === 'pass' ? 'agent-track--pass'
+            : status === 'fail' ? 'agent-track--fail'
+            : status === 'partial' ? 'agent-track--partial'
+            : 'agent-track--skip';
+          return '<span class="agent-track ' + cls + '">' + escapeHtml(track) + '</span>';
+        }).join('');
+
+        // Sparkline from history
+        const runs = history?.runs || [];
+        const sparkline = runs.length > 0 ? '<div class="agent-sparkline">' +
+          runs.slice().reverse().map(r => {
+            const color = r.overall_status === 'passing' ? 'var(--color-success-500)'
+              : r.overall_status === 'failing' ? 'var(--color-error-500)'
+              : 'var(--color-warning-500)';
+            return '<div class="agent-sparkline-bar" style="background:' + color + ';" title="' + escapeHtml(r.overall_status) + ' — ' + new Date(r.tested_at).toLocaleDateString() + '"></div>';
+          }).join('') + '</div>' : '';
+
+        // Last checked
+        const lastChecked = cs?.last_checked_at
+          ? timeAgo(new Date(cs.last_checked_at))
+          : 'never';
+
+        // Lifecycle select
+        const lifecycle = cs?.lifecycle_stage || 'production';
+        const lifecycleOptions = ['development', 'testing', 'production', 'deprecated'].map(s =>
+          '<option value="' + s + '"' + (s === lifecycle ? ' selected' : '') + '>' + s + '</option>'
+        ).join('');
+
+        // Public toggle
+        const isPublic = !(cs?.compliance_opt_out ?? false);
+
+        return `
+          <div class="agent-compliance-card">
+            <div class="agent-compliance-header">
+              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
+                <span class="agent-status-dot agent-status-dot--${escapeHtml(statusClass)}"></span>
+                <span class="agent-hostname">${escapeHtml(hostname)}</span>
+                <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
+                ${cs?.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
+              </div>
+              <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
+                <select class="agent-lifecycle-select" data-agent-url="${escapeHtml(agent.url)}" title="Lifecycle stage">
+                  ${lifecycleOptions}
+                </select>
+                <label class="agent-toggle" title="Show compliance on public listing">
+                  <input type="checkbox" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}">
+                  <span class="agent-toggle-label">Public</span>
+                </label>
+              </div>
+            </div>
+            ${cs?.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
+            ${trackPills ? '<div class="agent-tracks">' + trackPills + '</div>' : ''}
+            ${sparkline}
+            <div class="agent-meta-row">
+              <span>Last checked: ${escapeHtml(lastChecked)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function timeAgo(date) {
+      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return minutes + 'm ago';
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return hours + 'h ago';
+      const days = Math.floor(hours / 24);
+      return days + 'd ago';
+    }
 
     function renderLevelProgress(stage, stageIdx, levelNum, nextReq, milestones) {
       const steps = STAGES.map((s, i) => {
@@ -1191,6 +1438,49 @@
     // =========================================================================
     // Utilities
     // =========================================================================
+
+    // Agent compliance controls — event delegation to avoid inline JS with URLs
+    document.addEventListener('change', async function(e) {
+      const select = e.target.closest('.agent-lifecycle-select');
+      if (select) {
+        const agentUrl = select.dataset.agentUrl;
+        const previousValue = select.dataset.previousValue || 'production';
+        try {
+          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/lifecycle`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ lifecycle_stage: select.value }),
+          });
+          if (!res.ok) {
+            select.value = previousValue;
+          } else {
+            select.dataset.previousValue = select.value;
+          }
+        } catch {
+          select.value = previousValue;
+        }
+        return;
+      }
+
+      const checkbox = e.target.closest('.agent-toggle input[type="checkbox"]');
+      if (checkbox) {
+        const agentUrl = checkbox.dataset.agentUrl;
+        try {
+          const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/opt-out`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ opt_out: !checkbox.checked }),
+          });
+          if (!res.ok) {
+            checkbox.checked = !checkbox.checked;
+          }
+        } catch {
+          checkbox.checked = !checkbox.checked;
+        }
+      }
+    });
 
     async function openBillingPortal(orgId) {
       try {
