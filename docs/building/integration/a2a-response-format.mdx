@@ -192,8 +192,11 @@ function extractDataPartFromArtifacts(response) {
   const lastDataPart = dataParts[dataParts.length - 1];
   const payload = lastDataPart.data;
 
-  // CRITICAL: Payload MUST be direct AdCP response
-  if (payload.response !== undefined && typeof payload.response === 'object') {
+  // CRITICAL: Payload MUST be direct AdCP response, not a framework wrapper.
+  // A wrapper is a single-key object { response: {...} } — reject it.
+  // Objects that have 'response' alongside other keys are NOT wrappers.
+  const keys = Object.keys(payload);
+  if (keys.length === 1 && keys[0] === 'response' && typeof payload.response === 'object') {
     throw new Error(
       'Invalid response format: DataPart contains wrapper object. ' +
       'Expected direct AdCP payload (e.g., {products: [...]}) ' +

@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "description": "Test vectors for extracting AdCP data from webhook payloads. Each vector contains a webhook payload and the expected extracted AdCP data. Covers both MCP flat envelope and A2A native Task formats.",
+  "vectors": [
+    {
+      "id": "mcp-completed",
+      "description": "MCP webhook — completed with result data",
+      "format": "mcp",
+      "payload": {
+        "task_id": "task_001",
+        "task_type": "create_media_buy",
+        "domain": "media-buy",
+        "status": "completed",
+        "timestamp": "2025-01-22T10:30:00Z",
+        "message": "Media buy created successfully",
+        "result": {
+          "media_buy_id": "mb_12345",
+          "packages": [
+            {"package_id": "pkg_001", "status": "active"}
+          ]
+        }
+      },
+      "expected_format": "mcp",
+      "expected_data": {
+        "media_buy_id": "mb_12345",
+        "packages": [
+          {"package_id": "pkg_001", "status": "active"}
+        ]
+      }
+    },
+    {
+      "id": "mcp-failed-adcp-error",
+      "description": "MCP webhook — failed with adcp_error in result",
+      "format": "mcp",
+      "payload": {
+        "task_id": "task_002",
+        "status": "failed",
+        "timestamp": "2025-01-22T10:31:00Z",
+        "message": "Rate limit exceeded",
+        "result": {
+          "adcp_error": {
+            "code": "RATE_LIMITED",
+            "message": "Request rate exceeded",
+            "recovery": "transient",
+            "retry_after": 5
+          }
+        }
+      },
+      "expected_format": "mcp",
+      "expected_data": {
+        "adcp_error": {
+          "code": "RATE_LIMITED",
+          "message": "Request rate exceeded",
+          "recovery": "transient",
+          "retry_after": 5
+        }
+      }
+    },
+    {
+      "id": "mcp-working",
+      "description": "MCP webhook — working status with progress data",
+      "format": "mcp",
+      "payload": {
+        "task_id": "task_003",
+        "status": "working",
+        "timestamp": "2025-01-22T10:30:15Z",
+        "message": "Processing inventory search...",
+        "result": {
+          "percentage": 45,
+          "current_step": "analyzing_inventory"
+        }
+      },
+      "expected_format": "mcp",
+      "expected_data": {
+        "percentage": 45,
+        "current_step": "analyzing_inventory"
+      }
+    },
+    {
+      "id": "mcp-input-required",
+      "description": "MCP webhook — input-required status",
+      "format": "mcp",
+      "payload": {
+        "task_id": "task_004",
+        "status": "input-required",
+        "timestamp": "2025-01-22T10:30:30Z",
+        "message": "Budget exceeds auto-approval limit",
+        "result": {
+          "reason": "budget_approval",
+          "total_budget": 150000
+        }
+      },
+      "expected_format": "mcp",
+      "expected_data": {
+        "reason": "budget_approval",
+        "total_budget": 150000
+      }
+    },
+    {
+      "id": "a2a-completed-artifacts",
+      "description": "A2A webhook — completed Task with data in artifacts",
+      "format": "a2a",
+      "payload": {
+        "id": "task_005",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:30:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "text", "text": "Media buy created successfully"},
+            {
+              "kind": "data",
+              "data": {
+                "media_buy_id": "mb_12345",
+                "packages": [
+                  {"package_id": "pkg_001", "status": "active"}
+                ]
+              }
+            }
+          ]
+        }]
+      },
+      "expected_format": "a2a",
+      "expected_data": {
+        "media_buy_id": "mb_12345",
+        "packages": [
+          {"package_id": "pkg_001", "status": "active"}
+        ]
+      }
+    },
+    {
+      "id": "a2a-failed-adcp-error",
+      "description": "A2A webhook — failed Task with adcp_error in artifacts",
+      "format": "a2a",
+      "payload": {
+        "id": "task_006",
+        "status": {
+          "state": "failed",
+          "timestamp": "2025-01-22T10:31:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "error-result",
+          "parts": [
+            {"kind": "text", "text": "Rate limit exceeded."},
+            {
+              "kind": "data",
+              "data": {
+                "adcp_error": {
+                  "code": "RATE_LIMITED",
+                  "message": "Request rate exceeded",
+                  "recovery": "transient"
+                }
+              }
+            }
+          ]
+        }]
+      },
+      "expected_format": "a2a",
+      "expected_data": {
+        "adcp_error": {
+          "code": "RATE_LIMITED",
+          "message": "Request rate exceeded",
+          "recovery": "transient"
+        }
+      }
+    },
+    {
+      "id": "a2a-working-event",
+      "description": "A2A webhook — TaskStatusUpdateEvent for working status",
+      "format": "a2a",
+      "payload": {
+        "id": "task_007",
+        "status": {
+          "state": "working",
+          "timestamp": "2025-01-22T10:30:15Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Processing..."},
+              {"kind": "data", "data": {"percentage": 60, "current_step": "matching"}}
+            ]
+          }
+        }
+      },
+      "expected_format": "a2a",
+      "expected_data": {"percentage": 60, "current_step": "matching"}
+    },
+    {
+      "id": "mcp-missing-result",
+      "description": "MCP webhook — missing result field returns null",
+      "format": "mcp",
+      "payload": {
+        "task_id": "task_008",
+        "status": "completed",
+        "timestamp": "2025-01-22T10:30:00Z",
+        "message": "Done"
+      },
+      "expected_format": "mcp",
+      "expected_data": null
+    },
+    {
+      "id": "mcp-null-result",
+      "description": "MCP webhook — null result field returns null",
+      "format": "mcp",
+      "payload": {
+        "task_id": "task_009",
+        "status": "completed",
+        "timestamp": "2025-01-22T10:30:00Z",
+        "result": null
+      },
+      "expected_format": "mcp",
+      "expected_data": null
+    },
+    {
+      "id": "a2a-completed-no-datapart",
+      "description": "A2A webhook — completed but text-only artifacts, no DataPart",
+      "format": "a2a",
+      "payload": {
+        "id": "task_010",
+        "status": {
+          "state": "completed",
+          "timestamp": "2025-01-22T10:30:00Z"
+        },
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "text", "text": "Task completed."}
+          ]
+        }]
+      },
+      "expected_format": "a2a",
+      "expected_data": null
+    },
+    {
+      "id": "mcp-canceled",
+      "description": "MCP webhook — canceled status with no result",
+      "format": "mcp",
+      "payload": {
+        "task_id": "task_011",
+        "status": "canceled",
+        "timestamp": "2025-01-22T10:30:00Z",
+        "message": "Task canceled by user"
+      },
+      "expected_format": "mcp",
+      "expected_data": null
+    },
+    {
+      "id": "a2a-input-required-event",
+      "description": "A2A webhook — input-required with reason data",
+      "format": "a2a",
+      "payload": {
+        "id": "task_012",
+        "status": {
+          "state": "input-required",
+          "timestamp": "2025-01-22T10:30:30Z",
+          "message": {
+            "role": "agent",
+            "parts": [
+              {"kind": "text", "text": "Approval needed for budget over $100K."},
+              {"kind": "data", "data": {"reason": "budget_approval", "amount": 150000}}
+            ]
+          }
+        }
+      },
+      "expected_format": "a2a",
+      "expected_data": {"reason": "budget_approval", "amount": 150000}
+    }
+  ]
+}

@@ -1,0 +1,244 @@
+{
+  "version": 1,
+  "description": "Test vectors for extracting AdCP success responses from MCP tool results. Each vector contains an MCP response and the expected extracted AdCP data.",
+  "vectors": [
+    {
+      "id": "structured-content-products",
+      "description": "structuredContent with product catalog (happy path)",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Found 3 products matching your brief."}],
+        "structuredContent": {
+          "status": "completed",
+          "message": "Found 3 products",
+          "products": [
+            {"product_id": "ctv_sports_premium", "name": "Premium Sports CTV", "cpm": 35.00},
+            {"product_id": "ctv_news_standard", "name": "Standard News CTV", "cpm": 22.50},
+            {"product_id": "display_run_of_site", "name": "Run of Site Display", "cpm": 8.00}
+          ]
+        }
+      },
+      "expected_data": {
+        "status": "completed",
+        "message": "Found 3 products",
+        "products": [
+          {"product_id": "ctv_sports_premium", "name": "Premium Sports CTV", "cpm": 35.00},
+          {"product_id": "ctv_news_standard", "name": "Standard News CTV", "cpm": 22.50},
+          {"product_id": "display_run_of_site", "name": "Run of Site Display", "cpm": 8.00}
+        ]
+      }
+    },
+    {
+      "id": "structured-content-media-buy",
+      "description": "structuredContent with media buy response",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Media buy created successfully."}],
+        "structuredContent": {
+          "status": "completed",
+          "media_buy_id": "mb_12345",
+          "packages": [
+            {"package_id": "pkg_001", "status": "active"}
+          ],
+          "creative_deadline": "2025-02-01T23:59:59Z"
+        }
+      },
+      "expected_data": {
+        "status": "completed",
+        "media_buy_id": "mb_12345",
+        "packages": [
+          {"package_id": "pkg_001", "status": "active"}
+        ],
+        "creative_deadline": "2025-02-01T23:59:59Z"
+      }
+    },
+    {
+      "id": "text-fallback-json",
+      "description": "No structuredContent — JSON in content[].text (older MCP servers)",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "{\"status\":\"completed\",\"products\":[{\"product_id\":\"ctv_premium\",\"name\":\"Premium CTV\"}]}"}]
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [{"product_id": "ctv_premium", "name": "Premium CTV"}]
+      }
+    },
+    {
+      "id": "plain-text-no-json",
+      "description": "Plain text response with no structured data",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "Found 3 products matching your brief for pet food campaigns."}]
+      },
+      "expected_data": null
+    },
+    {
+      "id": "is-error-true",
+      "description": "isError: true response — MUST NOT extract as success (error path handles this)",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Rate limit exceeded."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "RATE_LIMITED",
+            "message": "Request rate exceeded",
+            "recovery": "transient"
+          }
+        }
+      },
+      "expected_data": null
+    },
+    {
+      "id": "is-error-true-no-structured",
+      "description": "isError: true with text fallback — MUST NOT extract as success",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "{\"adcp_error\":{\"code\":\"RATE_LIMITED\",\"recovery\":\"transient\"}}"}],
+        "isError": true
+      },
+      "expected_data": null
+    },
+    {
+      "id": "empty-structured-content",
+      "description": "Empty structuredContent object — returns empty object",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "No data available."}],
+        "structuredContent": {}
+      },
+      "expected_data": {}
+    },
+    {
+      "id": "multiple-text-items",
+      "description": "Multiple text content items — first valid JSON wins",
+      "path": "text_fallback",
+      "response": {
+        "content": [
+          {"type": "text", "text": "Found products for your campaign."},
+          {"type": "text", "text": "{\"status\":\"completed\",\"products\":[{\"product_id\":\"vid_001\"}]}"}
+        ]
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [{"product_id": "vid_001"}]
+      }
+    },
+    {
+      "id": "text-not-json",
+      "description": "Text content is not valid JSON — returns null",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "This is not JSON {invalid"}]
+      },
+      "expected_data": null
+    },
+    {
+      "id": "text-parses-as-array",
+      "description": "Text parses as JSON array — MUST NOT extract (must be object)",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "[{\"product_id\":\"ctv_001\"},{\"product_id\":\"ctv_002\"}]"}]
+      },
+      "expected_data": null
+    },
+    {
+      "id": "structured-content-adcp-error-only",
+      "description": "structuredContent with only adcp_error (no success data) — returns null",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Error occurred."}],
+        "structuredContent": {
+          "adcp_error": {
+            "code": "BUDGET_TOO_LOW",
+            "message": "Budget is below the seller's minimum",
+            "recovery": "correctable"
+          }
+        }
+      },
+      "expected_data": null
+    },
+    {
+      "id": "structured-content-wins-over-text",
+      "description": "Both structuredContent and text JSON present — structuredContent takes precedence",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "{\"status\":\"completed\",\"products\":[{\"product_id\":\"old_data\"}]}"}],
+        "structuredContent": {
+          "status": "completed",
+          "products": [{"product_id": "ctv_premium", "name": "Premium CTV"}]
+        }
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [{"product_id": "ctv_premium", "name": "Premium CTV"}]
+      }
+    },
+    {
+      "id": "working-status",
+      "description": "Working status with progress data in structuredContent",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Processing your request..."}],
+        "structuredContent": {
+          "status": "working",
+          "percentage": 45,
+          "current_step": "analyzing_inventory"
+        }
+      },
+      "expected_data": {
+        "status": "working",
+        "percentage": 45,
+        "current_step": "analyzing_inventory"
+      }
+    },
+    {
+      "id": "input-required-status",
+      "description": "Input-required status with reason data",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Need approval for budget over $100K."}],
+        "structuredContent": {
+          "status": "input-required",
+          "message": "Media buy exceeds auto-approval limit",
+          "media_buy_id": "mb_pending_456",
+          "packages": [{"package_id": "pkg_001", "status": "pending_approval"}]
+        }
+      },
+      "expected_data": {
+        "status": "input-required",
+        "message": "Media buy exceeds auto-approval limit",
+        "media_buy_id": "mb_pending_456",
+        "packages": [{"package_id": "pkg_001", "status": "pending_approval"}]
+      }
+    },
+    {
+      "id": "text-fallback-adcp-error-only",
+      "description": "Text fallback with adcp_error-only JSON (error response missing isError) — returns null",
+      "path": "text_fallback",
+      "response": {
+        "content": [{"type": "text", "text": "{\"adcp_error\":{\"code\":\"RATE_LIMITED\",\"message\":\"Rate exceeded\",\"recovery\":\"transient\"}}"}]
+      },
+      "expected_data": null
+    },
+    {
+      "id": "proto-pollution-structured",
+      "description": "structuredContent with __proto__ key — extraction succeeds but clients MUST NOT merge via Object.assign",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "OK"}],
+        "structuredContent": {
+          "status": "completed",
+          "products": [],
+          "__proto__": {"isAdmin": true}
+        }
+      },
+      "expected_data": {
+        "status": "completed",
+        "products": [],
+        "__proto__": {"isAdmin": true}
+      }
+    }
+  ]
+}

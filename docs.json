@@ -131,6 +131,8 @@
                       "docs/building/implementation/orchestrator-design",
                       "docs/building/implementation/error-handling",
                       "docs/building/implementation/transport-errors",
+                      "docs/building/implementation/mcp-response-extraction",
+                      "docs/building/implementation/a2a-response-extraction",
                       "docs/building/implementation/security",
                       "docs/building/implementation/seller-integration"
                     ]
@@ -575,6 +577,8 @@
                   "docs/building/implementation/orchestrator-design",
                   "docs/building/implementation/error-handling",
                   "docs/building/implementation/transport-errors",
+                  "docs/building/implementation/mcp-response-extraction",
+                  "docs/building/implementation/a2a-response-extraction",
                   "docs/building/implementation/security",
                   "docs/building/implementation/seller-integration"
                 ]

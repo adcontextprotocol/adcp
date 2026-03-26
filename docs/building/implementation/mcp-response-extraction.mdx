@@ -1,0 +1,163 @@
+---
+title: MCP Response Extraction
+description: "How to extract AdCP success response data from MCP tool results: structuredContent, text fallback, and client implementation requirements."
+"og:title": "AdCP — MCP Response Extraction"
+---
+
+This page defines the normative algorithm for extracting AdCP success response data from MCP tool results. For error extraction, see [Transport Error Mapping](/docs/building/implementation/transport-errors).
+
+## Layer Separation
+
+| Path | When | Data Source |
+|---|---|---|
+| Success extraction (this page) | `isError` absent or `false` | `structuredContent` or `content[].text` |
+| Error extraction ([transport-errors](/docs/building/implementation/transport-errors)) | `isError: true` | `structuredContent.adcp_error` or text fallback |
+
+Clients MUST check `isError` before deciding which extraction path to use. A response with `isError: true` MUST NOT be processed as a success response, even if it contains `structuredContent` with non-error data.
+
+## Extraction Algorithm
+
+Clients MUST extract AdCP data from MCP tool results in this order:
+
+1. **Guard: reject error responses.** If `isError` is truthy, return null. Error extraction is a separate path.
+2. **`structuredContent`** — If present and is a non-array object, return it. If the only key is `adcp_error`, return null (this is an error response missing the `isError` flag).
+3. **Text fallback** — Iterate `content[]` items in array order. For each item where `type === 'text'`, enforce a 1MB size limit, then attempt `JSON.parse`. If the result is a non-array object, return it. Skip items that fail to parse, parse as non-objects, or contain only an `adcp_error` key.
+4. **No structured data found** — Return null. The response is plain text with no machine-readable AdCP data.
+
+<CodeGroup>
+```javascript MCP Client
+function extractAdcpResponseFromMcp(response) {
+  // 1. Error responses go through transport-errors extraction
+  if (response.isError) return null;
+
+  // 2. structuredContent (preferred — MCP 2025-03-26+)
+  if (response.structuredContent != null
+      && typeof response.structuredContent === 'object'
+      && !Array.isArray(response.structuredContent)) {
+    const sc = response.structuredContent;
+    // adcp_error-only structuredContent is an error missing isError flag
+    const keys = Object.keys(sc);
+    if (keys.length === 1 && keys[0] === 'adcp_error') return null;
+    return sc;
+  }
+
+  // 3. Text fallback — JSON.parse content[].text
+  if (response.content && Array.isArray(response.content)) {
+    for (const item of response.content) {
+      if (item.type === 'text' && item.text) {
+        if (item.text.length > 1_048_576) continue; // 1MB size limit
+        try {
+          const parsed = JSON.parse(item.text);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            // Skip adcp_error-only payloads (error missing isError flag)
+            const keys = Object.keys(parsed);
+            if (keys.length === 1 && keys[0] === 'adcp_error') continue;
+            return parsed;
+          }
+        } catch { /* not JSON */ }
+      }
+    }
+  }
+
+  return null;
+}
+```
+</CodeGroup>
+
+## Extraction Paths
+
+### structuredContent (Preferred)
+
+MCP 2025-03-26 introduced `structuredContent` for typed tool results. AdCP servers return the full response payload here:
+
+```json
+{
+  "content": [{"type": "text", "text": "Found 3 products matching your brief."}],
+  "structuredContent": {
+    "status": "completed",
+    "message": "Found 3 products",
+    "products": [
+      {"product_id": "ctv_sports_premium", "name": "Premium Sports CTV"},
+      {"product_id": "ctv_news_standard", "name": "Standard News CTV"}
+    ]
+  }
+}
+```
+
+The `structuredContent` object IS the AdCP response — task-specific fields (`products`, `media_buy_id`, `status`, etc.) are at the top level, not nested.
+
+### Text Fallback
+
+Older MCP servers (pre-2025-03-26) serialize the response as JSON in `content[].text`:
+
+```json
+{
+  "content": [
+    {"type": "text", "text": "{\"status\":\"completed\",\"products\":[{\"product_id\":\"ctv_premium\"}]}"}
+  ]
+}
+```
+
+Clients parse the first text item that yields a JSON object. When both `structuredContent` and text JSON exist, `structuredContent` takes precedence.
+
+## Relationship to Error Extraction
+
+Success and error extraction are complementary:
+
+```javascript
+function handleMcpResponse(response) {
+  // Try error extraction first (only runs if isError is true)
+  const error = extractAdcpErrorFromMcp(response);
+  if (error) return handleError(error);
+
+  // Then try success extraction
+  const data = extractAdcpResponseFromMcp(response);
+  if (data) return handleSuccess(data);
+
+  // Plain text response — no structured data
+  return handlePlainText(response.content);
+}
+```
+
+## Security Considerations
+
+### Seller-Controlled Data
+
+All data in `structuredContent` and `content[].text` is seller-controlled. The same prompt injection and data boundary requirements from [Transport Error Mapping](/docs/building/implementation/transport-errors#security-considerations) apply.
+
+### Size Limits
+
+Clients SHOULD enforce a maximum payload size before processing. A recommended limit is 1MB for `structuredContent`. For text fallback, apply the limit before `JSON.parse` to prevent memory exhaustion from oversized payloads.
+
+### Prototype Pollution
+
+Clients MUST NOT merge extracted response objects into application state via `Object.assign` or spread without filtering keys. Seller-controlled keys like `__proto__` or `constructor` can trigger prototype pollution. Validate against the expected task response schema before merging.
+
+### Type Confusion
+
+Clients MUST check `isError` before success extraction. Without this guard, a client could process an error response as success data, leading to incorrect business logic (e.g., treating a `RATE_LIMITED` error as product data).
+
+## Client Library Requirements
+
+Client libraries that implement this spec MUST:
+
+1. **Check `isError` before extraction.** Return null for error responses.
+2. **Prefer `structuredContent`.** Only fall back to text parsing when `structuredContent` is absent.
+3. **Validate parsed text.** Only accept non-array objects from `JSON.parse`. Reject arrays, strings, numbers, booleans, and null.
+4. **Handle `adcp_error`-only `structuredContent`.** When `structuredContent` contains only an `adcp_error` key, return null — this is an error response that may be missing the `isError` flag.
+
+## Test Vectors
+
+Machine-readable test vectors are available at [`/static/test-vectors/mcp-response-extraction.json`](https://adcontextprotocol.org/test-vectors/mcp-response-extraction.json). Each vector contains:
+
+- `path`: extraction path (`structuredContent` or `text_fallback`)
+- `response`: the MCP tool result envelope
+- `expected_data`: the AdCP data that should be extracted (or `null`)
+
+Client libraries SHOULD validate their extraction logic against these vectors.
+
+## See Also
+
+- [Transport Error Mapping](/docs/building/implementation/transport-errors) — error extraction from MCP and A2A
+- [A2A Response Extraction](/docs/building/implementation/a2a-response-extraction) — equivalent spec for A2A
+- [MCP Guide](/docs/building/integration/mcp-guide) — MCP transport integration
