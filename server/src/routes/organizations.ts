@@ -2149,7 +2149,8 @@ export function createOrganizationsRouter(): Router {
     try {
       const user = req.user!;
       const { orgId } = req.params;
-      const { email, role } = req.body;
+      const { email, role, seat_type: requestedSeatType } = req.body;
+      const seatType = requestedSeatType === 'community_only' ? 'community_only' : 'contributor';
 
       if (!email) {
         return res.status(400).json({
@@ -2203,6 +2204,16 @@ export function createOrganizationsRouter(): Router {
         return res.status(400).json({
           error: 'Personal workspace',
           message: 'Personal workspaces cannot have team members. Convert to a team workspace first.',
+        });
+      }
+
+      // Enforce seat limits
+      const { canAddSeat } = await import('../db/organization-db.js');
+      const seatCheck = await canAddSeat(orgId, seatType);
+      if (!seatCheck.allowed) {
+        return res.status(403).json({
+          error: 'Seat limit reached',
+          message: seatCheck.reason,
         });
       }
 

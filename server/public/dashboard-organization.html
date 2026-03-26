@@ -735,36 +735,30 @@
     // Render
     // =========================================================================
 
+    var TIER_DETAILS = {
+      'individual_professional': { label: 'Professional', contributor: 1, community: 0, price: '$250/yr' },
+      'company_standard':        { label: 'Builder',      contributor: 5, community: 5, price: '$2,500/yr' },
+      'company_icl':             { label: 'Member',       contributor: 10, community: 50, price: '$10,000/yr' },
+      'company_leader':          { label: 'Leader',       contributor: 20, community: -1, price: '$50,000/yr' },
+    };
+    var DEFAULT_TIER = { label: 'Explorer', contributor: 0, community: 1, price: 'Free' };
+
     function renderHub(data, profile, orgId, certSummary) {
       const {
-        organization_name, journey_stage, engagement_score,
+        organization_name,
+        membership_tier, has_billing, team_size,
+        seat_usage,
         persona, persona_source, persona_aspiration,
-        milestones, recommended_groups, current_group_count,
-        activity, journey_history, content_contributions,
       } = data;
 
       document.getElementById('hub-loading').style.display = 'none';
       const el = document.getElementById('hub-content');
       el.style.display = 'block';
 
-      // Members with no computed stage default to 'joined' — aware/evaluating are pre-membership
-      const stage     = (!journey_stage || journey_stage === 'aware' || journey_stage === 'evaluating')
-                          ? 'joined'
-                          : journey_stage;
-      const score     = engagement_score || 0;
-      const stageIdx  = STAGES.indexOf(stage);
-      const levelNum  = stageIdx + 1;
-      const stageDesc = STAGE_DESCS[stage] || '';
-      const nextReq   = NEXT_LEVEL_REQUIREMENTS[stage] || '';
-
-      let ringColor;
-      if (score < 30)       ringColor = 'var(--color-gray-400)';
-      else if (score < 60)  ringColor = 'var(--color-brand)';
-      else                  ringColor = 'var(--color-success-500)';
-
-      const r = 34;
-      const circ = 2 * Math.PI * r;
-      const offset = circ - (score / 100) * circ;
+      const tier = TIER_DETAILS[membership_tier] || DEFAULT_TIER;
+      const usage = seat_usage || { contributor: 0, community_only: 0 };
+      const communityLimit = tier.community === -1 ? '&infin;' : tier.community;
+      const isFreeTier = !membership_tier || membership_tier === 'individual_academic';
 
       el.innerHTML = `
         <!-- Header -->
@@ -772,54 +766,48 @@
           <div class="hub-header-left">
             <h1>${escapeHtml(organization_name || 'Your organization')}</h1>
             <div class="hub-header-meta">
-              <span class="level-badge">
-                <span class="level-badge-num">Lvl ${levelNum}</span>&nbsp;${escapeHtml(stage)}
-              </span>
-              <span class="stage-desc">${escapeHtml(stageDesc)}</span>
-            </div>
-          </div>
-          <div class="score-ring" title="Engagement score: ${score}/100">
-            <svg width="80" height="80" viewBox="0 0 80 80">
-              <circle class="score-ring-bg" cx="40" cy="40" r="${r}" />
-              <circle class="score-ring-fill" cx="40" cy="40" r="${r}"
-                stroke="${ringColor}"
-                stroke-dasharray="${circ}"
-                stroke-dashoffset="${offset}" />
-            </svg>
-            <div class="score-ring-label">
-              <span class="score-ring-value">${score}</span>
-              <span class="score-ring-caption">Score</span>
+              <span class="level-badge">${escapeHtml(tier.label)}</span>
+              <span class="stage-desc">${escapeHtml(tier.price)}</span>
             </div>
           </div>
         </div>
 
-        <!-- Level progress -->
-        ${renderLevelProgress(stage, stageIdx, levelNum, nextReq, milestones)}
+        <!-- Membership + Directory listing -->
+        <div class="hub-grid">
+          <div class="hub-card">
+            <div class="hub-card-header">
+              <span class="hub-card-title">Membership</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5);">
+              <div style="padding: var(--space-4); background: var(--color-primary-50); border-radius: var(--radius-lg);">
+                <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.contributor} / ${tier.contributor}</div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Contributor seats</div>
+                <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Slack, working groups, councils</div>
+              </div>
+              <div style="padding: var(--space-4); background: var(--color-success-50); border-radius: var(--radius-lg);">
+                <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${usage.community_only} / ${communityLimit}</div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Community seats</div>
+                <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">Addie, certification, training</div>
+              </div>
+            </div>
+            ${isFreeTier ? `
+              <button onclick="openBillingPortal('${orgId}')" class="btn btn-primary" style="width: 100%; text-align: center; cursor: pointer;">Upgrade membership</button>
+            ` : `
+              <div style="display: flex; gap: var(--space-3);">
+                <a href="/dashboard/team" class="btn btn-ghost btn-sm">Manage team</a>
+                <button onclick="openBillingPortal('${orgId}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
+              </div>
+            `}
+          </div>
 
-        <!-- Grid row 1: Persona + Groups -->
+          <div class="hub-card">${renderProfileCard(profile, orgId)}</div>
+        </div>
+
+        <!-- Organization type -->
         <div class="hub-grid">
           <div class="hub-card">${renderPersona(persona, persona_source, persona_aspiration)}</div>
-          <div class="hub-card">${renderGroups(recommended_groups, current_group_count)}</div>
+          <div></div>
         </div>
-
-        <!-- Grid row 2: Profile + Activity -->
-        <div class="hub-grid">
-          <div class="hub-card">${renderProfileCard(profile, orgId)}</div>
-          <div class="hub-card">${renderActivity(activity)}</div>
-        </div>
-
-        <!-- Full-width: Timeline + Content -->
-        <div class="hub-grid">
-          <div class="hub-card">${renderTimeline(journey_history)}</div>
-          <div class="hub-card">${renderContent(content_contributions)}</div>
-        </div>
-
-        ${certSummary ? `
-        <!-- Certification summary -->
-        <div class="hub-grid" style="grid-template-columns: 1fr;">
-          <div class="hub-card">${renderCertificationSummary(certSummary)}</div>
-        </div>
-        ` : ''}
       `;
     }
 
@@ -874,20 +862,23 @@
     // -------------------------------------------------------------------------
 
     function renderPersona(persona, source, aspiration) {
-      const hdr = `<div class="hub-card-header"><span class="hub-card-title">Organization type</span></div>`;
       if (!persona) {
-        return `${hdr}
+        return `
+          <div class="hub-card-header"><span class="hub-card-title">Organization type</span></div>
           <div class="persona-cta">
             <div class="persona-cta-icon">?</div>
             <p>Discover your organization's type to unlock tailored group recommendations.</p>
-            <a href="/persona-assessment" class="btn btn-ghost btn-sm">Take the assessment →</a>
+            <a href="/persona-assessment" class="btn btn-ghost btn-sm">Take the assessment &rarr;</a>
           </div>`;
       }
       const cfg = PERSONA_CFG[persona] || { label: persona, desc: '', icon: '?' };
       const srcLabel = SOURCE_LABELS[source] || '';
       const aspCfg = aspiration && aspiration !== persona ? PERSONA_CFG[aspiration] : null;
       return `
-        ${hdr}
+        <div class="hub-card-header">
+          <span class="hub-card-title">Organization type</span>
+          <a href="/persona-assessment" class="hub-card-link">Retake quiz &rarr;</a>
+        </div>
         <div class="persona-display persona--${escapeHtml(persona)}">
           <div class="persona-icon">${cfg.icon}</div>
           <div class="persona-name">${escapeHtml(cfg.label)}</div>
@@ -1166,6 +1157,24 @@
     // =========================================================================
     // Utilities
     // =========================================================================
+
+    async function openBillingPortal(orgId) {
+      try {
+        const res = await fetch(`/api/organizations/${orgId}/billing/portal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || 'Unable to open billing portal. Please try again.');
+          return;
+        }
+        const { url } = await res.json();
+        if (url) window.location.href = url;
+      } catch (e) {
+        alert('Unable to open billing portal. Please try again.');
+      }
+    }
 
     function escapeHtml(str) {
       if (!str) return '';

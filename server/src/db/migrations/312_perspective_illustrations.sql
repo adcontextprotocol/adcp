@@ -19,6 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_perspective_illustrations_perspective
 CREATE INDEX IF NOT EXISTS idx_perspective_illustrations_status
   ON perspective_illustrations(status);
 
+DROP TRIGGER IF EXISTS update_perspective_illustrations_updated_at ON perspective_illustrations;
 CREATE TRIGGER update_perspective_illustrations_updated_at
   BEFORE UPDATE ON perspective_illustrations
   FOR EACH ROW

@@ -57,6 +57,7 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
         recommendedGroups,
         currentGroups,
         contentContributions,
+        seatUsage,
       ] = await Promise.all([
         // Organization core data
         query<{
@@ -66,10 +67,17 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
           persona_source: string | null;
           journey_stage: string | null;
           engagement_score: number | null;
+          membership_tier: string | null;
+          stripe_customer_id: string | null;
+          member_count: string;
           created_at: Date;
         }>(
-          `SELECT name, persona, aspiration_persona, persona_source, journey_stage, engagement_score, created_at
-           FROM organizations WHERE workos_organization_id = $1`,
+          `SELECT o.name, o.persona, o.aspiration_persona, o.persona_source,
+                  o.journey_stage, o.engagement_score, o.membership_tier,
+                  o.stripe_customer_id, o.created_at,
+                  (SELECT COUNT(*) FROM organization_memberships om
+                   WHERE om.workos_organization_id = o.workos_organization_id) as member_count
+           FROM organizations o WHERE o.workos_organization_id = $1`,
           [orgId]
         ).then(r => r.rows[0] ?? null).catch(err => {
           logger.error({ err, orgId }, 'Failed to fetch organization data');
@@ -127,12 +135,32 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
           logger.error({ err, orgId }, 'Failed to fetch content contributions');
           return [];
         }),
+
+        // Seat usage by type
+        query<{ seat_type: string; count: string }>(
+          `SELECT seat_type, COUNT(*) as count FROM organization_memberships
+           WHERE workos_organization_id = $1 GROUP BY seat_type`,
+          [orgId]
+        ).then(r => {
+          const usage: Record<string, number> = { contributor: 0, community_only: 0 };
+          for (const row of r.rows) {
+            usage[row.seat_type] = parseInt(row.count, 10);
+          }
+          return usage;
+        }).catch(err => {
+          logger.error({ err, orgId }, 'Failed to fetch seat usage');
+          return { contributor: 0, community_only: 0 };
+        }),
       ]);
 
       res.json({
         organization_name: orgData?.name ?? null,
         journey_stage: orgData?.journey_stage ?? null,
         engagement_score: orgData?.engagement_score ?? null,
+        membership_tier: orgData?.membership_tier ?? null,
+        has_billing: !!orgData?.stripe_customer_id,
+        team_size: parseInt(orgData?.member_count ?? '0', 10),
+        seat_usage: seatUsage,
         persona: orgData?.persona ?? null,
         persona_source: orgData?.persona_source ?? null,
         persona_aspiration: orgData?.aspiration_persona ?? null,
