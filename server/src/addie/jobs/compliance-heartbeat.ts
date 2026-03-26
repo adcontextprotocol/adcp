@@ -54,15 +54,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
         dry_run: true,
+        timeout_ms: 60_000,
       };
 
-      const COMPLY_TIMEOUT_MS = 60_000;
-      const complianceResult = await Promise.race([
-        comply(agent.agent_url, complyOptions),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`comply() timed out after ${COMPLY_TIMEOUT_MS}ms`)), COMPLY_TIMEOUT_MS),
-        ),
-      ]);
+      const complianceResult = await comply(agent.agent_url, complyOptions);
 
       // Map track results to storage format
       const tracksJson: TrackSummaryEntry[] = complianceResult.tracks.map(t => ({
