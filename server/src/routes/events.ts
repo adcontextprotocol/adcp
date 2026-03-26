@@ -1203,6 +1203,18 @@ export function createEventsRouter(): {
         });
       }
 
+      // Community-only seats cannot register for summits
+      if (event.event_type === 'summit') {
+        const { getUserSeatType } = await import('../db/organization-db.js');
+        const seatType = await getUserSeatType(user.id);
+        if (seatType === 'community_only') {
+          return res.status(403).json({
+            error: "Contributor access required",
+            message: "Product summit registration requires a contributor seat. Ask your org admin to upgrade your access.",
+          });
+        }
+      }
+
       // Gate registration for invite-only events
       if (event.visibility === "invite_listed" || event.visibility === "invite_unlisted") {
         const userOrgId = await getUserOrgId(user.id);

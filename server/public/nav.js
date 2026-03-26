@@ -111,8 +111,9 @@
             </button>
             <div class="navbar__dropdown" id="accountDropdown">
               <div class="navbar__dropdown-header">${escapeHtml(user.email)}</div>
-              <a href="${authBaseUrl}/dashboard" class="navbar__dropdown-item">Dashboard</a>
-              <a href="${authBaseUrl}/community/profile/edit" class="navbar__dropdown-item">Edit profile</a>
+              <a href="${authBaseUrl}/community/" class="navbar__dropdown-item">My profile</a>
+              <a href="${authBaseUrl}/dashboard/organization" class="navbar__dropdown-item">My organization</a>
+              <a href="${authBaseUrl}/dashboard/emails" class="navbar__dropdown-item">Email preferences</a>
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>
@@ -140,9 +141,9 @@
     const communityUrl = isLocal ? '/community' : 'https://agenticadvertising.org/community';
     const membershipUrl = isLocal ? '/membership' : 'https://agenticadvertising.org/membership';
 
-    // Contextual CTA: "Dashboard" for logged-in users, "Get started" for visitors
-    const ctaText = user ? 'Dashboard' : 'Get started';
-    const ctaUrl = user ? `${authBaseUrl}/dashboard` : membershipUrl;
+    // CTA only for anonymous visitors — logged-in users have the dropdown
+    const ctaText = user ? null : 'Get started';
+    const ctaUrl = user ? null : membershipUrl;
 
     // Always use AAO logo
     const logoSrc = '/AAo.svg';
@@ -176,7 +177,7 @@
               <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
               <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
               <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
-              <a href="${ctaUrl}" class="navbar__btn--cta">${ctaText}</a>
+              ${ctaUrl ? `<a href="${ctaUrl}" class="navbar__btn--cta">${ctaText}</a>` : ''}
             </div>
           </div>
           <div class="navbar__items navbar__items--right">
@@ -199,7 +200,7 @@
           <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
           <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
           <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
-          <a href="${ctaUrl}" class="navbar__link ${currentPath === '/membership' || currentPath === '/dashboard' ? 'active' : ''}">${ctaText}</a>
+          ${ctaUrl ? `<a href="${ctaUrl}" class="navbar__link ${currentPath === '/membership' ? 'active' : ''}">${ctaText}</a>` : ''}
           <a href="/registry" class="navbar__link ${isRegistryActive ? 'active' : ''}">Registry</a>
           <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
         </div>

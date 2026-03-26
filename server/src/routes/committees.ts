@@ -977,6 +977,16 @@ export function createCommitteeRouters(): {
         });
       }
 
+      // Community-only seats cannot join working groups or councils
+      const { getUserSeatType } = await import('../db/organization-db.js');
+      const seatType = await getUserSeatType(user.id);
+      if (seatType === 'community_only') {
+        return res.status(403).json({
+          error: 'Contributor access required',
+          message: 'Working group membership requires a contributor seat. Ask your org admin to upgrade your access.',
+        });
+      }
+
       const existingMembership = await workingGroupDb.getMembership(group.id, user.id);
       if (existingMembership && existingMembership.status === 'active') {
         return res.status(409).json({
