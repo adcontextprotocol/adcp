@@ -2026,9 +2026,11 @@ export class HTTPServer {
       try {
         const pool = getPool();
         const result = await pool.query(
-          `SELECT title, excerpt, subtitle, featured_image_url, author_name, published_at, updated_at
-           FROM perspectives
-           WHERE slug = $1 AND status = 'published'`,
+          `SELECT p.title, p.excerpt, p.subtitle, p.featured_image_url, p.author_name, p.published_at, p.updated_at
+           FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE p.slug = $1 AND p.status = 'published'
+             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
           [slug]
         );
         if (result.rows.length > 0) {
@@ -4766,10 +4768,12 @@ export class HTTPServer {
 
         // Get all published perspectives
         const perspectivesResult = await pool.query(
-          `SELECT slug, updated_at, published_at
-           FROM perspectives
-           WHERE status = 'published'
-           ORDER BY published_at DESC`
+          `SELECT p.slug, p.updated_at, p.published_at
+           FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE p.status = 'published'
+             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+           ORDER BY p.published_at DESC`
         );
 
         // Static pages with their priorities and change frequencies
@@ -4842,7 +4846,8 @@ Disallow: /api/admin/
     // Public Perspectives API Routes
     // ========================================
 
-    // GET /api/perspectives - List published perspectives (excludes working group posts and RSS)
+    // GET /api/perspectives - List published perspectives (excludes private working group posts and RSS)
+    // Includes editorial working group content (site-wide perspectives) and unassigned content.
     // ?authored=true filters to only authored content (excludes RSS and email feed articles)
     this.app.get('/api/perspectives', async (req, res) => {
       try {
@@ -4850,14 +4855,16 @@ Disallow: /api/admin/
         const authored = req.query.authored === 'true';
         const result = await pool.query(
           `SELECT
-            id, slug, content_type, title, subtitle, category, excerpt,
-            external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            published_at, display_order, tags, like_count
-          FROM perspectives
-          WHERE status = 'published' AND working_group_id IS NULL
-            ${authored ? "AND (source_type IS NULL OR source_type NOT IN ('rss', 'email'))" : ''}
-          ORDER BY published_at DESC NULLS LAST`
+            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
+            p.external_url, p.external_site_name,
+            p.author_name, p.author_title, p.featured_image_url,
+            p.published_at, p.display_order, p.tags, p.like_count
+          FROM perspectives p
+          LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+          WHERE p.status = 'published'
+            AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+            ${authored ? "AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))" : ''}
+          ORDER BY p.published_at DESC NULLS LAST`
         );
 
         res.json(result.rows);
@@ -4876,12 +4883,14 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT
-            id, slug, content_type, title, subtitle, category, excerpt,
-            content, external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            published_at, tags, metadata, like_count, updated_at
-          FROM perspectives
-          WHERE slug = $1 AND status = 'published'`,
+            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
+            p.content, p.external_url, p.external_site_name,
+            p.author_name, p.author_title, p.featured_image_url,
+            p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
+          FROM perspectives p
+          LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+          WHERE p.slug = $1 AND p.status = 'published'
+            AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
           [slug]
         );
 
