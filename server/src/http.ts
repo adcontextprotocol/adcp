@@ -1598,6 +1598,7 @@ export class HTTPServer {
     };
 
     this.app.get('/dashboard/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
+    this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
     this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
     this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
     // Redirect old billing path to new membership path
@@ -5827,6 +5828,7 @@ Disallow: /api/admin/
         // Get user's WorkOS organization memberships
         const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
+          statuses: ['active'],
         });
 
         // Map memberships to organization details with roles
@@ -5840,7 +5842,6 @@ Disallow: /api/admin/
             return {
               id: membership.organizationId,
               name: workosOrg.name,
-              // Access role from the membership's role object
               role: membership.role?.slug || 'member',
               status: membership.status,
               is_personal: localOrg?.is_personal || false,

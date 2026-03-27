@@ -24,6 +24,7 @@ import { JoinRequestDatabase } from "../db/join-request-db.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
+import { resolveUserRole } from "../utils/resolve-user-role.js";
 import {
   createStripeCustomer,
   createCustomerPortalSession,
@@ -208,7 +209,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -256,7 +257,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.json({ count: 0 }); // Non-admins see 0
       }
@@ -301,7 +302,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug;
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -473,7 +474,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug;
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -603,7 +604,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -762,7 +763,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1436,8 +1437,7 @@ export function createOrganizationsRouter(): Router {
         organizationId: orgId,
       });
 
-      const membership = memberships.data[0];
-      if (!membership) {
+      if (memberships.data.length === 0) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1445,8 +1445,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners and admins can rename
-      const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
-      if (roleSlug !== 'owner' && roleSlug !== 'admin') {
+      const userRole = resolveUserRole(memberships.data);
+      if (userRole !== 'owner' && userRole !== 'admin') {
         return res.status(403).json({
           error: 'Insufficient permissions',
           message: 'Only organization owners and admins can rename the organization',
@@ -1502,8 +1502,7 @@ export function createOrganizationsRouter(): Router {
         organizationId: orgId,
       });
 
-      const membership = memberships.data[0];
-      if (!membership) {
+      if (memberships.data.length === 0) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1511,8 +1510,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners and admins can update settings
-      const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
-      if (roleSlug !== 'owner' && roleSlug !== 'admin') {
+      const userRole = resolveUserRole(memberships.data);
+      if (userRole !== 'owner' && userRole !== 'admin') {
         return res.status(403).json({
           error: 'Insufficient permissions',
           message: 'Only organization owners and admins can update settings',
@@ -1612,8 +1611,7 @@ export function createOrganizationsRouter(): Router {
         organizationId: orgId,
       });
 
-      const membership = memberships.data[0];
-      if (!membership) {
+      if (memberships.data.length === 0) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -1621,8 +1619,8 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Only owners can delete
-      const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
-      if (roleSlug !== 'owner') {
+      const userRole = resolveUserRole(memberships.data);
+      if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
           message: 'Only the organization owner can delete the workspace',
@@ -1888,7 +1886,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1954,7 +1952,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(memberships.data);
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2194,7 +2192,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can invite
-      const userRole = userMemberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(userMemberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2295,7 +2293,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can revoke invitations
-      const userRole = userMemberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(userMemberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2359,7 +2357,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can resend invitations
-      const userRole = userMemberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(userMemberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2451,7 +2449,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only owners can change roles
-      const userRole = userMemberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(userMemberships.data);
       if (userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2536,7 +2534,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check user's role - only admins or owners can remove members
-      const userRole = userMemberships.data[0].role?.slug || 'member';
+      const userRole = resolveUserRole(userMemberships.data);
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
