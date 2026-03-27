@@ -459,6 +459,47 @@
       color: var(--color-text-muted);
       margin-top: var(--space-2);
     }
+    .agent-auth-section {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+    .agent-auth-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+    .agent-auth-btn {
+      font-size: var(--text-xs);
+      padding: 2px var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+    .agent-auth-form {
+      margin-top: var(--space-2);
+    }
+    .agent-auth-input {
+      width: 100%;
+      font-size: var(--text-xs);
+      padding: var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-family: monospace;
+    }
+    .agent-auth-save {
+      font-size: var(--text-xs);
+      padding: 2px var(--space-3);
+      border: none;
+      border-radius: var(--radius-md);
+      background: var(--color-primary-500);
+      color: white;
+      cursor: pointer;
+    }
 
     .agent-lifecycle-select {
       font-size: var(--text-xs);
@@ -1147,6 +1188,20 @@
               <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
             </div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
+            <div class="agent-auth-section">
+              <div class="agent-auth-row">
+                <span class="agent-auth-status" id="${cardId}-auth-status">${cs?.has_compliance_auth ? 'Auth configured' : 'No auth — agent must be publicly accessible'}</span>
+                <button class="agent-auth-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">${cs?.has_compliance_auth ? 'Update auth' : 'Add auth'}</button>
+              </div>
+              <div class="agent-auth-form" id="${cardId}-auth-form" style="display:none;">
+                <input type="text" class="agent-auth-input" id="${cardId}-auth-token" placeholder="Bearer token or OAuth token" autocomplete="off">
+                <div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">
+                  <button class="agent-auth-save" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Save</button>
+                  <button class="agent-auth-cancel" data-card-id="${cardId}" style="background: transparent; color: var(--color-text-muted);">Cancel</button>
+                  ${cs?.has_compliance_auth ? '<button class="agent-auth-remove" data-agent-url="' + escapeHtml(agent.url) + '" data-card-id="' + cardId + '" style="background: transparent; color: var(--color-error-500); margin-left: auto;">Remove</button>' : ''}
+                </div>
+              </div>
+            </div>
           </div>
         `;
       }).join('');
@@ -1678,6 +1733,70 @@
         } catch {
           panel.innerHTML = '<em>Failed to load history.</em>';
         }
+      }
+    });
+
+    // Auth form buttons
+    document.addEventListener('click', async function(e) {
+      const authBtn = e.target.closest('.agent-auth-btn');
+      if (authBtn) {
+        const cardId = authBtn.dataset.cardId;
+        const form = document.getElementById(cardId + '-auth-form');
+        if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        return;
+      }
+
+      const cancelBtn = e.target.closest('.agent-auth-cancel');
+      if (cancelBtn) {
+        const cardId = cancelBtn.dataset.cardId;
+        const form = document.getElementById(cardId + '-auth-form');
+        if (form) form.style.display = 'none';
+        return;
+      }
+
+      const saveBtn = e.target.closest('.agent-auth-save');
+      if (saveBtn) {
+        const agentUrl = saveBtn.dataset.agentUrl;
+        const cardId = saveBtn.dataset.cardId;
+        const tokenInput = document.getElementById(cardId + '-auth-token');
+        const token = tokenInput?.value?.trim();
+        if (!token) return;
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/auth', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ token }),
+          });
+          if (res.ok) {
+            const form = document.getElementById(cardId + '-auth-form');
+            if (form) form.style.display = 'none';
+            const statusEl = document.getElementById(cardId + '-auth-status');
+            if (statusEl) statusEl.textContent = 'Auth configured';
+            tokenInput.value = '';
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
+      const removeBtn = e.target.closest('.agent-auth-remove');
+      if (removeBtn) {
+        const agentUrl = removeBtn.dataset.agentUrl;
+        const cardId = removeBtn.dataset.cardId;
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/auth', {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          if (res.ok) {
+            const form = document.getElementById(cardId + '-auth-form');
+            if (form) form.style.display = 'none';
+            const statusEl = document.getElementById(cardId + '-auth-status');
+            if (statusEl) statusEl.textContent = 'No auth — agent must be publicly accessible';
+          }
+        } catch { /* ignore */ }
+        return;
       }
     });
 
