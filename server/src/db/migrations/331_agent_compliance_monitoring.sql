@@ -2,7 +2,7 @@
 
 -- Registry-level metadata for any agent URL (registered or discovered).
 -- Separate from member_profiles and discovered_agents — merged at query time.
-CREATE TABLE agent_registry_metadata (
+CREATE TABLE IF NOT EXISTS agent_registry_metadata (
   agent_url TEXT PRIMARY KEY,
   lifecycle_stage TEXT NOT NULL DEFAULT 'production',
   compliance_opt_out BOOLEAN NOT NULL DEFAULT FALSE,
@@ -14,7 +14,7 @@ CREATE TABLE agent_registry_metadata (
 );
 
 -- History of compliance heartbeat runs (one row per check).
-CREATE TABLE agent_compliance_runs (
+CREATE TABLE IF NOT EXISTS agent_compliance_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_url TEXT NOT NULL,
   lifecycle_stage TEXT NOT NULL,
@@ -52,11 +52,11 @@ CREATE TABLE agent_compliance_runs (
   )
 );
 
-CREATE INDEX idx_compliance_runs_agent_time ON agent_compliance_runs(agent_url, tested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_compliance_runs_agent_time ON agent_compliance_runs(agent_url, tested_at DESC);
 
 -- Materialized current compliance status (computed from latest run + history).
 -- One row per agent URL — fast reads for registry API.
-CREATE TABLE agent_compliance_status (
+CREATE TABLE IF NOT EXISTS agent_compliance_status (
   agent_url TEXT PRIMARY KEY,
   status TEXT NOT NULL DEFAULT 'unknown',
   last_checked_at TIMESTAMPTZ,

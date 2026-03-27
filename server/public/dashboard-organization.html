@@ -727,10 +727,9 @@
 
     async function loadHub() {
       try {
-        const [meRes, engRes, profileRes] = await Promise.all([
+        const [meRes, engRes] = await Promise.all([
           fetch('/api/me', { credentials: 'include' }),
           fetch('/api/me/engagement', { credentials: 'include' }),
-          fetch('/api/me/member-profile', { credentials: 'include' }),
         ]);
 
         if (!engRes.ok) {
@@ -748,12 +747,16 @@
         }
 
         const data = await engRes.json();
-        const profileData = profileRes.ok ? await profileRes.json() : null;
 
-        // Init dashboard sidebar
+        // Init dashboard sidebar — resolve org first so profile fetch uses the right org
         const meData = meRes.ok ? await meRes.json() : null;
         const orgs = meData?.organizations || [];
         const { org: currentOrg } = DashboardNav.resolveOrg(orgs);
+
+        // Fetch profile with org context
+        const profileParam = currentOrg?.id ? `?org=${encodeURIComponent(currentOrg.id)}` : '';
+        const profileRes = await fetch(`/api/me/member-profile${profileParam}`, { credentials: 'include' });
+        const profileData = profileRes.ok ? await profileRes.json() : null;
         DashboardNav.init({
           showOrgSwitcher: orgs.length > 1,
           currentOrgName: currentOrg?.name || data.organization_name || 'My organization',
