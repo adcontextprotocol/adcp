@@ -19,8 +19,8 @@ AdCP uses the same status values as the [A2A protocol's TaskState enum](https://
 
 | Status | Meaning | Your Action |
 |--------|---------|-------------|
-| `submitted` | Task queued for execution | Show "queued" indicator, wait for updates |
-| `working` | Agent actively processing | Show progress, poll frequently for updates |
+| `submitted` | Task queued, blocked on external dependency | Configure webhook, show "queued" indicator |
+| `working` | Agent actively processing (>30s) | Wait for result — out-of-band progress signal, not a polling trigger |
 | `input-required` | Needs information from you | Read `message` field, prompt user, send follow-up |
 | `completed` | Successfully finished | Process `data`, show success message |
 | `canceled` | User/system canceled task | Show cancellation notice, clean up |
@@ -63,9 +63,9 @@ function handleAdcpResponse(response) {
       return sendFollowUp(response.context_id, userInput);
 
     case 'working':
-      // In progress - show progress and wait
+      // Server is actively processing — just wait, result will arrive
       showProgress(response.message);
-      return pollForUpdates(response.context_id);
+      return response;
 
     case 'failed':
       // Error - show message and handle gracefully
@@ -140,25 +140,26 @@ if (response.status === 'input-required' && response.approval_required) {
 }
 ```
 
-### Long-Running Operations
+### Operations Over 30 Seconds
 
-Async operations start with `working` or `submitted` and provide updates:
+Operations that take longer than 30 seconds return either `working` or `submitted`. These statuses mean different things:
+
+- **`working`**: The server is actively processing and will deliver the result when ready. No polling needed — the server sends progress out-of-band and the result arrives on the open connection.
+- **`submitted`**: The operation is blocked on an external dependency (human approval, publisher review). Configure a webhook or poll.
 
 ```json
 {
-  "status": "working",
-  "message": "Creating media buy. Validating inventory availability...",
+  "status": "submitted",
+  "message": "Media buy submitted for publisher approval",
   "context_id": "ctx-123",
-  "task_id": "task-456",
-  "progress": 25,
-  "step": "inventory_validation"
+  "task_id": "task-456"
 }
 ```
 
-**Transport-specific task tracking:**
-- **MCP**: Use [MCP Tasks](/docs/building/integration/mcp-guide#async-operations-via-mcp-tasks) — poll via `tasks/get` with `taskId`, retrieve result via `tasks/result`
+**Transport-specific handling for `submitted` operations:**
+- **MCP**: Use [MCP Tasks](/docs/building/integration/mcp-guide#async-operations-via-mcp-tasks) or poll via `tasks/get`
 - **A2A**: Subscribe to SSE stream for real-time updates
-- **REST**: Poll with `task_id`, or use [push notifications](/docs/building/implementation/webhooks)
+- **REST**: Use [push notifications](/docs/building/implementation/webhooks) (recommended) or poll with `task_id`
 
 ## Status Progression
 
@@ -172,63 +173,51 @@ input-required → → → → →
   failed
 ```
 
-- **`submitted`**: Task queued for execution, provide webhook or poll
-- **`working`**: Agent actively processing, poll frequently
+- **`submitted`**: Task queued, blocked on external dependency — configure webhook or poll
+- **`working`**: Agent actively processing (>30s) — wait for result, no polling needed
 - **`input-required`**: Need user input, continue conversation
 - **`completed`**: Success, process results
 - **`failed`**: Error, handle appropriately
 
-## Polling Patterns
+## Polling and Timeouts
 
-### Status-Based Polling Intervals
+### Polling is for `submitted` only
 
-Different statuses require different polling frequencies:
+Don't poll for `working` — the server delivers the result on the open connection. Polling is a backup for `submitted` operations (webhooks are preferred).
 
 ```javascript
-const POLLING_INTERVALS = {
-  working: 5000,      // 5 seconds - should complete within 120s
-  submitted: 60000,   // 1 minute - long-running operations
-  'input-required': null  // Don't poll - wait for user input
-};
+// Polling is only for 'submitted' operations
+async function pollForResult(taskId, pollInterval = 30_000) {
+  while (true) {
+    await sleep(pollInterval);
 
-async function pollForUpdates(taskId, currentStatus) {
-  const interval = POLLING_INTERVALS[currentStatus];
-  if (!interval) return;
+    const response = await adcp.call('tasks/get', {
+      task_id: taskId,
+      include_result: true
+    });
 
-  await sleep(interval);
-
-  const response = await adcp.call('tasks/get', {
-    task_id: taskId,
-    include_result: true
-  });
-
-  if (['completed', 'failed', 'canceled'].includes(response.status)) {
-    return response;
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
   }
-
-  return pollForUpdates(taskId, response.status);
 }
 ```
 
-### Timeout Handling
-
-Set reasonable timeouts based on operation type:
+### Timeout Configuration
 
 ```javascript
 const TIMEOUTS = {
-  sync: 30_000,        // 30 seconds for immediate operations
-  interactive: 300_000, // 5 minutes for human input
-  working: 120_000,    // 2 minutes for working tasks
-  submitted: 86_400_000 // 24 hours for submitted tasks
+  sync: 30_000,         // 30 seconds — most operations complete here
+  working: 300_000,      // 5 minutes — connection timeout for active processing
+  interactive: 300_000,  // 5 minutes for human input
+  submitted: 86_400_000  // 24 hours for external dependencies
 };
 
-function setTimeoutForStatus(status) {
-  switch (status) {
-    case 'working': return TIMEOUTS.working;
-    case 'submitted': return TIMEOUTS.submitted;
-    case 'input-required': return TIMEOUTS.interactive;
-    default: return TIMEOUTS.sync;
-  }
+function getTimeout(status) {
+  if (status === 'submitted') return TIMEOUTS.submitted;
+  if (status === 'working') return TIMEOUTS.working;
+  if (status === 'input-required') return TIMEOUTS.interactive;
+  return TIMEOUTS.sync;
 }
 ```
 

@@ -117,6 +117,12 @@ await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 
 AdCP uses [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) for long-running operations over MCP. This removes the LLM from the polling path — the client handles task lifecycle at the protocol level, and the model only sees the final result.
 
+:::warning Client support is limited
+Most chat-based MCP clients (Claude Desktop, Cursor) do not yet support MCP Tasks. If your client doesn't support task-augmented tool calls, use **webhooks** or **polling via `tasks/get`** instead — these work with any MCP client. See [Async Operations](/docs/building/implementation/async-operations) and [Push Notifications](/docs/building/implementation/webhooks) for transport-independent patterns.
+
+MCP Tasks are the right choice when you control the MCP client (e.g., building your own orchestrator with `@modelcontextprotocol/sdk`) or when client support matures.
+:::
+
 ### SDK Implementation
 
 If you use the `@modelcontextprotocol/sdk` package, MCP Tasks support requires minimal code. Pass an `InMemoryTaskStore` (or your own `TaskStore` implementation) to the Server constructor — the SDK auto-registers handlers for `tasks/get`, `tasks/result`, `tasks/list`, and `tasks/cancel`:
@@ -200,6 +206,7 @@ Each tool declares whether it supports task-augmented execution via `execution.t
 | `get_products` | `optional` | Complex searches, HITL clarification |
 | `create_media_buy` | `optional` | External systems, approval workflows |
 | `update_media_buy` | `optional` | External system updates |
+| `build_creative` | `optional` | Human creative review, long production renders |
 | `sync_creatives` | `optional` | Asset processing and transcoding |
 | `get_signals` | `optional` | Complex audience discovery |
 | `activate_signal` | `optional` | Platform deployment |
@@ -211,6 +218,7 @@ Each tool declares whether it supports task-augmented execution via `execution.t
 | `get_rights` | `optional` | External lookups |
 | `get_adcp_capabilities` | `forbidden` | Instant, static |
 | `list_creative_formats` | `forbidden` | Instant catalog lookup |
+| `preview_creative` | `forbidden` | Renders existing manifest |
 | `list_creatives` | `forbidden` | Session state lookup |
 | `get_media_buys` | `forbidden` | Session state lookup |
 | `get_media_buy_delivery` | `forbidden` | Session state lookup |
@@ -598,51 +606,17 @@ async function handleContextExpiration(session, tool, params) {
 
 ## Handling Async Operations
 
-When a task returns `working` or `submitted` status, you have two options for receiving updates:
+When a task returns `working` or `submitted` status, you need a way to receive the result. This applies whether or not your MCP client supports MCP Tasks — the patterns below work with any client.
 
 | Approach | Best For | Trade-offs |
 |----------|----------|------------|
+| **Webhooks** | Production systems, any task duration | Handles hours/days, but requires a public endpoint |
 | **Polling** | Simple integrations, short tasks | Easy to implement, but inefficient for long waits |
-| **Webhooks** | Production systems, long-running tasks | More efficient, but requires a public endpoint |
+| **MCP Tasks** | Custom clients using the MCP SDK | Protocol-native, but requires client support |
 
-### Option 1: Polling
+### Option 1: Webhooks (recommended)
 
-Use `tasks/get` to check task status periodically:
-
-```javascript
-async function waitForCompletion(session, initialResponse) {
-  if (!initialResponse.task_id) {
-    return initialResponse; // Already completed
-  }
-  
-  // Poll more frequently for 'working' (will finish soon)
-  // Poll less frequently for 'submitted' (may take hours)
-  let pollInterval = initialResponse.status === 'working' ? 5000 : 30000;
-  
-  while (true) {
-    const response = await session.pollTask(initialResponse.task_id, true);
-    
-    if (['completed', 'failed', 'canceled'].includes(response.status)) {
-      return response;
-    }
-    
-    if (response.status === 'input-required') {
-      const input = await promptUser(response.message);
-      return session.call('create_media_buy', {
-        context_id: response.context_id,
-        additional_info: input
-      });
-    }
-    
-    pollInterval = response.status === 'working' ? 5000 : 30000;
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-  }
-}
-```
-
-### Option 2: Webhooks
-
-Configure a webhook URL and the server will POST updates to you directly. This is more efficient for long-running tasks since you don't need to keep polling.
+Configure a webhook URL and the server will POST the result when the operation completes. This is the right approach for `submitted` operations that are blocked on external dependencies (publisher approval, human review).
 
 ```javascript
 const response = await session.call('create_media_buy',
@@ -651,8 +625,8 @@ const response = await session.call('create_media_buy',
     budget: { total: 150000, currency: "USD" }
   },
   {
-    pushNotificationConfig: {
-      url: "https://buyer.com/webhooks/adcp",
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp/create_media_buy/op_abc123",
       authentication: {
         schemes: ["HMAC-SHA256"],
         credentials: "shared_secret_32_chars"
@@ -661,13 +635,39 @@ const response = await session.call('create_media_buy',
   }
 );
 
-// If status is 'submitted', the server will POST updates to your webhook
-// You don't need to poll - just wait for the webhook
+// If status is 'submitted', the server will POST the result to your webhook
+// No polling needed — just handle the webhook when it arrives
 ```
 
-See [Webhooks](/docs/building/implementation/webhooks) for webhook payload formats and handling examples.
+See [Push Notifications](/docs/building/implementation/webhooks) for payload formats and authentication.
 
-### Handling Different Statuses
+### Option 2: Polling (backup)
+
+Use `tasks/get` as a backup for `submitted` operations, or when you can't expose a webhook endpoint:
+
+```javascript
+async function pollForResult(session, taskId, pollInterval = 30000) {
+  while (true) {
+    const response = await session.pollTask(taskId, true);
+
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
+
+    if (response.status === 'input-required') {
+      const input = await promptUser(response.message);
+      return session.call('create_media_buy', {
+        context_id: response.context_id,
+        additional_info: input
+      });
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+}
+```
+
+### Handling different statuses
 
 ```javascript
 const initial = await session.call('create_media_buy', {
@@ -677,23 +677,21 @@ const initial = await session.call('create_media_buy', {
 
 switch (initial.status) {
   case 'completed':
-    // Done immediately - no async handling needed
+    // Done — result is inline
     console.log('Created:', initial.media_buy_id);
     break;
-    
+
   case 'working':
-    // Will finish within ~2 minutes - poll or wait
-    console.log('Processing...');
-    const final = await waitForCompletion(session, initial);
-    console.log('Created:', final.result.media_buy_id);
+    // Server is actively processing (>30s) — just wait, result will arrive
+    // No polling needed; 'working' is a progress signal, not a polling trigger
+    console.log('Processing:', initial.message);
     break;
-    
+
   case 'submitted':
-    // Long-running (hours/days) - use webhooks or poll infrequently
+    // Blocked on external dependency — use webhook or poll
     console.log(`Task ${initial.task_id} queued for approval`);
-    // Webhook will notify when complete, or poll manually
     break;
-    
+
   case 'input-required':
     // Blocked on user input
     console.log('Need more info:', initial.message);
@@ -718,18 +716,14 @@ async function handleAdcpCall(tool, params, options = {}) {
       return session.call(tool, { ...params, additional_info: input });
       
     case 'working':
-      // Handle short async operations 
-      return waitForCompletion(session, response);
-      
+      // Server is actively processing — just wait, result will arrive
+      console.log('Processing:', response.message);
+      return response;
+
     case 'submitted':
-      // Handle long async operations
-      if (options.webhook_url) {
-        console.log(`Task ${response.task_id} submitted, webhook will notify`);
-        return { pending: true, task_id: response.task_id };
-      } else {
-        console.log(`Task ${response.task_id} submitted, polling...`);
-        return waitForCompletion(session, response);
-      }
+      // Blocked on external dependency — webhook or poll
+      console.log(`Task ${response.task_id} submitted, webhook will notify`);
+      return { pending: true, task_id: response.task_id };
       
     case 'completed':
       return response; // Task-specific fields are at the top level
