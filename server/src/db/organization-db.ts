@@ -112,6 +112,8 @@ export interface SubscriptionInfo {
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
+  lookup_key?: string;
+  amount_cents?: number;
   current_period_end?: number;
   cancel_at_period_end?: boolean;
 }

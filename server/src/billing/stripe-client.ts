@@ -308,6 +308,8 @@ export async function getStripeSubscriptionInfo(
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
+  lookup_key?: string;
+  amount_cents?: number;
   current_period_end?: number;
   cancel_at_period_end?: boolean;
 } | null> {
@@ -397,7 +399,8 @@ export async function getStripeSubscriptionInfo(
       }
     }
 
-    const product = subscription.items.data[0]?.price?.product;
+    const price = subscription.items.data[0]?.price;
+    const product = price?.product;
 
     // Check if product is an object (not string or deleted) and has name property
     const productName =
@@ -405,10 +408,15 @@ export async function getStripeSubscriptionInfo(
         ? product.name
         : undefined;
 
+    const lookupKey = typeof price === 'object' && price ? price.lookup_key ?? undefined : undefined;
+    const amountCents = typeof price === 'object' && price ? price.unit_amount ?? undefined : undefined;
+
     const result = {
       status: subscription.status as 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid',
       product_id: typeof product === 'string' ? product : product?.id,
       product_name: productName,
+      lookup_key: lookupKey,
+      amount_cents: amountCents,
       current_period_end: periodEnd,
       cancel_at_period_end: subscription.cancel_at_period_end,
     };
