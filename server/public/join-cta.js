@@ -379,17 +379,20 @@ async function renderJoinCta(options = {}) {
   // Fetch pricing from Stripe
   const products = await fetchBillingProducts();
 
+  // Use founding-era prices until April 1, 2026
+  const isFoundingPricing = new Date() < new Date('2026-04-01T04:00:00Z');
+
   // Find specific products by lookup key
   const leaderProduct = products.find(p => p.lookup_key === 'aao_membership_leader_50000');
-  const memberProduct = products.find(p => p.lookup_key === 'aao_membership_member_15000');
-  const builderProduct = products.find(p => p.lookup_key === 'aao_membership_builder_3000');
+  const memberProduct = products.find(p => p.lookup_key === (isFoundingPricing ? 'aao_membership_member_10000' : 'aao_membership_member_15000'));
+  const builderProduct = products.find(p => p.lookup_key === (isFoundingPricing ? 'aao_membership_builder_2500' : 'aao_membership_builder_3000'));
   const professionalProduct = products.find(p => p.lookup_key === 'aao_membership_professional_250');
   const explorerProduct = products.find(p => p.lookup_key === 'aao_membership_explorer_50');
 
   // Format prices (fallback to defaults if API fails)
   const priceLeader = escapeHtml(leaderProduct ? formatCurrency(leaderProduct.amount_cents, leaderProduct.currency) : '$50,000');
-  const priceMember = escapeHtml(memberProduct ? formatCurrency(memberProduct.amount_cents, memberProduct.currency) : '$15,000');
-  const priceBuilder = escapeHtml(builderProduct ? formatCurrency(builderProduct.amount_cents, builderProduct.currency) : '$3,000');
+  const priceMember = escapeHtml(memberProduct ? formatCurrency(memberProduct.amount_cents, memberProduct.currency) : (isFoundingPricing ? '$10,000' : '$15,000'));
+  const priceBuilder = escapeHtml(builderProduct ? formatCurrency(builderProduct.amount_cents, builderProduct.currency) : (isFoundingPricing ? '$2,500' : '$3,000'));
   const priceProfessional = escapeHtml(professionalProduct ? formatCurrency(professionalProduct.amount_cents, professionalProduct.currency) : '$250');
   const priceExplorer = escapeHtml(explorerProduct ? formatCurrency(explorerProduct.amount_cents, explorerProduct.currency) : '$50');
 
