@@ -1813,34 +1813,26 @@ export class HTTPServer {
     // Health check - verifies critical services are operational
     this.app.get("/health", async (req, res) => {
       const checks: Record<string, boolean> = {};
-      let allHealthy = true;
 
-      // Check database connectivity
+      // Database check is informational only. The app serves static pages,
+      // docs, and cached content without DB. A DB blip must not take the
+      // machine out of Fly's load-balancer rotation.
       try {
         const pool = getPool();
-        await pool.query('SELECT 1');
+        await Promise.race([
+          pool.query('SELECT 1'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('db health timeout')), 3000)),
+        ]);
         checks.database = true;
       } catch {
         checks.database = false;
-        allHealthy = false;
       }
 
-      // Check Addie status
       checks.addie = isAddieBoltReady();
-      if (!checks.addie) {
-        allHealthy = false;
-      }
-
-      // Check MCP server status
       checks.mcp = isMCPServerReady();
-      if (!checks.mcp) {
-        allHealthy = false;
-      }
 
-      // Return appropriate status code
-      const statusCode = allHealthy ? 200 : 503;
-      res.status(statusCode).json({
-        status: allHealthy ? "ok" : "degraded",
+      res.status(200).json({
+        status: checks.database ? "ok" : "degraded",
         checks,
         registry: {
           mode: "database",
@@ -7331,15 +7323,21 @@ Disallow: /api/admin/
     initPostHogErrorTracking();
 
     // Initialize database
-    const { initializeDatabase } = await import("./db/client.js");
+    const { initializeDatabase, onPoolError } = await import("./db/client.js");
     const { runMigrations } = await import("./db/migrate.js");
     const { getDatabaseConfig } = await import("./config.js");
+    const { notifySystemError } = await import("./addie/error-notifier.js");
 
     const dbConfig = getDatabaseConfig();
     if (!dbConfig) {
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+
+    // Escalate pool-level errors to Slack
+    onPoolError((err) => {
+      notifySystemError({ source: 'database-pool', errorMessage: err.message });
+    });
 
     await runMigrations();
 
