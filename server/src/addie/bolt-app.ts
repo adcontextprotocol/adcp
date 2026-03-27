@@ -3484,10 +3484,27 @@ async function handleChannelMessage({
       return;
     }
 
-    // In threaded channel messages, delay before responding to let humans go first.
-    // Skip delay if user explicitly named Addie (they want her input).
-    // @mentions are handled by handleAppMention (filtered at line 3071), DMs at line 3029.
+    // In threaded channel messages where Addie hasn't participated yet,
+    // check if humans have already been answering. If so, don't jump in
+    // unless explicitly named — humans are handling it.
     if (isInThread && context.botUserId && !/\baddie\b/i.test(messageText)) {
+      try {
+        const threadReplies = await getThreadReplies(channelId, threadTs);
+        const humanRepliesBeforeTrigger = threadReplies.filter(
+          msg => msg.user && msg.user !== context.botUserId && msg.user !== userId && msg.ts < event.ts
+        );
+        if (humanRepliesBeforeTrigger.length > 0) {
+          logger.info(
+            { channelId, userId, threadTs, humanReplies: humanRepliesBeforeTrigger.length },
+            'Addie Bolt: Skipping channel thread — humans already answering'
+          );
+          return;
+        }
+      } catch (error) {
+        logger.debug({ error, channelId }, 'Addie Bolt: Could not check thread replies');
+      }
+
+      // Also delay and re-check for new human replies after the trigger
       const shouldRespond = await shouldRespondAfterDelay(
         channelId, threadTs, event.ts, context.botUserId
       );
