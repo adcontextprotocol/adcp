@@ -80,10 +80,9 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "List all approved video creatives",
+      "description": "List all approved creatives",
       "data": {
         "filters": {
-          "format_types": ["video"],
           "statuses": ["approved"]
         }
       }

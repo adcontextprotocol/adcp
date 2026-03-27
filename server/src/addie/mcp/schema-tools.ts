@@ -34,7 +34,6 @@ const COMMON_SCHEMAS = [
   'core/property.json',
   'core/targeting.json',
   'core/pricing-option.json',
-  'enums/format-category.json',
   'enums/asset-content-type.json',
   'enums/channels.json',
 ];
@@ -410,7 +409,7 @@ ${COMMON_SCHEMAS.map((s) => `- \`${s}\` → ${baseUrl}/${s}`).join('\n')}
 
 ### Schema Categories
 - **core/** - Core data types (format, product, media-buy, creative-manifest, etc.)
-- **enums/** - Enumeration types (format-category, asset-content-type, channels, etc.)
+- **enums/** - Enumeration types (asset-content-type, channels, etc.)
 - **media-buy/** - Media buying task schemas (get-products, create-media-buy, etc.)
 - **creative/** - Creative agent task schemas
 - **signals/** - Signals agent task schemas

@@ -76,10 +76,6 @@
       "format": "uri",
       "description": "Optional URL to showcase page with examples and interactive demos of this format"
     },
-    "type": {
-      "$ref": "/schemas/enums/format-category.json",
-      "description": "DEPRECATED: High-level category for this format. Use the assets array to understand creative requirements instead - it provides precise information about what asset types are needed."
-    },
     "accepts_parameters": {
       "type": "array",
       "description": "List of parameters this format accepts in format_id. Template formats define which parameters (dimensions, duration, etc.) can be specified when instantiating the format. Empty or omitted means this is a concrete format with fixed parameters.",

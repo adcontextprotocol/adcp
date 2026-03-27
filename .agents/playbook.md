@@ -217,7 +217,6 @@ JSON examples with `$schema` field are validated against schemas in CI.
 ### Field Naming
 - `formats` = Array of full format objects
 - `format_ids` = Array of format ID references
-- `format_types` = Array of high-level types (video, display, etc.)
 
 ### Format ID Structure
 Always structured objects:

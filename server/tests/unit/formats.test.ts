@@ -150,7 +150,6 @@ describe('FormatsService', () => {
           format: 'video',
           size: '1920x1080',
           aspectRatio: '16:9',
-          format_type: 'video'
         }]
       });
 
@@ -159,7 +158,6 @@ describe('FormatsService', () => {
       expect(profile.formats[0].name).toBe('video');
       expect(profile.formats[0].dimensions).toBe('1920x1080');
       expect(profile.formats[0].aspect_ratio).toBe('16:9');
-      expect(profile.formats[0].type).toBe('video');
     });
   });
 
