@@ -120,6 +120,7 @@ export interface CreateMessageInput {
     reason: string;
     decision_method: 'quick_match' | 'llm';
     tools?: string[];
+    confidence?: string;
     latency_ms?: number;
     tokens_input?: number;
     tokens_output?: number;
@@ -171,6 +172,7 @@ export interface ThreadMessage {
     reason: string;
     decision_method: 'quick_match' | 'llm';
     tools?: string[];
+    confidence?: string;
     latency_ms?: number;
     tokens_input?: number;
     tokens_output?: number;

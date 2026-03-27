@@ -85,7 +85,7 @@ import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
-import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
+import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -1001,6 +1001,7 @@ async function selectRoutedToolsForSlackResponse(
   unavailableHint: string;
   requiresPrecision: boolean;
   requiresDepth: boolean;
+  confidence: ConfidenceTier;
 }> {
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
     memberContext,
@@ -1023,6 +1024,7 @@ async function selectRoutedToolsForSlackResponse(
       unavailableHint,
       requiresPrecision: false,
       requiresDepth: false,
+      confidence: 'high',
     };
   }
 
@@ -1071,12 +1073,18 @@ async function selectRoutedToolsForSlackResponse(
     'Addie Bolt: Routed conversational tools'
   );
 
+  // Extract confidence: respond actions carry it, others default to high
+  const confidence: ConfidenceTier = plan.action === 'respond'
+    ? plan.confidence
+    : 'high';
+
   return {
     tools: filteredTools,
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
+    confidence,
   };
 }
 
@@ -1354,7 +1362,7 @@ async function handleUserMessage({
     slackThreadContext,
     { isThread: true, hasCertificationContext }
   );
-  const requestContextWithRouting = [requestContext, routedTools.unavailableHint]
+  const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -1932,7 +1940,8 @@ async function handleAppMention({
     mentionChannelContext,
     { isThread: isInThread }
   );
-  requestContext = [requestContext, routedTools.unavailableHint]
+
+  requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -2361,13 +2370,25 @@ function buildFeedbackBlock(): {
 }
 
 /**
- * Build router_decision metadata from an ExecutionPlan
+ * Build confidence calibration text for the system prompt.
+ * Tells Claude how to adjust response style based on confidence tier.
  */
+function buildConfidenceCalibration(confidence: ConfidenceTier): string {
+  if (confidence === 'low') {
+    return '## Response Calibration\nYou are not confident you can answer this well. Lead with "I\'m not sure about this" and keep it brief (2-3 sentences). Suggest who might help if you know.';
+  }
+  if (confidence === 'suggest') {
+    return '## Response Calibration\nYou cannot answer this directly but know who can. Give a brief pointer (1-2 sentences) to a specific person, working group, or channel. Do not explain what you cannot do.';
+  }
+  return '';
+}
+
 function buildRouterDecision(plan: ExecutionPlan): {
   action: string;
   reason: string;
   decision_method: 'quick_match' | 'llm';
   tool_sets?: string[];
+  confidence?: string;
   latency_ms?: number;
   tokens_input?: number;
   tokens_output?: number;
@@ -2384,7 +2405,7 @@ function buildRouterDecision(plan: ExecutionPlan): {
   };
 
   if (plan.action === 'respond') {
-    return { ...base, tool_sets: plan.tool_sets };
+    return { ...base, tool_sets: plan.tool_sets, confidence: plan.confidence };
   }
 
   return base;
@@ -2610,7 +2631,8 @@ async function handleDirectMessage(
     thread.thread_id,
     null
   );
-  requestContext = [requestContext, routedTools.unavailableHint]
+
+  requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -2960,7 +2982,20 @@ async function handleActiveThreadReply({
     channelContext,
     { isThread: true }
   );
-  requestContext = [requestContext, routedTools.unavailableHint]
+
+  // Suppress low-confidence replies in active channel threads, flag for review
+  if (routedTools.confidence === 'low') {
+    logger.info({ channelId, userId, threadTs },
+      'Addie Bolt: Suppressing low-confidence active thread reply');
+    try {
+      await threadService.flagThread(thread.thread_id, 'Low-confidence suppression (active thread)');
+    } catch (flagError) {
+      logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+    }
+    return;
+  }
+
+  requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -3437,6 +3472,18 @@ async function handleChannelMessage({
     }
 
     // action === 'respond'
+    // Suppress low-confidence channel responses — let humans answer, but flag for review
+    if (plan.confidence === 'low') {
+      logger.info({ channelId, userId, reason: plan.reason },
+        'Addie Bolt: Suppressing low-confidence channel response');
+      try {
+        await threadService.flagThread(thread.thread_id, `Low-confidence suppression: ${plan.reason}`);
+      } catch (flagError) {
+        logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+      }
+      return;
+    }
+
     // In threaded channel messages, delay before responding to let humans go first.
     // Skip delay if user explicitly named Addie (they want her input).
     // @mentions are handled by handleAppMention (filtered at line 3071), DMs at line 3029.
@@ -3468,8 +3515,8 @@ async function handleChannelMessage({
       ? siRetriever.formatContext(siRetrievalResult.agents)
       : '';
 
-    // Combine all context for system prompt (member info, unavailable tool hints, SI agents)
-    const requestContext = [memberRequestContext, unavailableHint, siContext]
+    // Combine all context for system prompt (member info, unavailable tool hints, SI agents, confidence calibration)
+    const requestContext = [memberRequestContext, unavailableHint, siContext, buildConfidenceCalibration(plan.confidence)]
       .filter(Boolean)
       .join('\n\n');
 

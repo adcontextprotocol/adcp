@@ -50,11 +50,14 @@ export type ExecutionPlanBase = {
   requires_depth?: boolean;
 };
 
+/** Response confidence tier — how sure Addie is that she can add value */
+export type ConfidenceTier = 'high' | 'suggest' | 'low';
+
 export type ExecutionPlan = ExecutionPlanBase & (
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tool_sets: string[]; reason: string }
+  | { action: 'respond'; tool_sets: string[]; reason: string; confidence: ConfidenceTier }
 );
 
 /**
@@ -326,7 +329,26 @@ The user is NOT an admin.
     ? /\b(collective|general|introductions|announcements|random|social|london|nyc|sf|chicago|boston|austin|seattle|la)\b/i.test(ctx.channelName)
     : false;
   const communityChannelGuidance = isCommunityChannel
-    ? `\n## Channel Context\nThis message is in #${ctx.channelName}, a community social channel. Apply a higher threshold for responding — community introductions, event mentions, and social updates should be reacted to with an emoji unless the message contains a direct question or explicit request for Addie's help.`
+    ? `\n## Channel Context\nThis message is in #${ctx.channelName}, a community social channel. Apply an even higher threshold — community introductions, event mentions, and social updates should be reacted to with an emoji.`
+    : '';
+
+  // Channel messages require a much higher bar for responding
+  const channelResponseGuidance = ctx.source === 'channel'
+    ? `
+## Channel Response Policy
+You are reading a message in a channel. Addie should NOT respond to most channel messages. Default to "ignore" or "react" unless ALL of these are true:
+1. **High-confidence expertise**: Addie has a specific, authoritative answer (not a vague "here's what I found"). If the question is outside Addie's core expertise (AdCP protocol, membership, certification, member directory), ignore it.
+2. **Explicitly requested OR uniquely positioned**: Someone asked Addie by name, OR no human is better positioned to answer (e.g., a protocol question only Addie's docs can answer). If a human in the channel likely knows the answer, let them answer.
+3. **Actionable**: Addie can provide a concrete answer, take a specific action, or suggest a specific person/organization who can help. "I'm not sure but..." is not a valid response.
+
+If Addie cannot meet these criteria but knows WHO might be able to help (a specific member, working group, or team), use "respond" with the directory or member tools to suggest a connection. Otherwise, ignore or react.
+
+Examples of when to IGNORE:
+- General questions to the channel ("does anyone know...") — let humans answer
+- Scheduling/logistics ("can we move the meeting") — not Addie's domain
+- Legal/compliance questions — Addie is not qualified
+- Questions where a human expert is likely in the channel
+- Conversational messages, opinions, debates`
     : '';
 
   return `You are Addie's router. Analyze this message and select the appropriate tool SETS.
@@ -339,13 +361,14 @@ ${channelLine}
 - In thread: ${ctx.isThread ?? false}
 ${conditionalRules}
 ${communityChannelGuidance}
+${channelResponseGuidance}
 
 ## Available Tool Sets
 Select which CATEGORIES of tools will be needed. Each set contains multiple related tools.
 ${toolSetsSection}
 
 ## Tool Set Selection Guidelines
-IMPORTANT: Select tool SETS based on the user's INTENT:
+${ctx.source === 'channel' ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n' : ''}IMPORTANT: Select tool SETS based on the user's INTENT:
 - Questions about AdCP, protocols, implementation → ["knowledge"]
 - Questions about member profile, working groups, account → ["member"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
@@ -373,15 +396,20 @@ ${reactList}
 - Messages clearly directed at specific people (e.g., start with "<@USERID> ..." in Slack format)
 - Off-topic discussions
 - Community introductions, announcements, or social updates where the author is NOT asking a question and NOT requesting help from Addie — even if the topic relates to AdCP or events. Examples: "Hi everyone, I'm James from X, looking forward to the event", "We hosted an AdCP meetup last week", "Will register for the summit". React to these with an emoji instead.
+- Open questions to the channel ("does anyone know...", "has anyone tried...", "thoughts on...") — these are addressed to humans, not Addie
+- Questions outside Addie's core expertise (legal, HR, scheduling, general business) — even if tangentially related to ad tech
+- Questions where a knowledgeable human in the workspace is likely better positioned to answer
 
 ## Message
 "${ctx.message.substring(0, 500)}"
 
 ## Instructions
 Respond with a JSON object for the execution plan. Choose ONE action:
+${ctx.source === 'channel' ? `
+**CRITICAL — CHANNEL SOURCE**: This message was posted in a channel, NOT sent to Addie directly. You MUST default to "ignore" unless the message explicitly names Addie OR the question is squarely within Addie's unique expertise (AdCP protocol details, membership tools, certification). Most channel messages should be "ignore" — let humans talk to each other. Meeting scheduling, logistics, legal questions, general industry discussion, and anything humans can answer themselves must be "ignore". When in doubt, ignore.` : ''}
 
 1. {"action": "ignore", "reason": "brief reason"}
-   - For messages that don't need Addie's response
+   - For messages that don't need Addie's response${ctx.source === 'channel' ? ' — THIS IS THE DEFAULT FOR CHANNEL MESSAGES' : ''}
 
 2. {"action": "react", "emoji": "emoji_name", "reason": "brief reason"}
    - For greetings, welcomes, thanks (use emoji name like "wave", "tada", "heart")
@@ -390,10 +418,14 @@ Respond with a JSON object for the execution plan. Choose ONE action:
    - When you need more information to help effectively
    - Use sparingly - only when truly ambiguous
 
-4. {"action": "respond", "tool_sets": ["set1", "set2"], "requires_depth": false, "reason": "brief reason"}
+4. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
    - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
+   - **confidence** (required): How sure you are that Addie's tools will return a DEFINITIVE answer:
+     - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.
+     - "suggest": The topic relates to AdCP but the answer is NOT definitively in Addie's docs — it's an open question, evolving standard, policy/governance decision, commercial/business terms not yet codified, or something a specific person/working group is better positioned to answer. Addie can point to the right people or group. Examples: "who pays the signal provider?", "does an AI impression count?", "what's the governance model?"
+     - "low": Adjacent to Addie's domain but she has no verified answer and no specific person to point to.
    - Set "requires_depth": true when the discussion involves protocol design, schema architecture, technical implementation details, standards discussion, or multi-stakeholder governance decisions. NOT for simple lookup questions or basic "what is X" questions.
 
 Respond with ONLY the JSON object, no other text.`;
@@ -406,12 +438,12 @@ type ParsedPlan =
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tool_sets: string[]; reason: string; requires_depth?: boolean };
+  | { action: 'respond'; tool_sets: string[]; reason: string; requires_depth?: boolean; confidence: ConfidenceTier };
 
 /**
  * Parse the router response into a partial ExecutionPlan
  */
-function parseRouterResponse(response: string): ParsedPlan {
+export function parseRouterResponse(response: string): ParsedPlan {
   try {
     // Extract JSON from response (handle markdown code blocks)
     let jsonStr = response.trim();
@@ -442,10 +474,15 @@ function parseRouterResponse(response: string): ParsedPlan {
     if (parsed.action === 'respond') {
       // Accept tool set names as-is
       const toolSets = Array.isArray(parsed.tool_sets) ? parsed.tool_sets : [];
+      const confidence: ConfidenceTier =
+        parsed.confidence === 'suggest' || parsed.confidence === 'low'
+          ? parsed.confidence
+          : 'high'; // default to high for backward compatibility
       return {
         action: 'respond',
         tool_sets: toolSets,
         reason: parsed.reason || 'Can help with this topic',
+        confidence,
         ...(parsed.requires_depth && { requires_depth: true }),
       };
     }
@@ -456,7 +493,7 @@ function parseRouterResponse(response: string): ParsedPlan {
   } catch (error) {
     logger.error({ error, response }, 'Router: Failed to parse response');
     // On parse error, default to respond with knowledge tools (safe fallback)
-    return { action: 'respond', tool_sets: ['knowledge'], reason: 'Parse error - defaulting to knowledge tools' };
+    return { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', reason: 'Parse error - defaulting to knowledge tools' };
   }
 }
 
@@ -534,6 +571,7 @@ export class AddieRouter {
         action: plan.action,
         reason: plan.reason,
         toolSets: parsedPlan.action === 'respond' ? parsedPlan.tool_sets : undefined,
+        confidence: parsedPlan.action === 'respond' ? parsedPlan.confidence : undefined,
         durationMs: latencyMs,
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
@@ -557,6 +595,7 @@ export class AddieRouter {
       return {
         action: 'respond',
         tool_sets: ['knowledge'],
+        confidence: 'high',
         reason: 'Router error - defaulting to knowledge tools',
         decision_method: 'llm',
         latency_ms: Date.now() - startTime,
