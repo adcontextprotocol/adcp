@@ -10,6 +10,16 @@ const markedEmail = new Marked({
     html(token) {
       return escapeHtml(token.text);
     },
+    link(token) {
+      const href = token.href || '';
+      if (!/^https?:\/\//i.test(href)) {
+        return escapeHtml(token.text);
+      }
+      return `<a href="${escapeHtml(href)}">${escapeHtml(token.text)}</a>`;
+    },
+    image() {
+      return '';
+    },
   },
 });
 
