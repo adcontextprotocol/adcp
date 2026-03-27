@@ -2116,6 +2116,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           tracks_failed: run.tracks_failed,
           tracks_skipped: run.tracks_skipped,
           tracks_partial: run.tracks_partial,
+          tracks_json: run.tracks_json,
           total_duration_ms: run.total_duration_ms,
           triggered_by: run.triggered_by,
           tested_at: run.tested_at,

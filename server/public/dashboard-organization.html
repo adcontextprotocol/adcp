@@ -384,7 +384,55 @@
       border-radius: var(--radius-full);
       font-size: 10px;
       font-weight: var(--font-semibold);
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s;
     }
+    .agent-track:hover { opacity: 0.8; }
+    .agent-track.active { outline: 2px solid var(--color-primary-500); outline-offset: 1px; }
+
+    .agent-track-detail {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+    }
+    .agent-track-detail h4 { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+    .track-scenario { padding: var(--space-1) 0; border-bottom: 1px solid var(--color-gray-200); }
+    .track-scenario:last-child { border-bottom: none; }
+    .track-scenario-name { font-weight: var(--font-semibold); }
+    .track-scenario--pass .track-scenario-name::before { content: '\2713 '; color: var(--color-success-600); }
+    .track-scenario--fail .track-scenario-name::before { content: '\2717 '; color: var(--color-error-600); }
+    .track-scenario-steps { margin-top: var(--space-1); padding-left: var(--space-4); color: var(--color-text-muted); }
+    .track-step--fail { color: var(--color-error-600); }
+
+    .agent-history-btn {
+      background: none;
+      border: none;
+      color: var(--color-primary-600);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      padding: 0;
+    }
+    .agent-history-btn:hover { text-decoration: underline; }
+
+    .agent-history-panel {
+      margin-top: var(--space-3);
+      font-size: var(--text-xs);
+    }
+    .history-run {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-2) 0;
+      border-bottom: 1px solid var(--color-gray-200);
+      cursor: pointer;
+    }
+    .history-run:last-child { border-bottom: none; }
+    .history-run:hover { background: var(--color-gray-50); }
+    .history-run-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .history-run-detail { display: none; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-text-muted); }
     .agent-track--pass { background: var(--color-success-100); color: var(--color-success-700); }
     .agent-track--fail { background: var(--color-error-100); color: var(--color-error-700); }
     .agent-track--partial { background: var(--color-warning-100); color: var(--color-warning-700); }
@@ -1060,8 +1108,19 @@
         // Public toggle
         const isPublic = !(cs?.compliance_opt_out ?? false);
 
+        // Build clickable track pills with data attributes
+        const clickableTrackPills = Object.entries(tracks).map(([track, status]) => {
+          const cls = status === 'pass' ? 'agent-track--pass'
+            : status === 'fail' ? 'agent-track--fail'
+            : status === 'partial' ? 'agent-track--partial'
+            : 'agent-track--skip';
+          return '<button class="agent-track ' + cls + '" data-track="' + escapeHtml(track) + '" data-agent-url="' + escapeHtml(agent.url) + '">' + escapeHtml(track) + '</button>';
+        }).join('');
+
+        const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
+
         return `
-          <div class="agent-compliance-card">
+          <div class="agent-compliance-card" id="${cardId}">
             <div class="agent-compliance-header">
               <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
                 <span class="agent-status-dot agent-status-dot--${escapeHtml(statusClass)}"></span>
@@ -1080,11 +1139,14 @@
               </div>
             </div>
             ${cs?.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
-            ${trackPills ? '<div class="agent-tracks">' + trackPills + '</div>' : ''}
+            ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
+            <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
+              <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
             </div>
+            <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
           </div>
         `;
       }).join('');
@@ -1481,6 +1543,140 @@
           }
         } catch {
           checkbox.checked = !checkbox.checked;
+        }
+      }
+    });
+
+    // Track pill click — fetch history and show scenario details for that track
+    document.addEventListener('click', async function(e) {
+      const trackBtn = e.target.closest('.agent-track[data-track]');
+      if (trackBtn) {
+        const track = trackBtn.dataset.track;
+        const agentUrl = trackBtn.dataset.agentUrl;
+        const card = trackBtn.closest('.agent-compliance-card');
+        const detailEl = card?.querySelector('.agent-track-detail');
+        if (!detailEl) return;
+
+        // Toggle off if already showing this track
+        if (trackBtn.classList.contains('active')) {
+          trackBtn.classList.remove('active');
+          detailEl.style.display = 'none';
+          return;
+        }
+
+        // Remove active from siblings
+        card.querySelectorAll('.agent-track').forEach(b => b.classList.remove('active'));
+        trackBtn.classList.add('active');
+        detailEl.style.display = 'block';
+        detailEl.innerHTML = '<em>Loading...</em>';
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/history?limit=1', { credentials: 'include' });
+          const data = await res.json();
+          const run = data.runs?.[0];
+          if (!run || !run.tracks_json) {
+            detailEl.innerHTML = '<em>No detailed data available for this run.</em>';
+            return;
+          }
+          const trackData = run.tracks_json.find(t => t.track === track);
+          if (!trackData) {
+            detailEl.innerHTML = '<em>Track "' + escapeHtml(track) + '" not found in latest run.</em>';
+            return;
+          }
+
+          const statusLabel = trackData.status === 'pass' ? 'Passing'
+            : trackData.status === 'fail' ? 'Failing'
+            : trackData.status === 'partial' ? 'Partial' : trackData.status;
+
+          let html = '<h4>' + escapeHtml(track) + ' — ' + escapeHtml(statusLabel) + '</h4>';
+          html += '<div>' + parseInt(trackData.passed_count, 10) + ' of ' + parseInt(trackData.scenario_count, 10) + ' scenarios passing';
+          if (trackData.duration_ms) html += ' (' + (trackData.duration_ms / 1000).toFixed(1) + 's)';
+          html += '</div>';
+
+          // If the run has scenario-level details (from tracks_json with scenarios)
+          if (trackData.scenarios) {
+            for (const s of trackData.scenarios) {
+              const cls = s.overall_passed ? 'track-scenario--pass' : 'track-scenario--fail';
+              html += '<div class="track-scenario ' + cls + '">';
+              html += '<div class="track-scenario-name">' + escapeHtml(s.name) + '</div>';
+              if (!s.overall_passed && s.steps) {
+                html += '<div class="track-scenario-steps">';
+                for (const st of s.steps) {
+                  if (!st.passed) {
+                    html += '<div class="track-step--fail">' + escapeHtml(st.name);
+                    if (st.error) html += ': ' + escapeHtml(String(st.error).substring(0, 200));
+                    html += '</div>';
+                  }
+                }
+                html += '</div>';
+              }
+              html += '</div>';
+            }
+          }
+
+          detailEl.innerHTML = html;
+        } catch {
+          detailEl.innerHTML = '<em>Failed to load track details.</em>';
+        }
+        return;
+      }
+
+      // History button click
+      const historyBtn = e.target.closest('.agent-history-btn');
+      if (historyBtn) {
+        const agentUrl = historyBtn.dataset.agentUrl;
+        const cardId = historyBtn.dataset.cardId;
+        const panel = document.getElementById(cardId + '-history');
+        if (!panel) return;
+
+        if (panel.style.display !== 'none') {
+          panel.style.display = 'none';
+          return;
+        }
+        panel.style.display = 'block';
+        panel.innerHTML = '<em>Loading history...</em>';
+
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/compliance/history?limit=10', { credentials: 'include' });
+          const data = await res.json();
+
+          if (!data.runs || data.runs.length === 0) {
+            panel.innerHTML = '<em>No compliance history yet.</em>';
+            return;
+          }
+
+          let html = '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Compliance History</div>';
+          for (const run of data.runs) {
+            const dotColor = run.overall_status === 'passing' ? 'var(--color-success-500)'
+              : run.overall_status === 'failing' ? 'var(--color-error-500)'
+              : 'var(--color-warning-500)';
+            const date = new Date(run.tested_at).toLocaleString();
+
+            // Track pills for this run
+            let runTracks = '';
+            if (run.tracks_json) {
+              for (const t of run.tracks_json) {
+                const cls = t.status === 'pass' ? 'agent-track--pass'
+                  : t.status === 'fail' ? 'agent-track--fail'
+                  : t.status === 'partial' ? 'agent-track--partial'
+                  : 'agent-track--skip';
+                runTracks += '<span class="agent-track ' + cls + '" style="cursor:default;">' + escapeHtml(t.track) + '</span>';
+              }
+            }
+
+            html += '<div class="history-run">';
+            html += '<span class="history-run-dot" style="background:' + dotColor + ';"></span>';
+            html += '<span>' + escapeHtml(date) + '</span>';
+            html += '<span>' + escapeHtml(run.overall_status) + '</span>';
+            html += '<span>' + parseInt(run.tracks_passed, 10) + '/' + (parseInt(run.tracks_passed, 10) + parseInt(run.tracks_failed, 10) + parseInt(run.tracks_partial, 10)) + ' tracks</span>';
+            html += '</div>';
+            if (runTracks) {
+              html += '<div style="padding:var(--space-1) 0 var(--space-2) var(--space-5);display:flex;gap:3px;flex-wrap:wrap;">' + runTracks + '</div>';
+            }
+          }
+          panel.innerHTML = html;
+        } catch {
+          panel.innerHTML = '<em>Failed to load history.</em>';
         }
       }
     });

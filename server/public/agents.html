@@ -743,7 +743,7 @@
                         </div>
                     </div>
                 `;
-            } else if (agent.propertiesError) {
+            } else if (agent.propertiesError && !agent.compliance?.status) {
                 extrasHtml = `
                     <div class="agent-properties">
                         <div class="tool-error-box">
@@ -763,12 +763,15 @@
                 `;
             }
 
-            if (agent.capabilities?.discovery_error) {
+            if (agent.capabilities?.discovery_error && !agent.compliance?.status) {
+                // Only show discovery errors if compliance data isn't available
+                const errMsg = agent.capabilities.discovery_error;
+                const truncated = errMsg.length > 120 ? errMsg.substring(0, 120) + '...' : errMsg;
                 extrasHtml += `
                     <div class="agent-properties">
                         <div class="tool-error-box">
                             <span class="tool-error-box__title">Discovery error:</span><br>
-                            <span class="tool-error-box__msg">${escapeHtml(agent.capabilities.discovery_error)}</span>
+                            <span class="tool-error-box__msg">${escapeHtml(truncated)}</span>
                         </div>
                     </div>
                 `;
