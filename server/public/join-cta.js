@@ -379,7 +379,7 @@ async function renderJoinCta(options = {}) {
   // Fetch pricing from Stripe
   const products = await fetchBillingProducts();
 
-  // Use founding-era prices until April 1, 2026
+  // Use founding-era prices until April 1, 2026 — midnight Eastern (UTC-4)
   const isFoundingPricing = new Date() < new Date('2026-04-01T04:00:00Z');
 
   // Find specific products by lookup key
