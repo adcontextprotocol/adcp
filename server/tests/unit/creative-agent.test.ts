@@ -116,42 +116,6 @@ describe('handleListCreativeFormats', () => {
     expect(Array.isArray(result.formats)).toBe(true);
   });
 
-  it('filters by type: display', () => {
-    const result = handleListCreativeFormats({ type: 'display' }, formats);
-    const returned = result.formats as Array<{ format_id: { id: string } }>;
-    expect(returned.length).toBeGreaterThan(0);
-    expect(returned.length).toBeLessThan(52);
-  });
-
-  it('filters by type: video', () => {
-    const result = handleListCreativeFormats({ type: 'video' }, formats);
-    const returned = result.formats as Array<{ format_id: { id: string } }>;
-    expect(returned.length).toBeGreaterThan(0);
-    for (const f of returned) {
-      expect(f.format_id.id).toMatch(/video|ctv/);
-    }
-  });
-
-  it('filters by type: audio', () => {
-    const result = handleListCreativeFormats({ type: 'audio' }, formats);
-    const returned = result.formats as Array<{ format_id: { id: string } }>;
-    expect(returned.length).toBe(3);
-    for (const f of returned) {
-      expect(f.format_id.id).toMatch(/^audio_/);
-    }
-  });
-
-  it('filters by type: dooh', () => {
-    const result = handleListCreativeFormats({ type: 'dooh' }, formats);
-    const returned = result.formats as Array<{ format_id: { id: string } }>;
-    expect(returned.length).toBe(4);
-  });
-
-  it('returns empty array for unknown type', () => {
-    const result = handleListCreativeFormats({ type: 'hologram' }, formats);
-    expect((result.formats as unknown[]).length).toBe(0);
-  });
-
   it('filters by name_search (case-insensitive)', () => {
     const result = handleListCreativeFormats({ name_search: 'medium rectangle' }, formats);
     const returned = result.formats as Array<{ format_id: { id: string } }>;
@@ -546,7 +510,7 @@ describe('MCP tool responses include structuredContent', () => {
   it('list_creative_formats returns structuredContent with formats array', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',
-      arguments: { type: 'audio' },
+      arguments: { asset_types: ['audio'] },
     });
 
     expect(result.isError).toBeFalsy();

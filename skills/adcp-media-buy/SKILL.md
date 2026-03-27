@@ -57,7 +57,7 @@ Discover advertising products using natural language briefs.
 - `buying_mode` (string): Required discriminator - `"brief"` or `"wholesale"`
 - `brief` (string): Natural language description of campaign requirements
 - `brand` (object): Brand identity - `{ "domain": "acmecorp.com" }`
-- `filters` (object, optional): Filter by channels, budget, delivery_type, format_types
+- `filters` (object, optional): Filter by channels, budget, delivery_type
 
 **Response contains:**
 - `products`: Array of matching products with `product_id`, `name`, `description`, `pricing_options`
@@ -88,12 +88,13 @@ View supported creative specifications.
 **Request:**
 ```json
 {
-  "format_types": ["video", "display"]
+  "asset_types": ["video", "image"]
 }
 ```
 
 **Key fields:**
-- `format_types` (array, optional): Filter to specific format categories
+- `asset_types` (array, optional): Filter by asset types (image, video, audio, text, html, vast, etc.)
+- `name_search` (string, optional): Case-insensitive partial match on name or description
 
 **Response contains:**
 - `formats`: Array of format specifications with dimensions, requirements, and asset schemas
@@ -215,8 +216,7 @@ Query the creative library with filtering.
 ```json
 {
   "filters": {
-    "status": ["active"],
-    "format_types": ["video"]
+    "status": ["active"]
   },
   "limit": 20
 }

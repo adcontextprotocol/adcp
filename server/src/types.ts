@@ -16,7 +16,6 @@ export interface FormatInfo {
   name: string;
   dimensions?: string;
   aspect_ratio?: string;
-  type?: string;
   description?: string;
 }
 

@@ -36,10 +36,10 @@ This document outlines design principles and rules for maintaining the AdCP spec
 // asset-content-type.json
 { "type": "string", "enum": ["image", "video", "html"] }
 
-// format-category.json
-{ "type": "string", "enum": ["audio", "video", "display"] }
+// pricing-model.json
+{ "type": "string", "enum": ["cpm", "cpc", "fixed"] }
 
-// Result: Python generates AssetContentType and FormatCategory
+// Result: Python generates AssetContentType and PricingModel
 ```
 
 ### Semantic Field Names
@@ -48,9 +48,8 @@ Field names should describe **what** they represent, not generic categories.
 
 **Examples**:
 
-- ✅ `format_category` - Clear: describes the format's channel/type
-- ❌ `type` - Ambiguous: type of what?
 - ✅ `asset_content_type` - Clear: describes what content the asset contains
+- ❌ `type` - Ambiguous: type of what?
 - ❌ `asset_type` - Better, but could conflict with other type fields
 
 ### Enum Consolidation
@@ -105,7 +104,6 @@ All enums should live in `/schemas/v3/enums/` with descriptive names:
 ```
 /schemas/v3/enums/
   asset-content-type.json      # What IS this asset?
-  format-category.json         # Where does this ad DISPLAY?
   pricing-model.json           # How is this PRICED?
   media-buy-status.json        # What STATE is the buy in?
 ```
@@ -114,7 +112,7 @@ All enums should live in `/schemas/v3/enums/` with descriptive names:
 
 - Use **noun phrases** that describe what's being categorized
 - Use **kebab-case** for filenames
-- Generated type names use **PascalCase** (AssetContentType, FormatCategory)
+- Generated type names use **PascalCase** (AssetContentType, PricingModel)
 - Avoid generic terms like "type", "kind", "status" without qualifiers
 
 ### When to Create a New Enum

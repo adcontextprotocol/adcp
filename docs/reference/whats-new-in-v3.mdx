@@ -576,6 +576,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `delete_content_standards` task | Archive via `update_content_standards` instead |
 | `get_property_features` task | Property list filters + `get_adcp_capabilities` for feature discovery |
 | `tone` as string on brand.json | Object only: `{ voice, attributes, dos, donts }` |
+| `FormatCategory` enum / `type` on formats | Filter by `asset_types` or `format_ids` instead |
 
 ---
 
@@ -618,6 +619,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Treat `list_creatives` and `sync_creatives` as Creative Protocol operations
     - [ ] Remove `delete_content_standards` calls — archive via `update_content_standards`
     - [ ] Remove `get_property_features` calls — use property list filters
+    - [ ] Remove `format_types` / `type` filters — use `asset_types` or `format_ids` instead
     - [ ] Validate all requests/responses against v3 schemas
   </Accordion>
 
@@ -698,7 +700,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
   </Accordion>
 
   <Accordion title="Creative agents (creative management, DCO providers)">
-    Support new asset discovery and integrate brand identity. Format `type` field (video, display, audio) is IAB creative classification, not media channels.
+    Support new asset discovery and integrate brand identity. The `FormatCategory` enum and format `type` field are removed in v3 — filter formats by `asset_types` or `format_ids` instead.
 
     - [ ] Support `assets` array with `required` boolean (replaces `assets_required`)
     - [ ] Replace `preview_image` with `format_card` rendering
