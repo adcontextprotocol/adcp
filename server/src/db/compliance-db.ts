@@ -1,5 +1,5 @@
 import { query, getClient } from './client.js';
-import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
+import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
@@ -18,10 +18,6 @@ export interface AgentRegistryMetadata {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
   compliance_opt_out: boolean;
-  compliance_auth_encrypted: string | null;
-  compliance_auth_iv: string | null;
-  compliance_auth_type: string | null;
-  compliance_auth_updated_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -123,77 +119,19 @@ export class ComplianceDatabase {
     return result.rows[0] || null;
   }
 
-  // ----- Compliance Auth -----
-
   /**
-   * Save encrypted auth credentials for compliance monitoring.
-   * The publisher provides these explicitly for their own agent.
+   * Check if an agent has auth credentials saved in agent_contexts
+   * by the owning organization.
    */
-  async saveComplianceAuth(
-    agentUrl: string,
-    token: string,
-    authType: string = 'bearer',
-  ): Promise<void> {
-    // Use the agent URL as the encryption salt — these are publisher-owned credentials
-    const { encrypted, iv } = encryptToken(token, agentUrl);
-
-    await query(
-      `INSERT INTO agent_registry_metadata (agent_url, compliance_auth_encrypted, compliance_auth_iv, compliance_auth_type, compliance_auth_updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (agent_url) DO UPDATE SET
-         compliance_auth_encrypted = $2,
-         compliance_auth_iv = $3,
-         compliance_auth_type = $4,
-         compliance_auth_updated_at = NOW(),
-         updated_at = NOW()`,
-      [agentUrl, encrypted, iv, authType],
-    );
-  }
-
-  /**
-   * Retrieve compliance auth credentials for an agent.
-   * Returns undefined if no credentials are stored.
-   */
-  async getComplianceAuth(
-    agentUrl: string,
-  ): Promise<{ type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined> {
-    try {
-      const result = await query(
-        `SELECT compliance_auth_encrypted, compliance_auth_iv, compliance_auth_type
-         FROM agent_registry_metadata
-         WHERE agent_url = $1
-           AND compliance_auth_encrypted IS NOT NULL`,
-        [agentUrl],
-      );
-
-      const row = result.rows[0];
-      if (!row) return undefined;
-
-      const token = decryptToken(row.compliance_auth_encrypted, row.compliance_auth_iv, agentUrl);
-
-      if (row.compliance_auth_type === 'basic') {
-        const decoded = Buffer.from(token, 'base64').toString();
-        const colonIndex = decoded.indexOf(':');
-        if (colonIndex >= 0) {
-          return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
-        }
-      }
-
-      return { type: 'bearer', token };
-    } catch (error) {
-      logger.debug({ error, agentUrl }, 'Could not retrieve compliance auth');
-      return undefined;
-    }
-  }
-
-  /**
-   * Check if an agent has compliance auth credentials stored.
-   */
-  async hasComplianceAuth(agentUrl: string): Promise<boolean> {
+  async hasOwnerAuth(agentUrl: string): Promise<boolean> {
     const result = await query(
-      `SELECT 1 FROM agent_registry_metadata
-       WHERE agent_url = $1 AND compliance_auth_encrypted IS NOT NULL`,
-      [agentUrl],
+      `SELECT 1 FROM agent_contexts ac
+       JOIN member_profiles mp ON mp.workos_organization_id = ac.organization_id
+       WHERE ac.agent_url = $1
+         AND mp.agents @> $2::jsonb
+         AND ac.auth_token_encrypted IS NOT NULL
+       LIMIT 1`,
+      [agentUrl, JSON.stringify([{ url: agentUrl }])],
     );
     return result.rows.length > 0;
   }
@@ -428,21 +366,25 @@ export class ComplianceDatabase {
   // ----- Helpers -----
 
   /**
-   * Resolve auth credentials for an agent URL from any organization's saved tokens.
-   * Uses the most recently updated credential if multiple exist.
+   * Resolve auth credentials for an agent from the owning organization's
+   * saved tokens in agent_contexts. Only uses credentials from the org
+   * that owns the agent (via member_profiles.agents), not arbitrary orgs.
    */
-  async resolveAuthForAgent(
+  async resolveOwnerAuth(
     agentUrl: string,
   ): Promise<{ type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined> {
     try {
       const result = await query(
-        `SELECT organization_id, auth_token_encrypted, auth_token_iv, auth_type
-         FROM agent_contexts
-         WHERE agent_url = $1
-           AND auth_token_encrypted IS NOT NULL
-         ORDER BY updated_at DESC NULLS LAST
+        `SELECT ac.organization_id, ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type
+         FROM agent_contexts ac
+         JOIN member_profiles mp
+           ON mp.workos_organization_id = ac.organization_id
+         WHERE ac.agent_url = $1
+           AND mp.agents @> $2::jsonb
+           AND ac.auth_token_encrypted IS NOT NULL
+         ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
-        [agentUrl],
+        [agentUrl, JSON.stringify([{ url: agentUrl }])],
       );
 
       const row = result.rows[0];
@@ -460,7 +402,7 @@ export class ComplianceDatabase {
 
       return { type: 'bearer', token };
     } catch (error) {
-      logger.debug({ error, agentUrl }, 'Could not resolve auth for heartbeat');
+      logger.debug({ error, agentUrl }, 'Could not resolve owner auth for heartbeat');
       return undefined;
     }
   }

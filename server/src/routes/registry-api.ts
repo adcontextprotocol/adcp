@@ -2040,12 +2040,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
 
       const complianceOptOut = metadata?.compliance_opt_out ?? false;
-      const hasComplianceAuth = !!(metadata?.compliance_auth_encrypted);
 
       // If opted out, only show full data to the agent's owner
       const isOwner = req.user
         ? await verifyAgentOwnership(req.user.id, agentUrl)
         : false;
+
+      const hasComplianceAuth = isOwner ? await complianceDb.hasOwnerAuth(agentUrl) : false;
 
       if (complianceOptOut && !isOwner) {
         return res.json({
@@ -2228,72 +2229,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.put("/registry/agents/:encodedUrl/compliance/auth", ...complianceWriteMiddleware, async (req, res) => {
-    try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
-        return res.status(400).json({ error: "Invalid agent URL" });
-      }
 
-      if (req.user) {
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
-          return res.status(403).json({ error: "You do not have permission to modify this agent" });
-        }
-      }
-
-      const { token, auth_type } = req.body;
-
-      if (!token || typeof token !== "string") {
-        return res.status(400).json({ error: "token is required and must be a string" });
-      }
-
-      const validTypes = ["bearer", "basic"];
-      const type = auth_type || "bearer";
-      if (!validTypes.includes(type)) {
-        return res.status(400).json({ error: `auth_type must be one of: ${validTypes.join(", ")}` });
-      }
-
-      await complianceDb.saveComplianceAuth(agentUrl, token, type);
-
-      res.json({ saved: true, auth_type: type });
-    } catch (error) {
-      logger.error({ err: error, path: req.path }, "Failed to save compliance auth");
-      res.status(500).json({ error: "Failed to save compliance auth" });
-    }
-  });
-
-  router.delete("/registry/agents/:encodedUrl/compliance/auth", ...complianceWriteMiddleware, async (req, res) => {
-    try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
-        return res.status(400).json({ error: "Invalid agent URL" });
-      }
-
-      if (req.user) {
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
-          return res.status(403).json({ error: "You do not have permission to modify this agent" });
-        }
-      }
-
-      await complianceDb.saveComplianceAuth(agentUrl, "", "bearer");
-      // Clear the auth by setting encrypted fields to null
-      await query(
-        `UPDATE agent_registry_metadata
-         SET compliance_auth_encrypted = NULL, compliance_auth_iv = NULL,
-             compliance_auth_type = NULL, compliance_auth_updated_at = NULL,
-             updated_at = NOW()
-         WHERE agent_url = $1`,
-        [agentUrl],
-      );
-
-      res.json({ deleted: true });
-    } catch (error) {
-      logger.error({ err: error, path: req.path }, "Failed to delete compliance auth");
-      res.status(500).json({ error: "Failed to delete compliance auth" });
-    }
-  });
 
   // ── Publishers ──────────────────────────────────────────────────
 

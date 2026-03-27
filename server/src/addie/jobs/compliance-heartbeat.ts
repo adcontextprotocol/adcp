@@ -48,9 +48,9 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
   for (const agent of agentsDue) {
     try {
-      // Use publisher-provided compliance auth if available.
-      // These are credentials the agent owner explicitly saved for monitoring.
-      const auth = await complianceDb.getComplianceAuth(agent.agent_url);
+      // Use the owning org's saved credentials from agent_contexts.
+      // These are credentials the publisher saved when connecting through Addie.
+      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
 
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
