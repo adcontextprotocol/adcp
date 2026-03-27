@@ -136,6 +136,34 @@ export function getSeatLimits(tier: string | null): SeatLimits {
 }
 
 /**
+ * Infer membership tier from subscription amount and organization type.
+ * Amounts are in cents. Monthly amounts are annualized for comparison.
+ *
+ * Tier mapping (annual):
+ *   Individual: Explorer ($50) → individual_academic, Professional ($250+) → individual_professional
+ *   Company:    Builder ($3K+) → company_standard, Member ($15K+) → company_icl, Leader ($50K+) → company_leader
+ */
+export function inferMembershipTier(
+  amountCents: number | null,
+  interval: string | null,
+  isPersonal: boolean
+): MembershipTier | null {
+  if (amountCents == null || amountCents === 0) return null;
+
+  const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
+
+  if (isPersonal) {
+    if (annualCents >= 25000) return 'individual_professional';
+    if (annualCents >= 5000) return 'individual_academic';
+    return null;
+  }
+
+  if (annualCents >= 5000000) return 'company_leader';
+  if (annualCents >= 1500000) return 'company_icl';
+  return 'company_standard';
+}
+
+/**
  * Count current seat usage by type for an organization.
  */
 export async function getSeatUsage(orgId: string): Promise<{ contributor: number; community_only: number }> {

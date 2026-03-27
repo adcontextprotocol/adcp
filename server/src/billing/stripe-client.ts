@@ -206,6 +206,11 @@ export async function getProductsForCustomer(options: {
     allProductsCount: allProducts.length,
   }, 'getProductsForCustomer: Filtering products');
 
+  // After April 1 2026 UTC, hide legacy founding-member products (those gated by revenue_tiers)
+  // and only show the new tier products (Explorer, Professional, Builder, Member, Leader)
+  const foundingMemberCutoff = new Date('2026-04-01T00:00:00Z');
+  const showFoundingProducts = new Date() < foundingMemberCutoff;
+
   const filtered = allProducts.filter(product => {
     // Filter by category if specified
     if (options.category && product.category !== options.category) {
@@ -222,6 +227,11 @@ export async function getProductsForCustomer(options: {
       if (!product.customer_types.includes(options.customerType)) {
         return false;
       }
+    }
+
+    // Hide legacy founding-member products after cutoff date
+    if (!showFoundingProducts && product.revenue_tiers.length > 0) {
+      return false;
     }
 
     // Filter by revenue tier (empty array means available to all)
