@@ -721,6 +721,11 @@ export async function generateAssetDescriptions(batchSize = 5): Promise<number> 
       }
     } catch (err) {
       logger.warn({ err, assetId: asset.id }, 'Failed to generate asset description');
+      // Mark the asset so the job doesn't retry it every 30 minutes
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        await workingGroupDb.updateAssetDescription(asset.id, `Error: ${msg.substring(0, 200)}`);
+      } catch { /* best-effort */ }
     }
   }
 

@@ -10,6 +10,7 @@ import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, initializeMCPServer, isMCPServerReady } from "./mcp/index.js";
 import { HealthChecker } from "./health.js";
+import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
@@ -1824,8 +1825,12 @@ export class HTTPServer {
           new Promise((_, reject) => setTimeout(() => reject(new Error('db health timeout')), 3000)),
         ]);
         checks.database = true;
-      } catch {
+      } catch (dbErr) {
         checks.database = false;
+        notifySystemError({
+          source: 'health-check',
+          errorMessage: `Database health check failed: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
+        });
       }
 
       checks.addie = isAddieBoltReady();
@@ -7326,8 +7331,6 @@ Disallow: /api/admin/
     const { initializeDatabase, onPoolError } = await import("./db/client.js");
     const { runMigrations } = await import("./db/migrate.js");
     const { getDatabaseConfig } = await import("./config.js");
-    const { notifySystemError } = await import("./addie/error-notifier.js");
-
     const dbConfig = getDatabaseConfig();
     if (!dbConfig) {
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
