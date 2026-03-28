@@ -332,8 +332,14 @@ The user is NOT an admin.
     ? `\n## Channel Context\nThis message is in #${ctx.channelName}, a community social channel. Apply an even higher threshold — community introductions, event mentions, and social updates should be reacted to with an emoji.`
     : '';
 
+  // If message explicitly names Addie, treat as direct request even in channels
+  const explicitlyNamedAddie = /\baddie\b/i.test(ctx.message);
+  const channelNameOverride = explicitlyNamedAddie && ctx.source === 'channel'
+    ? `\n## Direct Request\nThe user named "Addie" in their message. Treat this as a direct request — respond if you can help, regardless of channel policy.\n`
+    : '';
+
   // Channel messages require a much higher bar for responding
-  const channelResponseGuidance = ctx.source === 'channel'
+  const channelResponseGuidance = ctx.source === 'channel' && !explicitlyNamedAddie
     ? `
 ## Channel Response Policy
 You are reading a message in a channel. Addie should NOT respond to most channel messages. Default to "ignore" or "react" unless ALL of these are true:
@@ -362,13 +368,14 @@ ${channelLine}
 ${conditionalRules}
 ${communityChannelGuidance}
 ${channelResponseGuidance}
+${channelNameOverride}
 
 ## Available Tool Sets
 Select which CATEGORIES of tools will be needed. Each set contains multiple related tools.
 ${toolSetsSection}
 
 ## Tool Set Selection Guidelines
-${ctx.source === 'channel' ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n' : ''}IMPORTANT: Select tool SETS based on the user's INTENT:
+${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n' : ''}IMPORTANT: Select tool SETS based on the user's INTENT:
 - Questions about AdCP, protocols, implementation → ["knowledge"]
 - Questions about member profile, working groups, account → ["member"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
@@ -405,11 +412,11 @@ ${reactList}
 
 ## Instructions
 Respond with a JSON object for the execution plan. Choose ONE action:
-${ctx.source === 'channel' ? `
-**CRITICAL — CHANNEL SOURCE**: This message was posted in a channel, NOT sent to Addie directly. You MUST default to "ignore" unless the message explicitly names Addie OR the question is squarely within Addie's unique expertise (AdCP protocol details, membership tools, certification). Most channel messages should be "ignore" — let humans talk to each other. Meeting scheduling, logistics, legal questions, general industry discussion, and anything humans can answer themselves must be "ignore". When in doubt, ignore.` : ''}
+${ctx.source === 'channel' && !explicitlyNamedAddie ? `
+**CRITICAL — CHANNEL SOURCE**: This message was posted in a channel, NOT sent to Addie directly. You MUST default to "ignore" unless the question is squarely within Addie's unique expertise (AdCP protocol details, membership tools, certification). Most channel messages should be "ignore" — let humans talk to each other. Meeting scheduling, logistics, legal questions, general industry discussion, and anything humans can answer themselves must be "ignore". When in doubt, ignore.` : ''}
 
 1. {"action": "ignore", "reason": "brief reason"}
-   - For messages that don't need Addie's response${ctx.source === 'channel' ? ' — THIS IS THE DEFAULT FOR CHANNEL MESSAGES' : ''}
+   - For messages that don't need Addie's response${ctx.source === 'channel' && !explicitlyNamedAddie ? ' — THIS IS THE DEFAULT FOR CHANNEL MESSAGES' : ''}
 
 2. {"action": "react", "emoji": "emoji_name", "reason": "brief reason"}
    - For greetings, welcomes, thanks (use emoji name like "wave", "tada", "heart")
