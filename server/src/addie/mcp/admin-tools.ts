@@ -18,7 +18,7 @@ import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { invalidateMemberContextCache } from '../member-context.js';
-import { OrganizationDatabase } from '../../db/organization-db.js';
+import { OrganizationDatabase, inferMembershipTier } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -1449,30 +1449,6 @@ function formatMembershipTier(tier: string): string {
     company_icl: 'Industry Council Leader ($50K/yr)',
   };
   return labels[tier] || tier;
-}
-
-/**
- * Infer membership tier from subscription amount and organization type.
- * Amounts are in cents. Monthly amounts are annualized for comparison.
- */
-function inferMembershipTier(
-  amountCents: number | null,
-  interval: string | null,
-  isPersonal: boolean
-): MembershipTier | null {
-  if (amountCents == null || amountCents === 0) return null;
-
-  const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
-
-  if (isPersonal) {
-    if (annualCents >= 25000) return 'individual_professional';
-    if (annualCents >= 5000) return 'individual_academic';
-    return null;
-  }
-
-  // company_standard covers both $2.5K and $10K pricing tiers
-  if (annualCents >= 5000000) return 'company_icl';
-  return 'company_standard';
 }
 
 /**

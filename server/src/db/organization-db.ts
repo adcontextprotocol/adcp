@@ -134,6 +134,30 @@ export function getSeatLimits(tier: string | null): SeatLimits {
 }
 
 /**
+ * Infer membership tier from subscription amount when membership_tier is not explicitly set.
+ * Many orgs created before the membership_tier column was added have active subscriptions
+ * but no tier recorded. This uses the same logic as admin display inference.
+ */
+export function inferMembershipTier(
+  amountCents: number | null,
+  interval: string | null,
+  isPersonal: boolean
+): MembershipTier | null {
+  if (amountCents == null || amountCents === 0) return null;
+
+  const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
+
+  if (isPersonal) {
+    if (annualCents >= 25000) return 'individual_professional';
+    if (annualCents >= 5000) return 'individual_academic';
+    return null;
+  }
+
+  if (annualCents >= 5000000) return 'company_icl';
+  return 'company_standard';
+}
+
+/**
  * Count current seat usage by type for an organization.
  */
 export async function getSeatUsage(orgId: string): Promise<{ contributor: number; community_only: number }> {
@@ -159,11 +183,21 @@ export async function canAddSeat(
   seatType: SeatType
 ): Promise<{ allowed: boolean; reason?: string }> {
   const pool = getPool();
-  const orgResult = await pool.query<{ membership_tier: string | null }>(
-    'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+  const orgResult = await pool.query<{
+    membership_tier: string | null;
+    subscription_amount: number | null;
+    subscription_interval: string | null;
+    subscription_status: string | null;
+    is_personal: boolean;
+  }>(
+    'SELECT membership_tier, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1',
     [orgId]
   );
-  const tier = orgResult.rows[0]?.membership_tier ?? null;
+  const org = orgResult.rows[0];
+  const tier = org?.membership_tier
+    ?? (org?.subscription_status === 'active'
+      ? inferMembershipTier(org?.subscription_amount ?? null, org?.subscription_interval ?? null, org?.is_personal ?? false)
+      : null);
   const limits = getSeatLimits(tier);
   const usage = await getSeatUsage(orgId);
 

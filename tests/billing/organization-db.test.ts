@@ -148,6 +148,109 @@ describe('organization-db', () => {
     });
   });
 
+  describe('inferMembershipTier', () => {
+    test('returns null for null or zero amount', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(inferMembershipTier(null, 'year', false)).toBeNull();
+      expect(inferMembershipTier(0, 'year', false)).toBeNull();
+    });
+
+    test('infers individual_professional for $250/yr personal', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(inferMembershipTier(25000, 'year', true)).toBe('individual_professional');
+    });
+
+    test('infers individual_academic for $50/yr personal', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(inferMembershipTier(5000, 'year', true)).toBe('individual_academic');
+    });
+
+    test('infers company_standard for $2,500/yr company', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(inferMembershipTier(250000, 'year', false)).toBe('company_standard');
+    });
+
+    test('infers company_standard for $10,000/yr company', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(inferMembershipTier(1000000, 'year', false)).toBe('company_standard');
+    });
+
+    test('infers company_icl for $50,000/yr company', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(inferMembershipTier(5000000, 'year', false)).toBe('company_icl');
+    });
+
+    test('annualizes monthly amounts', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      // $208.33/month * 12 = $2,500/yr
+      expect(inferMembershipTier(20833, 'month', false)).toBe('company_standard');
+    });
+  });
+
+  describe('canAddSeat', () => {
+    test('infers tier from subscription when membership_tier is null', async () => {
+      // First query: org with null membership_tier but active $2,500/yr subscription
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{
+          membership_tier: null,
+          subscription_amount: 250000,
+          subscription_interval: 'year',
+          subscription_status: 'active',
+          is_personal: false,
+        }],
+      });
+      // Second query: seat usage count
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ contributor: 0, community_only: 0 }],
+      });
+
+      const { canAddSeat } = await import('../../server/src/db/organization-db.js');
+      const result = await canAddSeat('org_123', 'contributor');
+
+      expect(result.allowed).toBe(true);
+    });
+
+    test('denies contributor seats when no subscription and no tier', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{
+          membership_tier: null,
+          subscription_amount: null,
+          subscription_interval: null,
+          subscription_status: null,
+          is_personal: false,
+        }],
+      });
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ contributor: 0, community_only: 0 }],
+      });
+
+      const { canAddSeat } = await import('../../server/src/db/organization-db.js');
+      const result = await canAddSeat('org_123', 'contributor');
+
+      expect(result.allowed).toBe(false);
+    });
+
+    test('denies contributor seats for canceled subscription even with amount', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{
+          membership_tier: null,
+          subscription_amount: 250000,
+          subscription_interval: 'year',
+          subscription_status: 'canceled',
+          is_personal: false,
+        }],
+      });
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ contributor: 0, community_only: 0 }],
+      });
+
+      const { canAddSeat } = await import('../../server/src/db/organization-db.js');
+      const result = await canAddSeat('org_123', 'contributor');
+
+      expect(result.allowed).toBe(false);
+    });
+  });
+
   describe('getSubscriptionInfo', () => {
     test('returns status "none" when organization has no stripe_customer_id', async () => {
       mockPool.query.mockResolvedValueOnce({
