@@ -36,6 +36,7 @@ import { runCredentialDigestJob } from './credential-digest.js';
 import { runWgDigestJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
+import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -372,6 +373,18 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.evaluated > 0 || r.knowledge_gaps > 0,
   });
 
+  // Knowledge gap closer - creates GitHub issues for doc updates from shadow eval gaps
+  jobScheduler.register({
+    name: 'knowledge-gap-closer',
+    description: 'Create doc update issues from knowledge gaps',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 20, unit: 'minutes' },
+    runner: runKnowledgeGapCloserJob,
+    options: { limit: 3 },
+    businessHours: { startHour: 9, endHour: 18 },
+    shouldLogResult: (r) => r.issues_created > 0 || r.gaps_reviewed > 0,
+  });
+
   // Event reminder - sends notifications ~24h before events start
   jobScheduler.register({
     name: 'event-reminder',
@@ -446,4 +459,5 @@ export const JOB_NAMES = {
   GEO_SNAPSHOT: 'geo-snapshot',
   GEO_CONTENT_PLANNER: 'geo-content-planner',
   SHADOW_EVALUATOR: 'shadow-evaluator',
+  KNOWLEDGE_GAP_CLOSER: 'knowledge-gap-closer',
 } as const;
