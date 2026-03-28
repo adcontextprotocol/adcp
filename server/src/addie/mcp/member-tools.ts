@@ -1491,32 +1491,77 @@ export function createMemberToolHandlers(
       }
     }
 
+    // Validate string lengths
+    if (updates.headline && typeof updates.headline === 'string' && updates.headline.length > 255) {
+      return 'Headline must be 255 characters or fewer.';
+    }
+    if (updates.bio && typeof updates.bio === 'string' && updates.bio.length > 5000) {
+      return 'Bio must be 5000 characters or fewer.';
+    }
+    if (updates.city && typeof updates.city === 'string' && updates.city.length > 100) {
+      return 'City must be 100 characters or fewer.';
+    }
+
+    // Validate arrays
+    for (const arrField of ['expertise', 'interests'] as const) {
+      if (updates[arrField] !== undefined) {
+        if (!Array.isArray(updates[arrField]) || !(updates[arrField] as unknown[]).every(e => typeof e === 'string')) {
+          return `${arrField} must be an array of strings.`;
+        }
+        if ((updates[arrField] as string[]).length > 20) {
+          return `Maximum 20 ${arrField} tags allowed.`;
+        }
+      }
+    }
+
+    // Validate URL fields
+    for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
+      const value = updates[urlField];
+      if (value && typeof value === 'string') {
+        try {
+          const parsed = new URL(value);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return `${urlField} must be an HTTP or HTTPS URL.`;
+          }
+        } catch {
+          return `${urlField} must be a valid URL.`;
+        }
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return 'No fields to update. Provide at least one field (headline, bio, expertise, interests, city, linkedin_url, or twitter_url).';
     }
 
     const userId = memberContext.workos_user.workos_user_id;
 
-    // Build parameterized UPDATE query
+    // Build parameterized UPDATE query with explicit column allowlist
+    const ALLOWED_COLUMNS = new Set(['headline', 'bio', 'city', 'linkedin_url', 'twitter_url', 'expertise', 'interests']);
     const setClauses: string[] = [];
     const values: unknown[] = [];
     let paramIdx = 1;
     for (const [key, value] of Object.entries(updates)) {
+      if (!ALLOWED_COLUMNS.has(key)) continue;
       setClauses.push(`${key} = $${paramIdx}`);
       values.push(value);
       paramIdx++;
     }
     values.push(userId);
 
-    const updateResult = await query(
-      `UPDATE users SET ${setClauses.join(', ')}, updated_at = NOW()
-       WHERE workos_user_id = $${paramIdx}
-       RETURNING workos_user_id`,
-      values
-    );
+    try {
+      const updateResult = await query(
+        `UPDATE users SET ${setClauses.join(', ')}, updated_at = NOW()
+         WHERE workos_user_id = $${paramIdx}
+         RETURNING workos_user_id`,
+        values
+      );
 
-    if (updateResult.rowCount === 0) {
-      return 'Failed to update profile: user not found.';
+      if (updateResult.rowCount === 0) {
+        return 'Failed to update profile: user not found.';
+      }
+    } catch (err) {
+      logger.error({ err, userId }, 'update_my_profile: DB error');
+      return 'Something went wrong updating your profile. Please try again or edit directly at https://agenticadvertising.org/community/profile/edit';
     }
 
     const updatedFields = Object.keys(updates).join(', ');
@@ -1603,6 +1648,40 @@ export function createMemberToolHandlers(
       updates.offerings = input.offerings;
     }
 
+    // Validate tagline length
+    if (updates.tagline && typeof updates.tagline === 'string' && updates.tagline.length > 200) {
+      return 'Tagline must be 200 characters or fewer.';
+    }
+
+    // Validate URL fields
+    for (const urlField of ['linkedin_url', 'twitter_url', 'contact_website'] as const) {
+      const value = updates[urlField];
+      if (value && typeof value === 'string') {
+        try {
+          const parsed = new URL(value);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return `${urlField} must be an HTTP or HTTPS URL.`;
+          }
+        } catch {
+          return `${urlField} must be a valid URL.`;
+        }
+      }
+    }
+
+    // Validate contact email
+    if (updates.contact_email && typeof updates.contact_email === 'string') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(updates.contact_email)) {
+        return 'Invalid contact email format.';
+      }
+    }
+
+    // Validate contact phone
+    if (updates.contact_phone && typeof updates.contact_phone === 'string') {
+      if (updates.contact_phone.length > 30 || !/^[+\d\s()./-]+$/.test(updates.contact_phone)) {
+        return 'Invalid contact phone format.';
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return 'No fields to update. Provide at least one field (tagline, description, offerings, contact_email, contact_website, contact_phone, linkedin_url, twitter_url, or headquarters).';
     }
@@ -1617,26 +1696,33 @@ export function createMemberToolHandlers(
       return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
     }
 
-    // Build parameterized UPDATE query
+    // Build parameterized UPDATE query with explicit column allowlist
+    const ALLOWED_COLUMNS = new Set(['tagline', 'description', 'contact_email', 'contact_website', 'contact_phone', 'linkedin_url', 'twitter_url', 'headquarters', 'offerings']);
     const setClauses: string[] = [];
     const values: unknown[] = [];
     let paramIdx = 1;
     for (const [key, value] of Object.entries(updates)) {
+      if (!ALLOWED_COLUMNS.has(key)) continue;
       setClauses.push(`${key} = $${paramIdx}`);
       values.push(value);
       paramIdx++;
     }
     values.push(orgId);
 
-    const updateResult = await query(
-      `UPDATE member_profiles SET ${setClauses.join(', ')}, updated_at = NOW()
-       WHERE workos_organization_id = $${paramIdx}
-       RETURNING slug`,
-      values
-    );
+    try {
+      const updateResult = await query(
+        `UPDATE member_profiles SET ${setClauses.join(', ')}, updated_at = NOW()
+         WHERE workos_organization_id = $${paramIdx}
+         RETURNING slug`,
+        values
+      );
 
-    if (updateResult.rowCount === 0) {
-      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
+      if (updateResult.rowCount === 0) {
+        return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
+      }
+    } catch (err) {
+      logger.error({ err, userId }, 'update_company_listing: DB error');
+      return 'Something went wrong updating your company listing. Please try again or edit directly at https://agenticadvertising.org/member-profile';
     }
 
     const updatedFields = Object.keys(updates).join(', ');
