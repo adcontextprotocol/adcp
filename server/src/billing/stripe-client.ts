@@ -206,6 +206,11 @@ export async function getProductsForCustomer(options: {
     allProductsCount: allProducts.length,
   }, 'getProductsForCustomer: Filtering products');
 
+  // After April 1 2026 UTC, hide legacy founding-member products (those gated by revenue_tiers)
+  // and only show the new tier products (Explorer, Professional, Builder, Member, Leader)
+  const foundingMemberCutoff = new Date('2026-04-01T00:00:00Z');
+  const showFoundingProducts = new Date() < foundingMemberCutoff;
+
   const filtered = allProducts.filter(product => {
     // Filter by category if specified
     if (options.category && product.category !== options.category) {
@@ -222,6 +227,11 @@ export async function getProductsForCustomer(options: {
       if (!product.customer_types.includes(options.customerType)) {
         return false;
       }
+    }
+
+    // Hide legacy founding-member products after cutoff date
+    if (!showFoundingProducts && product.revenue_tiers.length > 0) {
+      return false;
     }
 
     // Filter by revenue tier (empty array means available to all)
@@ -308,6 +318,8 @@ export async function getStripeSubscriptionInfo(
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
+  lookup_key?: string;
+  amount_cents?: number;
   current_period_end?: number;
   cancel_at_period_end?: boolean;
 } | null> {
@@ -397,7 +409,8 @@ export async function getStripeSubscriptionInfo(
       }
     }
 
-    const product = subscription.items.data[0]?.price?.product;
+    const price = subscription.items.data[0]?.price;
+    const product = price?.product;
 
     // Check if product is an object (not string or deleted) and has name property
     const productName =
@@ -405,10 +418,15 @@ export async function getStripeSubscriptionInfo(
         ? product.name
         : undefined;
 
+    const lookupKey = typeof price === 'object' && price ? price.lookup_key ?? undefined : undefined;
+    const amountCents = typeof price === 'object' && price ? price.unit_amount ?? undefined : undefined;
+
     const result = {
       status: subscription.status as 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid',
       product_id: typeof product === 'string' ? product : product?.id,
       product_name: productName,
+      lookup_key: lookupKey,
+      amount_cents: amountCents,
       current_period_end: periodEnd,
       cancel_at_period_end: subscription.cancel_at_period_end,
     };

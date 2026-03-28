@@ -112,6 +112,8 @@ export interface SubscriptionInfo {
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
+  lookup_key?: string;
+  amount_cents?: number;
   current_period_end?: number;
   cancel_at_period_end?: boolean;
 }
@@ -134,9 +136,13 @@ export function getSeatLimits(tier: string | null): SeatLimits {
 }
 
 /**
- * Infer membership tier from subscription amount when membership_tier is not explicitly set.
+ * Infer membership tier from subscription amount and organization type.
  * Many orgs created before the membership_tier column was added have active subscriptions
- * but no tier recorded. This uses the same logic as admin display inference.
+ * but no tier recorded. Amounts are in cents. Monthly amounts are annualized.
+ *
+ * Tier mapping (annual):
+ *   Individual: Explorer ($50) → individual_academic, Professional ($250+) → individual_professional
+ *   Company:    Builder ($3K+) → company_standard, Member ($15K+) → company_icl, Leader ($50K+) → company_leader
  */
 export function inferMembershipTier(
   amountCents: number | null,
@@ -153,7 +159,8 @@ export function inferMembershipTier(
     return null;
   }
 
-  if (annualCents >= 5000000) return 'company_icl';
+  if (annualCents >= 5000000) return 'company_leader';
+  if (annualCents >= 1500000) return 'company_icl';
   return 'company_standard';
 }
 
@@ -766,6 +773,7 @@ export class OrganizationDatabase {
           status: org.subscription_status as SubscriptionInfo['status'],
           product_name: org.subscription_product_name || undefined,
           product_id: org.subscription_product_id || undefined,
+          amount_cents: org.subscription_amount ?? undefined,
           current_period_end: org.subscription_current_period_end
             ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
             : undefined,

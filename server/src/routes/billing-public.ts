@@ -562,6 +562,8 @@ export function createPublicBillingRouter(): Router {
                 status: "active",
                 product_id: "prod_dev_membership",
                 product_name: "Company Membership (Dev)",
+                lookup_key: "aao_membership_builder_3000",
+                amount_cents: 300000,
                 current_period_end: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60, // 1 year from now
                 cancel_at_period_end: false,
               },
@@ -581,6 +583,8 @@ export function createPublicBillingRouter(): Router {
                 status: "active",
                 product_id: "prod_dev_individual",
                 product_name: "Individual Membership (Dev)",
+                lookup_key: "aao_membership_professional_250",
+                amount_cents: 25000,
                 current_period_end: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
                 cancel_at_period_end: false,
               },

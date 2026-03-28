@@ -175,9 +175,14 @@ describe('organization-db', () => {
       expect(inferMembershipTier(1000000, 'year', false)).toBe('company_standard');
     });
 
-    test('infers company_icl for $50,000/yr company', async () => {
+    test('infers company_icl for $15,000/yr company', async () => {
       const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
-      expect(inferMembershipTier(5000000, 'year', false)).toBe('company_icl');
+      expect(inferMembershipTier(1500000, 'year', false)).toBe('company_icl');
+    });
+
+    test('infers company_leader for $50,000/yr company', async () => {
+      const { inferMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(inferMembershipTier(5000000, 'year', false)).toBe('company_leader');
     });
 
     test('annualizes monthly amounts', async () => {

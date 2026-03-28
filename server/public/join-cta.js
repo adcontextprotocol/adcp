@@ -370,12 +370,6 @@ async function renderJoinCta(options = {}) {
   // Check if user is logged in and get their org info
   const userContext = await fetchUserContext();
 
-  // If user is already a member, show a different message
-  if (userContext.isMember) {
-    container.innerHTML = renderMemberConfirmation(userContext, showContactLine);
-    return;
-  }
-
   // Fetch pricing from Stripe
   const products = await fetchBillingProducts();
 
@@ -439,6 +433,37 @@ async function renderJoinCta(options = {}) {
     ? `/dashboard/membership${userContext.orgId ? `?org=${encodeURIComponent(userContext.orgId)}` : ''}`
     : '/auth/signup?return_to=/onboarding?signup=true';
 
+  // Determine current subscription amount for upgrade logic
+  const currentAmountCents = userContext.isMember ? userContext.amountCents : null;
+
+  // Tier amounts for comparison (used when API products aren't available)
+  const tierAmounts = {
+    explorer: explorerProduct?.amount_cents ?? 5000,
+    professional: professionalProduct?.amount_cents ?? 25000,
+    builder: builderProduct?.amount_cents ?? 300000,
+    member: memberProduct?.amount_cents ?? 1500000,
+    leader: leaderProduct?.amount_cents ?? 5000000,
+  };
+
+  // Helper to render the CTA button for a tier
+  function tierButton(tierKey, defaultUrl, label) {
+    if (currentAmountCents == null) {
+      // Not a member — show standard signup
+      return `<a href="${defaultUrl}" class="btn btn-primary">${label}</a>`;
+    }
+    const tierAmount = tierAmounts[tierKey];
+    if (currentAmountCents >= tierAmount) {
+      // Current plan or lower
+      if (currentAmountCents === tierAmount) {
+        return `<span class="btn btn-secondary" style="pointer-events:none;opacity:0.7;">Current Plan</span>`;
+      }
+      return '';
+    }
+    // Higher tier — show upgrade
+    const upgradeUrl = `/dashboard/membership${userContext.orgId ? `?org=${encodeURIComponent(userContext.orgId)}` : ''}`;
+    return `<a href="${upgradeUrl}" class="btn btn-primary">Upgrade</a>`;
+  }
+
   container.innerHTML = `
     <div class="join-cta-grid join-cta-grid--five">
       <!-- Explorer -->
@@ -457,7 +482,7 @@ async function renderJoinCta(options = {}) {
         </div>
 
         <div class="join-cta-button-wrapper">
-          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
+          ${tierButton('explorer', signupUrl, 'Sign Up Now')}
         </div>
         <p class="join-cta-card-footer">Credit card</p>
       </div>
@@ -478,7 +503,7 @@ async function renderJoinCta(options = {}) {
         </div>
 
         <div class="join-cta-button-wrapper">
-          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
+          ${tierButton('professional', signupUrl, 'Sign Up Now')}
         </div>
         <p class="join-cta-card-footer">Credit card</p>
       </div>
@@ -499,14 +524,14 @@ async function renderJoinCta(options = {}) {
         </div>
 
         <div class="join-cta-button-wrapper">
-          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
+          ${tierButton('builder', signupUrl, 'Sign Up Now')}
         </div>
         <p class="join-cta-card-footer">Credit card</p>
       </div>
 
       <!-- Member -->
       <div class="join-cta-card join-cta-card--featured">
-        <div class="join-cta-featured-badge" aria-hidden="true">Recommended</div>
+        ${currentAmountCents == null || currentAmountCents < tierAmounts.member ? '<div class="join-cta-featured-badge" aria-hidden="true">Recommended</div>' : ''}
         <div class="join-cta-card-header">
           <div class="join-cta-card-title">Member</div>
           <div class="join-cta-card-audience">Organizations &amp; established teams</div>
@@ -521,7 +546,7 @@ async function renderJoinCta(options = {}) {
         </div>
 
         <div class="join-cta-button-wrapper">
-          <a href="/chat?topic=membership&tier=member" class="btn btn-primary">Talk to Addie</a>
+          ${tierButton('member', '/chat?topic=membership&tier=member', 'Talk to Addie')}
         </div>
         <p class="join-cta-card-footer">Credit card or invoice</p>
       </div>
@@ -542,7 +567,7 @@ async function renderJoinCta(options = {}) {
         </div>
 
         <div class="join-cta-button-wrapper">
-          <a href="/chat?topic=membership&tier=leader" class="btn btn-primary">Talk to Addie</a>
+          ${tierButton('leader', '/chat?topic=membership&tier=leader', 'Talk to Addie')}
         </div>
         <p class="join-cta-card-footer">Credit card or invoice</p>
       </div>
@@ -655,12 +680,14 @@ async function fetchUserContext() {
     // Fetch billing info for subscription status
     let isPersonal = org.is_personal;
     let isMember = false;
+    let amountCents = null;
     try {
       const billingResponse = await fetch(`/api/organizations/${org.id}/billing`, { credentials: 'include' });
       if (billingResponse.ok) {
         const billingData = await billingResponse.json();
         isPersonal = billingData.is_personal ?? isPersonal;
         isMember = billingData.subscription?.status === 'active';
+        amountCents = billingData.subscription?.amount_cents ?? null;
       }
     } catch (billingError) {
       // Billing fetch failed, proceed without subscription info
@@ -672,7 +699,8 @@ async function fetchUserContext() {
       orgId: org.id,
       orgName: org.name,
       isPersonal: isPersonal,
-      isMember: isMember
+      isMember: isMember,
+      amountCents: amountCents
     };
 
     return userContextCache;

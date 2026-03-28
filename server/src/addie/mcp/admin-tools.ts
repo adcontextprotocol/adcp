@@ -1443,10 +1443,11 @@ For logo changes, use update_member_logo instead.`,
  */
 function formatMembershipTier(tier: string): string {
   const labels: Record<string, string> = {
+    individual_academic: 'Explorer ($50/yr)',
     individual_professional: 'Professional ($250/yr)',
-    individual_academic: 'Academic ($50/yr)',
-    company_standard: 'Company Standard ($2.5K or $10K/yr based on revenue)',
-    company_icl: 'Industry Council Leader ($50K/yr)',
+    company_standard: 'Builder ($3K/yr)',
+    company_icl: 'Member ($15K/yr)',
+    company_leader: 'Leader ($50K/yr)',
   };
   return labels[tier] || tier;
 }

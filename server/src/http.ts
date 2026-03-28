@@ -24,7 +24,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, inferMembershipTier, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -3435,6 +3435,11 @@ export class HTTPServer {
                 const currency = priceData?.currency ?? null;
                 const interval = priceData?.recurring?.interval ?? null;
 
+                // Infer membership tier from amount for seat entitlements
+                const membershipTier = subscription.status === 'active'
+                  ? inferMembershipTier(amount, interval, org.is_personal)
+                  : null;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
@@ -3443,6 +3448,7 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
+                       membership_tier = COALESCE($8, membership_tier),
                        updated_at = NOW()
                    WHERE workos_organization_id = $7`,
                   [
@@ -3452,7 +3458,8 @@ export class HTTPServer {
                     amount,
                     currency,
                     interval,
-                    org.workos_organization_id
+                    org.workos_organization_id,
+                    membershipTier,
                   ]
                 );
 
@@ -3464,6 +3471,7 @@ export class HTTPServer {
                   amount,
                   currency,
                   interval,
+                  membershipTier,
                 }, 'Subscription data synced to database');
 
                 // Invalidate member context cache for all users in this org
