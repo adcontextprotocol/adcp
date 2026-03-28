@@ -21,6 +21,7 @@ import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
+import { resolveUserRole } from '../utils/resolve-user-role.js';
 
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
@@ -378,12 +379,14 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         userId: slackMapping.workos_user_id,
       });
 
-      // Use the first organization (users typically have one org)
+      // Find the first active membership (users typically have one org)
       if (memberships.data && memberships.data.length > 0) {
-        const membership = memberships.data[0];
-        organizationId = membership.organizationId;
-        userRole = membership.role?.slug || 'member';
-        userJoinedAt = membership.createdAt ? new Date(membership.createdAt) : null;
+        const activeMembership = memberships.data.find(m => m.status === 'active');
+        if (activeMembership) {
+          organizationId = activeMembership.organizationId;
+          userRole = resolveUserRole(memberships.data) || 'member';
+          userJoinedAt = activeMembership.createdAt ? new Date(activeMembership.createdAt) : null;
+        }
       }
     } catch (error) {
       logger.warn({ error, workosUserId: slackMapping.workos_user_id }, 'Addie: Failed to get org memberships');
@@ -726,10 +729,12 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       });
 
       if (memberships.data && memberships.data.length > 0) {
-        const membership = memberships.data[0];
-        organizationId = membership.organizationId;
-        userRole = membership.role?.slug || 'member';
-        userJoinedAt = membership.createdAt ? new Date(membership.createdAt) : null;
+        const activeMembership = memberships.data.find(m => m.status === 'active');
+        if (activeMembership) {
+          organizationId = activeMembership.organizationId;
+          userRole = resolveUserRole(memberships.data) || 'member';
+          userJoinedAt = activeMembership.createdAt ? new Date(activeMembership.createdAt) : null;
+        }
       }
     } catch (error) {
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get org memberships');

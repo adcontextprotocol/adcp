@@ -565,21 +565,9 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
 - Supports physical units for DOOH
 - Clear semantic roles for each rendered piece
 
-## Format Categories
+## Understanding Format Requirements
 
-<Warning>
-The `type` field (FormatCategory) is deprecated. While formats may still include a `type` for backward compatibility, the authoritative source for understanding what a format requires is the `assets` array. See the [Asset Discovery](#asset-discovery) section for details on determining format requirements from assets.
-</Warning>
-
-Historically, formats were classified under IAB format families:
-- Display
-- Video
-- Audio
-- Native
-
-Additional distinctions such as DOOH, CTV, or mobile describe delivery environments, not format families.
-
-However, these categories are lossy abstractions. For example:
+Traditional IAB format families (display, video, audio, native) are lossy abstractions that don't scale to emerging formats:
 - **Performance Max** spans video, display, search, and native simultaneously
 - **Search ads** (RSA) are text-only with high intent context
 - **Conversational AI** placements don't fit traditional categories

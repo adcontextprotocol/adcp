@@ -137,7 +137,8 @@ export function getSeatLimits(tier: string | null): SeatLimits {
 
 /**
  * Infer membership tier from subscription amount and organization type.
- * Amounts are in cents. Monthly amounts are annualized for comparison.
+ * Many orgs created before the membership_tier column was added have active subscriptions
+ * but no tier recorded. Amounts are in cents. Monthly amounts are annualized.
  *
  * Tier mapping (annual):
  *   Individual: Explorer ($50) → individual_academic, Professional ($250+) → individual_professional
@@ -189,11 +190,21 @@ export async function canAddSeat(
   seatType: SeatType
 ): Promise<{ allowed: boolean; reason?: string }> {
   const pool = getPool();
-  const orgResult = await pool.query<{ membership_tier: string | null }>(
-    'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+  const orgResult = await pool.query<{
+    membership_tier: string | null;
+    subscription_amount: number | null;
+    subscription_interval: string | null;
+    subscription_status: string | null;
+    is_personal: boolean;
+  }>(
+    'SELECT membership_tier, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1',
     [orgId]
   );
-  const tier = orgResult.rows[0]?.membership_tier ?? null;
+  const org = orgResult.rows[0];
+  const tier = org?.membership_tier
+    ?? (org?.subscription_status === 'active'
+      ? inferMembershipTier(org?.subscription_amount ?? null, org?.subscription_interval ?? null, org?.is_personal ?? false)
+      : null);
   const limits = getSeatLimits(tier);
   const usage = await getSeatUsage(orgId);
 

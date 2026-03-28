@@ -62,6 +62,7 @@ import {
   type FeedProposal,
 } from '../../db/industry-feeds-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
+import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import {
   createChannel,
   getSlackChannels,
@@ -5316,15 +5317,19 @@ Use add_committee_leader to assign a leader.`;
         return `❌ No WorkOS membership found for user ${userId} in organization ${orgId}.`;
       }
 
-      const membership = memberships.data[0];
-      const currentRole = membership.role?.slug || 'member';
+      const activeMembership = memberships.data.find(m => m.status === 'active');
+      if (!activeMembership) {
+        return `❌ No active membership found for user ${userId} in organization ${orgId}.`;
+      }
+
+      const currentRole = resolveUserRole(memberships.data) || 'member';
 
       if (currentRole === role) {
         return `ℹ️ ${userName} already has the ${role} role in ${orgName}. No change needed.`;
       }
 
       // Update the role in WorkOS
-      await workos.userManagement.updateOrganizationMembership(membership.id, {
+      await workos.userManagement.updateOrganizationMembership(activeMembership.id, {
         roleSlug: role,
       });
 

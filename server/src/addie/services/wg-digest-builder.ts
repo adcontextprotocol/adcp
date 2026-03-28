@@ -9,7 +9,7 @@
 import { createLogger } from '../../logger.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { MeetingsDatabase } from '../../db/meetings-db.js';
-import { getChannelHistory } from '../../slack/client.js';
+import { getChannelHistory, getThreadReplies, resolveSlackUserDisplayName } from '../../slack/client.js';
 import { query } from '../../db/client.js';
 import type { WgDigestContent, WgDigestThread, WgDigestMeetingRecap } from '../../db/wg-digest-db.js';
 
@@ -17,8 +17,36 @@ const logger = createLogger('wg-digest-builder');
 const workingGroupDb = new WorkingGroupDatabase();
 const meetingsDb = new MeetingsDatabase();
 
+const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** Strip Slack mrkdwn references (<#C...|name>, <@U...>, <!subteam...>) to plain text. */
+function cleanSlackMarkup(text: string): string {
+  return text
+    .replace(/<#[A-Za-z0-9]+\|([^>]+)>/g, '#$1')   // <#C123|general> → #general
+    .replace(/<#[A-Za-z0-9]+>/g, '')                  // <#C123> (no label) → remove
+    .replace(/<@[A-Za-z0-9]+>/g, '')                  // <@U123> → remove (can't resolve here)
+    .replace(/<!subteam\^[A-Za-z0-9]+(?:\|([^>]+))?>/g, (_m, label) => label ? `@${label}` : '')
+    .replace(/<!(everyone|channel|here)>/g, '')        // <!everyone> etc → remove
+    .replace(/<([^|>]+)\|([^>]+)>/g, '$2')             // <url|label> → label
+    .replace(/<(https?:\/\/[^>]+)>/g, '$1')            // <url> → url
+    .replace(/\s{2,}/g, ' ')                           // collapse leftover whitespace
+    .trim();
+}
+
+/** Truncate text at the nearest word boundary before maxLen, adding ellipsis. */
+function truncateAtWord(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const truncated = text.slice(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return (lastSpace > maxLen * 0.5 ? truncated.slice(0, lastSpace) : truncated) + '…';
+}
+
+/** Strip leading markdown headings (e.g. "## Group Name\n") from summary text. */
+function stripLeadingHeading(text: string): string {
+  return text.replace(/^#{1,6}\s+[^\n]*\n?/, '').trim();
+}
 
 /**
  * Build digest content for a single working group.
@@ -67,7 +95,9 @@ export async function getDigestEligibleGroups(): Promise<Array<{ id: string; nam
 async function getActivitySummary(workingGroupId: string): Promise<string | null> {
   const summaries = await workingGroupDb.getCurrentSummaries(workingGroupId);
   const activitySummary = summaries.find(s => s.summary_type === 'activity');
-  return activitySummary?.summary_text?.slice(0, 500) || null;
+  if (!activitySummary?.summary_text) return null;
+  const cleaned = stripLeadingHeading(activitySummary.summary_text);
+  return truncateAtWord(cleaned, 500);
 }
 
 async function getRecentMeetingRecaps(workingGroupId: string): Promise<WgDigestMeetingRecap[]> {
@@ -81,7 +111,7 @@ async function getRecentMeetingRecaps(workingGroupId: string): Promise<WgDigestM
   const recaps: WgDigestMeetingRecap[] = [];
   for (const meeting of meetings) {
     if (new Date(meeting.start_time) < twoWeeksAgo) continue;
-    if (!meeting.summary && !meeting.title) continue;
+    if (!meeting.title) continue;
 
     recaps.push({
       title: meeting.title,
@@ -91,7 +121,8 @@ async function getRecentMeetingRecaps(workingGroupId: string): Promise<WgDigestM
         day: 'numeric',
         timeZone: 'America/New_York',
       }),
-      summary: meeting.summary?.slice(0, 300) || 'No summary available.',
+      summary: meeting.summary ? truncateAtWord(stripLeadingHeading(meeting.summary), 300) : null,
+      meetingUrl: `${BASE_URL}/meetings/${meeting.id}`,
     });
   }
 
@@ -131,20 +162,137 @@ async function getActiveThreads(slackChannelId: string | null | undefined): Prom
       limit: 50,
     });
 
-    const threads = history.messages
+    const topThreads = history.messages
       .filter(msg => msg.reply_count && msg.reply_count >= 3 && msg.text && !msg.bot_id)
       .sort((a, b) => (b.reply_count || 0) - (a.reply_count || 0))
       .slice(0, 3);
 
-    return threads.map(thread => ({
-      summary: thread.text!.slice(0, 150),
-      replyCount: thread.reply_count || 0,
-      threadUrl: `${SLACK_WORKSPACE_URL}/archives/${slackChannelId}/p${thread.ts.replace('.', '')}`,
-    }));
+    // Enrich each thread sequentially to avoid Slack API rate limits
+    const enriched: WgDigestThread[] = [];
+    for (const thread of topThreads) {
+      const item: WgDigestThread = {
+        summary: truncateAtWord(cleanSlackMarkup(thread.text!), 300),
+        replyCount: thread.reply_count || 0,
+        threadUrl: `${SLACK_WORKSPACE_URL}/archives/${slackChannelId}/p${thread.ts.replace('.', '')}`,
+      };
+
+      // Resolve who started the thread
+      if (thread.user) {
+        try {
+          const resolved = await resolveSlackUserDisplayName(thread.user);
+          if (resolved?.display_name) item.starter = resolved.display_name;
+        } catch { /* non-critical */ }
+      }
+
+      // Fetch replies to get participant count and latest reply
+      try {
+        const replies = await getThreadReplies(slackChannelId, thread.ts);
+        if (replies.length > 1) {
+          const uniqueUsers = new Set(replies.map(r => r.user).filter(Boolean));
+          item.participantCount = uniqueUsers.size;
+
+          const lastReply = replies[replies.length - 1];
+          if (lastReply.text && lastReply.ts !== thread.ts) {
+            item.latestReply = truncateAtWord(cleanSlackMarkup(lastReply.text), 150);
+          }
+        }
+      } catch { /* non-critical */ }
+
+      enriched.push(item);
+    }
+
+    return enriched;
   } catch (err) {
     logger.warn({ channelId: slackChannelId, error: err }, 'Failed to fetch channel history for WG digest');
     return [];
   }
+}
+
+export interface WgDigestGap {
+  groupName: string;
+  groupSlug: string;
+  meetingsWithoutNotes: Array<{ title: string; date: string; meetingUrl: string }>;
+  missingSummary: boolean;
+}
+
+/**
+ * Identify content gaps for a working group ahead of the digest.
+ * Returns null if everything looks good.
+ * Caller is responsible for filtering to active groups.
+ */
+export async function checkDigestGaps(
+  workingGroupId: string,
+  groupName: string,
+  groupSlug: string,
+): Promise<WgDigestGap | null> {
+  const twoWeeksAgo = new Date(Date.now() - TWO_WEEKS_MS);
+  const [summaries, meetings] = await Promise.all([
+    workingGroupDb.getCurrentSummaries(workingGroupId),
+    meetingsDb.listMeetings({ working_group_id: workingGroupId, past_only: true, limit: 5 }),
+  ]);
+
+  const missingSummary = !summaries.find(s => s.summary_type === 'activity')?.summary_text;
+
+  const meetingsWithoutNotes = meetings
+    .filter(m => new Date(m.start_time) >= twoWeeksAgo && m.title && !m.summary)
+    .map(m => ({
+      title: m.title,
+      date: new Date(m.start_time).toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York',
+      }),
+      meetingUrl: `${BASE_URL}/meetings/${m.id}`,
+    }));
+
+  if (!missingSummary && meetingsWithoutNotes.length === 0) return null;
+
+  return {
+    groupName,
+    groupSlug,
+    meetingsWithoutNotes,
+    missingSummary,
+  };
+}
+
+/**
+ * Get leader emails for a working group.
+ */
+export async function getLeaderEmails(workingGroupId: string): Promise<Array<{
+  workosUserId: string;
+  email: string;
+  firstName: string | null;
+}>> {
+  const leaders = await workingGroupDb.getLeaders(workingGroupId);
+  if (leaders.length === 0) return [];
+
+  const canonicalIds = leaders.map(l => l.canonical_user_id);
+  const result = await query<{ workos_user_id: string; email: string; first_name: string | null }>(
+    `SELECT u.workos_user_id, u.email, u.first_name FROM users u
+     WHERE u.workos_user_id = ANY($1)
+       AND u.email IS NOT NULL AND u.email != ''
+       AND NOT EXISTS (
+         SELECT 1 FROM user_email_preferences uep
+         JOIN user_email_category_preferences uecp ON uecp.user_preference_id = uep.id
+         WHERE uep.workos_user_id = u.workos_user_id
+           AND uecp.category_id = 'working_groups'
+           AND uecp.enabled = FALSE
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM user_email_preferences uep
+         WHERE uep.workos_user_id = u.workos_user_id
+           AND uep.global_unsubscribe = TRUE
+       )`,
+    [canonicalIds],
+  );
+
+  if (result.rows.length < canonicalIds.length) {
+    const resolved = new Set(result.rows.map(r => r.workos_user_id));
+    const missing = canonicalIds.filter(id => !resolved.has(id));
+    if (missing.length > 0) {
+      logger.warn({ workingGroupId, missingLeaderIds: missing }, 'Some leaders could not be resolved to emails (Slack-only or opted out)');
+    }
+  }
+
+  return result.rows.map(r => ({ workosUserId: r.workos_user_id, email: r.email, firstName: r.first_name }));
 }
 
 async function getNewMembers(workingGroupId: string): Promise<string[]> {

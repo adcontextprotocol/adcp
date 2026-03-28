@@ -51,13 +51,19 @@ export function renderWgDigestEmail(
 
   // Meeting recaps
   if (content.meetingRecaps.length > 0) {
-    const recapHtml = content.meetingRecaps.map(m => `
+    const recapHtml = content.meetingRecaps.map(m => {
+      const summaryHtml = m.summary
+        ? `<div style="font-size: 14px; color: #444; line-height: 1.5; margin: 0;">${markdownToEmailHtml(m.summary)}</div>`
+        : `<p style="font-size: 13px; color: #888; margin: 0;"><a href="${escapeHtml(m.meetingUrl)}" style="color: #0077b6; text-decoration: none;">Add meeting notes &rarr;</a></p>`;
+
+      return `
       <div style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
-        <p style="font-size: 14px; font-weight: 600; color: #1a1a2e; margin: 0 0 4px 0;">${escapeHtml(m.title)}</p>
+        <p style="font-size: 14px; font-weight: 600; color: #1a1a2e; margin: 0 0 4px 0;"><a href="${escapeHtml(m.meetingUrl)}" style="color: #1a1a2e; text-decoration: none;">${escapeHtml(m.title)}</a></p>
         <p style="font-size: 12px; color: #888; margin: 0 0 8px 0;">${escapeHtml(m.date)}</p>
-        <div style="font-size: 14px; color: #444; line-height: 1.5; margin: 0;">${markdownToEmailHtml(m.summary)}</div>
+        ${summaryHtml}
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     htmlSections.push(`
     <div style="margin-bottom: 24px;">
@@ -80,11 +86,20 @@ export function renderWgDigestEmail(
   // Active discussions
   if (content.activeThreads.length > 0) {
     const threadHtml = content.activeThreads.map(t => {
-      const truncated = t.summary.length > 100 ? t.summary.slice(0, 100) + '...' : t.summary;
+      const meta: string[] = [];
+      if (t.starter) meta.push(`Started by ${escapeHtml(t.starter)}`);
+      meta.push(`${t.replyCount} replies`);
+      if (t.participantCount) meta.push(`${t.participantCount} participants`);
+
+      const latestHtml = t.latestReply
+        ? `<p style="font-size: 13px; color: #666; margin: 6px 0 0 0; padding-left: 10px; border-left: 2px solid #ddd; font-style: italic;">${escapeHtml(t.latestReply)}</p>`
+        : '';
+
       return `
-      <div style="margin-bottom: 8px;">
-        <a href="${escapeHtml(t.threadUrl)}" style="font-size: 14px; color: #0077b6; text-decoration: none;">${escapeHtml(truncated)}</a>
-        <span style="font-size: 12px; color: #888;"> (${t.replyCount} replies)</span>
+      <div style="margin-bottom: 14px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
+        <a href="${escapeHtml(t.threadUrl)}" style="font-size: 14px; color: #0077b6; text-decoration: none; font-weight: 500;">${escapeHtml(t.summary)}</a>
+        <p style="font-size: 12px; color: #888; margin: 4px 0 0 0;">${meta.join(' · ')}</p>
+        ${latestHtml}
       </div>
     `;
     }).join('');
@@ -132,7 +147,11 @@ export function renderWgDigestEmail(
   if (content.meetingRecaps.length > 0) {
     textLines.push('MEETING RECAPS');
     for (const m of content.meetingRecaps) {
-      textLines.push(`  ${m.title} (${m.date})`, `  ${m.summary}`, '');
+      if (m.summary) {
+        textLines.push(`  ${m.title} (${m.date})`, `  ${m.summary}`, '');
+      } else {
+        textLines.push(`  ${m.title} (${m.date})`, `  Add meeting notes: ${m.meetingUrl}`, '');
+      }
     }
   }
 
@@ -143,10 +162,14 @@ export function renderWgDigestEmail(
   if (content.activeThreads.length > 0) {
     textLines.push('ACTIVE DISCUSSIONS');
     for (const t of content.activeThreads) {
-      const truncated = t.summary.length > 100 ? t.summary.slice(0, 100) + '...' : t.summary;
-      textLines.push(`  ${truncated} (${t.replyCount} replies)`, `  ${t.threadUrl}`);
+      const meta: string[] = [];
+      if (t.starter) meta.push(`by ${t.starter}`);
+      meta.push(`${t.replyCount} replies`);
+      if (t.participantCount) meta.push(`${t.participantCount} participants`);
+      textLines.push(`  ${t.summary}`, `  ${meta.join(' · ')}`, `  ${t.threadUrl}`);
+      if (t.latestReply) textLines.push(`  Latest: "${t.latestReply}"`);
+      textLines.push('');
     }
-    textLines.push('');
   }
 
   if (content.newMembers.length > 0) {

@@ -89,14 +89,14 @@ const result = await testAgent.getProducts({
     domain: 'acmecorp.com'
   },
   filters: {
-    format_types: ['video'],
+    channels: ['ctv'],
     delivery_type: 'guaranteed',
     standard_formats_only: true
   }
 });
 
 if (result.success && result.data) {
-  console.log(`Found ${result.data.products.length} guaranteed video products`);
+  console.log(`Found ${result.data.products.length} guaranteed CTV products`);
 }
 ```
 
@@ -111,12 +111,12 @@ async def discover_with_filters():
             'domain': 'acmecorp.com'
         },
         filters={
-            'format_types': ['video'],
+            'channels': ['ctv'],
             'delivery_type': 'guaranteed',
             'standard_formats_only': True
         }
     )
-    print(f"Found {len(result.products)} guaranteed video products")
+    print(f"Found {len(result.products)} guaranteed CTV products")
 
 asyncio.run(discover_with_filters())
 ```
@@ -144,8 +144,7 @@ asyncio.run(discover_with_filters())
 |-----------|------|-------------|
 | `delivery_type` | string | Filter by `"guaranteed"` or `"non_guaranteed"` |
 | `is_fixed_price` | boolean | Filter for fixed price vs auction products |
-| `format_types` | string[] | *(uses deprecated FormatCategory)* Filter by format types (e.g., `["video", "display"]`). Consider filtering by `format_ids` instead for precise matching. |
-| `format_ids` | FormatID[] | Filter by specific format IDs. **Recommended over `format_types`.** |
+| `format_ids` | FormatID[] | Filter by specific format IDs |
 | `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | Minimum exposures needed for measurement validity |
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
@@ -450,7 +449,7 @@ const result = await testAgent.getProducts({
     domain: 'acmecorp.com'
   },
   filters: {
-    format_types: ['video', 'display']
+    channels: ['display', 'ctv']
   }
 });
 
@@ -472,7 +471,7 @@ async def discover_multi_format():
             'domain': 'acmecorp.com'
         },
         filters={
-            'format_types': ['video', 'display']
+            'channels': ['display', 'ctv']
         }
     )
     print(f"Found {len(result.products)} products supporting video and display")

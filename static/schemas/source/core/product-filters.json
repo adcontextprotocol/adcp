@@ -16,14 +16,6 @@
       "type": "boolean",
       "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."
     },
-    "format_types": {
-      "type": "array",
-      "description": "Filter by format types",
-      "items": {
-        "$ref": "/schemas/enums/format-category.json"
-      },
-      "minItems": 1
-    },
     "format_ids": {
       "type": "array",
       "description": "Filter by specific format IDs",
