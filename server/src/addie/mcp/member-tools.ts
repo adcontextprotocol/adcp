@@ -1427,38 +1427,31 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your profile. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/community/hub', memberContext);
+    const userId = memberContext.workos_user.workos_user_id;
+    const profileResult = await query<{
+      slug: string | null; headline: string | null; bio: string | null;
+      expertise: string[] | null; interests: string[] | null;
+      city: string | null; country: string | null;
+      linkedin_url: string | null; twitter_url: string | null;
+      is_public: boolean; first_name: string; last_name: string;
+    }>(
+      `SELECT slug, headline, bio, expertise, interests, city, country,
+              linkedin_url, twitter_url, is_public, first_name, last_name
+       FROM users WHERE workos_user_id = $1`,
+      [userId]
+    );
 
-    if (!result.ok) {
-      return `Failed to fetch your profile: ${result.error}`;
-    }
-
-    const data = result.data as { profile: {
-      slug?: string;
-      headline?: string;
-      bio?: string;
-      expertise?: string[];
-      interests?: string[];
-      city?: string;
-      country?: string;
-      linkedin_url?: string;
-      twitter_url?: string;
-      is_public?: boolean;
-      first_name?: string;
-      last_name?: string;
-    } | null };
-
-    if (!data.profile) {
+    const p = profileResult.rows[0];
+    if (!p) {
       return "You don't have a profile yet. Visit https://agenticadvertising.org/community/profile/edit to create one!";
     }
 
-    const p = data.profile;
     const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Member';
 
     let response = `## Your Profile\n\n`;
     response += `**Name:** ${name}\n`;
     if (p.slug) response += `**Profile URL:** https://agenticadvertising.org/community/people/${p.slug}\n`;
-    if (p.is_public !== undefined) response += `**Visibility:** ${p.is_public ? 'Public' : 'Hidden'}\n`;
+    response += `**Visibility:** ${p.is_public ? 'Public' : 'Hidden'}\n`;
 
     if (p.headline) response += `**Headline:** ${p.headline}\n`;
     if (p.city) response += `**Location:** ${p.city}${p.country ? `, ${p.country}` : ''}\n`;
@@ -1502,10 +1495,28 @@ export function createMemberToolHandlers(
       return 'No fields to update. Provide at least one field (headline, bio, expertise, interests, city, linkedin_url, or twitter_url).';
     }
 
-    const result = await callApi('PUT', '/api/me/community-profile', memberContext, updates);
+    const userId = memberContext.workos_user.workos_user_id;
 
-    if (!result.ok) {
-      return `Failed to update profile: ${result.error}`;
+    // Build parameterized UPDATE query
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let paramIdx = 1;
+    for (const [key, value] of Object.entries(updates)) {
+      setClauses.push(`${key} = $${paramIdx}`);
+      values.push(value);
+      paramIdx++;
+    }
+    values.push(userId);
+
+    const updateResult = await query(
+      `UPDATE users SET ${setClauses.join(', ')}, updated_at = NOW()
+       WHERE workos_user_id = $${paramIdx}
+       RETURNING workos_user_id`,
+      values
+    );
+
+    if (updateResult.rowCount === 0) {
+      return 'Failed to update profile: user not found.';
     }
 
     const updatedFields = Object.keys(updates).join(', ');
@@ -1520,35 +1531,35 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your company listing. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/member-profile', memberContext);
-
-    if (!result.ok) {
-      if (result.status === 404) {
-        return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
-      }
-      return `Failed to fetch company listing: ${result.error}`;
-    }
-
-    const data = result.data as { profile: {
-      display_name: string;
-      slug: string;
-      tagline?: string;
-      description?: string;
-      contact_email?: string;
-      contact_website?: string;
-      contact_phone?: string;
-      linkedin_url?: string;
-      twitter_url?: string;
-      headquarters?: string;
-      offerings?: string[];
-      is_public: boolean;
-    } | null; organization_name?: string };
-
-    if (!data.profile) {
+    const userId = memberContext.workos_user.workos_user_id;
+    const userRow = await query<{ primary_organization_id: string | null }>(
+      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      [userId]
+    );
+    const orgId = userRow.rows[0]?.primary_organization_id;
+    if (!orgId) {
       return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
     }
 
-    const listing = data.profile;
+    const profileResult = await query<{
+      display_name: string; slug: string; tagline: string | null;
+      description: string | null; contact_email: string | null;
+      contact_website: string | null; contact_phone: string | null;
+      linkedin_url: string | null; twitter_url: string | null;
+      headquarters: string | null; offerings: string[] | null;
+      is_public: boolean;
+    }>(
+      `SELECT display_name, slug, tagline, description, contact_email,
+              contact_website, contact_phone, linkedin_url, twitter_url,
+              headquarters, offerings, is_public
+       FROM member_profiles WHERE workos_organization_id = $1`,
+      [orgId]
+    );
+
+    const listing = profileResult.rows[0];
+    if (!listing) {
+      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
+    }
 
     let response = `## Company Listing\n\n`;
     response += `**Name:** ${listing.display_name}\n`;
@@ -1596,13 +1607,36 @@ export function createMemberToolHandlers(
       return 'No fields to update. Provide at least one field (tagline, description, offerings, contact_email, contact_website, contact_phone, linkedin_url, twitter_url, or headquarters).';
     }
 
-    const result = await callApi('PUT', '/api/me/member-profile', memberContext, updates);
+    const userId = memberContext.workos_user.workos_user_id;
+    const userRow = await query<{ primary_organization_id: string | null }>(
+      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      [userId]
+    );
+    const orgId = userRow.rows[0]?.primary_organization_id;
+    if (!orgId) {
+      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
+    }
 
-    if (!result.ok) {
-      if (result.status === 404) {
-        return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
-      }
-      return `Failed to update company listing: ${result.error}`;
+    // Build parameterized UPDATE query
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let paramIdx = 1;
+    for (const [key, value] of Object.entries(updates)) {
+      setClauses.push(`${key} = $${paramIdx}`);
+      values.push(value);
+      paramIdx++;
+    }
+    values.push(orgId);
+
+    const updateResult = await query(
+      `UPDATE member_profiles SET ${setClauses.join(', ')}, updated_at = NOW()
+       WHERE workos_organization_id = $${paramIdx}
+       RETURNING slug`,
+      values
+    );
+
+    if (updateResult.rowCount === 0) {
+      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
     }
 
     const updatedFields = Object.keys(updates).join(', ');
