@@ -3499,17 +3499,25 @@ async function handleChannelMessage({
             { channelId, userId, threadTs, humanReplies: humanRepliesBeforeTrigger.length, confidence },
             'Addie Bolt: Skipping channel thread — humans already answering'
           );
-          // Flag high-confidence suppressions for admin review — Addie had a good answer
-          // but stayed silent because humans were handling it. Admins can review these
-          // to see if Addie's restraint was appropriate or if the answer should have been shared.
+          // Flag high-confidence suppressions and queue shadow evaluation —
+          // Addie had a good answer but stayed silent. The shadow evaluator will
+          // generate what she would have said and compare with the human's answer.
           if (confidence === 'high') {
             try {
               await threadService.flagThread(
                 thread.thread_id,
                 `Suppressed high-confidence response (humans answering): ${plan.reason}`
               );
+              await threadService.patchThreadContext(thread.thread_id, {
+                shadow_eval_status: 'pending',
+                shadow_eval_requested_at: new Date().toISOString(),
+                shadow_eval_channel_id: channelId,
+                shadow_eval_thread_ts: threadTs,
+                shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
+                shadow_eval_question: messageText,
+              });
             } catch (flagError) {
-              logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+              logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
             }
           }
           return;
@@ -3534,8 +3542,16 @@ async function handleChannelMessage({
               thread.thread_id,
               `Suppressed high-confidence response (human replied during delay): ${plan.reason}`
             );
+            await threadService.patchThreadContext(thread.thread_id, {
+              shadow_eval_status: 'pending',
+              shadow_eval_requested_at: new Date().toISOString(),
+              shadow_eval_channel_id: channelId,
+              shadow_eval_thread_ts: threadTs,
+              shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
+              shadow_eval_question: messageText,
+            });
           } catch (flagError) {
-            logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+            logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
           }
         }
         return;

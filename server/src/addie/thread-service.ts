@@ -359,6 +359,16 @@ export class ThreadService {
   }
 
   /**
+   * Merge keys into a thread's context JSONB (top-level merge, not deep)
+   */
+  async patchThreadContext(threadId: string, patch: Record<string, unknown>): Promise<void> {
+    await query(
+      `UPDATE addie_threads SET context = COALESCE(context, '{}'::jsonb) || $2::jsonb, updated_at = NOW() WHERE thread_id = $1`,
+      [threadId, JSON.stringify(patch)]
+    );
+  }
+
+  /**
    * Unflag a thread
    */
   async unflagThread(threadId: string): Promise<void> {

@@ -35,6 +35,7 @@ import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from 
 import { runCredentialDigestJob } from './credential-digest.js';
 import { runWgDigestJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
+import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -360,6 +361,17 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.checked > 0,
   });
 
+  // Shadow evaluator - generates what Addie would have said and compares with human answers
+  jobScheduler.register({
+    name: 'shadow-evaluator',
+    description: 'Shadow response evaluation for suppressed high-confidence threads',
+    interval: { value: 10, unit: 'minutes' },
+    initialDelay: { value: 12, unit: 'minutes' },
+    runner: runShadowEvaluatorJob,
+    options: { limit: 5 },
+    shouldLogResult: (r) => r.evaluated > 0 || r.knowledge_gaps > 0,
+  });
+
   // Event reminder - sends notifications ~24h before events start
   jobScheduler.register({
     name: 'event-reminder',
@@ -433,4 +445,5 @@ export const JOB_NAMES = {
   GEO_MONITOR: 'geo-monitor',
   GEO_SNAPSHOT: 'geo-snapshot',
   GEO_CONTENT_PLANNER: 'geo-content-planner',
+  SHADOW_EVALUATOR: 'shadow-evaluator',
 } as const;
