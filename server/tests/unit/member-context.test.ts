@@ -404,6 +404,11 @@ describe('formatMemberContextForPrompt', () => {
         email: 'john@example.com',
         first_name: 'John',
       },
+      slack_user: {
+        slack_user_id: 'U123',
+        display_name: 'John',
+        email: 'john@example.com',
+      },
     };
 
     const result = formatMemberContextForPrompt(context);
