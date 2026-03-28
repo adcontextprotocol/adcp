@@ -1528,7 +1528,7 @@
         membershipProducts = allProducts;
 
         const cardsHtml = upgradeProducts.map(product => `
-          <div class="product-card" data-lookup-key="${product.lookup_key}">
+          <div class="product-card" data-lookup-key="${escapeHtml(product.lookup_key)}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
             ${product.description ? `<div class="product-card-description">${escapeHtml(product.description)}</div>` : ''}
             <div class="product-card-price">
@@ -1536,8 +1536,8 @@
               <span class="period">/year</span>
             </div>
             <div class="product-card-actions">
-              <button class="btn btn-primary" onclick="selectProduct('${product.lookup_key}')">Upgrade</button>
-              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${product.lookup_key}')">Request Invoice</button>
+              <button class="btn btn-primary" onclick="selectProduct('${escapeHtml(product.lookup_key)}')">Upgrade</button>
+              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${escapeHtml(product.lookup_key)}')">Request Invoice</button>
             </div>
           </div>
         `).join('');

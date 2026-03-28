@@ -762,6 +762,7 @@ export class OrganizationDatabase {
           status: org.subscription_status as SubscriptionInfo['status'],
           product_name: org.subscription_product_name || undefined,
           product_id: org.subscription_product_id || undefined,
+          amount_cents: org.subscription_amount ?? undefined,
           current_period_end: org.subscription_current_period_end
             ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
             : undefined,
