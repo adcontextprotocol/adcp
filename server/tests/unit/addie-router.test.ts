@@ -439,15 +439,6 @@ describeWithApi('AddieRouter.route (LLM)', () => {
     });
   }
 
-  async function routeAsMention(message: string): Promise<ExecutionPlan> {
-    return liveRouter.route({
-      message,
-      source: 'mention',
-      isAAOAdmin: false,
-      memberContext: { is_member: true } as RoutingContext['memberContext'],
-    });
-  }
-
   // ============================================================================
   // PROD SCENARIO TESTS — modeled on real production interactions
   // Each test documents: who said it, what channel, what happened in prod,
