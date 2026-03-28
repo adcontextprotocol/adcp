@@ -3494,10 +3494,24 @@ async function handleChannelMessage({
           msg => msg.user && msg.user !== context.botUserId && msg.user !== userId && msg.ts < event.ts
         );
         if (humanRepliesBeforeTrigger.length > 0) {
+          const confidence = plan.action === 'respond' ? plan.confidence : undefined;
           logger.info(
-            { channelId, userId, threadTs, humanReplies: humanRepliesBeforeTrigger.length },
+            { channelId, userId, threadTs, humanReplies: humanRepliesBeforeTrigger.length, confidence },
             'Addie Bolt: Skipping channel thread — humans already answering'
           );
+          // Flag high-confidence suppressions for admin review — Addie had a good answer
+          // but stayed silent because humans were handling it. Admins can review these
+          // to see if Addie's restraint was appropriate or if the answer should have been shared.
+          if (confidence === 'high') {
+            try {
+              await threadService.flagThread(
+                thread.thread_id,
+                `Suppressed high-confidence response (humans answering): ${plan.reason}`
+              );
+            } catch (flagError) {
+              logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+            }
+          }
           return;
         }
       } catch (error) {
@@ -3509,10 +3523,21 @@ async function handleChannelMessage({
         channelId, threadTs, event.ts, context.botUserId
       );
       if (!shouldRespond) {
+        const confidence = plan.action === 'respond' ? plan.confidence : undefined;
         logger.info(
-          { channelId, userId, threadTs },
+          { channelId, userId, threadTs, confidence },
           'Addie Bolt: Skipping channel response — human replied during delay'
         );
+        if (confidence === 'high') {
+          try {
+            await threadService.flagThread(
+              thread.thread_id,
+              `Suppressed high-confidence response (human replied during delay): ${plan.reason}`
+            );
+          } catch (flagError) {
+            logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+          }
+        }
         return;
       }
     }
