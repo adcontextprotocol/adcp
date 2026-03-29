@@ -74,7 +74,8 @@ export function notifySystemError(ctx: SystemErrorContext): void {
 
 function pruneStaleEntries(now: number): void {
   for (const [key, ts] of recentErrors) {
-    if (now - ts >= SYSTEM_THROTTLE_MS) recentErrors.delete(key);
+    const threshold = key.startsWith('system:') ? SYSTEM_THROTTLE_MS : THROTTLE_MS;
+    if (now - ts >= threshold) recentErrors.delete(key);
   }
 }
 

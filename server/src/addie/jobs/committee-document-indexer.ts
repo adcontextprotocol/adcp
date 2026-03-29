@@ -124,11 +124,12 @@ const MAX_IMAGE_BYTES_FOR_VISION = 3.75 * 1024 * 1024;
  * Converts to JPEG and progressively reduces quality until it fits.
  */
 async function compressForVision(buffer: Buffer): Promise<{ data: Buffer; mediaType: 'image/jpeg' }> {
+  const image = sharp(buffer);
   let quality = 80;
-  let result = await sharp(buffer).jpeg({ quality }).toBuffer();
+  let result = await image.clone().jpeg({ quality }).toBuffer();
   while (result.length > MAX_IMAGE_BYTES_FOR_VISION && quality > 20) {
     quality -= 15;
-    result = await sharp(buffer).jpeg({ quality }).toBuffer();
+    result = await image.clone().jpeg({ quality }).toBuffer();
   }
   return { data: result, mediaType: 'image/jpeg' };
 }
@@ -723,8 +724,7 @@ export async function generateAssetDescriptions(batchSize = 5): Promise<number> 
       logger.warn({ err, assetId: asset.id }, 'Failed to generate asset description');
       // Mark the asset so the job doesn't retry it every 30 minutes
       try {
-        const msg = err instanceof Error ? err.message : String(err);
-        await workingGroupDb.updateAssetDescription(asset.id, `Error: ${msg.substring(0, 200)}`);
+        await workingGroupDb.updateAssetDescription(asset.id, 'Unable to analyze image');
       } catch { /* best-effort */ }
     }
   }

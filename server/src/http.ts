@@ -1820,16 +1820,23 @@ export class HTTPServer {
       // machine out of Fly's load-balancer rotation.
       try {
         const pool = getPool();
-        await Promise.race([
-          pool.query('SELECT 1'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('db health timeout')), 3000)),
-        ]);
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        try {
+          await Promise.race([
+            pool.query('SELECT 1'),
+            new Promise((_, reject) => {
+              timer = setTimeout(() => reject(new Error('db health timeout')), 3000);
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
         checks.database = true;
       } catch (dbErr) {
         checks.database = false;
         notifySystemError({
           source: 'health-check',
-          errorMessage: `Database health check failed: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
+          errorMessage: 'Database health check failed',
         });
       }
 
@@ -7338,8 +7345,8 @@ Disallow: /api/admin/
     initializeDatabase(dbConfig);
 
     // Escalate pool-level errors to Slack
-    onPoolError((err) => {
-      notifySystemError({ source: 'database-pool', errorMessage: err.message });
+    onPoolError(() => {
+      notifySystemError({ source: 'database-pool', errorMessage: 'Database pool error — check application logs' });
     });
 
     await runMigrations();
