@@ -970,6 +970,7 @@
       // Hide step 1
       document.getElementById('step1Section').style.display = 'none';
       document.getElementById('invitationsSection').style.display = 'none';
+      document.getElementById('error').style.display = 'none';
 
       if (option === 'individual') {
         document.getElementById('individualForm').classList.add('active');
@@ -1008,6 +1009,7 @@
     function selectCompanyOption(option) {
       // Hide company options section
       document.getElementById('companyOptionsSection').classList.remove('active');
+      document.getElementById('error').style.display = 'none';
 
       if (option === 'join') {
         document.getElementById('joinForm').classList.add('active');
