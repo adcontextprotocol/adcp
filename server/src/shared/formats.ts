@@ -58,7 +58,7 @@ interface TrainingFormat {
   format_id: FormatID;
   name: string;
   description: string;
-  type?: Format['type'];
+  type?: string;
   accepts_parameters?: string[];
   renders: Array<Record<string, unknown>>;
   assets: FormatAsset[];

@@ -57,7 +57,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         dry_run: true,
         timeout_ms: 60_000,
         auth,
-        ...(agent.platform_type ? { platform_type: agent.platform_type as any } : {}),
+        ...(agent.platform_type ? { platform_type: agent.platform_type } : {}),
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);
@@ -71,21 +71,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         duration_ms: t.duration_ms,
       }));
 
-      // Determine overall status — if no tracks were tested (auth required,
-      // unreachable, etc.), record as failing so stale data doesn't persist.
+      // Map SDK overall_status to our storage format
+      const sdkStatus = complianceResult.overall_status;
       let overallStatus: OverallRunStatus;
-      const totalTested = complianceResult.summary.tracks_passed
-        + complianceResult.summary.tracks_failed
-        + complianceResult.summary.tracks_partial;
-
-      if (totalTested === 0) {
-        overallStatus = 'failing';
-      } else if (complianceResult.summary.tracks_failed > 0) {
-        overallStatus = 'failing';
-      } else if (complianceResult.summary.tracks_partial > 0) {
+      if (sdkStatus === 'passing') {
+        overallStatus = 'passing';
+      } else if (sdkStatus === 'partial') {
         overallStatus = 'partial';
       } else {
-        overallStatus = 'passing';
+        overallStatus = 'failing';
       }
 
       const { statusTransition } = await complianceDb.recordComplianceRun({
