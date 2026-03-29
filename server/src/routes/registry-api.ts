@@ -2039,34 +2039,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const status = await complianceDb.getComplianceStatus(agentUrl);
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
 
-      const complianceOptOut = metadata?.compliance_opt_out ?? false;
-
-      // If opted out, check ownership before returning full data
-      if (complianceOptOut) {
-        const isOwner = req.user
-          ? await verifyAgentOwnership(req.user.id, agentUrl)
-          : false;
-        if (!isOwner) {
-          return res.json({
-            agent_url: agentUrl,
-            status: "opted_out",
-            lifecycle_stage: metadata?.lifecycle_stage || "production",
-          });
-        }
+      // If opted out, return minimal response (no ownership check needed —
+      // the opt-out preference is enforced uniformly for public endpoints)
+      if (metadata?.compliance_opt_out) {
+        return res.json({
+          agent_url: agentUrl,
+          status: "opted_out",
+          lifecycle_stage: metadata.lifecycle_stage || "production",
+        });
       }
-
-      // Owner-only fields (only check if user is authenticated)
-      const hasComplianceAuth = req.user
-        ? await complianceDb.hasOwnerAuth(agentUrl)
-        : false;
 
       if (!status) {
         return res.json({
           agent_url: agentUrl,
           status: "unknown",
           lifecycle_stage: metadata?.lifecycle_stage || "production",
-          compliance_opt_out: complianceOptOut,
-          has_compliance_auth: req.user ? hasComplianceAuth : undefined,
           tracks: {},
           streak_days: 0,
           last_checked_at: null,
@@ -2078,8 +2065,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         agent_url: agentUrl,
         status: status.status,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
-        compliance_opt_out: complianceOptOut,
-        has_compliance_auth: req.user ? hasComplianceAuth : undefined,
         tracks: status.tracks_summary_json || {},
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
@@ -2100,15 +2085,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (!validateAgentUrlParam(agentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
-      // Respect opt-out for non-owners
+      // If opted out, return empty history (no ownership check needed —
+      // the opt-out preference is enforced uniformly for public endpoints)
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
       if (metadata?.compliance_opt_out) {
-        const isOwner = req.user
-          ? await verifyAgentOwnership(req.user.id, agentUrl)
-          : false;
-        if (!isOwner) {
-          return res.json({ agent_url: agentUrl, runs: [], count: 0 });
-        }
+        return res.json({ agent_url: agentUrl, runs: [], count: 0 });
       }
 
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
