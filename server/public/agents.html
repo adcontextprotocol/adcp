@@ -1325,14 +1325,12 @@
             formats.forEach(format => {
                 const formatName = typeof format === 'string' ? format : (format.name || format.format || 'Unknown');
                 const dimensions = typeof format === 'object' ? (format.dimensions || format.size) : null;
-                const type = typeof format === 'object' ? (format.type || format.format_type) : null;
                 const description = typeof format === 'object' ? format.description : null;
 
                 html += `
                     <div class="product-card">
                         <div class="product-card__name">${escapeHtml(formatName)}</div>
                         ${dimensions ? `<div class="format-card-dimensions">${escapeHtml(String(dimensions))}</div>` : ''}
-                        ${type ? `<div class="format-card-type">${escapeHtml(type)}</div>` : ''}
                         ${description ? `<div class="product-card__desc">${escapeHtml(description)}</div>` : ''}
                     </div>
                 `;
@@ -1478,7 +1476,7 @@
                 const isResponsive = dimensions?.min_width || dimensions?.min_height;
 
                 html += `
-                    <div class="format-card format-card-item" data-type="${escapeHtml(format.type || 'unknown')}" data-index="${index}">
+                    <div class="format-card format-card-item" data-index="${index}">
                         ${format.preview_image ? `
                             <div class="format-card-preview">
                                 <img src="${escapeHtml(format.preview_image)}" alt="${escapeHtml(format.name || '')}" onerror="this.parentElement.innerHTML='<div class=&quot;format-card-preview__placeholder&quot;>&#127912;</div>'">
@@ -1493,11 +1491,6 @@
                             ${width && height ? `
                                 <div class="format-card-dimensions">
                                     ${isResponsive ? 'Responsive: ' : ''}${escapeHtml(String(width))}&times;${escapeHtml(String(height))}${escapeHtml(dimensions?.unit ? dimensions.unit : 'px')}
-                                </div>
-                            ` : ''}
-                            ${format.type ? `
-                                <div class="format-card-type">
-                                    ${escapeHtml(format.type.replace(/_/g, ' '))}
                                 </div>
                             ` : ''}
                         </div>
@@ -1563,7 +1556,6 @@
                     ${format.description ? `<p class="format-modal__desc">${escapeHtml(format.description)}</p>` : ''}
                     <div class="format-modal__meta">
                         ${format.format_id ? `<div><strong>Format ID:</strong> <code class="format-modal__code">${escapeHtml(format.format_id)}</code></div>` : ''}
-                        ${format.type ? `<div><strong>Type:</strong> <span style="text-transform: capitalize;">${escapeHtml(format.type.replace(/_/g, ' '))}</span></div>` : ''}
                         ${width && height ? `<div><strong>Dimensions:</strong> ${escapeHtml(String(width))}&times;${escapeHtml(String(height))}${escapeHtml(dimensions?.unit || 'px')}</div>` : ''}
                         ${dimensions?.min_width || dimensions?.min_height ? `<div><strong>Responsive:</strong> Yes (${dimensions.min_width || 0}&times;${dimensions.min_height || 0} to ${dimensions.max_width || width}&times;${dimensions.max_height || height})</div>` : ''}
                     </div>

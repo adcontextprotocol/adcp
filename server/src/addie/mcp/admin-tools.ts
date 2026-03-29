@@ -18,7 +18,7 @@ import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { invalidateMemberContextCache } from '../member-context.js';
-import { OrganizationDatabase } from '../../db/organization-db.js';
+import { OrganizationDatabase, inferMembershipTier } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -62,6 +62,7 @@ import {
   type FeedProposal,
 } from '../../db/industry-feeds-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
+import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import {
   createChannel,
   getSlackChannels,
@@ -1442,36 +1443,13 @@ For logo changes, use update_member_logo instead.`,
  */
 function formatMembershipTier(tier: string): string {
   const labels: Record<string, string> = {
+    individual_academic: 'Explorer ($50/yr)',
     individual_professional: 'Professional ($250/yr)',
-    individual_academic: 'Academic ($50/yr)',
-    company_standard: 'Company Standard ($2.5K or $10K/yr based on revenue)',
-    company_icl: 'Industry Council Leader ($50K/yr)',
+    company_standard: 'Builder ($3K/yr)',
+    company_icl: 'Member ($15K/yr)',
+    company_leader: 'Leader ($50K/yr)',
   };
   return labels[tier] || tier;
-}
-
-/**
- * Infer membership tier from subscription amount and organization type.
- * Amounts are in cents. Monthly amounts are annualized for comparison.
- */
-function inferMembershipTier(
-  amountCents: number | null,
-  interval: string | null,
-  isPersonal: boolean
-): MembershipTier | null {
-  if (amountCents == null || amountCents === 0) return null;
-
-  const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
-
-  if (isPersonal) {
-    if (annualCents >= 25000) return 'individual_professional';
-    if (annualCents >= 5000) return 'individual_academic';
-    return null;
-  }
-
-  // company_standard covers both $2.5K and $10K pricing tiers
-  if (annualCents >= 5000000) return 'company_icl';
-  return 'company_standard';
 }
 
 /**
@@ -5339,15 +5317,19 @@ Use add_committee_leader to assign a leader.`;
         return `❌ No WorkOS membership found for user ${userId} in organization ${orgId}.`;
       }
 
-      const membership = memberships.data[0];
-      const currentRole = membership.role?.slug || 'member';
+      const activeMembership = memberships.data.find(m => m.status === 'active');
+      if (!activeMembership) {
+        return `❌ No active membership found for user ${userId} in organization ${orgId}.`;
+      }
+
+      const currentRole = resolveUserRole(memberships.data) || 'member';
 
       if (currentRole === role) {
         return `ℹ️ ${userName} already has the ${role} role in ${orgName}. No change needed.`;
       }
 
       // Update the role in WorkOS
-      await workos.userManagement.updateOrganizationMembership(membership.id, {
+      await workos.userManagement.updateOrganizationMembership(activeMembership.id, {
         roleSlug: role,
       });
 

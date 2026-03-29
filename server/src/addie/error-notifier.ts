@@ -1,5 +1,5 @@
 /**
- * Posts tool errors and other actionable Addie errors to the configured error Slack channel.
+ * Posts tool errors and system-level errors to the configured error Slack channel.
  *
  * Fire-and-forget: callers should not await this — errors in notification
  * delivery are logged but never propagated.
@@ -11,9 +11,28 @@ import { sendChannelMessage } from '../slack/client.js';
 
 const logger = createLogger('addie-error-notifier');
 
-/** Minimum interval between posts for the same tool (prevents floods). */
+/** Minimum interval between posts for the same key (prevents floods). */
 const THROTTLE_MS = 60_000;
+/** Longer throttle for system errors — one alert per 5 minutes per source. */
+const SYSTEM_THROTTLE_MS = 5 * 60_000;
 const recentErrors = new Map<string, number>();
+
+/** Cached error channel to avoid hitting DB during DB outages. */
+let cachedErrorChannel: { channel_id: string | null; channel_name: string | null } | null = null;
+let cacheExpiry = 0;
+const CACHE_TTL_MS = 5 * 60_000;
+
+async function getCachedErrorChannel() {
+  const now = Date.now();
+  if (cachedErrorChannel && now < cacheExpiry) return cachedErrorChannel;
+  try {
+    cachedErrorChannel = await getErrorChannel();
+    cacheExpiry = now + CACHE_TTL_MS;
+  } catch {
+    // DB is down — use whatever we cached last
+  }
+  return cachedErrorChannel;
+}
 
 interface ToolErrorContext {
   toolName: string;
@@ -37,21 +56,40 @@ export function notifyToolError(ctx: ToolErrorContext): void {
   });
 }
 
-async function _postToolError(ctx: ToolErrorContext): Promise<void> {
-  // Throttle: skip if we posted about this tool recently
-  const now = Date.now();
-  const lastPosted = recentErrors.get(ctx.toolName) ?? 0;
-  if (now - lastPosted < THROTTLE_MS) return;
+interface SystemErrorContext {
+  source: string;
+  errorMessage: string;
+}
 
-  // Prune stale entries
+/**
+ * Notify the error channel about a system-level failure
+ * (DB pool errors, job failures, health check degradation).
+ * Safe to call without awaiting — never throws.
+ */
+export function notifySystemError(ctx: SystemErrorContext): void {
+  void _postSystemError(ctx).catch((err) => {
+    logger.debug({ err, source: ctx.source }, 'Failed to post system error notification');
+  });
+}
+
+function pruneStaleEntries(now: number): void {
   for (const [key, ts] of recentErrors) {
-    if (now - ts >= THROTTLE_MS) recentErrors.delete(key);
+    const threshold = key.startsWith('system:') ? SYSTEM_THROTTLE_MS : THROTTLE_MS;
+    if (now - ts >= threshold) recentErrors.delete(key);
   }
+}
 
-  const setting = await getErrorChannel();
-  if (!setting.channel_id) return;
+async function _postToolError(ctx: ToolErrorContext): Promise<void> {
+  const now = Date.now();
+  const throttleKey = `tool:${ctx.toolName}`;
+  const lastPosted = recentErrors.get(throttleKey) ?? 0;
+  if (now - lastPosted < THROTTLE_MS) return;
+  pruneStaleEntries(now);
 
-  recentErrors.set(ctx.toolName, now);
+  const setting = await getCachedErrorChannel();
+  if (!setting?.channel_id) return;
+
+  recentErrors.set(throttleKey, now);
 
   const userLine = ctx.slackUserId ? `*User:* <@${ctx.slackUserId}>` : '*User:* unknown';
   const threadLine = ctx.threadId
@@ -67,6 +105,27 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
     userLine,
     threadLine,
   ].filter(Boolean);
+
+  await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });
+}
+
+async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
+  const now = Date.now();
+  const throttleKey = `system:${ctx.source}`;
+  const lastPosted = recentErrors.get(throttleKey) ?? 0;
+  if (now - lastPosted < SYSTEM_THROTTLE_MS) return;
+  pruneStaleEntries(now);
+
+  const setting = await getCachedErrorChannel();
+  if (!setting?.channel_id) return;
+
+  recentErrors.set(throttleKey, now);
+
+  const lines = [
+    `:rotating_light: *System error: ${ctx.source}*`,
+    '',
+    `> ${ctx.errorMessage.substring(0, 500)}`,
+  ];
 
   await sendChannelMessage(setting.channel_id, { text: lines.join('\n') });
 }

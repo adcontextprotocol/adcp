@@ -10,6 +10,7 @@ import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, initializeMCPServer, isMCPServerReady } from "./mcp/index.js";
 import { HealthChecker } from "./health.js";
+import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
@@ -24,7 +25,7 @@ import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, type SeatType } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, inferMembershipTier, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -38,6 +39,8 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
+import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
+import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -88,6 +91,7 @@ import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
+import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
@@ -1082,6 +1086,10 @@ export class HTTPServer {
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());
 
+    // Mount account linking routes (self-service email linking / user merge)
+    this.app.use('/api/me/linked-emails', createAccountLinkingRouter());
+    handleEmailLinkVerification(this.app);
+
     // Mount training agent (embedded AdCP sales agent for testing and certification)
     const trainingAgentRouter = createTrainingAgentRouter();
     this.app.use('/api/training-agent', trainingAgentRouter);
@@ -1598,6 +1606,7 @@ export class HTTPServer {
     };
 
     this.app.get('/dashboard/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
+    this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
     this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
     this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
     // Redirect old billing path to new membership path
@@ -1812,34 +1821,37 @@ export class HTTPServer {
     // Health check - verifies critical services are operational
     this.app.get("/health", async (req, res) => {
       const checks: Record<string, boolean> = {};
-      let allHealthy = true;
 
-      // Check database connectivity
+      // Database check is informational only. The app serves static pages,
+      // docs, and cached content without DB. A DB blip must not take the
+      // machine out of Fly's load-balancer rotation.
       try {
         const pool = getPool();
-        await pool.query('SELECT 1');
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        try {
+          await Promise.race([
+            pool.query('SELECT 1'),
+            new Promise((_, reject) => {
+              timer = setTimeout(() => reject(new Error('db health timeout')), 3000);
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
         checks.database = true;
-      } catch {
+      } catch (dbErr) {
         checks.database = false;
-        allHealthy = false;
+        notifySystemError({
+          source: 'health-check',
+          errorMessage: 'Database health check failed',
+        });
       }
 
-      // Check Addie status
       checks.addie = isAddieBoltReady();
-      if (!checks.addie) {
-        allHealthy = false;
-      }
-
-      // Check MCP server status
       checks.mcp = isMCPServerReady();
-      if (!checks.mcp) {
-        allHealthy = false;
-      }
 
-      // Return appropriate status code
-      const statusCode = allHealthy ? 200 : 503;
-      res.status(statusCode).json({
-        status: allHealthy ? "ok" : "degraded",
+      res.status(200).json({
+        status: checks.database ? "ok" : "degraded",
         checks,
         registry: {
           mode: "database",
@@ -2026,9 +2038,11 @@ export class HTTPServer {
       try {
         const pool = getPool();
         const result = await pool.query(
-          `SELECT title, excerpt, subtitle, featured_image_url, author_name, published_at, updated_at
-           FROM perspectives
-           WHERE slug = $1 AND status = 'published'`,
+          `SELECT p.title, p.excerpt, p.subtitle, p.featured_image_url, p.author_name, p.published_at, p.updated_at
+           FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE p.slug = $1 AND p.status = 'published'
+             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
           [slug]
         );
         if (result.rows.length > 0) {
@@ -3432,6 +3446,11 @@ export class HTTPServer {
                 const currency = priceData?.currency ?? null;
                 const interval = priceData?.recurring?.interval ?? null;
 
+                // Infer membership tier from amount for seat entitlements
+                const membershipTier = subscription.status === 'active'
+                  ? inferMembershipTier(amount, interval, org.is_personal)
+                  : null;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
@@ -3440,6 +3459,7 @@ export class HTTPServer {
                        subscription_amount = COALESCE($4, subscription_amount),
                        subscription_currency = COALESCE($5, subscription_currency),
                        subscription_interval = COALESCE($6, subscription_interval),
+                       membership_tier = COALESCE($8, membership_tier),
                        updated_at = NOW()
                    WHERE workos_organization_id = $7`,
                   [
@@ -3449,7 +3469,8 @@ export class HTTPServer {
                     amount,
                     currency,
                     interval,
-                    org.workos_organization_id
+                    org.workos_organization_id,
+                    membershipTier,
                   ]
                 );
 
@@ -3461,6 +3482,7 @@ export class HTTPServer {
                   amount,
                   currency,
                   interval,
+                  membershipTier,
                 }, 'Subscription data synced to database');
 
                 // Invalidate member context cache for all users in this org
@@ -4766,10 +4788,12 @@ export class HTTPServer {
 
         // Get all published perspectives
         const perspectivesResult = await pool.query(
-          `SELECT slug, updated_at, published_at
-           FROM perspectives
-           WHERE status = 'published'
-           ORDER BY published_at DESC`
+          `SELECT p.slug, p.updated_at, p.published_at
+           FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE p.status = 'published'
+             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+           ORDER BY p.published_at DESC`
         );
 
         // Static pages with their priorities and change frequencies
@@ -4842,7 +4866,8 @@ Disallow: /api/admin/
     // Public Perspectives API Routes
     // ========================================
 
-    // GET /api/perspectives - List published perspectives (excludes working group posts and RSS)
+    // GET /api/perspectives - List published perspectives (excludes private working group posts and RSS)
+    // Includes editorial working group content (site-wide perspectives) and unassigned content.
     // ?authored=true filters to only authored content (excludes RSS and email feed articles)
     this.app.get('/api/perspectives', async (req, res) => {
       try {
@@ -4850,14 +4875,16 @@ Disallow: /api/admin/
         const authored = req.query.authored === 'true';
         const result = await pool.query(
           `SELECT
-            id, slug, content_type, title, subtitle, category, excerpt,
-            external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            published_at, display_order, tags, like_count
-          FROM perspectives
-          WHERE status = 'published' AND working_group_id IS NULL
-            ${authored ? "AND (source_type IS NULL OR source_type NOT IN ('rss', 'email'))" : ''}
-          ORDER BY published_at DESC NULLS LAST`
+            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
+            p.external_url, p.external_site_name,
+            p.author_name, p.author_title, p.featured_image_url,
+            p.published_at, p.display_order, p.tags, p.like_count
+          FROM perspectives p
+          LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+          WHERE p.status = 'published'
+            AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+            ${authored ? "AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))" : ''}
+          ORDER BY p.published_at DESC NULLS LAST`
         );
 
         res.json(result.rows);
@@ -4876,12 +4903,14 @@ Disallow: /api/admin/
         const pool = getPool();
         const result = await pool.query(
           `SELECT
-            id, slug, content_type, title, subtitle, category, excerpt,
-            content, external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            published_at, tags, metadata, like_count, updated_at
-          FROM perspectives
-          WHERE slug = $1 AND status = 'published'`,
+            p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
+            p.content, p.external_url, p.external_site_name,
+            p.author_name, p.author_title, p.featured_image_url,
+            p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
+          FROM perspectives p
+          LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+          WHERE p.slug = $1 AND p.status = 'published'
+            AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
           [slug]
         );
 
@@ -4898,6 +4927,56 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get perspective',
         });
+      }
+    });
+
+    // GET /api/perspectives/:slug/card.png - Generated card image for a perspective
+    const cardImageCache = new Map<string, { buffer: Buffer; expires: number }>();
+    const CARD_CACHE_MAX = 200;
+    this.app.get('/api/perspectives/:slug/card.png', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const now = Date.now();
+        const cached = cardImageCache.get(slug);
+        if (cached && cached.expires > now) {
+          res.set('Content-Type', 'image/png');
+          res.set('Cache-Control', 'public, max-age=86400');
+          return res.send(cached.buffer);
+        }
+
+        const perspective = await getPerspectiveWithIllustration(slug);
+        if (!perspective) {
+          return res.status(404).send('Not found');
+        }
+
+        const cardOpts = {
+          title: perspective.title,
+          category: perspective.category || undefined,
+          authorName: perspective.author_name || undefined,
+          authorTitle: perspective.author_title || undefined,
+        };
+
+        const imageData = perspective.illustration_id
+          ? await getIllustrationData(perspective.illustration_id)
+          : null;
+
+        const png = imageData
+          ? await compositePerspectiveCard({ illustrationBuffer: imageData, ...cardOpts })
+          : await generatePerspectiveCard(cardOpts);
+
+        // Evict oldest entries if cache is full
+        if (cardImageCache.size >= CARD_CACHE_MAX) {
+          const oldest = cardImageCache.keys().next().value;
+          if (oldest) cardImageCache.delete(oldest);
+        }
+        cardImageCache.set(slug, { buffer: png, expires: now + 86400000 });
+
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(png);
+      } catch (error) {
+        logger.error({ err: error, slug: req.params.slug }, 'Card image generation error');
+        res.status(500).send('Failed to generate card');
       }
     });
 
@@ -5818,6 +5897,7 @@ Disallow: /api/admin/
         // Get user's WorkOS organization memberships
         const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
+          statuses: ['active'],
         });
 
         // Map memberships to organization details with roles
@@ -5831,7 +5911,6 @@ Disallow: /api/admin/
             return {
               id: membership.organizationId,
               name: workosOrg.name,
-              // Access role from the membership's role object
               role: membership.role?.slug || 'member',
               status: membership.status,
               is_personal: localOrg?.is_personal || false,
@@ -7321,15 +7400,19 @@ Disallow: /api/admin/
     initPostHogErrorTracking();
 
     // Initialize database
-    const { initializeDatabase } = await import("./db/client.js");
+    const { initializeDatabase, onPoolError } = await import("./db/client.js");
     const { runMigrations } = await import("./db/migrate.js");
     const { getDatabaseConfig } = await import("./config.js");
-
     const dbConfig = getDatabaseConfig();
     if (!dbConfig) {
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+
+    // Escalate pool-level errors to Slack
+    onPoolError(() => {
+      notifySystemError({ source: 'database-pool', errorMessage: 'Database pool error — check application logs' });
+    });
 
     await runMigrations();
 

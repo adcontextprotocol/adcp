@@ -238,6 +238,48 @@ describe('buildCatalog', () => {
     });
   });
 
+  describe('product cards on every product', () => {
+    it('has product_card with valid format_id and manifest', () => {
+      for (const cp of catalog) {
+        const card = cp.product.product_card as Record<string, unknown> | undefined;
+        expect(card, `${cp.product.product_id} missing product_card`).toBeDefined();
+        const fid = card!.format_id as { agent_url: string; id: string };
+        expect(fid.id).toBe('product_card_standard');
+        expect(fid.agent_url).toBeTruthy();
+        const manifest = card!.manifest as { assets: Record<string, unknown> };
+        expect(manifest.assets).toBeDefined();
+        expect((manifest.assets as Record<string, { content?: string }>).product_name?.content).toBeTruthy();
+      }
+    });
+
+    it('has product_card_detailed with valid format_id and manifest', () => {
+      for (const cp of catalog) {
+        const card = cp.product.product_card_detailed as Record<string, unknown> | undefined;
+        expect(card, `${cp.product.product_id} missing product_card_detailed`).toBeDefined();
+        const fid = card!.format_id as { agent_url: string; id: string };
+        expect(fid.id).toBe('product_card_detailed');
+      }
+    });
+
+    it('includes product_image url on cards when publisher has heroImageUrl', () => {
+      for (const cp of catalog) {
+        const card = cp.product.product_card as { manifest: { assets: Record<string, { url?: string }> } };
+        const imageAsset = card.manifest.assets.product_image;
+        // All publishers now have heroImageUrl
+        expect(imageAsset?.url, `${cp.product.product_id} missing product_image`).toBeTruthy();
+      }
+    });
+
+    it('includes click_url on cards', () => {
+      for (const cp of catalog) {
+        const card = cp.product.product_card as { manifest: { assets: Record<string, { url?: string }> } };
+        const clickAsset = card.manifest.assets.click_url;
+        expect(clickAsset?.url, `${cp.product.product_id} missing click_url`).toBeTruthy();
+        expect(clickAsset!.url).toContain(cp.product.product_id as string);
+      }
+    });
+  });
+
   describe('channels enum compliance', () => {
     it('every channel value is in the channels enum', () => {
       for (const cp of catalog) {
@@ -3867,6 +3909,40 @@ describe('proposal lifecycle', () => {
     });
     return result;
   }
+
+  it('includes proposal cards with valid manifests on every proposal', async () => {
+    const result = await getProductsWithProposals();
+    const proposals = result.proposals as Array<Record<string, unknown>>;
+    expect(proposals.length).toBeGreaterThan(0);
+
+    for (const proposal of proposals) {
+      const ext = proposal.ext as Record<string, unknown> | undefined;
+      expect(ext, `proposal ${proposal.proposal_id} missing ext`).toBeDefined();
+
+      const card = ext!.proposal_card as { format_id: { id: string }; manifest: { assets: Record<string, unknown> } };
+      expect(card, `proposal ${proposal.proposal_id} missing proposal_card`).toBeDefined();
+      expect(card.format_id.id).toBe('proposal_card_standard');
+      expect(card.manifest.assets).toBeDefined();
+      expect((card.manifest.assets.proposal_name as { content: string }).content).toBeTruthy();
+      expect((card.manifest.assets.allocation_data as { content: string }).content).toBeTruthy();
+
+      const detailed = ext!.proposal_card_detailed as { format_id: { id: string } };
+      expect(detailed, `proposal ${proposal.proposal_id} missing proposal_card_detailed`).toBeDefined();
+      expect(detailed.format_id.id).toBe('proposal_card_detailed');
+    }
+  });
+
+  it('includes proposal_image and click_url on proposal cards', async () => {
+    const result = await getProductsWithProposals();
+    const proposals = result.proposals as Array<Record<string, unknown>>;
+
+    for (const proposal of proposals) {
+      const ext = proposal.ext as Record<string, unknown>;
+      const card = ext.proposal_card as { manifest: { assets: Record<string, { url?: string; content?: string }> } };
+      expect(card.manifest.assets.proposal_image?.url, `proposal ${proposal.proposal_id} missing proposal_image`).toBeTruthy();
+      expect(card.manifest.assets.click_url?.url, `proposal ${proposal.proposal_id} missing click_url`).toBeTruthy();
+    }
+  });
 
   it('returns draft status on proposals containing guaranteed products', async () => {
     const result = await getProductsWithProposals();

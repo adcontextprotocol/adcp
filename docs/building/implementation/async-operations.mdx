@@ -4,82 +4,81 @@ description: "AdCP async operations guide: handling synchronous, asynchronous, a
 "og:title": "AdCP — Async Operations"
 ---
 
-AdCP operations can take seconds, hours, or days. This guide covers how to handle each type of operation and design for asynchronous-first workflows.
+AdCP operations can take seconds, hours, or days. The server decides how to respond based on how long the operation will take and what's blocking it.
 
-:::note MCP transport
-If you're using MCP, long-running operations are handled via [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) — the client manages polling at the protocol level, outside the LLM loop. See [MCP Guide](/docs/building/integration/mcp-guide#async-operations-via-mcp-tasks). The patterns below apply to REST integrations and generic orchestrators.
+## The 30-second rule
+
+Any AdCP task can return one of these statuses. The server chooses based on what it knows about the work involved:
+
+| Expected duration | Status | What the caller does |
+|---|---|---|
+| Under 30 seconds | `completed` / `failed` | Result is inline — done |
+| Over 30 seconds, server actively processing | `working` | Out-of-band progress signal. Connection stays open, result arrives when ready. Caller just waits |
+| Blocked on external dependency | `submitted` | Truly async — configure a webhook via `push_notification_config`. Result may take hours or days |
+| Blocked on human input | `input-required` | Caller provides the requested input to continue |
+
+**`working` is not async.** It's a progress signal the server sends out-of-band (via MCP status notifications or SSE) while it continues processing. The caller holds the connection and receives the result when it's ready — no polling, no webhooks. Think of it as "this is taking a moment, but I'm on it."
+
+**`submitted` is async.** The operation is blocked on something outside the server's control — publisher approval, human review, third-party processing. The caller should configure a webhook and move on.
+
+:::tip Webhooks for `submitted` operations
+**Webhooks** are the recommended approach for `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. See [Push Notifications](/docs/building/implementation/webhooks).
+
+**Polling** via `tasks/get` works as a simpler alternative or backup. See the [polling pattern](#polling-for-submitted-operations) below.
+
+**MCP Tasks** handle async at the protocol level, but client support is still limited — most chat-based MCP clients (Claude Desktop, Cursor) don't yet support task-augmented tool calls. If you're building your own MCP client or using the JS SDK directly, MCP Tasks work well. See [MCP Guide](/docs/building/integration/mcp-guide#async-operations-via-mcp-tasks).
 :::
 
-## Operation Types
+## Operation examples
 
-AdCP operations fall into three categories:
-
-### 1. Synchronous Operations
-
-Return immediately with `completed` or `failed`:
+### Synchronous (instant)
 
 | Operation | Description |
 |-----------|-------------|
 | `get_adcp_capabilities` | Agent capability discovery |
 | `list_creative_formats` | Format catalog |
+| `build_creative` (library retrieval) | Resolving an existing `creative_id` |
 
-These are fast operations that don't require external systems.
-
-### 2. Interactive Operations
-
-May return `input-required` before proceeding:
+### May need human input
 
 | Operation | Description |
 |-----------|-------------|
 | `get_products` | When brief is vague or needs clarification |
 | `create_media_buy` | When approval is required |
+| `build_creative` (generation) | When creative direction or asset selection is needed |
 
-These operations need user input to proceed.
-
-### 3. Asynchronous Operations
-
-Return `working` or `submitted` and require polling/streaming:
+### May go async (`submitted`)
 
 | Operation | Description |
 |-----------|-------------|
-| `create_media_buy` | Creates campaigns with external systems |
-| `sync_creatives` | Uploads and processes creative assets |
-| `get_products` | Complex inventory searches |
-| `activate_signal` | Activates audience segments |
+| `create_media_buy` | Publisher approval workflows |
+| `sync_creatives` | Asset review and transcoding pipelines |
+| `build_creative` (with review) | Human creative review before finalizing |
+| `activate_signal` | Platform deployment pipelines |
 
 These operations integrate with external systems or require human approval.
 
 ## Timeout Configuration
 
-Set reasonable timeouts based on operation type:
+Set reasonable timeouts based on status:
 
 ```javascript
 const TIMEOUTS = {
-  sync: 30_000,         // 30 seconds for immediate operations
+  sync: 30_000,         // 30 seconds — most operations complete here
+  working: 300_000,      // 5 minutes — server is actively processing
   interactive: 300_000,  // 5 minutes for human input
-  working: 120_000,      // 2 minutes for working tasks
-  submitted: 86_400_000  // 24 hours for submitted tasks
+  submitted: 86_400_000  // 24 hours for external dependencies
 };
 
-function getTimeout(status, operationType) {
-  // submitted tasks may take hours or days
-  if (status === 'submitted') {
-    return TIMEOUTS.submitted;
-  }
-
-  // working tasks should complete within 2 minutes
-  if (status === 'working') {
-    return TIMEOUTS.working;
-  }
-
-  // interactive operations wait for human input
-  if (status === 'input-required') {
-    return TIMEOUTS.interactive;
-  }
-
+function getTimeout(status) {
+  if (status === 'submitted') return TIMEOUTS.submitted;
+  if (status === 'working') return TIMEOUTS.working;
+  if (status === 'input-required') return TIMEOUTS.interactive;
   return TIMEOUTS.sync;
 }
 ```
+
+`working` uses a connection timeout (how long to hold open), not a poll interval. The server sends progress out-of-band and delivers the result on the same connection. `submitted` uses a webhook delivery window — if you're also polling as backup, use a 30-second interval.
 
 ## Human-in-the-Loop Workflows
 
@@ -215,9 +214,11 @@ async function createCampaign(packages, budget) {
     });
   }
 
-  // Handle async creation
-  if (response.status === 'working') {
-    response = await waitForCompletion(response);
+  // 'working' means the server is actively processing — result will arrive
+  // 'submitted' means blocked on external dependency — need webhook or polling
+  if (response.status === 'submitted') {
+    // Poll as backup (webhook is preferred — see Push Notifications)
+    response = await pollForResult(response.task_id);
   }
 
   if (response.status === 'completed') {
@@ -228,29 +229,31 @@ async function createCampaign(packages, budget) {
 }
 ```
 
-### Waiting for Completion
+### Polling for `submitted` Operations
+
+Polling is a backup for `submitted` operations when webhooks aren't configured or as a fallback. Don't poll for `working` — the server delivers the result on the open connection.
 
 ```javascript
-async function waitForCompletion(initialResponse, options = {}) {
-  const { maxWait = 120000, pollInterval = 5000 } = options;
+async function pollForResult(taskId, options = {}) {
+  const { maxWait = 86_400_000, pollInterval = 30_000 } = options;
   const startTime = Date.now();
 
-  let response = initialResponse;
-
-  while (response.status === 'working') {
+  while (true) {
     if (Date.now() - startTime > maxWait) {
       throw new Error('Operation timed out');
     }
 
     await sleep(pollInterval);
 
-    response = await adcp.call('tasks/get', {
-      task_id: response.task_id,
+    const response = await adcp.call('tasks/get', {
+      task_id: taskId,
       include_result: true
     });
-  }
 
-  return response;
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
+  }
 }
 ```
 

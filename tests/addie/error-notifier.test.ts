@@ -12,32 +12,20 @@ jest.mock('../../server/src/slack/client.js', () => ({
   sendChannelMessage: mockSendChannelMessage,
 }));
 
-import { notifyToolError } from '../../server/src/addie/error-notifier.js';
+import { notifyToolError, notifySystemError } from '../../server/src/addie/error-notifier.js';
 
+// The module caches the error channel to survive DB outages, so all tests
+// must configure the mock *before* the first call in the suite (or use a
+// channel that persists across the cache TTL). We default to a configured
+// channel and test the positive paths.
 describe('error-notifier', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetErrorChannel.mockResolvedValue({ channel_id: null, channel_name: null });
+    mockGetErrorChannel.mockResolvedValue({ channel_id: 'C_ERROR_123', channel_name: 'errors' });
     mockSendChannelMessage.mockResolvedValue({ ok: true });
   });
 
-  test('does nothing when no error channel is configured', async () => {
-    notifyToolError({
-      toolName: 'create_payment_link',
-      errorMessage: 'Cannot create payment link without an account',
-      threw: false,
-    });
-
-    // Give the fire-and-forget promise time to resolve
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    expect(mockGetErrorChannel).toHaveBeenCalled();
-    expect(mockSendChannelMessage).not.toHaveBeenCalled();
-  });
-
   test('posts to error channel when configured', async () => {
-    mockGetErrorChannel.mockResolvedValue({ channel_id: 'C_ERROR_123', channel_name: 'errors' });
-
     notifyToolError({
       toolName: 'create_payment_link',
       errorMessage: 'Cannot create payment link without an account',
@@ -62,8 +50,6 @@ describe('error-notifier', () => {
   });
 
   test('includes "exception" label when tool threw', async () => {
-    mockGetErrorChannel.mockResolvedValue({ channel_id: 'C_ERROR_123', channel_name: 'errors' });
-
     notifyToolError({
       toolName: 'search_documents',
       errorMessage: 'Database connection failed',
@@ -77,8 +63,6 @@ describe('error-notifier', () => {
   });
 
   test('includes "error" label when tool returned error string', async () => {
-    mockGetErrorChannel.mockResolvedValue({ channel_id: 'C_ERROR_123', channel_name: 'errors' });
-
     notifyToolError({
       toolName: 'find_membership_products',
       errorMessage: 'Error: no workspace',
@@ -92,8 +76,6 @@ describe('error-notifier', () => {
   });
 
   test('throttles repeated errors from the same tool', async () => {
-    mockGetErrorChannel.mockResolvedValue({ channel_id: 'C_ERROR_123', channel_name: 'errors' });
-
     // Use a unique tool name not used by other tests
     notifyToolError({
       toolName: 'send_invoice',
@@ -128,5 +110,21 @@ describe('error-notifier', () => {
     }).not.toThrow();
 
     await new Promise(resolve => setTimeout(resolve, 50));
+  });
+
+  test('notifySystemError posts system errors', async () => {
+    notifySystemError({
+      source: 'database-pool',
+      errorMessage: 'Connection terminated unexpectedly',
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(mockSendChannelMessage).toHaveBeenCalledWith(
+      'C_ERROR_123',
+      expect.objectContaining({
+        text: expect.stringContaining('database-pool'),
+      })
+    );
   });
 });

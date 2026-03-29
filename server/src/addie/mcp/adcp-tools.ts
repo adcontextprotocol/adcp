@@ -128,11 +128,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
               enum: ['none', 'category', 'exclusive'],
               description: 'Filter by exclusivity level.',
             },
-            format_types: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Filter by format types',
-            },
           },
         },
         property_list: {
@@ -543,10 +538,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             },
             required: ['agent_url', 'id'],
           },
-        },
-        type: {
-          type: 'string',
-          description: 'Filter by format type (video, display, audio, native, etc.)',
         },
         asset_types: {
           type: 'array',

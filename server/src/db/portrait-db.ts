@@ -38,10 +38,10 @@ export async function getPortraitById(id: string): Promise<PortraitMetadata | nu
   return result.rows[0] || null;
 }
 
-/** Get portrait binary data for serving */
-export async function getPortraitData(id: string): Promise<{ portrait_data: Buffer | null; image_url: string } | null> {
-  const result = await query<{ portrait_data: Buffer | null; image_url: string }>(
-    `SELECT portrait_data, image_url FROM member_portraits WHERE id = $1 AND status = 'approved'`,
+/** Get portrait binary data for serving (approved portraits, or generated for preview) */
+export async function getPortraitData(id: string): Promise<{ portrait_data: Buffer | null; image_url: string; status: string } | null> {
+  const result = await query<{ portrait_data: Buffer | null; image_url: string; status: string }>(
+    `SELECT portrait_data, image_url, status FROM member_portraits WHERE id = $1 AND status IN ('approved', 'generated')`,
     [id]
   );
   return result.rows[0] || null;

@@ -6,6 +6,7 @@
  */
 
 import { logger as baseLogger } from '../../logger.js';
+import { notifySystemError } from '../error-notifier.js';
 
 const logger = baseLogger.child({ module: 'job-scheduler' });
 
@@ -178,6 +179,10 @@ class JobScheduler {
         }
       } catch (err) {
         logger.error({ err, jobName: name }, `${config.description}: failed`);
+        notifySystemError({
+          source: `job:${name}`,
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
       }
     };
 

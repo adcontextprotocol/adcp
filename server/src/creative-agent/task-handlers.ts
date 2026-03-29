@@ -45,19 +45,6 @@ function getFormatId(format: Format): FormatId {
   return format.format_id as FormatId;
 }
 
-function matchesType(format: Format, type: string): boolean {
-  const fid = getFormatId(format).id;
-  const typeMap: Record<string, string[]> = {
-    display: ['display_', 'dooh_', 'email_', 'gaming_interstitial', 'native_', 'carousel_'],
-    video: ['video_', 'ctv_', 'gaming_rewarded', 'social_video'],
-    audio: ['audio_', 'radio_'],
-    dooh: ['dooh_'],
-  };
-  const prefixes = typeMap[type];
-  if (!prefixes) return false;
-  return prefixes.some(p => fid.startsWith(p));
-}
-
 function matchesDimensions(format: Format, opts: { min_width?: number; max_width?: number; min_height?: number; max_height?: number }): boolean {
   const renders = format.renders as Array<{ dimensions?: { width?: number; height?: number } }> | undefined;
   if (!renders?.[0]?.dimensions) return true; // No fixed dimensions — include by default
@@ -103,12 +90,6 @@ export function handleListCreativeFormats(args: Record<string, unknown>, formats
   if (formatIds?.length) {
     const ids = new Set(formatIds.map(f => typeof f === 'string' ? f : f.id));
     filtered = filtered.filter(f => ids.has(getFormatId(f).id));
-  }
-
-  // Filter by type
-  const type = args.type as string | undefined;
-  if (type) {
-    filtered = filtered.filter(f => matchesType(f, type));
   }
 
   // Filter by dimensions
@@ -282,7 +263,6 @@ export function createCreativeAgentServer(agentBaseUrl: string) {
       description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Use filters to avoid large responses. Do not call without filters if you already know the format_id.',
       inputSchema: {
         format_ids: z.array(z.union([z.string(), z.object({ id: z.string() })])).optional().describe('Filter by specific format IDs'),
-        type: z.enum(['display', 'video', 'audio', 'dooh']).optional().describe('Filter by format type'),
         asset_types: z.array(z.string()).optional().describe('Filter by asset types: image, video, audio, text, html, vast, etc.'),
         name_search: z.string().optional().describe('Case-insensitive partial match on name or description'),
         min_width: z.number().optional().describe('Minimum width in pixels'),

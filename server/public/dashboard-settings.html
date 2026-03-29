@@ -256,6 +256,28 @@
     </div>
   </div>
 
+  <!-- Link Email Modal -->
+  <div id="linkEmailModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Link Another Email</h2>
+      <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 16px;">
+        Enter the email address you want to link. We'll send a verification email to confirm ownership.
+        If there's an existing account with that email, your accounts will be merged.
+      </p>
+      <div style="margin-bottom: 16px;">
+        <label for="linkEmailInput" style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 6px;">Email address</label>
+        <input type="email" id="linkEmailInput" placeholder="you@example.com" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+      </div>
+      <div id="linkEmailWarning" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-300); border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 13px;">
+        This email has an existing account. Verifying will merge that account into yours. This cannot be undone.
+      </div>
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button class="btn btn-secondary btn-sm" onclick="closeLinkEmailModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="linkEmailBtn" onclick="sendLinkVerification()">Send Verification</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Delete Workspace Modal -->
   <div id="deleteModal" class="modal-overlay">
     <div class="modal">
@@ -437,6 +459,20 @@
               <p style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px;">Determines membership pricing</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Linked Emails -->
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <h2>Linked Emails</h2>
+          <p>Link additional email addresses to consolidate duplicate accounts</p>
+        </div>
+        <div class="settings-section-body">
+          <div id="linkedEmailsList" style="margin-bottom: 16px;">
+            <p style="color: var(--color-text-secondary); font-size: 13px;">Loading...</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="openLinkEmailModal()">Link another email</button>
         </div>
       </div>
 
@@ -836,8 +872,101 @@
       }
     }
 
+    // ==========================================
+    // Linked Emails
+    // ==========================================
+    async function loadLinkedEmails() {
+      try {
+        const response = await fetch('/api/me/linked-emails', { credentials: 'include' });
+        if (!response.ok) return;
+        const data = await response.json();
+
+        const container = document.getElementById('linkedEmailsList');
+        let html = '';
+
+        // Primary email
+        html += `<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">
+          <span style="font-size: 14px;">${escapeHtml(data.primary_email)}</span>
+          <span style="margin-left: 8px; font-size: 11px; background: var(--color-brand-50); color: var(--color-brand); padding: 2px 8px; border-radius: 4px;">Primary</span>
+        </div>`;
+
+        // Aliases
+        for (const alias of data.aliases) {
+          html += `<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">
+            <span style="font-size: 14px;">${escapeHtml(alias.email)}</span>
+            <span style="margin-left: 8px; font-size: 11px; background: var(--color-success-50); color: var(--color-success-600); padding: 2px 8px; border-radius: 4px;">Linked</span>
+          </div>`;
+        }
+
+        // Pending
+        for (const pending of data.pending) {
+          html += `<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">
+            <span style="font-size: 14px; color: var(--color-text-secondary);">${escapeHtml(pending.target_email)}</span>
+            <span style="margin-left: 8px; font-size: 11px; background: var(--color-warning-50); color: var(--color-warning-600); padding: 2px 8px; border-radius: 4px;">Pending</span>
+          </div>`;
+        }
+
+        container.innerHTML = html;
+      } catch (error) {
+        console.error('Failed to load linked emails:', error);
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function openLinkEmailModal() {
+      document.getElementById('linkEmailInput').value = '';
+      document.getElementById('linkEmailWarning').style.display = 'none';
+      document.getElementById('linkEmailBtn').disabled = false;
+      document.getElementById('linkEmailBtn').textContent = 'Send Verification';
+      document.getElementById('linkEmailModal').classList.add('show');
+    }
+
+    function closeLinkEmailModal() {
+      document.getElementById('linkEmailModal').classList.remove('show');
+    }
+
+    async function sendLinkVerification() {
+      const email = document.getElementById('linkEmailInput').value.trim();
+      if (!email) return;
+
+      const btn = document.getElementById('linkEmailBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const response = await fetch('/api/me/linked-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showToast(data.error || 'Failed to send verification', true);
+          return;
+        }
+
+        closeLinkEmailModal();
+        showToast('Verification email sent! Check your inbox.');
+        loadLinkedEmails();
+      } catch (error) {
+        showToast('Failed to send verification', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Verification';
+      }
+    }
+
     // Initialize
     loadSettings();
+    loadLinkedEmails();
   </script>
 </body>
 </html>

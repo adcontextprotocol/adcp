@@ -226,7 +226,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 - `account_id` added to `get_media_buy_delivery` and `get_media_buy_artifacts` requests
 - `date_range_support` in reporting capabilities
 - `minItems: 1` on request-side arrays for stricter validation
-- `FormatCategory` enum deprecated; `type` field on Format objects now optional
+- `FormatCategory` enum and `type` field removed from Format objects (use `assets` array instead)
 - `format_id` optional in `preview_creative` (falls back to `creative_manifest.format_id`)
 - `selection_mode` on repeatable asset groups to distinguish sequential (carousel) from optimize (asset pool) behavior
 - Session ID fallback recommendation for MCP agent `context_id`

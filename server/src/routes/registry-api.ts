@@ -2499,7 +2499,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return {
             format_id: format.format_id,
             name: format.name,
-            type: format.type,
             description: format.description,
             example_url: format.example_url,
             renders: format.renders,

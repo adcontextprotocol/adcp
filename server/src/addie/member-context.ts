@@ -21,6 +21,7 @@ import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
+import { resolveUserRole } from '../utils/resolve-user-role.js';
 
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
@@ -378,12 +379,14 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         userId: slackMapping.workos_user_id,
       });
 
-      // Use the first organization (users typically have one org)
+      // Find the first active membership (users typically have one org)
       if (memberships.data && memberships.data.length > 0) {
-        const membership = memberships.data[0];
-        organizationId = membership.organizationId;
-        userRole = membership.role?.slug || 'member';
-        userJoinedAt = membership.createdAt ? new Date(membership.createdAt) : null;
+        const activeMembership = memberships.data.find(m => m.status === 'active');
+        if (activeMembership) {
+          organizationId = activeMembership.organizationId;
+          userRole = resolveUserRole(memberships.data) || 'member';
+          userJoinedAt = activeMembership.createdAt ? new Date(activeMembership.createdAt) : null;
+        }
       }
     } catch (error) {
       logger.warn({ error, workosUserId: slackMapping.workos_user_id }, 'Addie: Failed to get org memberships');
@@ -870,8 +873,9 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         last_name: devUser.lastName,
       };
       context.is_member = devUser.isMember;
+      context.slack_linked = true;
 
-      // Resolve org from dev config, then run local DB lookups (Steps 5-10)
+      // Resolve org from dev config, then run local DB lookups
       const devOrgId = devUser.organizationId || 'org_dev_company_001';
       try {
         return await resolveContextFromLocalDb(context, devOrgId, workosUserId);
@@ -937,10 +941,12 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       });
 
       if (memberships.data && memberships.data.length > 0) {
-        const membership = memberships.data[0];
-        organizationId = membership.organizationId;
-        userRole = membership.role?.slug || 'member';
-        userJoinedAt = membership.createdAt ? new Date(membership.createdAt) : null;
+        const activeMembership = memberships.data.find(m => m.status === 'active');
+        if (activeMembership) {
+          organizationId = activeMembership.organizationId;
+          userRole = resolveUserRole(memberships.data) || 'member';
+          userJoinedAt = activeMembership.createdAt ? new Date(activeMembership.createdAt) : null;
+        }
       }
     } catch (error) {
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get org memberships');
@@ -1177,8 +1183,8 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     }
   }
 
-  // Slack linking status
-  if (!context.slack_linked) {
+  // Slack linking status (only relevant for Slack-originated conversations)
+  if (!context.slack_linked && context.slack_user) {
     lines.push('');
     lines.push('Note: This user\'s Slack account is not yet linked to their AgenticAdvertising.org account.');
   }

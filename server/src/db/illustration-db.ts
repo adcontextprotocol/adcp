@@ -165,9 +165,11 @@ export async function getPerspectiveWithIllustration(slug: string): Promise<{
     author_name: string | null;
     author_title: string | null;
   }>(
-    `SELECT id, title, category, featured_image_url, illustration_id, author_name, author_title
-     FROM perspectives
-     WHERE slug = $1 AND status = 'published'`,
+    `SELECT p.id, p.title, p.category, p.featured_image_url, p.illustration_id, p.author_name, p.author_title
+     FROM perspectives p
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.slug = $1 AND p.status = 'published'
+       AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
     [slug]
   );
   return result.rows[0] || null;

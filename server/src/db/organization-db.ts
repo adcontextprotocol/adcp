@@ -112,6 +112,8 @@ export interface SubscriptionInfo {
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
+  lookup_key?: string;
+  amount_cents?: number;
   current_period_end?: number;
   cancel_at_period_end?: boolean;
 }
@@ -131,6 +133,35 @@ export interface AuditLogEntry {
 export function getSeatLimits(tier: string | null): SeatLimits {
   if (!tier) return DEFAULT_SEAT_LIMITS;
   return SEAT_LIMITS[tier] || DEFAULT_SEAT_LIMITS;
+}
+
+/**
+ * Infer membership tier from subscription amount and organization type.
+ * Many orgs created before the membership_tier column was added have active subscriptions
+ * but no tier recorded. Amounts are in cents. Monthly amounts are annualized.
+ *
+ * Tier mapping (annual):
+ *   Individual: Explorer ($50) → individual_academic, Professional ($250+) → individual_professional
+ *   Company:    Builder ($3K+) → company_standard, Member ($15K+) → company_icl, Leader ($50K+) → company_leader
+ */
+export function inferMembershipTier(
+  amountCents: number | null,
+  interval: string | null,
+  isPersonal: boolean
+): MembershipTier | null {
+  if (amountCents == null || amountCents === 0) return null;
+
+  const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
+
+  if (isPersonal) {
+    if (annualCents >= 25000) return 'individual_professional';
+    if (annualCents >= 5000) return 'individual_academic';
+    return null;
+  }
+
+  if (annualCents >= 5000000) return 'company_leader';
+  if (annualCents >= 1500000) return 'company_icl';
+  return 'company_standard';
 }
 
 /**
@@ -159,11 +190,21 @@ export async function canAddSeat(
   seatType: SeatType
 ): Promise<{ allowed: boolean; reason?: string }> {
   const pool = getPool();
-  const orgResult = await pool.query<{ membership_tier: string | null }>(
-    'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+  const orgResult = await pool.query<{
+    membership_tier: string | null;
+    subscription_amount: number | null;
+    subscription_interval: string | null;
+    subscription_status: string | null;
+    is_personal: boolean;
+  }>(
+    'SELECT membership_tier, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1',
     [orgId]
   );
-  const tier = orgResult.rows[0]?.membership_tier ?? null;
+  const org = orgResult.rows[0];
+  const tier = org?.membership_tier
+    ?? (org?.subscription_status === 'active'
+      ? inferMembershipTier(org?.subscription_amount ?? null, org?.subscription_interval ?? null, org?.is_personal ?? false)
+      : null);
   const limits = getSeatLimits(tier);
   const usage = await getSeatUsage(orgId);
 
@@ -732,6 +773,7 @@ export class OrganizationDatabase {
           status: org.subscription_status as SubscriptionInfo['status'],
           product_name: org.subscription_product_name || undefined,
           product_id: org.subscription_product_id || undefined,
+          amount_cents: org.subscription_amount ?? undefined,
           current_period_end: org.subscription_current_period_end
             ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
             : undefined,

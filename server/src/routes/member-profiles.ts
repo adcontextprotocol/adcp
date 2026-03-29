@@ -80,23 +80,24 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const requestedOrgId = req.query.org as string | undefined;
 
       // Dev mode: handle dev organizations without WorkOS
-      const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
-      if (isDevUserProfile) {
-        const localOrg = await orgDb.getOrganization(requestedOrgId!);
+      const devUser = isDevModeEnabled() ? Object.values(DEV_USERS).find(du => du.id === user.id) : null;
+      const devOrgId = devUser ? (requestedOrgId?.startsWith('org_dev_') ? requestedOrgId : (devUser.organizationId || 'org_dev_company_001')) : null;
+      if (devUser && devOrgId) {
+        const localOrg = await orgDb.getOrganization(devOrgId);
         if (!localOrg) {
           return res.status(404).json({
             error: 'Organization not found',
             message: 'The requested organization does not exist',
           });
         }
-        const profile = await memberDb.getProfileByOrgId(requestedOrgId!);
+        const profile = await memberDb.getProfileByOrgId(devOrgId);
         if (profile?.primary_brand_domain) {
           profile.resolved_brand = await resolveBrand(brandDb, profile.primary_brand_domain);
         }
-        logger.info({ userId: user.id, orgId: requestedOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
+        logger.info({ userId: user.id, orgId: devOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
         return res.json({
           profile: profile || null,
-          organization_id: requestedOrgId,
+          organization_id: devOrgId,
           organization_name: localOrg.name,
         });
       }

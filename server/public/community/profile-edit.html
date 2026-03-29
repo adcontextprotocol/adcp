@@ -10,6 +10,7 @@
   <style>
     body {
       padding-top: var(--nav-height);
+      background: var(--color-bg-subtle);
     }
 
     .edit-container {
@@ -51,6 +52,41 @@
       font-size: var(--text-lg);
       font-weight: var(--font-bold);
       color: var(--color-text-heading);
+      margin-bottom: var(--space-5);
+    }
+
+    /* Collapsible sections */
+    details.edit-section {
+      cursor: default;
+    }
+
+    details.edit-section > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    details.edit-section > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.edit-section > summary .edit-section-title {
+      margin-bottom: 0;
+    }
+
+    details.edit-section > summary .chevron {
+      transition: transform var(--duration-normal) var(--ease-in-out);
+      color: var(--color-text-muted);
+      flex-shrink: 0;
+    }
+
+    details[open].edit-section > summary .chevron {
+      transform: rotate(180deg);
+    }
+
+    details[open].edit-section > summary {
       margin-bottom: var(--space-5);
     }
 
@@ -369,7 +405,12 @@
       align-items: center;
       justify-content: flex-end;
       gap: var(--space-3);
-      padding-top: var(--space-2);
+      position: sticky;
+      bottom: 0;
+      background: var(--color-bg-subtle);
+      padding: var(--space-4) 0;
+      margin-top: var(--space-2);
+      z-index: 10;
     }
 
     /* Toast notification */
@@ -428,6 +469,30 @@
       to { transform: rotate(360deg); }
     }
 
+    /* Addie CTA */
+    .addie-cta-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .addie-cta-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-3) var(--space-5);
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
     @media (max-width: 640px) {
       .edit-container {
         padding: var(--space-4) var(--space-3);
@@ -443,6 +508,16 @@
 
       .toggle-row {
         gap: var(--space-3);
+      }
+
+      .addie-cta-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .addie-cta-btn {
+        text-align: center;
+        justify-content: center;
       }
     }
   </style>
@@ -468,33 +543,109 @@
 
     <!-- Form content -->
     <div id="edit-content" style="display: none;">
-      <h1 class="edit-title">Edit profile</h1>
+      <!-- New member welcome -->
+      <div id="new-member-header" style="display: none;">
+        <h1 class="edit-title">Set up your profile</h1>
+        <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-6); line-height: var(--leading-relaxed);">Start with your photo, or let Addie do it all from your LinkedIn.</p>
+      </div>
+      <!-- Returning member header -->
+      <div id="returning-member-header" style="display: none;">
+        <h1 class="edit-title">Edit profile</h1>
+      </div>
 
       <form id="profile-form" novalidate>
-        <!-- Community visibility -->
-        <div class="edit-section" id="section-visibility">
-          <h2 class="edit-section-title">Community visibility</h2>
-          <div class="toggle-row">
-            <div class="toggle-content">
-              <div class="toggle-label">Public profile</div>
-              <div class="toggle-description">Make your profile visible in the <a href="/community/people" style="color: var(--color-brand);">community directory</a>. Only logged-in members can see it.</div>
+        <!-- Profile photo + Addie CTA combined -->
+        <div class="edit-section" id="section-portrait-and-addie">
+          <div style="display: flex; align-items: flex-start; gap: var(--space-6);">
+            <!-- Portrait -->
+            <div id="portrait-group" style="flex: 1;">
+              <h2 style="font-size: var(--text-base); font-weight: var(--font-bold); color: var(--color-text-heading); margin-bottom: var(--space-4);">Profile photo</h2>
+              <div id="portrait-current" style="display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-3);">
+                <div id="avatar-preview" style="width: 80px; height: 80px; border-radius: var(--radius-full); overflow: hidden; flex-shrink: 0; background: var(--color-gray-100); display: flex; align-items: center; justify-content: center;">
+                  <span id="avatar-placeholder" style="font-size: var(--text-2xl); color: var(--color-text-muted);">?</span>
+                </div>
+                <div>
+                  <p id="avatar-info" style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0;">
+                    No profile photo yet.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Portrait generation UI (hidden until portrait status loads) -->
+              <div id="portrait-generate" style="display: none;">
+                <div id="portrait-upload-area" style="border: 2px dashed var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); text-align: center; cursor: pointer; transition: border-color var(--duration-normal) var(--ease-in-out);">
+                  <input type="file" id="portrait-photo-input" accept="image/jpeg,image/png" style="display: none;">
+                  <div id="portrait-upload-label">
+                    <div style="font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium);">Upload a reference photo</div>
+                    <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">JPEG or PNG, max 5MB. Used as reference only, not stored.</div>
+                  </div>
+                  <div id="portrait-upload-preview" style="display: none;">
+                    <img id="portrait-upload-thumb" style="max-height: 80px; border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
+                    <div style="font-size: var(--text-xs); color: var(--color-text-muted);">Photo selected. <a href="#" id="portrait-clear-photo" style="color: var(--color-brand);">Remove</a></div>
+                  </div>
+                </div>
+
+                <div style="margin-top: var(--space-3);">
+                  <label for="portrait-vibe-select" style="font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-heading); display: block; margin-bottom: var(--space-1);">Vibe</label>
+                  <select id="portrait-vibe-select" class="form-input" style="width: auto; min-width: 200px;">
+                    <option value="casual">Casual</option>
+                    <option value="at-my-desk">At my desk</option>
+                    <option value="on-stage">On stage</option>
+                    <option value="in-a-studio">In a studio</option>
+                    <option value="boardroom">Boardroom</option>
+                  </select>
+                </div>
+
+                <div style="margin-top: var(--space-3); display: flex; align-items: center; gap: var(--space-3);">
+                  <button type="button" id="portrait-generate-btn" style="padding: var(--space-2) var(--space-4); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: var(--font-medium); cursor: pointer;">Generate portrait</button>
+                  <span id="portrait-gen-count" style="font-size: var(--text-xs); color: var(--color-text-muted);"></span>
+                </div>
+              </div>
+
+              <!-- Generation in progress -->
+              <div id="portrait-generating" style="display: none; padding: var(--space-4); text-align: center;">
+                <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Generating your portrait...</div>
+              </div>
+
+              <!-- Pending approval -->
+              <div id="portrait-pending" style="display: none;">
+                <div style="display: flex; align-items: flex-start; gap: var(--space-4);">
+                  <img id="portrait-pending-img" style="width: 120px; height: 120px; border-radius: var(--radius-md); object-fit: cover;">
+                  <div>
+                    <div style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">How does this look?</div>
+                    <div style="display: flex; gap: var(--space-2);">
+                      <button type="button" id="portrait-approve-btn" style="padding: var(--space-1.5) var(--space-3); background: var(--color-success-600); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Use this</button>
+                      <button type="button" id="portrait-retry-btn" style="padding: var(--space-1.5) var(--space-3); background: var(--color-bg-card); color: var(--color-text-body); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Try again</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Not eligible message -->
+              <div id="portrait-ineligible" style="display: none;">
+                <span class="form-hint" id="portrait-ineligible-msg"></span>
+              </div>
             </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="field-is-public" aria-label="Public profile">
-              <span class="toggle-track"></span>
-            </label>
+          </div>
+        </div>
+
+        <!-- Addie setup CTA (new members only) -->
+        <div class="edit-section" id="addie-setup-section" style="background: var(--color-primary-50); border-color: var(--color-primary-200);">
+          <div class="addie-cta-row">
+            <div style="flex: 1;">
+              <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-1);">Let Addie fill this in for you</div>
+              <p style="font-size: var(--text-xs); color: var(--color-text-muted); line-height: var(--leading-relaxed); margin: 0;">Addie can set up your headline, bio, expertise, and everything else from a quick conversation.</p>
+            </div>
+            <a id="addie-setup-link" href="/chat?prompt=I%27d%20like%20to%20set%20up%20my%20community%20profile.%20Can%20you%20help%3F" class="addie-cta-btn">Ask Addie</a>
           </div>
         </div>
 
         <!-- About you -->
-        <div class="edit-section" id="section-about">
-          <h2 class="edit-section-title">About you</h2>
-
-          <div class="form-group">
-            <label class="form-label" for="field-slug">Profile URL slug</label>
-            <input type="text" id="field-slug" class="form-input" placeholder="e.g. jane-doe" autocomplete="off" spellcheck="false">
-            <div class="slug-preview">agenticadvertising.org/community/people/<strong id="slug-preview-value">...</strong></div>
-          </div>
+        <details class="edit-section" id="section-about" open>
+          <summary>
+            <h2 class="edit-section-title">About you</h2>
+            <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
 
           <div class="form-group">
             <label class="form-label" for="field-headline">Headline</label>
@@ -507,76 +658,37 @@
             <textarea id="field-bio" class="form-input" placeholder="Tell the community about yourself..."></textarea>
           </div>
 
-          <div class="form-group" id="portrait-group">
-            <label class="form-label">Profile Photo</label>
-
-            <!-- Current portrait / placeholder -->
-            <div id="portrait-current" style="display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-3);">
-              <div id="avatar-preview" style="width: 64px; height: 64px; border-radius: var(--radius-full); overflow: hidden; flex-shrink: 0; background: var(--color-gray-100); display: flex; align-items: center; justify-content: center;">
-                <span id="avatar-placeholder" style="font-size: var(--text-xl); color: var(--color-text-muted);">?</span>
-              </div>
-              <div>
-                <p id="avatar-info" style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0;">
-                  No profile photo yet.
-                </p>
-              </div>
-            </div>
-
-            <!-- Portrait generation UI (hidden until portrait status loads) -->
-            <div id="portrait-generate" style="display: none;">
-              <div id="portrait-upload-area" style="border: 2px dashed var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); text-align: center; cursor: pointer; transition: border-color var(--duration-normal) var(--ease-in-out);">
-                <input type="file" id="portrait-photo-input" accept="image/jpeg,image/png" style="display: none;">
-                <div id="portrait-upload-label">
-                  <div style="font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium);">Upload a reference photo</div>
-                  <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">JPEG or PNG, max 5MB. Used as reference only, not stored.</div>
-                </div>
-                <div id="portrait-upload-preview" style="display: none;">
-                  <img id="portrait-upload-thumb" style="max-height: 80px; border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
-                  <div style="font-size: var(--text-xs); color: var(--color-text-muted);">Photo selected. <a href="#" id="portrait-clear-photo" style="color: var(--color-brand);">Remove</a></div>
-                </div>
-              </div>
-
-              <div style="margin-top: var(--space-3);">
-                <label for="portrait-vibe-select" style="font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-heading); display: block; margin-bottom: var(--space-1);">Vibe</label>
-                <select id="portrait-vibe-select" class="form-input" style="width: auto; min-width: 200px;">
-                  <option value="casual">Casual</option>
-                  <option value="at-my-desk">At my desk</option>
-                  <option value="on-stage">On stage</option>
-                  <option value="in-a-studio">In a studio</option>
-                  <option value="boardroom">Boardroom</option>
-                </select>
-              </div>
-
-              <div style="margin-top: var(--space-3); display: flex; align-items: center; gap: var(--space-3);">
-                <button type="button" id="portrait-generate-btn" style="padding: var(--space-2) var(--space-4); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: var(--font-medium); cursor: pointer;">Generate portrait</button>
-                <span id="portrait-gen-count" style="font-size: var(--text-xs); color: var(--color-text-muted);"></span>
-              </div>
-            </div>
-
-            <!-- Generation in progress -->
-            <div id="portrait-generating" style="display: none; padding: var(--space-4); text-align: center;">
-              <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Generating your portrait...</div>
-            </div>
-
-            <!-- Pending approval -->
-            <div id="portrait-pending" style="display: none;">
-              <div style="display: flex; align-items: flex-start; gap: var(--space-4);">
-                <img id="portrait-pending-img" style="width: 120px; height: 120px; border-radius: var(--radius-md); object-fit: cover;">
-                <div>
-                  <div style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">How does this look?</div>
-                  <div style="display: flex; gap: var(--space-2);">
-                    <button type="button" id="portrait-approve-btn" style="padding: var(--space-1.5) var(--space-3); background: var(--color-success-600); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Use this</button>
-                    <button type="button" id="portrait-retry-btn" style="padding: var(--space-1.5) var(--space-3); background: var(--color-bg-card); color: var(--color-text-body); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Try again</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Not eligible message -->
-            <div id="portrait-ineligible" style="display: none;">
-              <span class="form-hint" id="portrait-ineligible-msg"></span>
-            </div>
+          <div class="form-group" id="slug-group">
+            <label class="form-label" for="field-slug">Profile URL</label>
+            <input type="text" id="field-slug" class="form-input" placeholder="e.g. jane-doe" autocomplete="off" spellcheck="false">
+            <div class="slug-preview">agenticadvertising.org/community/people/<strong id="slug-preview-value">...</strong></div>
           </div>
+        </details>
+
+        <!-- Community visibility -->
+        <details class="edit-section" id="section-visibility">
+          <summary>
+            <h2 class="edit-section-title">Community visibility</h2>
+            <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="toggle-row">
+            <div class="toggle-content">
+              <div class="toggle-label">Public profile</div>
+              <div class="toggle-description">Make your profile visible in the <a href="/community/people" style="color: var(--color-brand);">community directory</a>. Only logged-in members can see it.</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="field-is-public" aria-label="Public profile">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </details>
+
+        <!-- Expertise & location -->
+        <details class="edit-section" id="section-expertise">
+          <summary>
+            <h2 class="edit-section-title">Expertise & location</h2>
+            <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
 
           <div class="form-group">
             <label class="form-label">Expertise</label>
@@ -599,11 +711,14 @@
             <input type="text" id="field-city" class="form-input" placeholder="e.g. New York, London, Tokyo">
             <span class="form-hint">Helps others in your area find you</span>
           </div>
-        </div>
+        </details>
 
         <!-- Social links -->
-        <div class="edit-section" id="section-social">
-          <h2 class="edit-section-title">Social links</h2>
+        <details class="edit-section" id="section-social">
+          <summary>
+            <h2 class="edit-section-title">Social links</h2>
+            <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
 
           <div class="form-group">
             <label class="form-label" for="field-linkedin-url">LinkedIn</label>
@@ -622,11 +737,14 @@
               <input type="text" id="field-github-username" class="form-input" placeholder="yourname" autocomplete="off" spellcheck="false">
             </div>
           </div>
-        </div>
+        </details>
 
         <!-- Preferences -->
-        <div class="edit-section" id="section-preferences">
-          <h2 class="edit-section-title">Preferences</h2>
+        <details class="edit-section" id="section-preferences">
+          <summary>
+            <h2 class="edit-section-title">Preferences</h2>
+            <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
 
           <div class="checkbox-row">
             <input type="checkbox" id="field-coffee-chat" class="checkbox-input">
@@ -643,11 +761,14 @@
               <div class="checkbox-description">Let others know they can introduce you to people in their network</div>
             </div>
           </div>
-        </div>
+        </details>
 
         <!-- Member directory (individual accounts only) -->
-        <div class="edit-section" id="member-directory-section" style="display: none;">
-          <h2 class="edit-section-title">Member directory</h2>
+        <details class="edit-section" id="member-directory-section" style="display: none;">
+          <summary>
+            <h2 class="edit-section-title">Member directory</h2>
+            <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
           <p class="edit-section-description">
             Get listed in the <a href="/members">member directory</a> so companies and peers can discover your expertise in agentic advertising.
           </p>
@@ -681,7 +802,7 @@
             <label class="form-label" for="field-contact-website">Website</label>
             <input type="url" id="field-contact-website" class="form-input" placeholder="https://example.com">
           </div>
-        </div>
+        </details>
 
         <!-- Save -->
         <div class="save-bar">
@@ -709,6 +830,7 @@
     let memberProfileData = null;
     let memberBillingData = null;
     let isPersonalAccount = false;
+    let userData = null;
     let expertiseTags = [];
     let interestsTags = [];
 
@@ -719,7 +841,51 @@
       document.getElementById('field-headline').addEventListener('input', updateCharCount);
       setupTagInput('expertise');
       setupTagInput('interests');
+
+      // When LinkedIn URL changes, suggest the LinkedIn username as slug
+      document.getElementById('field-linkedin-url').addEventListener('change', suggestSlugFromLinkedIn);
     });
+
+    function suggestSlugFromLinkedIn() {
+      const linkedinUrl = document.getElementById('field-linkedin-url').value.trim();
+      const slugField = document.getElementById('field-slug');
+      const currentSlug = slugField.value.trim();
+
+      // Extract LinkedIn username from URL
+      const match = linkedinUrl.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/);
+      if (!match) return;
+
+      const linkedinSlug = match[1].toLowerCase();
+
+      // Only suggest if slug is empty or was auto-generated from name
+      const autoSlug = userData
+        ? slugify([userData.first_name, userData.last_name].filter(Boolean).join(' '))
+        : '';
+      if (!currentSlug || currentSlug === autoSlug) {
+        slugField.value = linkedinSlug;
+        updateSlugPreview();
+      }
+    }
+
+    // Adapt UI for new vs returning members
+    function adaptForMemberState() {
+      const isNew = !profileData || (!profileData.headline && !profileData.bio);
+      if (isNew) {
+        document.getElementById('new-member-header').style.display = '';
+        document.getElementById('returning-member-header').style.display = 'none';
+        document.getElementById('addie-setup-section').style.display = '';
+        // Hide slug field — auto-generated on first save
+        document.getElementById('slug-group').style.display = 'none';
+        // Open about section for new members
+        const about = document.getElementById('section-about');
+        if (about) about.open = true;
+      } else {
+        document.getElementById('new-member-header').style.display = 'none';
+        document.getElementById('returning-member-header').style.display = '';
+        document.getElementById('addie-setup-section').style.display = 'none';
+        document.getElementById('slug-group').style.display = '';
+      }
+    }
 
     // Data fetching
     async function loadProfile() {
@@ -749,6 +915,7 @@
         // Detect individual account from /api/me organizations
         if (meResponse.ok) {
           const meData = await meResponse.json();
+          userData = meData.user || null;
           const orgs = meData.organizations || [];
           if (memberResponse && memberResponse.ok) {
             const memberData = await memberResponse.json();
@@ -787,6 +954,7 @@
         }
 
         populateForm(profileData);
+        adaptForMemberState();
 
         // Show member directory section for individual accounts and restructure layout
         if (isPersonalAccount) {
@@ -859,9 +1027,20 @@
     }
 
     // Form population
+    function slugify(text) {
+      return text.toLowerCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+    }
+
     function populateForm(profile) {
       document.getElementById('field-is-public').checked = !!profile.is_public;
-      document.getElementById('field-slug').value = profile.slug || '';
+      let slug = profile.slug || '';
+      if (!slug && userData && userData.first_name) {
+        slug = slugify([userData.first_name, userData.last_name].filter(Boolean).join(' '));
+      }
+      document.getElementById('field-slug').value = slug;
       updateSlugPreview();
       document.getElementById('field-headline').value = profile.headline || '';
       updateCharCount();
@@ -906,9 +1085,10 @@
         const resp = await fetch(url);
         if (!resp.ok) {
           if (resp.status === 402 || resp.status === 404) {
+            // Keep avatar preview, hide generation controls
             document.getElementById('portrait-ineligible').style.display = '';
             document.getElementById('portrait-ineligible-msg').textContent =
-              'Subscribe to a membership to generate a portrait.';
+              'Paid members can generate an illustrated portrait.';
           }
           return;
         }

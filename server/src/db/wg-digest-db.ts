@@ -27,13 +27,17 @@ export interface WgDigestContent {
 export interface WgDigestMeetingRecap {
   title: string;
   date: string;
-  summary: string;
+  summary: string | null;
+  meetingUrl: string;
 }
 
 export interface WgDigestThread {
   summary: string;
   replyCount: number;
   threadUrl: string;
+  starter?: string;
+  participantCount?: number;
+  latestReply?: string;
 }
 
 /**

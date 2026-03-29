@@ -106,7 +106,8 @@ export type EmailType =
   | 'signup_user'
   | 'signup_user_member'
   | 'signup_user_nonmember'
-  | 'slack_invite';
+  | 'slack_invite'
+  | 'email_link_verification';
 
 /**
  * Send welcome email to new members after subscription is created
@@ -1322,4 +1323,106 @@ export async function sendTrackedBatchMarketingEmails(
   }
 
   return result;
+}
+
+/**
+ * Send a verification email for linking another email to an account.
+ * Transactional — no unsubscribe link.
+ */
+export async function sendEmailLinkVerification(data: {
+  to: string;
+  token: string;
+  primaryUserName: string;
+  primaryEmail: string;
+}): Promise<boolean> {
+  if (!resend) {
+    logger.debug('Resend not configured, skipping email link verification');
+    return false;
+  }
+
+  const emailType: EmailType = 'email_link_verification';
+  const subject = 'Verify your email link — AgenticAdvertising.org';
+
+  const escapeHtml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const safeName = escapeHtml(data.primaryUserName);
+  const safeEmail = escapeHtml(data.primaryEmail);
+  const verifyUrl = `${BASE_URL}/verify-email-link?token=${data.token}`;
+
+  try {
+    const emailEvent = await emailDb.createEmailEvent({
+      email_type: emailType,
+      recipient_email: data.to,
+      subject,
+      metadata: { primaryEmail: data.primaryEmail },
+    });
+
+    const trackingId = emailEvent.tracking_id;
+    const trackedVerifyUrl = trackedUrl(trackingId, 'cta_verify_email', verifyUrl);
+    const footerHtml = generateFooterHtml(trackingId, null);
+    const footerText = generateFooterText(null);
+
+    const { data: sendData, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: data.to,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Verify Your Email</h1>
+  </div>
+
+  <p>Hi,</p>
+
+  <p><strong>${safeName}</strong> (${safeEmail}) wants to link this email address to their AgenticAdvertising.org account.</p>
+
+  <p>If this was you, click the button below to verify ownership. If you have an existing account with this email, your accounts will be merged — all your memberships, certifications, and activity will be consolidated.</p>
+
+  <p style="text-align: center; margin: 30px 0;">
+    <a href="${trackedVerifyUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">Verify Email Link</a>
+  </p>
+
+  <p style="font-size: 13px; color: #666;">This link expires in 24 hours. If you didn't request this, you can safely ignore this email.</p>
+
+  ${footerHtml}
+</body>
+</html>
+      `.trim(),
+      text: `
+Verify Your Email — AgenticAdvertising.org
+
+${data.primaryUserName} (${data.primaryEmail}) wants to link this email address to their AgenticAdvertising.org account.
+
+If this was you, click the link below to verify. If you have an existing account, your accounts will be merged.
+
+${verifyUrl}
+
+This link expires in 24 hours. If you didn't request this, you can safely ignore this email.
+
+${footerText}
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error({ error, to: data.to }, 'Failed to send email link verification');
+      return false;
+    }
+
+    if (sendData?.id) {
+      await emailDb.markEmailSent(trackingId, sendData.id);
+    }
+
+    logger.info({ to: data.to, trackingId }, 'Email link verification sent');
+    return true;
+  } catch (error) {
+    logger.error({ error, to: data.to }, 'Error sending email link verification');
+    return false;
+  }
 }

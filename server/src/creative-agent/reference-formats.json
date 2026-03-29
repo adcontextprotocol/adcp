@@ -3604,6 +3604,42 @@
       },
       {
         "item_type": "individual",
+        "asset_id": "publisher_name",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Publisher or property name (e.g., 'Pinnacle News Group')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "audience_summary",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Audience summary (e.g., 'Adults 25-54, 8M monthly uniques')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "estimated_volume",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Estimated available impressions (e.g., '~2M impressions/month')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "description": "Click-through URL for the product card (e.g., product detail page)"
+        }
+      },
+      {
+        "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
         "asset_type": "url",
@@ -3748,6 +3784,42 @@
       },
       {
         "item_type": "individual",
+        "asset_id": "publisher_name",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Publisher or property name (e.g., 'Pinnacle News Group')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "audience_summary",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Audience summary (e.g., 'Adults 25-54, 8M monthly uniques')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "estimated_volume",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Estimated available impressions (e.g., '~2M impressions/month')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "description": "Click-through URL for the product card (e.g., product detail page)"
+        }
+      },
+      {
+        "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
         "asset_type": "url",
@@ -3794,6 +3866,326 @@
         "asset_type": "text",
         "requirements": {
           "description": "Detailed description of the product (supports markdown)"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "proposal_card_standard"
+    },
+    "name": "Proposal Card - Standard",
+    "description": "Standard visual card (300x400px) for displaying media plan proposals with allocation bars and budget guidance",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "height": 400,
+          "responsive": {
+            "height": false,
+            "width": false
+          },
+          "width": 300
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_name",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the proposal"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_description",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Short description of the proposal"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "allocation_data",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "JSON array of allocations: [{product_id, allocation_percentage, rationale}]"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "budget_min",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Minimum budget amount (e.g., '25000')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "budget_recommended",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Recommended budget amount (e.g., '75000')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "budget_currency",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Currency code (e.g., 'USD')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "brief_alignment",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Narrative explanation of how the proposal aligns with the brief"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_status",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Proposal status: 'draft' or 'committed'"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "publisher_name",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Publisher or network name (e.g., 'Pinnacle News Group')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "estimated_delivery",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Estimated delivery summary (e.g., 'Est. 3.2M impressions, 1.8M reach')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_image",
+        "required": false,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Hero image for the proposal card header"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "description": "Click-through URL for the proposal card (e.g., interactive proposal page)"
+        }
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "proposal_name",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the proposal"
+        }
+      },
+      {
+        "asset_id": "proposal_description",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Short description of the proposal"
+        }
+      },
+      {
+        "asset_id": "allocation_data",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "JSON array of allocations: [{product_id, allocation_percentage, rationale}]"
+        }
+      }
+    ]
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "proposal_card_detailed"
+    },
+    "name": "Proposal Card - Detailed",
+    "description": "Detailed card with full allocation breakdown, rationale, and budget for rich proposal presentation",
+    "type": "display",
+    "renders": [
+      {
+        "dimensions": {
+          "responsive": {
+            "height": true,
+            "width": true
+          }
+        },
+        "role": "primary"
+      }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_name",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the proposal"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_description",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Detailed description of the proposal"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "allocation_data",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "JSON array of allocations: [{product_id, allocation_percentage, rationale}]"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "budget_min",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Minimum budget amount (e.g., '25000')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "budget_recommended",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Recommended budget amount (e.g., '75000')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "budget_currency",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Currency code (e.g., 'USD')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "brief_alignment",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Narrative explanation of how the proposal aligns with the brief"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_status",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Proposal status: 'draft' or 'committed'"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "publisher_name",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Publisher or network name (e.g., 'Pinnacle News Group')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "estimated_delivery",
+        "required": false,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Estimated delivery summary (e.g., 'Est. 3.2M impressions, 1.8M reach')"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "proposal_image",
+        "required": false,
+        "asset_type": "image",
+        "requirements": {
+          "description": "Hero image for the proposal card header"
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "required": false,
+        "asset_type": "url",
+        "requirements": {
+          "description": "Click-through URL for the proposal card (e.g., interactive proposal page)"
+        }
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "proposal_name",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Display name of the proposal"
+        }
+      },
+      {
+        "asset_id": "proposal_description",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "Detailed description of the proposal"
+        }
+      },
+      {
+        "asset_id": "allocation_data",
+        "item_type": "individual",
+        "required": true,
+        "asset_type": "text",
+        "requirements": {
+          "description": "JSON array of allocations: [{product_id, allocation_percentage, rationale}]"
         }
       }
     ]

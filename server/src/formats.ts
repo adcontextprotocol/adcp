@@ -79,7 +79,6 @@ export class FormatsService {
       name: format.name || format.format || "unknown",
       dimensions: format.dimensions || format.size,
       aspect_ratio: format.aspect_ratio || format.aspectRatio,
-      type: format.type || format.format_type,
       description: format.description,
     };
   }

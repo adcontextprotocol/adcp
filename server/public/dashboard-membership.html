@@ -869,6 +869,18 @@
         </div>
       </div>
 
+      <!-- Upgrade options (for subscribers on lower tiers) -->
+      <div id="upgradeCard" class="billing-card" style="display: none;">
+        <div class="billing-card-header">
+          <h2>Upgrade Your Membership</h2>
+        </div>
+        <div class="billing-card-body">
+          <div id="upgradeProductsContainer">
+            <div class="products-loading">Loading upgrade options...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Member Benefits (for existing subscribers) -->
       <div id="memberBenefitsCard" class="member-benefits-card" style="display: none;">
         <div class="member-badge">
@@ -1208,6 +1220,8 @@
       const memberBenefitsCard = document.getElementById('memberBenefitsCard');
       const whatsNextCard = document.getElementById('whatsNextCard');
 
+      const upgradeCard = document.getElementById('upgradeCard');
+
       if (hasSubscription) {
         subscriptionCard.style.display = 'block';
         memberBenefitsCard.style.display = 'block';
@@ -1217,7 +1231,9 @@
         renderSubscriptionStatus();
         renderMemberBenefitsForSubscriber();
         loadMyAgreements();
+        loadUpgradeOptions();
       } else {
+        upgradeCard.style.display = 'none';
         subscriptionCard.style.display = 'none';
         memberBenefitsCard.style.display = 'none';
         whatsNextCard.style.display = 'none';
@@ -1470,6 +1486,68 @@
       }).join('');
 
       container.innerHTML = `<div class="products-grid">${cardsHtml}</div>`;
+    }
+
+    // Load upgrade options for existing subscribers
+    async function loadUpgradeOptions() {
+      const upgradeCard = document.getElementById('upgradeCard');
+      const container = document.getElementById('upgradeProductsContainer');
+      if (!upgradeCard || !container) return;
+
+      const currentAmountCents = currentOrg.billing?.amount_cents;
+      // If we don't know the current price, we can't determine upgrades
+      if (currentAmountCents == null) {
+        upgradeCard.style.display = 'none';
+        return;
+      }
+
+      try {
+        const url = new URL('/api/billing-products', window.location.origin);
+        url.searchParams.set('category', 'membership');
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        const allProducts = data.products || [];
+
+        // Deduplicate by price, then filter to tiers above current
+        const seenPrices = new Set();
+        const upgradeProducts = allProducts.filter(product => {
+          if (product.amount_cents <= currentAmountCents) return false;
+          if (seenPrices.has(product.amount_cents)) return false;
+          seenPrices.add(product.amount_cents);
+          return true;
+        });
+
+        if (upgradeProducts.length === 0) {
+          upgradeCard.style.display = 'none';
+          return;
+        }
+
+        // Store for use by selectProduct/openInvoiceRequestForProduct
+        membershipProducts = allProducts;
+
+        const cardsHtml = upgradeProducts.map(product => `
+          <div class="product-card" data-lookup-key="${escapeHtml(product.lookup_key)}">
+            <div class="product-card-name">${escapeHtml(product.display_name)}</div>
+            ${product.description ? `<div class="product-card-description">${escapeHtml(product.description)}</div>` : ''}
+            <div class="product-card-price">
+              ${formatCurrency(product.amount_cents)}
+              <span class="period">/year</span>
+            </div>
+            <div class="product-card-actions">
+              <button class="btn btn-primary" onclick="selectProduct('${escapeHtml(product.lookup_key)}')">Upgrade</button>
+              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${escapeHtml(product.lookup_key)}')">Request Invoice</button>
+            </div>
+          </div>
+        `).join('');
+
+        container.innerHTML = `<div class="products-grid">${cardsHtml}</div>`;
+        upgradeCard.style.display = 'block';
+      } catch (error) {
+        console.error('Error loading upgrade options:', error);
+        upgradeCard.style.display = 'none';
+      }
     }
 
     // Select a product and show agreement modal

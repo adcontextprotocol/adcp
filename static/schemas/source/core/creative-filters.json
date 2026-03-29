@@ -13,14 +13,6 @@
       },
       "minItems": 1
     },
-    "format_types": {
-      "type": "array",
-      "description": "Filter by high-level format types (e.g., 'video', 'audio', 'display'). For specific format matching, use format_ids instead.",
-      "items": {
-        "type": "string"
-      },
-      "minItems": 1
-    },
     "statuses": {
       "type": "array",
       "description": "Filter by creative approval statuses",

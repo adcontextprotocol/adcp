@@ -7,7 +7,51 @@ testable: true
 
 # Migrating creatives
 
-AdCP 3.0 makes two breaking changes to creative handling: weighted creative assignments replace simple ID arrays, and a unified `assets` array replaces `assets_required` for format discovery.
+AdCP 3.0 makes three breaking changes to creative handling: the `FormatCategory` enum and format `type` field are removed, weighted creative assignments replace simple ID arrays, and a unified `assets` array replaces `assets_required` for format discovery.
+
+## Format category removal
+
+### What changed
+
+| v2 field | v3 field | Change type |
+|----------|----------|-------------|
+| `type` on format objects (FormatCategory enum) | Removed | Deleted |
+| `format_types` filter on `list_creative_formats` / `get_products` | Removed | Deleted |
+
+### Why
+
+The `FormatCategory` enum (`video`, `display`, `audio`, `native`, `social`, `custom`) was a coarse classifier that didn't map well to multi-asset formats. A "video" format might also require display companion banners and text overlays. The enum forced implementors to pick one category for inherently multi-modal formats, which led to inconsistent filtering and discovery gaps.
+
+### Migration
+
+Replace `format_types` filters with `asset_types` (what the format needs) or `format_ids` (exact match):
+
+**v2:**
+```json
+{
+  "format_types": ["video"]
+}
+```
+
+**v3 — filter by asset type:**
+```json
+{
+  "asset_types": ["video"]
+}
+```
+
+**v3 — filter by exact format ID:**
+```json
+{
+  "format_ids": [
+    { "agent_url": "https://creatives.example.com", "id": "video_preroll_30s" }
+  ]
+}
+```
+
+`asset_types` returns any format that includes at least one asset of that type — so a video format with companion banners appears in both `["video"]` and `["image"]` results.
+
+---
 
 ## Creative assignments
 
@@ -254,6 +298,23 @@ v2's `preview_image` URL is replaced by `format_card`, which uses the creative r
 ---
 
 ## Migration steps
+
+### Format category
+
+<Steps>
+  <Step title="Remove format_types filters">
+    Remove `format_types` from `list_creative_formats` and `get_products` requests.
+  </Step>
+  <Step title="Replace with asset_types">
+    Use `asset_types` to filter formats by what assets they accept (e.g., `["video"]`, `["image"]`).
+  </Step>
+  <Step title="Or use format_ids">
+    Use `format_ids` for exact format matching when you know the specific formats you need.
+  </Step>
+  <Step title="Stop reading type field">
+    Remove any code that reads the `type` field from format objects — it no longer exists in v3.
+  </Step>
+</Steps>
 
 ### Creative assignments
 
