@@ -71,8 +71,8 @@ describe("approvePortrait", () => {
 });
 
 describe("getPortraitData", () => {
-  it("only serves approved portraits", () => {
-    expect(portraitDbSource).toContain("WHERE id = $1 AND status = 'approved'");
+  it("serves approved and generated portraits for preview", () => {
+    expect(portraitDbSource).toContain("status IN ('approved', 'generated')");
   });
 });
 

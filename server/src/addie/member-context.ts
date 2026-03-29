@@ -670,6 +670,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         last_name: devUser.lastName,
       };
       context.is_member = devUser.isMember;
+      context.slack_linked = true; // Dev users are fully authenticated
       return context;
     }
   }
@@ -1178,8 +1179,8 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     }
   }
 
-  // Slack linking status
-  if (!context.slack_linked) {
+  // Slack linking status (only relevant for Slack-originated conversations)
+  if (!context.slack_linked && context.slack_user) {
     lines.push('');
     lines.push('Note: This user\'s Slack account is not yet linked to their AgenticAdvertising.org account.');
   }
