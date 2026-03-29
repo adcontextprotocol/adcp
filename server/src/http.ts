@@ -38,6 +38,8 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
+import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
+import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -4908,6 +4910,56 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get perspective',
         });
+      }
+    });
+
+    // GET /api/perspectives/:slug/card.png - Generated card image for a perspective
+    const cardImageCache = new Map<string, { buffer: Buffer; expires: number }>();
+    const CARD_CACHE_MAX = 200;
+    this.app.get('/api/perspectives/:slug/card.png', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const now = Date.now();
+        const cached = cardImageCache.get(slug);
+        if (cached && cached.expires > now) {
+          res.set('Content-Type', 'image/png');
+          res.set('Cache-Control', 'public, max-age=86400');
+          return res.send(cached.buffer);
+        }
+
+        const perspective = await getPerspectiveWithIllustration(slug);
+        if (!perspective) {
+          return res.status(404).send('Not found');
+        }
+
+        const cardOpts = {
+          title: perspective.title,
+          category: perspective.category || undefined,
+          authorName: perspective.author_name || undefined,
+          authorTitle: perspective.author_title || undefined,
+        };
+
+        const imageData = perspective.illustration_id
+          ? await getIllustrationData(perspective.illustration_id)
+          : null;
+
+        const png = imageData
+          ? await compositePerspectiveCard({ illustrationBuffer: imageData, ...cardOpts })
+          : await generatePerspectiveCard(cardOpts);
+
+        // Evict oldest entries if cache is full
+        if (cardImageCache.size >= CARD_CACHE_MAX) {
+          const oldest = cardImageCache.keys().next().value;
+          if (oldest) cardImageCache.delete(oldest);
+        }
+        cardImageCache.set(slug, { buffer: png, expires: now + 86400000 });
+
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(png);
+      } catch (error) {
+        logger.error({ err: error, slug: req.params.slug }, 'Card image generation error');
+        res.status(500).send('Failed to generate card');
       }
     });
 

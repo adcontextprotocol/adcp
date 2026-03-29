@@ -191,6 +191,9 @@
       flex-direction: column;
       flex: 1;
     }
+    .carousel-card .card-excerpt {
+      -webkit-line-clamp: 2;
+    }
 
     /* News list */
     .news-list {
@@ -563,15 +566,14 @@
             }
 
             var imageUrl = item.featured_image_url
-              || (item.illustration_id ? '/api/perspectives/' + item.slug + '/card.png' : null);
-            if (imageUrl) {
-              var cover = document.createElement('img');
-              cover.src = imageUrl;
-              cover.alt = '';
-              cover.className = 'card-cover';
-              cover.loading = 'lazy';
-              card.appendChild(cover);
-            }
+              || '/api/perspectives/' + item.slug + '/card.png';
+            var cover = document.createElement('img');
+            cover.src = imageUrl;
+            cover.alt = '';
+            cover.className = 'card-cover';
+            cover.loading = 'lazy';
+            cover.onerror = function() { this.style.display = 'none'; };
+            card.appendChild(cover);
 
             var body = document.createElement('div');
             body.className = 'card-body';
@@ -591,6 +593,14 @@
             title.className = 'card-title';
             title.textContent = item.title || 'Untitled';
             body.appendChild(title);
+
+            var excerptText = item.excerpt || item.subtitle || '';
+            if (excerptText) {
+              var excerpt = document.createElement('p');
+              excerpt.className = 'card-excerpt';
+              excerpt.textContent = excerptText;
+              body.appendChild(excerpt);
+            }
 
             var meta = document.createElement('span');
             meta.className = 'card-meta';
