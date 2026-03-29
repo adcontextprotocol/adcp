@@ -45,6 +45,13 @@ function parseDurationToSeconds(iso: string): number | null {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
+function inferPrimaryAssetType(channels: string[]): string {
+  if (channels.some(c => ['olv', 'ctv', 'linear_tv'].includes(c))) return 'video';
+  if (channels.some(c => ['radio', 'streaming_audio', 'podcast'].includes(c))) return 'audio';
+  if (channels.some(c => ['social', 'influencer'].includes(c))) return 'social';
+  return 'display';
+}
+
 function buildPriceGuidance(template: PricingTemplate): PriceGuidance | undefined {
   if (!template.priceGuidance) return undefined;
   const { suggested, range } = template.priceGuidance;
@@ -506,6 +513,45 @@ function buildProduct(
     ...(showTargetingAllowed && { show_targeting_allowed: showTargetingAllowed }),
   };
 
+  // Populate product card manifests from the product's own data
+  const primaryPricing = effectivePricing[0];
+  const primaryAssetType = inferPrimaryAssetType(template.channels);
+  const cardAssets: Record<string, { content?: string; url?: string }> = {
+    product_name: { content: template.name },
+    product_description: { content: template.description },
+    delivery_type: { content: template.deliveryType },
+    primary_asset_type: { content: primaryAssetType },
+  };
+  if (pub.heroImageUrl) {
+    cardAssets.product_image = { url: pub.heroImageUrl };
+  }
+  cardAssets.publisher_name = { content: pub.name };
+  if (pub.audienceSummary) {
+    cardAssets.audience_summary = { content: pub.audienceSummary };
+  }
+  if (pub.estimatedVolume) {
+    cardAssets.estimated_volume = { content: pub.estimatedVolume };
+  }
+  if (primaryPricing) {
+    cardAssets.pricing_model = { content: primaryPricing.model.toUpperCase() };
+    const priceValue = primaryPricing.fixedPrice ?? primaryPricing.floorPrice;
+    if (priceValue !== undefined) {
+      cardAssets.pricing_amount = { content: String(priceValue) };
+    }
+    cardAssets.pricing_currency = { content: primaryPricing.currency };
+  }
+  // Click-through links to the publisher's product page
+  cardAssets.click_url = { url: `https://${pub.domain}/products/${productId}` };
+
+  product.product_card = {
+    format_id: { agent_url: agentUrl, id: 'product_card_standard' },
+    manifest: { format_id: { agent_url: agentUrl, id: 'product_card_standard' }, assets: cardAssets },
+  };
+  product.product_card_detailed = {
+    format_id: { agent_url: agentUrl, id: 'product_card_detailed' },
+    manifest: { format_id: { agent_url: agentUrl, id: 'product_card_detailed' }, assets: cardAssets },
+  };
+
   return {
     product,
     publisherId: pub.id,
@@ -675,6 +721,51 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       return cp?.product.delivery_type === 'guaranteed';
     });
 
+    // Build proposal card manifests for visual rendering
+    const agentUrl = getAgentUrl();
+    // Use hero image from the proposal's publisher
+    const proposalPub = PUBLISHERS.find(p => p.id === def.publisherId);
+
+    // Build allocation data with product names for display
+    const allocDataWithNames = allocations.map(a => {
+      const cp = catalog.find(c => c.product.product_id === a.product_id);
+      return {
+        product_id: a.product_id,
+        product_name: cp?.product.name,
+        allocation_percentage: a.allocation_percentage,
+        rationale: a.rationale,
+      };
+    });
+
+    // Estimate total delivery from budget and pricing
+    const totalImpressions = def.budgetGuidance.recommended
+      ? Math.round(allocations.reduce((sum, a) => {
+          const cp = catalog.find(c => c.product.product_id === a.product_id);
+          const firstPricing = cp?.product.pricing_options[0] as { fixed_price?: number; floor_price?: number } | undefined;
+          const price = firstPricing?.fixed_price ?? firstPricing?.floor_price ?? 10;
+          return sum + (def.budgetGuidance.recommended * (a.allocation_percentage / 100) / price * 1000);
+        }, 0))
+      : undefined;
+
+    const estimatedDeliveryText = totalImpressions
+      ? `Est. ${totalImpressions >= 1_000_000 ? `${(totalImpressions / 1_000_000).toFixed(1)}M` : `${Math.round(totalImpressions / 1000)}K`} impressions`
+      : undefined;
+
+    const proposalCardAssets: Record<string, { content?: string; url?: string }> = {
+      proposal_name: { content: def.name },
+      proposal_description: { content: def.description },
+      allocation_data: { content: JSON.stringify(allocDataWithNames) },
+      budget_min: { content: String(def.budgetGuidance.min) },
+      budget_recommended: { content: String(def.budgetGuidance.recommended) },
+      budget_currency: { content: def.budgetGuidance.currency },
+      brief_alignment: { content: def.briefAlignment },
+      ...(hasGuaranteed && { proposal_status: { content: 'draft' } }),
+      ...(proposalPub && { publisher_name: { content: proposalPub.name } }),
+      ...(estimatedDeliveryText && { estimated_delivery: { content: estimatedDeliveryText } }),
+      ...(proposalPub?.heroImageUrl && { proposal_image: { url: proposalPub.heroImageUrl } }),
+      click_url: { url: `https://${proposalPub?.domain || 'example.com'}/proposals/${def.proposalId}` },
+    };
+
     proposals.push({
       proposal_id: def.proposalId,
       name: def.name,
@@ -684,8 +775,18 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       allocations,
       ...(hasGuaranteed && {
         proposal_status: 'draft' as const,
-        expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours indicative window
+        expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       }),
+      ext: {
+        proposal_card: {
+          format_id: { agent_url: agentUrl, id: 'proposal_card_standard' },
+          manifest: { format_id: { agent_url: agentUrl, id: 'proposal_card_standard' }, assets: proposalCardAssets },
+        },
+        proposal_card_detailed: {
+          format_id: { agent_url: agentUrl, id: 'proposal_card_detailed' },
+          manifest: { format_id: { agent_url: agentUrl, id: 'proposal_card_detailed' }, assets: proposalCardAssets },
+        },
+      },
     } as Proposal);
   }
 
