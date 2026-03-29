@@ -34,6 +34,7 @@ import { setupBanRoutes } from "./admin/bans.js";
 import { setupGeoRoutes } from "./admin/geo.js";
 import { setupRelationshipRoutes } from "./admin/relationships.js";
 import { setupSimulationRoutes } from "./admin/simulations.js";
+import { setupIllustrationRoutes } from "./admin/illustrations.js";
 
 const logger = createLogger("admin-routes");
 
@@ -143,6 +144,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Outreach simulation and assessment routes
   setupSimulationRoutes(apiRouter);
+
+  // Perspective illustration generation routes
+  setupIllustrationRoutes(apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
