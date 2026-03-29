@@ -13,6 +13,7 @@
  */
 
 import * as crypto from 'crypto';
+import sharp from 'sharp';
 import { logger } from '../../logger.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import {
@@ -113,6 +114,25 @@ const MAX_DECOMPRESSED_SIZE = 100 * 1024 * 1024; // 100 MB
 
 // Only these image types are safe to serve and supported by Claude vision
 const SAFE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+// Anthropic API rejects base64 images over 5 MB. Base64 expands ~33%,
+// so cap raw buffer at 3.75 MB to stay safely under the limit.
+const MAX_IMAGE_BYTES_FOR_VISION = 3.75 * 1024 * 1024;
+
+/**
+ * Compress an image buffer to fit within the Anthropic vision API size limit.
+ * Converts to JPEG and progressively reduces quality until it fits.
+ */
+async function compressForVision(buffer: Buffer): Promise<{ data: Buffer; mediaType: 'image/jpeg' }> {
+  const image = sharp(buffer);
+  let quality = 80;
+  let result = await image.clone().jpeg({ quality }).toBuffer();
+  while (result.length > MAX_IMAGE_BYTES_FOR_VISION && quality > 20) {
+    quality -= 15;
+    result = await image.clone().jpeg({ quality }).toBuffer();
+  }
+  return { data: result, mediaType: 'image/jpeg' };
+}
 
 /**
  * Fetch a document from a URL and return the raw buffer.
@@ -663,8 +683,24 @@ export async function generateAssetDescriptions(batchSize = 5): Promise<number> 
     if (!SAFE_IMAGE_TYPES.has(asset.mime_type)) continue;
 
     try {
-      const base64 = asset.asset_data.toString('base64');
-      const mediaType = asset.mime_type as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+      let imageBuffer = asset.asset_data;
+      let mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' =
+        asset.mime_type as typeof mediaType;
+
+      // Compress oversized images to fit within Anthropic's 5 MB base64 limit
+      if (imageBuffer.length > MAX_IMAGE_BYTES_FOR_VISION) {
+        const compressed = await compressForVision(imageBuffer);
+        if (compressed.data.length > MAX_IMAGE_BYTES_FOR_VISION) {
+          logger.debug({ assetId: asset.id, bytes: imageBuffer.length }, 'Image still too large after compression');
+          await workingGroupDb.updateAssetDescription(asset.id, 'Image too large for vision analysis');
+          continue;
+        }
+        imageBuffer = compressed.data;
+        mediaType = compressed.mediaType;
+        logger.debug({ assetId: asset.id, original: asset.asset_data.length, compressed: imageBuffer.length }, 'Compressed image for vision API');
+      }
+
+      const base64 = imageBuffer.toString('base64');
 
       const result = await complete({
         system: 'Describe this image from a brand/design document. Focus on: what it shows (logo, color palette, typography, layout, photo), any text visible, colors used, and how it relates to brand identity. Be concise (1-3 sentences).',
@@ -686,6 +722,10 @@ export async function generateAssetDescriptions(batchSize = 5): Promise<number> 
       }
     } catch (err) {
       logger.warn({ err, assetId: asset.id }, 'Failed to generate asset description');
+      // Mark the asset so the job doesn't retry it every 30 minutes
+      try {
+        await workingGroupDb.updateAssetDescription(asset.id, 'Unable to analyze image');
+      } catch { /* best-effort */ }
     }
   }
 

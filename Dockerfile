@@ -85,7 +85,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --omit=dev --ignore-scripts
+# --ignore-scripts is used to skip arbitrary lifecycle scripts, but sharp
+# needs its install script to download platform-specific native binaries.
+RUN npm ci --omit=dev --ignore-scripts && npm rebuild sharp
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist

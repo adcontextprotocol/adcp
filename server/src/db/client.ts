@@ -3,6 +3,17 @@ import { DatabaseConfig } from "../config.js";
 
 let pool: Pool | null = null;
 
+/** Callback invoked on pool-level errors (set via onPoolError). */
+let poolErrorCallback: ((err: Error) => void) | null = null;
+
+/**
+ * Register a callback for pool-level errors (e.g. to escalate to Slack).
+ * Only one callback is supported; later calls replace earlier ones.
+ */
+export function onPoolError(cb: (err: Error) => void): void {
+  poolErrorCallback = cb;
+}
+
 /**
  * Initialize database connection pool
  */
@@ -20,12 +31,16 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     password: config.password,
     ssl: config.ssl,
     max: config.maxPoolSize || 10,
-    idleTimeoutMillis: config.idleTimeoutMillis || 30000,
+    idleTimeoutMillis: config.idleTimeoutMillis || 10000,
     connectionTimeoutMillis: config.connectionTimeoutMillis || 5000,
+    // Detect dead connections killed by managed Postgres providers (Neon, Supabase)
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   });
 
   pool.on("error", (err) => {
     console.error("Unexpected database pool error:", err);
+    poolErrorCallback?.(err);
   });
 
   console.log("Database connection pool initialized");
