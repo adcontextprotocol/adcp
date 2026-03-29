@@ -120,6 +120,7 @@ export interface CreateMessageInput {
     reason: string;
     decision_method: 'quick_match' | 'llm';
     tools?: string[];
+    confidence?: string;
     latency_ms?: number;
     tokens_input?: number;
     tokens_output?: number;
@@ -171,6 +172,7 @@ export interface ThreadMessage {
     reason: string;
     decision_method: 'quick_match' | 'llm';
     tools?: string[];
+    confidence?: string;
     latency_ms?: number;
     tokens_input?: number;
     tokens_output?: number;
@@ -353,6 +355,16 @@ export class ThreadService {
     await query(
       `UPDATE addie_threads SET flagged = TRUE, flag_reason = $2, updated_at = NOW() WHERE thread_id = $1`,
       [threadId, reason]
+    );
+  }
+
+  /**
+   * Merge keys into a thread's context JSONB (top-level merge, not deep)
+   */
+  async patchThreadContext(threadId: string, patch: Record<string, unknown>): Promise<void> {
+    await query(
+      `UPDATE addie_threads SET context = COALESCE(context, '{}'::jsonb) || $2::jsonb, updated_at = NOW() WHERE thread_id = $1`,
+      [threadId, JSON.stringify(patch)]
     );
   }
 

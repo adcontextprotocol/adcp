@@ -85,7 +85,7 @@ import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
-import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
+import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -1001,6 +1001,7 @@ async function selectRoutedToolsForSlackResponse(
   unavailableHint: string;
   requiresPrecision: boolean;
   requiresDepth: boolean;
+  confidence: ConfidenceTier;
 }> {
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
     memberContext,
@@ -1023,6 +1024,7 @@ async function selectRoutedToolsForSlackResponse(
       unavailableHint,
       requiresPrecision: false,
       requiresDepth: false,
+      confidence: 'high',
     };
   }
 
@@ -1071,12 +1073,18 @@ async function selectRoutedToolsForSlackResponse(
     'Addie Bolt: Routed conversational tools'
   );
 
+  // Extract confidence: respond actions carry it, others default to high
+  const confidence: ConfidenceTier = plan.action === 'respond'
+    ? plan.confidence
+    : 'high';
+
   return {
     tools: filteredTools,
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
+    confidence,
   };
 }
 
@@ -1354,7 +1362,7 @@ async function handleUserMessage({
     slackThreadContext,
     { isThread: true, hasCertificationContext }
   );
-  const requestContextWithRouting = [requestContext, routedTools.unavailableHint]
+  const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -1932,7 +1940,8 @@ async function handleAppMention({
     mentionChannelContext,
     { isThread: isInThread }
   );
-  requestContext = [requestContext, routedTools.unavailableHint]
+
+  requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -2361,13 +2370,25 @@ function buildFeedbackBlock(): {
 }
 
 /**
- * Build router_decision metadata from an ExecutionPlan
+ * Build confidence calibration text for the system prompt.
+ * Tells Claude how to adjust response style based on confidence tier.
  */
+function buildConfidenceCalibration(confidence: ConfidenceTier): string {
+  if (confidence === 'low') {
+    return '## Response Calibration\nYou are not confident you can answer this well. Lead with "I\'m not sure about this" and keep it brief (2-3 sentences). Suggest who might help if you know.';
+  }
+  if (confidence === 'suggest') {
+    return '## Response Calibration\nYou cannot answer this directly but know who can. Give a brief pointer (1-2 sentences) to a specific person, working group, or channel. Do not explain what you cannot do.';
+  }
+  return '';
+}
+
 function buildRouterDecision(plan: ExecutionPlan): {
   action: string;
   reason: string;
   decision_method: 'quick_match' | 'llm';
   tool_sets?: string[];
+  confidence?: string;
   latency_ms?: number;
   tokens_input?: number;
   tokens_output?: number;
@@ -2384,7 +2405,7 @@ function buildRouterDecision(plan: ExecutionPlan): {
   };
 
   if (plan.action === 'respond') {
-    return { ...base, tool_sets: plan.tool_sets };
+    return { ...base, tool_sets: plan.tool_sets, confidence: plan.confidence };
   }
 
   return base;
@@ -2610,7 +2631,8 @@ async function handleDirectMessage(
     thread.thread_id,
     null
   );
-  requestContext = [requestContext, routedTools.unavailableHint]
+
+  requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -2960,7 +2982,20 @@ async function handleActiveThreadReply({
     channelContext,
     { isThread: true }
   );
-  requestContext = [requestContext, routedTools.unavailableHint]
+
+  // Suppress low-confidence replies in active channel threads, flag for review
+  if (routedTools.confidence === 'low') {
+    logger.info({ channelId, userId, threadTs },
+      'Addie Bolt: Suppressing low-confidence active thread reply');
+    try {
+      await threadService.flagThread(thread.thread_id, 'Low-confidence suppression (active thread)');
+    } catch (flagError) {
+      logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+    }
+    return;
+  }
+
+  requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
@@ -3437,18 +3472,88 @@ async function handleChannelMessage({
     }
 
     // action === 'respond'
-    // In threaded channel messages, delay before responding to let humans go first.
-    // Skip delay if user explicitly named Addie (they want her input).
-    // @mentions are handled by handleAppMention (filtered at line 3071), DMs at line 3029.
+    // Suppress low-confidence channel responses — let humans answer, but flag for review
+    if (plan.confidence === 'low') {
+      logger.info({ channelId, userId, reason: plan.reason },
+        'Addie Bolt: Suppressing low-confidence channel response');
+      try {
+        await threadService.flagThread(thread.thread_id, `Low-confidence suppression: ${plan.reason}`);
+      } catch (flagError) {
+        logger.debug({ error: flagError }, 'Addie Bolt: Could not flag suppressed thread');
+      }
+      return;
+    }
+
+    // In threaded channel messages where Addie hasn't participated yet,
+    // check if humans have already been answering. If so, don't jump in
+    // unless explicitly named — humans are handling it.
     if (isInThread && context.botUserId && !/\baddie\b/i.test(messageText)) {
+      try {
+        const threadReplies = await getThreadReplies(channelId, threadTs);
+        const humanRepliesBeforeTrigger = threadReplies.filter(
+          msg => msg.user && msg.user !== context.botUserId && msg.user !== userId && msg.ts < event.ts
+        );
+        if (humanRepliesBeforeTrigger.length > 0) {
+          const confidence = plan.action === 'respond' ? plan.confidence : undefined;
+          logger.info(
+            { channelId, userId, threadTs, humanReplies: humanRepliesBeforeTrigger.length, confidence },
+            'Addie Bolt: Skipping channel thread — humans already answering'
+          );
+          // Flag high-confidence suppressions and queue shadow evaluation —
+          // Addie had a good answer but stayed silent. The shadow evaluator will
+          // generate what she would have said and compare with the human's answer.
+          if (confidence === 'high') {
+            try {
+              await threadService.flagThread(
+                thread.thread_id,
+                `Suppressed high-confidence response (humans answering): ${plan.reason}`
+              );
+              await threadService.patchThreadContext(thread.thread_id, {
+                shadow_eval_status: 'pending',
+                shadow_eval_requested_at: new Date().toISOString(),
+                shadow_eval_channel_id: channelId,
+                shadow_eval_thread_ts: threadTs,
+                shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
+                shadow_eval_question: messageText,
+              });
+            } catch (flagError) {
+              logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
+            }
+          }
+          return;
+        }
+      } catch (error) {
+        logger.debug({ error, channelId }, 'Addie Bolt: Could not check thread replies');
+      }
+
+      // Also delay and re-check for new human replies after the trigger
       const shouldRespond = await shouldRespondAfterDelay(
         channelId, threadTs, event.ts, context.botUserId
       );
       if (!shouldRespond) {
+        const confidence = plan.action === 'respond' ? plan.confidence : undefined;
         logger.info(
-          { channelId, userId, threadTs },
+          { channelId, userId, threadTs, confidence },
           'Addie Bolt: Skipping channel response — human replied during delay'
         );
+        if (confidence === 'high') {
+          try {
+            await threadService.flagThread(
+              thread.thread_id,
+              `Suppressed high-confidence response (human replied during delay): ${plan.reason}`
+            );
+            await threadService.patchThreadContext(thread.thread_id, {
+              shadow_eval_status: 'pending',
+              shadow_eval_requested_at: new Date().toISOString(),
+              shadow_eval_channel_id: channelId,
+              shadow_eval_thread_ts: threadTs,
+              shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
+              shadow_eval_question: messageText,
+            });
+          } catch (flagError) {
+            logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
+          }
+        }
         return;
       }
     }
@@ -3468,8 +3573,8 @@ async function handleChannelMessage({
       ? siRetriever.formatContext(siRetrievalResult.agents)
       : '';
 
-    // Combine all context for system prompt (member info, unavailable tool hints, SI agents)
-    const requestContext = [memberRequestContext, unavailableHint, siContext]
+    // Combine all context for system prompt (member info, unavailable tool hints, SI agents, confidence calibration)
+    const requestContext = [memberRequestContext, unavailableHint, siContext, buildConfidenceCalibration(plan.confidence)]
       .filter(Boolean)
       .join('\n\n');
 
