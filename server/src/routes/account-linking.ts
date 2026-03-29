@@ -12,7 +12,6 @@ import { PostgresStore } from '../middleware/pg-rate-limit-store.js';
 const logger = createLogger('account-linking');
 
 const TOKEN_EXPIRY_HOURS = 24;
-const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
 // Rate limiter for sending verification emails (per authenticated user)
 const sendVerificationLimiter = rateLimit({
