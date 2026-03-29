@@ -1,7 +1,7 @@
 /**
  * Notifications for agent compliance status changes.
  *
- * Posts to the registry Slack channel and DMs agent publishers
+ * Posts to the registry Slack channel and DMs agent owners
  * when compliance status transitions (regressions, recoveries, extended outages).
  */
 
@@ -119,14 +119,14 @@ export async function notifyComplianceChange(input: ComplianceChangeInput): Prom
     }
   }
 
-  // DM the agent's publisher (detailed — includes track failures)
+  // DM the agent's owner (detailed — includes track failures)
   const userIds = await resolveAgentOwnerUserIds(agentUrl);
   if (userIds.length === 0) {
-    logger.debug({ agentUrl }, 'No publisher users found for compliance notification');
+    logger.debug({ agentUrl }, 'No owner users found for compliance notification');
     return;
   }
 
-  const agentPageUrl = `/registry/agents`;
+  const agentPageUrl = `/registry?tab=agents`;
 
   for (const userId of userIds) {
     try {
@@ -194,7 +194,7 @@ export async function notifyExtendedOutages(): Promise<{ notified: number }> {
             referenceId: row.agent_url,
             referenceType: 'agent',
             title: `Your agent ${name} has been ${row.status} for ${days} days. Buyers are seeing failures.`,
-            url: '/registry/agents',
+            url: '/registry?tab=agents',
           });
           notified++;
         } catch (error) {

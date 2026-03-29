@@ -1913,9 +1913,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.json({ agents, count: agents.length, sources: bySource });
       }
 
-      // Bulk-fetch compliance status if requested
+      // Bulk-fetch compliance status and metadata if requested
+      const agentUrls = agents.map(a => a.url);
       const complianceMap = withCompliance
-        ? await complianceDb.bulkGetComplianceStatus(agents.map(a => a.url))
+        ? await complianceDb.bulkGetComplianceStatus(agentUrls)
+        : null;
+      const metadataMap = withCompliance
+        ? await complianceDb.bulkGetRegistryMetadata(agentUrls)
         : null;
 
       const enriched = await Promise.all(
@@ -1997,9 +2001,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             }
           }
 
-          if (complianceMap) {
+          if (complianceMap && metadataMap) {
             const cs = complianceMap.get(agent.url);
-            if (cs) {
+            const meta = metadataMap.get(agent.url);
+            const optedOut = meta?.compliance_opt_out ?? false;
+            if (cs && !optedOut) {
               enrichedAgent.compliance = {
                 status: cs.status,
                 lifecycle_stage: cs.lifecycle_stage,
@@ -2032,6 +2038,16 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
       const status = await complianceDb.getComplianceStatus(agentUrl);
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+
+      // If opted out, return minimal response (no ownership check needed —
+      // the opt-out preference is enforced uniformly for public endpoints)
+      if (metadata?.compliance_opt_out) {
+        return res.json({
+          agent_url: agentUrl,
+          status: "opted_out",
+          lifecycle_stage: metadata.lifecycle_stage || "production",
+        });
+      }
 
       if (!status) {
         return res.json({
@@ -2069,6 +2085,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (!validateAgentUrlParam(agentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // If opted out, return empty history (no ownership check needed —
+      // the opt-out preference is enforced uniformly for public endpoints)
+      const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+      if (metadata?.compliance_opt_out) {
+        return res.json({ agent_url: agentUrl, runs: [], count: 0 });
+      }
+
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
       const history = await complianceDb.getComplianceHistory(agentUrl, limit);
 
@@ -2082,6 +2105,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           tracks_failed: run.tracks_failed,
           tracks_skipped: run.tracks_skipped,
           tracks_partial: run.tracks_partial,
+          tracks_json: run.tracks_json,
           total_duration_ms: run.total_duration_ms,
           triggered_by: run.triggered_by,
           tested_at: run.tested_at,
@@ -2134,11 +2158,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
 
-      if (req.user) {
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
-          return res.status(403).json({ error: "You do not have permission to modify this agent" });
-        }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
       }
 
       const { lifecycle_stage } = req.body;
@@ -2166,11 +2192,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
 
-      if (req.user) {
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
-          return res.status(403).json({ error: "You do not have permission to modify this agent" });
-        }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
       }
 
       const { opt_out } = req.body;
@@ -2189,6 +2217,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       res.status(500).json({ error: "Failed to update compliance opt-out" });
     }
   });
+
+
 
   // ── Publishers ──────────────────────────────────────────────────
 

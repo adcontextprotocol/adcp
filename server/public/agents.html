@@ -714,7 +714,7 @@
 
                 // Track pills
                 const tracks = cs.tracks || {};
-                const trackEntries = Object.entries(tracks);
+                const trackEntries = Object.entries(tracks).filter(([, s]) => s !== 'skip' && s !== 'expected');
                 if (trackEntries.length > 0) {
                     complianceHtml += '<div class="track-pills">';
                     for (const [track, status] of trackEntries) {
@@ -743,7 +743,7 @@
                         </div>
                     </div>
                 `;
-            } else if (agent.propertiesError) {
+            } else if (agent.propertiesError && !agent.compliance?.status) {
                 extrasHtml = `
                     <div class="agent-properties">
                         <div class="tool-error-box">
@@ -763,12 +763,15 @@
                 `;
             }
 
-            if (agent.capabilities?.discovery_error) {
+            if (agent.capabilities?.discovery_error && !agent.compliance?.status) {
+                // Only show discovery errors if compliance data isn't available
+                const errMsg = agent.capabilities.discovery_error;
+                const truncated = errMsg.length > 120 ? errMsg.substring(0, 120) + '...' : errMsg;
                 extrasHtml += `
                     <div class="agent-properties">
                         <div class="tool-error-box">
                             <span class="tool-error-box__title">Discovery error:</span><br>
-                            <span class="tool-error-box__msg">${escapeHtml(agent.capabilities.discovery_error)}</span>
+                            <span class="tool-error-box__msg">${escapeHtml(truncated)}</span>
                         </div>
                     </div>
                 `;
@@ -905,23 +908,25 @@
 
                 if (agent.type === 'sales' && caps.tools) {
                     const toolNames = new Set(caps.tools.map(t => t.name.toLowerCase()));
-                    const requiredTools = [
-                        'get_products',
-                        'create_media_buy',
-                        'update_media_buy',
-                        'get_media_buy_delivery',
-                        'sync_creatives',
-                        'list_authorized_properties'
-                    ];
-                    const implementedTools = requiredTools.filter(tool => toolNames.has(tool));
-                    const isCompliant = implementedTools.length === requiredTools.length;
+                    const coreTools = ['get_products', 'create_media_buy', 'update_media_buy', 'get_media_buy_delivery'];
+                    const optionalTools = ['sync_creatives', 'list_authorized_properties', 'list_creative_formats', 'build_creative'];
+                    const coreImplemented = coreTools.filter(tool => toolNames.has(tool));
+                    const optionalImplemented = optionalTools.filter(tool => toolNames.has(tool));
+                    const hasCoreTools = coreImplemented.length >= 2; // at minimum get_products + one buy tool
+
+                    const capLabels = [];
+                    if (toolNames.has('create_media_buy')) capLabels.push('Media buying');
+                    if (toolNames.has('sync_creatives') || toolNames.has('build_creative')) capLabels.push('Creative');
+                    if (toolNames.has('list_authorized_properties')) capLabels.push('Properties');
+                    if (toolNames.has('get_media_buy_delivery')) capLabels.push('Reporting');
 
                     html += `
-                        <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
+                        <div class="compliance-badge ${hasCoreTools ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
                             <div>
-                                <div class="compliance-badge__title">${isCompliant ? 'AdCP sales agent' : 'Incomplete implementation'}</div>
+                                <div class="compliance-badge__title">${hasCoreTools ? 'AdCP sales agent' : 'Incomplete implementation'}</div>
                                 <div class="compliance-badge__subtitle">
-                                    Implements ${implementedTools.length} of ${requiredTools.length} required tools: ${requiredTools.join(', ')}
+                                    ${capLabels.length > 0 ? capLabels.join(' &middot; ') : 'Implements ' + coreImplemented.length + ' tools'}
+                                    &middot; ${coreImplemented.length + optionalImplemented.length} tools
                                 </div>
                             </div>
                         </div>
@@ -963,7 +968,7 @@
 
                 let trackPillsHtml = '';
                 const tracks = cs.tracks || {};
-                for (const [track, status] of Object.entries(tracks)) {
+                for (const [track, status] of Object.entries(tracks).filter(([, s]) => s !== 'skip' && s !== 'expected')) {
                     const pillClass = status === 'pass' ? 'track-pill--pass'
                         : status === 'fail' ? 'track-pill--fail'
                         : status === 'partial' ? 'track-pill--partial'
@@ -1163,7 +1168,13 @@
                 })
             });
             const data = await response.json();
-            const result = JSON.parse(data.result.content[0].resource.text);
+            const content = data?.result?.content?.[0];
+            const text = content?.resource?.text || content?.text;
+            if (!text) {
+                document.getElementById('publishers-section').innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">No publisher data available.</div>';
+                return;
+            }
+            const result = JSON.parse(text);
 
             const section = document.getElementById('publishers-section');
 

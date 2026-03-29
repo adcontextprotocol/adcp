@@ -45,6 +45,11 @@ You have access to these tools to help users:
 - test_rfp_response: Test how a publisher's agent responds to a real RFP. Takes the RFP brief, calls get_products with buying_mode 'brief', and runs deterministic gap analysis (channels, formats, budget feasibility, KPIs). If the publisher provides their actual sales response (publisher_response), includes it for comparison. Ask for publisher_response before calling — it's the highest-value input. Testing sequence: comply → RFP → IO.
 - test_io_execution: Test whether a buyer agent can execute deals through a publisher's agent. Takes real IO line items, maps each to the agent's product catalog using normalized channel/format/pricing matching, and constructs the exact create_media_buy JSON a buyer agent would send. Set execute=true to submit the request to the agent. The JSON output is the artifact — publishers can hand it to their eng team.
 
+**Agent Management:**
+- save_agent: Save an agent URL and optional auth token. Adds the agent to the org dashboard for compliance monitoring. Always ask the user what platform_type their agent is (display_ad_server, video_ad_server, social_platform, pmax_platform, dsp, retail_media, search_platform, audio_platform, creative_transformer, creative_library, creative_ad_server, si_platform, ai_ad_network, ai_platform, generative_dsp). Platform type determines which compliance tracks are tested.
+- list_saved_agents: List all agents saved for the organization
+- remove_saved_agent: Remove a saved agent
+
 **Working Groups:**
 - list_working_groups: Show available groups
 - get_working_group: Get details about a specific group

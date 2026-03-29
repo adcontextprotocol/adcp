@@ -17,6 +17,7 @@ export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip' | 'expected';
 export interface AgentRegistryMetadata {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
+  platform_type: string | null;
   compliance_opt_out: boolean;
   created_at: Date;
   updated_at: Date;
@@ -92,20 +93,22 @@ export class ComplianceDatabase {
 
   async upsertRegistryMetadata(
     agentUrl: string,
-    updates: { lifecycle_stage?: LifecycleStage; compliance_opt_out?: boolean },
+    updates: { lifecycle_stage?: LifecycleStage; compliance_opt_out?: boolean; platform_type?: string },
   ): Promise<AgentRegistryMetadata> {
     const result = await query(
-      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, compliance_opt_out)
-       VALUES ($1, COALESCE($2, 'production'), COALESCE($3, FALSE))
+      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, platform_type, compliance_opt_out)
+       VALUES ($1, COALESCE($2, 'production'), $4, COALESCE($3, FALSE))
        ON CONFLICT (agent_url) DO UPDATE SET
          lifecycle_stage = COALESCE($2, agent_registry_metadata.lifecycle_stage),
          compliance_opt_out = COALESCE($3, agent_registry_metadata.compliance_opt_out),
+         platform_type = COALESCE($4, agent_registry_metadata.platform_type),
          updated_at = NOW()
        RETURNING *`,
       [
         agentUrl,
         updates.lifecycle_stage ?? null,
         updates.compliance_opt_out ?? null,
+        updates.platform_type ?? null,
       ],
     );
     return result.rows[0];
@@ -117,6 +120,23 @@ export class ComplianceDatabase {
       [agentUrl],
     );
     return result.rows[0] || null;
+  }
+
+  /**
+   * Check if an agent has auth credentials saved in agent_contexts
+   * by the owning organization.
+   */
+  async hasOwnerAuth(agentUrl: string): Promise<boolean> {
+    const result = await query(
+      `SELECT 1 FROM agent_contexts ac
+       JOIN member_profiles mp ON mp.workos_organization_id = ac.organization_id
+       WHERE ac.agent_url = $1
+         AND mp.agents @> $2::jsonb
+         AND ac.auth_token_encrypted IS NOT NULL
+       LIMIT 1`,
+      [agentUrl, JSON.stringify([{ url: agentUrl }])],
+    );
+    return result.rows.length > 0;
   }
 
   // ----- Compliance Runs -----
@@ -257,6 +277,21 @@ export class ComplianceDatabase {
     return result.rows[0] || null;
   }
 
+  async bulkGetRegistryMetadata(agentUrls: string[]): Promise<Map<string, AgentRegistryMetadata>> {
+    if (agentUrls.length === 0) return new Map();
+
+    const result = await query(
+      `SELECT * FROM agent_registry_metadata WHERE agent_url = ANY($1)`,
+      [agentUrls],
+    );
+
+    const map = new Map<string, AgentRegistryMetadata>();
+    for (const row of result.rows) {
+      map.set(row.agent_url, row);
+    }
+    return map;
+  }
+
   async bulkGetComplianceStatus(agentUrls: string[]): Promise<Map<string, AgentComplianceStatus>> {
     if (agentUrls.length === 0) return new Map();
 
@@ -295,6 +330,7 @@ export class ComplianceDatabase {
   async getAgentsDueForCheck(limit: number = 10): Promise<Array<{
     agent_url: string;
     lifecycle_stage: LifecycleStage;
+    platform_type: string | null;
     last_checked_at: Date | null;
   }>> {
     const result = await query(
@@ -306,6 +342,7 @@ export class ComplianceDatabase {
       SELECT
         ka.agent_url,
         COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+        m.platform_type,
         s.last_checked_at
       FROM known_agents ka
       LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
@@ -334,21 +371,25 @@ export class ComplianceDatabase {
   // ----- Helpers -----
 
   /**
-   * Resolve auth credentials for an agent URL from any organization's saved tokens.
-   * Uses the most recently updated credential if multiple exist.
+   * Resolve auth credentials for an agent from the owning organization's
+   * saved tokens in agent_contexts. Only uses credentials from the org
+   * that owns the agent (via member_profiles.agents), not arbitrary orgs.
    */
-  async resolveAuthForAgent(
+  async resolveOwnerAuth(
     agentUrl: string,
   ): Promise<{ type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined> {
     try {
       const result = await query(
-        `SELECT organization_id, auth_token_encrypted, auth_token_iv, auth_type
-         FROM agent_contexts
-         WHERE agent_url = $1
-           AND auth_token_encrypted IS NOT NULL
-         ORDER BY updated_at DESC NULLS LAST
+        `SELECT ac.organization_id, ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type
+         FROM agent_contexts ac
+         JOIN member_profiles mp
+           ON mp.workos_organization_id = ac.organization_id
+         WHERE ac.agent_url = $1
+           AND mp.agents @> $2::jsonb
+           AND ac.auth_token_encrypted IS NOT NULL
+         ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
-        [agentUrl],
+        [agentUrl, JSON.stringify([{ url: agentUrl }])],
       );
 
       const row = result.rows[0];
@@ -366,7 +407,7 @@ export class ComplianceDatabase {
 
       return { type: 'bearer', token };
     } catch (error) {
-      logger.debug({ error, agentUrl }, 'Could not resolve auth for heartbeat');
+      logger.debug({ error, agentUrl }, 'Could not resolve owner auth for heartbeat');
       return undefined;
     }
   }

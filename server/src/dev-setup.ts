@@ -58,26 +58,49 @@ async function seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> 
 
 async function seedDevMemberProfiles(): Promise<void> {
   const pool = getPool();
-  try {
-    await pool.query(
-      `INSERT INTO member_profiles (
-        workos_organization_id, display_name, slug, tagline, description,
-        offerings, is_public
-      ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)
-      ON CONFLICT (workos_organization_id) DO NOTHING`,
-      [
-        'org_dev_personal_001',
-        'Personal Account',
-        'dev-personal',
-        'Dev personal account for testing',
-        'A personal account for testing portrait generation and offerings.',
-        '{consulting}',
-        true,
-      ]
-    );
-    logger.info('Seeded dev personal member profile');
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to seed dev personal member profile');
+  const profiles = [
+    {
+      orgId: 'org_dev_company_001',
+      displayName: 'Dev Company',
+      slug: 'dev-company',
+      tagline: 'Dev company for testing member features',
+      description: 'A company account for testing agents, publishers, and member dashboard features.',
+      offerings: '{buyer_agent,sales_agent}',
+      agents: JSON.stringify([{ url: 'https://test-agent.adcontextprotocol.org', name: 'Training Agent', type: 'sales', is_public: true }]),
+      isPublic: true,
+    },
+    {
+      orgId: 'org_dev_personal_001',
+      displayName: 'Personal Account',
+      slug: 'dev-personal',
+      tagline: 'Dev personal account for testing',
+      description: 'A personal account for testing portrait generation and offerings.',
+      offerings: '{consulting}',
+      agents: JSON.stringify([]),
+      isPublic: true,
+    },
+  ];
+
+  for (const p of profiles) {
+    try {
+      await pool.query(
+        `INSERT INTO member_profiles (
+          workos_organization_id, display_name, slug, tagline, description,
+          offerings, agents, is_public
+        ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7::jsonb, $8)
+        ON CONFLICT (workos_organization_id) DO UPDATE SET
+          display_name = EXCLUDED.display_name,
+          tagline = EXCLUDED.tagline,
+          description = EXCLUDED.description,
+          offerings = EXCLUDED.offerings,
+          agents = EXCLUDED.agents,
+          is_public = EXCLUDED.is_public`,
+        [p.orgId, p.displayName, p.slug, p.tagline, p.description, p.offerings, p.agents, p.isPublic],
+      );
+      logger.info({ orgId: p.orgId }, 'Seeded dev member profile');
+    } catch (error) {
+      logger.error({ err: error, orgId: p.orgId }, 'Failed to seed dev member profile');
+    }
   }
 }
 

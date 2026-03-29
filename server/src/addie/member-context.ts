@@ -649,8 +649,211 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 /**
  * Look up member context from a WorkOS user ID (for web chat)
  *
- * Similar to getMemberContext() but starts from WorkOS user ID instead of Slack user ID.
- * Used when user is authenticated via web session rather than Slack.
+/**
+ * Resolve organization, profile, subscription, engagement, and other context
+ * from the local database. Used by both dev-mode and production paths.
+ */
+async function resolveContextFromLocalDb(
+  context: MemberContext,
+  organizationId: string,
+  workosUserId: string,
+): Promise<MemberContext> {
+  const org = await orgDb.getOrganization(organizationId);
+  if (org) {
+    context.organization = {
+      workos_organization_id: org.workos_organization_id,
+      name: org.name,
+      subscription_status: org.subscription_status,
+      is_personal: org.is_personal,
+    };
+
+    const membership = await resolveEffectiveMembership(organizationId);
+    context.is_member = membership.is_member;
+    if (membership.is_inherited && membership.paying_org_id) {
+      context.is_inherited_member = true;
+      context.covered_by = {
+        org_id: membership.paying_org_id,
+        org_name: membership.paying_org_name ?? 'Unknown',
+      };
+    }
+  }
+
+  const profile = await memberDb.getProfileByOrgId(organizationId);
+  if (profile) {
+    context.member_profile = {
+      display_name: profile.display_name,
+      tagline: profile.tagline,
+      logo_url: profile.resolved_brand?.logo_url,
+      offerings: profile.offerings,
+      headquarters: profile.headquarters,
+      listing_type: org?.is_personal ? 'personal' : 'company',
+    };
+  }
+
+  try {
+    const subscriptionInfo = await orgDb.getSubscriptionInfo(organizationId);
+    if (subscriptionInfo && subscriptionInfo.status !== 'none') {
+      context.subscription = {
+        status: subscriptionInfo.status,
+        product_name: subscriptionInfo.product_name,
+        current_period_end: subscriptionInfo.current_period_end
+          ? new Date(subscriptionInfo.current_period_end * 1000)
+          : undefined,
+        cancel_at_period_end: subscriptionInfo.cancel_at_period_end,
+      };
+    }
+  } catch (error) {
+    logger.warn({ error, organizationId }, 'Addie Web: Failed to get subscription info');
+  }
+
+  try {
+    const engagement = await orgDb.getEngagementSignals(organizationId);
+    context.engagement = {
+      login_count_30d: engagement.login_count_30d,
+      last_login: engagement.last_login,
+      working_group_count: engagement.working_group_count,
+      email_click_count_30d: engagement.email_click_count_30d,
+      interest_level: engagement.interest_level,
+    };
+  } catch (error) {
+    logger.warn({ error, organizationId }, 'Addie Web: Failed to get engagement signals');
+  }
+
+  try {
+    const userWorkingGroups = await workingGroupDb.getWorkingGroupsForUser(workosUserId);
+    if (userWorkingGroups.length > 0) {
+      const workingGroupsWithLeadership = await Promise.all(
+        userWorkingGroups.map(async (wg) => ({
+          name: wg.name,
+          is_leader: await workingGroupDb.isLeader(wg.id, workosUserId),
+        }))
+      );
+      context.working_groups = workingGroupsWithLeadership;
+    }
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get working groups');
+  }
+
+  try {
+    const emailPrefs = await emailPrefsDb.getUserPreferencesByUserId(workosUserId);
+    if (emailPrefs) {
+      const categoryPrefs = await emailPrefsDb.getUserCategoryPreferences(workosUserId);
+      context.email_status = {
+        global_unsubscribed: emailPrefs.global_unsubscribe,
+        subscribed_categories: categoryPrefs.filter(c => c.enabled).map(c => c.category_name),
+        unsubscribed_categories: categoryPrefs.filter(c => !c.enabled).map(c => c.category_name),
+      };
+    }
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get email preferences');
+  }
+
+  if (org) {
+    try {
+      const pool = getPool();
+      const personaResult = await pool.query(
+        `SELECT persona, aspiration_persona, persona_source, journey_stage
+         FROM organizations WHERE workos_organization_id = $1`,
+        [organizationId]
+      );
+      const pRow = personaResult.rows[0];
+      if (pRow?.persona) {
+        context.persona = {
+          persona: pRow.persona,
+          aspiration_persona: pRow.aspiration_persona,
+          source: pRow.persona_source,
+          journey_stage: pRow.journey_stage,
+        };
+      }
+    } catch (error) {
+      logger.warn({ error, organizationId }, 'Addie Web: Failed to get persona data');
+    }
+  }
+
+  try {
+    context.community_profile = await fetchCommunityProfile(workosUserId);
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get community profile');
+  }
+
+  try {
+    const threadService = getThreadService();
+    const conversationActivity = await threadService.getUserActivityStats(workosUserId, 'workos', 30);
+    if (conversationActivity.total_messages > 0 || conversationActivity.active_days > 0) {
+      context.conversation_activity = {
+        total_messages_30d: conversationActivity.total_messages,
+        active_days_30d: conversationActivity.active_days,
+        last_activity_at: conversationActivity.last_activity_at,
+      };
+    }
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get conversation activity');
+  }
+
+  if (context.slack_user?.slack_user_id) {
+    try {
+      const interactions = await addieDb.getInteractions({ userId: context.slack_user.slack_user_id, limit: 10 });
+      if (interactions.length > 0) {
+        const recentTopics = interactions
+          .slice(0, 5)
+          .map(i => i.input_text.substring(0, 100))
+          .filter(t => t.length > 0);
+
+        context.addie_history = {
+          total_interactions: interactions.length,
+          last_interaction_at: interactions[0]?.timestamp || null,
+          recent_topics: recentTopics,
+        };
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get Addie interaction history');
+    }
+  }
+
+  const leadsCommittees = context.working_groups?.filter(wg => wg.is_leader) || [];
+  const adminGroup = await workingGroupDb.getWorkingGroupBySlug('aao-admin');
+  const isAAOAdmin = adminGroup ? await workingGroupDb.isMember(adminGroup.id, workosUserId) : false;
+
+  if (leadsCommittees.length > 0 || isAAOAdmin) {
+    try {
+      const pendingContent = await getPendingContentForUser(workosUserId, isAAOAdmin);
+      if (pendingContent.total > 0) {
+        context.pending_content = pendingContent;
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get pending content');
+    }
+  }
+
+  const isOrgAdmin = context.org_membership?.role === 'admin';
+  if (isOrgAdmin && organizationId) {
+    try {
+      const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
+      if (pendingJoinRequestsCount > 0) {
+        context.pending_join_requests_count = pendingJoinRequestsCount;
+      }
+    } catch (error) {
+      logger.warn({ error, organizationId }, 'Addie Web: Failed to get pending join requests count');
+    }
+  }
+
+  logger.debug(
+    {
+      workosUserId,
+      isMapped: context.is_mapped,
+      isMember: context.is_member,
+      slackLinked: context.slack_linked,
+      orgName: context.organization?.name,
+    },
+    'Addie Web: Member context resolved'
+  );
+
+  return context;
+}
+
+/**
+ * Build member context from WorkOS user ID (web session authentication).
+ * In dev mode, resolves org from dev user config. In production, uses WorkOS API.
  */
 export async function getWebMemberContext(workosUserId: string): Promise<MemberContext> {
   const context: MemberContext = {
@@ -659,7 +862,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
     slack_linked: false,
   };
 
-  // Dev mode: build context from dev user config instead of calling WorkOS API
+  // Dev mode: build context from dev user config, then fall through to local DB lookups
   if (isDevModeEnabled() && workosUserId.startsWith('user_dev_')) {
     const devUser = Object.values(DEV_USERS).find(u => u.id === workosUserId);
     if (devUser) {
@@ -670,8 +873,16 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         last_name: devUser.lastName,
       };
       context.is_member = devUser.isMember;
-      context.slack_linked = true; // Dev users are fully authenticated
-      return context;
+      context.slack_linked = true;
+
+      // Resolve org from dev config, then run local DB lookups
+      const devOrgId = devUser.organizationId || 'org_dev_company_001';
+      try {
+        return await resolveContextFromLocalDb(context, devOrgId, workosUserId);
+      } catch (error) {
+        logger.warn({ error, workosUserId }, 'Dev mode: failed to resolve local DB context');
+        return context;
+      }
     }
   }
 
@@ -764,214 +975,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       joined_at: userJoinedAt,
     };
 
-    // Step 5: Get organization details from local DB
-    const org = await orgDb.getOrganization(organizationId);
-    if (org) {
-      context.organization = {
-        workos_organization_id: org.workos_organization_id,
-        name: org.name,
-        subscription_status: org.subscription_status,
-        is_personal: org.is_personal,
-      };
-
-      // Check membership including inheritance through brand hierarchy
-      const membership = await resolveEffectiveMembership(organizationId);
-      context.is_member = membership.is_member;
-      if (membership.is_inherited && membership.paying_org_id) {
-        context.is_inherited_member = true;
-        context.covered_by = {
-          org_id: membership.paying_org_id,
-          org_name: membership.paying_org_name ?? 'Unknown',
-        };
-      }
-    }
-
-    // Step 6: Get member profile / directory listing if exists
-    const profile = await memberDb.getProfileByOrgId(organizationId);
-    if (profile) {
-      context.member_profile = {
-        display_name: profile.display_name,
-        tagline: profile.tagline,
-        logo_url: profile.resolved_brand?.logo_url,
-        offerings: profile.offerings,
-        headquarters: profile.headquarters,
-        listing_type: org?.is_personal ? 'personal' : 'company',
-      };
-    }
-
-    // Step 7: Get subscription details
-    try {
-      const subscriptionInfo = await orgDb.getSubscriptionInfo(organizationId);
-      if (subscriptionInfo && subscriptionInfo.status !== 'none') {
-        context.subscription = {
-          status: subscriptionInfo.status,
-          product_name: subscriptionInfo.product_name,
-          current_period_end: subscriptionInfo.current_period_end
-            ? new Date(subscriptionInfo.current_period_end * 1000)
-            : undefined,
-          cancel_at_period_end: subscriptionInfo.cancel_at_period_end,
-        };
-      }
-    } catch (error) {
-      logger.warn({ error, organizationId }, 'Addie Web: Failed to get subscription info');
-    }
-
-    // Step 8: Get engagement signals for the organization
-    try {
-      const engagement = await orgDb.getEngagementSignals(organizationId);
-      context.engagement = {
-        login_count_30d: engagement.login_count_30d,
-        last_login: engagement.last_login,
-        working_group_count: engagement.working_group_count,
-        email_click_count_30d: engagement.email_click_count_30d,
-        interest_level: engagement.interest_level,
-      };
-    } catch (error) {
-      logger.warn({ error, organizationId }, 'Addie Web: Failed to get engagement signals');
-    }
-
-    // Step 9: Get working groups for the user
-    try {
-      const userWorkingGroups = await workingGroupDb.getWorkingGroupsForUser(workosUserId);
-      if (userWorkingGroups.length > 0) {
-        const workingGroupsWithLeadership = await Promise.all(
-          userWorkingGroups.map(async (wg) => ({
-            name: wg.name,
-            is_leader: await workingGroupDb.isLeader(wg.id, workosUserId),
-          }))
-        );
-        context.working_groups = workingGroupsWithLeadership;
-      }
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get working groups');
-    }
-
-    // Step 10: Get email subscription preferences
-    try {
-      const emailPrefs = await emailPrefsDb.getUserPreferencesByUserId(workosUserId);
-      if (emailPrefs) {
-        const categoryPrefs = await emailPrefsDb.getUserCategoryPreferences(workosUserId);
-        context.email_status = {
-          global_unsubscribed: emailPrefs.global_unsubscribe,
-          subscribed_categories: categoryPrefs.filter(c => c.enabled).map(c => c.category_name),
-          unsubscribed_categories: categoryPrefs.filter(c => !c.enabled).map(c => c.category_name),
-        };
-      }
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get email preferences');
-    }
-
-    // Get persona and journey stage
-    if (org) {
-      try {
-        const pool = getPool();
-        const personaResult = await pool.query(
-          `SELECT persona, aspiration_persona, persona_source, journey_stage
-           FROM organizations WHERE workos_organization_id = $1`,
-          [organizationId]
-        );
-        const pRow = personaResult.rows[0];
-        if (pRow?.persona) {
-          context.persona = {
-            persona: pRow.persona,
-            aspiration_persona: pRow.aspiration_persona,
-            source: pRow.persona_source,
-            journey_stage: pRow.journey_stage,
-          };
-        }
-      } catch (error) {
-        logger.warn({ error, organizationId }, 'Addie Web: Failed to get persona data');
-      }
-    }
-
-    // Community profile
-    try {
-      context.community_profile = await fetchCommunityProfile(workosUserId);
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get community profile');
-    }
-
-    // Step 11: Get combined conversation activity (Slack + web chat) from addie_threads
-    try {
-      const threadService = getThreadService();
-      const conversationActivity = await threadService.getUserActivityStats(workosUserId, 'workos', 30);
-      if (conversationActivity.total_messages > 0 || conversationActivity.active_days > 0) {
-        context.conversation_activity = {
-          total_messages_30d: conversationActivity.total_messages,
-          active_days_30d: conversationActivity.active_days,
-          last_activity_at: conversationActivity.last_activity_at,
-        };
-      }
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get conversation activity');
-    }
-
-    // Step 12: Get Addie interaction history
-    // For web users, we'd need to query addie_conversations table by user_id (WorkOS ID)
-    // For now, if they have a Slack mapping, we can get their Slack interactions
-    if (context.slack_user?.slack_user_id) {
-      try {
-        const interactions = await addieDb.getInteractions({ userId: context.slack_user.slack_user_id, limit: 10 });
-        if (interactions.length > 0) {
-          const recentTopics = interactions
-            .slice(0, 5)
-            .map(i => i.input_text.substring(0, 100))
-            .filter(t => t.length > 0);
-
-          context.addie_history = {
-            total_interactions: interactions.length,
-            last_interaction_at: interactions[0]?.timestamp || null,
-            recent_topics: recentTopics,
-          };
-        }
-      } catch (error) {
-        logger.warn({ error, workosUserId }, 'Addie Web: Failed to get Addie interaction history');
-      }
-    }
-
-    // Step 13: Get pending content for committee leads and AAO admins
-    const leadsCommittees = context.working_groups?.filter(wg => wg.is_leader) || [];
-
-    // Check AAO admin status (aao-admin working group membership)
-    const webAdminGroup = await workingGroupDb.getWorkingGroupBySlug('aao-admin');
-    const webIsAAOAdmin = webAdminGroup ? await workingGroupDb.isMember(webAdminGroup.id, workosUserId) : false;
-
-    if (leadsCommittees.length > 0 || webIsAAOAdmin) {
-      try {
-        const pendingContent = await getPendingContentForUser(workosUserId, webIsAAOAdmin);
-        if (pendingContent.total > 0) {
-          context.pending_content = pendingContent;
-        }
-      } catch (error) {
-        logger.warn({ error, workosUserId }, 'Addie Web: Failed to get pending content');
-      }
-    }
-
-    // Step 14: Get pending join requests count for org admins (WorkOS org role - admin within their company)
-    const webIsOrgAdmin = context.org_membership?.role === 'admin';
-    if (webIsOrgAdmin && organizationId) {
-      try {
-        const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
-        if (pendingJoinRequestsCount > 0) {
-          context.pending_join_requests_count = pendingJoinRequestsCount;
-        }
-      } catch (error) {
-        logger.warn({ error, organizationId }, 'Addie Web: Failed to get pending join requests count');
-      }
-    }
-
-    logger.debug(
-      {
-        workosUserId,
-        isMapped: context.is_mapped,
-        isMember: context.is_member,
-        slackLinked: context.slack_linked,
-        orgName: context.organization?.name,
-      },
-      'Addie Web: Member context resolved'
-    );
-
-    return context;
+    return await resolveContextFromLocalDb(context, organizationId, workosUserId);
   } catch (error) {
     logger.error({ error, workosUserId }, 'Addie Web: Error getting member context');
     return context;

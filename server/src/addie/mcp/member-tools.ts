@@ -33,6 +33,7 @@ import {
   getPendingProposals,
 } from '../../db/industry-feeds-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -47,6 +48,7 @@ import * as personEvents from '../../db/person-events-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
+const complianceDb = new ComplianceDatabase();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
 const wgDb = new WorkingGroupDatabase();
@@ -885,8 +887,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Save an agent URL to the organization\'s context. Optionally store an auth token securely (encrypted, never shown in conversations). Use this when users want to save their agent for easy testing later, or when they provide an auth token.',
-    usage_hints: 'use for "save my agent", "remember this agent URL", "store my auth token"',
+      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. Optionally store an auth token securely (encrypted, never shown in conversations). Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide an auth token.',
+    usage_hints: 'use for "connect my agent", "add agent for compliance monitoring", "save my agent", "remember this agent URL", "store my auth token"',
     input_schema: {
       type: 'object',
       properties: {
@@ -895,6 +897,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
         auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
+        platform_type: { type: 'string', enum: ['display_ad_server', 'video_ad_server', 'social_platform', 'pmax_platform', 'dsp', 'retail_media', 'search_platform', 'audio_platform', 'creative_transformer', 'creative_library', 'creative_ad_server', 'si_platform', 'ai_ad_network', 'ai_platform', 'generative_dsp'], description: 'Platform type — determines which compliance tracks and tools are expected. Ask the user what type of agent this is.' },
       },
       required: ['agent_url'],
     },
@@ -2666,7 +2669,31 @@ export function createMemberToolHandlers(
       auth: buildAuthOption(resolved),
     };
     if (tracks) complyOptions.tracks = tracks;
-    if (platformType) complyOptions.platform_type = platformType;
+
+    // Use provided platform_type, or look up stored one from registry metadata
+    let effectivePlatformType = platformType;
+    let wasStoredPlatformType = false;
+    if (!effectivePlatformType) {
+      try {
+        const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
+        if (metadata?.platform_type) {
+          effectivePlatformType = metadata.platform_type as PlatformType;
+          wasStoredPlatformType = true;
+        }
+      } catch { /* ignore lookup failures */ }
+    }
+
+    // If user provided platform_type and it wasn't already stored, save it
+    if (platformType && !wasStoredPlatformType) {
+      try {
+        await complianceDb.upsertRegistryMetadata(resolved.resolvedUrl, { platform_type: platformType });
+      } catch { /* ignore save failures */ }
+    }
+    if (!effectivePlatformType) {
+      const types = getAllPlatformTypes();
+      return `I need to know what type of agent this is to run a meaningful compliance check. What platform type is this agent?\n\n${types.map(t => `- \`${t}\``).join('\n')}\n\nOnce you tell me, I'll save it and run the check.`;
+    }
+    complyOptions.platform_type = effectivePlatformType;
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
@@ -3711,11 +3738,42 @@ export function createMemberToolHandlers(
     }
 
     const agentUrl = input.agent_url as string;
+    try {
+      const parsed = new URL(agentUrl);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return 'Agent URL must use https:// or http:// protocol.';
+      }
+    } catch {
+      return 'Invalid agent URL format. Please provide a full URL like https://your-agent.example.com';
+    }
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
+    const platformType = input.platform_type as string | undefined;
+
+    const validPlatformTypes = new Set(getAllPlatformTypes() as string[]);
+
+    if (platformType && !validPlatformTypes.has(platformType)) {
+      return `Invalid platform_type "${platformType}". Valid types: ${[...validPlatformTypes].join(', ')}`;
+    }
+
+    async function ensureAgentInProfile(displayName: string): Promise<void> {
+      if (!saveOrgId) return;
+      try {
+        const profile = await memberDb.getProfileByOrgId(saveOrgId);
+        if (profile) {
+          const agents = profile.agents || [];
+          if (!agents.some((a: any) => a.url === agentUrl)) {
+            agents.push({ url: agentUrl, name: displayName, is_public: true });
+            await memberDb.updateProfile(profile.id, { agents });
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, agentUrl }, 'Addie: failed to add agent to member profile');
+      }
+    }
 
     try {
       // Check if agent already exists for this org
@@ -3729,8 +3787,12 @@ export function createMemberToolHandlers(
         if (authToken) {
           await agentContextDb.saveAuthToken(context.id, authToken, authType);
         }
-        // Refresh context
         context = await agentContextDb.getById(context.id);
+
+        if (platformType) {
+          await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type: platformType });
+        }
+        await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
         if (authToken) {
@@ -3750,11 +3812,15 @@ export function createMemberToolHandlers(
         created_by: memberContext.workos_user.workos_user_id,
       });
 
-      // Save auth token if provided
       if (authToken) {
         await agentContextDb.saveAuthToken(context.id, authToken, authType);
         context = await agentContextDb.getById(context.id);
       }
+
+      if (platformType) {
+        await complianceDb.upsertRegistryMetadata(agentUrl, { platform_type: platformType });
+      }
+      await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
       response += `**URL:** ${agentUrl}\n`;
@@ -3764,7 +3830,7 @@ export function createMemberToolHandlers(
         response += `\n🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
         response += `_The token is encrypted and will never be shown again._\n`;
       }
-      response += `\nWhen you test this agent, I'll automatically use the saved credentials.`;
+      response += `\nThe agent has been added to your dashboard. When you test this agent, I'll automatically use the saved credentials.`;
 
       return response;
     } catch (error) {

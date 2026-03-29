@@ -48,13 +48,16 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
   for (const agent of agentsDue) {
     try {
-      // Heartbeat runs without auth — agents requiring auth will return error
-      // observations and be skipped. Using org credentials for platform-wide
-      // checks would cross tenant boundaries.
+      // Use the owning org's saved credentials from agent_contexts.
+      // These are credentials the owner saved when connecting through Addie.
+      const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
+
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
         dry_run: true,
         timeout_ms: 60_000,
+        auth,
+        ...(agent.platform_type ? { platform_type: agent.platform_type } : {}),
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);
@@ -68,31 +71,15 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         duration_ms: t.duration_ms,
       }));
 
-      // Skip agents that couldn't be tested (auth failures, unreachable, etc.)
-      const totalTested = complianceResult.summary.tracks_passed
-        + complianceResult.summary.tracks_failed
-        + complianceResult.summary.tracks_partial;
-      const hasErrorObservations = complianceResult.observations?.some(
-        o => o.severity === 'error',
-      );
-
-      if (totalTested === 0 && hasErrorObservations) {
-        logger.debug(
-          { agentUrl: agent.agent_url, observations: complianceResult.observations },
-          'Skipping agent — no tracks tested, error observations present',
-        );
-        result.skipped++;
-        continue;
-      }
-
-      // Determine overall status
+      // Map SDK overall_status to our storage format
+      const sdkStatus = complianceResult.overall_status;
       let overallStatus: OverallRunStatus;
-      if (complianceResult.summary.tracks_failed > 0) {
-        overallStatus = 'failing';
-      } else if (complianceResult.summary.tracks_partial > 0) {
+      if (sdkStatus === 'passing') {
+        overallStatus = 'passing';
+      } else if (sdkStatus === 'partial') {
         overallStatus = 'partial';
       } else {
-        overallStatus = 'passing';
+        overallStatus = 'failing';
       }
 
       const { statusTransition } = await complianceDb.recordComplianceRun({
@@ -135,6 +122,28 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
     } catch (error) {
       logger.error({ error, agentUrl: agent.agent_url }, 'Compliance check failed for agent');
+
+      // Record failure so stale passing data doesn't persist
+      try {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        await complianceDb.recordComplianceRun({
+          agent_url: agent.agent_url,
+          lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
+          overall_status: 'failing',
+          headline: `Unreachable: ${errorMessage}`,
+          tracks_json: [],
+          tracks_passed: 0,
+          tracks_failed: 0,
+          tracks_skipped: 0,
+          tracks_partial: 0,
+          observations_json: [{ category: 'connectivity', severity: 'error', message: errorMessage }],
+          triggered_by: 'heartbeat',
+          dry_run: true,
+        });
+      } catch (recordError) {
+        logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
+      }
+
       result.skipped++;
     }
   }
