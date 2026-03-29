@@ -2041,20 +2041,24 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       const complianceOptOut = metadata?.compliance_opt_out ?? false;
 
-      // If opted out, only show full data to the agent's owner
-      const isOwner = req.user
-        ? await verifyAgentOwnership(req.user.id, agentUrl)
-        : false;
-
-      const hasComplianceAuth = isOwner ? await complianceDb.hasOwnerAuth(agentUrl) : false;
-
-      if (complianceOptOut && !isOwner) {
-        return res.json({
-          agent_url: agentUrl,
-          status: "opted_out",
-          lifecycle_stage: metadata?.lifecycle_stage || "production",
-        });
+      // If opted out, check ownership before returning full data
+      if (complianceOptOut) {
+        const isOwner = req.user
+          ? await verifyAgentOwnership(req.user.id, agentUrl)
+          : false;
+        if (!isOwner) {
+          return res.json({
+            agent_url: agentUrl,
+            status: "opted_out",
+            lifecycle_stage: metadata?.lifecycle_stage || "production",
+          });
+        }
       }
+
+      // Owner-only fields (only check if user is authenticated)
+      const hasComplianceAuth = req.user
+        ? await complianceDb.hasOwnerAuth(agentUrl)
+        : false;
 
       if (!status) {
         return res.json({
@@ -2062,7 +2066,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           status: "unknown",
           lifecycle_stage: metadata?.lifecycle_stage || "production",
           compliance_opt_out: complianceOptOut,
-          has_compliance_auth: isOwner ? hasComplianceAuth : undefined,
+          has_compliance_auth: req.user ? hasComplianceAuth : undefined,
           tracks: {},
           streak_days: 0,
           last_checked_at: null,
@@ -2075,7 +2079,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         status: status.status,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
         compliance_opt_out: complianceOptOut,
-        has_compliance_auth: isOwner ? hasComplianceAuth : undefined,
+        has_compliance_auth: req.user ? hasComplianceAuth : undefined,
         tracks: status.tracks_summary_json || {},
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
