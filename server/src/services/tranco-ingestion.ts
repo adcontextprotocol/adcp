@@ -21,7 +21,7 @@ import { pipeline } from 'stream/promises';
 import { createInterface } from 'readline';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { unlink, mkdir, stat } from 'fs/promises';
+import { unlink, mkdir } from 'fs/promises';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('tranco');

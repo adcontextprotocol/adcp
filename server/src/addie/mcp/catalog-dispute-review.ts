@@ -8,14 +8,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ModelConfig } from '../../config/models.js';
 import { CatalogDisputesDatabase } from '../../db/catalog-disputes-db.js';
-import { CatalogDatabase } from '../../db/catalog-db.js';
 import { resolveDispute, escalateDispute } from '../../services/catalog-governance.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('catalog-dispute-review');
 const disputesDb = new CatalogDisputesDatabase();
-const catalogDb = new CatalogDatabase();
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {

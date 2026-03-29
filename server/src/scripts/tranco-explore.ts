@@ -285,7 +285,7 @@ async function downloadTranco(): Promise<string> {
   await promisify(execFile)('unzip', ['-o', zipPath, '-d', workDir]);
   await unlink(zipPath).catch(() => {});
 
-  return join(workDir, 'top-1m.csv');
+  return csvPath;
 }
 
 main().catch(console.error);
