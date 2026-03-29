@@ -17,13 +17,16 @@ export interface NormalizeResult {
  * Strips protocol, path, query, fragment, trailing dot, www/m prefix. Lowercases.
  */
 function normalizeDomain(raw: string): { value: string; reason: string | null } {
-  let canonical = raw
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .replace(/[/?#].*$/, '')
-    .replace(/\.$/, '')
-    .replace(/\/$/, '')
-    .toLowerCase();
+  let canonical = raw.trim();
+  // Strip protocol
+  canonical = canonical.replace(/^https?:\/\//i, '');
+  // Strip path, query, fragment by finding the first occurrence
+  const pathIdx = canonical.search(/[/?#]/);
+  if (pathIdx !== -1) canonical = canonical.substring(0, pathIdx);
+  // Strip trailing dot and slash
+  if (canonical.endsWith('.')) canonical = canonical.slice(0, -1);
+  if (canonical.endsWith('/')) canonical = canonical.slice(0, -1);
+  canonical = canonical.toLowerCase();
 
   let reason: string | null = null;
 
@@ -45,13 +48,13 @@ function normalizeDomain(raw: string): { value: string; reason: string | null } 
  * Like domain but preserves subdomains (no www/m stripping).
  */
 function normalizeSubdomain(raw: string): { value: string; reason: string | null } {
-  const canonical = raw
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .replace(/[/?#].*$/, '')
-    .replace(/\.$/, '')
-    .replace(/\/$/, '')
-    .toLowerCase();
+  let canonical = raw.trim();
+  canonical = canonical.replace(/^https?:\/\//i, '');
+  const pathIdx = canonical.search(/[/?#]/);
+  if (pathIdx !== -1) canonical = canonical.substring(0, pathIdx);
+  if (canonical.endsWith('.')) canonical = canonical.slice(0, -1);
+  if (canonical.endsWith('/')) canonical = canonical.slice(0, -1);
+  canonical = canonical.toLowerCase();
 
   return {
     value: canonical,
