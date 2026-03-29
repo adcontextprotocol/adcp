@@ -46,7 +46,7 @@ describe('training agent formats', () => {
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(52);
+    expect(formats.length).toBe(54);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
@@ -76,8 +76,9 @@ describe('reference formats', () => {
     // DOOH
     expect(ids).toContain('dooh_billboard_1920x1080');
     expect(ids).toContain('dooh_billboard_landscape');
-    // Product/format cards
+    // Product/format/proposal cards
     expect(ids).toContain('product_card_standard');
+    expect(ids).toContain('proposal_card_standard');
     expect(ids).toContain('format_card_standard');
   });
 
@@ -107,7 +108,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(52);
+    expect(returned.length).toBe(54);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -572,6 +573,16 @@ describe('MCP tool responses include structuredContent', () => {
     expect(JSON.parse(content[0].text)).toEqual(structured);
   });
 
+  it('list_creative_formats structuredContent has 54 formats with proposal cards', async () => {
+    const result = await client.callTool({
+      name: 'list_creative_formats',
+      arguments: {},
+    });
+
+    const structured = result.structuredContent as { formats: unknown[] };
+    expect(structured.formats.length).toBe(54);
+  });
+
   it('preview_creative batch mode returns structuredContent', async () => {
     const result = await client.callTool({
       name: 'preview_creative',
@@ -594,5 +605,314 @@ describe('MCP tool responses include structuredContent', () => {
     const structured = result.structuredContent as { response_type: string; results: unknown[] };
     expect(structured.response_type).toBe('batch');
     expect(structured.results).toHaveLength(1);
+  });
+});
+
+// ── Product card renderers ──────────────────────────────────────────
+
+describe('product card renderer', () => {
+  const refFormats = buildReferenceFormats(TEST_AGENT_URL);
+  function findFormat(id: string) {
+    return refFormats.find(f => (f.format_id as { id: string }).id === id);
+  }
+
+  it('renders product card with all assets', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_standard' },
+        assets: {
+          product_name: { content: 'Pinnacle News Video' },
+          product_description: { content: 'Premium video inventory across CTV and OLV' },
+          pricing_model: { content: 'CPM' },
+          pricing_amount: { content: '25.00' },
+          pricing_currency: { content: 'USD' },
+          delivery_type: { content: 'guaranteed' },
+          primary_asset_type: { content: 'video' },
+        },
+      },
+      findFormat('product_card_standard'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('Pinnacle News Video');
+    expect(html).toContain('Premium video inventory');
+    expect(html).toContain('CPM');
+    expect(html).toContain('25.00');
+    expect(html).toContain('Guaranteed');
+    expect(html).toContain('video');
+  });
+
+  it('renders product card with hero image', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_standard' },
+        assets: {
+          product_name: { content: 'Pinnacle News Video' },
+          product_description: { content: 'Premium video' },
+          product_image: { url: 'https://picsum.photos/seed/pinnacle/600/300' },
+          primary_asset_type: { content: 'video' },
+        },
+      },
+      findFormat('product_card_standard'),
+    );
+
+    expect(html).toContain('<img src="https://picsum.photos/seed/pinnacle/600/300"');
+    // Body should use the real image, not the placeholder div
+    expect(html).toContain('product-card__image"><img');
+  });
+
+  it('renders product card with click-through link', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_standard' },
+        assets: {
+          product_name: { content: 'Clickable Product' },
+          product_description: { content: 'Click me' },
+          click_url: { url: 'https://publisher.example/products/123' },
+        },
+      },
+      findFormat('product_card_standard'),
+    );
+
+    expect(html).toContain('href="https://publisher.example/products/123"');
+    expect(html).toContain('class="card-link"');
+    expect(html).toContain('target="_blank"');
+  });
+
+  it('does not wrap in link when click_url is absent', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_standard' },
+        assets: {
+          product_name: { content: 'No Link Product' },
+          product_description: { content: 'Static card' },
+        },
+      },
+      findFormat('product_card_standard'),
+    );
+
+    // Body should not have an <a> wrapping the card
+    expect(html).not.toContain('<a href=');
+  });
+
+  it('renders product card with missing optional assets', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_standard' },
+        assets: {
+          product_name: { content: 'Basic Product' },
+          product_description: { content: 'A simple product' },
+        },
+      },
+      findFormat('product_card_standard'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('Basic Product');
+    // No pricing div rendered in the body (CSS still defines the class)
+    expect(html).not.toContain('class="product-card__pricing">');
+  });
+
+  it('escapes HTML in product card assets', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_standard' },
+        assets: {
+          product_name: { content: '<script>alert("xss")</script>' },
+          product_description: { content: 'Safe description' },
+        },
+      },
+      findFormat('product_card_standard'),
+    );
+
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('renders detailed product card with responsive layout', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_detailed' },
+        assets: {
+          product_name: { content: 'Viewpoint Sports Video' },
+          product_description: { content: 'Live sports coverage across CTV, OLV, and linear TV' },
+          pricing_model: { content: 'CPM' },
+          pricing_amount: { content: '45.00' },
+          pricing_currency: { content: 'USD' },
+          delivery_type: { content: 'guaranteed' },
+          primary_asset_type: { content: 'video' },
+        },
+      },
+      findFormat('product_card_detailed'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('Viewpoint Sports Video');
+    expect(html).toContain('max-width: 600px');
+    expect(html).toContain('product-card-detailed');
+  });
+
+  it('renders detailed product card with click-through', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'product_card_detailed' },
+        assets: {
+          product_name: { content: 'Linked Detail Card' },
+          product_description: { content: 'Has a click-through' },
+          click_url: { url: 'https://publisher.example/products/detail' },
+          product_image: { url: 'https://picsum.photos/seed/test/600/300' },
+        },
+      },
+      findFormat('product_card_detailed'),
+    );
+
+    expect(html).toContain('href="https://publisher.example/products/detail"');
+    expect(html).toContain('class="card-link"');
+    expect(html).toContain('<img src="https://picsum.photos/seed/test/600/300"');
+  });
+});
+
+// ── Proposal card renderers ──────────────────────────────────────────
+
+describe('proposal card renderer', () => {
+  const refFormats = buildReferenceFormats(TEST_AGENT_URL);
+  function findFormat(id: string) {
+    return refFormats.find(f => (f.format_id as { id: string }).id === id);
+  }
+
+  it('renders proposal card with allocation bars', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'proposal_card_standard' },
+        assets: {
+          proposal_name: { content: 'Cross-Channel News Reach' },
+          proposal_description: { content: 'Balanced video and display plan' },
+          allocation_data: { content: JSON.stringify([
+            { product_id: 'pinnacle_news_video_premium', allocation_percentage: 45, rationale: 'Premium video' },
+            { product_id: 'pinnacle_news_video_standard', allocation_percentage: 30, rationale: 'Auction video' },
+            { product_id: 'pinnacle_news_display_standard', allocation_percentage: 25, rationale: 'Display retargeting' },
+          ]) },
+          budget_min: { content: '25000' },
+          budget_recommended: { content: '75000' },
+          budget_currency: { content: 'USD' },
+          proposal_status: { content: 'draft' },
+        },
+      },
+      findFormat('proposal_card_standard'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('Cross-Channel News Reach');
+    expect(html).toContain('45%');
+    expect(html).toContain('30%');
+    expect(html).toContain('25%');
+    expect(html).toContain('draft');
+    expect(html).toContain('25K');
+    expect(html).toContain('75K');
+  });
+
+  it('renders proposal card with hero image', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'proposal_card_standard' },
+        assets: {
+          proposal_name: { content: 'Imaged Proposal' },
+          proposal_description: { content: 'Has a hero' },
+          allocation_data: { content: '[]' },
+          proposal_image: { url: 'https://picsum.photos/seed/proposal/600/300' },
+        },
+      },
+      findFormat('proposal_card_standard'),
+    );
+
+    expect(html).toContain('<img');
+    expect(html).toContain('proposal-card__image');
+    expect(html).toContain('https://picsum.photos/seed/proposal/600/300');
+  });
+
+  it('renders proposal card with click-through', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'proposal_card_standard' },
+        assets: {
+          proposal_name: { content: 'Clickable Proposal' },
+          proposal_description: { content: 'Interactive' },
+          allocation_data: { content: '[]' },
+          click_url: { url: 'https://publisher.example/proposals/abc' },
+        },
+      },
+      findFormat('proposal_card_standard'),
+    );
+
+    expect(html).toContain('href="https://publisher.example/proposals/abc"');
+    expect(html).toContain('class="card-link"');
+  });
+
+  it('handles invalid allocation_data JSON gracefully', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'proposal_card_standard' },
+        assets: {
+          proposal_name: { content: 'Bad Data Proposal' },
+          proposal_description: { content: 'Test' },
+          allocation_data: { content: 'not valid json{{{' },
+        },
+      },
+      findFormat('proposal_card_standard'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('Bad Data Proposal');
+    expect(html).toContain('No allocations');
+  });
+
+  it('renders detailed proposal card with rationale', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'proposal_card_detailed' },
+        assets: {
+          proposal_name: { content: 'Sports Multi-Screen' },
+          proposal_description: { content: 'Live sports across all screens' },
+          allocation_data: { content: JSON.stringify([
+            { product_id: 'viewpoint_video_premium', allocation_percentage: 100, rationale: 'All video bundled for cross-screen sports reach' },
+          ]) },
+          budget_min: { content: '75000' },
+          budget_recommended: { content: '200000' },
+          budget_currency: { content: 'USD' },
+          brief_alignment: { content: 'Premium sports video inventory across all screens with guaranteed delivery.' },
+        },
+      },
+      findFormat('proposal_card_detailed'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('Sports Multi-Screen');
+    expect(html).toContain('100%');
+    expect(html).toContain('cross-screen sports reach');
+    expect(html).toContain('Premium sports video inventory across all screens');
+    expect(html).toContain('max-width: 600px');
+  });
+
+  it('renders detailed proposal card with hero image overlay', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'proposal_card_detailed' },
+        assets: {
+          proposal_name: { content: 'Hero Proposal' },
+          proposal_description: { content: 'Detailed with image' },
+          allocation_data: { content: JSON.stringify([
+            { product_id: 'test_product', allocation_percentage: 100, rationale: 'All in' },
+          ]) },
+          proposal_image: { url: 'https://picsum.photos/seed/hero/600/300' },
+          click_url: { url: 'https://publisher.example/proposals/hero' },
+        },
+      },
+      findFormat('proposal_card_detailed'),
+    );
+
+    expect(html).toContain('proposal-card-detailed__image');
+    expect(html).toContain('https://picsum.photos/seed/hero/600/300');
+    expect(html).toContain('href="https://publisher.example/proposals/hero"');
+    expect(html).toContain('class="card-link"');
   });
 });

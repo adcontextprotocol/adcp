@@ -78,6 +78,12 @@ export interface PublisherProfile {
   reportingMetrics?: string[];
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
+  /** Hero image URL for product and proposal cards */
+  heroImageUrl?: string;
+  /** Audience summary for product cards */
+  audienceSummary?: string;
+  /** Monthly volume estimate for product cards */
+  estimatedVolume?: string;
 }
 
 export interface PropertyDefinition {
