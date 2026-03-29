@@ -91,15 +91,21 @@ export function createPublicPortraitRouter(): Router {
 
       // If we have binary data, serve it directly
       if (data.portrait_data) {
+        const cacheControl = data.status === 'approved'
+          ? 'public, max-age=31536000, immutable'
+          : 'private, no-cache';
         res.set({
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Cache-Control': cacheControl,
         });
         return res.send(data.portrait_data);
       }
 
-      // Otherwise redirect to the static image URL
-      res.redirect(301, data.image_url);
+      // Otherwise redirect to the static image URL (only for approved)
+      if (data.status === 'approved') {
+        return res.redirect(301, data.image_url);
+      }
+      res.redirect(302, data.image_url);
     } catch (err) {
       logger.error({ err, id: req.params.id }, 'Failed to serve portrait');
       res.status(500).send('Internal error');

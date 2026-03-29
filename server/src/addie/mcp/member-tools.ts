@@ -1511,6 +1511,9 @@ export function createMemberToolHandlers(
         if ((updates[arrField] as string[]).length > 20) {
           return `Maximum 20 ${arrField} tags allowed.`;
         }
+        if ((updates[arrField] as string[]).some(s => s.length > 100)) {
+          return `Each ${arrField} tag must be 100 characters or fewer.`;
+        }
       }
     }
 
@@ -1546,6 +1549,11 @@ export function createMemberToolHandlers(
       values.push(value);
       paramIdx++;
     }
+
+    if (setClauses.length === 0) {
+      return 'No valid fields to update.';
+    }
+
     values.push(userId);
 
     try {
@@ -1707,6 +1715,11 @@ export function createMemberToolHandlers(
       values.push(value);
       paramIdx++;
     }
+
+    if (setClauses.length === 0) {
+      return 'No valid fields to update.';
+    }
+
     values.push(orgId);
 
     try {
