@@ -2669,7 +2669,31 @@ export function createMemberToolHandlers(
       auth: buildAuthOption(resolved),
     };
     if (tracks) complyOptions.tracks = tracks;
-    if (platformType) complyOptions.platform_type = platformType;
+
+    // Use provided platform_type, or look up stored one from registry metadata
+    let effectivePlatformType = platformType;
+    let wasStoredPlatformType = false;
+    if (!effectivePlatformType) {
+      try {
+        const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
+        if (metadata?.platform_type) {
+          effectivePlatformType = metadata.platform_type as PlatformType;
+          wasStoredPlatformType = true;
+        }
+      } catch { /* ignore lookup failures */ }
+    }
+
+    // If user provided platform_type and it wasn't already stored, save it
+    if (platformType && !wasStoredPlatformType) {
+      try {
+        await complianceDb.upsertRegistryMetadata(resolved.resolvedUrl, { platform_type: platformType });
+      } catch { /* ignore save failures */ }
+    }
+    if (!effectivePlatformType) {
+      const types = getAllPlatformTypes();
+      return `I need to know what type of agent this is to run a meaningful compliance check. What platform type is this agent?\n\n${types.map(t => `- \`${t}\``).join('\n')}\n\nOnce you tell me, I'll save it and run the check.`;
+    }
+    complyOptions.platform_type = effectivePlatformType;
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
