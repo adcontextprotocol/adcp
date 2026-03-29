@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
-import { mergeUsers, previewUserMerge } from '../db/user-merge-db.js';
+import { mergeUsers } from '../db/user-merge-db.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
 import { workos } from '../auth/workos-client.js';
 import { PostgresStore } from '../middleware/pg-rate-limit-store.js';
