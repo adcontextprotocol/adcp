@@ -46,6 +46,7 @@ const EXEMPT_EXACT = [
   "/auth/bridge-callback", // Cross-domain session bridge (origin-validated)
   "/token",              // OAuth token endpoint (mcpAuthRouter)
   "/register",           // OAuth dynamic client registration (mcpAuthRouter)
+  "/verify-email-link",  // Email link verification (token-authenticated form POST from email)
 ];
 
 function isExemptPath(path: string): boolean {

@@ -88,6 +88,7 @@ import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
+import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
@@ -1081,6 +1082,10 @@ export class HTTPServer {
 
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());
+
+    // Mount account linking routes (self-service email linking / user merge)
+    this.app.use('/api/me/linked-emails', createAccountLinkingRouter());
+    handleEmailLinkVerification(this.app);
 
     // Mount training agent (embedded AdCP sales agent for testing and certification)
     const trainingAgentRouter = createTrainingAgentRouter();
