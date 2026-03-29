@@ -455,9 +455,21 @@
     }
 
     .agent-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       font-size: var(--text-xs);
       color: var(--color-text-muted);
       margin-top: var(--space-2);
+    }
+    .agent-action-link {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-primary-600);
+      text-decoration: none;
+    }
+    .agent-action-link:hover {
+      text-decoration: underline;
     }
     .agent-auth-section {
       margin-top: var(--space-3);
@@ -808,7 +820,11 @@
         // Init dashboard sidebar — resolve org first so profile fetch uses the right org
         const meData = meRes.ok ? await meRes.json() : null;
         const orgs = meData?.organizations || [];
-        const { org: currentOrg } = DashboardNav.resolveOrg(orgs);
+        let { org: currentOrg } = DashboardNav.resolveOrg(orgs);
+        // On the org dashboard, default to the first non-personal org
+        if (!currentOrg && orgs.length > 0) {
+          currentOrg = orgs.find(o => !o.is_personal) || orgs[0];
+        }
 
         // Fetch profile with org context
         const profileParam = currentOrg?.id ? `?org=${encodeURIComponent(currentOrg.id)}` : '';
@@ -863,7 +879,8 @@
           }
         }
 
-        renderHub(data, profileData?.profile || null, currentOrg?.id || null, certSummary, agentCompliance);
+        currentOrgId = currentOrg?.id || null;
+        renderHub(data, profileData?.profile || null, currentOrgId, certSummary, agentCompliance);
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
@@ -1053,7 +1070,7 @@
           <div class="hub-card">
             <div class="hub-card-header">
               <span class="hub-card-title">Agents</span>
-              <a href="${orgId ? '/member-profile?org=' + encodeURIComponent(orgId) + '#agents' : '/member-profile#agents'}" class="hub-card-link">Manage agents &rarr;</a>
+              <a href="/chat?prompt=${encodeURIComponent('I want to add an agent for compliance monitoring.')}" class="hub-card-link">+ Add agent</a>
             </div>
             ${renderAgentsSection(profile?.agents || [], agentCompliance, orgId)}
           </div>
@@ -1067,8 +1084,8 @@
       if (!agents || agents.length === 0) {
         return `
           <div style="text-align: center; padding: var(--space-6); color: var(--color-text-secondary);">
-            <p>No agents registered.</p>
-            <a href="${orgId ? '/member-profile?org=' + encodeURIComponent(orgId) : '/member-profile'}" class="hub-card-link">Add agents in your directory listing &rarr;</a>
+            <p>No agents registered yet.</p>
+            <p style="font-size: var(--text-sm);"><a href="/chat?prompt=${encodeURIComponent('I want to add an agent for compliance monitoring.')}">Ask Addie</a> to connect your agent and start compliance monitoring.</p>
           </div>
         `;
       }
@@ -1078,22 +1095,45 @@
         const cs = data?.status;
         const history = data?.history;
         const hostname = (() => { try { return new URL(agent.url).hostname; } catch { return agent.url; } })();
+        const hasData = cs && cs.status && cs.status !== 'unknown';
+        const hasAuth = cs?.has_compliance_auth;
 
-        // Status dot
-        const statusClass = cs?.status || 'unknown';
-        const statusLabel = cs?.status || 'unknown';
+        const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
 
-        // Track pills
-        const tracks = cs?.tracks || {};
-        const trackPills = Object.entries(tracks).map(([track, status]) => {
+        // No compliance data yet — show onboarding state
+        if (!hasData) {
+          return `
+          <div class="agent-compliance-card" id="${cardId}">
+            <div class="agent-compliance-header">
+              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
+                <span class="agent-status-dot agent-status-dot--unknown"></span>
+                <span class="agent-hostname">${escapeHtml(hostname)}</span>
+                <span class="agent-status-label" style="color: var(--color-text-secondary);">not yet checked</span>
+              </div>
+            </div>
+            <div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+              ${hasAuth
+                ? 'Auth configured. Compliance check will run on the next heartbeat cycle.'
+                : 'Connect this agent through <a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '">Addie</a> to save credentials and start compliance monitoring.'}
+            </div>
+          </div>`;
+        }
+
+        // Has compliance data — show full card
+        const statusClass = cs.status;
+        const statusLabel = cs.status;
+        const tracks = cs.tracks || {};
+
+        const clickableTrackPills = Object.entries(tracks)
+          .filter(([, status]) => status !== 'skip' && status !== 'expected')
+          .map(([track, status]) => {
           const cls = status === 'pass' ? 'agent-track--pass'
             : status === 'fail' ? 'agent-track--fail'
             : status === 'partial' ? 'agent-track--partial'
             : 'agent-track--skip';
-          return '<span class="agent-track ' + cls + '">' + escapeHtml(track) + '</span>';
+          return '<button class="agent-track ' + cls + '" data-track="' + escapeHtml(track) + '" data-agent-url="' + escapeHtml(agent.url) + '">' + escapeHtml(track) + '</button>';
         }).join('');
 
-        // Sparkline from history
         const runs = history?.runs || [];
         const sparkline = runs.length > 0 ? '<div class="agent-sparkline">' +
           runs.slice().reverse().map(r => {
@@ -1103,30 +1143,11 @@
             return '<div class="agent-sparkline-bar" style="background:' + color + ';" title="' + escapeHtml(r.overall_status) + ' — ' + new Date(r.tested_at).toLocaleDateString() + '"></div>';
           }).join('') + '</div>' : '';
 
-        // Last checked
-        const lastChecked = cs?.last_checked_at
+        const lastChecked = cs.last_checked_at
           ? timeAgo(new Date(cs.last_checked_at))
           : 'never';
 
-        // Lifecycle select
-        const lifecycle = cs?.lifecycle_stage || 'production';
-        const lifecycleOptions = ['development', 'testing', 'production', 'deprecated'].map(s =>
-          '<option value="' + s + '"' + (s === lifecycle ? ' selected' : '') + '>' + s + '</option>'
-        ).join('');
-
-        // Public toggle
-        const isPublic = !(cs?.compliance_opt_out ?? false);
-
-        // Build clickable track pills with data attributes
-        const clickableTrackPills = Object.entries(tracks).map(([track, status]) => {
-          const cls = status === 'pass' ? 'agent-track--pass'
-            : status === 'fail' ? 'agent-track--fail'
-            : status === 'partial' ? 'agent-track--partial'
-            : 'agent-track--skip';
-          return '<button class="agent-track ' + cls + '" data-track="' + escapeHtml(track) + '" data-agent-url="' + escapeHtml(agent.url) + '">' + escapeHtml(track) + '</button>';
-        }).join('');
-
-        const cardId = 'agent-' + encodeURIComponent(agent.url).replace(/%/g, '_');
+        const isPublic = !(cs.compliance_opt_out ?? false);
 
         return `
           <div class="agent-compliance-card" id="${cardId}">
@@ -1135,32 +1156,27 @@
                 <span class="agent-status-dot agent-status-dot--${escapeHtml(statusClass)}"></span>
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
                 <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
-                ${cs?.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
+                ${cs.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
               </div>
               <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
-                <select class="agent-lifecycle-select" data-agent-url="${escapeHtml(agent.url)}" title="Lifecycle stage">
-                  ${lifecycleOptions}
-                </select>
-                <label class="agent-toggle" title="Show compliance on public listing">
+                <label class="agent-toggle" title="Show compliance on public registry">
                   <input type="checkbox" ${isPublic ? 'checked' : ''} data-agent-url="${escapeHtml(agent.url)}">
-                  <span class="agent-toggle-label">Public</span>
+                  <span class="agent-toggle-label">Show on registry</span>
                 </label>
               </div>
             </div>
-            ${cs?.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
+            ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
             ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
             <div class="agent-meta-row">
               <span>Last checked: ${escapeHtml(lastChecked)}</span>
-              <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
+              <div style="display: flex; gap: var(--space-3); align-items: center;">
+                ${!hasAuth ? '<a href="/chat?prompt=' + encodeURIComponent('Connect my agent at ' + agent.url + ' for compliance monitoring.') + '" class="agent-action-link" title="Connect through Addie to save credentials">Connect agent</a>' : ''}
+                <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">View history</button>
+              </div>
             </div>
             <div class="agent-history-panel" id="${cardId}-history" style="display:none;"></div>
-            <div class="agent-auth-section">
-              <span class="agent-auth-status">${cs?.has_compliance_auth
-                ? 'Auth configured — compliance checks use your saved credentials'
-                : 'No auth saved — connect this agent through Addie to enable authenticated compliance checks'}</span>
-            </div>
           </div>
         `;
       }).join('');
@@ -1694,6 +1710,9 @@
         }
       }
     });
+
+    // Store current org ID
+    let currentOrgId = null;
 
     async function openBillingPortal(orgId) {
       try {

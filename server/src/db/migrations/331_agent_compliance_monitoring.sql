@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS agent_registry_metadata (
   agent_url TEXT PRIMARY KEY,
   lifecycle_stage TEXT NOT NULL DEFAULT 'production',
+  platform_type TEXT,
   compliance_opt_out BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -12,6 +13,9 @@ CREATE TABLE IF NOT EXISTS agent_registry_metadata (
     lifecycle_stage IN ('development', 'testing', 'production', 'deprecated')
   )
 );
+
+-- Add platform_type if migrating from earlier version
+ALTER TABLE agent_registry_metadata ADD COLUMN IF NOT EXISTS platform_type TEXT;
 
 -- History of compliance heartbeat runs (one row per check).
 CREATE TABLE IF NOT EXISTS agent_compliance_runs (

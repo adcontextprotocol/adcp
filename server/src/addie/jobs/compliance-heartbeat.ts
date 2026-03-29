@@ -49,7 +49,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   for (const agent of agentsDue) {
     try {
       // Use the owning org's saved credentials from agent_contexts.
-      // These are credentials the publisher saved when connecting through Addie.
+      // These are credentials the owner saved when connecting through Addie.
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
 
       const complyOptions: ComplyOptions = {
@@ -57,6 +57,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         dry_run: true,
         timeout_ms: 60_000,
         auth,
+        ...(agent.platform_type ? { platform_type: agent.platform_type as any } : {}),
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);

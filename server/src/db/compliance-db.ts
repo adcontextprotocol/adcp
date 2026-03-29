@@ -17,6 +17,7 @@ export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip' | 'expected';
 export interface AgentRegistryMetadata {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
+  platform_type: string | null;
   compliance_opt_out: boolean;
   created_at: Date;
   updated_at: Date;
@@ -92,20 +93,22 @@ export class ComplianceDatabase {
 
   async upsertRegistryMetadata(
     agentUrl: string,
-    updates: { lifecycle_stage?: LifecycleStage; compliance_opt_out?: boolean },
+    updates: { lifecycle_stage?: LifecycleStage; compliance_opt_out?: boolean; platform_type?: string },
   ): Promise<AgentRegistryMetadata> {
     const result = await query(
-      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, compliance_opt_out)
-       VALUES ($1, COALESCE($2, 'production'), COALESCE($3, FALSE))
+      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, platform_type, compliance_opt_out)
+       VALUES ($1, COALESCE($2, 'production'), $4, COALESCE($3, FALSE))
        ON CONFLICT (agent_url) DO UPDATE SET
          lifecycle_stage = COALESCE($2, agent_registry_metadata.lifecycle_stage),
          compliance_opt_out = COALESCE($3, agent_registry_metadata.compliance_opt_out),
+         platform_type = COALESCE($4, agent_registry_metadata.platform_type),
          updated_at = NOW()
        RETURNING *`,
       [
         agentUrl,
         updates.lifecycle_stage ?? null,
         updates.compliance_opt_out ?? null,
+        updates.platform_type ?? null,
       ],
     );
     return result.rows[0];
@@ -327,6 +330,7 @@ export class ComplianceDatabase {
   async getAgentsDueForCheck(limit: number = 10): Promise<Array<{
     agent_url: string;
     lifecycle_stage: LifecycleStage;
+    platform_type: string | null;
     last_checked_at: Date | null;
   }>> {
     const result = await query(
@@ -338,6 +342,7 @@ export class ComplianceDatabase {
       SELECT
         ka.agent_url,
         COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+        m.platform_type,
         s.last_checked_at
       FROM known_agents ka
       LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url

@@ -2173,11 +2173,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
 
-      if (req.user) {
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
-          return res.status(403).json({ error: "You do not have permission to modify this agent" });
-        }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
       }
 
       const { lifecycle_stage } = req.body;
@@ -2205,11 +2207,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
 
-      if (req.user) {
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
-          return res.status(403).json({ error: "You do not have permission to modify this agent" });
-        }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
       }
 
       const { opt_out } = req.body;
