@@ -487,7 +487,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
       return res.json({ status: 'complete', results });
     } catch (err) {
       logger.error(`GCS seed error: ${err instanceof Error ? err.message : String(err)}`);
-      return res.status(500).json({ error: err instanceof Error ? err.message : 'Seed failed' });
+      return res.status(500).json({ error: 'Seed import failed' });
     }
   });
 
