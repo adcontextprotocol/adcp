@@ -126,6 +126,10 @@ function isWithinBusinessHours(constraint: BusinessHoursConstraint): boolean {
 class JobScheduler {
   private configs: Map<string, JobConfig> = new Map();
   private runningJobs: Map<string, RunningJob> = new Map();
+  /** Consecutive failure count per job — resets on success. */
+  private consecutiveFailures: Map<string, number> = new Map();
+  /** Only notify Slack after this many consecutive failures. */
+  private static readonly FAILURE_THRESHOLD = 2;
 
   /**
    * Register a job configuration
@@ -170,6 +174,9 @@ class JobScheduler {
       try {
         const result = await config.runner(config.options ?? ({} as never));
 
+        // Reset consecutive failure count on success
+        this.consecutiveFailures.delete(name);
+
         // Log based on shouldLogResult predicate or default to debug
         const shouldLog = config.shouldLogResult?.(result) ?? false;
         if (shouldLog) {
@@ -178,11 +185,18 @@ class JobScheduler {
           logger.debug({ jobName: name, result }, `${config.description}: completed`);
         }
       } catch (err) {
-        logger.error({ err, jobName: name }, `${config.description}: failed`);
-        notifySystemError({
-          source: `job:${name}`,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
+        const failures = (this.consecutiveFailures.get(name) ?? 0) + 1;
+        this.consecutiveFailures.set(name, failures);
+
+        logger.error({ err, jobName: name, consecutiveFailures: failures }, `${config.description}: failed`);
+
+        // Only notify Slack after repeated failures — single transient errors resolve on their own
+        if (failures >= JobScheduler.FAILURE_THRESHOLD) {
+          notifySystemError({
+            source: `job:${name}`,
+            errorMessage: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     };
 
