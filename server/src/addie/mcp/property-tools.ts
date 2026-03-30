@@ -9,14 +9,18 @@
 import type { AddieTool } from '../types.js';
 import { AdAgentsManager } from '../../adagents-manager.js';
 import { PropertyDatabase } from '../../db/property-db.js';
+import { CatalogDatabase } from '../../db/catalog-db.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { PropertyCheckService } from '../../services/property-check.js';
 import { PropertyCheckDatabase } from '../../db/property-check-db.js';
 import { enhanceProperty } from '../../services/property-enhancement.js';
+import { fileDispute } from '../../services/catalog-governance.js';
+import type { DisputeType } from '../../db/catalog-disputes-db.js';
 import { AAO_HOST } from '../../config/aao.js';
 
 const adagentsManager = new AdAgentsManager();
 const propertyDb = new PropertyDatabase();
+const catalogDb = new CatalogDatabase();
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 
@@ -172,6 +176,78 @@ export const PROPERTY_TOOLS: AddieTool[] = [
       required: ['domain'],
     },
   },
+  {
+    name: 'resolve_catalog',
+    description: 'Resolve identifiers (domains, app bundles, store IDs) to stable property_rids in the catalog. Auto-creates missing properties. Excludes known ad infrastructure and publisher masks. Returns property_rid for each identifier.',
+    usage_hints: 'Use when a buyer agent or member needs to map a list of domains/identifiers to catalog property_rids for property lists or TMP. Supports up to 10,000 identifiers per call.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        identifiers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', description: 'Identifier type (domain, ios_bundle, android_package, etc.)' },
+              value: { type: 'string', description: 'Identifier value' },
+            },
+            required: ['type', 'value'],
+          },
+          description: 'Array of identifiers to resolve',
+        },
+        provenance: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', description: 'How the caller knows about these identifiers (agency_allowlist, impression_log, ssp_inventory, deal_history, data_partner, member_assertion)' },
+            context: { type: 'string', description: 'Optional context annotation' },
+          },
+          required: ['type'],
+          description: 'Provenance of these identifiers',
+        },
+        mode: {
+          type: 'string',
+          enum: ['resolve', 'lookup'],
+          description: 'resolve (default): create missing, log activity. lookup: read-only, no creates.',
+        },
+      },
+      required: ['identifiers', 'provenance'],
+    },
+  },
+  {
+    name: 'browse_catalog',
+    description: 'Browse the property catalog. Returns properties with their identifiers, classification, and source. Supports filtering and search.',
+    usage_hints: 'Use when someone wants to explore what properties are in the catalog, search for specific domains, or understand catalog coverage.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Search term for identifier values' },
+        classification: { type: 'string', enum: ['property', 'ad_infra', 'publisher_mask', 'network'], description: 'Filter by classification' },
+        source: { type: 'string', enum: ['authoritative', 'enriched', 'contributed'], description: 'Filter by source' },
+        limit: { type: 'number', description: 'Maximum results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'dispute_catalog_entry',
+    description: 'File a dispute against a catalog entry. For identifier link disputes on medium/weak confidence, the link is suspended immediately pending review. For authoritative/strong links, the dispute is queued for review without suspension.',
+    usage_hints: 'Use when a member believes a catalog entry is wrong — a false identifier link, incorrect classification, or bad property data. Provide clear evidence to support the claim.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dispute_type: {
+          type: 'string',
+          enum: ['identifier_link', 'classification', 'property_data', 'false_merge'],
+          description: 'What is being disputed',
+        },
+        subject_type: { type: 'string', description: 'Type of subject (identifier, property_rid, link)' },
+        subject_value: { type: 'string', description: 'The identifier or property_rid being disputed (e.g., "domain:example.com")' },
+        claim: { type: 'string', description: 'What the reporter asserts is wrong (min 10 chars)' },
+        evidence: { type: 'string', description: 'Supporting evidence (optional)' },
+        reported_by: { type: 'string', description: 'Member ID filing the dispute (injected from session if omitted)' },
+      },
+      required: ['dispute_type', 'subject_type', 'subject_value', 'claim'],
+    },
+  },
 ];
 
 /**
@@ -207,7 +283,16 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       return JSON.stringify({ error: 'domain is required' });
     }
 
-    // Check hosted first
+    // Check catalog first (new path)
+    const catalogResult = await catalogDb.resolveIdentifiers(
+      [{ type: 'domain', value: domain.toLowerCase() }],
+      'lookup',
+      'system:addie',
+      { type: 'data_partner' }
+    );
+    const catalogEntry = catalogResult.resolved[0];
+
+    // Check hosted
     const hosted = await propertyDb.getHostedPropertyByDomain(domain);
     if (hosted) {
       const adagents = hosted.adagents_json as Record<string, unknown>;
@@ -221,6 +306,11 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         is_public: hosted.is_public,
         review_status: hosted.review_status,
       };
+      // Add catalog data if available
+      if (catalogEntry?.property_rid) {
+        result.property_rid = catalogEntry.property_rid;
+        result.catalog_classification = catalogEntry.classification;
+      }
       if (!hosted.is_public || hosted.review_status === 'pending') {
         result.hint = 'This property exists but is not visible in the registry. Use save_property to approve and publish it.';
       } else {
@@ -233,7 +323,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
     const discovered = await propertyDb.getDiscoveredPropertiesByDomain(domain);
     if (discovered.length > 0) {
       const agents = await propertyDb.getAgentAuthorizationsForDomain(domain);
-      return JSON.stringify({
+      const result: Record<string, unknown> = {
         source: 'adagents_json',
         publisher_domain: domain,
         verified: true,
@@ -241,13 +331,18 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         agent_urls: [...new Set(agents.map(a => a.agent_url))],
         properties: discovered.length,
         property_types: [...new Set(discovered.map(p => p.property_type))],
-      }, null, 2);
+      };
+      if (catalogEntry?.property_rid) {
+        result.property_rid = catalogEntry.property_rid;
+        result.catalog_classification = catalogEntry.classification;
+      }
+      return JSON.stringify(result, null, 2);
     }
 
     // Try live validation
     const validation = await adagentsManager.validateDomain(domain);
     if (validation.valid && validation.raw_data) {
-      return JSON.stringify({
+      const result: Record<string, unknown> = {
         source: 'adagents_json',
         publisher_domain: domain,
         verified: true,
@@ -255,6 +350,22 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         agent_urls: validation.raw_data.authorized_agents?.map((a: { url: string }) => a.url) || [],
         properties: validation.raw_data.properties?.length || 0,
         has_contact: !!validation.raw_data.contact,
+      };
+      if (catalogEntry?.property_rid) {
+        result.property_rid = catalogEntry.property_rid;
+      }
+      return JSON.stringify(result, null, 2);
+    }
+
+    // Check catalog even if not in old registry
+    if (catalogEntry?.property_rid) {
+      return JSON.stringify({
+        source: 'catalog',
+        publisher_domain: domain,
+        property_rid: catalogEntry.property_rid,
+        classification: catalogEntry.classification,
+        catalog_source: catalogEntry.source,
+        hint: 'Found in catalog but not in legacy registry. Property exists and has a stable property_rid.',
       }, null, 2);
     }
 
@@ -262,7 +373,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
     return JSON.stringify({
       error: 'Property not found',
       domain,
-      hint: 'No adagents.json found at /.well-known/adagents.json and not in registry. Use save_property to create a synthetic entry.',
+      hint: 'No adagents.json found at /.well-known/adagents.json and not in registry. Use save_property to create a synthetic entry, or resolve_catalog to add to the catalog.',
     });
   });
 
@@ -492,6 +603,101 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         ? 'Domain submitted to registry as pending. Addie will review and approve if it looks legitimate.'
         : 'Domain analysis complete but submission failed.',
     }, null, 2);
+  });
+
+  // ── Catalog tools ──────────────────────────────────────────────
+
+  handlers.set('resolve_catalog', async (args) => {
+    const identifiers = args.identifiers as Array<{ type: string; value: string }>;
+    if (!Array.isArray(identifiers) || identifiers.length === 0) {
+      return JSON.stringify({ error: 'identifiers array is required' });
+    }
+    if (identifiers.length > 10000) {
+      return JSON.stringify({ error: 'Maximum 10,000 identifiers per request' });
+    }
+
+    const provenance = args.provenance as { type: string; context?: string };
+    if (!provenance?.type) {
+      return JSON.stringify({ error: 'provenance.type is required' });
+    }
+
+    const mode = (args.mode as string) === 'lookup' ? 'lookup' as const : 'resolve' as const;
+    const memberId = 'system:addie';
+
+    const result = await catalogDb.resolveIdentifiers(identifiers, mode, memberId, provenance);
+
+    return JSON.stringify({
+      summary: result.summary,
+      resolved: result.resolved.slice(0, 50), // Limit context window impact
+      server_timestamp: result.server_timestamp,
+      note: result.resolved.length > 50
+        ? `Showing first 50 of ${result.resolved.length} results. Use the REST API for full results.`
+        : undefined,
+    }, null, 2);
+  });
+
+  handlers.set('browse_catalog', async (args) => {
+    const filters = {
+      search: args.search as string | undefined,
+      classification: args.classification as string | undefined,
+      source: args.source as string | undefined,
+      limit: typeof args.limit === 'number' ? Math.min(args.limit, 50) : 20,
+    };
+
+    const result = await catalogDb.listProperties(filters);
+
+    if (result.properties.length === 0) {
+      return 'No properties found matching those filters.';
+    }
+
+    // Enrich with identifiers for display
+    const entries = await Promise.all(
+      result.properties.slice(0, 50).map(async (prop) => {
+        const full = await catalogDb.getProperty(prop.property_rid);
+        return {
+          property_rid: prop.property_rid,
+          classification: prop.classification,
+          source: prop.source,
+          status: prop.status,
+          identifiers: full?.identifiers.map(i => ({ type: i.identifier_type, value: i.identifier_value })) ?? [],
+        };
+      })
+    );
+
+    return JSON.stringify({ entries, total: result.total }, null, 2);
+  });
+
+  handlers.set('dispute_catalog_entry', async (args) => {
+    const disputeType = args.dispute_type as string;
+    const subjectType = args.subject_type as string;
+    const subjectValue = args.subject_value as string;
+    const claim = args.claim as string;
+    // reported_by should come from the conversation session, not from args.
+    // When called via MCP, the session user is injected by the conversation handler.
+    // Fall back to args.reported_by only if session context is unavailable.
+    const reportedBy = (args._session_user_email as string) || (args.reported_by as string);
+
+    if (!disputeType || !subjectType || !subjectValue || !claim) {
+      return JSON.stringify({ error: 'dispute_type, subject_type, subject_value, and claim are all required' });
+    }
+    if (!reportedBy) {
+      return JSON.stringify({ error: 'Unable to determine reporter identity. Please ensure you are authenticated.' });
+    }
+
+    if (claim.length < 10) {
+      return JSON.stringify({ error: 'claim must be at least 10 characters' });
+    }
+
+    const result = await fileDispute({
+      dispute_type: disputeType as DisputeType,
+      subject_type: subjectType,
+      subject_value: subjectValue,
+      reported_by: reportedBy,
+      claim,
+      evidence: args.evidence as string | undefined,
+    });
+
+    return JSON.stringify(result, null, 2);
   });
 
   return handlers;
