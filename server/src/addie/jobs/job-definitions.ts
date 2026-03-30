@@ -258,6 +258,7 @@ export function registerAllJobs(): void {
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 6, unit: 'minutes' },
     runner: runWeeklyDigestJob,
+    failureThreshold: 1,
     shouldLogResult: (r) => r.generated || r.sent > 0,
   });
 
@@ -268,6 +269,7 @@ export function registerAllJobs(): void {
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 9, unit: 'minutes' },
     runner: runWgDigestJob,
+    failureThreshold: 1,
     shouldLogResult: (r) => r.groupsChecked > 0,
   });
 
@@ -278,6 +280,7 @@ export function registerAllJobs(): void {
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 10, unit: 'minutes' },
     runner: runWgDigestPrepJob,
+    failureThreshold: 1,
     shouldLogResult: (r) => r.emailsSent > 0,
   });
 
@@ -288,6 +291,7 @@ export function registerAllJobs(): void {
     interval: { value: 168, unit: 'hours' },
     initialDelay: { value: 8, unit: 'minutes' },
     runner: runCredentialDigestJob,
+    failureThreshold: 1,
     businessHours: { startHour: 9, endHour: 11, skipWeekends: true },
     shouldLogResult: (r) => r.posted || r.awardsFound > 0,
   });
@@ -401,6 +405,7 @@ export function registerAllJobs(): void {
     description: 'Send reminder notifications for upcoming events',
     interval: { value: 60, unit: 'minutes' },
     initialDelay: { value: 3, unit: 'minutes' },
+    failureThreshold: 1,
     runner: async () => {
       const from = new Date(Date.now() + 23 * 60 * 60 * 1000);
       const to = new Date(Date.now() + 25 * 60 * 60 * 1000);

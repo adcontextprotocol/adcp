@@ -89,6 +89,7 @@ import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
@@ -980,6 +981,10 @@ export class HTTPServer {
       requireAuth,
     });
     this.app.use('/api', registryApiRouter);
+
+    // Mount property catalog API routes (resolve, browse, sync, disputes)
+    const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
+    this.app.use('/api/registry', catalogApiRouter);
 
     // Public brand.json hosting — stable URL for authoritative_location pointer files.
     // Accessible at /brands/:domain/brand.json (no /api prefix — this is a public resource URL).
