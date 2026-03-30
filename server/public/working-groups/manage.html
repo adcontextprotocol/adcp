@@ -861,8 +861,8 @@
         </div>
 
         <div id="documentFileGroup" class="form-group" style="display: none;">
-          <label>Upload PDF or PPTX *</label>
-          <input type="file" id="documentFile" accept=".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation">
+          <label>Upload Document *</label>
+          <input type="file" id="documentFile" accept=".pdf,.pptx,.xlsx,.docx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
           <small>Max 50 MB. Content is automatically indexed and searchable by Addie.</small>
         </div>
 
@@ -880,6 +880,8 @@
               <option value="external_link">External Link</option>
               <option value="pdf">PDF</option>
               <option value="pptx">PPTX</option>
+              <option value="xlsx">XLSX</option>
+              <option value="docx">DOCX</option>
               <option value="other">Other</option>
             </select>
           </div>

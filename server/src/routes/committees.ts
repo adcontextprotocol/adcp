@@ -34,11 +34,16 @@ const documentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req: Request, file: { mimetype: string }, cb: (error: Error | null, acceptFile?: boolean) => void) => {
-    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+    const allowed = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF and PPTX files are accepted'));
+      cb(new Error('Only PDF, PPTX, XLSX, and DOCX files are accepted'));
     }
   },
 });
@@ -86,7 +91,7 @@ const ALLOWED_FILE_HOSTING_DOMAINS = [
   'www.agenticadvertising.org',
 ];
 
-const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.pptx'];
+const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.pptx', '.xlsx', '.docx'];
 
 function isAllowedDocumentUrl(url: string): boolean {
   try {
@@ -1876,7 +1881,7 @@ export function createCommitteeRouters(): {
       if (!file) {
         return res.status(400).json({
           error: 'Missing file',
-          message: 'A PDF or PPTX file is required',
+          message: 'A PDF, PPTX, XLSX, or DOCX file is required',
         });
       }
 
@@ -1889,7 +1894,7 @@ export function createCommitteeRouters(): {
       }
 
       const sanitizedFilename = file.originalname.replace(/[^\w.\-() ]/g, '_').slice(0, 200);
-      const title = (req.body.title || sanitizedFilename.replace(/\.(pdf|pptx)$/i, '')).slice(0, 500);
+      const title = (req.body.title || sanitizedFilename.replace(/\.(pdf|pptx|xlsx|docx)$/i, '')).slice(0, 500);
       const description = req.body.description || null;
       const displayOrder = parseInt(req.body.display_order) || 0;
       const isFeatured = req.body.is_featured === 'true';
@@ -1986,6 +1991,10 @@ export function createCommitteeRouters(): {
         'application/pdf': 'application/pdf',
         'application/vnd.openxmlformats-officedocument.presentationml.presentation':
           'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       };
       res.setHeader('Content-Type', SAFE_SERVE_TYPES[fileData.file_mime_type] || 'application/octet-stream');
       res.setHeader('X-Content-Type-Options', 'nosniff');
