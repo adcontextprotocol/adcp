@@ -33,7 +33,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context and
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_id` | string | Yes | Publisher property identifier. |
 | `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
-| `placement_id` | string | Yes | Placement identifier from the property's registered placements. One placement per request. |
+| `placement_id` | string | Yes | Placement identifier from the publisher's placement registry in `adagents.json`. One placement per request. |
 | `artifacts` | List\<string\> | No | Content artifact IDs adjacent to this ad opportunity (articles, episodes, shows, videos, conversation turns). For URL-addressable content, the buyer may have pre-classified these. For ephemeral content, use `context_signals` instead of or alongside artifact IDs. |
 | `url_hash` | string | No | Blake3 hash of the canonicalized content URL, base64-encoded. For URL-addressable content, the buyer checks this against their pre-crawled index. Canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments. |
 | `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when artifact pre-registration is not feasible (conversation turns, search queries) or to supplement artifact-based matching. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |

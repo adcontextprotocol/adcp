@@ -28,8 +28,37 @@ export interface AuthorizedAgent {
   authorization_type?: 'property_ids' | 'property_tags' | 'inline_properties' | 'publisher_properties' | 'signal_ids' | 'signal_tags';
   property_ids?: string[];
   property_tags?: string[];
+  properties?: any[];
+  publisher_properties?: Array<{
+    publisher_domain: string;
+    selection_type: 'all' | 'by_id' | 'by_tag';
+    property_ids?: string[];
+    property_tags?: string[];
+  }>;
+  collections?: Array<{
+    publisher_domain: string;
+    collection_ids: string[];
+  }>;
+  placement_ids?: string[];
+  placement_tags?: string[];
+  delegation_type?: 'direct' | 'delegated' | 'ad_network';
+  exclusive?: boolean;
+  countries?: string[];
+  effective_from?: string;
+  effective_until?: string;
   signal_ids?: string[];
   signal_tags?: string[];
+  signing_keys?: Array<{
+    kid: string;
+    kty: string;
+    alg?: string;
+    use?: string;
+    crv?: string;
+    x?: string;
+    y?: string;
+    n?: string;
+    e?: string;
+  }>;
 }
 
 export interface SignalDefinition {
@@ -68,7 +97,9 @@ export interface AdAgentsJsonInline {
   $schema?: string;
   authorized_agents: AuthorizedAgent[];
   properties?: any[];
+  placements?: any[];
   tags?: Record<string, { name: string; description: string }>;
+  placement_tags?: Record<string, { name: string; description: string }>;
   signals?: SignalDefinition[];
   signal_tags?: Record<string, { name: string; description: string }>;
   contact?: {
@@ -424,6 +455,35 @@ export class AdAgentsManager {
       }
     }
 
+    // Validate placement_tags if present
+    if (data.placement_tags !== undefined) {
+      if (typeof data.placement_tags !== 'object' || data.placement_tags === null || Array.isArray(data.placement_tags)) {
+        result.errors.push({
+          field: 'placement_tags',
+          message: 'placement_tags must be an object mapping tag IDs to tag definitions',
+          severity: 'error'
+        });
+      } else {
+        Object.entries(data.placement_tags).forEach(([tagId, tagDef]: [string, any]) => {
+          if (typeof tagDef !== 'object' || tagDef === null) {
+            result.errors.push({
+              field: `placement_tags.${tagId}`,
+              message: 'Each placement tag must be an object with name and description',
+              severity: 'error'
+            });
+          } else {
+            if (!tagDef.name || typeof tagDef.name !== 'string') {
+              result.errors.push({
+                field: `placement_tags.${tagId}.name`,
+                message: 'Placement tag name is required and must be a string',
+                severity: 'error'
+              });
+            }
+          }
+        });
+      }
+    }
+
     // Check optional fields
     if (data.$schema && typeof data.$schema !== 'string') {
       result.errors.push({
@@ -584,6 +644,136 @@ export class AdAgentsManager {
         message: 'signal_tags must be an array',
         severity: 'error'
       });
+    }
+
+    if (agent.placement_ids !== undefined && !Array.isArray(agent.placement_ids)) {
+      result.errors.push({
+        field: `${prefix}.placement_ids`,
+        message: 'placement_ids must be an array',
+        severity: 'error'
+      });
+    }
+
+    if (agent.placement_tags !== undefined && !Array.isArray(agent.placement_tags)) {
+      result.errors.push({
+        field: `${prefix}.placement_tags`,
+        message: 'placement_tags must be an array',
+        severity: 'error'
+      });
+    }
+
+    if (agent.countries !== undefined) {
+      if (!Array.isArray(agent.countries)) {
+        result.errors.push({
+          field: `${prefix}.countries`,
+          message: 'countries must be an array',
+          severity: 'error'
+        });
+      } else {
+        const countryPattern = /^[A-Z]{2}$/;
+        agent.countries.forEach((country, countryIndex) => {
+          if (typeof country !== 'string' || !countryPattern.test(country)) {
+            result.errors.push({
+              field: `${prefix}.countries[${countryIndex}]`,
+              message: 'countries entries must be ISO 3166-1 alpha-2 codes',
+              severity: 'error'
+            });
+          }
+        });
+      }
+    }
+
+    if (agent.delegation_type !== undefined) {
+      const validDelegationTypes = ['direct', 'delegated', 'ad_network'];
+      if (!validDelegationTypes.includes(agent.delegation_type)) {
+        result.errors.push({
+          field: `${prefix}.delegation_type`,
+          message: `delegation_type must be one of: ${validDelegationTypes.join(', ')}`,
+          severity: 'error'
+        });
+      }
+    }
+
+    if (agent.exclusive !== undefined && typeof agent.exclusive !== 'boolean') {
+      result.errors.push({
+        field: `${prefix}.exclusive`,
+        message: 'exclusive must be a boolean',
+        severity: 'error'
+      });
+    }
+
+    let effectiveFromMs: number | undefined;
+    let effectiveUntilMs: number | undefined;
+
+    if (agent.effective_from !== undefined) {
+      effectiveFromMs = Date.parse(agent.effective_from);
+      if (typeof agent.effective_from !== 'string' || Number.isNaN(effectiveFromMs)) {
+        result.errors.push({
+          field: `${prefix}.effective_from`,
+          message: 'effective_from must be a valid ISO 8601 date-time string',
+          severity: 'error'
+        });
+      }
+    }
+
+    if (agent.effective_until !== undefined) {
+      effectiveUntilMs = Date.parse(agent.effective_until);
+      if (typeof agent.effective_until !== 'string' || Number.isNaN(effectiveUntilMs)) {
+        result.errors.push({
+          field: `${prefix}.effective_until`,
+          message: 'effective_until must be a valid ISO 8601 date-time string',
+          severity: 'error'
+        });
+      }
+    }
+
+    if (
+      effectiveFromMs !== undefined &&
+      effectiveUntilMs !== undefined &&
+      !Number.isNaN(effectiveFromMs) &&
+      !Number.isNaN(effectiveUntilMs) &&
+      effectiveFromMs > effectiveUntilMs
+    ) {
+      result.errors.push({
+        field: `${prefix}.effective_until`,
+        message: 'effective_until must be later than or equal to effective_from',
+        severity: 'error'
+      });
+    }
+
+    if (agent.signing_keys !== undefined) {
+      if (!Array.isArray(agent.signing_keys)) {
+        result.errors.push({
+          field: `${prefix}.signing_keys`,
+          message: 'signing_keys must be an array',
+          severity: 'error'
+        });
+      } else {
+        agent.signing_keys.forEach((key, keyIndex) => {
+          if (typeof key !== 'object' || key === null) {
+            result.errors.push({
+              field: `${prefix}.signing_keys[${keyIndex}]`,
+              message: 'signing_keys entries must be objects',
+              severity: 'error'
+            });
+            return;
+          }
+          if (typeof key.kid !== 'string' || key.kid.length === 0) {
+            result.errors.push({
+              field: `${prefix}.signing_keys[${keyIndex}].kid`,
+              message: 'signing key kid is required',
+              severity: 'error'
+            });
+          }
+          if (typeof key.kty !== 'string' || key.kty.length === 0) {
+            result.errors.push({
+              field: `${prefix}.signing_keys[${keyIndex}].kty`,
+              message: 'signing key kty is required',
+              severity: 'error'
+            });
+          }
+        });
+      }
     }
 
     // Validate authorization_type consistency
@@ -897,6 +1087,61 @@ export class AdAgentsManager {
         }
       });
     }
+
+    const placementTagDefinitions = new Set<string>(
+      data.placement_tags ? Object.keys(data.placement_tags) : []
+    );
+    const definedPlacementTags = new Set<string>();
+
+    if (data.placements && Array.isArray(data.placements)) {
+      data.placements.forEach((placement: any, index: number) => {
+        if (placement.tags && Array.isArray(placement.tags)) {
+          placement.tags.forEach((tag: string) => definedPlacementTags.add(tag));
+        }
+
+        if (placement.property_ids && Array.isArray(placement.property_ids) && data.properties && Array.isArray(data.properties)) {
+          const definedPropertyIds = new Set(
+            data.properties
+              .map((property: any) => property.property_id)
+              .filter((propertyId: unknown) => typeof propertyId === 'string')
+          );
+
+          placement.property_ids.forEach((propertyId: string) => {
+            if (!definedPropertyIds.has(propertyId)) {
+              result.warnings.push({
+                field: `placements[${index}].property_ids`,
+                message: `Placement property_id "${propertyId}" not found in properties`,
+                suggestion: 'Ensure placement property_ids reference properties defined in the top-level properties array'
+              });
+            }
+          });
+        }
+      });
+
+      definedPlacementTags.forEach((tag) => {
+        if (!placementTagDefinitions.has(tag)) {
+          result.warnings.push({
+            field: 'placement_tags',
+            message: `Placement tag "${tag}" is used in placements but not defined in placement_tags`,
+            suggestion: `Add "${tag}" to placement_tags with a name and description`
+          });
+        }
+      });
+    }
+
+    data.authorized_agents.forEach((agent: any, index: number) => {
+      if (agent.placement_tags && Array.isArray(agent.placement_tags)) {
+        agent.placement_tags.forEach((tag: string) => {
+          if (!definedPlacementTags.has(tag) && !placementTagDefinitions.has(tag)) {
+            result.warnings.push({
+              field: `authorized_agents[${index}].placement_tags`,
+              message: `Placement tag "${tag}" not found in any placement or placement_tags`,
+              suggestion: 'Ensure placement_tags reference tags used in the placements array'
+            });
+          }
+        });
+      }
+    });
   }
 
   /**
