@@ -140,6 +140,38 @@ export const TOOL_DEFINITIONS = [
           type: "string",
           description: "Agent URL to validate (e.g., 'https://sales.example.com')",
         },
+        property_id: {
+          type: "string",
+          description: "Optional property_id to validate against when authorization is property-scoped",
+        },
+        property_tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional property tags to validate against when authorization uses tag scoping",
+        },
+        collection_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional collection IDs to validate collection-scoped authorization",
+        },
+        placement_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional placement IDs to validate placement-scoped authorization",
+        },
+        placement_tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional placement tags to validate placement-tag-scoped authorization",
+        },
+        country: {
+          type: "string",
+          description: "Optional ISO 3166-1 alpha-2 country code for country-scoped authorization",
+        },
+        at: {
+          type: "string",
+          description: "Optional ISO 8601 timestamp for evaluating time-bounded authorization",
+        },
       },
       required: ["domain", "agent_url"],
     },
@@ -727,7 +759,15 @@ export class MCPToolHandler {
       case "validate_agent": {
         const domain = args?.domain as string;
         const agentUrl = args?.agent_url as string;
-        const result = await this.validator.validate(domain, agentUrl);
+        const result = await this.validator.validate(domain, agentUrl, {
+          property_id: args?.property_id as string | undefined,
+          property_tags: Array.isArray(args?.property_tags) ? args.property_tags as string[] : undefined,
+          collection_ids: Array.isArray(args?.collection_ids) ? args.collection_ids as string[] : undefined,
+          placement_ids: Array.isArray(args?.placement_ids) ? args.placement_ids as string[] : undefined,
+          placement_tags: Array.isArray(args?.placement_tags) ? args.placement_tags as string[] : undefined,
+          country: args?.country as string | undefined,
+          at: args?.at as string | undefined,
+        });
         return {
           content: [
             {

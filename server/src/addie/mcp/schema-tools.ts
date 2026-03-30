@@ -79,6 +79,37 @@ async function fetchSchema(schemaUrl: string): Promise<unknown> {
 }
 
 /**
+ * Find the closest matching schema path from COMMON_SCHEMAS.
+ * Returns the match if one is found, null otherwise.
+ */
+function findClosestSchema(schemaPath: string): string | null {
+  const clean = schemaPath.replace(/^\//, '').replace(/\.json$/, '').toLowerCase();
+  // Exact match
+  if (COMMON_SCHEMAS.includes(schemaPath)) return schemaPath;
+  // Match by filename stem (e.g., "creative" matches "core/creative-manifest.json")
+  const stem = clean.split('/').pop() || clean;
+  const matches = COMMON_SCHEMAS.filter(s => {
+    const sStem = s.replace(/\.json$/, '').split('/').pop() || '';
+    return sStem === stem || sStem.startsWith(stem);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
+ * Resolve and sanitize a schema path, applying fuzzy correction if needed.
+ * Returns { resolved, corrected } where corrected is true if the path was auto-fixed.
+ */
+function resolveSchemaPath(schemaPath: string): { resolved: string; corrected: boolean } {
+  if (COMMON_SCHEMAS.includes(schemaPath)) return { resolved: schemaPath, corrected: false };
+  const closest = findClosestSchema(schemaPath);
+  if (closest) {
+    logger.info({ requested: schemaPath, resolved: closest }, 'Auto-corrected schema path');
+    return { resolved: closest, corrected: true };
+  }
+  return { resolved: schemaPath, corrected: false };
+}
+
+/**
  * Build full schema URL from version and path
  */
 function buildSchemaUrl(version: string, schemaPath: string): string {
@@ -292,6 +323,9 @@ export function createSchemaToolHandlers(): Map<
       return `Cannot determine schema. Please provide schema_path (e.g., "core/format.json") or include a $schema field in the JSON.`;
     }
 
+    const { resolved: resolvedPath } = resolveSchemaPath(schemaPath);
+    schemaPath = resolvedPath;
+
     version = version || 'v2';
     const schemaUrl = buildSchemaUrl(version, schemaPath);
 
@@ -320,10 +354,10 @@ ${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
   });
 
   handlers.set('get_schema', async (input) => {
-    const schemaPath = input.schema_path as string;
     const version = (input.version as string) || 'v2';
     const property = input.property as string | undefined;
 
+    const { resolved: schemaPath } = resolveSchemaPath(input.schema_path as string);
     const schemaUrl = buildSchemaUrl(version, schemaPath);
 
     try {
@@ -418,7 +452,7 @@ ${COMMON_SCHEMAS.map((s) => `- \`${s}\` → ${baseUrl}/${s}`).join('\n')}
   });
 
   handlers.set('compare_schema_versions', async (input) => {
-    const schemaPath = input.schema_path as string;
+    const { resolved: schemaPath } = resolveSchemaPath(input.schema_path as string);
     const fromVersion = (input.from_version as string) || 'v2';
     const toVersion = (input.to_version as string) || 'v3';
 

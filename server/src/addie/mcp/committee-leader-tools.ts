@@ -18,6 +18,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { getPool } from '../../db/client.js';
 import { invalidateWebAdminStatusCache } from './admin-tools.js';
+import { inviteToChannel } from '../../slack/client.js';
 
 const logger = createLogger('committee-leader-tools');
 const wgDb = new WorkingGroupDatabase();
@@ -193,7 +194,7 @@ export function createCommitteeLeaderToolHandlers(
   /**
    * Check if the current user leads the specified committee
    */
-  const checkUserLeadsCommittee = async (committeeSlug: string): Promise<{ allowed: boolean; error?: string; committee?: { id: string; name: string; committee_type: string } }> => {
+  const checkUserLeadsCommittee = async (committeeSlug: string): Promise<{ allowed: boolean; error?: string; committee?: { id: string; name: string; committee_type: string; slack_channel_id?: string | null } }> => {
     const workosUserId = await getCurrentUserWorkosId();
     if (!workosUserId) {
       return {
@@ -229,7 +230,7 @@ export function createCommitteeLeaderToolHandlers(
       };
     }
 
-    return { allowed: true, committee: { id: committee.id, name: committee.name, committee_type: committee.committee_type } };
+    return { allowed: true, committee: { id: committee.id, name: committee.name, committee_type: committee.committee_type, slack_channel_id: committee.slack_channel_id } };
   };
 
   // ============================================
@@ -279,6 +280,17 @@ export function createCommitteeLeaderToolHandlers(
           working_group_id: committee.id,
           workos_user_id: canonicalUserId,
           user_email: userEmail,
+        });
+      }
+
+      // Auto-invite to the group's Slack channel (fire-and-forget)
+      if (committee.slack_channel_id) {
+        slackDb.getByWorkosUserId(canonicalUserId).then(mapping => {
+          if (mapping?.slack_user_id) {
+            return inviteToChannel(committee.slack_channel_id!, [mapping.slack_user_id]);
+          }
+        }).catch(err => {
+          logger.error({ err, userId: canonicalUserId, channelId: committee.slack_channel_id }, 'Failed to auto-invite co-leader to Slack channel');
         });
       }
 

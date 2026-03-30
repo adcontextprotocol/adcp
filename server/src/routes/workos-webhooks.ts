@@ -113,6 +113,16 @@ async function upsertMembership(
 
   const role = membership.role?.slug || 'member';
 
+  // Consume any pending seat_type assignment from the invitation
+  const seatResult = await pool.query<{ seat_type: string }>(
+    `DELETE FROM invitation_seat_types
+     WHERE workos_organization_id = $1 AND lower(email) = lower($2)
+     RETURNING seat_type`,
+    [membership.organization_id, userData.email]
+  );
+  const hasExplicitSeatType = seatResult.rows.length > 0;
+  const seatType = seatResult.rows[0]?.seat_type || 'contributor';
+
   await pool.query(
     `INSERT INTO organization_memberships (
       workos_user_id,
@@ -122,8 +132,9 @@ async function upsertMembership(
       first_name,
       last_name,
       role,
+      seat_type,
       synced_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     ON CONFLICT (workos_user_id, workos_organization_id)
     DO UPDATE SET
       workos_membership_id = EXCLUDED.workos_membership_id,
@@ -131,6 +142,10 @@ async function upsertMembership(
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
       role = EXCLUDED.role,
+      seat_type = CASE
+        WHEN $9 THEN EXCLUDED.seat_type
+        ELSE organization_memberships.seat_type
+      END,
       synced_at = NOW(),
       updated_at = NOW()`,
     [
@@ -141,6 +156,8 @@ async function upsertMembership(
       userData.first_name,
       userData.last_name,
       role,
+      seatType,
+      hasExplicitSeatType,
     ]
   );
 

@@ -96,7 +96,9 @@ export class PropertiesService {
           try {
             const normalizedDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
             const verificationUrl = `https://${normalizedDomain}/.well-known/adagents.json`;
-            const validation = await this.validator.validate(domain, agent.url);
+            const validation = await this.validator.validate(domain, agent.url, {
+              country: prop.country,
+            });
 
             prop.verified = validation.authorized;
             prop.verification_url = verificationUrl;

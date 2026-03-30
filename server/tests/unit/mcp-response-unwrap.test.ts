@@ -173,7 +173,7 @@ describe('MCP response unwrapping for evaluator', () => {
       expect(isAdcpError(unwrapped)).toBe(true);
     });
 
-    it('extracts AdCP error from structuredContent.adcp_error', () => {
+    it('extracts structuredContent-only MCP errors when present', () => {
       const mcpResponse = {
         isError: true,
         structuredContent: {
@@ -189,6 +189,7 @@ describe('MCP response unwrapping for evaluator', () => {
       expect(isAdcpError(unwrapped)).toBe(true);
       if (isAdcpError(unwrapped)) {
         expect(unwrapped.errors[0].code).toBe('RATE_LIMITED');
+        expect(unwrapped.errors[0].message).toBe('Too many requests');
       }
     });
   });

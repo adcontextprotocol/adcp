@@ -58,6 +58,10 @@
       background: var(--color-primary-100);
       color: var(--color-brand);
     }
+    .level-badge-founding {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
 
     .level-badge-num {
       font-size: var(--text-xs);
@@ -956,7 +960,7 @@
     var TIER_DETAILS = {
       'individual_professional': { label: 'Professional', contributor: 1, community: 0, price: '$250/yr' },
       'company_standard':        { label: 'Builder',      contributor: 5, community: 5, price: '$2,500/yr' },
-      'company_icl':             { label: 'Member',       contributor: 10, community: 50, price: '$10,000/yr' },
+      'company_icl':             { label: 'Partner',      contributor: 10, community: 50, price: '$10,000/yr' },
       'company_leader':          { label: 'Leader',       contributor: 20, community: -1, price: '$50,000/yr' },
     };
     var DEFAULT_TIER = { label: 'Explorer', contributor: 0, community: 1, price: 'Free' };
@@ -999,6 +1003,7 @@
             <h1>${escapeHtml(organization_name || 'Your organization')}</h1>
             <div class="hub-header-meta">
               <span class="level-badge">${escapeHtml(tier.label)}</span>
+              ${profile?.is_founding_member ? '<span class="level-badge level-badge-founding">Founding Member</span>' : ''}
               <span class="stage-desc">${escapeHtml(tier.price)}</span>
             </div>
           </div>
@@ -1718,6 +1723,7 @@
       try {
         const res = await fetch(`/api/organizations/${orgId}/billing/portal`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
         });
         if (!res.ok) {
@@ -1725,8 +1731,8 @@
           alert(err.error || 'Unable to open billing portal. Please try again.');
           return;
         }
-        const { url } = await res.json();
-        if (url) window.location.href = url;
+        const data = await res.json();
+        if (data.portal_url) window.location.href = data.portal_url;
       } catch (e) {
         alert('Unable to open billing portal. Please try again.');
       }

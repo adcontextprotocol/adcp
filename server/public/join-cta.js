@@ -411,7 +411,7 @@ async function renderJoinCta(options = {}) {
     'Marketing opportunities available'
   ];
 
-  const memberBenefits = [
+  const partnerBenefits = [
     '10 contributor seats — includes community access',
     '50 community-only seats — train your whole team',
     'API access — registry, agent testing, sandbox',
@@ -529,16 +529,16 @@ async function renderJoinCta(options = {}) {
         <p class="join-cta-card-footer">Credit card</p>
       </div>
 
-      <!-- Member -->
+      <!-- Partner -->
       <div class="join-cta-card join-cta-card--featured">
         ${currentAmountCents == null || currentAmountCents < tierAmounts.member ? '<div class="join-cta-featured-badge" aria-hidden="true">Recommended</div>' : ''}
         <div class="join-cta-card-header">
-          <div class="join-cta-card-title">Member</div>
+          <div class="join-cta-card-title">Partner</div>
           <div class="join-cta-card-audience">Organizations &amp; established teams</div>
         </div>
 
         <ul class="join-cta-benefits-list">
-          ${memberBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+          ${partnerBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
         </ul>
 
         <div class="join-cta-pricing-tier">
@@ -546,7 +546,7 @@ async function renderJoinCta(options = {}) {
         </div>
 
         <div class="join-cta-button-wrapper">
-          ${tierButton('member', '/chat?topic=membership&tier=member', 'Talk to Addie')}
+          ${tierButton('member', '/chat?topic=membership&tier=partner', 'Talk to Addie')}
         </div>
         <p class="join-cta-card-footer">Credit card or invoice</p>
       </div>

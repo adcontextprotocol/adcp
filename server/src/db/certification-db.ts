@@ -232,14 +232,15 @@ export async function completeModule(
   score: Record<string, number>
 ): Promise<LearnerProgress> {
   const result = await query<LearnerProgress>(
-    `UPDATE learner_progress
-     SET status = 'completed', completed_at = NOW(), score = $3, updated_at = NOW()
-     WHERE workos_user_id = $1 AND module_id = $2
+    `INSERT INTO learner_progress (workos_user_id, module_id, status, started_at, completed_at, score)
+     VALUES ($1, $2, 'completed', NOW(), NOW(), $3)
+     ON CONFLICT (workos_user_id, module_id) DO UPDATE
+       SET status = 'completed', completed_at = NOW(), score = $3, updated_at = NOW()
      RETURNING *`,
     [userId, moduleId, JSON.stringify(score)]
   );
   if (!result.rows[0]) {
-    throw new Error(`No progress record found for user ${userId}, module ${moduleId}`);
+    throw new Error(`Failed to upsert progress for user ${userId}, module ${moduleId}`);
   }
   // Refresh engagement time view so admin metrics reflect the completion (errors logged internally)
   void refreshEngagementTime();

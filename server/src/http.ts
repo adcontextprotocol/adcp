@@ -1687,7 +1687,17 @@ export class HTTPServer {
     });
 
     this.app.post("/api/validate", async (req, res) => {
-      const { domain, agent_url } = req.body;
+      const {
+        domain,
+        agent_url,
+        property_id,
+        property_tags,
+        collection_ids,
+        placement_ids,
+        placement_tags,
+        country,
+        at,
+      } = req.body;
 
       if (!domain || !agent_url) {
         return res.status(400).json({
@@ -1696,7 +1706,15 @@ export class HTTPServer {
       }
 
       try {
-        const result = await this.validator.validate(domain, agent_url);
+        const result = await this.validator.validate(domain, agent_url, {
+          property_id,
+          property_tags,
+          collection_ids,
+          placement_ids,
+          placement_tags,
+          country,
+          at,
+        });
         res.json(result);
       } catch (error) {
         logger.error({ err: error, domain, agent_url }, 'Validation failed');

@@ -12,7 +12,7 @@ if (!STRIPE_SECRET_KEY) {
 
 export const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, {
-      apiVersion: '2026-02-25.clover' as Stripe.LatestApiVersion,
+      apiVersion: '2026-03-25.dahlia',
     })
   : null;
 
@@ -207,7 +207,7 @@ export async function getProductsForCustomer(options: {
   }, 'getProductsForCustomer: Filtering products');
 
   // After April 1 2026 UTC, hide legacy founding-member products (those gated by revenue_tiers)
-  // and only show the new tier products (Explorer, Professional, Builder, Member, Leader)
+  // and only show the new tier products (Explorer, Professional, Builder, Partner, Leader)
   const foundingMemberCutoff = new Date('2026-04-01T00:00:00Z');
   const showFoundingProducts = new Date() < foundingMemberCutoff;
 

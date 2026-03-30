@@ -34,7 +34,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 | `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
 | `property_id` | string | No | Publisher's human-readable slug. Optional when `property_rid` is present. |
 | `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
-| `placement_id` | string | Yes | Placement identifier from the property's registered placements. One placement per request. |
+| `placement_id` | string | Yes | Placement identifier from the publisher's placement registry in `adagents.json`. One placement per request. |
 | `artifacts` | List\<Artifact\> | No | Typed content references adjacent to this ad opportunity. Each artifact has a `type` (one of: `url`, `url_hash`, `eidr`, `gracenote`, `isrc`, `gtin`, `rss_guid`, `isbn`, `custom`) and a `value`. For URL-addressable content, the buyer may have pre-classified these. For ephemeral content, use `context_signals` instead of or alongside artifacts. |
 | `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when artifact pre-registration is not feasible (conversation turns, search queries) or to supplement artifact-based matching. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |
 | `geo` | Geo | No | Geographic context. Publisher controls granularity — country for volume filtering, region/metro for valuation. This describes where the ad is serving, not where the user is. |

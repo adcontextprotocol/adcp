@@ -183,6 +183,9 @@ Products can optionally declare specific ad placements within their inventory. W
 - **Buyers purchase the entire product** - Packages always target the whole product, not individual placements
 - **Placement targeting happens at creative assignment** - Different creatives can be assigned to different placements
 - **Omitting placement targeting** - Creatives without placement_ids run on all placements in the package
+- **Reuse registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD reuse those `placement_id` values
+- **Preserve registry semantics** - When a product reuses a registered `placement_id`, it is referring to that same placement. The product may narrow `format_ids` or add operational detail, but it should not change the placement's meaning incompatibly
+- **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
 
 #### Placement Object Structure
 
@@ -192,6 +195,7 @@ Products can optionally declare specific ad placements within their inventory. W
   "placement_id": "homepage_banner",
   "name": "Homepage Banner",
   "description": "Above-the-fold banner on the homepage",
+  "tags": ["homepage", "display", "premium"],
   "format_ids": [
     {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
     {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250"}
@@ -214,11 +218,13 @@ Products can optionally declare specific ad placements within their inventory. W
     {
       "placement_id": "homepage_banner",
       "name": "Homepage Banner",
+      "tags": ["homepage", "display", "premium"],
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}]
     },
     {
       "placement_id": "article_sidebar",
       "name": "Article Sidebar",
+      "tags": ["article", "display"],
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]
     }
   ],
