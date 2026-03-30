@@ -167,7 +167,7 @@
         },
         "response_types": {
           "type": "array",
-          "description": "Filter to products supporting specific TMP response types (e.g., 'activation', 'creative', 'catalog_steering'). Products must support at least one of the listed types.",
+          "description": "Filter to products supporting specific TMP response types (e.g., 'activation', 'creative', 'catalog_items'). Products must support at least one of the listed types.",
           "items": {
             "$ref": "/schemas/enums/response-type.json"
           },
