@@ -112,7 +112,7 @@ export class AgentValidator {
         domain: normalizedDomain,
         agent_url: agentUrl,
         checked_at: new Date().toISOString(),
-        source: fetched.source || adagentsUrl,
+        source: fetched.source || adagentsUrl.toString(),
         matched_authorization: matchedAuthorization
           ? {
               authorization_type: matchedAuthorization.authorization_type,
@@ -150,8 +150,30 @@ export class AgentValidator {
     }
   }
 
-  private async fetchAdAgentsJson(url: string, expectedDomain: string, followedRedirect = false): Promise<FetchResult> {
-    const response = await fetch(url, { // lgtm[js/request-forgery]
+  private async fetchAdAgentsJson(url: URL, expectedDomain: string, followedRedirect = false): Promise<FetchResult> {
+    const normalizedExpectedDomain = this.normalizeDomain(expectedDomain);
+    const normalizedHost = this.normalizeDomain(url.hostname);
+    const source = url.toString();
+
+    if (
+      url.protocol !== "https:" ||
+      Boolean(url.username) ||
+      Boolean(url.password) ||
+      (url.port !== "" && url.port !== "443") ||
+      (
+        normalizedHost !== normalizedExpectedDomain &&
+        !normalizedHost.endsWith(`.${normalizedExpectedDomain}`)
+      )
+    ) {
+      return {
+        error: "URL must use HTTPS on the same hostname",
+        source,
+      };
+    }
+
+    url.hash = "";
+
+    const response = await fetch(url, {
       headers: { "User-Agent": "AdCP-Registry/1.0" },
       signal: AbortSignal.timeout(5000),
     });
@@ -159,7 +181,7 @@ export class AgentValidator {
     if (!response.ok) {
       return {
         error: `HTTP ${response.status}`,
-        source: url,
+        source,
       };
     }
 
@@ -167,7 +189,7 @@ export class AgentValidator {
     if (!contentType.includes("application/json")) {
       return {
         error: `File does not exist or returns ${contentType} instead of JSON`,
-        source: url,
+        source,
       };
     }
 
@@ -177,7 +199,7 @@ export class AgentValidator {
       if (!authoritativeUrl) {
         return {
           error: "authoritative_location must use HTTPS on the same hostname",
-          source: url,
+          source,
         };
       }
       return this.fetchAdAgentsJson(authoritativeUrl, expectedDomain, true);
@@ -185,7 +207,7 @@ export class AgentValidator {
 
     return {
       data,
-      source: url,
+      source,
     };
   }
 
@@ -516,15 +538,15 @@ export class AgentValidator {
     return normalized;
   }
 
-  private buildAdAgentsUrl(normalizedDomain: string): string {
+  private buildAdAgentsUrl(normalizedDomain: string): URL {
     const domain = this.normalizeDomain(normalizedDomain);
     if (!domain || domain.includes("/") || domain.includes("?") || domain.includes("#")) {
       throw new Error("Invalid domain");
     }
-    return `https://${domain}/.well-known/adagents.json`;
+    return new URL(`https://${domain}/.well-known/adagents.json`);
   }
 
-  private validateAuthoritativeLocation(url: string, expectedDomain: string): string | null {
+  private validateAuthoritativeLocation(url: string, expectedDomain: string): URL | null {
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== "https:") {
@@ -539,7 +561,12 @@ export class AgentValidator {
         return null;
       }
 
-      return parsed.toString();
+      if (parsed.username || parsed.password || (parsed.port !== "" && parsed.port !== "443")) {
+        return null;
+      }
+
+      parsed.hash = "";
+      return parsed;
     } catch {
       return null;
     }
