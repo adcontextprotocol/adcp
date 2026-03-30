@@ -173,7 +173,7 @@ describe('MCP response unwrapping for evaluator', () => {
       expect(isAdcpError(unwrapped)).toBe(true);
     });
 
-    it('extracts AdCP error from structuredContent.adcp_error', () => {
+    it('normalizes structuredContent-only MCP errors to a generic MCP error', () => {
       const mcpResponse = {
         isError: true,
         structuredContent: {
@@ -188,7 +188,8 @@ describe('MCP response unwrapping for evaluator', () => {
       const unwrapped = unwrapProtocolResponse(mcpResponse);
       expect(isAdcpError(unwrapped)).toBe(true);
       if (isAdcpError(unwrapped)) {
-        expect(unwrapped.errors[0].code).toBe('RATE_LIMITED');
+        expect(unwrapped.errors[0].code).toBe('mcp_error');
+        expect(unwrapped.errors[0].message).toBe('Unknown error');
       }
     });
   });
