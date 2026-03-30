@@ -126,6 +126,18 @@ describe('decodeXmlEntities', () => {
     expect(decodeXmlEntities('&#8212;')).toBe('\u2014'); // em dash
   });
 
+  it('decodes supplementary plane characters (above U+FFFF)', () => {
+    expect(decodeXmlEntities('&#128512;')).toBe('\u{1F600}');  // grinning face emoji
+    expect(decodeXmlEntities('&#x1F600;')).toBe('\u{1F600}');
+  });
+
+  it('strips null bytes and surrogate codepoints', () => {
+    expect(decodeXmlEntities('&#0;')).toBe('');
+    expect(decodeXmlEntities('&#x0;')).toBe('');
+    expect(decodeXmlEntities('&#55296;')).toBe('');  // U+D800 lone surrogate
+    expect(decodeXmlEntities('&#xD800;')).toBe('');
+  });
+
   it('passes through plain text unchanged', () => {
     expect(decodeXmlEntities('hello world')).toBe('hello world');
   });
@@ -243,6 +255,14 @@ describe('parseSheetXml', () => {
     const rows = parseSheetXml(xml, sharedStrings);
     expect(rows).toEqual(['Name', 'Alice']);
   });
+
+  it('falls back to raw value for out-of-bounds shared string index', () => {
+    const xml = `<sheetData>
+      <row r="1"><c r="A1" t="s"><v>999</v></c></row>
+    </sheetData>`;
+    const rows = parseSheetXml(xml, ['only one']);
+    expect(rows).toEqual(['999']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -285,6 +305,15 @@ describe('parsePptxContent', () => {
   it('returns error for invalid ZIP', async () => {
     const result = await parsePptxContent(Buffer.from('not a zip file'));
     expect(result.status).toBe('error');
+  });
+
+  it('returns error for PPTX with no slides', async () => {
+    const buffer = createZipBuffer({
+      'ppt/presentation.xml': '<Presentation/>',
+    });
+    const result = await parsePptxContent(buffer);
+    expect(result.status).toBe('error');
+    expect(result.error).toContain('no extractable content');
   });
 });
 
@@ -397,6 +426,20 @@ describe('parseXlsxContent', () => {
   it('returns error for invalid ZIP', async () => {
     const result = await parseXlsxContent(Buffer.from('not a zip'));
     expect(result.status).toBe('error');
+  });
+
+  it('handles XLSX with no shared strings file (numeric only)', async () => {
+    const sheet1Xml = `<worksheet><sheetData>
+      <row r="1"><c r="A1"><v>42</v></c><c r="B1"><v>3.14</v></c></row>
+    </sheetData></worksheet>`;
+
+    const buffer = createZipBuffer({
+      'xl/worksheets/sheet1.xml': sheet1Xml,
+    });
+
+    const result = await parseXlsxContent(buffer);
+    expect(result.status).toBe('success');
+    expect(result.content).toContain('42\t3.14');
   });
 
   it('returns error for empty XLSX', async () => {

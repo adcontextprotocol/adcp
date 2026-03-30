@@ -324,6 +324,11 @@ async function parsePptxContent(buffer: Buffer): Promise<{
         const sortedSlides = [...slideTexts.entries()].sort(([a], [b]) => a - b);
         const content = sortedSlides.map(([, text]) => text).join('\n\n');
 
+        if (!content.trim() && assets.length === 0) {
+          resolve({ content: '', assets: [], error: 'PPTX contained no extractable content', status: 'error' });
+          return;
+        }
+
         resolve({ content, assets, status: 'success' });
       });
 
@@ -344,8 +349,16 @@ function decodeXmlEntities(text: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    .replace(/&#(\d+);/g, (_, num) => {
+      const cp = parseInt(num, 10);
+      if (cp === 0 || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) return '';
+      return String.fromCodePoint(cp);
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const cp = parseInt(hex, 16);
+      if (cp === 0 || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) return '';
+      return String.fromCodePoint(cp);
+    });
 }
 
 /**
