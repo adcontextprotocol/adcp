@@ -173,6 +173,7 @@ export class AgentValidator {
 
     url.hash = "";
 
+    // codeql[js/request-forgery] -- URL is restricted above to HTTPS on the requested hostname or its subdomains only.
     const response = await fetch(url, {
       headers: { "User-Agent": "AdCP-Registry/1.0" },
       signal: AbortSignal.timeout(5000),
