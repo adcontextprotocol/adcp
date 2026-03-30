@@ -25,7 +25,7 @@ import {
   type ComplyOptions,
   type ComplianceTrack,
   type PlatformType,
-} from '@adcp/client/testing';
+} from '../services/compliance-testing.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import {
   findExistingProposalOrFeed,

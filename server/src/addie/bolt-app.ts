@@ -1436,7 +1436,7 @@ async function handleUserMessage({
                 title: event.tool_name.replace(/_/g, ' '),
                 status: 'in_progress',
               }],
-            });
+            } as unknown as Parameters<typeof streamer.append>[0]);
           } catch {
             // Ignore stream errors for status updates
           }
@@ -1457,7 +1457,7 @@ async function handleUserMessage({
                 title: event.tool_name.replace(/_/g, ' '),
                 status: event.is_error ? 'error' : 'complete',
               }],
-            });
+            } as unknown as Parameters<typeof streamer.append>[0]);
           } catch {
             // Ignore stream errors for status updates
           }

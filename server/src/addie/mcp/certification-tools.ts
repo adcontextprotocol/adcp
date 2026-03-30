@@ -1950,8 +1950,8 @@ export function createCertificationToolHandlers(
 
       return lines.join('\n');
     } catch (error) {
-      logger.error({ error }, 'Failed to complete capstone');
-      return 'Failed to record capstone results. Please try again.';
+      logger.error({ error, userId, attemptId: input.attempt_id }, 'Failed to complete capstone');
+      return 'Failed to record capstone results. Please try again or contact support if the problem persists.';
     }
   });
 

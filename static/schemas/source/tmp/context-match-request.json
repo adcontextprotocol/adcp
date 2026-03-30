@@ -24,7 +24,7 @@
     },
     "placement_id": {
       "type": "string",
-      "description": "Placement identifier from the property's registered placements. Identifies where on the property this ad opportunity exists. One placement per request."
+      "description": "Placement identifier from the publisher's placement registry in adagents.json. Identifies where on the property this ad opportunity exists. One placement per request."
     },
     "artifacts": {
       "type": "array",

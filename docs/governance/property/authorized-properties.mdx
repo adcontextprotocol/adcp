@@ -67,13 +67,16 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
       "url": "https://sports-media-sales.com",
       "authorized_for": "All Sports Network properties",
       "authorization_type": "property_tags",
-      "property_tags": ["sports"]
+      "property_tags": ["sports"],
+      "delegation_type": "direct"
     },
     {
       "url": "https://premium-ad-network.com",
       "authorized_for": "Premium inventory only",
       "authorization_type": "property_tags",
-      "property_tags": ["premium"]
+      "property_tags": ["premium"],
+      "delegation_type": "ad_network",
+      "countries": ["US", "CA"]
     }
   ],
   "last_updated": "2025-01-10T12:00:00Z"
@@ -88,6 +91,12 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
   - **url**: Agent's API endpoint URL
   - **authorized_for**: Human-readable description of authorization scope
   - **authorization_type**: How properties are selected (`property_ids`, `property_tags`, `inline_properties`, `publisher_properties`)
+  - **delegation_type**: Whether this path is `direct`, `delegated`, or `ad_network`
+  - **collections**: Optional collection selectors that narrow authorization to specific content programs
+  - **placement_ids**: Optional placement IDs from the publisher's placement registry in `adagents.json`
+  - **countries**: Optional ISO 3166-1 alpha-2 country codes
+  - **effective_from / effective_until**: Optional authorization window
+  - **exclusive**: Whether this is the sole authorized path for the scoped inventory slice
 - **last_updated**: ISO 8601 timestamp of last modification
 
 ## How Sales Agents Share Authorized Properties
@@ -204,7 +213,7 @@ if (!authorized) {
 
 ### For Publishers
 - **Explicit control** over who can sell their inventory
-- **Granular permissions** by property, date range, and product type
+- **Granular permissions** by property, collection, country, and date range
 - **Standard web hosting** - no special infrastructure required
 - **Audit trail** of authorized agents
 

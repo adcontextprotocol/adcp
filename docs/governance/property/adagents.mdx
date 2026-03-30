@@ -10,6 +10,31 @@ The `adagents.json` file provides a standardized way for publishers to declare t
 **[AdAgents.json Builder](https://agenticadvertising.org/adagents/builder)** - Validate existing files or create new ones with guided validation
 </Tip>
 
+## Why `adagents.json` instead of `ads.txt`
+
+`ads.txt` answers a narrower question: is this seller present on the publisher's list, and is the relationship labeled `DIRECT` or `RESELLER`?
+
+That is useful, but it is too flat for many modern publisher sales models. It does not tell buyers:
+
+- which property is covered
+- which placements are covered
+- whether the path is direct, delegated, or network-mediated
+- whether the authorization is country-limited or time-bounded
+- whether a network-managed slot is the same thing as a publisher-managed premium placement
+
+`adagents.json` is designed to carry that structure. It lets publishers declare property identity, placement identity, delegation type, scoped authorization, and publisher-defined grouping tags in one place.
+
+| Question | `ads.txt` | `adagents.json` |
+|---------|-----------|-----------------|
+| Is this seller declared at all? | Yes | Yes |
+| Which property is covered? | No | Yes |
+| Which placement is covered? | No | Yes |
+| Can the publisher group inventory into governed buckets? | No | Yes, via `placement_tags` |
+| Can authorization vary by country or time window? | No | Yes |
+| Can the path be described as direct, delegated, or network-mediated? | Very weakly | Yes, via `delegation_type` |
+
+For the higher-level framing and a side-by-side example, see [Why adagents.json is more expressive than ads.txt](https://agenticadvertising.org/perspectives/adagents-json-vs-ads-txt).
+
 ## File Location
 
 Publishers must host the `adagents.json` file at:
@@ -49,7 +74,9 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
       "url": "https://agent.example.com",
       "authorized_for": "Official sales agent",
       "authorization_type": "property_ids",
-      "property_ids": ["example_site"]
+      "property_ids": ["example_site"],
+      "delegation_type": "direct",
+      "exclusive": true
     }
   ],
   "last_updated": "2025-01-10T12:00:00Z"
@@ -71,12 +98,36 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 **`properties`** *(optional)*: Array of properties covered by this file (canonical property definitions)
   - **`supported_channels`** *(optional)*: Advertising channels this property supports (e.g., `["display", "olv", "social"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 
+**`collections`** *(optional)*: Collections produced or distributed by this publisher
+  - Products reference these via `collections` selectors with `publisher_domain` and `collection_ids`
+  - Useful when authorization needs to be scoped to specific series, podcasts, streams, or recurring content programs
+
+**`placements`** *(optional)*: Canonical placement definitions for the properties in this file
+  - Products SHOULD reuse these `placement_id` values when declaring `placements`
+  - Reusing a registered `placement_id` means the product is referring to the same semantic placement, not inventing a different one with the same ID
+  - Placement definitions can include `tags` for grouping, `property_ids` or `property_tags` for property linkage, and optional `format_ids` for canonical format support
+  - Authorization entries can narrow scope to specific `placement_ids`
+  - Authorization entries can also use `placement_tags` for governed placement groupings such as `programmatic`, `direct_only`, or `managed_by_riverline`
+  - Useful for expressing distinctions like "available via this agent only for homepage native feed" or "only for pre-roll"
+
 **`tags`** *(optional)*: Tag metadata providing human-readable context and enabling efficient grouping
+
+**`placement_tags`** *(optional)*: Metadata for publisher-defined placement tags
+  - Provides human-readable definitions for placement tag values used in `placements[*].tags` and `authorized_agents[*].placement_tags`
+  - These are publisher-local concepts, not a global taxonomy
 
 **`authorized_agents`** *(required)*: Array of authorized sales agents
   - **`url`** *(required)*: Agent's API endpoint URL
   - **`authorized_for`** *(required)*: Human-readable authorization description
   - **`authorization_type`** *(optional)*: One of `property_ids`, `property_tags`, `inline_properties`, `publisher_properties`
+  - **`delegation_type`** *(optional)*: Commercial relationship for this path: `direct`, `delegated`, or `ad_network`
+  - **`collections`** *(optional)*: Additional collection selectors that narrow authorization to specific content programs
+  - **`placement_ids`** *(optional)*: Placement IDs from the top-level `placements` array that narrow authorization to specific placements
+  - **`placement_tags`** *(optional)*: Publisher-defined placement tags that narrow authorization to governed placement groups
+  - **`countries`** *(optional)*: ISO 3166-1 alpha-2 country codes limiting where the authorization applies
+  - **`effective_from` / `effective_until`** *(optional)*: Time window for the authorization
+  - **`exclusive`** *(optional)*: Whether this is the publisher's sole authorized path for the scoped inventory slice
+  - **`signing_keys`** *(optional)*: Publisher-attested public keys buyers can pin when verifying signed agent responses
   - **Additional fields**: Depends on authorization_type (see patterns below)
 
 **`last_updated`** *(optional)*: ISO 8601 timestamp of last modification
@@ -328,6 +379,144 @@ AdCP supports four authorization patterns, each optimized for different use case
 
 **How it works**: Agent references properties from OTHER publishers' adagents.json files. The `publisher_domain` points to the publisher, and `selection_type` determines how to resolve properties (`by_id` or `by_tag`).
 
+## Authorization Qualifiers
+
+The four `authorization_type` patterns above answer **which inventory** an agent can sell. The optional qualifiers below answer **how** that inventory is being made available.
+
+### `delegation_type`
+
+- **`direct`**: The publisher treats this endpoint as a direct way to buy from them, even if a third party operates the software behind the scenes
+- **`delegated`**: The agent is authorized to sell on the publisher's behalf
+- **`ad_network`**: The inventory is sold through a network/package sales path rather than as the publisher's direct endpoint
+
+### `collections`
+
+Use `collections` when authorization should only apply to inventory associated with specific content programs. This is especially useful for CTV, streaming, podcasting, and creator inventory where the same property can carry many collections with different commercial arrangements.
+
+### `placement_ids`
+
+Use `placement_ids` to narrow authorization to canonical placements published in this same `adagents.json`. This is the field that lets a publisher say "this agent is authorized for MSN homepage native feed, but not for the entire property" or "this network can sell pre-roll but not host-read sponsorships."
+
+Canonical placement definitions can also carry:
+
+- `tags` for grouping placements across properties and products
+- `property_ids` or `property_tags` to answer "what placements are on property X?" and "what properties is placement Y on?"
+- `format_ids` to answer "what formats does this placement support?" without relying entirely on product-local placement definitions
+
+### `placement_tags`
+
+Use `placement_tags` when authorization should apply to a governed placement group rather than a hand-maintained list of placement IDs. This is useful for commercial access patterns such as:
+
+- `programmatic`
+- `direct_only`
+- `publisher_managed`
+- `managed_by_taboola`
+
+Unlike freeform labels, these tags should be treated as part of the publisher's placement governance model because authorization decisions depend on them. Define them in top-level `placement_tags` metadata the same way property tags are documented in top-level `tags`.
+
+### `signing_keys`
+
+Use `signing_keys` when the publisher wants to pin the public keys an authorized agent is allowed to sign with. This avoids trusting key discovery from the agent domain alone.
+
+- These are publisher-attested trust anchors, not just convenience metadata
+- Buyers should verify signed agent responses against the pinned keys in `adagents.json`
+- If an agent domain is compromised, pinned keys prevent the attacker from silently swapping both the endpoint and its advertised keys
+
+### `countries`
+
+Use ISO 3166-1 alpha-2 country codes to constrain authorization geographically. This avoids ambiguous regional shorthands such as "LATAM" or "EMEA" and gives buyer agents a precise machine-readable scope.
+
+### `effective_from` / `effective_until`
+
+Use these fields for time-bounded rights such as seasonal exclusives, windowed syndication, or temporary delegated sales agreements.
+
+### `exclusive`
+
+Set `exclusive: true` when this agent is the publisher's sole authorized path for the scoped slice of inventory. Leave it absent or set it to `false` when multiple agents are authorized concurrently.
+
+### Example: Scoped Delegation
+
+```json
+{
+  "placement_tags": {
+    "programmatic": {
+      "name": "Programmatic",
+      "description": "Placements available through programmatic sales paths"
+    },
+    "direct_only": {
+      "name": "Direct only",
+      "description": "Placements reserved for direct publisher sales"
+    }
+  },
+  "collections": [
+    {
+      "collection_id": "signal_noise",
+      "name": "Signal & Noise",
+      "kind": "series"
+    }
+  ],
+  "placements": [
+    {
+      "placement_id": "pre_roll",
+      "name": "Pre-roll",
+      "tags": ["audio", "pre_roll", "programmatic"],
+      "property_ids": ["publisher_podcast"],
+      "collection_ids": ["signal_noise"],
+      "format_ids": [
+        {"agent_url": "https://creative.example.com", "id": "audio_15s"}
+      ]
+    },
+    {
+      "placement_id": "host_read",
+      "name": "Host-read Mid-roll",
+      "tags": ["audio", "host_read", "premium", "direct_only"],
+      "property_ids": ["publisher_podcast"],
+      "collection_ids": ["signal_noise"],
+      "format_ids": [
+        {"agent_url": "https://creative.example.com", "id": "audio_60s"}
+      ]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://sales.publisher.example.com",
+      "authorized_for": "Direct US and CA sales for Signal & Noise host reads",
+      "authorization_type": "property_ids",
+      "property_ids": ["publisher_podcast"],
+      "collections": [
+        {
+          "publisher_domain": "publisher.example.com",
+          "collection_ids": ["signal_noise"]
+        }
+      ],
+      "placement_tags": ["direct_only"],
+      "delegation_type": "direct",
+      "countries": ["US", "CA"],
+      "exclusive": true
+    },
+    {
+      "url": "https://network.example.com",
+      "authorized_for": "Open network distribution outside US and CA for pre-roll",
+      "authorization_type": "property_ids",
+      "property_ids": ["publisher_podcast"],
+      "collections": [
+        {
+          "publisher_domain": "publisher.example.com",
+          "collection_ids": ["signal_noise"]
+        }
+      ],
+      "placement_tags": ["programmatic"],
+      "delegation_type": "ad_network",
+      "countries": ["GB", "AU", "NZ"]
+    }
+  ]
+}
+```
+
+This lets a publisher say "buy host reads directly from us in some markets, but use a network path for pre-roll in others" without implying that every authorized path is equivalent.
+
+`adagents.json` now provides a canonical publisher-level placement registry. Products still declare their own `placements`, but they SHOULD reuse the publisher's registered `placement_id` values when the placement is part of that registry. Reusing a placement ID means the product is inheriting that placement's identity; the product can narrow `format_ids`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
+
 ## Domain Matching Rules
 
 For website properties with domain identifiers, AdCP follows web conventions:
@@ -458,13 +647,17 @@ Different agents for different channels:
       "url": "https://cnn-ctv-agent.com",
       "authorized_for": "CNN CTV properties",
       "authorization_type": "property_ids",
-      "property_ids": ["cnn_ctv_app"]
+      "property_ids": ["cnn_ctv_app"],
+      "delegation_type": "direct",
+      "exclusive": true
     },
     {
       "url": "https://cnn-web-agent.com",
       "authorized_for": "CNN web properties",
       "authorization_type": "property_ids",
-      "property_ids": ["cnn_web_us"]
+      "property_ids": ["cnn_web_us"],
+      "delegation_type": "delegated",
+      "countries": ["US", "CA"]
     }
   ]
 }

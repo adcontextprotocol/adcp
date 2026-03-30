@@ -5,7 +5,7 @@
  * illustrated member portraits. Portraits belong to users.
  */
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import multer from 'multer';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin, isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -20,7 +20,7 @@ const logger = createLogger('portrait-routes');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: Request, file: { mimetype: string }, cb: (error: Error | null, acceptFile?: boolean) => void) => {
     if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
       cb(null, true);
     } else {
