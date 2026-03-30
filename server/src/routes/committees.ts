@@ -596,6 +596,19 @@ export function createCommitteeRouters(): {
       invalidateMemberContextCache();
       invalidateWebAdminStatusCache(workos_user_id);
 
+      // Auto-invite new member to the group's Slack channel (fire-and-forget)
+      const group = await workingGroupDb.getWorkingGroupById(id);
+      if (group?.slack_channel_id) {
+        const slackDb = new SlackDatabase();
+        slackDb.getByWorkosUserId(workos_user_id).then(mapping => {
+          if (mapping?.slack_user_id) {
+            return inviteToChannel(group.slack_channel_id!, [mapping.slack_user_id]);
+          }
+        }).catch(err => {
+          logger.error({ err, userId: workos_user_id, channelId: group.slack_channel_id }, 'Failed to auto-invite to Slack channel on admin add');
+        });
+      }
+
       res.status(201).json(membership);
     } catch (error) {
       logger.error({ err: error }, 'Add working group member error:');
