@@ -2132,7 +2132,7 @@ describe('time pricing model', () => {
 });
 
 describe('forecast data', () => {
-  it('non-guaranteed products have forecast field', () => {
+  it('non-guaranteed products have modeled spend-curve forecasts', () => {
     const catalog = buildCatalog();
     const nonGuaranteed = catalog.filter(cp =>
       cp.product.delivery_type === 'non_guaranteed',
@@ -2142,19 +2142,43 @@ describe('forecast data', () => {
       expect(cp.product.forecast).toBeDefined();
       const forecast = cp.product.forecast as Record<string, unknown>;
       expect(forecast.method).toBe('modeled');
+      expect(forecast.currency).toBeDefined();
       const points = forecast.points as Array<Record<string, unknown>>;
       expect(points.length).toBe(2);
+      // Spend curve points have budget and metric ranges
+      for (const point of points) {
+        expect(point.budget).toBeDefined();
+        expect(typeof point.budget).toBe('number');
+        const metrics = point.metrics as Record<string, Record<string, number>>;
+        expect(metrics.impressions.mid).toBeGreaterThan(0);
+        expect(metrics.impressions.low).toBeLessThanOrEqual(metrics.impressions.mid);
+      }
     }
   });
 
-  it('guaranteed products do not have forecast', () => {
+  it('guaranteed products have availability forecasts', () => {
     const catalog = buildCatalog();
     const guaranteed = catalog.filter(cp =>
       cp.product.delivery_type === 'guaranteed',
     );
     expect(guaranteed.length).toBeGreaterThan(0);
     for (const cp of guaranteed) {
-      expect(cp.product.forecast).toBeUndefined();
+      expect(cp.product.forecast).toBeDefined();
+      const forecast = cp.product.forecast as Record<string, unknown>;
+      expect(forecast.method).toBe('guaranteed');
+      expect(forecast.forecast_range_unit).toBe('availability');
+      expect(forecast.currency).toBeDefined();
+      const points = forecast.points as Array<Record<string, unknown>>;
+      expect(points.length).toBe(1);
+      // Availability points have no budget — metrics express what exists
+      const point = points[0];
+      expect(point.budget).toBeUndefined();
+      const metrics = point.metrics as Record<string, Record<string, number>>;
+      expect(metrics.impressions).toBeDefined();
+      expect(metrics.impressions.mid).toBeGreaterThan(0);
+      expect(metrics.impressions.low).toBeLessThanOrEqual(metrics.impressions.mid);
+      expect(metrics.spend).toBeDefined();
+      expect(metrics.spend.mid).toBeGreaterThan(0);
     }
   });
 });

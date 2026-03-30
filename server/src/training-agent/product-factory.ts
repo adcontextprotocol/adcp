@@ -400,12 +400,34 @@ function buildProduct(
     }
   }
 
-  // Build forecast for non-guaranteed products
+  // Build forecast
   let forecast: Product['forecast'];
-  if (template.deliveryType === 'non_guaranteed') {
-    const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
-    const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
+  const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
+  const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
+  const currency = effectivePricing[0]?.currency || 'USD';
 
+  if (template.deliveryType === 'guaranteed') {
+    // Availability forecast — total inventory available, no budget input.
+    // Cast needed until @adcp/client types are regenerated with optional budget
+    // and the 'availability' forecast_range_unit value.
+    const availableImpressions = impressionsPer1k * 30;
+    const estimatedSpend = Math.round(availableImpressions * baseCpm / 1000);
+    forecast = {
+      points: [
+        {
+          metrics: {
+            impressions: { low: Math.round(availableImpressions * 0.85), mid: availableImpressions, high: Math.round(availableImpressions * 1.1) },
+            reach: { low: Math.round(availableImpressions * 0.5), mid: Math.round(availableImpressions * 0.65), high: Math.round(availableImpressions * 0.75) },
+            spend: { low: Math.round(estimatedSpend * 0.85), mid: estimatedSpend, high: Math.round(estimatedSpend * 1.1) },
+          },
+        },
+      ],
+      forecast_range_unit: 'availability',
+      method: 'guaranteed',
+      currency,
+    } as unknown as Product['forecast'];
+  } else {
+    // Spend curve — metrics at ascending budget levels
     forecast = {
       points: [
         {
@@ -424,7 +446,7 @@ function buildProduct(
         },
       ],
       method: 'modeled',
-      currency: effectivePricing[0]?.currency || 'USD',
+      currency,
     };
   }
 
