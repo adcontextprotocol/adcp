@@ -288,6 +288,14 @@
             <option value="admin">Admin - Can manage members</option>
           </select>
         </div>
+        <div class="form-group">
+          <label for="inviteSeatType">Seat type</label>
+          <select id="inviteSeatType">
+            <option value="contributor">Contributor - Slack, working groups, councils, summit</option>
+            <option value="community_only">Community - Addie, certification, training, chapters</option>
+          </select>
+          <p class="form-help">Contributor seats include full access. Community seats are for training and Addie only.</p>
+        </div>
         <div class="modal-buttons">
           <button type="button" class="btn btn-secondary" onclick="closeInviteModal()">Cancel</button>
           <button type="submit" class="btn btn-primary">Send Invitation</button>
@@ -296,28 +304,39 @@
     </div>
   </div>
 
-  <!-- Edit Role Modal -->
+  <!-- Edit Member Modal -->
   <div id="editRoleModal" class="modal-overlay">
     <div class="modal">
-      <h2>Change Member Role</h2>
+      <h2>Edit Member</h2>
       <div id="editRoleError" class="error-message" style="display: none;"></div>
       <form id="editRoleForm">
         <input type="hidden" id="editMembershipId">
+        <input type="hidden" id="editMemberSlackLinked">
         <div class="form-group">
           <label>Member</label>
           <p id="editMemberEmail" style="font-weight: 500; padding: 10px 0;"></p>
         </div>
         <div class="form-group">
-          <label for="editRole">New Role</label>
+          <label for="editRole">Role</label>
           <select id="editRole">
             <option value="member">Member - Standard access</option>
             <option value="admin">Admin - Can manage members</option>
             <option value="owner">Owner - Full access</option>
           </select>
         </div>
+        <div class="form-group">
+          <label for="editSeatType">Seat type</label>
+          <select id="editSeatType">
+            <option value="contributor">Contributor - Slack, working groups, councils, summit</option>
+            <option value="community_only">Community - Addie, certification, training, chapters</option>
+          </select>
+        </div>
+        <div id="slackGuidance" style="display: none; padding: var(--space-3); background: var(--color-warning-50, #fef9c3); border-radius: var(--radius-md); font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4);">
+          Slack workspace access is managed separately. Ask your Slack admin to update this person's workspace access.
+        </div>
         <div class="modal-buttons">
           <button type="button" class="btn btn-secondary" onclick="closeEditRoleModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary">Update Role</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
         </div>
       </form>
     </div>
@@ -370,6 +389,8 @@
           <button id="inviteBtn" class="btn btn-primary" onclick="openInviteModal()">+ Invite Member</button>
         </h2>
 
+        <div id="seatUsageSummary" style="display: none; margin-bottom: var(--space-4);"></div>
+
         <div id="membersLoading" class="loading">
           Loading team members...
         </div>
@@ -379,6 +400,7 @@
             <thead>
               <tr>
                 <th>Member</th>
+                <th>Seat type</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th>Joined</th>
@@ -401,6 +423,7 @@
           <thead>
             <tr>
               <th>Email</th>
+              <th>Seat type</th>
               <th>Status</th>
               <th>Expires</th>
               <th>Actions</th>
@@ -595,6 +618,11 @@
 
         document.getElementById('membersLoading').style.display = 'none';
 
+        // Render seat usage summary
+        if (data.seat_usage && data.seat_limits) {
+          renderSeatUsage(data.seat_usage, data.seat_limits);
+        }
+
         if (data.members && data.members.length > 0) {
           document.getElementById('membersContent').style.display = 'block';
           renderMembers(data.members, canManage);
@@ -747,6 +775,32 @@
       }
     }
 
+    function renderSeatUsage(usage, limits) {
+      const el = document.getElementById('seatUsageSummary');
+      const communityLimit = limits.community === -1 ? '&infin;' : limits.community;
+      el.style.display = 'grid';
+      el.style.gridTemplateColumns = '1fr 1fr';
+      el.style.gap = 'var(--space-3)';
+      el.innerHTML = `
+        <div style="padding: var(--space-3); background: var(--color-primary-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
+          <strong>${usage.contributor} / ${limits.contributor}</strong> Contributor seats
+          <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 2px;">Slack, working groups, councils, summit</div>
+        </div>
+        <div style="padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
+          <strong>${usage.community_only} / ${communityLimit}</strong> Community seats
+          <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 2px;">Addie, certification, training, chapters</div>
+        </div>
+      `;
+    }
+
+    function seatTypeLabel(seatType) {
+      return seatType === 'community_only' ? 'Community' : 'Contributor';
+    }
+
+    function seatTypeBadgeClass(seatType) {
+      return seatType === 'community_only' ? 'status-pending' : 'role-admin';
+    }
+
     function renderMembers(members, canManage) {
       const tbody = document.getElementById('membersTableBody');
       tbody.innerHTML = members.map(member => {
@@ -767,13 +821,24 @@
           ? '<span title="Linked to Slack" style="margin-left: 6px; display: inline-flex; align-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" fill="#611f69"/></svg></span>'
           : '';
 
+        const seatBadge = `<span class="status-badge ${seatTypeBadgeClass(member.seat_type)}">${seatTypeLabel(member.seat_type)}</span>`;
+
         let actions = '';
         if (canManage && !isCurrentUser) {
           actions = `
-            <button class="btn btn-secondary" onclick="openEditRoleModal('${member.id}', '${member.email}', '${member.role}')">
-              Change Role
+            <button class="btn btn-secondary"
+              data-action="edit-member"
+              data-membership-id="${escapeHtml(member.id)}"
+              data-email="${escapeHtml(member.email)}"
+              data-role="${escapeHtml(member.role)}"
+              data-seat-type="${escapeHtml(member.seat_type || 'contributor')}"
+              data-slack-linked="${member.slack_linked ? 'true' : 'false'}">
+              Edit
             </button>
-            <button class="btn btn-danger" onclick="openRemoveModal('${member.id}', '${member.email}')">
+            <button class="btn btn-danger"
+              data-action="remove-member"
+              data-membership-id="${escapeHtml(member.id)}"
+              data-email="${escapeHtml(member.email)}">
               Remove
             </button>
           `;
@@ -787,6 +852,7 @@
               <div class="member-email" style="display: flex; align-items: center;">${escapeHtml(member.email)}${slackIcon}</div>
               ${displayName ? `<div class="member-name">${escapeHtml(displayName)}</div>` : ''}
             </td>
+            <td>${seatBadge}</td>
             <td><span class="role-badge ${roleClass}">${roleName}</span></td>
             <td><span class="status-badge ${statusClass}">${statusName}</span></td>
             <td>${joinedDate}</td>
@@ -804,14 +870,19 @@
       const tbody = document.getElementById('invitationsTableBody');
       tbody.innerHTML = invitations.map(inv => {
         const expiresDate = new Date(inv.expires_at).toLocaleDateString();
+        const seatBadge = `<span class="status-badge ${seatTypeBadgeClass(inv.seat_type)}">${seatTypeLabel(inv.seat_type || 'contributor')}</span>`;
 
         let actions = '';
         if (canManage) {
           actions = `
-            <button class="btn btn-secondary" onclick="resendInvitation('${inv.id}')">
+            <button class="btn btn-secondary"
+              data-action="resend-invitation"
+              data-invitation-id="${escapeHtml(inv.id)}">
               Resend
             </button>
-            <button class="btn btn-danger" onclick="revokeInvitation('${inv.id}')">
+            <button class="btn btn-danger"
+              data-action="revoke-invitation"
+              data-invitation-id="${escapeHtml(inv.id)}">
               Revoke
             </button>
           `;
@@ -819,7 +890,8 @@
 
         return `
           <tr>
-            <td><div class="member-email">${inv.email}</div></td>
+            <td><div class="member-email">${escapeHtml(inv.email)}</div></td>
+            <td>${seatBadge}</td>
             <td><span class="status-badge status-pending">Pending</span></td>
             <td>${expiresDate}</td>
             <td>
@@ -837,6 +909,7 @@
       document.getElementById('inviteModal').classList.add('show');
       document.getElementById('inviteEmail').value = '';
       document.getElementById('inviteRole').value = 'member';
+      document.getElementById('inviteSeatType').value = 'contributor';
       document.getElementById('inviteError').style.display = 'none';
       document.getElementById('inviteEmail').focus();
     }
@@ -850,12 +923,13 @@
 
       const email = document.getElementById('inviteEmail').value;
       const role = document.getElementById('inviteRole').value;
+      const seat_type = document.getElementById('inviteSeatType').value;
 
       try {
         const response = await fetch(`/api/organizations/${currentOrg}/invitations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, role }),
+          body: JSON.stringify({ email, role, seat_type }),
         });
 
         const data = await response.json();
@@ -875,13 +949,26 @@
       }
     });
 
-    // Edit Role Modal
-    function openEditRoleModal(membershipId, email, currentRole) {
+    // Edit Member Modal
+    function openEditRoleModal(membershipId, email, currentRole, currentSeatType, slackLinked) {
       document.getElementById('editRoleModal').classList.add('show');
       document.getElementById('editMembershipId').value = membershipId;
       document.getElementById('editMemberEmail').textContent = email;
       document.getElementById('editRole').value = currentRole;
+      document.getElementById('editSeatType').value = currentSeatType || 'contributor';
+      document.getElementById('editMemberSlackLinked').value = slackLinked ? 'true' : 'false';
       document.getElementById('editRoleError').style.display = 'none';
+      updateSlackGuidance();
+    }
+
+    // Register once at page load to avoid listener accumulation
+    document.getElementById('editSeatType').addEventListener('change', updateSlackGuidance);
+
+    function updateSlackGuidance() {
+      const slackLinked = document.getElementById('editMemberSlackLinked').value === 'true';
+      const seatType = document.getElementById('editSeatType').value;
+      const guidance = document.getElementById('slackGuidance');
+      guidance.style.display = (slackLinked && seatType === 'community_only') ? 'block' : 'none';
     }
 
     function closeEditRoleModal() {
@@ -893,18 +980,19 @@
 
       const membershipId = document.getElementById('editMembershipId').value;
       const role = document.getElementById('editRole').value;
+      const seat_type = document.getElementById('editSeatType').value;
 
       try {
         const response = await fetch(`/api/organizations/${currentOrg}/members/${membershipId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role }),
+          body: JSON.stringify({ role, seat_type }),
         });
 
         const data = await response.json();
 
         if (!response.ok) {
-          document.getElementById('editRoleError').textContent = data.message || 'Failed to update role';
+          document.getElementById('editRoleError').textContent = data.message || 'Failed to update member';
           document.getElementById('editRoleError').style.display = 'block';
           return;
         }
@@ -912,8 +1000,8 @@
         closeEditRoleModal();
         loadTeamMembers();
       } catch (error) {
-        console.error('Error updating role:', error);
-        document.getElementById('editRoleError').textContent = 'Failed to update role. Please try again.';
+        console.error('Error updating member:', error);
+        document.getElementById('editRoleError').textContent = 'Failed to update member. Please try again.';
         document.getElementById('editRoleError').style.display = 'block';
       }
     });
@@ -1332,6 +1420,27 @@
         document.querySelectorAll('.modal-overlay.show').forEach(modal => {
           modal.classList.remove('show');
         });
+      }
+    });
+
+    // Delegated event listeners for dynamically rendered action buttons
+    document.getElementById('membersTableBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      if (btn.dataset.action === 'edit-member') {
+        openEditRoleModal(btn.dataset.membershipId, btn.dataset.email, btn.dataset.role, btn.dataset.seatType, btn.dataset.slackLinked === 'true');
+      } else if (btn.dataset.action === 'remove-member') {
+        openRemoveModal(btn.dataset.membershipId, btn.dataset.email);
+      }
+    });
+
+    document.getElementById('invitationsTableBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      if (btn.dataset.action === 'resend-invitation') {
+        resendInvitation(btn.dataset.invitationId);
+      } else if (btn.dataset.action === 'revoke-invitation') {
+        revokeInvitation(btn.dataset.invitationId);
       }
     });
 
