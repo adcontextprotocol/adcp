@@ -12,7 +12,7 @@ if (!STRIPE_SECRET_KEY) {
 
 export const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, {
-      apiVersion: '2026-03-25.dahlia',
+      apiVersion: '2026-02-25.clover',
     })
   : null;
 
