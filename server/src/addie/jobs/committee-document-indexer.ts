@@ -344,7 +344,6 @@ async function parsePptxContent(buffer: Buffer): Promise<{
  */
 function decodeXmlEntities(text: string): string {
   return text
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
@@ -358,7 +357,8 @@ function decodeXmlEntities(text: string): string {
       const cp = parseInt(hex, 16);
       if (cp === 0 || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) return '';
       return String.fromCodePoint(cp);
-    });
+    })
+    .replace(/&amp;/g, '&');
 }
 
 /**
