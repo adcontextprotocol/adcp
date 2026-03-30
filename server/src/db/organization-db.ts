@@ -142,7 +142,7 @@ export function getSeatLimits(tier: string | null): SeatLimits {
  *
  * Tier mapping (annual):
  *   Individual: Explorer ($50) → individual_academic, Professional ($250+) → individual_professional
- *   Company:    Builder ($3K+) → company_standard, Member ($15K+) → company_icl, Leader ($50K+) → company_leader
+ *   Company:    Builder ($3K+) → company_standard, Partner ($15K+) → company_icl, Leader ($50K+) → company_leader
  */
 export function inferMembershipTier(
   amountCents: number | null,
