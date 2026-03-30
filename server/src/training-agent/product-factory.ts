@@ -17,15 +17,32 @@ import type {
 // core.generated but not re-exported from @adcp/client's main entry.
 type PricingOption = Product['pricing_options'][number];
 type PriceGuidance = NonNullable<Extract<PricingOption, { pricing_model: 'cpm' }>['price_guidance']>;
-type Installment = NonNullable<Product['installments']>[number];
-type CollectionSelector = NonNullable<Product['collections']>[number];
 type MediaChannel = NonNullable<Product['channels']>[number];
 type DeliveryType = Product['delivery_type'];
-type Exclusivity = NonNullable<Product['exclusivity']>;
 type PublisherPropertySelector = Product['publisher_properties'][number];
-type InstallmentStatus = NonNullable<Installment['status']>;
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
+type Exclusivity = 'exclusive' | 'category';
+type InstallmentStatus = 'scheduled' | 'live' | 'completed' | 'canceled' | 'postponed';
+interface Installment {
+  installment_id: string;
+  collection_id: string;
+  name: string;
+  status: InstallmentStatus;
+  scheduled_at?: string;
+  duration_seconds?: number;
+  special?: NonNullable<ShowDefinition['episodes']>[number]['special'];
+}
+interface CollectionSelector {
+  publisher_domain: string;
+  collection_ids: string[];
+}
+type TrainingProduct = Product & {
+  collections?: CollectionSelector[];
+  installments?: Installment[];
+  exclusivity?: Exclusivity;
+  collection_targeting_allowed?: boolean;
+};
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
@@ -479,7 +496,7 @@ function buildProduct(
     }
   }
 
-  const product: Product = {
+  const product: TrainingProduct = {
     product_id: productId,
     name: template.name,
     description: template.description,
@@ -553,7 +570,7 @@ function buildProduct(
   };
 
   return {
-    product,
+    product: product as Product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
@@ -593,12 +610,12 @@ function buildShowObject(show: ShowDefinition): ShowResponse {
  * Build the top-level shows array for a get_products response,
  * scoped to only collections referenced by the given products.
  */
-export function buildShowsForProducts(products: Product[]): ShowResponse[] {
+export function buildShowsForProducts(products: TrainingProduct[]): ShowResponse[] {
   const referencedIds = new Set<string>();
   for (const p of products) {
     if (p.collections) {
       for (const selector of p.collections) {
-        selector.collection_ids.forEach(id => referencedIds.add(id));
+        selector.collection_ids.forEach((id: string) => referencedIds.add(id));
       }
     }
   }

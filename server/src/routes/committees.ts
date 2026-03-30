@@ -33,7 +33,7 @@ const logger = createLogger("committee-routes");
 const documentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: Request, file: { mimetype: string }, cb: (error: Error | null, acceptFile?: boolean) => void) => {
     const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
