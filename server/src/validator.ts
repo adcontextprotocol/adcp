@@ -185,7 +185,7 @@ export class AgentValidator {
 
     const data = await response.json() as AdAgentsJson;
     if (data.authoritative_location && !followedRedirect) {
-      const authoritativeUrl = this.validateAuthoritativeLocation(data.authoritative_location);
+      const authoritativeUrl = await this.validateAuthoritativeLocation(data.authoritative_location);
       if (!authoritativeUrl) {
         return {
           error: "authoritative_location must be a valid HTTPS URL",
@@ -509,14 +509,40 @@ export class AgentValidator {
 
   private normalizeDomain(value: string): string {
     let normalized = value.trim().toLowerCase();
+
+    // Strip scheme if present.
     if (normalized.startsWith("https://")) {
       normalized = normalized.slice("https://".length);
     } else if (normalized.startsWith("http://")) {
       normalized = normalized.slice("http://".length);
     }
+
+    // Remove trailing slashes.
     while (normalized.endsWith("/")) {
       normalized = normalized.slice(0, -1);
     }
+
+    // Basic SSRF hardening: disallow obvious local / non-public hosts and raw IPs.
+    if (
+      normalized === "" ||
+      normalized === "localhost" ||
+      normalized.endsWith(".localhost") ||
+      normalized.endsWith(".local")
+    ) {
+      return "";
+    }
+
+    // Reject IPv4 addresses.
+    const ipv4Pattern = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+    if (ipv4Pattern.test(normalized)) {
+      return "";
+    }
+
+    // Reject bracketed IPv6 literals.
+    if (normalized.startsWith("[") && normalized.endsWith("]")) {
+      return "";
+    }
+
     return normalized;
   }
 
@@ -530,13 +556,28 @@ export class AgentValidator {
 
   private buildAdAgentsUrl(normalizedDomain: string): URL {
     const domain = this.normalizeDomain(normalizedDomain);
-    if (!domain || domain.includes("/") || domain.includes("?") || domain.includes("#")) {
+
+    // Basic structural validation: no path/query/fragment/whitespace.
+    if (
+      !domain ||
+      domain.includes("/") ||
+      domain.includes("?") ||
+      domain.includes("#") ||
+      /\s/.test(domain)
+    ) {
       throw new Error("Invalid domain");
     }
+
+    // Optional: restrict to typical hostname characters.
+    const hostnamePattern = /^[a-z0-9.-]+$/;
+    if (!hostnamePattern.test(domain)) {
+      throw new Error("Invalid domain");
+    }
+
     return new URL(`https://${domain}/.well-known/adagents.json`);
   }
 
-  private validateAuthoritativeLocation(url: string): URL | null {
+  private async validateAuthoritativeLocation(url: string): Promise<URL | null> {
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== "https:") {
@@ -546,7 +587,16 @@ export class AgentValidator {
       if (parsed.username || parsed.password || (parsed.port !== "" && parsed.port !== "443")) {
         return null;
       }
+
+      // Strip fragment to avoid confusing the effective target.
       parsed.hash = "";
+
+      // Reuse the same SSRF protections applied to primary fetch targets.
+      const safetyError = await this.validateFetchTarget(parsed);
+      if (safetyError) {
+        return null;
+      }
+
       return parsed;
     } catch {
       return null;
