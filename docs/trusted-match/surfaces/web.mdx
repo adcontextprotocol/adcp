@@ -23,17 +23,20 @@ When a page loads, the TMP Prebid module sends a Context Match request to the ro
 ```json
 {
   "request_id": "ctx-7f2a-oakwood-91b3",
+  "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
   "property_id": "oakwood-publishing-main",
   "property_type": "website",
   "placement_id": "article-sidebar-300x250",
-  "artifacts": ["article:sustainable-kitchen-2026-03"]
+  "artifacts": [
+    { "type": "url", "value": "https://oakwood.example.com/sustainable-kitchen-2026-03" }
+  ]
 }
 ```
 
 Key points:
 
 - No package list is sent per request. The provider evaluates all eligible packages for this placement using its synced package set from media buy setup. The same packages are evaluated for every user, preventing identity leakage into the context path and enabling response caching.
-- `artifacts` references registered content. The buyer agent resolves artifact metadata from its cache — no inline signals needed on the request.
+- `artifacts` references content by type and value. The buyer agent resolves artifact metadata from its cache — no inline signals needed on the request.
 
 ### Context Match Response
 
@@ -43,16 +46,16 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
 {
   "request_id": "ctx-7f2a-oakwood-91b3",
   "offers": [
-    { "package_id": "pkg-display-0041", "activation_key": "d41" },
-    { "package_id": "pkg-native-0078", "activation_key": "n78" }
+    { "package_id": "pkg-display-0041" },
+    { "package_id": "pkg-native-0078" }
   ],
   "signals": {
     "segments": ["sustainability", "home_cooking"],
     "targeting_kvs": [
       { "key": "adcp_seg", "value": "sustainability" },
       { "key": "adcp_seg", "value": "home_cooking" },
-      { "key": "adcp_pkg", "value": "d41" },
-      { "key": "adcp_pkg", "value": "n78" }
+      { "key": "adcp_pkg", "value": "pkg-display-0041" },
+      { "key": "adcp_pkg", "value": "pkg-native-0078" }
     ]
   }
 }
@@ -61,8 +64,7 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
 Key points:
 
 - `offers` contains one entry per activated package. The provider's synced set for this placement included three packages — these two matched the kitchen/sustainability context, the third (`pkg-display-0103`) did not and is absent.
-- For web/GAM activation, offers are simple -- just `package_id` and `activation_key`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
-- `activation_key` is a short, ad-server-safe string assigned at media buy creation. GAM key-values use `activation_key` instead of the full `package_id` to avoid exposing internal IDs in page markup and to respect ad server length limits. When absent, `package_id` is used directly.
+- For web/GAM activation, offers are simple -- just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
 - `signals.targeting_kvs` are the key-value pairs that the Prebid module sets on the GAM ad request. GAM line items are configured to match on these keys.
 
 ## Identity Match
@@ -142,10 +144,10 @@ The Prebid module takes the context match `signals.targeting_kvs` and sets them 
 
 ```
 adcp_seg = sustainability, home_cooking
-adcp_pkg = d41, n78
+adcp_pkg = pkg-display-0041, pkg-native-0078
 ```
 
-GAM line items are pre-configured to target on `adcp_pkg` values using the `activation_key`. When the ad request arrives with `adcp_pkg=d41`, GAM matches it to the corresponding line item and serves the creative.
+GAM line items are pre-configured to target on `adcp_pkg` values. When the ad request arrives with `adcp_pkg=pkg-display-0041`, GAM matches it to the corresponding line item and serves the creative.
 
 ### Step 3: GAM Selects
 

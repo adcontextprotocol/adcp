@@ -47,10 +47,14 @@ A fitness app triggers an interstitial after a workout completes:
 ```json
 {
   "request_id": "ctx-mob-7f3a91",
+  "property_rid": "01916f3a-b4e7-7000-8000-000000000030",
   "property_id": "pulsefit-ios",
   "property_type": "mobile_app",
   "placement_id": "interstitial_main",
-  "artifacts": ["screen:workout-complete", "screen:workout-summary"]
+  "artifacts": [
+    { "type": "custom", "value": "screen:workout-complete" },
+    { "type": "custom", "value": "screen:workout-summary" }
+  ]
 }
 ```
 
@@ -84,10 +88,13 @@ A recipe app shows sponsored content cards in its recipe feed:
 ```json
 {
   "request_id": "ctx-mob-b2c419",
+  "property_rid": "01916f3a-c5f8-7000-8000-000000000031",
   "property_id": "tastecraft-android",
   "property_type": "mobile_app",
   "placement_id": "banner_feed",
-  "artifacts": ["article:weeknight-pasta-recipes"]
+  "artifacts": [
+    { "type": "url", "value": "https://tastecraft.example.com/weeknight-pasta-recipes" }
+  ]
 }
 ```
 
@@ -224,10 +231,13 @@ Rewarded video follows the same activation pattern as interstitials. The placeme
 ```json
 {
   "request_id": "ctx-mob-c8f201",
+  "property_rid": "01916f3a-d6a9-7000-8000-000000000032",
   "property_id": "puzzlequest-ios",
   "property_type": "mobile_app",
   "placement_id": "rewarded_video",
-  "artifacts": ["screen:level-complete-42"]
+  "artifacts": [
+    { "type": "custom", "value": "screen:level-complete-42" }
+  ]
 }
 ```
 

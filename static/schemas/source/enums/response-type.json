@@ -11,7 +11,7 @@
     "deal"
   ],
   "enumDescriptions": {
-    "activation": "Binary activation with GAM key-values. Offers identify the package via package_id or activation_key.",
+    "activation": "Binary activation with GAM key-values. Offers identify the package via package_id.",
     "catalog_items": "Preferred catalog items for rendering. Offers may include catalog item references.",
     "creative": "Inline creative manifest. Offers include full rendering details.",
     "deal": "Deal ID for programmatic execution. Offers include deal metadata."

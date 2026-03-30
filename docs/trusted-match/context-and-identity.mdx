@@ -29,10 +29,13 @@ The publisher sends a Context Match request to each buyer's agent. The request c
 ```json
 {
   "request_id": "ctx-7f3a",
+  "property_rid": "01916f3a-7b2c-7000-8000-000000000001",
   "property_id": "retailer-web",
   "property_type": "website",
   "placement_id": "search-results-grid",
-  "artifacts": ["search:beverages-coffee"],
+  "artifacts": [
+    { "type": "custom", "value": "search:beverages-coffee" }
+  ],
   "context_signals": {
     "topics": ["632"],
     "keywords": ["cold brew", "iced coffee", "coffee beans"],

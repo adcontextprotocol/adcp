@@ -53,12 +53,6 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
-    "activation_key": {
-      "type": "string",
-      "description": "Short, ad-server-safe key for this package. Used as the value in GAM key-value targeting instead of the full package_id. Avoids exposing internal IDs in page markup and respects ad server length limits. Assigned by the seller at media buy creation. When absent, the package_id is used directly.",
-      "maxLength": 32,
-      "pattern": "^[a-zA-Z0-9_-]+$"
-    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },

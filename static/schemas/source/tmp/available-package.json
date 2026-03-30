@@ -13,12 +13,6 @@
       "type": "string",
       "description": "Media buy that this package belongs to"
     },
-    "activation_key": {
-      "type": "string",
-      "description": "Short key for ad server targeting. Required when use_activation_keys is true on the product.",
-      "maxLength": 32,
-      "pattern": "^[a-zA-Z0-9_-]+$"
-    },
     "format_ids": {
       "type": "array",
       "description": "Creative format identifiers eligible for this package. Uses the standard AdCP format-id object with agent_url and id for unambiguous format resolution across namespaces.",

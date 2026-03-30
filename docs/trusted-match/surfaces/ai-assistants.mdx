@@ -27,10 +27,13 @@ When a user sends a message in a conversation, the AI platform sends a Context M
 ```json
 {
   "request_id": "ctx-a1b2c3d4",
+  "property_rid": "01916f3a-f8cb-7000-8000-000000000050",
   "property_id": "chatplatform-assistant",
   "property_type": "ai_assistant",
   "placement_id": "chat-inline-recommendation",
-  "artifacts": ["turn:b3c9e2"],
+  "artifacts": [
+    { "type": "custom", "value": "turn:b3c9e2" }
+  ],
   "context_signals": {
     "topics": ["479", "483", "592"],
     "taxonomy_source": "iab",
@@ -126,7 +129,7 @@ TMP tells the platform **what** sponsored content is available and relevant. The
 AI assistants are the fastest-growing ad surface, but they lack the infrastructure that web and mobile have built over decades. TMP provides:
 
 - **Standard buyer integration**: Any buyer agent that speaks TMP can activate packages on any AI platform that supports TMP. No bespoke integrations per platform.
-- **Privacy by default**: The conversation content never leaves the platform as raw text. The buyer sees a content hash and topic IDs. The user's identity is handled in a separate request.
+- **Privacy by default**: The conversation content never leaves the platform as raw text. The buyer sees classified signals and topic IDs. The user's identity is handled in a separate request.
 - **Platform editorial control**: The platform decides how to weave sponsored content into the conversation. TMP provides inputs; the platform controls the experience.
 - **Multi-buyer support**: A platform can have packages from multiple buyer agents active simultaneously. The TMP Router handles fan-out. The platform handles selection.
 

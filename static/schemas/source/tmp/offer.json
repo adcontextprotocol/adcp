@@ -7,13 +7,7 @@
   "properties": {
     "package_id": {
       "type": "string",
-      "description": "Package identifier from the media buy. Required when the product's use_activation_keys is false (default)."
-    },
-    "activation_key": {
-      "type": "string",
-      "description": "Short key for ad server targeting. Required when the product's use_activation_keys is true. The publisher uses this as the GAM key-value.",
-      "maxLength": 32,
-      "pattern": "^[a-zA-Z0-9_-]+$"
+      "description": "Package identifier from the media buy."
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
@@ -39,9 +33,6 @@
       }
     }
   },
-  "anyOf": [
-    { "required": ["package_id"] },
-    { "required": ["activation_key"] }
-  ],
+  "required": ["package_id"],
   "additionalProperties": true
 }

@@ -19,10 +19,13 @@ When a shopper views a search results page or category page, the retailer sends 
 ```json
 {
   "request_id": "ctx-retail-8f3a",
+  "property_rid": "01916f3a-e7ba-7000-8000-000000000040",
   "property_id": "grocery-retailer-web",
   "property_type": "website",
   "placement_id": "search-results-sponsored",
-  "artifacts": ["search:beverages-coffee"]
+  "artifacts": [
+    { "type": "custom", "value": "search:beverages-coffee" }
+  ]
 }
 ```
 

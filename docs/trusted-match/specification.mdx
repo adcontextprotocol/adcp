@@ -15,10 +15,10 @@ This is the authoritative reference for the Trusted Match Protocol (TMP). For co
 | **Context Match** | TMP operation that evaluates available packages against content context. Carries no user identity. |
 | **Identity Match** | TMP operation that evaluates user eligibility against package criteria. Carries no page context. |
 | **TMP Router** | Infrastructure that fans out TMP requests to buyer agents and merges responses. A single binary that handles both context and identity requests, with structurally separate code paths. |
-| **Offer** | A buyer's response to a context match request. Ranges from simple activation (package_id only) to rich proposals with brand, price, summary, and creative manifest. Generalizes the concept of package activation. |
+| **Offer** | A buyer's response to a context match request. Ranges from simple activation (package_id only) to rich proposals with brand, price, summary, and creative manifest. |
 | **Available package** | A package from an active media buy that is eligible for evaluation on a given placement. Package metadata is synced at media buy time. |
 | **Eligibility matrix** | Per-package, per-user status returned by Identity Match. A boolean `eligible` flag plus optional `intent_score`. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
-| **Artifact** | A content item registered with a publisher property (article, episode, show, video, conversation turn). Referenced by ID in context match requests. |
+| **Artifact** | A typed content reference associated with a publisher property (article URL, episode EIDR, show Gracenote ID, conversation turn). Each artifact has a `type` and `value`. Referenced in context match requests. |
 | **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
 
 ## Message Types
@@ -31,14 +31,14 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 |---|---|---|---|
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. Allows receivers to handle semantic differences across versions. |
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
-| `property_id` | string | Yes | Publisher property identifier. |
+| `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
+| `property_id` | string | No | Publisher's human-readable slug. Optional when `property_rid` is present. |
 | `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
 | `placement_id` | string | Yes | Placement identifier from the property's registered placements. One placement per request. |
-| `artifacts` | List\<string\> | No | Content artifact IDs adjacent to this ad opportunity (articles, episodes, shows, videos, conversation turns). For URL-addressable content, the buyer may have pre-classified these. For ephemeral content, use `context_signals` instead of or alongside artifact IDs. |
-| `url_hash` | string | No | Blake3 hash of the canonicalized content URL, base64-encoded. For URL-addressable content, the buyer checks this against their pre-crawled index. Canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments. |
+| `artifacts` | List\<Artifact\> | No | Typed content references adjacent to this ad opportunity. Each artifact has a `type` (one of: `url`, `url_hash`, `eidr`, `gracenote`, `rss_guid`, `isbn`, `custom`) and a `value`. For URL-addressable content, the buyer may have pre-classified these. For ephemeral content, use `context_signals` instead of or alongside artifacts. |
 | `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when artifact pre-registration is not feasible (conversation turns, search queries) or to supplement artifact-based matching. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |
 | `geo` | Geo | No | Geographic context. Publisher controls granularity — country for volume filtering, region/metro for valuation. This describes where the ad is serving, not where the user is. |
-| `package_ids` | List\<string\> | No | Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). Package metadata (formats, catalogs, activation keys) is synced at media buy time — not sent per request. |
+| `package_ids` | List\<string\> | No | Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). Package metadata (formats, catalogs) is synced at media buy time — not sent per request. |
 
 #### ContextSignals
 
@@ -59,6 +59,15 @@ Pre-computed classifier outputs for the content environment. MUST NOT contain ra
 | `embedding_dims` | integer | No | Number of dimensions in the embedding vector. Required when `embedding` is present. |
 
 For **static content** (articles, episodes, product pages), `artifacts` alone may suffice — the buyer pre-crawls and classifies the content. For **ephemeral content** (conversation turns, search queries), `context_signals` is the primary mechanism — the content didn't exist until the user interacted. Both can be present on the same request.
+
+#### Artifact
+
+A typed content reference. Each artifact identifies a piece of content using a standard or custom identifier scheme.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | enum | Yes | One of: `url`, `url_hash`, `eidr`, `gracenote`, `rss_guid`, `isbn`, `custom`. |
+| `value` | string | Yes | The identifier value. Format depends on `type`: URL for `url`, base64-encoded Blake3 hash for `url_hash`, EIDR ID for `eidr`, Gracenote ID for `gracenote`, RSS GUID for `rss_guid`, ISBN for `isbn`, publisher-defined string for `custom`. |
 
 #### Geo
 
@@ -82,12 +91,11 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 
 #### Offer
 
-A buyer's response for a single package. Must include either `package_id` or `activation_key` — the seller controls which via `use_activation_keys` on the product's `trusted_match` configuration. When `use_activation_keys` is true, the router MUST reject offers that include `package_id` but not `activation_key`. The publisher resolves `activation_key` back to `package_id` for the identity match join using its synced package metadata.
+A buyer's response for a single package.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `package_id` | string | When `use_activation_keys` is false | Package identifier from the media buy. |
-| `activation_key` | string | When `use_activation_keys` is true | Short key for ad server targeting (max 32 chars, alphanumeric/dash/underscore). The publisher uses this as the GAM key-value. |
+| `package_id` | string | Yes | Package identifier from the media buy. |
 | `brand` | BrandRef | No | Brand for this offer. Required when the product allows dynamic brands. For single-brand packages, already known from the media buy. |
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
@@ -194,7 +202,6 @@ Publishers declare TMP support on their products via the `trusted_match` field. 
 | `identity_match` | bool | No | Product supports Identity Match requests. Default: false. |
 | `response_types` | List\<string\> | No | What the publisher can accept back: `activation` (default), `catalog_items`, `creative`, `deal`. |
 | `dynamic_brands` | bool | No | Whether the buyer can select a brand at match time. When false (default), brand must be on the media buy. When true, the buyer's offer can include any brand — the publisher applies approval rules at match time. Enables multi-brand agreements. |
-| `use_activation_keys` | bool | No | Whether offers must use `activation_key` instead of `package_id` for targeting. When true, every synced package must have an `activation_key`, and the router rejects offers missing it. Default: false. |
 | `providers` | List\<ProviderEntry\> | No | TMP providers integrated with this product's inventory. Each entry identifies a provider by `agent_url` (from the registry) and declares what match types it supports. Enables buyer discovery. |
 
 ## Privacy Requirements
@@ -238,7 +245,7 @@ TMP requests carry a `signature` field to prove the request originated from an a
 
 ### Signing model
 
-The router signs each context match request using Ed25519. The signature covers the static parts of the request (property_id, placement_id, sorted package_ids, daily epoch) — not the request_id or per-request fields. This enables signature caching: the same placement with the same packages produces the same signature for up to 24 hours.
+The router signs each context match request using Ed25519. The signature covers the static parts of the request (property_rid, placement_id, sorted package_ids, daily epoch) — not the request_id or per-request fields. This enables signature caching: the same placement with the same packages produces the same signature for up to 24 hours.
 
 Signatures are base64-encoded (URL-safe, no padding) and included in the `signature` field on the request. The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
 
