@@ -71,12 +71,12 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         duration_ms: t.duration_ms,
       }));
 
-      // Map SDK overall_status to our storage format
-      const sdkStatus = complianceResult.overall_status;
+      // Derive overall status from track counts
+      const { tracks_passed, tracks_failed, tracks_partial } = complianceResult.summary;
       let overallStatus: OverallRunStatus;
-      if (sdkStatus === 'passing') {
+      if (tracks_failed === 0 && tracks_partial === 0) {
         overallStatus = 'passing';
-      } else if (sdkStatus === 'partial') {
+      } else if (tracks_passed > 0 || tracks_partial > 0) {
         overallStatus = 'partial';
       } else {
         overallStatus = 'failing';
