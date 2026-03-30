@@ -22,7 +22,7 @@ A shopper searches for "best cold brew." The publisher's search results page loa
 
 ## Context Match
 
-The publisher sends a Context Match request to the TMP Router. The request contains the page context. It contains no user identity and no package list — the provider uses its synced package set for this placement.
+The publisher sends a Context Match request to each buyer's agent. The request contains the page context. It contains no user identity and no package list — the buyer agent uses its synced package set for this placement.
 
 ### What the publisher sends
 
@@ -32,11 +32,18 @@ The publisher sends a Context Match request to the TMP Router. The request conta
   "property_id": "retailer-web",
   "property_type": "website",
   "placement_id": "search-results-grid",
-  "artifacts": ["search:beverages-coffee"]
+  "artifacts": ["search:beverages-coffee"],
+  "context_signals": {
+    "topics": ["632"],
+    "keywords": ["cold brew", "iced coffee", "coffee beans"],
+    "sentiment": "positive",
+    "summary": "Shopper searching for cold brew coffee products"
+  },
+  "geo": { "country": "US", "region": "US-CA" }
 }
 ```
 
-Note what is absent: no user ID, no device information, no session token, no IP address. The buyer agent evaluates this request based purely on content context and package eligibility.
+The buyer agent sees what the page is about — coffee, positive purchase intent, California — and evaluates its packages against that context. Note what is absent: no user ID, no device information, no session token, no IP address.
 
 ### What the buyer responds
 
@@ -104,7 +111,7 @@ This is not a policy restriction. It is enforced by the router's context code pa
 
 ## Identity Match
 
-Separately — and with a random time delay — the publisher sends an Identity Match request to the TMP Router. The request contains an opaque user token and the list of packages to evaluate. It contains no page context.
+Separately — and with a random time delay — the publisher sends an Identity Match request to each buyer's agent. The request contains an opaque user token and the list of packages to evaluate. It contains no page context.
 
 ### What the publisher sends
 
