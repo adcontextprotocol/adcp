@@ -24,6 +24,7 @@ import {
 } from '../mcp/google-docs.js';
 import { isLLMConfigured, complete } from '../../utils/llm.js';
 import { PDFParse } from 'pdf-parse';
+import mammoth from 'mammoth';
 import yauzl from 'yauzl';
 import { refreshWorkingGroupDocs } from '../mcp/docs-indexer.js';
 import type { CommitteeDocument, DocumentIndexStatus } from '../../types.js';
@@ -334,6 +335,20 @@ async function parsePptxContent(buffer: Buffer): Promise<{
 }
 
 /**
+ * Decode standard XML entities in text extracted via regex.
+ */
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+/**
  * Extract readable text from a PPTX slide XML string
  */
 function extractTextFromSlideXml(xml: string): string {
@@ -343,10 +358,299 @@ function extractTextFromSlideXml(xml: string): string {
   let match;
   while ((match = regex.exec(xml)) !== null) {
     if (match[1].trim()) {
-      textParts.push(match[1]);
+      textParts.push(decodeXmlEntities(match[1]));
     }
   }
   return textParts.join(' ').trim();
+}
+
+/**
+ * Extract text from a DOCX buffer using mammoth.
+ * Also extracts images from word/media/ via yauzl.
+ */
+async function parseDocxContent(buffer: Buffer): Promise<{
+  content: string;
+  assets: ExtractedAsset[];
+  error?: string;
+  status: DocumentIndexStatus;
+}> {
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    const content = result.value?.trim() || '';
+
+    // Extract images from the DOCX zip
+    const assets: ExtractedAsset[] = [];
+    try {
+      const zipAssets = await extractMediaFromZip(buffer, /^word\/media\/(.+)$/);
+      assets.push(...zipAssets);
+    } catch (imgErr) {
+      logger.warn({ err: imgErr }, 'Failed to extract images from DOCX');
+    }
+
+    if (!content && assets.length === 0) {
+      return { content: '', assets: [], error: 'DOCX contained no extractable content', status: 'error' };
+    }
+
+    return { content, assets, status: 'success' };
+  } catch (error) {
+    return {
+      content: '',
+      assets: [],
+      error: error instanceof Error ? error.message : 'Failed to parse DOCX',
+      status: 'error',
+    };
+  }
+}
+
+/**
+ * Extract text from an XLSX buffer by reading shared strings and sheet XML from the zip.
+ */
+async function parseXlsxContent(buffer: Buffer): Promise<{
+  content: string;
+  assets: ExtractedAsset[];
+  error?: string;
+  status: DocumentIndexStatus;
+}> {
+  return new Promise((resolve) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
+      if (err || !zipfile) {
+        resolve({ content: '', assets: [], error: err?.message || 'Failed to open XLSX', status: 'error' });
+        return;
+      }
+
+      const sheetTexts = new Map<number, string[]>();
+      let sharedStrings: string[] = [];
+      let sharedStringsRaw: string | null = null;
+      const sheetRaws = new Map<number, string>();
+      const pendingEntries: Array<Promise<void>> = [];
+      let totalDecompressedBytes = 0;
+      let aborted = false;
+
+      zipfile.readEntry();
+
+      zipfile.on('entry', (entry) => {
+        if (aborted) return;
+        const filename: string = entry.fileName;
+
+        const isSharedStrings = filename === 'xl/sharedStrings.xml';
+        const sheetMatch = filename.match(/^xl\/worksheets\/sheet(\d+)\.xml$/);
+
+        if (isSharedStrings || sheetMatch) {
+          const p = new Promise<void>((entryResolve) => {
+            zipfile.openReadStream(entry, (streamErr, stream) => {
+              if (streamErr || !stream) {
+                entryResolve();
+                return;
+              }
+
+              const chunks: Buffer[] = [];
+              stream.on('data', (chunk: Buffer) => {
+                totalDecompressedBytes += chunk.length;
+                if (totalDecompressedBytes > MAX_DECOMPRESSED_SIZE) {
+                  aborted = true;
+                  stream.destroy();
+                  zipfile.close();
+                  return;
+                }
+                chunks.push(chunk);
+              });
+              stream.on('end', () => {
+                if (aborted) { entryResolve(); return; }
+                const data = Buffer.concat(chunks).toString('utf-8');
+
+                if (isSharedStrings) {
+                  sharedStringsRaw = data;
+                } else if (sheetMatch) {
+                  sheetRaws.set(parseInt(sheetMatch[1], 10), data);
+                }
+
+                entryResolve();
+              });
+            });
+          });
+          pendingEntries.push(p);
+        }
+
+        zipfile.readEntry();
+      });
+
+      zipfile.on('end', async () => {
+        await Promise.all(pendingEntries);
+
+        if (aborted) {
+          resolve({ content: '', assets: [], error: 'Decompressed content exceeds size limit', status: 'error' });
+          return;
+        }
+
+        // Parse shared strings table
+        if (sharedStringsRaw) {
+          sharedStrings = parseSharedStrings(sharedStringsRaw);
+        }
+
+        // Parse each sheet and resolve cell references
+        const sortedSheets = [...sheetRaws.entries()].sort(([a], [b]) => a - b);
+        for (const [sheetNum, xml] of sortedSheets) {
+          const rows = parseSheetXml(xml, sharedStrings);
+          if (rows.length > 0) {
+            sheetTexts.set(sheetNum, rows);
+          }
+        }
+
+        // Combine all sheets
+        const parts: string[] = [];
+        const sortedResults = [...sheetTexts.entries()].sort(([a], [b]) => a - b);
+        for (const [sheetNum, rows] of sortedResults) {
+          if (sortedResults.length > 1) {
+            parts.push(`--- Sheet ${sheetNum} ---`);
+          }
+          parts.push(rows.join('\n'));
+        }
+
+        const content = parts.join('\n\n');
+        if (!content.trim()) {
+          resolve({ content: '', assets: [], error: 'XLSX contained no extractable content', status: 'error' });
+          return;
+        }
+
+        resolve({ content, assets: [], status: 'success' });
+      });
+
+      zipfile.on('error', (zipErr) => {
+        resolve({ content: '', assets: [], error: zipErr.message, status: 'error' });
+      });
+    });
+  });
+}
+
+/**
+ * Parse the xl/sharedStrings.xml file to extract the shared string table.
+ * Each <si> element contains one or more <t> text runs.
+ */
+function parseSharedStrings(xml: string): string[] {
+  const strings: string[] = [];
+  // Match each <si>...</si> block
+  const siRegex = /<si>([\s\S]*?)<\/si>/g;
+  let siMatch;
+  while ((siMatch = siRegex.exec(xml)) !== null) {
+    // Extract all <t> values within this <si>
+    const tRegex = /<t[^>]*>([^<]*)<\/t>/g;
+    let tMatch;
+    const parts: string[] = [];
+    while ((tMatch = tRegex.exec(siMatch[1])) !== null) {
+      parts.push(decodeXmlEntities(tMatch[1]));
+    }
+    strings.push(parts.join(''));
+  }
+  return strings;
+}
+
+/**
+ * Parse a sheet XML file and return rows as tab-separated strings.
+ * Resolves shared string references (t="s") by index.
+ */
+function parseSheetXml(xml: string, sharedStrings: string[]): string[] {
+  const rows: string[] = [];
+  // Match each <row>...</row>
+  const rowRegex = /<row[^>]*>([\s\S]*?)<\/row>/g;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(xml)) !== null) {
+    const cells: string[] = [];
+    // Match each <c>...</c> cell (with or without attributes)
+    const cellRegex = /<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g;
+    let cellMatch;
+    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+      const attrs = cellMatch[1] || cellMatch[3] || '';
+      const inner = cellMatch[2] || '';
+
+      // Inline string: value is in <is><t>...</t></is>
+      if (/t="inlineStr"/.test(attrs)) {
+        const isMatch = inner.match(/<is>[\s\S]*?<t[^>]*>([^<]*)<\/t>[\s\S]*?<\/is>/);
+        if (isMatch) cells.push(decodeXmlEntities(isMatch[1]));
+        continue;
+      }
+
+      // Get cell value from <v> tag
+      const vMatch = inner.match(/<v>([^<]*)<\/v>/);
+      if (!vMatch) continue;
+
+      const rawValue = vMatch[1];
+
+      // Shared string reference (t="s")
+      if (/t="s"/.test(attrs)) {
+        const idx = parseInt(rawValue, 10);
+        cells.push(sharedStrings[idx] ?? rawValue);
+      } else {
+        cells.push(decodeXmlEntities(rawValue));
+      }
+    }
+    if (cells.length > 0) {
+      rows.push(cells.join('\t'));
+    }
+  }
+  return rows;
+}
+
+/**
+ * Extract image assets from a ZIP (DOCX or PPTX) matching a media path pattern.
+ */
+async function extractMediaFromZip(buffer: Buffer, mediaPattern: RegExp): Promise<ExtractedAsset[]> {
+  return new Promise((resolve) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
+      if (err || !zipfile) {
+        resolve([]);
+        return;
+      }
+
+      const assets: ExtractedAsset[] = [];
+      const pendingEntries: Array<Promise<void>> = [];
+      let totalBytes = 0;
+      let aborted = false;
+
+      zipfile.readEntry();
+
+      zipfile.on('entry', (entry) => {
+        if (aborted) return;
+        const match = entry.fileName.match(mediaPattern);
+        if (match) {
+          const p = new Promise<void>((entryResolve) => {
+            zipfile.openReadStream(entry, (streamErr, stream) => {
+              if (streamErr || !stream) { entryResolve(); return; }
+              const chunks: Buffer[] = [];
+              stream.on('data', (chunk: Buffer) => {
+                totalBytes += chunk.length;
+                if (totalBytes > MAX_DECOMPRESSED_SIZE) {
+                  aborted = true;
+                  stream.destroy();
+                  zipfile.close();
+                  return;
+                }
+                chunks.push(chunk);
+              });
+              stream.on('end', () => {
+                if (aborted) { entryResolve(); return; }
+                const data = Buffer.concat(chunks);
+                const mediaName = match[1];
+                const mimeType = guessMimeFromFilename(mediaName);
+                if (SAFE_IMAGE_TYPES.has(mimeType) && data.length > 1000) {
+                  assets.push({ filename: mediaName, mimeType, data });
+                }
+                entryResolve();
+              });
+            });
+          });
+          pendingEntries.push(p);
+        }
+        zipfile.readEntry();
+      });
+
+      zipfile.on('end', async () => {
+        await Promise.all(pendingEntries);
+        resolve(aborted ? [] : assets);
+      });
+
+      zipfile.on('error', () => resolve(assets));
+    });
+  });
 }
 
 function guessMimeFromFilename(filename: string): string {
@@ -448,7 +752,8 @@ async function indexDocument(doc: CommitteeDocument & { has_file_data?: boolean 
   let error: string | undefined;
   let status: DocumentIndexStatus;
 
-  if (doc.document_type === 'pdf' || doc.document_type === 'pptx') {
+  const fileBasedTypes = ['pdf', 'pptx', 'xlsx', 'docx'];
+  if (fileBasedTypes.includes(doc.document_type)) {
     // Get file buffer: from DB (uploaded) or from URL (linked)
     let buffer: Buffer;
 
@@ -471,9 +776,13 @@ async function indexDocument(doc: CommitteeDocument & { has_file_data?: boolean 
       return { changed: false, error: 'No file data or URL' };
     }
 
-    const parseResult = doc.document_type === 'pdf'
-      ? await parsePdfContent(buffer)
-      : await parsePptxContent(buffer);
+    const parsers: Record<string, (buf: Buffer) => Promise<{ content: string; assets: ExtractedAsset[]; error?: string; status: DocumentIndexStatus }>> = {
+      pdf: parsePdfContent,
+      pptx: parsePptxContent,
+      xlsx: parseXlsxContent,
+      docx: parseDocxContent,
+    };
+    const parseResult = await parsers[doc.document_type](buffer);
 
     content = parseResult.content;
     assets = parseResult.assets;
