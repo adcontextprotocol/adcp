@@ -18,9 +18,15 @@ describe('organization-db', () => {
     jest.clearAllMocks();
     jest.resetModules();
 
-    // Setup mock pool
+    // Setup mock pool with connection support for transactional queries
+    const mockClient = {
+      query: jest.fn(),
+      release: jest.fn(),
+    };
     mockPool = {
       query: jest.fn(),
+      connect: jest.fn().mockResolvedValue(mockClient),
+      _mockClient: mockClient,
     };
 
     // Setup mocks
@@ -194,8 +200,11 @@ describe('organization-db', () => {
 
   describe('canAddSeat', () => {
     test('infers tier from subscription when membership_tier is null', async () => {
-      // First query: org with null membership_tier but active $2,500/yr subscription
-      mockPool.query.mockResolvedValueOnce({
+      const client = mockPool._mockClient;
+      // BEGIN
+      client.query.mockResolvedValueOnce({ rows: [] });
+      // SELECT ... FOR UPDATE: org with null membership_tier but active $2,500/yr subscription
+      client.query.mockResolvedValueOnce({
         rows: [{
           membership_tier: null,
           subscription_amount: 250000,
@@ -204,19 +213,24 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      // Second query: seat usage count
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ contributor: 0, community_only: 0 }],
+      // Seat usage (members + pending invitations)
+      client.query.mockResolvedValueOnce({
+        rows: [],
       });
+      // COMMIT
+      client.query.mockResolvedValueOnce({ rows: [] });
 
       const { canAddSeat } = await import('../../server/src/db/organization-db.js');
       const result = await canAddSeat('org_123', 'contributor');
 
       expect(result.allowed).toBe(true);
+      expect(client.release).toHaveBeenCalled();
     });
 
     test('denies contributor seats when no subscription and no tier', async () => {
-      mockPool.query.mockResolvedValueOnce({
+      const client = mockPool._mockClient;
+      client.query.mockResolvedValueOnce({ rows: [] }); // BEGIN
+      client.query.mockResolvedValueOnce({
         rows: [{
           membership_tier: null,
           subscription_amount: null,
@@ -225,9 +239,8 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ contributor: 0, community_only: 0 }],
-      });
+      client.query.mockResolvedValueOnce({ rows: [] }); // seat usage
+      client.query.mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const { canAddSeat } = await import('../../server/src/db/organization-db.js');
       const result = await canAddSeat('org_123', 'contributor');
@@ -236,7 +249,9 @@ describe('organization-db', () => {
     });
 
     test('denies contributor seats for canceled subscription even with amount', async () => {
-      mockPool.query.mockResolvedValueOnce({
+      const client = mockPool._mockClient;
+      client.query.mockResolvedValueOnce({ rows: [] }); // BEGIN
+      client.query.mockResolvedValueOnce({
         rows: [{
           membership_tier: null,
           subscription_amount: 250000,
@@ -245,9 +260,8 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ contributor: 0, community_only: 0 }],
-      });
+      client.query.mockResolvedValueOnce({ rows: [] }); // seat usage
+      client.query.mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const { canAddSeat } = await import('../../server/src/db/organization-db.js');
       const result = await canAddSeat('org_123', 'contributor');

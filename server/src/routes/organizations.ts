@@ -17,7 +17,7 @@ import {
 } from "../middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, MembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -2062,6 +2062,8 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      const requestingUserRole = resolveUserRole(userMemberships.data);
+
       // Get all members of the organization (paginate to handle orgs with >100 members)
       // Fetch first page to get type inference, then paginate if needed
       let membershipsPage = await workos!.userManagement.listOrganizationMemberships({
@@ -2084,6 +2086,13 @@ export function createOrganizationsRouter(): Router {
       const slackDb = new SlackDatabase();
       const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
 
+      // Bulk-fetch seat types from local DB
+      const seatTypesResult = await getPool().query<{ workos_user_id: string; seat_type: string }>(
+        'SELECT workos_user_id, seat_type FROM organization_memberships WHERE workos_organization_id = $1',
+        [orgId]
+      );
+      const seatTypeMap = new Map(seatTypesResult.rows.map(r => [r.workos_user_id, r.seat_type]));
+
       // Fetch user details for each membership
       const members = await Promise.all(
         allMemberships.map(async (membership) => {
@@ -2099,6 +2108,7 @@ export function createOrganizationsRouter(): Router {
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: mappedWorkosUserIds.has(membership.userId),
+              seat_type: seatTypeMap.get(membership.userId) || 'contributor',
             };
           } catch (error) {
             // User might have been deleted
@@ -2113,6 +2123,7 @@ export function createOrganizationsRouter(): Router {
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: false,
+              seat_type: seatTypeMap.get(membership.userId) || 'contributor',
             };
           }
         })
@@ -2123,6 +2134,13 @@ export function createOrganizationsRouter(): Router {
         organizationId: orgId,
       });
 
+      // Fetch seat types for pending invitations
+      const invSeatResult = await getPool().query<{ email: string; seat_type: string }>(
+        'SELECT email, seat_type FROM invitation_seat_types WHERE workos_organization_id = $1',
+        [orgId]
+      );
+      const invSeatMap = new Map(invSeatResult.rows.map(r => [r.email.toLowerCase(), r.seat_type]));
+
       const pendingInvitations = invitations.data
         .filter(inv => inv.state === 'pending')
         .map(inv => ({
@@ -2132,11 +2150,25 @@ export function createOrganizationsRouter(): Router {
           expires_at: inv.expiresAt,
           created_at: inv.createdAt,
           inviter_user_id: inv.inviterUserId,
+          seat_type: invSeatMap.get(inv.email.toLowerCase()) || 'contributor',
         }));
+
+      // Include seat usage and limits only for admins/owners
+      const isAdmin = requestingUserRole === 'admin' || requestingUserRole === 'owner';
+      let seatInfo: { seat_usage?: { contributor: number; community_only: number }; seat_limits?: { contributor: number; community: number } } = {};
+      if (isAdmin) {
+        const seatUsage = await getSeatUsage(orgId);
+        const localOrg = await orgDb.getOrganization(orgId);
+        seatInfo = {
+          seat_usage: seatUsage,
+          seat_limits: getSeatLimits(localOrg?.membership_tier ?? null),
+        };
+      }
 
       res.json({
         members,
         pending_invitations: pendingInvitations,
+        ...seatInfo,
       });
     } catch (error) {
       logger.error({ err: error }, 'List organization members error');
@@ -2210,7 +2242,6 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Enforce seat limits
-      const { canAddSeat } = await import('../db/organization-db.js');
       const seatCheck = await canAddSeat(orgId, seatType);
       if (!seatCheck.allowed) {
         return res.status(403).json({
@@ -2227,7 +2258,15 @@ export function createOrganizationsRouter(): Router {
         roleSlug: role || 'member',
       });
 
-      logger.info({ orgId, email, inviterId: user.id }, 'Invitation sent');
+      // Persist seat_type intent for when the invitation is accepted
+      await getPool().query(
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type`,
+        [invitation.id, orgId, email, seatType]
+      );
+
+      logger.info({ orgId, email, inviterId: user.id, seatType }, 'Invitation sent');
 
       // Record audit log
       await orgDb.recordAuditLog({
@@ -2236,7 +2275,7 @@ export function createOrganizationsRouter(): Router {
         action: 'member_invited',
         resource_type: 'invitation',
         resource_id: invitation.id,
-        details: { email, role: role || 'member' },
+        details: { email, role: role || 'member', seat_type: seatType },
       });
 
       res.json({
@@ -2313,6 +2352,9 @@ export function createOrganizationsRouter(): Router {
       // Revoke the invitation
       await workos!.userManagement.revokeInvitation(invitationId);
 
+      // Clean up seat_type intent
+      await getPool().query('DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1', [invitationId]);
+
       logger.info({ orgId, invitationId, revokerId: user.id }, 'Invitation revoked');
 
       // Record audit log
@@ -2374,16 +2416,30 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Preserve seat_type from old invitation before revoking
+      const oldSeatResult = await getPool().query<{ seat_type: string }>(
+        'DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1 RETURNING seat_type',
+        [invitationId]
+      );
+      const preservedSeatType = oldSeatResult.rows[0]?.seat_type || 'contributor';
+
       // Revoke the old invitation and send a new one
       await workos!.userManagement.revokeInvitation(invitationId);
       const newInvitation = await workos!.userManagement.sendInvitation({
         email: invitation.email,
         organizationId: orgId,
         inviterUserId: user.id,
-        roleSlug: 'member', // Default to member role on resend
+        roleSlug: 'member',
       });
 
-      logger.info({ orgId, email: invitation.email, inviterId: user.id }, 'Invitation resent');
+      // Persist seat_type intent for the new invitation
+      await getPool().query(
+        `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type)
+         VALUES ($1, $2, $3, $4)`,
+        [newInvitation.id, orgId, invitation.email, preservedSeatType]
+      );
+
+      logger.info({ orgId, email: invitation.email, inviterId: user.id, seatType: preservedSeatType }, 'Invitation resent');
 
       // Record audit log
       await orgDb.recordAuditLog({
@@ -2392,7 +2448,7 @@ export function createOrganizationsRouter(): Router {
         action: 'invitation_resent',
         resource_type: 'invitation',
         resource_id: newInvitation.id,
-        details: { email: invitation.email, old_invitation_id: invitationId },
+        details: { email: invitation.email, old_invitation_id: invitationId, seat_type: preservedSeatType },
       });
 
       res.json({
@@ -2413,25 +2469,33 @@ export function createOrganizationsRouter(): Router {
     }
   });
 
-  // PATCH /api/organizations/:orgId/members/:membershipId - Update member role
+  // PATCH /api/organizations/:orgId/members/:membershipId - Update member role and/or seat type
   router.patch('/:orgId/members/:membershipId', requireAuth, async (req, res) => {
     try {
       const user = req.user!;
       const { orgId, membershipId } = req.params;
-      const { role } = req.body;
+      const { role, seat_type } = req.body;
 
-      if (!role) {
+      if (!role && !seat_type) {
         return res.status(400).json({
           error: 'Missing required field',
-          message: 'role is required',
+          message: 'At least one of role or seat_type is required',
         });
       }
 
-      // Validate role
-      if (!VALID_ORGANIZATION_ROLES.includes(role as any)) {
+      // Validate role if provided
+      if (role && !VALID_ORGANIZATION_ROLES.includes(role as any)) {
         return res.status(400).json({
           error: 'Invalid role',
           message: `Role must be one of: ${VALID_ORGANIZATION_ROLES.join(', ')}`,
+        });
+      }
+
+      // Validate seat_type if provided
+      if (seat_type && !['contributor', 'community_only'].includes(seat_type)) {
+        return res.status(400).json({
+          error: 'Invalid seat type',
+          message: 'seat_type must be one of: contributor, community_only',
         });
       }
 
@@ -2448,12 +2512,18 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Check user's role - only owners can change roles
+      // Check user's role - only owners can change roles, admins can change seat types
       const userRole = resolveUserRole(userMemberships.data);
-      if (userRole !== 'owner') {
+      if (role && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
           message: 'Only owners can change member roles',
+        });
+      }
+      if (seat_type && userRole !== 'owner' && userRole !== 'admin') {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only owners and admins can change seat types',
         });
       }
 
@@ -2467,49 +2537,102 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Cannot change own role
-      if (membership.userId === user.id) {
+      if (role && membership.userId === user.id) {
         return res.status(400).json({
           error: 'Cannot change own role',
           message: 'You cannot change your own role',
         });
       }
 
-      // Update the role
-      const updatedMembership = await workos!.userManagement.updateOrganizationMembership(
-        membershipId,
-        { roleSlug: role }
-      );
+      // If upgrading to contributor, enforce seat limits
+      if (seat_type === 'contributor') {
+        const currentSeatType = await getUserSeatType(membership.userId);
+        if (currentSeatType !== 'contributor') {
+          const seatCheck = await canAddSeat(orgId, 'contributor');
+          if (!seatCheck.allowed) {
+            return res.status(403).json({
+              error: 'Seat limit reached',
+              message: seatCheck.reason,
+            });
+          }
+        }
+      }
 
-      logger.info({ orgId, membershipId, newRole: role, changedBy: user.id }, 'Member role updated');
+      // Update role via WorkOS if requested
+      let updatedRole = membership.role?.slug || 'member';
+      if (role) {
+        const updatedMembership = await workos!.userManagement.updateOrganizationMembership(
+          membershipId,
+          { roleSlug: role }
+        );
+        updatedRole = updatedMembership.role?.slug || 'member';
+      }
 
-      // Record audit log
-      await orgDb.recordAuditLog({
-        workos_organization_id: orgId,
-        workos_user_id: user.id,
-        action: 'member_role_changed',
-        resource_type: 'membership',
-        resource_id: membershipId,
-        details: {
-          target_user_id: membership.userId,
-          old_role: membership.role?.slug || 'member',
-          new_role: role,
-        },
-      });
+      // Update seat_type in local DB if requested
+      let updatedSeatType: string | undefined;
+      if (seat_type) {
+        // Get old seat_type for audit log
+        const oldResult = await getPool().query<{ seat_type: string }>(
+          'SELECT seat_type FROM organization_memberships WHERE workos_organization_id = $1 AND workos_user_id = $2',
+          [orgId, membership.userId]
+        );
+        const oldSeatType = oldResult.rows[0]?.seat_type || 'contributor';
+
+        await getPool().query(
+          `UPDATE organization_memberships SET seat_type = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+          [seat_type, orgId, membership.userId]
+        );
+        updatedSeatType = seat_type;
+
+        if (oldSeatType !== seat_type) {
+          await orgDb.recordAuditLog({
+            workos_organization_id: orgId,
+            workos_user_id: user.id,
+            action: 'member_seat_type_changed',
+            resource_type: 'membership',
+            resource_id: membershipId,
+            details: {
+              target_user_id: membership.userId,
+              old_seat_type: oldSeatType,
+              new_seat_type: seat_type,
+            },
+          });
+        }
+      }
+
+      if (role) {
+        logger.info({ orgId, membershipId, newRole: role, changedBy: user.id }, 'Member role updated');
+
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'member_role_changed',
+          resource_type: 'membership',
+          resource_id: membershipId,
+          details: {
+            target_user_id: membership.userId,
+            old_role: membership.role?.slug || 'member',
+            new_role: role,
+          },
+        });
+      }
 
       res.json({
         success: true,
         membership: {
-          id: updatedMembership.id,
-          user_id: updatedMembership.userId,
-          role: updatedMembership.role?.slug || 'member',
-          status: updatedMembership.status,
+          id: membership.id,
+          user_id: membership.userId,
+          role: updatedRole,
+          status: membership.status,
+          ...(updatedSeatType && { seat_type: updatedSeatType }),
         },
       });
     } catch (error: unknown) {
-      logger.error({ err: error }, 'Update member role error');
+      logger.error({ err: error }, 'Update member error');
       return res.status(500).json({
-        error: 'Failed to update member role',
-        message: 'Unable to update member role. Please try again or contact support.',
+        error: 'Failed to update member',
+        message: 'Unable to update member. Please try again or contact support.',
       });
     }
   });
