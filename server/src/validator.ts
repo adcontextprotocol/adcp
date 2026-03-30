@@ -1,3 +1,5 @@
+import dns from "node:dns/promises";
+import net from "node:net";
 import type {
   AdAgentsJson,
   AuthorizationResult,
@@ -71,7 +73,7 @@ export class AgentValidator {
     const adagentsUrl = this.buildAdAgentsUrl(normalizedDomain);
 
     try {
-      const fetched = await this.fetchAdAgentsJson(normalizedDomain, normalizedDomain);
+      const fetched = await this.fetchAdAgentsJson(adagentsUrl);
       if (!fetched.data) {
         return {
           authorized: false,
@@ -150,26 +152,17 @@ export class AgentValidator {
     }
   }
 
-  private async fetchAdAgentsJson(hostname: string, expectedDomain: string, followedRedirect = false): Promise<FetchResult> {
-    const normalizedExpectedDomain = this.normalizeDomain(expectedDomain);
-    const normalizedHost = this.normalizeDomain(hostname);
-    const url = this.buildAdAgentsUrl(normalizedHost);
+  private async fetchAdAgentsJson(url: URL, followedRedirect = false): Promise<FetchResult> {
     const source = url.toString();
-
-    if (
-      !normalizedHost ||
-      (
-        normalizedHost !== normalizedExpectedDomain &&
-        !normalizedHost.endsWith(`.${normalizedExpectedDomain}`)
-      )
-    ) {
+    const safetyError = await this.validateFetchTarget(url);
+    if (safetyError) {
       return {
-        error: "URL must use HTTPS on the same hostname",
+        error: safetyError,
         source,
       };
     }
 
-    // lgtm[js/request-forgery] -- URL is rebuilt from a validated hostname and fixed well-known path.
+    // lgtm[js/request-forgery] -- fetch target is restricted to HTTPS and public internet hosts only.
     const response = await fetch(url, {
       headers: { "User-Agent": "AdCP-Registry/1.0" },
       signal: AbortSignal.timeout(5000),
@@ -192,14 +185,14 @@ export class AgentValidator {
 
     const data = await response.json() as AdAgentsJson;
     if (data.authoritative_location && !followedRedirect) {
-      const authoritativeHost = this.validateAuthoritativeLocation(data.authoritative_location, expectedDomain);
-      if (!authoritativeHost) {
+      const authoritativeUrl = this.validateAuthoritativeLocation(data.authoritative_location);
+      if (!authoritativeUrl) {
         return {
-          error: "authoritative_location must use HTTPS on the same hostname",
+          error: "authoritative_location must be a valid HTTPS URL",
           source,
         };
       }
-      return this.fetchAdAgentsJson(authoritativeHost, expectedDomain, true);
+      return this.fetchAdAgentsJson(authoritativeUrl, true);
     }
 
     return {
@@ -543,33 +536,81 @@ export class AgentValidator {
     return new URL(`https://${domain}/.well-known/adagents.json`);
   }
 
-  private validateAuthoritativeLocation(url: string, expectedDomain: string): string | null {
+  private validateAuthoritativeLocation(url: string): URL | null {
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== "https:") {
         return null;
       }
 
-      const normalizedHost = this.normalizeDomain(parsed.hostname);
-      if (
-        normalizedHost !== expectedDomain &&
-        !normalizedHost.endsWith(`.${expectedDomain}`)
-      ) {
-        return null;
-      }
-
       if (parsed.username || parsed.password || (parsed.port !== "" && parsed.port !== "443")) {
         return null;
       }
-
-      if (parsed.pathname !== "/.well-known/adagents.json" || parsed.search) {
-        return null;
-      }
-
-      return normalizedHost;
+      parsed.hash = "";
+      return parsed;
     } catch {
       return null;
     }
+  }
+
+  private async validateFetchTarget(url: URL): Promise<string | null> {
+    if (url.protocol !== "https:") {
+      return "URL must use HTTPS";
+    }
+
+    if (url.username || url.password || (url.port !== "" && url.port !== "443")) {
+      return "URL must not include credentials or non-default ports";
+    }
+
+    const hostname = this.normalizeDomain(url.hostname);
+    if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost")) {
+      return "URL must resolve to a public internet host";
+    }
+
+    if (this.isPrivateIpAddress(hostname)) {
+      return "URL must resolve to a public internet host";
+    }
+
+    try {
+      const records = await dns.lookup(hostname, { all: true, verbatim: true });
+      if (records.length === 0 || records.some((record) => this.isPrivateIpAddress(record.address))) {
+        return "URL must resolve to a public internet host";
+      }
+    } catch {
+      return "URL hostname could not be resolved";
+    }
+
+    return null;
+  }
+
+  private isPrivateIpAddress(address: string): boolean {
+    const ipVersion = net.isIP(address);
+    if (ipVersion === 4) {
+      const octets = address.split(".").map(Number);
+      const [a, b] = octets;
+      return (
+        a === 0 ||
+        a === 10 ||
+        a === 127 ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168)
+      );
+    }
+
+    if (ipVersion === 6) {
+      const normalized = address.toLowerCase();
+      return (
+        normalized === "::1" ||
+        normalized === "::" ||
+        normalized.startsWith("fc") ||
+        normalized.startsWith("fd") ||
+        normalized.startsWith("fe80:") ||
+        normalized.startsWith("::ffff:127.")
+      );
+    }
+
+    return false;
   }
 
   private normalizeScope(scope?: AuthorizationScope): NormalizedScope {

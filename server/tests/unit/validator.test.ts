@@ -1,3 +1,4 @@
+import dns from "node:dns/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentValidator } from "../../src/validator.js";
 
@@ -300,10 +301,20 @@ describe("AgentValidator", () => {
   });
 
   it("follows a single authoritative_location hop", async () => {
+    vi.spyOn(dns, "lookup").mockImplementation(async (hostname: string) => {
+      if (hostname === "example.com") {
+        return [{ address: "93.184.216.34", family: 4 }];
+      }
+      if (hostname === "cdn.example.com") {
+        return [{ address: "203.0.113.10", family: 4 }];
+      }
+      throw new Error(`Unexpected hostname: ${hostname}`);
+    });
+
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse({
-          authoritative_location: "https://cdn.example.com/.well-known/adagents.json",
+          authoritative_location: "https://cdn.example.com/adagents/v2/adagents.json",
         })
       )
       .mockResolvedValueOnce(
@@ -320,7 +331,7 @@ describe("AgentValidator", () => {
     const result = await validator.validate("example.com", "https://sales.example.com");
 
     expect(result.authorized).toBe(true);
-    expect(result.source).toBe("https://cdn.example.com/.well-known/adagents.json");
+    expect(result.source).toBe("https://cdn.example.com/adagents/v2/adagents.json");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
