@@ -67,6 +67,7 @@ import {
   createChannel,
   getSlackChannels,
   setChannelPurpose,
+  inviteToChannel,
 } from '../../slack/client.js';
 import {
   getProductsForCustomer,
@@ -4481,6 +4482,18 @@ export function createAdminToolHandlers(
           user_email: userEmail,
         });
         invalidateWebAdminStatusCache(userId);
+      }
+
+      // Auto-invite to the group's Slack channel (fire-and-forget)
+      if (committee.slack_channel_id) {
+        const slackDb = new SlackDatabase();
+        slackDb.getByWorkosUserId(userId).then(mapping => {
+          if (mapping?.slack_user_id) {
+            return inviteToChannel(committee.slack_channel_id!, [mapping.slack_user_id]);
+          }
+        }).catch(err => {
+          logger.error({ err, userId, channelId: committee.slack_channel_id }, 'Failed to auto-invite leader to Slack channel');
+        });
       }
 
       logger.info({ committeeSlug, committeeName: committee.name, userId, userEmail }, 'Added committee leader via Addie');
