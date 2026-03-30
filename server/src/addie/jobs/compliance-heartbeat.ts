@@ -9,6 +9,7 @@ import { comply, type ComplyOptions } from '@adcp/client/testing';
 import { ComplianceDatabase, type TrackSummaryEntry, type OverallRunStatus, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
 import { notifyComplianceChange } from '../../notifications/compliance.js';
+import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
@@ -117,6 +118,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           });
         } catch (notifyError) {
           logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send compliance notification');
+          notifySystemError({
+            source: 'compliance-notification',
+            errorMessage: `Status transition notification failed for ${agent.agent_url}: ${notifyError instanceof Error ? notifyError.message : String(notifyError)}`,
+          });
         }
       }
     } catch (error) {

@@ -56,6 +56,12 @@ export interface JobConfig<TOptions = Record<string, unknown>, TResult = unknown
   businessHours?: BusinessHoursConstraint;
 
   /**
+   * Consecutive failures before Slack notification. Default: 2.
+   * Set to 1 for jobs where every failure is actionable.
+   */
+  failureThreshold?: number;
+
+  /**
    * Return true to log result at info level, false for debug level.
    * If not provided, always logs at debug level.
    */
@@ -188,13 +194,14 @@ class JobScheduler {
         const failures = (this.consecutiveFailures.get(name) ?? 0) + 1;
         this.consecutiveFailures.set(name, failures);
 
-        logger.error({ err, jobName: name, consecutiveFailures: failures }, `${config.description}: failed`);
+        const threshold = config.failureThreshold ?? JobScheduler.FAILURE_THRESHOLD;
+        logger.error({ err, jobName: name, consecutiveFailures: failures, threshold }, `${config.description}: failed`);
 
-        // Only notify Slack after repeated failures — single transient errors resolve on their own
-        if (failures >= JobScheduler.FAILURE_THRESHOLD) {
+        if (failures >= threshold) {
+          const msg = err instanceof Error ? err.message : String(err);
           notifySystemError({
             source: `job:${name}`,
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorMessage: failures > 1 ? `[${failures} consecutive failures] ${msg}` : msg,
           });
         }
       }
@@ -242,6 +249,7 @@ class JobScheduler {
     }
 
     this.runningJobs.delete(name);
+    this.consecutiveFailures.delete(name);
     logger.info({ jobName: name }, 'Job stopped');
   }
 
