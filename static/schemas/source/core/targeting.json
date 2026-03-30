@@ -147,11 +147,13 @@
     },
     "axe_include_segment": {
       "type": "string",
-      "description": "AXE segment ID to include for targeting"
+      "description": "Deprecated: Use TMP provider fields instead. AXE segment ID to include for targeting.",
+      "deprecated": true
     },
     "axe_exclude_segment": {
       "type": "string",
-      "description": "AXE segment ID to exclude from targeting"
+      "description": "Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targeting.",
+      "deprecated": true
     },
     "audience_include": {
       "type": "array",

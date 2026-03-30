@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/context-match-request.json",
   "title": "Context Match Request",
-  "description": "Sent by publisher to router or provider to evaluate available packages against contextual signals. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id.",
+  "description": "Sent by publisher to router or provider to evaluate packages against contextual signals. The provider uses its synced package set for the placement. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id.",
   "type": "object",
   "properties": {
     "protocol_version": {
@@ -14,9 +14,14 @@
       "type": "string",
       "description": "Unique request identifier. MUST NOT correlate with any identity match request_id."
     },
+    "property_rid": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Property catalog UUID (UUID v7). Globally unique, stable identifier assigned by the property catalog. The primary key for TMP matching and property list targeting."
+    },
     "property_id": {
       "$ref": "/schemas/core/property-id.json",
-      "description": "Publisher property identifier from the registry"
+      "description": "Publisher's human-readable property slug (e.g., 'cnn_homepage'). Optional when property_rid is present. Useful for logging and debugging."
     },
     "property_type": {
       "$ref": "/schemas/enums/property-type.json",
@@ -28,9 +33,22 @@
     },
     "artifacts": {
       "type": "array",
-      "description": "Content artifact IDs adjacent to this ad opportunity. References artifacts registered with the property (articles, episodes, shows, videos, conversation turns). All packages in the request are evaluated against these artifacts.",
+      "description": "Public content references adjacent to this ad opportunity. Each artifact identifies content via a public identifier the buyer can resolve independently — no private registry sync required.",
       "items": {
-        "type": "string"
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Identifier type. 'url' for web pages, 'url_hash' for URL-addressable content the publisher prefers not to share directly (buyer matches against pre-crawled index), 'eidr' for film/TV (EIDR DOI), 'gracenote' for music/TV (Gracenote TMS ID), 'isrc' for music recordings (International Standard Recording Code), 'gtin' for products (Global Trade Item Number — UPC, EAN, ISBN-13), 'rss_guid' for podcast episodes (RSS GUID), 'isbn' for books, 'custom' for publisher-defined identifiers.",
+            "enum": ["url", "url_hash", "eidr", "gracenote", "isrc", "gtin", "rss_guid", "isbn", "custom"]
+          },
+          "value": {
+            "type": "string",
+            "description": "The identifier value. For 'url': the canonical content URL — MUST NOT contain user-specific path segments, query parameters, or fragments; use 'url_hash' when the publisher prefers not to reveal the URL. For 'url_hash': Blake3 hash of the canonicalized URL, base64-encoded (canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments). For 'eidr': the EIDR DOI (e.g., '10.5240/xxxx'). For 'gracenote': the Gracenote TMS ID (e.g., 'SH032541890000'). For 'isrc': the ISRC code (e.g., 'USRC17607839'). For 'gtin': the GTIN (e.g., '00012345678905'). For 'rss_guid': the episode GUID from the RSS feed. For 'isbn': the ISBN (e.g., '978-0-123456-78-9'). For 'custom': a publisher-defined identifier."
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
       },
       "minItems": 1
     },
@@ -66,10 +84,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "url_hash": {
-      "type": "string",
-      "description": "Blake3 hash of the canonicalized URL, base64-encoded. For URL-addressable content, the buyer checks this against their pre-crawled content index. Canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments."
     },
     "context_signals": {
       "type": "object",
@@ -138,21 +152,20 @@
       },
       "additionalProperties": false
     },
-    "available_packages": {
+    "package_ids": {
       "type": "array",
-      "description": "ALL packages eligible for this placement. MUST NOT be filtered by user identity or audience — that filtering happens via Identity Match. Sending only user-relevant packages leaks identity into the context path. Using a stable per-placement set also enables caching.",
+      "description": "Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). MUST NOT vary by user — the same package_ids must be sent for every user on a given placement. User-dependent filtering leaks identity into the context path.",
       "items": {
-        "$ref": "/schemas/tmp/available-package.json"
+        "type": "string"
       },
       "minItems": 1
     }
   },
   "required": [
     "request_id",
-    "property_id",
+    "property_rid",
     "property_type",
-    "placement_id",
-    "available_packages"
+    "placement_id"
   ],
   "additionalProperties": false
 }

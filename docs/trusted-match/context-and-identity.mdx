@@ -22,44 +22,31 @@ A shopper searches for "best cold brew." The publisher's search results page loa
 
 ## Context Match
 
-The publisher sends a Context Match request to the TMP Router. The request contains the page context and the list of available packages. It contains no user identity.
+The publisher sends a Context Match request to the TMP Router, which fans out to each buyer's agent. The request contains the page context. It contains no user identity and no package list — the buyer agent uses its synced package set for this placement.
 
 ### What the publisher sends
 
 ```json
 {
   "request_id": "ctx-7f3a",
+  "property_rid": "01916f3a-7b2c-7000-8000-000000000001",
   "property_id": "retailer-web",
   "property_type": "website",
   "placement_id": "search-results-grid",
-  "artifacts": ["search:beverages-coffee"],
-  "available_packages": [
-    {
-      "package_id": "pkg-A",
-      "media_buy_id": "mb-coffee-q1",
-      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "sponsored_carousel" }],
-      "catalogs": [
-        { "catalog_id": "coffee-products", "type": "product", "gtins": ["gtin-001", "gtin-002", "gtin-003", "gtin-004"] }
-      ]
-    },
-    {
-      "package_id": "pkg-B",
-      "media_buy_id": "mb-homepage",
-      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "display_takeover" }]
-    },
-    {
-      "package_id": "pkg-C",
-      "media_buy_id": "mb-summer-promo",
-      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "native_text" }],
-      "catalogs": [
-        { "catalog_id": "iced-beverages", "type": "product", "gtins": ["gtin-005", "gtin-006", "gtin-003"] }
-      ]
-    }
-  ]
+  "artifacts": [
+    { "type": "custom", "value": "search:beverages-coffee" }
+  ],
+  "context_signals": {
+    "topics": ["632"],
+    "keywords": ["cold brew", "iced coffee", "coffee beans"],
+    "sentiment": "positive",
+    "summary": "Shopper searching for cold brew coffee products"
+  },
+  "geo": { "country": "US", "region": "US-CA" }
 }
 ```
 
-Note what is absent: no user ID, no device information, no session token, no IP address. The buyer agent evaluates this request based purely on content context and package eligibility.
+The buyer agent sees what the page is about — coffee, positive purchase intent, California — and evaluates its packages against that context. Note what is absent: no user ID, no device information, no session token, no IP address.
 
 ### What the buyer responds
 
@@ -127,7 +114,7 @@ This is not a policy restriction. It is enforced by the router's context code pa
 
 ## Identity Match
 
-Separately — and with a random time delay — the publisher sends an Identity Match request to the TMP Router. The request contains an opaque user token and the list of packages to evaluate. It contains no page context.
+Separately — and with a random time delay — the publisher sends an Identity Match request to the TMP Router, which fans out to each buyer's agent. The request contains an opaque user token and the list of packages to evaluate. It contains no page context.
 
 ### What the publisher sends
 

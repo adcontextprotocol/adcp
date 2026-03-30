@@ -571,21 +571,17 @@ Both sides sync from the catalog at planning time:
 
 ### TMP Wire Format (Phased Rollout)
 
-**Phase 1**: `property_rid` optional on context-match request. Router resolves from its local catalog cache when absent.
+`property_rid` is required on context-match requests. `property_id` stays on the wire for logging/debugging but is optional.
 
 ```json
 {
   "request_id": "req_abc",
-  "property_id": "homepage",
   "property_rid": "019539a0-b1c2-7d3e-8f4a-5b6c7d8e9f0a",
+  "property_id": "homepage",
   "property_type": "website",
-  "placement_id": "above_fold_1",
-  "available_packages": [...]
+  "placement_id": "above_fold_1"
 }
 ```
-
-**Phase 2** (catalog adoption >80%): Deprecate fallback. Log warnings when missing.
-**Phase 3**: `property_rid` required. `property_id` stays on wire for logging/debugging.
 
 ## What This Does NOT Change
 
