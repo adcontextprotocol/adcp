@@ -56,6 +56,12 @@ export interface JobConfig<TOptions = Record<string, unknown>, TResult = unknown
   businessHours?: BusinessHoursConstraint;
 
   /**
+   * Consecutive failures before Slack notification. Default: 2.
+   * Set to 1 for jobs where every failure is actionable.
+   */
+  failureThreshold?: number;
+
+  /**
    * Return true to log result at info level, false for debug level.
    * If not provided, always logs at debug level.
    */
@@ -126,6 +132,10 @@ function isWithinBusinessHours(constraint: BusinessHoursConstraint): boolean {
 class JobScheduler {
   private configs: Map<string, JobConfig> = new Map();
   private runningJobs: Map<string, RunningJob> = new Map();
+  /** Consecutive failure count per job — resets on success. */
+  private consecutiveFailures: Map<string, number> = new Map();
+  /** Only notify Slack after this many consecutive failures. */
+  private static readonly FAILURE_THRESHOLD = 2;
 
   /**
    * Register a job configuration
@@ -170,6 +180,9 @@ class JobScheduler {
       try {
         const result = await config.runner(config.options ?? ({} as never));
 
+        // Reset consecutive failure count on success
+        this.consecutiveFailures.delete(name);
+
         // Log based on shouldLogResult predicate or default to debug
         const shouldLog = config.shouldLogResult?.(result) ?? false;
         if (shouldLog) {
@@ -178,11 +191,19 @@ class JobScheduler {
           logger.debug({ jobName: name, result }, `${config.description}: completed`);
         }
       } catch (err) {
-        logger.error({ err, jobName: name }, `${config.description}: failed`);
-        notifySystemError({
-          source: `job:${name}`,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
+        const failures = (this.consecutiveFailures.get(name) ?? 0) + 1;
+        this.consecutiveFailures.set(name, failures);
+
+        const threshold = config.failureThreshold ?? JobScheduler.FAILURE_THRESHOLD;
+        logger.error({ err, jobName: name, consecutiveFailures: failures, threshold }, `${config.description}: failed`);
+
+        if (failures >= threshold) {
+          const msg = err instanceof Error ? err.message : String(err);
+          notifySystemError({
+            source: `job:${name}`,
+            errorMessage: failures > 1 ? `[${failures} consecutive failures] ${msg}` : msg,
+          });
+        }
       }
     };
 
@@ -228,6 +249,7 @@ class JobScheduler {
     }
 
     this.runningJobs.delete(name);
+    this.consecutiveFailures.delete(name);
     logger.info({ jobName: name }, 'Job stopped');
   }
 

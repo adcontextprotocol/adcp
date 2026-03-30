@@ -330,7 +330,6 @@ export class ComplianceDatabase {
   async getAgentsDueForCheck(limit: number = 10): Promise<Array<{
     agent_url: string;
     lifecycle_stage: LifecycleStage;
-    platform_type: string | null;
     last_checked_at: Date | null;
   }>> {
     const result = await query(
@@ -342,7 +341,6 @@ export class ComplianceDatabase {
       SELECT
         ka.agent_url,
         COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
-        m.platform_type,
         s.last_checked_at
       FROM known_agents ka
       LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
