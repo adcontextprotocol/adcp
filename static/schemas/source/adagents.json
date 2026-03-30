@@ -97,6 +97,14 @@
             "$ref": "/schemas/core/collection.json"
           }
         },
+        "placements": {
+          "type": "array",
+          "description": "Canonical placement definitions for properties in this file. Products SHOULD reuse these placement_id values when exposing inventory in get_products, and authorized agents can scope authorization to these placement IDs.",
+          "items": {
+            "$ref": "/schemas/core/placement-definition.json"
+          },
+          "minItems": 1
+        },
         "tags": {
           "type": "object",
           "description": "Metadata for each tag referenced by properties. Provides human-readable context for property tag values.",
@@ -119,9 +127,31 @@
             "additionalProperties": true
           }
         },
+        "placement_tags": {
+          "type": "object",
+          "description": "Metadata for each tag referenced by placements. Provides human-readable context for publisher-defined placement tag values used in grouping and authorization.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Human-readable name for this placement tag"
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of what this placement tag represents"
+              }
+            },
+            "required": [
+              "name",
+              "description"
+            ],
+            "additionalProperties": true
+          }
+        },
         "authorized_agents": {
           "type": "array",
-          "description": "Array of sales agents authorized to sell inventory for properties in this file",
+          "description": "Array of sales agents authorized to make inventory from this file available to buyers. Authorization can be scoped to specific properties, collections, countries, and time windows, with optional delegation metadata indicating whether the path is direct, delegated, or network-mediated.",
           "items": {
             "oneOf": [
               {
@@ -148,6 +178,68 @@
                     "description": "Property IDs this agent is authorized for. Resolved against the top-level properties array in this file",
                     "items": {
                       "$ref": "/schemas/core/property-id.json"
+                    },
+                    "minItems": 1
+                  },
+                  "collections": {
+                    "type": "array",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "items": {
+                      "$ref": "/schemas/core/collection-selector.json"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_ids": {
+                    "type": "array",
+                    "description": "Optional placement constraints. When present, authorization only applies to these placement IDs from the top-level placements array in this file.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_tags": {
+                    "type": "array",
+                    "description": "Optional placement tag constraints. When present, authorization only applies to placements whose tags include any of these publisher-defined values.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "delegation_type": {
+                    "type": "string",
+                    "enum": ["direct", "delegated", "ad_network"],
+                    "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
+                  },
+                  "exclusive": {
+                    "type": "boolean",
+                    "description": "Whether this agent is the publisher's sole authorized path for the scoped inventory slice. When false or absent, other authorized agents may also sell the same inventory."
+                  },
+                  "countries": {
+                    "type": "array",
+                    "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "effective_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional start time for this authorization window."
+                  },
+                  "effective_until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional end time for this authorization window."
+                  },
+                  "signing_keys": {
+                    "type": "array",
+                    "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-signing-key.json"
                     },
                     "minItems": 1
                   }
@@ -186,6 +278,68 @@
                       "$ref": "/schemas/core/property-tag.json"
                     },
                     "minItems": 1
+                  },
+                  "collections": {
+                    "type": "array",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "items": {
+                      "$ref": "/schemas/core/collection-selector.json"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_ids": {
+                    "type": "array",
+                    "description": "Optional placement constraints. When present, authorization only applies to these placement IDs from the top-level placements array in this file.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_tags": {
+                    "type": "array",
+                    "description": "Optional placement tag constraints. When present, authorization only applies to placements whose tags include any of these publisher-defined values.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "delegation_type": {
+                    "type": "string",
+                    "enum": ["direct", "delegated", "ad_network"],
+                    "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
+                  },
+                  "exclusive": {
+                    "type": "boolean",
+                    "description": "Whether this agent is the publisher's sole authorized path for the scoped inventory slice. When false or absent, other authorized agents may also sell the same inventory."
+                  },
+                  "countries": {
+                    "type": "array",
+                    "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "effective_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional start time for this authorization window."
+                  },
+                  "effective_until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional end time for this authorization window."
+                  },
+                  "signing_keys": {
+                    "type": "array",
+                    "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-signing-key.json"
+                    },
+                    "minItems": 1
                   }
                 },
                 "required": [
@@ -222,6 +376,68 @@
                       "$ref": "/schemas/core/property.json"
                     },
                     "minItems": 1
+                  },
+                  "collections": {
+                    "type": "array",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "items": {
+                      "$ref": "/schemas/core/collection-selector.json"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_ids": {
+                    "type": "array",
+                    "description": "Optional placement constraints. When present, authorization only applies to these placement IDs from the top-level placements array in this file.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_tags": {
+                    "type": "array",
+                    "description": "Optional placement tag constraints. When present, authorization only applies to placements whose tags include any of these publisher-defined values.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "delegation_type": {
+                    "type": "string",
+                    "enum": ["direct", "delegated", "ad_network"],
+                    "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
+                  },
+                  "exclusive": {
+                    "type": "boolean",
+                    "description": "Whether this agent is the publisher's sole authorized path for the scoped inventory slice. When false or absent, other authorized agents may also sell the same inventory."
+                  },
+                  "countries": {
+                    "type": "array",
+                    "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "effective_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional start time for this authorization window."
+                  },
+                  "effective_until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional end time for this authorization window."
+                  },
+                  "signing_keys": {
+                    "type": "array",
+                    "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-signing-key.json"
+                    },
+                    "minItems": 1
                   }
                 },
                 "required": [
@@ -256,6 +472,68 @@
                     "description": "Properties from other publisher domains this agent is authorized for. Each entry specifies a publisher domain and which of their properties this agent can sell",
                     "items": {
                       "$ref": "/schemas/core/publisher-property-selector.json"
+                    },
+                    "minItems": 1
+                  },
+                  "collections": {
+                    "type": "array",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "items": {
+                      "$ref": "/schemas/core/collection-selector.json"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_ids": {
+                    "type": "array",
+                    "description": "Optional placement constraints. When present, authorization only applies to these placement IDs from the top-level placements array in this file.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "placement_tags": {
+                    "type": "array",
+                    "description": "Optional placement tag constraints. When present, authorization only applies to placements whose tags include any of these publisher-defined values.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "delegation_type": {
+                    "type": "string",
+                    "enum": ["direct", "delegated", "ad_network"],
+                    "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
+                  },
+                  "exclusive": {
+                    "type": "boolean",
+                    "description": "Whether this agent is the publisher's sole authorized path for the scoped inventory slice. When false or absent, other authorized agents may also sell the same inventory."
+                  },
+                  "countries": {
+                    "type": "array",
+                    "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "effective_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional start time for this authorization window."
+                  },
+                  "effective_until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional end time for this authorization window."
+                  },
+                  "signing_keys": {
+                    "type": "array",
+                    "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-signing-key.json"
                     },
                     "minItems": 1
                   }
@@ -296,6 +574,14 @@
                       "pattern": "^[a-zA-Z0-9_-]+$"
                     },
                     "minItems": 1
+                  },
+                  "signing_keys": {
+                    "type": "array",
+                    "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-signing-key.json"
+                    },
+                    "minItems": 1
                   }
                 },
                 "required": [
@@ -332,6 +618,14 @@
                     "items": {
                       "type": "string",
                       "pattern": "^[a-z0-9_-]+$"
+                    },
+                    "minItems": 1
+                  },
+                  "signing_keys": {
+                    "type": "array",
+                    "description": "Optional publisher-attested public signing keys for this agent. Use these as the trust anchor for verifying signed agent responses instead of relying on key discovery from the agent domain alone.",
+                    "items": {
+                      "$ref": "/schemas/core/agent-signing-key.json"
                     },
                     "minItems": 1
                   }
@@ -428,11 +722,12 @@
       "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
       "last_updated": "2025-01-15T10:00:00Z"
     },
-    {
-      "$schema": "/schemas/adagents.json",
-      "properties": [
         {
-          "property_type": "website",
+          "$schema": "/schemas/adagents.json",
+          "properties": [
+            {
+              "property_id": "example_site",
+              "property_type": "website",
           "name": "Example Site",
           "identifiers": [
             {
@@ -440,21 +735,52 @@
               "value": "example.com"
             }
           ],
-          "publisher_domain": "example.com"
-        }
-      ],
-      "authorized_agents": [
-        {
-          "url": "https://agent.example.com",
-          "authorized_for": "Official sales agent",
-          "authorization_type": "property_tags",
-          "property_tags": [
-            "all"
-          ]
-        }
-      ],
-      "tags": {
-        "all": {
+              "publisher_domain": "example.com"
+            }
+          ],
+          "placements": [
+            {
+              "placement_id": "homepage_banner",
+              "name": "Homepage Banner",
+              "tags": ["homepage", "display", "premium"],
+              "property_ids": ["example_site"],
+              "format_ids": [
+                {
+                  "agent_url": "https://creative.example.com",
+                  "id": "display_728x90"
+                }
+              ]
+            }
+          ],
+          "placement_tags": {
+            "homepage": {
+              "name": "Homepage",
+              "description": "Placements that render on the homepage"
+            },
+            "display": {
+              "name": "Display",
+              "description": "Standard display placements"
+            },
+            "premium": {
+              "name": "Premium",
+              "description": "Premium monetization placements"
+            }
+          },
+          "authorized_agents": [
+            {
+              "url": "https://agent.example.com",
+              "authorized_for": "Official sales agent",
+              "authorization_type": "property_tags",
+              "property_tags": ["all"],
+              "placement_ids": ["homepage_banner"],
+              "delegation_type": "direct",
+              "exclusive": true,
+              "countries": ["US", "CA"],
+              "effective_from": "2025-01-01T00:00:00Z"
+            }
+          ],
+          "tags": {
+            "all": {
           "name": "All Properties",
           "description": "All properties in this file"
         }
