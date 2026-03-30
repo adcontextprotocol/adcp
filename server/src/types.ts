@@ -871,7 +871,7 @@ export interface AddWorkingGroupMemberInput {
 
 // Committee Documents Types
 
-export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'pptx' | 'other';
+export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'pptx' | 'xlsx' | 'docx' | 'other';
 export type DocumentIndexStatus = 'pending' | 'success' | 'access_denied' | 'error' | 'disabled';
 
 export interface CommitteeDocument {
