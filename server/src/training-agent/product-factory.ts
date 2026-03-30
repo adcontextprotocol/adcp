@@ -17,30 +17,21 @@ import type {
 // core.generated but not re-exported from @adcp/client's main entry.
 type PricingOption = Product['pricing_options'][number];
 type PriceGuidance = NonNullable<Extract<PricingOption, { pricing_model: 'cpm' }>['price_guidance']>;
+type Installment = NonNullable<Product['installments']>[number];
+type InstallmentStatus = NonNullable<Installment['status']>;
 type MediaChannel = NonNullable<Product['channels']>[number];
 type DeliveryType = Product['delivery_type'];
 type PublisherPropertySelector = Product['publisher_properties'][number];
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
-type Exclusivity = 'exclusive' | 'category';
-type InstallmentStatus = 'scheduled' | 'live' | 'completed' | 'canceled' | 'postponed';
-interface Installment {
-  installment_id: string;
-  collection_id: string;
-  name: string;
-  status: InstallmentStatus;
-  scheduled_at?: string;
-  duration_seconds?: number;
-  special?: NonNullable<ShowDefinition['episodes']>[number]['special'];
-}
-interface CollectionSelector {
+type CollectionSelector = {
   publisher_domain: string;
   collection_ids: string[];
-}
+};
 type TrainingProduct = Product & {
   collections?: CollectionSelector[];
   installments?: Installment[];
-  exclusivity?: Exclusivity;
+  exclusivity?: 'exclusive' | 'category';
   collection_targeting_allowed?: boolean;
 };
 import { PUBLISHERS } from './publishers.js';
@@ -67,6 +58,17 @@ function inferPrimaryAssetType(channels: string[]): string {
   if (channels.some(c => ['radio', 'streaming_audio', 'podcast'].includes(c))) return 'audio';
   if (channels.some(c => ['social', 'influencer'].includes(c))) return 'social';
   return 'display';
+}
+
+function normalizeInstallmentStatus(status: string): InstallmentStatus {
+  switch (status) {
+    case 'completed':
+      return 'aired';
+    case 'canceled':
+      return 'cancelled';
+    default:
+      return status as InstallmentStatus;
+  }
 }
 
 function buildPriceGuidance(template: PricingTemplate): PriceGuidance | undefined {
@@ -457,7 +459,7 @@ function buildProduct(
 
   // Build collection/installment associations
   let collectionSelectors: CollectionSelector[] | undefined;
-  let exclusivity: Exclusivity | undefined;
+  let exclusivity: 'exclusive' | 'category' | undefined;
   let installments: Installment[] | undefined;
   let collectionTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
@@ -482,10 +484,9 @@ function buildProduct(
             installment_id: ep.episodeId,
             collection_id: show.showId,
             name: ep.title,
-            status: ep.status as InstallmentStatus,
+            status: normalizeInstallmentStatus(ep.status),
             scheduled_at: ep.scheduledAt,
             duration_seconds: ep.durationSeconds,
-            ...(ep.special && { special: ep.special as Installment['special'] }),
           };
           builtInstallments.push(installment);
         }
@@ -610,11 +611,12 @@ function buildShowObject(show: ShowDefinition): ShowResponse {
  * Build the top-level shows array for a get_products response,
  * scoped to only collections referenced by the given products.
  */
-export function buildShowsForProducts(products: TrainingProduct[]): ShowResponse[] {
+export function buildShowsForProducts(products: Product[]): ShowResponse[] {
   const referencedIds = new Set<string>();
   for (const p of products) {
-    if (p.collections) {
-      for (const selector of p.collections) {
+    const collections = (p as Product & { collections?: CollectionSelector[] }).collections;
+    if (collections) {
+      for (const selector of collections) {
         selector.collection_ids.forEach((id: string) => referencedIds.add(id));
       }
     }

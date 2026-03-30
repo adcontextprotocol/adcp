@@ -68,10 +68,10 @@ export class AgentValidator {
     normalizedAgentUrl: string,
     scope: NormalizedScope
   ): Promise<AuthorizationResult> {
-    const adagentsUrl = `https://${normalizedDomain}/.well-known/adagents.json`;
+    const adagentsUrl = this.buildAdAgentsUrl(normalizedDomain);
 
     try {
-      const fetched = await this.fetchAdAgentsJson(adagentsUrl);
+      const fetched = await this.fetchAdAgentsJson(adagentsUrl, normalizedDomain);
       if (!fetched.data) {
         return {
           authorized: false,
@@ -150,7 +150,7 @@ export class AgentValidator {
     }
   }
 
-  private async fetchAdAgentsJson(url: string, followedRedirect = false): Promise<FetchResult> {
+  private async fetchAdAgentsJson(url: string, expectedDomain: string, followedRedirect = false): Promise<FetchResult> {
     const response = await fetch(url, { // lgtm[js/request-forgery]
       headers: { "User-Agent": "AdCP-Registry/1.0" },
       signal: AbortSignal.timeout(5000),
@@ -173,7 +173,14 @@ export class AgentValidator {
 
     const data = await response.json() as AdAgentsJson;
     if (data.authoritative_location && !followedRedirect) {
-      return this.fetchAdAgentsJson(data.authoritative_location, true);
+      const authoritativeUrl = this.validateAuthoritativeLocation(data.authoritative_location, expectedDomain);
+      if (!authoritativeUrl) {
+        return {
+          error: "authoritative_location must use HTTPS on the same hostname",
+          source: url,
+        };
+      }
+      return this.fetchAdAgentsJson(authoritativeUrl, expectedDomain, true);
     }
 
     return {
@@ -489,11 +496,53 @@ export class AgentValidator {
   }
 
   private normalizeDomain(value: string): string {
-    return value.replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
+    let normalized = value.trim().toLowerCase();
+    if (normalized.startsWith("https://")) {
+      normalized = normalized.slice("https://".length);
+    } else if (normalized.startsWith("http://")) {
+      normalized = normalized.slice("http://".length);
+    }
+    while (normalized.endsWith("/")) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
   }
 
   private normalizeUrl(value: string): string {
-    return value.replace(/\/+$/, "");
+    let normalized = value;
+    while (normalized.endsWith("/")) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
+  }
+
+  private buildAdAgentsUrl(normalizedDomain: string): string {
+    const domain = this.normalizeDomain(normalizedDomain);
+    if (!domain || domain.includes("/") || domain.includes("?") || domain.includes("#")) {
+      throw new Error("Invalid domain");
+    }
+    return `https://${domain}/.well-known/adagents.json`;
+  }
+
+  private validateAuthoritativeLocation(url: string, expectedDomain: string): string | null {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") {
+        return null;
+      }
+
+      const normalizedHost = this.normalizeDomain(parsed.hostname);
+      if (
+        normalizedHost !== expectedDomain &&
+        !normalizedHost.endsWith(`.${expectedDomain}`)
+      ) {
+        return null;
+      }
+
+      return parsed.toString();
+    } catch {
+      return null;
+    }
   }
 
   private normalizeScope(scope?: AuthorizationScope): NormalizedScope {

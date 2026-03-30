@@ -5,6 +5,7 @@ import {
   type TestOptions,
   type TestResult,
   type TestScenario,
+  type AgentProfile,
 } from '@adcp/client/testing';
 
 export { setAgentTesterLogger };
@@ -87,30 +88,7 @@ export interface PlatformCoherence {
 }
 
 export interface ComplyResult {
-  agent_profile: {
-    name: string;
-    tools: string[];
-    channels?: string[];
-    pricing_models?: string[];
-    format_ids?: string[];
-    delivery_types?: string[];
-    supported_formats?: Array<{
-      format_id: string;
-      name?: string;
-      type?: string;
-      required_assets?: string[];
-      optional_assets?: string[];
-    }>;
-    supported_signals?: Array<{
-      signal_id: string;
-      name?: string;
-      type?: string;
-    }>;
-    adcp_version?: 'v2' | 'v3';
-    supported_protocols?: string[];
-    supports_governance?: boolean;
-    supports_si?: boolean;
-  };
+  agent_profile: AgentProfile;
   tracks: ComplianceTrackResult[];
   summary: {
     headline: string;
