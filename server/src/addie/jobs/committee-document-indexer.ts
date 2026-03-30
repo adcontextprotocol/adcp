@@ -1040,3 +1040,14 @@ export async function generateAssetDescriptions(batchSize = 5): Promise<number> 
 
   return described;
 }
+
+/** @internal Exported for testing only */
+export const _testing = {
+  decodeXmlEntities,
+  extractTextFromSlideXml,
+  parseSharedStrings,
+  parseSheetXml,
+  parsePptxContent,
+  parseXlsxContent,
+  parseDocxContent,
+};
