@@ -20,7 +20,7 @@ The TMP SDK sits between the app and the mediation layer. It does not replace th
 
 ```
 Ad opportunity
-  -> TMP SDK sends Context Match (content signals, all packages for placement)
+  -> TMP SDK sends Context Match (content signals, placement context)
   -> TMP SDK sends Identity Match (device token, all buyer packages)
   -> TMP SDK joins results locally
   -> Eligible, activated packages passed to mediator as demand sources
@@ -36,7 +36,7 @@ Two integration patterns cover most mobile ad formats:
 
 ## Context Match
 
-When an ad opportunity arises, the TMP SDK sends a Context Match request to the router. The request describes the content context and lists all packages configured for this placement.
+When an ad opportunity arises, the TMP SDK sends a Context Match request to the router. The request describes the content context for the placement.
 
 ### Interstitial Example
 
@@ -50,17 +50,11 @@ A fitness app triggers an interstitial after a workout completes:
   "property_id": "pulsefit-ios",
   "property_type": "mobile_app",
   "placement_id": "interstitial_main",
-  "artifacts": ["screen:workout-complete", "screen:workout-summary"],
-  "available_packages": [
-    { "package_id": "pkg-sports-inter-01", "media_buy_id": "mb-gearup-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] },
-    { "package_id": "pkg-nutrition-inter-02", "media_buy_id": "mb-greenfuel-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] },
-    { "package_id": "pkg-telecom-inter-03", "media_buy_id": "mb-wavenet-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] },
-    { "package_id": "pkg-auto-inter-04", "media_buy_id": "mb-rideon-q2", "format_ids": [{ "agent_url": "https://pulsefit.example.com", "id": "interstitial_fullscreen" }] }
-  ]
+  "artifacts": ["screen:workout-complete", "screen:workout-summary"]
 }
 ```
 
-`available_packages` includes every package configured for the `interstitial_main` placement. This is not filtered by user — the same set is sent for every user on every request. Filtering by user would leak identity into the context path.
+No package list is sent per request. The provider evaluates all eligible packages for the `interstitial_main` placement using its synced package set from media buy setup. The same packages are evaluated for every user — filtering by user would leak identity into the context path.
 
 #### Response
 
@@ -93,12 +87,7 @@ A recipe app shows sponsored content cards in its recipe feed:
   "property_id": "tastecraft-android",
   "property_type": "mobile_app",
   "placement_id": "banner_feed",
-  "artifacts": ["article:weeknight-pasta-recipes"],
-  "available_packages": [
-    { "package_id": "pkg-grocery-native-01", "media_buy_id": "mb-freshmart-q2", "format_ids": [{ "agent_url": "https://tastecraft.example.com", "id": "native_card" }] },
-    { "package_id": "pkg-kitchenware-native-02", "media_buy_id": "mb-ironpan-q2", "format_ids": [{ "agent_url": "https://tastecraft.example.com", "id": "native_card" }] },
-    { "package_id": "pkg-meal-native-03", "media_buy_id": "mb-plateplan-q2", "format_ids": [{ "agent_url": "https://tastecraft.example.com", "id": "native_card" }] }
-  ]
+  "artifacts": ["article:weeknight-pasta-recipes"]
 }
 ```
 
@@ -238,11 +227,7 @@ Rewarded video follows the same activation pattern as interstitials. The placeme
   "property_id": "puzzlequest-ios",
   "property_type": "mobile_app",
   "placement_id": "rewarded_video",
-  "artifacts": ["screen:level-complete-42"],
-  "available_packages": [
-    { "package_id": "pkg-gaming-reward-01", "media_buy_id": "mb-cloudplay-q2", "format_ids": [{ "agent_url": "https://puzzlequest.example.com", "id": "rewarded_video_30s" }] },
-    { "package_id": "pkg-snack-reward-02", "media_buy_id": "mb-crunchbar-q2", "format_ids": [{ "agent_url": "https://puzzlequest.example.com", "id": "rewarded_video_15s" }, { "agent_url": "https://puzzlequest.example.com", "id": "rewarded_video_30s" }] }
-  ]
+  "artifacts": ["screen:level-complete-42"]
 }
 ```
 
@@ -255,6 +240,6 @@ Mobile TMP follows the same structural separation as all surfaces:
 - **Context Match** carries content signals and placement data. No device identifiers, no user tokens, no IDFA/IDFV in the request.
 - **Identity Match** carries only a publisher-scoped device token and the full list of buyer package IDs. No content signals, no screen names, no topic IDs.
 - **Temporal decorrelation** between the two requests prevents timing-based correlation. The TMP SDK introduces a random delay (100-2000ms) before sending the Identity Match request.
-- **Package set decorrelation**: Context Match sends all packages for the placement. Identity Match sends all packages for the buyer. Neither set reveals which packages are relevant to the current opportunity.
+- **Package set decorrelation**: Context Match sends no package list — the provider evaluates the same synced package set for every user on a placement. Identity Match sends all packages for the buyer. Neither path reveals which packages are relevant to the current opportunity.
 
 The publisher performs the intersection locally after both responses arrive. The buyer never sees the joined result.

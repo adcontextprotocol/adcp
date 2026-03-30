@@ -16,7 +16,7 @@ The TMP Router is a single binary with two structurally separate code paths: one
 
 | | Context Path | Identity Path |
 |---|---|---|
-| **Inputs** | Page URL, content signals, topic IDs, available packages | Opaque user token, package IDs |
+| **Inputs** | Page URL, content signals, topic IDs | Opaque user token, package IDs |
 | **Never receives** | Any user identity | Any page context |
 | **Returns** | Activated packages, enrichment signals | Boolean eligibility per package, optional intent score |
 
@@ -47,7 +47,6 @@ TEE is an upgrade path, not a prerequisite. The protocol works without it. Publi
 **From Context Match requests**, a buyer agent learns:
 
 - Which publisher placements and content artifacts exist
-- What packages are available on those placements
 - Content signals via `context_signals` (topics, sentiment, keywords, language, brand safety tier, summary, embedding) — pre-computed by the publisher
 - Geographic context (country, region, metro) — publisher-controlled granularity
 
@@ -84,7 +83,7 @@ The publisher performs the join locally after both responses arrive. They can ap
 
 If the context path sent only the packages relevant to this page, and the identity path sent only those same packages, a buyer could compare the two sets and infer which page the identity request came from. TMP prevents this by requiring structurally different sets:
 
-- **Context Match** sends `available_packages`: ALL packages eligible for this placement, determined by the publisher's inventory configuration. This set is stable per placement and does not vary by user. Pre-filtering by user identity would leak identity into the context path.
+- **Context Match** sends no package list. The provider evaluates its synced package set for the placement — stable per placement, the same for every user. Because no packages are sent per request, the publisher cannot accidentally leak identity through package filtering.
 - **Identity Match** sends `package_ids`: ALL active packages for the buyer across all placements and properties. The buyer evaluates the user against their full package portfolio.
 
 The context set is scoped to one placement. The identity set is scoped to one buyer's entire active inventory. The two sets are structurally different, and neither reveals information about the other.

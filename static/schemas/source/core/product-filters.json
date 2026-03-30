@@ -128,12 +128,53 @@
     },
     "required_axe_integrations": {
       "type": "array",
-      "description": "Filter to products executable through specific agentic ad exchanges. URLs are canonical identifiers.",
+      "description": "Deprecated: Use trusted_match filter instead. Filter to products executable through specific agentic ad exchanges. URLs are canonical identifiers.",
+      "deprecated": true,
       "items": {
         "type": "string",
         "format": "uri"
       },
       "minItems": 1
+    },
+    "trusted_match": {
+      "type": "object",
+      "description": "Filter products by Trusted Match Protocol capabilities. Only products with matching TMP support are returned.",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "description": "Filter to products with specific TMP providers and match types. Each entry identifies a provider by agent_url and optionally requires specific match capabilities. Products must match at least one entry.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Provider's agent URL from the registry."
+              },
+              "context_match": {
+                "type": "boolean",
+                "description": "When true, require this provider to support context match."
+              },
+              "identity_match": {
+                "type": "boolean",
+                "description": "When true, require this provider to support identity match."
+              }
+            },
+            "required": ["agent_url"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "response_types": {
+          "type": "array",
+          "description": "Filter to products supporting specific TMP response types (e.g., 'activation', 'creative', 'catalog_steering'). Products must support at least one of the listed types.",
+          "items": {
+            "$ref": "/schemas/enums/response-type.json"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
     },
     "required_features": {
       "$ref": "/schemas/core/media-buy-features.json",

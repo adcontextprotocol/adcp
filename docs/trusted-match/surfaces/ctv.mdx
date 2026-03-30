@@ -18,7 +18,7 @@ A CTV ad break involves four TMP messages: a context match request and response 
 
 ### Context Match Request
 
-When a pod break approaches, the broadcaster sends a context match request. The `placement_id` identifies the ad break position (e.g., `pre_roll`, `mid_roll_1`, `pod_break_2`). The `artifacts` reference the show and episode, which buyer agents use for content-level targeting. The `available_packages` list includes ALL packages for this placement -- not filtered by household.
+When a pod break approaches, the broadcaster sends a context match request. The `placement_id` identifies the ad break position (e.g., `pre_roll`, `mid_roll_1`, `pod_break_2`). The `artifacts` reference the show and episode, which buyer agents use for content-level targeting. No package list is sent — the provider uses its synced package set for this placement.
 
 ```json
 {
@@ -29,28 +29,6 @@ When a pod break approaches, the broadcaster sends a context match request. The 
   "artifacts": [
     "show:the-night-kitchen",
     "episode:the-night-kitchen-s02e07"
-  ],
-  "available_packages": [
-    {
-      "package_id": "pkg-sparklean-30s",
-      "media_buy_id": "mb-sparklean-q1",
-      "format_ids": [{ "agent_url": "https://riverview.example.com", "id": "video_30s" }, { "agent_url": "https://riverview.example.com", "id": "video_15s" }]
-    },
-    {
-      "package_id": "pkg-greenleaf-15s",
-      "media_buy_id": "mb-greenleaf-spring",
-      "format_ids": [{ "agent_url": "https://riverview.example.com", "id": "video_15s" }]
-    },
-    {
-      "package_id": "pkg-vaultline-30s",
-      "media_buy_id": "mb-vaultline-always-on",
-      "format_ids": [{ "agent_url": "https://riverview.example.com", "id": "video_30s" }]
-    },
-    {
-      "package_id": "pkg-driftmoto-15s",
-      "media_buy_id": "mb-driftmoto-q1",
-      "format_ids": [{ "agent_url": "https://riverview.example.com", "id": "video_15s" }]
-    }
   ]
 }
 ```
@@ -58,7 +36,7 @@ When a pod break approaches, the broadcaster sends a context match request. The 
 Key points:
 
 - **Artifacts reference show and episode.** The buyer agent can match on the show ("The Night Kitchen" is a cooking drama, good fit for food brands), the specific episode, or both. Artifacts are registered with the property ahead of time.
-- **All packages for this placement are included.** Four packages from four different media buys. The broadcaster does not filter by household -- that happens in identity match.
+- **No package list is sent per request.** The provider evaluates all eligible packages for this placement using its synced package set from media buy setup. The same packages are evaluated for every household — filtering by household happens in identity match.
 - **Creative support is declared on the product's `trusted_match` config.** When a product's config includes creative response types, buyer agents return creative manifests so the broadcaster can render directly.
 
 ### Context Match Response
@@ -193,7 +171,7 @@ Artifacts are registered with the property during setup. The buyer agent resolve
 Mid-roll break in "The Night Kitchen" S02E07
 
   Context Match
-  --> Broadcaster sends request: 4 packages, show + episode artifacts
+  --> Broadcaster sends request: show + episode artifacts, placement context
   --> Sparklean agent: activate pkg-sparklean-30s (VAST creative, cooking context fit)
   --> Greenleaf agent: activate pkg-greenleaf-15s (VAST creative, food content)
   --> Vaultline agent: no activation (financial services, no context fit)

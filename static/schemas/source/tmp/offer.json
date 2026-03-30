@@ -7,7 +7,13 @@
   "properties": {
     "package_id": {
       "type": "string",
-      "description": "Package identifier from the media buy. References the commercial terms (MSA, IO, deal). Required — every offer must reference a package."
+      "description": "Package identifier from the media buy. Required when the product's use_activation_keys is false (default)."
+    },
+    "activation_key": {
+      "type": "string",
+      "description": "Short key for ad server targeting. Required when the product's use_activation_keys is true. The publisher uses this as the GAM key-value.",
+      "maxLength": 32,
+      "pattern": "^[a-zA-Z0-9_-]+$"
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
@@ -33,8 +39,9 @@
       }
     }
   },
-  "required": [
-    "package_id"
+  "anyOf": [
+    { "required": ["package_id"] },
+    { "required": ["activation_key"] }
   ],
   "additionalProperties": true
 }

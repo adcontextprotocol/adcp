@@ -178,7 +178,8 @@
           "expires_at",
           "product_card",
           "product_card_detailed",
-          "enforced_policies"
+          "enforced_policies",
+          "trusted_match"
         ]
       }
     },

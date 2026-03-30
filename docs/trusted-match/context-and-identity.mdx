@@ -22,7 +22,7 @@ A shopper searches for "best cold brew." The publisher's search results page loa
 
 ## Context Match
 
-The publisher sends a Context Match request to the TMP Router. The request contains the page context and the list of available packages. It contains no user identity.
+The publisher sends a Context Match request to the TMP Router. The request contains the page context. It contains no user identity and no package list — the provider uses its synced package set for this placement.
 
 ### What the publisher sends
 
@@ -32,30 +32,7 @@ The publisher sends a Context Match request to the TMP Router. The request conta
   "property_id": "retailer-web",
   "property_type": "website",
   "placement_id": "search-results-grid",
-  "artifacts": ["search:beverages-coffee"],
-  "available_packages": [
-    {
-      "package_id": "pkg-A",
-      "media_buy_id": "mb-coffee-q1",
-      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "sponsored_carousel" }],
-      "catalogs": [
-        { "catalog_id": "coffee-products", "type": "product", "gtins": ["gtin-001", "gtin-002", "gtin-003", "gtin-004"] }
-      ]
-    },
-    {
-      "package_id": "pkg-B",
-      "media_buy_id": "mb-homepage",
-      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "display_takeover" }]
-    },
-    {
-      "package_id": "pkg-C",
-      "media_buy_id": "mb-summer-promo",
-      "format_ids": [{ "agent_url": "https://retailer.example.com", "id": "native_text" }],
-      "catalogs": [
-        { "catalog_id": "iced-beverages", "type": "product", "gtins": ["gtin-005", "gtin-006", "gtin-003"] }
-      ]
-    }
-  ]
+  "artifacts": ["search:beverages-coffee"]
 }
 ```
 

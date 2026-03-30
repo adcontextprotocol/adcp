@@ -16,7 +16,7 @@ This is the authoritative reference for the Trusted Match Protocol (TMP). For co
 | **Identity Match** | TMP operation that evaluates user eligibility against package criteria. Carries no page context. |
 | **TMP Router** | Infrastructure that fans out TMP requests to buyer agents and merges responses. A single binary that handles both context and identity requests, with structurally separate code paths. |
 | **Offer** | A buyer's response to a context match request. Ranges from simple activation (package_id only) to rich proposals with brand, price, summary, and creative manifest. Generalizes the concept of package activation. |
-| **Available package** | A package from an active media buy that the publisher offers for evaluation on a given request. |
+| **Available package** | A package from an active media buy that is eligible for evaluation on a given placement. Package metadata is synced at media buy time. |
 | **Eligibility matrix** | Per-package, per-user status returned by Identity Match. A boolean `eligible` flag plus optional `intent_score`. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
 | **Artifact** | A content item registered with a publisher property (article, episode, show, video, conversation turn). Referenced by ID in context match requests. |
 | **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
@@ -25,7 +25,7 @@ This is the authoritative reference for the Trusted Match Protocol (TMP). For co
 
 ### ContextMatchRequest
 
-Sent by the publisher (via router) to buyer agents. Contains content context and available packages. MUST NOT contain user identity.
+Sent by the publisher (via router) to buyer agents. Contains content context. MUST NOT contain user identity.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -38,16 +38,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context and
 | `url_hash` | string | No | Blake3 hash of the canonicalized content URL, base64-encoded. For URL-addressable content, the buyer checks this against their pre-crawled index. Canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments. |
 | `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when artifact pre-registration is not feasible (conversation turns, search queries) or to supplement artifact-based matching. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |
 | `geo` | Geo | No | Geographic context. Publisher controls granularity — country for volume filtering, region/metro for valuation. This describes where the ad is serving, not where the user is. |
-| `available_packages` | List\<AvailablePackage\> | Yes | ALL packages eligible for this placement. MUST NOT be filtered by user identity — that happens via Identity Match. A stable per-placement set enables caching. |
-
-#### AvailablePackage
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `package_id` | string | Yes | Package identifier from the media buy. |
-| `media_buy_id` | string | Yes | Parent media buy identifier. |
-| `format_ids` | List\<FormatId\> | No | Creative format identifiers this package supports. Uses the standard AdCP `{ agent_url, id }` format-id object. |
-| `catalogs` | List\<Catalog\> | No | The buyer's catalogs attached to this package, with selectors (`ids`, `gtins`, `tags`, `category`, `query`) scoping which items are in play. References synced catalogs by `catalog_id`. The provider resolves items from its cached copy. See `catalog` schema. |
+| `package_ids` | List\<string\> | No | Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). Package metadata (formats, catalogs, activation keys) is synced at media buy time — not sent per request. |
 
 #### ContextSignals
 
@@ -91,11 +82,12 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 
 #### Offer
 
-A buyer's response for a single package. For simple GAM activation, only `package_id` is needed. For richer integrations, the buyer can include brand, price, a summary for relevance judgment, and optionally an inline creative manifest.
+A buyer's response for a single package. Must include either `package_id` or `activation_key` — the seller controls which via `use_activation_keys` on the product's `trusted_match` configuration. When `use_activation_keys` is true, the router MUST reject offers that include `package_id` but not `activation_key`. The publisher resolves `activation_key` back to `package_id` for the identity match join using its synced package metadata.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `package_id` | string | Yes | Must match a `package_id` from `available_packages`. References the commercial terms (MSA, IO, deal). |
+| `package_id` | string | When `use_activation_keys` is false | Package identifier from the media buy. |
+| `activation_key` | string | When `use_activation_keys` is true | Short key for ad server targeting (max 32 chars, alphanumeric/dash/underscore). The publisher uses this as the GAM key-value. |
 | `brand` | BrandRef | No | Brand for this offer. Required when the product allows dynamic brands. For single-brand packages, already known from the media buy. |
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
@@ -202,6 +194,8 @@ Publishers declare TMP support on their products via the `trusted_match` field. 
 | `identity_match` | bool | No | Product supports Identity Match requests. Default: false. |
 | `response_types` | List\<string\> | No | What the publisher can accept back: `activation` (default), `catalog_items`, `creative`, `deal`. |
 | `dynamic_brands` | bool | No | Whether the buyer can select a brand at match time. When false (default), brand must be on the media buy. When true, the buyer's offer can include any brand — the publisher applies approval rules at match time. Enables multi-brand agreements. |
+| `use_activation_keys` | bool | No | Whether offers must use `activation_key` instead of `package_id` for targeting. When true, every synced package must have an `activation_key`, and the router rejects offers missing it. Default: false. |
+| `providers` | List\<ProviderEntry\> | No | TMP providers integrated with this product's inventory. Each entry identifies a provider by `agent_url` (from the registry) and declares what match types it supports. Enables buyer discovery. |
 
 ## Privacy Requirements
 
@@ -216,7 +210,7 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 
 ### Package set decorrelation
 
-- Context Match `available_packages` MUST include ALL packages eligible for this placement, not filtered by user identity or audience. Pre-filtering by user leaks identity into the context path. A stable per-placement set also enables caching context match responses across users.
+- Context Match MUST NOT be filtered by user identity or audience. The provider evaluates its synced package set for the placement — the same packages for every user. No per-request package list is sent, so the publisher cannot accidentally leak identity through package filtering.
 - Identity Match `package_ids` MUST include ALL active packages for the buyer, not just those available on the current page. Sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets.
 - The publisher SHOULD maintain a cached list of all active package IDs per buyer and send the full set on every Identity Match request.
 - The publisher performs the intersection of context match offers and identity match eligibility locally, after both responses arrive.

@@ -340,6 +340,38 @@
           "type": "boolean",
           "description": "Whether the buyer can select a brand at match time. When false (default), the brand must be specified on the media buy/package. When true, the buyer's offer can include any brand — the publisher applies approval rules at match time. Enables multi-brand agreements where the holding company or buyer agent selects brand based on context.",
           "default": false
+        },
+        "use_activation_keys": {
+          "type": "boolean",
+          "description": "Whether offers must use activation_key instead of package_id for targeting. When true, every package synced to providers must have an activation_key, and offers must return activation_key. When false (default), offers use package_id.",
+          "default": false
+        },
+        "providers": {
+          "type": "array",
+          "description": "TMP providers integrated with this product's inventory. Each entry identifies a provider by agent_url (from the registry) and declares what match types it supports for this product. Enables buyer discovery: 'find products where a specific provider does context matching.'",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Provider's agent URL from the registry. Canonical identifier for this TMP provider."
+              },
+              "context_match": {
+                "type": "boolean",
+                "description": "Whether this provider handles context match for this product.",
+                "default": false
+              },
+              "identity_match": {
+                "type": "boolean",
+                "description": "Whether this provider handles identity match for this product.",
+                "default": false
+              }
+            },
+            "required": ["agent_url"],
+            "additionalProperties": true
+          },
+          "minItems": 1
         }
       },
       "required": ["context_match"],

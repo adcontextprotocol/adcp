@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/context-match-request.json",
   "title": "Context Match Request",
-  "description": "Sent by publisher to router or provider to evaluate available packages against contextual signals. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id.",
+  "description": "Sent by publisher to router or provider to evaluate packages against contextual signals. The provider uses its synced package set for the placement. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id.",
   "type": "object",
   "properties": {
     "protocol_version": {
@@ -138,11 +138,11 @@
       },
       "additionalProperties": false
     },
-    "available_packages": {
+    "package_ids": {
       "type": "array",
-      "description": "ALL packages eligible for this placement. MUST NOT be filtered by user identity or audience — that filtering happens via Identity Match. Sending only user-relevant packages leaks identity into the context path. Using a stable per-placement set also enables caching.",
+      "description": "Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). MUST NOT vary by user — the same package_ids must be sent for every user on a given placement. User-dependent filtering leaks identity into the context path.",
       "items": {
-        "$ref": "/schemas/tmp/available-package.json"
+        "type": "string"
       },
       "minItems": 1
     }
@@ -151,8 +151,7 @@
     "request_id",
     "property_id",
     "property_type",
-    "placement_id",
-    "available_packages"
+    "placement_id"
   ],
   "additionalProperties": false
 }
