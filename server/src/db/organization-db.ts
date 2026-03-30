@@ -184,37 +184,66 @@ export async function getSeatUsage(orgId: string): Promise<{ contributor: number
 
 /**
  * Check whether a new seat of the given type can be added to an organization.
+ * Uses SELECT FOR UPDATE on the org row to serialize concurrent seat checks,
+ * and counts pending invitations as reserved seats.
  */
 export async function canAddSeat(
   orgId: string,
   seatType: SeatType
 ): Promise<{ allowed: boolean; reason?: string }> {
   const pool = getPool();
-  const orgResult = await pool.query<{
-    membership_tier: string | null;
-    subscription_amount: number | null;
-    subscription_interval: string | null;
-    subscription_status: string | null;
-    is_personal: boolean;
-  }>(
-    'SELECT membership_tier, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1',
-    [orgId]
-  );
-  const org = orgResult.rows[0];
-  const tier = org?.membership_tier
-    ?? (org?.subscription_status === 'active'
-      ? inferMembershipTier(org?.subscription_amount ?? null, org?.subscription_interval ?? null, org?.is_personal ?? false)
-      : null);
-  const limits = getSeatLimits(tier);
-  const usage = await getSeatUsage(orgId);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const limit = seatType === 'contributor' ? limits.contributor : limits.community;
-  const used = seatType === 'contributor' ? usage.contributor : usage.community_only;
+    // Lock the org row to serialize concurrent seat checks
+    const orgResult = await client.query<{
+      membership_tier: string | null;
+      subscription_amount: number | null;
+      subscription_interval: string | null;
+      subscription_status: string | null;
+      is_personal: boolean;
+    }>(
+      'SELECT membership_tier, subscription_amount, subscription_interval, subscription_status, is_personal FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
+      [orgId]
+    );
+    const org = orgResult.rows[0];
+    const tier = org?.membership_tier
+      ?? (org?.subscription_status === 'active'
+        ? inferMembershipTier(org?.subscription_amount ?? null, org?.subscription_interval ?? null, org?.is_personal ?? false)
+        : null);
+    const limits = getSeatLimits(tier);
 
-  if (limit === -1) return { allowed: true }; // unlimited
-  if (limit === 0) return { allowed: false, reason: `Your membership tier does not include ${seatType === 'contributor' ? 'contributor' : 'community'} seats. Upgrade at /membership.` };
-  if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at /membership to add more.` };
-  return { allowed: true };
+    // Count active members + pending invitations as used seats
+    const usageResult = await client.query<{ seat_type: string; count: string }>(
+      `SELECT seat_type, COUNT(*) as count FROM (
+        SELECT seat_type FROM organization_memberships WHERE workos_organization_id = $1
+        UNION ALL
+        SELECT seat_type FROM invitation_seat_types WHERE workos_organization_id = $1
+      ) combined GROUP BY seat_type`,
+      [orgId]
+    );
+    const usage = { contributor: 0, community_only: 0 };
+    for (const row of usageResult.rows) {
+      if (row.seat_type === 'contributor') usage.contributor = parseInt(row.count, 10);
+      if (row.seat_type === 'community_only') usage.community_only = parseInt(row.count, 10);
+    }
+
+    await client.query('COMMIT');
+
+    const limit = seatType === 'contributor' ? limits.contributor : limits.community;
+    const used = seatType === 'contributor' ? usage.contributor : usage.community_only;
+
+    if (limit === -1) return { allowed: true };
+    if (limit === 0) return { allowed: false, reason: `Your membership tier does not include ${seatType === 'contributor' ? 'contributor' : 'community'} seats. Upgrade at /membership.` };
+    if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at /membership to add more.` };
+    return { allowed: true };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
