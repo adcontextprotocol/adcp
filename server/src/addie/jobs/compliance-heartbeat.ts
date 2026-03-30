@@ -5,7 +5,7 @@
  * Updates compliance status and triggers notifications on status transitions.
  */
 
-import { comply, type ComplyOptions } from '@adcp/client/testing';
+import { comply, type ComplyOptions, type PlatformType } from '@adcp/client/testing';
 import { ComplianceDatabase, type TrackSummaryEntry, type OverallRunStatus, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
 import { notifyComplianceChange } from '../../notifications/compliance.js';
@@ -57,7 +57,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         dry_run: true,
         timeout_ms: 60_000,
         auth,
-        ...(agent.platform_type ? { platform_type: agent.platform_type } : {}),
+        ...(agent.platform_type ? { platform_type: agent.platform_type as PlatformType } : {}),
       };
 
       const complianceResult = await comply(agent.agent_url, complyOptions);
@@ -71,12 +71,12 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         duration_ms: t.duration_ms,
       }));
 
-      // Map SDK overall_status to our storage format
-      const sdkStatus = complianceResult.overall_status;
+      // Derive overall status from track counts
+      const { tracks_passed, tracks_failed, tracks_partial } = complianceResult.summary;
       let overallStatus: OverallRunStatus;
-      if (sdkStatus === 'passing') {
+      if (tracks_failed === 0 && tracks_partial === 0) {
         overallStatus = 'passing';
-      } else if (sdkStatus === 'partial') {
+      } else if (tracks_passed > 0 || tracks_partial > 0) {
         overallStatus = 'partial';
       } else {
         overallStatus = 'failing';
