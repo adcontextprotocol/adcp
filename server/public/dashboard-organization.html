@@ -1725,8 +1725,8 @@
           alert(err.error || 'Unable to open billing portal. Please try again.');
           return;
         }
-        const { url } = await res.json();
-        if (url) window.location.href = url;
+        const data = await res.json();
+        if (data.portal_url) window.location.href = data.portal_url;
       } catch (e) {
         alert('Unable to open billing portal. Please try again.');
       }
