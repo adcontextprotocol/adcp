@@ -1446,7 +1446,7 @@ function formatMembershipTier(tier: string): string {
     individual_academic: 'Explorer ($50/yr)',
     individual_professional: 'Professional ($250/yr)',
     company_standard: 'Builder ($3K/yr)',
-    company_icl: 'Member ($15K/yr)',
+    company_icl: 'Partner ($15K/yr)',
     company_leader: 'Leader ($50K/yr)',
   };
   return labels[tier] || tier;
