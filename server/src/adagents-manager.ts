@@ -671,7 +671,7 @@ export class AdAgentsManager {
         });
       } else {
         const countryPattern = /^[A-Z]{2}$/;
-        agent.countries.forEach((country, countryIndex) => {
+        agent.countries.forEach((country: unknown, countryIndex: number) => {
           if (typeof country !== 'string' || !countryPattern.test(country)) {
             result.errors.push({
               field: `${prefix}.countries[${countryIndex}]`,
@@ -749,7 +749,7 @@ export class AdAgentsManager {
           severity: 'error'
         });
       } else {
-        agent.signing_keys.forEach((key, keyIndex) => {
+        agent.signing_keys.forEach((key: unknown, keyIndex: number) => {
           if (typeof key !== 'object' || key === null) {
             result.errors.push({
               field: `${prefix}.signing_keys[${keyIndex}]`,
@@ -758,14 +758,15 @@ export class AdAgentsManager {
             });
             return;
           }
-          if (typeof key.kid !== 'string' || key.kid.length === 0) {
+          const signingKey = key as Record<string, unknown>;
+          if (typeof signingKey.kid !== 'string' || signingKey.kid.length === 0) {
             result.errors.push({
               field: `${prefix}.signing_keys[${keyIndex}].kid`,
               message: 'signing key kid is required',
               severity: 'error'
             });
           }
-          if (typeof key.kty !== 'string' || key.kty.length === 0) {
+          if (typeof signingKey.kty !== 'string' || signingKey.kty.length === 0) {
             result.errors.push({
               field: `${prefix}.signing_keys[${keyIndex}].kty`,
               message: 'signing key kty is required',
