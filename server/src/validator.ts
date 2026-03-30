@@ -71,7 +71,7 @@ export class AgentValidator {
     const adagentsUrl = this.buildAdAgentsUrl(normalizedDomain);
 
     try {
-      const fetched = await this.fetchAdAgentsJson(adagentsUrl, normalizedDomain);
+      const fetched = await this.fetchAdAgentsJson(normalizedDomain, normalizedDomain);
       if (!fetched.data) {
         return {
           authorized: false,
@@ -150,16 +150,14 @@ export class AgentValidator {
     }
   }
 
-  private async fetchAdAgentsJson(url: URL, expectedDomain: string, followedRedirect = false): Promise<FetchResult> {
+  private async fetchAdAgentsJson(hostname: string, expectedDomain: string, followedRedirect = false): Promise<FetchResult> {
     const normalizedExpectedDomain = this.normalizeDomain(expectedDomain);
-    const normalizedHost = this.normalizeDomain(url.hostname);
+    const normalizedHost = this.normalizeDomain(hostname);
+    const url = this.buildAdAgentsUrl(normalizedHost);
     const source = url.toString();
 
     if (
-      url.protocol !== "https:" ||
-      Boolean(url.username) ||
-      Boolean(url.password) ||
-      (url.port !== "" && url.port !== "443") ||
+      !normalizedHost ||
       (
         normalizedHost !== normalizedExpectedDomain &&
         !normalizedHost.endsWith(`.${normalizedExpectedDomain}`)
@@ -171,9 +169,7 @@ export class AgentValidator {
       };
     }
 
-    url.hash = "";
-
-    // codeql[js/request-forgery] -- URL is restricted above to HTTPS on the requested hostname or its subdomains only.
+    // lgtm[js/request-forgery] -- URL is rebuilt from a validated hostname and fixed well-known path.
     const response = await fetch(url, {
       headers: { "User-Agent": "AdCP-Registry/1.0" },
       signal: AbortSignal.timeout(5000),
@@ -196,14 +192,14 @@ export class AgentValidator {
 
     const data = await response.json() as AdAgentsJson;
     if (data.authoritative_location && !followedRedirect) {
-      const authoritativeUrl = this.validateAuthoritativeLocation(data.authoritative_location, expectedDomain);
-      if (!authoritativeUrl) {
+      const authoritativeHost = this.validateAuthoritativeLocation(data.authoritative_location, expectedDomain);
+      if (!authoritativeHost) {
         return {
           error: "authoritative_location must use HTTPS on the same hostname",
           source,
         };
       }
-      return this.fetchAdAgentsJson(authoritativeUrl, expectedDomain, true);
+      return this.fetchAdAgentsJson(authoritativeHost, expectedDomain, true);
     }
 
     return {
@@ -547,7 +543,7 @@ export class AgentValidator {
     return new URL(`https://${domain}/.well-known/adagents.json`);
   }
 
-  private validateAuthoritativeLocation(url: string, expectedDomain: string): URL | null {
+  private validateAuthoritativeLocation(url: string, expectedDomain: string): string | null {
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== "https:") {
@@ -566,8 +562,11 @@ export class AgentValidator {
         return null;
       }
 
-      parsed.hash = "";
-      return parsed;
+      if (parsed.pathname !== "/.well-known/adagents.json" || parsed.search) {
+        return null;
+      }
+
+      return normalizedHost;
     } catch {
       return null;
     }

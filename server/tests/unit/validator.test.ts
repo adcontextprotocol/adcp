@@ -303,7 +303,7 @@ describe("AgentValidator", () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse({
-          authoritative_location: "https://cdn.example.com/adagents.json",
+          authoritative_location: "https://cdn.example.com/.well-known/adagents.json",
         })
       )
       .mockResolvedValueOnce(
@@ -320,7 +320,7 @@ describe("AgentValidator", () => {
     const result = await validator.validate("example.com", "https://sales.example.com");
 
     expect(result.authorized).toBe(true);
-    expect(result.source).toBe("https://cdn.example.com/adagents.json");
+    expect(result.source).toBe("https://cdn.example.com/.well-known/adagents.json");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
