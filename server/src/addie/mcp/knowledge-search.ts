@@ -14,6 +14,7 @@
  */
 
 import { logger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import {
   initializeDocsIndex,
@@ -774,7 +775,7 @@ ${formatted}
 **When summarizing:** Focus on key themes, decisions, and who contributed to each topic. Cite specific messages using their Slack permalinks.`;
     } catch (error) {
       logger.error({ error, channel }, 'Addie: get_channel_activity failed');
-      return `Failed to get channel activity: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to get channel activity: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -857,7 +858,7 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
       return `Bookmarked "${title}" for indexing. The content will be fetched, summarized, and added to the knowledge base shortly. You can search for it later using search_resources.`;
     } catch (error) {
       logger.error({ error, url }, 'Addie: Bookmark failed');
-      return `Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -911,7 +912,7 @@ ${article.addie_notes ? `**Addie's Take:** ${article.addie_notes}` : ''}`;
       return `Found ${results.length} recent articles${topicNote} from the last ${days} days:\n\n${formatted}\n\n**Remember to cite the source URL when sharing this information.**`;
     } catch (error) {
       logger.error({ error }, 'Addie: get_recent_news failed');
-      return `Failed to fetch recent news: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to fetch recent news: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -960,7 +961,7 @@ export function createUserScopedBookmarkHandler(
       return `Bookmarked "${title}" for indexing. The content will be fetched, summarized, and added to the knowledge base shortly. You can search for it later using search_resources.`;
     } catch (error) {
       logger.error({ error, url, slackUserId }, 'Addie: User-scoped bookmark failed');
-      return `Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 }
