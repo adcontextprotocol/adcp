@@ -316,7 +316,33 @@ class AdCPOrchestrator:
         self.handler = AsyncOperationHandler(self.adcp, self.tracker, UserNotifier())
         self.webhook_base_url = "https://orchestrator.com/webhooks"
 
-    async def create_media_buy(self, user_id, request, enable_webhook=True):
+    async def create_campaign(self, user_id, request, enable_webhook=True):
+        """Create a campaign with governance validation and full async handling.
+
+        Plans must already be synced via sync_plans before calling this method.
+        Plan creation happens during the planning phase, not at campaign creation time.
+        """
+
+        # 1. Run intent check (plan must already exist)
+        if request.get("governance_context"):
+            gov_check = await self.adcp.call("check_governance", {
+                "plan_id": request["governance_context"]["plan_id"],
+                "caller": request["governance_context"]["caller"],
+                "tool": "create_media_buy",
+                "payload": request
+            })
+            if gov_check["status"] == "denied":
+                raise GovernanceDeniedError(gov_check["explanation"])
+            if gov_check["status"] == "conditions":
+                raise GovernanceConditionsError(gov_check["conditions"])
+            # If check_governance needs human review internally, it returns
+            # async task status (submitted/working) and resolves to
+            # approved or denied — standard task lifecycle.
+
+        # 2. Create the media buy
+        await self._create_media_buy(user_id, request, enable_webhook)
+
+    async def _create_media_buy(self, user_id, request, enable_webhook=True):
         """Create a media buy with full async handling."""
 
         # 1. Prepare webhook configuration
@@ -368,6 +394,29 @@ class AdCPOrchestrator:
                 self.handler._poll_for_completion(operation_id, task_id)
             )
 ```
+
+## Governance in the Campaign Lifecycle
+
+Plan creation ([`sync_plans`](/docs/governance/campaign/tasks/sync_plans)) happens during the planning phase — before any campaigns exist. Governance checks happen during campaign execution. These are separate concerns.
+
+**Planning phase** (once per media plan):
+```
+sync_plans — orchestrator pushes the plan to the governance agent
+```
+
+**Campaign execution** (per media buy):
+```
+check_governance(tool + payload) → create_media_buy → check_governance(media_buy_id + planned_delivery) → delivery → report_plan_outcome
+```
+
+| Phase | Who calls | Task | What happens on failure |
+|-------|-----------|------|------------------------|
+| Intent check | Orchestrator | [`check_governance`](/docs/governance/campaign/tasks/check_governance) (`tool` + `payload`) | Campaign violates buyer's plan — denied or conditioned before any spend. If the governance agent needs human review, the task goes async and resolves to approved or denied. |
+| Execution check | Seller | [`check_governance`](/docs/governance/campaign/tasks/check_governance) (`media_buy_id` + `planned_delivery`) | Seller's delivery plan doesn't match buyer's expectations — purchase blocked |
+| Delivery check | Seller | [`check_governance`](/docs/governance/campaign/tasks/check_governance) (`phase: delivery` + `delivery_metrics`) | Drift detected — pacing, geo, or channel distribution deviates from plan |
+| Plan outcome | Orchestrator | [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) | No feedback loop — governance agent cannot improve future recommendations |
+
+See the [media buy governance workflow](/docs/media-buy/index#governance) for the complete sequence with code examples, and the [seller integration guide](/docs/building/implementation/seller-integration#execution-checks) for the seller's execution check obligations.
 
 ## Best Practices
 

@@ -7,33 +7,33 @@ description: "check_governance is the universal validation gate in AdCP — orch
 
 # check_governance
 
-Universal governance check for campaign actions. Both the orchestrator (buyer-side) and the seller call this task -- the `binding` field discriminates the commitment level:
+Universal governance check for campaign actions. Both the orchestrator (buyer-side) and the seller call this task. The governance agent infers the check type from the fields present:
 
-| Binding | Who calls | Purpose | Key fields |
-|---------|-----------|---------|------------|
-| `proposed` | Orchestrator | Advisory check before sending to a seller. No budget committed. | `tool`, `payload` |
-| `committed` | Seller | Binding check before executing. Validates planned delivery against the plan. Budget is committed later via `report_plan_outcome`. | `media_buy_id`, `phase`, `planned_delivery` |
+| Check type | Who calls | Discriminating fields | Purpose |
+|------------|-----------|----------------------|---------|
+| **Intent** | Orchestrator | `tool` + `payload` | Validates the intended action before sending to a seller. No budget committed. |
+| **Execution** | Seller | `media_buy_id` + `planned_delivery` | Validates what the seller will actually deliver. Budget is committed later via `report_plan_outcome`. |
 
 The governance agent maintains all state. Callers do not chain check IDs or track conversation history -- they post the action, and the governance agent correlates by `plan_id`. On subsequent lifecycle checks, callers include `governance_context` from the prior response for continuity.
 
-## Binding levels
+## Check types
 
-### Proposed (orchestrator)
+### Intent checks (orchestrator)
 
-The orchestrator calls with `binding: "proposed"` before sending a tool call to a seller. This is an advisory check -- no budget is committed. The governance agent evaluates the intended `tool` and `payload` against the campaign plan.
+The orchestrator calls `check_governance` with `tool` and `payload` before sending a tool call to a seller. The governance agent evaluates the intended action against the campaign plan.
 
 1. Orchestrator decides to call a seller tool (e.g., `create_media_buy`)
 2. Orchestrator calls `check_governance` with the tool name and full payload
 3. If `approved`, orchestrator sends the tool call to the seller
 4. If `denied`, orchestrator does not send the tool call
 5. If `conditions`, orchestrator adjusts the payload and re-calls `check_governance`
-6. If `escalated`, orchestrator halts pending human review
+6. If the governance agent needs human review, the task goes async and eventually resolves to `approved` or `denied`
 
-### Committed (seller)
+### Execution checks (seller)
 
-The seller calls with `binding: "committed"` when processing a request on an account that has `governance_agents` (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). This is a binding check -- budget will be committed if approved. The seller presents the authentication credentials from the agent's configuration.
+The seller calls `check_governance` with `media_buy_id` and `planned_delivery` when processing a request on an account that has `governance_agents` (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). Execution checks are always binding — if the governance agent denies, the seller must not proceed.
 
-Committed checks cover the full media buy lifecycle through three phases:
+Execution checks cover the full media buy lifecycle through three phases:
 
 | Phase | When | What's checked |
 |-------|------|----------------|
@@ -54,7 +54,6 @@ Sellers can adopt committed governance checks incrementally:
 | `approved` | Proceed as planned. | Act before `expires_at` or re-call. |
 | `denied` | Do not proceed. | Return error to upstream caller. |
 | `conditions` | Approved if caller accepts adjustments. | Apply conditions, then re-call `check_governance` with adjusted parameters. |
-| `escalated` | Halted pending human review. | Wait for human resolution. |
 
 ### Expiration
 
@@ -66,11 +65,11 @@ When the status is `conditions`, the caller MUST re-call `check_governance` with
 
 Governance agents SHOULD return `denied` (not `conditions`) after 3 unsuccessful re-calls for the same action. This prevents infinite negotiation loops, particularly for seller-side checks where the seller has no visibility into the campaign plan.
 
-### Escalation
+### Human review
 
-When the status is `escalated`, the action is halted. The `escalation` object provides the reason, severity, and whether human approval is required. The caller must not proceed until the escalation is resolved.
+When the governance agent determines that human review is required (e.g., the action exceeds `authority_level` thresholds), it handles the escalation internally. The `check_governance` task goes async — the caller receives standard async task lifecycle statuses (`submitted`, `working`) and eventually gets `approved` or `denied` once the human acts. The caller does not need special handling for this case beyond supporting async tasks (see [task lifecycle](/docs/building/implementation/task-lifecycle)).
 
-For `committed` checks (seller-side), `escalated` is operationally equivalent to `denied` -- the seller cannot hold a request indefinitely while waiting for human review on the buyer side. Sellers SHOULD treat `escalated` as `denied`, return an error to the orchestrator, and let the orchestrator handle the human-in-the-loop flow. After the escalation is resolved, the orchestrator re-initiates the media buy and the seller gets a new request.
+For `committed` checks (seller-side), the seller sets a timeout. If the governance agent does not respond within the timeout, the seller treats it as `denied` and returns an error to the orchestrator. The orchestrator can re-initiate the media buy after the governance agent resolves.
 
 ### Linking to outcomes
 
@@ -86,14 +85,13 @@ The presence of `next_check` in a response is the signal that the governance age
 
 ## Request
 
-### Proposed (orchestrator checking before sending to seller)
+### Intent check (orchestrator checking before sending to seller)
 
 ```json
 {
   "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "binding": "proposed",
     "caller": "https://orchestrator.example.com",
     "tool": "create_media_buy",
     "payload": {
@@ -113,14 +111,13 @@ The presence of `next_check` in a response is the signal that the governance age
 
 On the first `check_governance` call, the governance agent extracts what it needs from `payload`. The response includes an opaque `governance_context` string that the caller attaches to the protocol envelope and includes on all subsequent governance calls for this media buy.
 
-### Committed -- purchase
+### Execution check -- purchase
 
 ```json
 {
   "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "binding": "committed",
     "caller": "https://seller.example.com",
     "governance_context": "gc_from_buyer_envelope",
     "media_buy_id": "mb_seller_456",
@@ -140,14 +137,13 @@ On the first `check_governance` call, the governance agent extracts what it need
 }
 ```
 
-### Committed -- modification
+### Execution check -- modification
 
 ```json
 {
   "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "binding": "committed",
     "caller": "https://seller.example.com",
     "governance_context": "gc_from_buyer_envelope",
     "media_buy_id": "mb_seller_456",
@@ -168,14 +164,13 @@ On the first `check_governance` call, the governance agent extracts what it need
 }
 ```
 
-### Committed -- delivery
+### Execution check -- delivery
 
 ```json
 {
   "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "binding": "committed",
     "caller": "https://seller.example.com",
     "governance_context": "gc_from_buyer_envelope",
     "media_buy_id": "mb_seller_456",
@@ -229,14 +224,12 @@ On the first `check_governance` call, the governance agent extracts what it need
 
 ## Response
 
-### approved (proposed)
+### approved (intent check)
 
 ```json
 {
   "check_id": "chk_001",
   "status": "approved",
-  "binding": "proposed",
-  "mode": "enforce",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Proposed create_media_buy is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "categories_evaluated": ["budget_authority", "geo_compliance", "channel_compliance", "flight_compliance", "delegation_authority"],
@@ -247,14 +240,12 @@ On the first `check_governance` call, the governance agent extracts what it need
 
 The orchestrator proceeds to send the `create_media_buy` to the seller before `expires_at`.
 
-### approved (committed purchase with delivery opt-in)
+### approved (execution check -- purchase with delivery opt-in)
 
 ```json
 {
   "check_id": "chk_002",
   "status": "approved",
-  "binding": "committed",
-  "mode": "enforce",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z",
@@ -264,14 +255,12 @@ The orchestrator proceeds to send the `create_media_buy` to the seller before `e
 
 The seller proceeds with the media buy. The presence of `next_check` signals that the governance agent expects delivery reporting starting at that time.
 
-### approved (committed delivery)
+### approved (execution check -- delivery)
 
 ```json
 {
   "check_id": "chk_003",
   "status": "approved",
-  "binding": "committed",
-  "mode": "enforce",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight. Geo and channel distribution match plan parameters.",
   "next_check": "2026-03-29T00:00:00Z"
@@ -280,13 +269,12 @@ The seller proceeds with the media buy. The presence of `next_check` signals tha
 
 The seller continues delivery and schedules the next governance check for `next_check`.
 
-### denied (proposed)
+### denied (intent check)
 
 ```json
 {
   "check_id": "chk_004",
   "status": "denied",
-  "binding": "proposed",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Proposed media buy targets CA (Canada) which is not within the plan's geography.",
   "findings": [
@@ -305,13 +293,12 @@ The seller continues delivery and schedules the next governance check for `next_
 
 The orchestrator MUST NOT send the tool call to the seller.
 
-### denied (committed delivery -- geo drift)
+### denied (execution check -- delivery geo drift)
 
 ```json
 {
   "check_id": "chk_005",
   "status": "denied",
-  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery has drifted outside plan parameters. 12% of impressions delivered in CA (Canada) which is not within the plan's geography.",
   "findings": [
@@ -331,13 +318,12 @@ The orchestrator MUST NOT send the tool call to the seller.
 
 The seller MUST pause delivery immediately and correct the geo targeting before resuming.
 
-### conditions (committed purchase)
+### conditions (execution check -- purchase)
 
 ```json
 {
   "check_id": "chk_006",
   "status": "conditions",
-  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Budget approved but frequency cap must be applied per brand policy.",
   "conditions": [
@@ -353,13 +339,12 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 
 The seller MUST adjust its planned delivery, then re-call `check_governance` with the updated parameters before proceeding.
 
-### conditions (committed delivery -- overpacing)
+### conditions (execution check -- delivery overpacing)
 
 ```json
 {
   "check_id": "chk_007",
   "status": "conditions",
-  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery is pacing 40% ahead of schedule. Cumulative spend of $42,000 after 2 weeks exceeds expected $23,000 for this point in the flight.",
   "conditions": [
@@ -374,37 +359,6 @@ The seller MUST adjust its planned delivery, then re-call `check_governance` wit
 
 The seller MUST adjust pacing and re-call `check_governance` immediately. The `next_check` is set closer than normal so the governance agent can verify the correction.
 
-### escalated
-
-```json
-{
-  "check_id": "chk_008",
-  "status": "escalated",
-  "binding": "committed",
-  "plan_id": "plan_q1_2026_launch",
-  "explanation": "Budget reallocation of $75,000 exceeds the plan's reallocation threshold of $25,000. Human approval required.",
-  "findings": [
-    {
-      "category_id": "budget_authority",
-      "severity": "critical",
-      "explanation": "Reallocation amount exceeds plan threshold.",
-      "details": {
-        "reallocation_amount": 75000,
-        "threshold": 25000
-      }
-    }
-  ],
-  "escalation": {
-    "reason": "Budget reallocation exceeds plan threshold. A human stakeholder must approve before the seller can proceed.",
-    "severity": "critical",
-    "requires_human": true,
-    "approval_tier": "director"
-  }
-}
-```
-
-The caller MUST NOT proceed. The action is halted until a human resolves the escalation.
-
 ## Fields
 
 ### Request
@@ -412,14 +366,13 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | Campaign governance plan identifier. |
-| `binding` | enum | Yes | `proposed` (advisory, no budget committed) or `committed` (binding, budget committed if approved). |
-| `caller` | string (URI) | Yes | URL of the agent making the request (orchestrator for proposed, seller for committed). |
-| `tool` | string | Proposed | The AdCP tool being checked. Required for `proposed` checks. |
-| `payload` | object | Proposed | Full tool arguments as they would be sent to the seller. Required for `proposed` checks. |
+| `caller` | string (URI) | Yes | URL of the agent making the request. |
+| `tool` | string | Intent | The AdCP tool being checked. Present on intent checks (orchestrator). The governance agent uses the presence of `tool` + `payload` to identify an intent check. |
+| `payload` | object | Intent | Full tool arguments as they would be sent to the seller. Present on intent checks. |
 | `governance_context` | string | No | Opaque governance context from a prior `check_governance` response. Include on subsequent lifecycle checks so the governance agent can maintain continuity. |
-| `media_buy_id` | string | Committed | Seller's media buy identifier. Required for `committed` checks. |
-| `phase` | enum | Committed | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Required for `committed` checks. |
-| `planned_delivery` | object | Committed | What will actually be delivered. Required for `committed` checks. See [planned delivery](/docs/governance/campaign/specification#integration-with-create_media_buy). |
+| `media_buy_id` | string | Execution | Seller's media buy identifier. Present on execution checks (seller). The governance agent uses the presence of `media_buy_id` + `planned_delivery` to identify an execution check. |
+| `phase` | enum | Execution | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Present on execution checks. |
+| `planned_delivery` | object | Execution | What will actually be delivered. Present on execution checks. See [planned delivery](/docs/governance/campaign/specification#integration-with-create_media_buy). |
 | `delivery_metrics` | object | Delivery | Actual delivery performance data. Required when `phase` is `delivery`. |
 | `delivery_metrics.audience_distribution` | object | No | Audience demographic composition relative to a baseline. Used for bias/fairness drift detection. |
 | `delivery_metrics.audience_distribution.baseline` | enum | Yes | Reference population: `census` (national population), `platform` (platform's user base), or `custom`. |
@@ -447,25 +400,24 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | Field | Type | Description |
 |-------|------|-------------|
 | `check_id` | string | Unique identifier for this governance check. Use in `report_plan_outcome` to link outcomes. |
-| `status` | enum | `approved`, `denied`, `conditions`, or `escalated`. |
-| `binding` | enum | Echoed from request. Confirms the governance agent understood the commitment level. |
+| `status` | enum | `approved`, `denied`, or `conditions`. |
 | `plan_id` | string | Echoed from request. |
 | `explanation` | string | Human-readable explanation of the decision. |
-| `findings` | array | Per-category issues found. Present when status is `denied`, `conditions`, or `escalated`. MAY also be present on `approved` for advisory findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. |
+| `findings` | array | Per-category issues found. Present when status is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. |
 | `conditions` | array | Present when status is `conditions`. Adjustments the caller must make before re-calling. |
-| `mode` | enum | The governance mode under which this check was evaluated (`audit`, `advisory`, or `enforce`). Present so audit trails can distinguish advisory denials from enforced denials. |
 | `categories_evaluated` | string[] | Governance categories evaluated during this check (e.g., `budget_authority`, `geo_compliance`, `channel_compliance`). Useful for verifying which validations ran. |
 | `policies_evaluated` | string[] | Registry policy IDs evaluated during this check. |
-| `escalation` | object | Present when status is `escalated`. Contains `reason`, `severity`, `requires_human`, and optionally `approval_tier` (the organizational role required to resolve, e.g., `"manager"`, `"director"`, `"legal"`). |
 | `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
 | `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
 | `governance_context` | string | Opaque governance context for this media buy. Present when status is `approved` or `conditions`. Attach to the protocol envelope and include on all subsequent governance calls. Only the issuing governance agent interprets this value. |
+| `authority_remaining` | object | Buyer-side plan budget authority remaining after this check — not the seller's allocated budget. Present when status is `approved` or `conditions` for execution checks. Contains `budget_remaining` (number), `currency` (string), and `budget_used_pct` (number, 0-100). Orchestrators use this to track plan-level spend against the media plan's total authority. |
 
 ## Error codes
 
 | Code | Recovery | Description |
 |------|----------|-------------|
 | `PLAN_NOT_FOUND` | correctable | No plan with this ID. The buyer may not have synced the plan yet. |
+| `AMBIGUOUS_CHECK_TYPE` | correctable | Request contains both intent fields (`tool` + `payload`) and execution fields (`media_buy_id` + `planned_delivery`). Send one set or the other. |
 | `CAMPAIGN_SUSPENDED` | correctable | Campaign governance is suspended pending human review. |
 | `SELLER_NOT_RECOGNIZED` | correctable | The caller URL is not in the plan's `approved_sellers` list. |
 

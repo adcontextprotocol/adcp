@@ -94,8 +94,9 @@
                   "conditions": {
                     "type": "integer"
                   },
-                  "escalated": {
-                    "type": "integer"
+                  "human_reviewed": {
+                    "type": "integer",
+                    "description": "Supplementary count of checks that went through internal human review. These checks are also counted in approved or denied."
                   }
                 },
                 "additionalProperties": false
@@ -250,18 +251,17 @@
                   "enum": [
                     "approved",
                     "denied",
-                    "conditions",
-                    "escalated"
+                    "conditions"
                   ],
                   "description": "Governance check status (present for check entries)."
                 },
-                "binding": {
+                "check_type": {
                   "type": "string",
                   "enum": [
-                    "proposed",
-                    "committed"
+                    "intent",
+                    "execution"
                   ],
-                  "description": "Whether the check was proposed or committed (present for check entries)."
+                  "description": "Whether the check was an intent check (orchestrator) or execution check (seller). Inferred from the fields present on the original check request. Present for check entries."
                 },
                 "explanation": {
                   "type": "string",

@@ -138,6 +138,19 @@ asyncio.run(discover_with_filters())
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
 | `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
 
+<Note>
+**Property Governance**
+
+The `property_list` filter references a property list created via [`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list) on a property governance agent. Property lists define which publisher properties meet compliance requirements — COPPA-certified sites, sustainability-scored inventory, brand-safe publishers, etc.
+
+To use property list filtering:
+1. Call `get_adcp_capabilities` on a property governance agent to discover available `property_features`
+2. Create a property list via `create_property_list` with your feature requirements
+3. Pass the resulting `property_list_id` to `get_products` to filter inventory
+
+The seller must declare `features.property_list_filtering: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to support this filter. See the [Property Governance overview](/docs/governance/property/index) for the full workflow.
+</Note>
+
 ### Filters Object
 
 | Parameter | Type | Description |
