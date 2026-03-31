@@ -1271,13 +1271,21 @@ export function createOrganizationsRouter(): Router {
         logger.info({ orgId: workosOrgId, name: trimmedName }, 'WorkOS organization created');
 
         // Add user as organization owner (since they created it)
-        await workos!.userManagement.createOrganizationMembership({
+        const ownerMembership = await workos!.userManagement.createOrganizationMembership({
           userId: user.id,
           organizationId: workosOrgId,
           roleSlug: 'owner',
         });
 
         logger.info({ userId: user.id, orgId: workosOrgId }, 'User added as organization owner');
+
+        // Mirror membership locally so the owner is visible immediately
+        // (rather than waiting for the webhook)
+        await pool.query(`
+          INSERT INTO organization_memberships (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type, created_at, updated_at, synced_at)
+          VALUES ($1, $2, $3, $4, 'owner', 'contributor', NOW(), NOW(), NOW())
+          ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = 'owner', workos_membership_id = $3, updated_at = NOW()
+        `, [user.id, workosOrgId, ownerMembership.id, user.email]);
       }
 
       // Create organization record in our database
