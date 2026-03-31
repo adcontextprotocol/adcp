@@ -646,10 +646,16 @@ export function searchDocs(
 }
 
 /**
- * Get a doc by ID
+ * Get a doc by ID.
+ * Accepts the canonical ID (e.g. "doc:media-buy/advanced-topics/targeting")
+ * or a bare path without the prefix (e.g. "media-buy/advanced-topics/targeting").
  */
 export function getDocById(id: string): IndexedDoc | null {
-  return docsIndex.find((doc) => doc.id === id) || null;
+  return docsIndex.find((doc) => doc.id === id)
+    || docsIndex.find((doc) => doc.id === `doc:${id}`)
+    || docsIndex.find((doc) => doc.id === `website:${id}`)
+    || docsIndex.find((doc) => doc.id === `wg-doc:${id}`)
+    || null;
 }
 
 /**

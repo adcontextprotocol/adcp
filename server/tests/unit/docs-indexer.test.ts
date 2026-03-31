@@ -10,6 +10,7 @@ import {
   isDocsIndexReady,
   getDocCount,
   getHeadingCount,
+  getDocById,
 } from '../../src/addie/mcp/docs-indexer.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,6 +80,20 @@ describe('docs-indexer', () => {
         (h) => h.title.toLowerCase().includes('geo_proximity')
       );
       expect(geoSection).toBeDefined();
+    });
+  });
+
+  describe('get_doc ID resolution', () => {
+    it('finds doc by canonical ID with prefix', () => {
+      const doc = getDocById('doc:media-buy/advanced-topics/targeting');
+      expect(doc).not.toBeNull();
+      expect(doc!.title).toBe('Targeting');
+    });
+
+    it('finds doc by bare path without prefix', () => {
+      const doc = getDocById('media-buy/advanced-topics/targeting');
+      expect(doc).not.toBeNull();
+      expect(doc!.title).toBe('Targeting');
     });
   });
 
