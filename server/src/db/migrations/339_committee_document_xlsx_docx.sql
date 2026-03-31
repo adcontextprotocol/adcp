@@ -1,4 +1,4 @@
--- Migration: 338_committee_document_xlsx_docx.sql
+-- Migration: 339_committee_document_xlsx_docx.sql
 -- Add XLSX and DOCX as supported document types for committee documents.
 -- Enables indexing of spreadsheets and Word documents uploaded to working groups.
 

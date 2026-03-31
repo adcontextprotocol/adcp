@@ -17,7 +17,7 @@ import {
 } from "../middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -2161,7 +2161,7 @@ export function createOrganizationsRouter(): Router {
         const localOrg = await orgDb.getOrganization(orgId);
         seatInfo = {
           seat_usage: seatUsage,
-          seat_limits: getSeatLimits(localOrg?.membership_tier ?? null),
+          seat_limits: getSeatLimits(resolveMembershipTier(localOrg)),
         };
       }
 

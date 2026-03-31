@@ -302,6 +302,47 @@ describe('organization-db', () => {
     });
   });
 
+  describe('resolveMembershipTier', () => {
+    test('returns explicit tier when set', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: 'company_standard',
+        subscription_status: 'active',
+        subscription_amount: 5000000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_standard');
+    });
+
+    test('infers tier from active subscription when membership_tier is null', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'active',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_standard');
+    });
+
+    test('returns null when membership_tier is null and subscription is not active', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'canceled',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBeNull();
+    });
+
+    test('returns null for null/undefined org', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier(null)).toBeNull();
+      expect(resolveMembershipTier(undefined)).toBeNull();
+    });
+  });
+
   describe('canAddSeat', () => {
     test('infers tier from subscription when membership_tier is null', async () => {
       const client = mockPool._mockClient;

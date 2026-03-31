@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { PropertyDefinition, PlacementDefinition } from './types.js';
 
 export interface ValidationError {
   field: string;
@@ -28,7 +29,7 @@ export interface AuthorizedAgent {
   authorization_type?: 'property_ids' | 'property_tags' | 'inline_properties' | 'publisher_properties' | 'signal_ids' | 'signal_tags';
   property_ids?: string[];
   property_tags?: string[];
-  properties?: any[];
+  properties?: PropertyDefinition[];
   publisher_properties?: Array<{
     publisher_domain: string;
     selection_type: 'all' | 'by_id' | 'by_tag';
@@ -96,8 +97,8 @@ export interface AgentCardValidationResult {
 export interface AdAgentsJsonInline {
   $schema?: string;
   authorized_agents: AuthorizedAgent[];
-  properties?: any[];
-  placements?: any[];
+  properties?: PropertyDefinition[];
+  placements?: PlacementDefinition[];
   tags?: Record<string, { name: string; description: string }>;
   placement_tags?: Record<string, { name: string; description: string }>;
   signals?: SignalDefinition[];
@@ -144,7 +145,7 @@ export interface CreateAdAgentsJsonOptions {
   agents: AuthorizedAgent[];
   includeSchema?: boolean;
   includeTimestamp?: boolean;
-  properties?: any[];
+  properties?: PropertyDefinition[];
   signals?: SignalDefinition[];
   signalTags?: Record<string, { name: string; description: string }>;
 }
@@ -1379,7 +1380,7 @@ export class AdAgentsManager {
     agents: AuthorizedAgent[],
     includeSchema?: boolean,
     includeTimestamp?: boolean,
-    properties?: any[],
+    properties?: PropertyDefinition[],
     signals?: SignalDefinition[],
     signalTags?: Record<string, { name: string; description: string }>
   ): string;
@@ -1387,7 +1388,7 @@ export class AdAgentsManager {
     optionsOrAgents: CreateAdAgentsJsonOptions | AuthorizedAgent[],
     includeSchema: boolean = true,
     includeTimestamp: boolean = true,
-    properties?: any[],
+    properties?: PropertyDefinition[],
     signals?: SignalDefinition[],
     signalTags?: Record<string, { name: string; description: string }>
   ): string {

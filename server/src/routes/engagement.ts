@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query } from '../db/client.js';
-import { OrganizationDatabase } from '../db/organization-db.js';
+import { OrganizationDatabase, resolveMembershipTier } from '../db/organization-db.js';
 import { OrgKnowledgeDatabase, type Persona } from '../db/org-knowledge-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { checkMilestones } from '../addie/services/journey-computation.js';
@@ -68,13 +68,18 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
           journey_stage: string | null;
           engagement_score: number | null;
           membership_tier: string | null;
+          subscription_amount: number | null;
+          subscription_interval: string | null;
+          subscription_status: string | null;
+          is_personal: boolean;
           stripe_customer_id: string | null;
           member_count: string;
           created_at: Date;
         }>(
           `SELECT o.name, o.persona, o.aspiration_persona, o.persona_source,
                   o.journey_stage, o.engagement_score, o.membership_tier,
-                  o.stripe_customer_id, o.created_at,
+                  o.subscription_amount, o.subscription_interval, o.subscription_status,
+                  o.is_personal, o.stripe_customer_id, o.created_at,
                   (SELECT COUNT(*) FROM organization_memberships om
                    WHERE om.workos_organization_id = o.workos_organization_id) as member_count
            FROM organizations o WHERE o.workos_organization_id = $1`,
@@ -157,7 +162,7 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
         organization_name: orgData?.name ?? null,
         journey_stage: orgData?.journey_stage ?? null,
         engagement_score: orgData?.engagement_score ?? null,
-        membership_tier: orgData?.membership_tier ?? null,
+        membership_tier: resolveMembershipTier(orgData),
         has_billing: !!orgData?.stripe_customer_id,
         team_size: parseInt(orgData?.member_count ?? '0', 10),
         seat_usage: seatUsage,
