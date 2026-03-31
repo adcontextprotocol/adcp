@@ -670,7 +670,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
       }
       if (!brandDomain && logo_url) {
-        try { brandDomain = new URL(logo_url).hostname; } catch { /* ignore */ }
+        try {
+          const candidate = new URL(logo_url).hostname;
+          const existingBrand = await brandDb.getHostedBrandByDomain(candidate);
+          if (!existingBrand || !existingBrand.workos_organization_id || existingBrand.workos_organization_id === targetOrgId) {
+            brandDomain = candidate;
+          }
+        } catch { /* ignore */ }
       }
       if (!brandDomain) {
         return res.status(400).json({
@@ -722,8 +728,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             }];
           }
           await client.query(
-            'UPDATE hosted_brands SET brand_json = $1, updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(bj), existing.id]
+            'UPDATE hosted_brands SET brand_json = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(bj), existing.id, targetOrgId]
           );
         } else {
           const brandJson = {
