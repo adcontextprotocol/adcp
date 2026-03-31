@@ -4760,6 +4760,7 @@ Use add_committee_leader to assign a leader.`;
         // Step 1: Get users from secondary org in WorkOS before merge
         let workosUsersToMigrate: string[] = [];
         let workosErrors: string[] = [];
+        let secondaryRoles = new Map<string, string>();
 
         try {
           // Get all memberships from the secondary org in WorkOS
@@ -4780,9 +4781,11 @@ Use add_committee_leader to assign a leader.`;
           });
           const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
 
-          workosUsersToMigrate = memberships.data
-            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
-            .map(m => m.userId);
+          const usersToMigrate = memberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId));
+          workosUsersToMigrate = usersToMigrate.map(m => m.userId);
+          // Preserve roles from secondary org so owners/admins keep their role
+          secondaryRoles = new Map(usersToMigrate.map(m => [m.userId, m.role?.slug || 'member']));
 
           logger.info({ count: workosUsersToMigrate.length, secondaryOrgId }, 'Found WorkOS users to migrate');
         } catch (err) {
@@ -4806,10 +4809,11 @@ Use add_committee_leader to assign a leader.`;
 
         for (const userId of workosUsersToMigrate) {
           try {
+            const roleSlug = secondaryRoles.get(userId) || 'member';
             await workos.userManagement.createOrganizationMembership({
               userId,
               organizationId: primaryOrgId,
-              roleSlug: 'member', // Default to member role
+              roleSlug,
             });
             workosAdded++;
             logger.debug({ userId, primaryOrgId }, 'Added user to primary org in WorkOS');

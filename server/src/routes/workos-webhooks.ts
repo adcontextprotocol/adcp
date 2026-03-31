@@ -123,7 +123,11 @@ async function upsertMembership(
   const hasExplicitSeatType = seatResult.rows.length > 0;
   const seatType = seatResult.rows[0]?.seat_type || 'community_only';
 
-  await pool.query(
+  // Atomically determine the role: if the incoming role is 'member' and the
+  // org has no admin/owner, promote to 'owner'. The subquery makes this
+  // race-safe — concurrent inserts will see each other's rows.
+  const effectiveRole = role === 'member' ? '__auto__' : role;
+  const result = await pool.query<{ role: string }>(
     `INSERT INTO organization_memberships (
       workos_user_id,
       workos_organization_id,
@@ -134,7 +138,20 @@ async function upsertMembership(
       role,
       seat_type,
       synced_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      CASE
+        WHEN $7 = '__auto__' AND NOT EXISTS (
+          SELECT 1 FROM organization_memberships
+          WHERE workos_organization_id = $2
+            AND role IN ('admin', 'owner')
+            AND workos_user_id != $1
+        ) THEN 'owner'
+        WHEN $7 = '__auto__' THEN 'member'
+        ELSE $7
+      END,
+      $8, NOW()
+    )
     ON CONFLICT (workos_user_id, workos_organization_id)
     DO UPDATE SET
       workos_membership_id = EXCLUDED.workos_membership_id,
@@ -147,7 +164,8 @@ async function upsertMembership(
         ELSE organization_memberships.seat_type
       END,
       synced_at = NOW(),
-      updated_at = NOW()`,
+      updated_at = NOW()
+    RETURNING role`,
     [
       membership.user_id,
       membership.organization_id,
@@ -155,11 +173,38 @@ async function upsertMembership(
       userData.email,
       userData.first_name,
       userData.last_name,
-      role,
+      effectiveRole,
       seatType,
       hasExplicitSeatType,
     ]
   );
+
+  const assignedRole = result.rows[0]?.role || role;
+
+  // If the DB promoted this member to owner, sync the change to WorkOS
+  if (assignedRole === 'owner' && role === 'member') {
+    try {
+      await workos.userManagement.updateOrganizationMembership(membership.id, {
+        roleSlug: 'owner',
+      });
+      logger.info({
+        membershipId: membership.id,
+        userId: membership.user_id,
+        orgId: membership.organization_id,
+      }, 'Promoted member to owner — org had no admin');
+    } catch (err) {
+      // Roll back local promotion to stay in sync with WorkOS
+      await pool.query(
+        `UPDATE organization_memberships SET role = 'member', updated_at = NOW()
+         WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [membership.user_id, membership.organization_id]
+      ).catch((rollbackErr) => {
+        logger.error({ err: rollbackErr, orgId: membership.organization_id },
+          'Failed to roll back local owner promotion — local/WorkOS role divergence');
+      });
+      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote member to owner in WorkOS, rolled back local role');
+    }
+  }
 
   // Set primary_organization_id if not already set (prefer paying orgs)
   const preferredOrg = await resolvePreferredOrganization(membership.user_id);
@@ -171,6 +216,7 @@ async function upsertMembership(
     membershipId: membership.id,
     userId: membership.user_id,
     orgId: membership.organization_id,
+    role: assignedRole,
   }, 'Upserted organization membership');
 }
 
@@ -180,17 +226,84 @@ async function upsertMembership(
 async function deleteMembership(membership: OrganizationMembershipData): Promise<void> {
   const pool = getPool();
 
-  await pool.query(
+  const deleted = await pool.query<{ role: string }>(
     `DELETE FROM organization_memberships
-     WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+     WHERE workos_user_id = $1 AND workos_organization_id = $2
+     RETURNING role`,
     [membership.user_id, membership.organization_id]
   );
+
+  const deletedRole = deleted.rows[0]?.role;
 
   logger.info({
     membershipId: membership.id,
     userId: membership.user_id,
     orgId: membership.organization_id,
+    role: deletedRole,
   }, 'Deleted organization membership');
+
+  // If an admin/owner was removed, check if the org still has one.
+  // Promote the longest-tenured remaining member to prevent ownerless orgs.
+  // Single atomic query: returns a row only when no admin/owner remains.
+  if (deletedRole === 'admin' || deletedRole === 'owner') {
+    try {
+      const successor = await pool.query<{ workos_user_id: string; workos_membership_id: string | null }>(
+        `SELECT workos_user_id, workos_membership_id FROM organization_memberships
+         WHERE workos_organization_id = $1
+           AND NOT EXISTS (
+             SELECT 1 FROM organization_memberships
+             WHERE workos_organization_id = $1 AND role IN ('admin', 'owner')
+           )
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [membership.organization_id]
+      );
+      if (successor.rows.length > 0) {
+        const target = successor.rows[0];
+        // Promote in WorkOS first, then mirror locally
+        let promotedInWorkos = false;
+        if (target.workos_membership_id) {
+          await workos.userManagement.updateOrganizationMembership(
+            target.workos_membership_id,
+            { roleSlug: 'owner' }
+          );
+          promotedInWorkos = true;
+        } else {
+          // No cached membership ID — look it up from WorkOS
+          const memberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: membership.organization_id,
+            userId: target.workos_user_id,
+          });
+          if (memberships.data.length > 0) {
+            await workos.userManagement.updateOrganizationMembership(
+              memberships.data[0].id,
+              { roleSlug: 'owner' }
+            );
+            promotedInWorkos = true;
+          } else {
+            logger.warn({
+              orgId: membership.organization_id,
+              userId: target.workos_user_id,
+            }, 'Successor has no WorkOS membership — cannot promote, org may be ownerless');
+          }
+        }
+        if (promotedInWorkos) {
+          await pool.query(
+            `UPDATE organization_memberships SET role = 'owner', updated_at = NOW()
+             WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+            [target.workos_user_id, membership.organization_id]
+          );
+          logger.info({
+            orgId: membership.organization_id,
+            promotedUserId: target.workos_user_id,
+            previousOwnerId: membership.user_id,
+          }, 'Promoted longest-tenured member to owner after admin/owner removal');
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote successor after owner removal');
+    }
+  }
 }
 
 /**
