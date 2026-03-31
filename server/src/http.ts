@@ -1844,6 +1844,7 @@ export class HTTPServer {
     // Health check - verifies critical services are operational
     this.app.get("/health", async (req, res) => {
       const checks: Record<string, boolean> = {};
+      let dbError: string | null = null;
 
       // Database check is informational only. The app serves static pages,
       // docs, and cached content without DB. A DB blip must not take the
@@ -1864,23 +1865,28 @@ export class HTTPServer {
         checks.database = true;
       } catch (dbErr) {
         checks.database = false;
+        const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+        console.error('Database health check failed:', errMsg);
         notifySystemError({
           source: 'health-check',
-          errorMessage: 'Database health check failed',
+          errorMessage: `Database health check failed: ${errMsg}`,
         });
+        dbError = errMsg;
       }
 
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
 
-      res.status(200).json({
+      const body: Record<string, unknown> = {
         status: checks.database ? "ok" : "degraded",
         checks,
         registry: {
           mode: "database",
           using_database: true,
         },
-      });
+      };
+      if (dbError) body.db_error = dbError;
+      res.status(200).json(body);
     });
 
     // Homepage route - serve different homepage based on host
