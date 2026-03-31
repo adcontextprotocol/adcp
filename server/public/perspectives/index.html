@@ -507,11 +507,42 @@
     let userLikes = new Set(); // Track which articles user has liked (from localStorage)
     let activeFilters = {
       tag: null,
+      author: null,
       publication: null,
       category: null,
       time: 'all',
       search: ''
     };
+
+    function initializeFiltersFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      activeFilters.tag = params.get('tag');
+      activeFilters.author = params.get('author');
+      activeFilters.category = params.get('category');
+      activeFilters.publication = params.get('publication');
+      activeFilters.time = params.get('time') || 'all';
+      activeFilters.search = (params.get('q') || '').trim().toLowerCase();
+
+      const searchInput = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('searchClear');
+      if (searchInput && activeFilters.search) {
+        searchInput.value = activeFilters.search;
+        clearBtn.classList.add('visible');
+      }
+    }
+
+    function updateFilterUrl() {
+      const params = new URLSearchParams();
+      if (activeFilters.tag) params.set('tag', activeFilters.tag);
+      if (activeFilters.author) params.set('author', activeFilters.author);
+      if (activeFilters.category) params.set('category', activeFilters.category);
+      if (activeFilters.publication) params.set('publication', activeFilters.publication);
+      if (activeFilters.time !== 'all') params.set('time', activeFilters.time);
+      if (activeFilters.search) params.set('q', activeFilters.search);
+      const query = params.toString();
+      const nextUrl = query ? `/perspectives?${query}` : '/perspectives';
+      history.replaceState(null, '', nextUrl);
+    }
 
     // Load user's likes from localStorage using shared utility
     function loadUserLikes() {
@@ -550,6 +581,9 @@
         populateTagsSidebar(allPerspectives);
         populatePublicationsSidebar(allPerspectives);
         populateCategoriesSidebar(allPerspectives);
+
+        initializeFiltersFromUrl();
+        syncSidebarStateFromFilters();
 
         // Apply initial filters and render
         applyFilters();
@@ -755,6 +789,35 @@
       }
     }
 
+    function syncSidebarStateFromFilters() {
+      const applyExactButtonMatch = (listId, value) => {
+        if (!value) return;
+        const list = document.getElementById(listId);
+        if (!list) return;
+        const buttons = Array.from(list.querySelectorAll('button'));
+        const match = buttons.find(btn => btn.textContent.trim().startsWith(value));
+        if (match) updateSidebarActiveState(listId, match);
+      };
+
+      const applyTimeButtonMatch = () => {
+        const list = document.getElementById('timeList');
+        if (!list) return;
+        const buttons = Array.from(list.querySelectorAll('button'));
+        const labels = { 'all': 'All Time', '30': 'Last 30 Days', '90': 'Last 90 Days', '365': 'This Year' };
+        const match = buttons.find(btn => btn.textContent.trim().startsWith(labels[activeFilters.time]));
+        if (match) updateSidebarActiveState('timeList', match);
+      };
+
+      applyTimeButtonMatch();
+      applyExactButtonMatch('tagsList', activeFilters.tag);
+      applyExactButtonMatch('categoriesList', activeFilters.category);
+      if (activeFilters.publication === '__internal__') {
+        applyExactButtonMatch('publicationsList', 'AgenticAdvertising.org');
+      } else {
+        applyExactButtonMatch('publicationsList', activeFilters.publication);
+      }
+    }
+
     function applyFilters() {
       let filtered = [...allPerspectives];
 
@@ -788,6 +851,13 @@
       if (activeFilters.tag) {
         filtered = filtered.filter(p =>
           p.tags && Array.isArray(p.tags) && p.tags.includes(activeFilters.tag)
+        );
+      }
+
+      // Filter by author
+      if (activeFilters.author) {
+        filtered = filtered.filter(p =>
+          (p.author_name || '').toLowerCase() === activeFilters.author.toLowerCase()
         );
       }
 
@@ -830,6 +900,9 @@
       // Update active filters display
       updateActiveFiltersDisplay();
 
+      // Keep URL in sync
+      updateFilterUrl();
+
       // Render
       renderPerspectives(filtered);
     }
@@ -847,6 +920,9 @@
       }
       if (activeFilters.tag) {
         filters.push({ type: 'tag', label: `Tag: ${activeFilters.tag}`, value: activeFilters.tag });
+      }
+      if (activeFilters.author) {
+        filters.push({ type: 'author', label: `Author: ${activeFilters.author}`, value: activeFilters.author });
       }
       if (activeFilters.publication) {
         const label = activeFilters.publication === '__internal__'
@@ -894,7 +970,7 @@
     }
 
     function clearAllFilters() {
-      activeFilters = { tag: null, publication: null, category: null, time: 'all', search: '' };
+      activeFilters = { tag: null, author: null, publication: null, category: null, time: 'all', search: '' };
       clearSearch();
 
       // Reset all sidebars to "All"

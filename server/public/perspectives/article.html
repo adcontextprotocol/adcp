@@ -138,6 +138,16 @@
       line-height: 1.2;
     }
 
+    .author-name-link {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .author-name-link:hover {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
+
     .author-role {
       font-size: 0.92rem;
       color: var(--color-text-secondary);
@@ -353,12 +363,92 @@
       border-radius: 4px;
     }
 
+    a.article-tag {
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+
+    a.article-tag:hover {
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+    }
+
     .article-section {
       padding: 2rem 2.25rem 2.5rem;
       border: 1px solid var(--color-border);
       border-radius: 22px;
       background: var(--color-bg-card);
       box-shadow: 0 14px 40px rgba(15, 23, 42, 0.05);
+    }
+
+    .related-section {
+      padding: 1.5rem 0 0;
+    }
+
+    .related-layout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.5rem;
+    }
+
+    .related-column {
+      border: 1px solid var(--color-border);
+      border-radius: 20px;
+      background: var(--color-bg-card);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+      padding: 1.25rem;
+    }
+
+    .related-column[hidden] {
+      display: none;
+    }
+
+    .related-heading {
+      margin: 0 0 0.35rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .related-subtitle {
+      margin: 0 0 1rem;
+      font-size: 0.9rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .related-list {
+      display: grid;
+      gap: 0.9rem;
+    }
+
+    .related-item {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      padding: 0.9rem 1rem;
+      border-radius: 14px;
+      background: var(--color-bg-subtle);
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .related-item:hover {
+      border-color: var(--color-border);
+      transform: translateY(-1px);
+    }
+
+    .related-item-title {
+      font-size: 0.98rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      line-height: 1.4;
+      margin-bottom: 0.35rem;
+    }
+
+    .related-item-meta {
+      font-size: 0.82rem;
+      color: var(--color-text-secondary);
     }
 
     @media (max-width: 600px) {
@@ -375,6 +465,10 @@
       .article-section {
         padding: 1.4rem;
         border-radius: 18px;
+      }
+
+      .related-layout {
+        grid-template-columns: 1fr;
       }
 
       .article-actions {
@@ -464,7 +558,7 @@
           </div>
           <div class="author-copy">
             <div class="author-eyebrow">Perspective by</div>
-            <div id="authorNamePrimary" class="author-name"></div>
+            <a id="authorArchiveLink" class="author-name author-name-link" href="#"></a>
             <div id="authorRole" class="author-role"></div>
           </div>
         </div>
@@ -518,6 +612,21 @@
           <p><strong id="authorName"></strong><span id="authorTitle"></span></p>
         </div>
       </section>
+
+      <section id="relatedSection" class="related-section" style="display: none;">
+        <div class="related-layout">
+          <div id="sameAuthorColumn" class="related-column" hidden>
+            <h2 class="related-heading">More from this author</h2>
+            <p class="related-subtitle">Continue through other published perspectives by the same author.</p>
+            <div id="sameAuthorList" class="related-list"></div>
+          </div>
+          <div id="relatedTopicsColumn" class="related-column" hidden>
+            <h2 class="related-heading">More like this</h2>
+            <p class="related-subtitle">Related perspectives based on shared tags and topic overlap.</p>
+            <div id="relatedTopicsList" class="related-list"></div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -563,7 +672,7 @@
 
     function renderAuthorMeta(article) {
       const metaCard = document.getElementById('articleMetaCard');
-      const primaryName = document.getElementById('authorNamePrimary');
+      const primaryName = document.getElementById('authorArchiveLink');
       const authorRole = document.getElementById('authorRole');
       const avatar = document.getElementById('authorAvatar');
       const avatarText = document.getElementById('authorAvatarText');
@@ -575,6 +684,7 @@
 
       const title = article.author_title || article.author_headline || '';
       primaryName.textContent = article.author_name;
+      primaryName.href = `/perspectives?author=${encodeURIComponent(article.author_name)}`;
       authorRole.textContent = title;
       authorRole.style.display = title ? 'block' : 'none';
 
@@ -599,6 +709,59 @@
       image.alt = article.title || 'Perspective image';
       caption.textContent = article.excerpt || article.subtitle || article.title || '';
       feature.hidden = false;
+    }
+
+    function renderRelatedItems(targetId, items) {
+      const list = document.getElementById(targetId);
+      list.innerHTML = items.map(item => {
+        const meta = [item.category, formatDate(item.published_at)].filter(Boolean).join(' · ');
+        return `
+          <a class="related-item" href="/perspectives/${encodeURIComponent(item.slug)}">
+            <div class="related-item-title">${escapeHtml(item.title || 'Untitled')}</div>
+            <div class="related-item-meta">${escapeHtml(meta)}</div>
+          </a>
+        `;
+      }).join('');
+    }
+
+    async function loadRelatedContent(article) {
+      try {
+        const response = await fetch('/api/perspectives?authored=true');
+        if (!response.ok) return;
+        const items = await response.json();
+        const otherArticles = items.filter(item => item.slug !== article.slug && item.content_type === 'article');
+
+        const sameAuthor = otherArticles
+          .filter(item => article.author_name && item.author_name === article.author_name)
+          .slice(0, 3);
+
+        const relatedByTopic = otherArticles
+          .map(item => {
+            const sharedTags = (item.tags || []).filter(tag => (article.tags || []).includes(tag)).length;
+            const sameCategory = item.category && article.category && item.category === article.category ? 1 : 0;
+            return { item, score: sharedTags * 2 + sameCategory };
+          })
+          .filter(entry => entry.score > 0 && !sameAuthor.some(authorItem => authorItem.slug === entry.item.slug))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+          .map(entry => entry.item);
+
+        if (sameAuthor.length > 0) {
+          renderRelatedItems('sameAuthorList', sameAuthor);
+          document.getElementById('sameAuthorColumn').hidden = false;
+        }
+
+        if (relatedByTopic.length > 0) {
+          renderRelatedItems('relatedTopicsList', relatedByTopic);
+          document.getElementById('relatedTopicsColumn').hidden = false;
+        }
+
+        if (sameAuthor.length > 0 || relatedByTopic.length > 0) {
+          document.getElementById('relatedSection').style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error loading related content:', error);
+      }
     }
 
     function applyBackContext() {
@@ -801,7 +964,7 @@
         if (article.tags && article.tags.length > 0) {
           const tagsContainer = document.getElementById('articleTags');
           tagsContainer.innerHTML = article.tags.map(tag =>
-            `<span class="article-tag">${escapeHtml(tag)}</span>`
+            `<a class="article-tag" href="/perspectives?tag=${encodeURIComponent(tag)}">${escapeHtml(tag)}</a>`
           ).join('');
           tagsContainer.style.display = 'flex';
         }
@@ -813,6 +976,7 @@
 
         renderFeaturedImage(article);
         renderAuthorMeta(article);
+        loadRelatedContent(article);
 
         // Update like button
         isLiked = checkUserLike(article.id);
