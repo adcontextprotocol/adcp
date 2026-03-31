@@ -51,12 +51,6 @@ async function runCheck(workos: WorkOS): Promise<void> {
     try {
       const adminEmails = await getOrgAdminEmails(workos, request.workos_organization_id);
       if (adminEmails.length > 0) {
-        let orgName = 'Organization';
-        try {
-          const org = await workos.organizations.getOrganization(request.workos_organization_id);
-          orgName = org.name;
-        } catch {}
-
         const resourceLabel = request.resource_name || request.resource_type.replace(/_/g, ' ');
         const teamUrl = `${APP_URL}/team?org=${request.workos_organization_id}`;
 

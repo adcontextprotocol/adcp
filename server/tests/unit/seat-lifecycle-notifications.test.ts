@@ -3,7 +3,6 @@ import { escapeSlackMrkdwn } from "../../src/slack/org-group-dm.js";
 import {
   getSeatLimits,
   inferMembershipTier,
-  SEAT_LIMITS,
 } from "../../src/db/organization-db.js";
 
 describe("escapeSlackMrkdwn", () => {

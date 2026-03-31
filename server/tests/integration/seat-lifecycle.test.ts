@@ -6,8 +6,8 @@
  * since the full HTTP stack requires complex WorkOS mock setup.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
   checkAndUpdateSeatWarning,
@@ -318,7 +318,7 @@ describe('Seat Lifecycle', () => {
         [TEST_ORG_ID, TEST_MEMBER_USER_ID]
       );
 
-      const { needsAdminReminder, needsMemberTimeout } = await findStaleSeatRequests();
+      const { needsAdminReminder } = await findStaleSeatRequests();
       expect(needsAdminReminder.length).toBeGreaterThanOrEqual(1);
     });
 

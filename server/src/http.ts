@@ -3516,7 +3516,6 @@ export class HTTPServer {
                 );
 
                 // Detect tier change and notify admins
-                const effectiveNewTier = membershipTier || oldTier;
                 if (membershipTier && oldTier && membershipTier !== oldTier) {
                   const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
                   const { notifyTierChange } = await import('./slack/org-group-dm.js');
