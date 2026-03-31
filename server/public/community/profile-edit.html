@@ -1111,6 +1111,13 @@
         }
 
         const data = await resp.json();
+        if (!data.canGenerate) {
+          document.getElementById('portrait-ineligible').style.display = '';
+          document.getElementById('portrait-ineligible-msg').textContent =
+            'Active membership required to generate an illustrated portrait.';
+          return;
+        }
+
         const remaining = data.maxMonthlyGenerations - data.generationsThisMonth;
 
         document.getElementById('portrait-generate').style.display = '';
