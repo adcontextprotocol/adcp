@@ -26,6 +26,8 @@ Artifacts are identified by `property_id` + `artifact_id` - the property defines
 
 **Schema**: [artifact.json](https://adcontextprotocol.org/schemas/v3/content-standards/artifact.json)
 
+Web article:
+
 ```json
 {
   "property_id": {"type": "domain", "value": "reddit.com"},
@@ -34,6 +36,35 @@ Artifacts are identified by `property_id` + `artifact_id` - the property defines
     {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
     {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources...", "language": "en"},
     {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
+  ]
+}
+```
+
+Podcast segment (note: no `url` — the property is identified by `apple_podcast_id`, and the audio asset uses a secured URL):
+
+```json
+{
+  "property_id": {"type": "apple_podcast_id", "value": "1234567890"},
+  "artifact_id": "episode_42_segment_3",
+  "assets": [
+    {"type": "text", "role": "title", "content": "The Future of Running Shoes", "language": "en"},
+    {"type": "audio", "url": "https://cdn.example.com/secured/ep42_seg3.mp3", "transcript": "Today we're talking to Dr. Chen about biomechanics research...", "duration_ms": 480000}
+  ],
+  "metadata": {
+    "json_ld": [{"@type": "PodcastEpisode", "episodeNumber": 42}]
+  }
+}
+```
+
+CTV scene (the artifact_id encodes show, season, episode, and scene):
+
+```json
+{
+  "property_id": {"type": "app_id", "value": "com.streamingservice.tv"},
+  "artifact_id": "show_running_s2e5_scene_14",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Championship Race - Final Stretch", "language": "en"},
+    {"type": "video", "url": "https://cdn.streaming.example.com/secured/s2e5_scene14.mp4", "transcript": "The runners round the final corner as the crowd erupts...", "duration_ms": 120000}
   ]
 }
 ```
