@@ -83,7 +83,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint } from './thread-utils.js';
+import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint, buildThreadSummaryForRouter } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
 import {
@@ -994,7 +994,7 @@ async function selectRoutedToolsForSlackResponse(
   slackUserId: string,
   threadId: string,
   threadContext?: ThreadContext | null,
-  options?: { isThread?: boolean; hasCertificationContext?: boolean }
+  options?: { isThread?: boolean; hasCertificationContext?: boolean; threadMessages?: string[] }
 ): Promise<{
   tools: RequestTools;
   isAAOAdmin: boolean;
@@ -1035,6 +1035,7 @@ async function selectRoutedToolsForSlackResponse(
     isThread: options?.isThread,
     isAAOAdmin: userIsAdmin,
     channelName: threadContext?.viewing_channel_name,
+    threadMessages: options?.threadMessages,
   };
 
   const plan = addieRouter.quickMatch(routingContext) ?? await addieRouter.route(routingContext);
@@ -1760,6 +1761,7 @@ async function handleAppMention({
   // the conversation she's being mentioned in.
   const MAX_CONTEXT_MESSAGES = 25;
   let threadContext = '';
+  let mentionRawMessages: Array<{ user?: string; text?: string; ts: string }> = [];
   try {
     let rawMessages: Array<{ user?: string; text?: string; ts: string }> = [];
     let contextLabel = '';
@@ -1778,6 +1780,8 @@ async function handleAppMention({
       rawMessages = channelMessages.reverse();
       contextLabel = 'Conversation';
     }
+
+    mentionRawMessages = rawMessages;
 
     if (rawMessages.length > 0) {
       const filteredMessages = rawMessages
@@ -1931,6 +1935,10 @@ async function handleAppMention({
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
+  const mentionThreadSummary = isInThread && mentionRawMessages.length > 0
+    ? buildThreadSummaryForRouter(mentionRawMessages, context.botUserId || '', event.ts, userId)
+    : undefined;
+
   const routedTools = await selectRoutedToolsForSlackResponse(
     inputValidation.sanitized,
     'mention',
@@ -1938,7 +1946,7 @@ async function handleAppMention({
     userId,
     thread.thread_id,
     mentionChannelContext,
-    { isThread: isInThread }
+    { isThread: isInThread, threadMessages: mentionThreadSummary }
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
@@ -2973,6 +2981,13 @@ async function handleActiveThreadReply({
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
+  const threadSummary = buildThreadSummaryForRouter(
+    slackThreadMessages,
+    context.botUserId || '',
+    event.ts,
+    userId,
+  );
+
   const routedTools = await selectRoutedToolsForSlackResponse(
     inputValidation.sanitized,
     'channel',
@@ -2980,7 +2995,7 @@ async function handleActiveThreadReply({
     userId,
     thread.thread_id,
     channelContext,
-    { isThread: true }
+    { isThread: true, threadMessages: threadSummary }
   );
 
   // Suppress low-confidence replies in active channel threads, flag for review
@@ -3350,11 +3365,23 @@ async function handleChannelMessage({
       logger.debug({ error, channelId }, 'Addie Bolt: Could not get channel context');
     }
 
-    // Fetch member context and admin status in parallel
-    const [memberContext, isAdminForRouting] = await Promise.all([
+    // Fetch member context, admin status, and thread messages (if in a thread) in parallel
+    const threadRepliesPromise = isInThread && event.thread_ts
+      ? getThreadReplies(channelId, event.thread_ts).catch((err) => {
+          logger.debug({ error: err, channelId }, 'Addie Bolt: Could not fetch thread replies for routing context');
+          return [] as Awaited<ReturnType<typeof getThreadReplies>>;
+        })
+      : Promise.resolve([] as Awaited<ReturnType<typeof getThreadReplies>>);
+
+    const [memberContext, isAdminForRouting, coldThreadMessages] = await Promise.all([
       getMemberContext(userId),
       isSlackUserAAOAdmin(userId),
+      threadRepliesPromise,
     ]);
+
+    const coldThreadSummary = coldThreadMessages.length > 0
+      ? buildThreadSummaryForRouter(coldThreadMessages, context.botUserId || '', event.ts, userId)
+      : undefined;
 
     // Build routing context
     const routingCtx: RoutingContext = {
@@ -3364,6 +3391,7 @@ async function handleChannelMessage({
       isThread: isInThread,
       isAAOAdmin: isAdminForRouting,
       channelName: channelContext?.viewing_channel_name,
+      threadMessages: coldThreadSummary,
     };
 
     // Quick match first (no API call for obvious cases)
@@ -3489,7 +3517,10 @@ async function handleChannelMessage({
     // unless explicitly named — humans are handling it.
     if (isInThread && context.botUserId && !/\baddie\b/i.test(messageText)) {
       try {
-        const threadReplies = await getThreadReplies(channelId, threadTs);
+        // Reuse thread messages already fetched for routing (avoid duplicate API call)
+        const threadReplies = coldThreadMessages.length > 0
+          ? coldThreadMessages
+          : await getThreadReplies(channelId, threadTs);
         const humanRepliesBeforeTrigger = threadReplies.filter(
           msg => msg.user && msg.user !== context.botUserId && msg.user !== userId && msg.ts < event.ts
         );

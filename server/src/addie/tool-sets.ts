@@ -32,11 +32,22 @@ export interface ToolSet {
  */
 export const ALWAYS_AVAILABLE_TOOLS = [
   'escalate_to_admin',   // Can always ask for human help
+  'get_escalation_status', // Can always check on their escalations
   'get_account_link',    // Check user's linked status
   'capture_learning',    // Save insights from conversations
   'web_search',          // Built-in Claude tool, always available
   'set_outreach_preference', // Users can always opt out of proactive outreach
   'search_image_library', // Illustrations to enrich explanations — not topic-dependent
+];
+
+/**
+ * Tools always available for admins regardless of routing.
+ * Escalation resolution is a quick action that admins trigger in any thread
+ * context — routing often misses it because the message is brief.
+ */
+export const ALWAYS_AVAILABLE_ADMIN_TOOLS = [
+  'resolve_escalation',
+  'list_escalations',
 ];
 
 /**
@@ -387,6 +398,12 @@ export function getToolsForSets(setNames: string[], isAAOAdmin: boolean = false,
     ? ALWAYS_AVAILABLE_TOOLS.filter(t => !ENROLLMENT_TOOLS.includes(t))
     : ALWAYS_AVAILABLE_TOOLS;
   const tools = new Set<string>(alwaysAvailable);
+
+  if (isAAOAdmin) {
+    for (const tool of ALWAYS_AVAILABLE_ADMIN_TOOLS) {
+      tools.add(tool);
+    }
+  }
 
   for (const setName of setNames) {
     const toolSet = TOOL_SETS[setName];

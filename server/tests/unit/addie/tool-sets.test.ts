@@ -1,6 +1,27 @@
-import { getToolsForSets, ALWAYS_AVAILABLE_TOOLS, TOOL_SETS } from '../../server/src/addie/tool-sets.js';
+import { describe, it, expect } from 'vitest';
+import { getToolsForSets, ALWAYS_AVAILABLE_TOOLS, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
+  describe('admin always-available tools', () => {
+    it('includes resolve_escalation for admins without admin set routed', () => {
+      const tools = getToolsForSets(['knowledge'], true, false);
+      expect(tools).toContain('resolve_escalation');
+      expect(tools).toContain('list_escalations');
+    });
+
+    it('excludes resolve_escalation for non-admins', () => {
+      const tools = getToolsForSets(['knowledge'], false, false);
+      expect(tools).not.toContain('resolve_escalation');
+    });
+
+    it('includes admin always-available tools even with no sets selected', () => {
+      const tools = getToolsForSets([], true, false);
+      for (const tool of ALWAYS_AVAILABLE_ADMIN_TOOLS) {
+        expect(tools).toContain(tool);
+      }
+    });
+  });
+
   describe('public channel filtering', () => {
     it('excludes get_account_link from always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);

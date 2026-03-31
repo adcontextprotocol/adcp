@@ -127,3 +127,35 @@ export function isDirectedAtAddie(
 
   return prior[i].user === currentUserId;
 }
+
+/**
+ * Build compact thread summary lines for the router.
+ * Returns up to 8 recent messages as "Speaker: text" (truncated to ~120 chars each).
+ * The router uses this to understand thread topic without seeing full content.
+ */
+export function buildThreadSummaryForRouter(
+  messages: Array<{ user?: string; text?: string; ts: string }>,
+  botUserId: string,
+  currentEventTs: string,
+  currentUserId?: string,
+): string[] {
+  const MAX_SUMMARY_MESSAGES = 5;
+  const MAX_LINE_LENGTH = 120;
+
+  return messages
+    .filter(msg => msg.ts !== currentEventTs && (msg.text || '').trim().length > 0)
+    .slice(-MAX_SUMMARY_MESSAGES)
+    .map(msg => {
+      const speaker = msg.user === botUserId ? 'Addie'
+        : msg.user === currentUserId ? 'You'
+        : 'User';
+      const text = (msg.text || '')
+        .replace(/<@[A-Z0-9]+>/g, '@someone')
+        .replace(/\[system\]/gi, '')
+        .replace(/\[user\]/gi, '')
+        .replace(/\[assistant\]/gi, '')
+        .trim();
+      const truncated = text.length > MAX_LINE_LENGTH ? text.substring(0, MAX_LINE_LENGTH) + '...' : text;
+      return `${speaker}: ${truncated}`;
+    });
+}
