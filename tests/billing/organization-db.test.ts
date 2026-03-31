@@ -213,10 +213,10 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      // Seat usage (members + pending invitations)
-      client.query.mockResolvedValueOnce({
-        rows: [],
-      });
+      // Member counts (total + contributor via FILTER)
+      client.query.mockResolvedValueOnce({ rows: [{ total: '0', contributor: '0' }] });
+      // Pending invitations
+      client.query.mockResolvedValueOnce({ rows: [] });
       // COMMIT
       client.query.mockResolvedValueOnce({ rows: [] });
 
@@ -239,7 +239,8 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      client.query.mockResolvedValueOnce({ rows: [] }); // seat usage
+      client.query.mockResolvedValueOnce({ rows: [{ total: '0', contributor: '0' }] }); // member counts
+      client.query.mockResolvedValueOnce({ rows: [] }); // pending invitations
       client.query.mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const { canAddSeat } = await import('../../server/src/db/organization-db.js');
@@ -260,7 +261,8 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      client.query.mockResolvedValueOnce({ rows: [] }); // seat usage
+      client.query.mockResolvedValueOnce({ rows: [{ total: '0', contributor: '0' }] }); // member counts
+      client.query.mockResolvedValueOnce({ rows: [] }); // pending invitations
       client.query.mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const { canAddSeat } = await import('../../server/src/db/organization-db.js');

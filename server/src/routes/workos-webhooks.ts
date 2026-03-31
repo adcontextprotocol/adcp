@@ -121,7 +121,7 @@ async function upsertMembership(
     [membership.organization_id, userData.email]
   );
   const hasExplicitSeatType = seatResult.rows.length > 0;
-  const seatType = seatResult.rows[0]?.seat_type || 'contributor';
+  const seatType = seatResult.rows[0]?.seat_type || 'community_only';
 
   await pool.query(
     `INSERT INTO organization_memberships (
