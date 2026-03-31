@@ -297,7 +297,7 @@
   <section class="hero hero--article" id="heroSection" style="display: none;">
     <div class="hero-container">
       <div class="hero-breadcrumb">
-        <a href="/perspectives">Perspectives</a> / <span id="heroCategory">Article</span>
+        <a href="/perspectives" id="heroBackLink">Perspectives</a> / <span id="heroCategory">Article</span>
       </div>
       <h1 id="heroTitle">Loading...</h1>
       <p class="hero-subtitle" id="heroSubtitle"></p>
@@ -311,11 +311,11 @@
 
   <!-- Main Content -->
   <div class="container" id="mainContent" style="display: none;">
-    <a href="/perspectives" class="back-link">
+    <a href="/perspectives" class="back-link" id="articleBackLink">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      Back to Perspectives
+      <span id="articleBackLabel">Back to Perspectives</span>
     </a>
 
     <!-- Tags -->
@@ -397,6 +397,32 @@
 
     let currentArticle = null;
     let isLiked = false;
+
+    function applyBackContext() {
+      const params = new URLSearchParams(window.location.search);
+      const fromStories = params.get('from') === 'stories';
+      if (!fromStories) return;
+
+      const backHref = '/stories';
+      const backLabel = 'Stories';
+
+      const heroBackLink = document.getElementById('heroBackLink');
+      const articleBackLink = document.getElementById('articleBackLink');
+      const articleBackLabel = document.getElementById('articleBackLabel');
+
+      if (heroBackLink) {
+        heroBackLink.href = backHref;
+        heroBackLink.textContent = backLabel;
+      }
+
+      if (articleBackLink) {
+        articleBackLink.href = backHref;
+      }
+
+      if (articleBackLabel) {
+        articleBackLabel.textContent = `Back to ${backLabel}`;
+      }
+    }
 
     async function toggleLike() {
       if (!currentArticle) return;
@@ -624,6 +650,7 @@
     }
 
     // Load article when page loads
+    applyBackContext();
     loadArticle();
   </script>
 </body>
