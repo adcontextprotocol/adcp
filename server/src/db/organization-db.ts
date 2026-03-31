@@ -136,6 +136,24 @@ export function getSeatLimits(tier: string | null): SeatLimits {
 }
 
 /**
+ * Resolve the effective membership tier for an organization.
+ * Uses explicit membership_tier if set, otherwise infers from active subscription data.
+ */
+export function resolveMembershipTier(org: {
+  membership_tier: string | null;
+  subscription_status: string | null;
+  subscription_amount: number | null;
+  subscription_interval: string | null;
+  is_personal: boolean;
+} | null | undefined): MembershipTier | null {
+  if (!org) return null;
+  return (org.membership_tier as MembershipTier)
+    ?? (org.subscription_status === 'active'
+      ? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal)
+      : null);
+}
+
+/**
  * Infer membership tier from subscription amount and organization type.
  * Many orgs created before the membership_tier column was added have active subscriptions
  * but no tier recorded. Amounts are in cents. Monthly amounts are annualized.
@@ -208,10 +226,7 @@ export async function canAddSeat(
       [orgId]
     );
     const org = orgResult.rows[0];
-    const tier = org?.membership_tier
-      ?? (org?.subscription_status === 'active'
-        ? inferMembershipTier(org?.subscription_amount ?? null, org?.subscription_interval ?? null, org?.is_personal ?? false)
-        : null);
+    const tier = resolveMembershipTier(org);
     const limits = getSeatLimits(tier);
 
     // Count active members + pending invitations as used seats
