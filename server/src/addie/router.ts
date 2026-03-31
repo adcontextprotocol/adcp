@@ -76,6 +76,8 @@ export interface RoutingContext {
   channelName?: string;
   /** Whether the user is an AAO platform admin (checked via aao-admin working group) */
   isAAOAdmin?: boolean;
+  /** Recent thread messages for context (compact "Speaker: text" lines) */
+  threadMessages?: string[];
 }
 
 /**
@@ -407,7 +409,11 @@ ${reactList}
 - Questions outside Addie's core expertise (legal, HR, scheduling, general business) — even if tangentially related to ad tech
 - Questions where a knowledgeable human in the workspace is likely better positioned to answer
 
-## Message
+${ctx.threadMessages && ctx.threadMessages.length > 0 ? `## Thread Context
+Recent messages in this thread (oldest first):
+${ctx.threadMessages.join('\n')}
+
+` : ''}## Message
 "${ctx.message.substring(0, 500)}"
 
 ## Instructions
