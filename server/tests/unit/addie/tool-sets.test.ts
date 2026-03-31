@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getToolsForSets, ALWAYS_AVAILABLE_TOOLS, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS } from '../../../src/addie/tool-sets.js';
+import { getToolsForSets, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
   describe('admin always-available tools', () => {
