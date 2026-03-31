@@ -451,7 +451,7 @@ export async function createSeatUpgradeRequest(data: {
     `INSERT INTO seat_upgrade_requests (workos_organization_id, workos_user_id, resource_type, resource_id, resource_name)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [data.orgId, data.userId, data.resourceType, data.resourceId || null, data.resourceName || null]
+    [data.orgId, data.userId, data.resourceType, data.resourceId || '', data.resourceName || null]
   );
   return result.rows[0];
 }
@@ -521,7 +521,7 @@ export async function hasPendingSeatRequest(
          AND COALESCE(resource_id, '') = COALESCE($4, '')
          AND status = 'pending'
      ) as exists`,
-    [orgId, userId, resourceType, resourceId || null]
+    [orgId, userId, resourceType, resourceId || '']
   );
   return result.rows[0]?.exists ?? false;
 }
@@ -539,14 +539,16 @@ export async function findStaleSeatRequests(): Promise<{
     `SELECT * FROM seat_upgrade_requests
      WHERE status = 'pending'
        AND admin_reminder_sent_at IS NULL
-       AND created_at < NOW() - INTERVAL '48 hours'`
+       AND created_at < NOW() - INTERVAL '48 hours'
+     LIMIT 100`
   );
 
   const memberResult = await pool.query<SeatUpgradeRequest>(
     `SELECT * FROM seat_upgrade_requests
      WHERE status = 'pending'
        AND member_timeout_notified_at IS NULL
-       AND created_at < NOW() - INTERVAL '7 days'`
+       AND created_at < NOW() - INTERVAL '7 days'
+     LIMIT 100`
   );
 
   return {

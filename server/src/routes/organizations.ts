@@ -3273,6 +3273,27 @@ export function createOrganizationsRouter(): Router {
         resourceName: request.resource_name || undefined,
       }).catch(err => logger.warn({ err }, 'Failed to notify member of approved seat request'));
 
+      // Check seat warning thresholds after approval (fire-and-forget)
+      (async () => {
+        try {
+          const localOrg = await orgDb.getOrganization(orgId);
+          const tier = resolveMembershipTier(localOrg);
+          const seatLimits = getSeatLimits(tier);
+          const seatUsage = await getSeatUsage(orgId);
+          const warning = await checkAndUpdateSeatWarning(orgId, 'contributor', seatUsage.contributor, seatLimits.contributor, tier);
+          if (warning?.shouldNotify) {
+            let orgName = 'Organization';
+            try { const org = await workos!.organizations.getOrganization(orgId); orgName = org.name; } catch {}
+            const adminEmails = await getOrgAdminEmails(workos!, orgId);
+            if (adminEmails.length > 0) {
+              await notifySeatWarning({ orgId, orgName, adminEmails, seatType: 'contributor', threshold: warning.threshold, usage: seatUsage.contributor, limit: seatLimits.contributor });
+            }
+          }
+        } catch (err) {
+          logger.warn({ err }, 'Failed to check seat warnings after seat request approval');
+        }
+      })();
+
       res.json({ success: true, status: 'approved' });
     } catch (error) {
       logger.error({ err: error }, 'Approve seat upgrade request error');

@@ -474,7 +474,7 @@ export async function notifySeatWarning(data: {
   let ctaUrl: string;
 
   if (data.threshold === 100) {
-    text = `All *${data.limit} ${label} seats* for *${safeOrgName}* are in use. New invitations will be limited to ${data.seatType === 'contributor' ? 'community' : 'contributor'} seats until you upgrade or free a seat.`;
+    text = `All *${data.limit} ${label} seats* for *${safeOrgName}* are in use. Upgrade your plan for more seats, or free a seat by removing a member.`;
     ctaUrl = `${APP_URL}/team?org=${data.orgId}`;
   } else {
     text = `*${safeOrgName}* is using *${data.usage} of ${data.limit}* ${label} seats. Need more? Upgrade your plan.`;
