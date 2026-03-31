@@ -1727,7 +1727,7 @@ export function createCertificationToolHandlers(
 
       // Start the module and create an attempt
       await certDb.startModule(userId, moduleId);
-      const attempt = await certDb.createAttempt(userId, mod.track_id, undefined, moduleId);
+      const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
 
       const criteria = mod.assessment_criteria as certDb.AssessmentCriteria | null;
       const lessonPlan = mod.lesson_plan as certDb.LessonPlan | null;
@@ -1840,7 +1840,19 @@ export function createCertificationToolHandlers(
 
       if (!attemptId || !scores || typeof scores !== 'object') return 'attempt_id and scores are required.';
 
-      const attempt = await certDb.getAttempt(attemptId);
+      // Look up the active attempt: accept the UUID directly, or resolve from module ID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
+      let attempt: certDb.CertificationAttempt | null;
+      if (isUuid) {
+        attempt = await certDb.getAttempt(attemptId);
+      } else {
+        // Claude sometimes sends the module ID instead of the attempt UUID
+        const trackPrefix = attemptId.replace(/[0-9]+$/, '').toUpperCase();
+        attempt = await certDb.getActiveAttempt(userId, trackPrefix);
+        if (attempt && attempt.module_id?.toUpperCase() !== attemptId.toUpperCase()) {
+          attempt = null;
+        }
+      }
       if (!attempt) return 'Exam attempt not found.';
       if (attempt.workos_user_id !== userId) return 'This exam attempt belongs to a different user.';
       if (attempt.status !== 'in_progress') return 'This exam attempt is already completed.';
@@ -1908,7 +1920,10 @@ export function createCertificationToolHandlers(
       const allAboveThreshold = Object.values(scores).every(s => s >= 70);
       const passing = allAboveThreshold && overallScore >= 70;
 
-      await certDb.completeAttempt(attemptId, scores, overallScore, passing);
+      await certDb.completeAttempt(attempt.id, scores, overallScore, passing);
+
+      // --- From this point the attempt is recorded. Failures below must not ---
+      // --- surface as "Failed to record capstone results" to the learner.   ---
 
       const lines: string[] = [];
 
@@ -1918,8 +1933,12 @@ export function createCertificationToolHandlers(
         lines.push('Congratulate them warmly — they earned this. Do NOT share any scores or percentages.');
 
         // Mark the capstone module as completed
-        if (capstoneMod) {
-          await certDb.completeModule(userId, capstoneMod.id, scores);
+        try {
+          if (capstoneMod) {
+            await certDb.completeModule(userId, capstoneMod.id, scores);
+          }
+        } catch (modError) {
+          logger.error({ error: modError, userId, moduleId: capstoneMod?.id }, 'Failed to record module completion after attempt passed');
         }
 
         // Auto-award credentials (including specialist)

@@ -227,6 +227,8 @@ export interface ProcessMessageOptions {
   maxMessages?: number;
   /** Slack user ID — used for error notifications so admins know who was affected */
   slackUserId?: string;
+  /** Fallback display name for error notifications when slackUserId is unavailable (e.g. web chat) */
+  userDisplayName?: string;
   /** Thread ID — used for error notification links to admin view */
   threadId?: string;
 }
@@ -966,7 +968,7 @@ export class AddieClaudeClient {
                 result.includes('need to be logged in');
               if (looksLikeError) {
                 logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie: Tool returned error result');
-                notifyToolError({ toolName, errorMessage: result.substring(0, 500), slackUserId: options?.slackUserId, threadId: options?.threadId, threw: false });
+                notifyToolError({ toolName, errorMessage: result.substring(0, 500), toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: false });
               }
               toolResults.push({ tool_use_id: toolUseId, content: result });
               toolExecutions.push({
@@ -983,7 +985,7 @@ export class AddieClaudeClient {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw exception');
-            notifyToolError({ toolName, errorMessage, slackUserId: options?.slackUserId, threadId: options?.threadId, threw: true });
+            notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
             toolResults.push({
               tool_use_id: toolUseId,
               content: `Error: ${errorMessage}`,
@@ -1441,7 +1443,7 @@ export class AddieClaudeClient {
                   result.includes('need to be logged in');
                 if (looksLikeError) {
                   logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie Stream: Tool returned error result');
-                  notifyToolError({ toolName, errorMessage: result.substring(0, 500), slackUserId: options?.slackUserId, threadId: options?.threadId, threw: false });
+                  notifyToolError({ toolName, errorMessage: result.substring(0, 500), toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: false });
                 }
                 toolResults.push({ tool_use_id: toolUseId, content: result });
                 toolExecutions.push({
@@ -1460,7 +1462,7 @@ export class AddieClaudeClient {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
               const errorResult = `Error: ${errorMessage}`;
               logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool threw exception');
-              notifyToolError({ toolName, errorMessage, slackUserId: options?.slackUserId, threadId: options?.threadId, threw: true });
+              notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
               toolResults.push({
                 tool_use_id: toolUseId,
                 content: errorResult,

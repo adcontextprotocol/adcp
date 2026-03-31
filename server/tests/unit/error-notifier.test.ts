@@ -58,6 +58,24 @@ describe('error-notifier', () => {
       expect(text).toContain('<@U999>');
       expect(text).toContain('thread-abc');
     });
+
+    it('includes tool input and web user display name', async () => {
+      const name = uniqueName('tool_input');
+      notifyToolError({
+        toolName: name,
+        errorMessage: 'invalid input syntax for type uuid',
+        toolInput: { attempt_id: 'S1', scores: { mastery: 80 } },
+        userDisplayName: 'Bryan',
+        threadId: 'thread-xyz',
+        threw: true,
+      });
+
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
+
+      const text = mockSendChannelMessage.mock.calls[0][1].text;
+      expect(text).toContain('"attempt_id":"S1"');
+      expect(text).toContain('Bryan (web)');
+    });
   });
 
   describe('notifySystemError', () => {
