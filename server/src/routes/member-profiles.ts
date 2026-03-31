@@ -561,7 +561,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           logger.warn({ domain, pointerUrl }, 'Invalid URL in brand.json authoritative_location');
           return res.json({ domain, verified: false, variant: result.variant ?? null, reason: 'invalid_pointer_url' });
         }
-        if (parsedUrl.hostname === AAO_HOST &&
+        if (parsedUrl.protocol === 'https:' &&
+            parsedUrl.hostname === AAO_HOST &&
             parsedUrl.pathname === `/brands/${domain}/brand.json`) {
           const hosted = await brandDb.getHostedBrandByDomain(domain);
           if (!hosted) {
