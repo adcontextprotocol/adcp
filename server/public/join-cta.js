@@ -423,7 +423,7 @@ async function renderJoinCta(options = {}) {
     '20+ contributor seats — includes community access',
     'Unlimited community-only seats',
     'API access — registry, agent testing, sandbox',
-    'Convene councils — recruit stakeholders, set agendas, nominate co-chairs',
+    'Convene councils — recruit stakeholders, set the agenda',
     'Board eligible — voting rights',
     'First access to sponsorships, white papers, co-branded research'
   ];
