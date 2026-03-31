@@ -1258,7 +1258,7 @@ export function createEventsRouter(): {
 
       // Award community points + check badges (fire-and-forget)
       const communityDb = new CommunityDatabase();
-      communityDb.awardPoints(user.id, 'event_registered', 10, event.id, 'event').catch(err => {
+      communityDb.awardPoints(user.id, 'event_registered', 5, event.id, 'event').catch(err => {
         logger.error({ err, userId: user.id }, 'Failed to award event registration points');
       });
       communityDb.checkAndAwardBadges(user.id, 'event').catch(err => {

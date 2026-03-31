@@ -17,7 +17,7 @@ interface InferenceSignals {
   revenue_tier: string | null;
   working_groups: string[];
   insights: Array<{ attribute: string; value: string }>;
-  engagement_score: number | null;
+  community_points: number;
 }
 
 interface InferenceResult {
@@ -52,7 +52,10 @@ async function gatherSignals(orgId: string): Promise<InferenceSignals> {
       [orgId]
     ),
     pool.query(
-      `SELECT engagement_score FROM organizations WHERE workos_organization_id = $1`,
+      `SELECT COALESCE(SUM(cp.points), 0)::int as community_points
+       FROM community_points cp
+       JOIN organization_memberships om ON om.workos_user_id = cp.workos_user_id
+       WHERE om.workos_organization_id = $1`,
       [orgId]
     ),
   ]);
@@ -62,7 +65,7 @@ async function gatherSignals(orgId: string): Promise<InferenceSignals> {
     revenue_tier: orgResult.rows[0]?.revenue_tier ?? null,
     working_groups: wgResult.rows.map(r => r.slug),
     insights: knowledgeResult.rows,
-    engagement_score: engagementResult.rows[0]?.engagement_score ?? null,
+    community_points: engagementResult.rows[0]?.community_points ?? 0,
   };
 }
 
@@ -194,9 +197,9 @@ function scorePersona(signals: InferenceSignals): InferenceResult {
   }
 
   // Low engagement -> simple_starter
-  if (signals.engagement_score !== null && signals.engagement_score < 20) {
+  if (signals.community_points < 50) {
     scores.simple_starter.score += 3;
-    scores.simple_starter.reasons.push(`low engagement score: ${signals.engagement_score}`);
+    scores.simple_starter.reasons.push(`low engagement score: ${signals.community_points}`);
   }
 
   // Find the highest scoring persona

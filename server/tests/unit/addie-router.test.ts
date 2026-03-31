@@ -122,7 +122,7 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan).toBeNull();
     });
 
-    it('should return null for "show me engagement analytics"', () => {
+    it('should return null for "show me engagement analytics" (non-admin)', () => {
       const plan = router.quickMatch(
         makeCtx({ message: 'show me engagement analytics' }),
       );
@@ -132,6 +132,57 @@ describe('AddieRouter.quickMatch', () => {
     it('should return null for "send an invoice to test@example.com"', () => {
       const plan = router.quickMatch(
         makeCtx({ message: 'send an invoice to test@example.com' }),
+      );
+      expect(plan).toBeNull();
+    });
+  });
+
+  describe('admin engagement/analytics quick-match', () => {
+    it('should route "most engaged" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who are the most engaged members?', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['admin']);
+      }
+    });
+
+    it('should route "engagement scores" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'show me engagement scores', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "top contributors" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who are the top contributors?', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "outreach stats" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'outreach stats', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should NOT route engagement queries for non-admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'who are the most engaged members?' }),
+      );
+      expect(plan).toBeNull();
+    });
+
+    it('should NOT match bare "engagement" (too broad, could be protocol)', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'what is engagement in the protocol?', isAAOAdmin: true }),
       );
       expect(plan).toBeNull();
     });

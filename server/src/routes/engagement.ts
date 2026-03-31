@@ -66,17 +66,21 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
           aspiration_persona: string | null;
           persona_source: string | null;
           journey_stage: string | null;
-          engagement_score: number | null;
+          community_points: number | null;
           membership_tier: string | null;
           stripe_customer_id: string | null;
           member_count: string;
           created_at: Date;
         }>(
           `SELECT o.name, o.persona, o.aspiration_persona, o.persona_source,
-                  o.journey_stage, o.engagement_score, o.membership_tier,
+                  o.journey_stage, o.membership_tier,
                   o.stripe_customer_id, o.created_at,
                   (SELECT COUNT(*) FROM organization_memberships om
-                   WHERE om.workos_organization_id = o.workos_organization_id) as member_count
+                   WHERE om.workos_organization_id = o.workos_organization_id) as member_count,
+                  (SELECT COALESCE(SUM(cp.points), 0)::int
+                   FROM organization_memberships om
+                   JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+                   WHERE om.workos_organization_id = o.workos_organization_id) as community_points
            FROM organizations o WHERE o.workos_organization_id = $1`,
           [orgId]
         ).then(r => r.rows[0] ?? null).catch(err => {
@@ -156,7 +160,8 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
       res.json({
         organization_name: orgData?.name ?? null,
         journey_stage: orgData?.journey_stage ?? null,
-        engagement_score: orgData?.engagement_score ?? null,
+        community_points: orgData?.community_points ?? null,
+        engagement_score: orgData?.community_points ?? null, // backwards compat
         membership_tier: orgData?.membership_tier ?? null,
         has_billing: !!orgData?.stripe_customer_id,
         team_size: parseInt(orgData?.member_count ?? '0', 10),

@@ -648,6 +648,22 @@ export class AddieRouter {
       }
     }
 
+    // Admin engagement/analytics queries - route to admin tools
+    if (ctx.isAAOAdmin) {
+      const adminAnalyticsPattern =
+        /engagement\s+(score|users|members|ranking|top|analytics|stats)|most\s+engaged|top\s+contributors|lifecycle\s+stage|who\s+to\s+invite|engagement\s+analytics|outreach\s+stats|action\s+items/i;
+      if (adminAnalyticsPattern.test(text)) {
+        return {
+          action: 'respond',
+          tool_sets: ['admin'],
+          confidence: 'high',
+          reason: 'Admin engagement/analytics query',
+          decision_method: 'quick_match',
+          latency_ms: Date.now() - startTime,
+        };
+      }
+    }
+
     // No quick match - need full router
     return null;
   }

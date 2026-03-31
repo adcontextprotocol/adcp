@@ -4413,12 +4413,14 @@ export function createMemberToolHandlers(
       const [orgData, milestones, signals, recommendedGroups] = await Promise.all([
         query<{
           journey_stage: string | null;
-          engagement_score: number | null;
+          community_points: number | null;
           persona: string | null;
           persona_source: string | null;
           aspiration_persona: string | null;
         }>(
-          `SELECT journey_stage, engagement_score, persona, persona_source, aspiration_persona
+          `SELECT journey_stage,
+            (SELECT COALESCE(SUM(cp.points), 0)::int FROM organization_memberships om JOIN community_points cp ON cp.workos_user_id = om.workos_user_id WHERE om.workos_organization_id = $1) AS community_points,
+            persona, persona_source, aspiration_persona
            FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         ).then(r => r.rows[0] ?? null).catch(() => null),
@@ -4443,7 +4445,7 @@ export function createMemberToolHandlers(
       const result = {
         journey_stage: orgData?.journey_stage ?? null,
         next_stage: nextStage,
-        engagement_score: orgData?.engagement_score ?? null,
+        community_points: orgData?.community_points ?? null,
         persona: orgData?.persona ? PERSONA_LABELS[orgData.persona] ?? orgData.persona : null,
         persona_key: orgData?.persona ?? null,
         persona_source: orgData?.persona_source ?? null,

@@ -34,14 +34,15 @@ export function createAdminUsersRouter(): Router {
       const pool = getPool();
       const slackDb = new SlackDatabase();
       const wgDb = new WorkingGroupDatabase();
-      const { search, status, group, goal, lifecycle } = req.query;
+      const { search, status, group, goal, lifecycle, stage } = req.query;
       const searchTerm = typeof search === 'string' ? search.toLowerCase().trim() : '';
       const statusFilter = typeof status === 'string' ? status : '';
       const filterByGroup = typeof group === 'string' ? group : undefined;
       const filterByGoal = typeof goal === 'string' ? goal : undefined;
       const filterByLifecycle = typeof lifecycle === 'string' ? lifecycle : undefined;
+      const filterByStage = typeof stage === 'string' ? stage : undefined;
 
-      // Get all AAO users from local organization_memberships table with engagement data
+      // Get all AAO users from local organization_memberships table with community points
       const aaoUsersResult = await pool.query<{
         workos_user_id: string;
         email: string;
@@ -49,9 +50,10 @@ export function createAdminUsersRouter(): Router {
         last_name: string | null;
         org_id: string;
         org_name: string;
-        engagement_score: number | null;
-        excitement_score: number | null;
+        is_personal: boolean;
+        community_points: number;
         lifecycle_stage: string | null;
+        relationship_stage: string | null;
         goal_key: string | null;
         goal_name: string | null;
         last_activity_at: Date | null;
@@ -63,17 +65,24 @@ export function createAdminUsersRouter(): Router {
           om.last_name,
           om.workos_organization_id AS org_id,
           o.name AS org_name,
-          u.engagement_score,
-          u.excitement_score,
+          COALESCE(o.is_personal, false) AS is_personal,
+          COALESCE(cp.total_points, 0)::int AS community_points,
           u.lifecycle_stage,
+          pr.stage AS relationship_stage,
           uc.goal_key,
           uc.goal_name,
           GREATEST(sm.last_slack_activity_at, u.updated_at) as last_activity_at
         FROM organization_memberships om
         INNER JOIN organizations o ON om.workos_organization_id = o.workos_organization_id
         LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
+        LEFT JOIN person_relationships pr ON pr.workos_user_id = om.workos_user_id
         LEFT JOIN unified_contacts_with_goals uc ON uc.workos_user_id = om.workos_user_id
         LEFT JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
+        LEFT JOIN (
+          SELECT workos_user_id, SUM(points) AS total_points
+          FROM community_points
+          GROUP BY workos_user_id
+        ) cp ON cp.workos_user_id = om.workos_user_id
         ORDER BY om.workos_user_id, o.name
       `);
 
@@ -123,6 +132,7 @@ export function createAdminUsersRouter(): Router {
         name: string | null;
         org_id: string | null;
         org_name: string | null;
+        is_personal: boolean;
         slack_user_id: string | null;
         slack_email: string | null;
         slack_display_name: string | null;
@@ -136,9 +146,9 @@ export function createAdminUsersRouter(): Router {
           is_private: boolean;
         }>;
         // Engagement data
-        engagement_score: number | null;
-        excitement_score: number | null;
+        community_points: number;
         lifecycle_stage: string | null;
+        relationship_stage: string | null;
         goal_key: string | null;
         goal_name: string | null;
         last_activity_at: Date | null;
@@ -197,6 +207,9 @@ export function createAdminUsersRouter(): Router {
         // Apply lifecycle filter
         if (filterByLifecycle && user.lifecycle_stage !== filterByLifecycle) continue;
 
+        // Apply relationship stage filter
+        if (filterByStage && user.relationship_stage !== filterByStage) continue;
+
         // Apply search filter
         if (searchTerm) {
           const matches =
@@ -215,25 +228,37 @@ export function createAdminUsersRouter(): Router {
           name: fullName || user.email,
           org_id: user.org_id,
           org_name: user.org_name,
+          is_personal: user.is_personal,
           ...slackInfo,
           mapping_status: mappingStatus,
           mapping_source: slackMapping?.mapping_source || null,
           working_groups: workingGroups,
           // Engagement data
-          engagement_score: user.engagement_score,
-          excitement_score: user.excitement_score,
+          community_points: user.community_points,
           lifecycle_stage: user.lifecycle_stage,
+          relationship_stage: user.relationship_stage,
           goal_key: user.goal_key,
           goal_name: user.goal_name,
           last_activity_at: user.last_activity_at,
         });
       }
 
-      // Get Slack-only contacts from unified_contacts_with_goals for engagement data
+      // Get relationship stages for Slack-only users
+      const slackOnlyRelStagesResult = await pool.query<{
+        slack_user_id: string;
+        stage: string;
+      }>(`
+        SELECT slack_user_id, stage
+        FROM person_relationships
+        WHERE slack_user_id IS NOT NULL AND workos_user_id IS NULL
+      `);
+      const slackOnlyRelStages = new Map(
+        slackOnlyRelStagesResult.rows.map(r => [r.slack_user_id, r.stage])
+      );
+
+      // Get Slack-only contacts from unified_contacts_with_goals for goal/lifecycle data
       const slackOnlyContactsResult = await pool.query<{
         slack_user_id: string;
-        engagement_score: number | null;
-        excitement_score: number | null;
         lifecycle_stage: string | null;
         goal_key: string | null;
         goal_name: string | null;
@@ -241,8 +266,6 @@ export function createAdminUsersRouter(): Router {
       }>(`
         SELECT
           slack_user_id,
-          engagement_score,
-          excitement_score,
           lifecycle_stage,
           goal_key,
           goal_name,
@@ -282,6 +305,10 @@ export function createAdminUsersRouter(): Router {
         // Apply lifecycle filter
         if (filterByLifecycle && engagement?.lifecycle_stage !== filterByLifecycle) continue;
 
+        // Apply relationship stage filter
+        const relStage = slackOnlyRelStages.get(slackUser.slack_user_id) ?? null;
+        if (filterByStage && relStage !== filterByStage) continue;
+
         if (searchTerm) {
           const matches =
             (slackUser.slack_email?.toLowerCase().includes(searchTerm)) ||
@@ -296,6 +323,7 @@ export function createAdminUsersRouter(): Router {
           name: slackUser.slack_real_name || slackUser.slack_display_name || null,
           org_id: null,
           org_name: null,
+          is_personal: false,
           slack_user_id: slackUser.slack_user_id,
           slack_email: slackUser.slack_email,
           slack_display_name: slackUser.slack_display_name,
@@ -303,10 +331,10 @@ export function createAdminUsersRouter(): Router {
           mapping_status: isMappedIndividual ? 'mapped' : 'slack_only',
           mapping_source: isMappedIndividual ? slackUser.mapping_source : null,
           working_groups: [],
-          // Engagement data from unified contacts
-          engagement_score: engagement?.engagement_score ?? null,
-          excitement_score: engagement?.excitement_score ?? null,
+          // Engagement data — Slack-only users have no community_points (requires WorkOS account)
+          community_points: 0,
           lifecycle_stage: engagement?.lifecycle_stage ?? null,
+          relationship_stage: relStage,
           goal_key: engagement?.goal_key ?? null,
           goal_name: engagement?.goal_name ?? null,
           last_activity_at: engagement?.last_activity_at ?? null,
