@@ -1556,7 +1556,15 @@
           verifiedEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; brand.json verified</span>';
           document.getElementById('brand-pointer-callout').style.display = 'none';
         } else {
-          verifiedEl.innerHTML = '<span style="color: var(--color-text-muted);">No brand.json on domain yet &mdash; </span>' +
+          var msg;
+          if (!data.variant) {
+            msg = 'No brand.json on domain yet &mdash; ';
+          } else if (data.reason === 'no_hosted_brand') {
+            msg = 'brand.json found but no hosted brand on AAO yet &mdash; ';
+          } else {
+            msg = 'brand.json found but AAO pointer not verified &mdash; ';
+          }
+          verifiedEl.innerHTML = '<span style="color: var(--color-text-muted);">' + msg + '</span>' +
             '<button onclick="verifyBrandNow(\'' + escapeHtml(domain) + '\')" ' +
             'id="brand-verify-btn" style="background: none; border: none; color: var(--color-primary-600); cursor: pointer; font-size: var(--text-sm); padding: 0; text-decoration: underline;">Check now</button>';
         }

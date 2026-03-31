@@ -539,30 +539,46 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const brandManager = new BrandManager();
       const result = await brandManager.validateDomain(domain, { skipCache: true });
 
-      if (result.valid && result.variant === 'authoritative_location') {
-        const data = result.raw_data as { authoritative_location: string };
-        try {
-          const url = new URL(data.authoritative_location);
-          if (url.hostname === AAO_HOST &&
-              url.pathname === `/brands/${domain}/brand.json`) {
-            const hosted = await brandDb.getHostedBrandByDomain(domain);
-            if (!hosted) {
-              return res.json({ domain, verified: false, reason: 'no_hosted_brand' });
-            }
-            // Block if another org already holds a verified claim on this domain
-            if (hosted.domain_verified && hosted.workos_organization_id && hosted.workos_organization_id !== orgId) {
-              return res.status(403).json({ error: 'This domain is verified by another organization' });
-            }
-            // Proof of domain control: transfer ownership and mark verified
-            await brandDb.updateHostedBrand(hosted.id, {
-              domain_verified: true,
-              workos_organization_id: orgId,
-            });
-            return res.json({ domain, verified: true });
+      // Extract the AAO pointer URL from whichever location it appears
+      let pointerUrl: string | undefined;
+      if (result.valid && result.raw_data && typeof result.raw_data === 'object') {
+        const raw = result.raw_data as Record<string, unknown>;
+        if (result.variant === 'authoritative_location' && typeof raw.authoritative_location === 'string') {
+          pointerUrl = raw.authoritative_location;
+        } else if (typeof raw.adcp_member === 'object' && raw.adcp_member !== null) {
+          const member = raw.adcp_member as Record<string, unknown>;
+          if (typeof member.authoritative_location === 'string') {
+            pointerUrl = member.authoritative_location;
           }
-        } catch {
-          // Invalid URL in authoritative_location
         }
+      }
+
+      if (pointerUrl) {
+        let parsedUrl: URL;
+        try {
+          parsedUrl = new URL(pointerUrl);
+        } catch {
+          logger.warn({ domain, pointerUrl }, 'Invalid URL in brand.json authoritative_location');
+          return res.json({ domain, verified: false, variant: result.variant ?? null, reason: 'invalid_pointer_url' });
+        }
+        if (parsedUrl.hostname === AAO_HOST &&
+            parsedUrl.pathname === `/brands/${domain}/brand.json`) {
+          const hosted = await brandDb.getHostedBrandByDomain(domain);
+          if (!hosted) {
+            return res.json({ domain, verified: false, reason: 'no_hosted_brand' });
+          }
+          // Block if another org already holds a verified claim on this domain
+          if (hosted.domain_verified && hosted.workos_organization_id && hosted.workos_organization_id !== orgId) {
+            return res.status(403).json({ error: 'This domain is verified by another organization' });
+          }
+          // Proof of domain control: transfer ownership and mark verified
+          await brandDb.updateHostedBrand(hosted.id, {
+            domain_verified: true,
+            workos_organization_id: orgId,
+          });
+          return res.json({ domain, verified: true });
+        }
+        return res.json({ domain, verified: false, variant: result.variant ?? null, reason: 'pointer_mismatch' });
       }
 
       return res.json({ domain, verified: false, variant: result.variant ?? null });
