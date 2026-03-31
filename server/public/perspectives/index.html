@@ -533,7 +533,7 @@
       loadUserLikes();
 
       try {
-        const response = await fetch('/api/perspectives');
+        const response = await fetch('/api/perspectives?authored=true');
         if (!response.ok) {
           throw new Error('Failed to load perspectives');
         }
