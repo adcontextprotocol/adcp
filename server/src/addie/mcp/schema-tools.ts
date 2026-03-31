@@ -14,6 +14,7 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
+import { ToolError } from '../tool-error.js';
 
 // Schema base URLs for different versions
 const SCHEMA_BASE_URLS: Record<string, string> = {
@@ -301,7 +302,7 @@ export function createSchemaToolHandlers(): Map<
     const json = input.json;
     // Validate input is a non-null object
     if (!json || typeof json !== 'object' || Array.isArray(json)) {
-      return 'Error: json must be a non-null object, not an array or primitive value.';
+      throw new ToolError('json must be a non-null object, not an array or primitive value.');
     }
     const jsonObj = json as Record<string, unknown>;
     let schemaPath = input.schema_path as string | undefined;
@@ -346,10 +347,10 @@ ${errorList}
 **Tip:** Use \`get_schema\` to see the exact schema definition and understand what fields are expected.`;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return `Failed to validate: ${message}
+      throw new ToolError(`Failed to validate: ${message}
 
 Make sure the schema path is correct. Available schemas include:
-${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
+${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`);
     }
   });
 
@@ -410,12 +411,12 @@ ${displayJson}
 ${truncated ? '\n**Note:** Schema truncated. Use the `property` parameter to focus on specific sections.' : ''}`;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return `Failed to fetch schema: ${message}
+      throw new ToolError(`Failed to fetch schema: ${message}
 
 **Schema URL attempted:** ${schemaUrl}
 
 Available schemas include:
-${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
+${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`);
     }
   });
 
@@ -555,7 +556,7 @@ ${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
       return report;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return `Failed to compare schemas: ${message}`;
+      throw new ToolError(`Failed to compare schemas: ${message}`);
     }
   });
 

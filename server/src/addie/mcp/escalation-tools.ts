@@ -9,6 +9,7 @@
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { ToolError } from '../tool-error.js';
 import {
   createEscalation,
   markNotificationSent,
@@ -247,19 +248,19 @@ export function createEscalationToolHandlers(
   handlers.set('escalate_to_admin', async (input) => {
     // Validate required inputs
     if (typeof input.summary !== 'string' || !input.summary.trim()) {
-      return 'Error: summary is required and must be a non-empty string';
+      throw new ToolError('summary is required and must be a non-empty string');
     }
 
     const validCategories: EscalationCategory[] = [
       'capability_gap', 'needs_human_action', 'complex_request', 'sensitive_topic', 'other'
     ];
     if (!validCategories.includes(input.category as EscalationCategory)) {
-      return `Error: category must be one of: ${validCategories.join(', ')}`;
+      throw new ToolError(`category must be one of: ${validCategories.join(', ')}`);
     }
 
     const validPriorities: EscalationPriority[] = ['low', 'normal', 'high', 'urgent'];
     if (input.priority && !validPriorities.includes(input.priority as EscalationPriority)) {
-      return `Error: priority must be one of: ${validPriorities.join(', ')}`;
+      throw new ToolError(`priority must be one of: ${validPriorities.join(', ')}`);
     }
 
     const summary = input.summary as string;
@@ -272,12 +273,12 @@ export function createEscalationToolHandlers(
 
     // Validate email format if provided
     if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
-      return 'Error: user_email does not look like a valid email address. Please ask the user to confirm their email.';
+      throw new ToolError('user_email does not look like a valid email address. Please ask the user to confirm their email.');
     }
 
     // Ensure we have some way to contact the user
     if (!userEmail && !userSlackHandle && !memberContext?.workos_user?.email && !slackUserId) {
-      return 'Error: Please collect an email address or Slack handle from the user before escalating. The team needs a way to follow up.';
+      throw new ToolError('Please collect an email address or Slack handle from the user before escalating. The team needs a way to follow up.');
     }
 
     // Get display name from slack_user or workos_user
@@ -422,10 +423,10 @@ export function createEscalationToolHandlers(
   handlers.set('capture_learning', async (input) => {
     // Validate required inputs
     if (typeof input.topic !== 'string' || !input.topic.trim()) {
-      return 'Error: topic is required and must be a non-empty string';
+      throw new ToolError('topic is required and must be a non-empty string');
     }
     if (typeof input.summary !== 'string' || !input.summary.trim()) {
-      return 'Error: summary is required and must be a non-empty string';
+      throw new ToolError('summary is required and must be a non-empty string');
     }
 
     const topic = input.topic as string;

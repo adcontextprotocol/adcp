@@ -14,6 +14,7 @@
  */
 
 import { createLogger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -7921,7 +7922,7 @@ Use add_committee_leader to assign a leader.`;
       return `${items.length} ${status} action items:\n\n${summary}`;
     } catch (error) {
       logger.error({ error }, 'Error fetching action items');
-      return `Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
