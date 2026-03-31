@@ -184,20 +184,28 @@ export function inferMembershipTier(
 
 /**
  * Count current seat usage by type for an organization.
+ * A member is a contributor if any of:
+ *   - admin assigned seat_type = 'contributor'
+ *   - they have a mapped Slack account
+ *   - they are an active member of a working group
  */
 export async function getSeatUsage(orgId: string): Promise<{ contributor: number; community_only: number }> {
   const pool = getPool();
-  const result = await pool.query<{ seat_type: string; count: string }>(
-    `SELECT seat_type, COUNT(*) as count FROM organization_memberships
-     WHERE workos_organization_id = $1 GROUP BY seat_type`,
+  const result = await pool.query<{ total: string; contributor: string }>(
+    `SELECT
+       COUNT(*) as total,
+       COUNT(*) FILTER (WHERE
+         om.seat_type = 'contributor'
+         OR EXISTS (SELECT 1 FROM slack_user_mappings sm WHERE sm.workos_user_id = om.workos_user_id AND sm.mapping_status = 'mapped')
+         OR EXISTS (SELECT 1 FROM working_group_memberships wgm WHERE wgm.workos_user_id = om.workos_user_id AND wgm.status = 'active')
+       ) as contributor
+     FROM organization_memberships om
+     WHERE om.workos_organization_id = $1`,
     [orgId]
   );
-  const usage = { contributor: 0, community_only: 0 };
-  for (const row of result.rows) {
-    if (row.seat_type === 'contributor') usage.contributor = parseInt(row.count, 10);
-    if (row.seat_type === 'community_only') usage.community_only = parseInt(row.count, 10);
-  }
-  return usage;
+  const total = parseInt(result.rows[0]?.total ?? '0', 10);
+  const contributor = parseInt(result.rows[0]?.contributor ?? '0', 10);
+  return { contributor, community_only: total - contributor };
 }
 
 /**
@@ -229,20 +237,38 @@ export async function canAddSeat(
     const tier = resolveMembershipTier(org);
     const limits = getSeatLimits(tier);
 
-    // Count active members + pending invitations as used seats
-    const usageResult = await client.query<{ seat_type: string; count: string }>(
-      `SELECT seat_type, COUNT(*) as count FROM (
-        SELECT seat_type FROM organization_memberships WHERE workos_organization_id = $1
-        UNION ALL
-        SELECT seat_type FROM invitation_seat_types WHERE workos_organization_id = $1
-      ) combined GROUP BY seat_type`,
+    // Count active members (contributor = admin-assigned OR Slack-mapped OR in working group)
+    const memberResult = await client.query<{ total: string; contributor: string }>(
+      `SELECT
+         COUNT(*) as total,
+         COUNT(*) FILTER (WHERE
+           om.seat_type = 'contributor'
+           OR EXISTS (SELECT 1 FROM slack_user_mappings sm WHERE sm.workos_user_id = om.workos_user_id AND sm.mapping_status = 'mapped')
+           OR EXISTS (SELECT 1 FROM working_group_memberships wgm WHERE wgm.workos_user_id = om.workos_user_id AND wgm.status = 'active')
+         ) as contributor
+       FROM organization_memberships om
+       WHERE om.workos_organization_id = $1`,
       [orgId]
     );
-    const usage = { contributor: 0, community_only: 0 };
-    for (const row of usageResult.rows) {
-      if (row.seat_type === 'contributor') usage.contributor = parseInt(row.count, 10);
-      if (row.seat_type === 'community_only') usage.community_only = parseInt(row.count, 10);
+    const total = parseInt(memberResult.rows[0]?.total ?? '0', 10);
+    const contributors = parseInt(memberResult.rows[0]?.contributor ?? '0', 10);
+
+    // Pending invitations also reserve seats
+    const pendingResult = await client.query<{ seat_type: string; count: string }>(
+      `SELECT seat_type, COUNT(*) as count FROM invitation_seat_types WHERE workos_organization_id = $1 GROUP BY seat_type`,
+      [orgId]
+    );
+    let pendingContributors = 0;
+    let pendingCommunity = 0;
+    for (const row of pendingResult.rows) {
+      if (row.seat_type === 'contributor') pendingContributors = parseInt(row.count, 10);
+      if (row.seat_type === 'community_only') pendingCommunity = parseInt(row.count, 10);
     }
+
+    const usage = {
+      contributor: contributors + pendingContributors,
+      community_only: (total - contributors) + pendingCommunity,
+    };
 
     await client.query('COMMIT');
 
@@ -262,19 +288,24 @@ export async function canAddSeat(
 }
 
 /**
- * Get a user's seat type from their primary organization membership.
+ * Get a user's effective seat type. A user is a contributor if any of:
+ *   - admin assigned seat_type = 'contributor'
+ *   - they have a mapped Slack account
+ *   - they are an active member of a working group
  */
 export async function getUserSeatType(userId: string): Promise<SeatType | null> {
   const pool = getPool();
-  const result = await pool.query<{ seat_type: SeatType }>(
-    `SELECT om.seat_type FROM organization_memberships om
-     JOIN users u ON u.primary_organization_id = om.workos_organization_id
-       AND u.workos_user_id = om.workos_user_id
-     WHERE om.workos_user_id = $1
-     LIMIT 1`,
+  const result = await pool.query<{ is_contributor: boolean }>(
+    `SELECT (
+       EXISTS (SELECT 1 FROM organization_memberships WHERE workos_user_id = $1 AND seat_type = 'contributor')
+       OR EXISTS (SELECT 1 FROM slack_user_mappings WHERE workos_user_id = $1 AND mapping_status = 'mapped')
+       OR EXISTS (SELECT 1 FROM working_group_memberships WHERE workos_user_id = $1 AND status = 'active')
+     ) as is_contributor
+     FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
     [userId]
   );
-  return result.rows[0]?.seat_type ?? null;
+  if (result.rows.length === 0) return null;
+  return result.rows[0]?.is_contributor ? 'contributor' : 'community_only';
 }
 
 export class OrganizationDatabase {

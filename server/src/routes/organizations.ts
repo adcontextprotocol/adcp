@@ -2108,7 +2108,7 @@ export function createOrganizationsRouter(): Router {
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: mappedWorkosUserIds.has(membership.userId),
-              seat_type: seatTypeMap.get(membership.userId) || 'contributor',
+              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
             };
           } catch (error) {
             // User might have been deleted
@@ -2123,7 +2123,7 @@ export function createOrganizationsRouter(): Router {
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: false,
-              seat_type: seatTypeMap.get(membership.userId) || 'contributor',
+              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
             };
           }
         })
@@ -2150,7 +2150,7 @@ export function createOrganizationsRouter(): Router {
           expires_at: inv.expiresAt,
           created_at: inv.createdAt,
           inviter_user_id: inv.inviterUserId,
-          seat_type: invSeatMap.get(inv.email.toLowerCase()) || 'contributor',
+          seat_type: invSeatMap.get(inv.email.toLowerCase()) || 'community_only',
         }));
 
       // Include seat usage and limits only for admins/owners
@@ -2184,7 +2184,7 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
       const { email, role, seat_type: requestedSeatType } = req.body;
-      const seatType = requestedSeatType === 'community_only' ? 'community_only' : 'contributor';
+      const seatType = requestedSeatType === 'contributor' ? 'contributor' : 'community_only';
 
       if (!email) {
         return res.status(400).json({
@@ -2421,7 +2421,7 @@ export function createOrganizationsRouter(): Router {
         'DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1 RETURNING seat_type',
         [invitationId]
       );
-      const preservedSeatType = oldSeatResult.rows[0]?.seat_type || 'contributor';
+      const preservedSeatType = oldSeatResult.rows[0]?.seat_type || 'community_only';
 
       // Revoke the old invitation and send a new one
       await workos!.userManagement.revokeInvitation(invitationId);
@@ -2576,7 +2576,7 @@ export function createOrganizationsRouter(): Router {
           'SELECT seat_type FROM organization_memberships WHERE workos_organization_id = $1 AND workos_user_id = $2',
           [orgId, membership.userId]
         );
-        const oldSeatType = oldResult.rows[0]?.seat_type || 'contributor';
+        const oldSeatType = oldResult.rows[0]?.seat_type || 'community_only';
 
         await getPool().query(
           `UPDATE organization_memberships SET seat_type = $1, updated_at = NOW()
