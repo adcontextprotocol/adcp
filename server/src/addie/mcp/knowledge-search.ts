@@ -505,6 +505,10 @@ export function createKnowledgeToolHandlers(slackUserId?: string): Map<
     }).catch(err => logger.warn({ err }, 'Failed to log search'));
 
     if (results.length === 0) {
+      logger.warn(
+        { query, category, indexReady: isDocsIndexReady(), docCount: getDocCount() },
+        'Addie search_docs: zero results'
+      );
       return `No documentation found for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry using web_search for external sources or search_slack for community discussions.`;
     }
 
