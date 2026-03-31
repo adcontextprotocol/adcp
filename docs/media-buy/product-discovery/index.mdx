@@ -67,6 +67,9 @@ Understand the complete product structure in [Media Products](/docs/media-buy/pr
 ### Catalog-driven discovery
 For catalog-driven campaigns (retail media, job boards, travel), pass a `catalog` on `get_products` to find products that match your catalog items. Products declare which catalog types they support via `catalog_types`, and the response includes `catalog_match` with matched item counts. See [Catalogs](/docs/creative/catalogs#catalogs-in-the-media-buy-lifecycle).
 
+### Property Governance Filtering
+For compliance-filtered discovery, pass a `property_list` on `get_products` to restrict results to properties that meet governance requirements (COPPA certification, sustainability scores, brand safety ratings). Property lists are created via a [property governance agent](/docs/governance/property/index). See [`get_products` — Property Governance](/docs/media-buy/task-reference/get_products#request-parameters) for details.
+
 ### Format Discovery Integration
 Product discovery works hand-in-hand with creative planning:
 

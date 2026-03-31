@@ -1260,6 +1260,14 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 - Orchestrators MUST handle pending states as part of normal workflow
 - **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
 
+## Content Standards
+
+When a media buy includes content standards (via the `governance.content_standards` field on `get_products` responses or the media buy request), the buyer is requesting brand suitability enforcement during delivery.
+
+<Note>
+Content standards are created by calling [`create_content_standards`](/docs/governance/content-standards/tasks/create_content_standards) on a verification agent (e.g., IAS, DoubleVerify). Standards MUST be [calibrated](/docs/governance/content-standards/tasks/calibrate_content) with each seller before use in production to ensure the seller's local evaluation model aligns with the verification agent's interpretation. See the [Content Standards overview](/docs/governance/content-standards/index) for the full setup workflow: create → calibrate → activate → validate.
+</Note>
+
 ## Policy Compliance
 
 Brand and products are validated during creation. Policy violations return errors:

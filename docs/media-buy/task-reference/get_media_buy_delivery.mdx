@@ -740,6 +740,26 @@ Use `by_package` breakdowns to identify best-performing inventory. Check both `p
 **6. Track Status Changes**
 Use multi-status queries to understand why campaigns were paused or completed.
 
+## Post-Delivery Governance Validation
+
+Delivery reporting is not the final step. When campaign governance is active, delivery data feeds into governance validation to detect unauthorized supply paths, geo drift, and pacing violations.
+
+The governance feedback loop:
+
+1. Pull delivery data via `get_media_buy_delivery`
+2. Report outcomes to the governance agent via [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome)
+3. The governance agent compares actual delivery against planned parameters (drift detection)
+4. Validate property delivery via [`validate_property_delivery`](/docs/governance/property/tasks/validate_property_delivery) to catch unauthorized supply paths
+
+| Governance task | Purpose |
+|----------------|---------|
+| [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) | Feed delivery data to the governance agent for budget tracking and drift detection |
+| [`validate_property_delivery`](/docs/governance/property/tasks/validate_property_delivery) | Validate delivery records against property lists — catches ads running on unauthorized properties |
+| [`validate_content_delivery`](/docs/governance/content-standards/tasks/validate_content_delivery) | Validate content artifacts against brand suitability standards |
+| [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) | View the full plan state and audit trail |
+
+Without this feedback loop, delivery data is reported but never validated. Budget overruns, pacing divergence, geo drift, and unauthorized supply paths go undetected.
+
 ## Next Steps
 
 After retrieving delivery data:

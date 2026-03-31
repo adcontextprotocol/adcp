@@ -33,7 +33,7 @@ The data flows in advance. The decision still happens in real time — but the d
 | DSP selects ad remotely | Platform LLM generates ad with full context |
 | Audience segments and geo targeting | Conversational relevance and keyword intent |
 | Impressions, clicks, CTR | Engagements, clicks, cost per click |
-| Brand safety blocklists | Content standards enforced at generation time |
+| Brand safety blocklists | [Content standards](/docs/governance/content-standards/index) enforced at generation time |
 
 </Accordion>
 
@@ -85,7 +85,11 @@ await novamind.syncEventSources({
 });
 ```
 
-Priya also publishes [`brand.json`](/docs/brand-protocol/brand-json) at `ridgelinegear.com/.well-known/brand.json` — voice, colors, visual guidelines that the platform reads when generating ads. And she sets [governance policies](/docs/governance/overview) as content standards the platform enforces at decision time.
+Priya also publishes [`brand.json`](/docs/brand-protocol/brand-json) at `ridgelinegear.com/.well-known/brand.json` — voice, colors, visual guidelines that the platform reads when generating ads. And she sets [content standards](/docs/governance/content-standards/index) that the platform enforces at decision time.
+
+<Note>
+**SI governance integration is planned.** Full protocol-level governance for Sponsored Intelligence — campaign registration via `sync_plans`, session-lifecycle checks via `check_governance`, content standards for AI-generated content, and property governance for AI assistant placements — is under development. See the [Governance overview](/docs/governance/overview#sponsored-intelligence-planned) for current status. Today, SI platforms enforce governance at the application layer using content standards and brand identity.
+</Note>
 
 Together, these ingredients **are** the ad. Product catalogs feed creative generation. Conversion events close the optimization loop. Brand identity ensures the output sounds right. Content standards ensure it stays safe.
 
@@ -161,7 +165,7 @@ NovaMind's LLM has Ridgeline's product catalog, knows the Trail Pro 3000 matches
 >
 > *Sponsored by Ridgeline Gear* · [Talk to Ridgeline →]
 
-Every detail comes from the catalog Priya synced — the price, the features, the ratings. The voice matches `brand.json`. The content standards Priya set ensure the platform won't make unsupported claims. The user sees a relevant, helpful recommendation, clearly labeled as sponsored.
+Every detail comes from the catalog Priya synced — the price, the features, the ratings. The voice matches `brand.json`. The [content standards](/docs/governance/content-standards/index) Priya set ensure the platform won't make unsupported claims. The user sees a relevant, helpful recommendation, clearly labeled as sponsored.
 
 If the user taps "Talk to Ridgeline," NovaMind hands off to Ridgeline's brand agent via [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) — a multi-turn conversation where the user can ask about sizing, compare models, and start a purchase. All within the AI experience.
 

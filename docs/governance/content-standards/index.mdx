@@ -89,6 +89,10 @@ sequenceDiagram
     Verifier-->>Buyer: Validation results
 ```
 
+<Warning>
+**Calibration is required before production use.** Content standards created via `create_content_standards` define what to evaluate, but calibration via [`calibrate_content`](/docs/governance/content-standards/tasks/calibrate_content) aligns the seller's local model with the verification agent's interpretation. Without calibration, the seller's local model produces uncalibrated evaluations — policy violations may go undetected or safe content may be incorrectly blocked. Always calibrate before activating a media buy with content standards.
+</Warning>
+
 **Key insight**: Runtime decisioning happens locally at the seller (for scale). Buyers pull content samples from sellers and validate against the verification agent.
 
 ## Adjacency

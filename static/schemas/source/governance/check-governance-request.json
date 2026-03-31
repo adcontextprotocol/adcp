@@ -2,33 +2,25 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/check-governance-request.json",
   "title": "Check Governance Request",
-  "description": "Universal governance check for campaign actions. Called by the orchestrator before sending to a seller (proposed) or by the seller before executing (committed). The governance agent evaluates the action against the campaign plan and returns a status.",
+  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload (intent check, orchestrator) or media_buy_id+planned_delivery (execution check, seller).",
   "type": "object",
   "properties": {
     "plan_id": {
       "type": "string",
       "description": "Campaign governance plan identifier."
     },
-    "binding": {
-      "type": "string",
-      "enum": [
-        "proposed",
-        "committed"
-      ],
-      "description": "Whether this is an advisory check or a binding commitment. 'proposed': the orchestrator is checking before sending to a seller \u2014 no budget is committed. 'committed': the seller is about to execute \u2014 the governance agent validates the planned delivery against the plan. Budget is committed later via report_plan_outcome, not on approval."
-    },
     "caller": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the agent making the request (orchestrator for proposed, seller for committed)."
+      "description": "URL of the agent making the request."
     },
     "tool": {
       "type": "string",
-      "description": "The AdCP tool being checked (e.g., 'create_media_buy', 'get_products'). Expected for proposed checks. The governance agent uses this to apply tool-specific validation rules."
+      "description": "The AdCP tool being checked (e.g., 'create_media_buy', 'get_products'). Present on intent checks (orchestrator). The governance agent uses the presence of tool+payload to identify an intent check."
     },
     "payload": {
       "type": "object",
-      "description": "The full tool arguments as they would be sent to the seller. Expected for proposed checks. The governance agent can inspect any field to validate against the plan.",
+      "description": "The full tool arguments as they would be sent to the seller. Present on intent checks. The governance agent can inspect any field to validate against the plan.",
       "additionalProperties": true
     },
     "governance_context": {
@@ -40,7 +32,7 @@
     },
     "media_buy_id": {
       "type": "string",
-      "description": "The seller's identifier for the media buy. Expected for committed checks."
+      "description": "The seller's identifier for the media buy. Present on execution checks (seller). The governance agent uses the presence of media_buy_id+planned_delivery to identify an execution check."
     },
     "phase": {
       "$ref": "/schemas/enums/governance-phase.json",
@@ -49,7 +41,7 @@
     },
     "planned_delivery": {
       "$ref": "/schemas/core/planned-delivery.json",
-      "description": "What the seller will actually deliver. For committed checks, this is the seller's interpreted delivery parameters. For proposed checks, the orchestrator may include this if it has computed delivery expectations."
+      "description": "What the seller will actually deliver. Present on execution checks."
     },
     "delivery_metrics": {
       "type": "object",
@@ -178,7 +170,6 @@
   },
   "required": [
     "plan_id",
-    "binding",
     "caller"
   ],
   "additionalProperties": false

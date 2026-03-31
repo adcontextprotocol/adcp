@@ -6,6 +6,35 @@ description: "adagents.json is the publisher-hosted file in AdCP that declares a
 
 The `adagents.json` file provides a standardized way for publishers to declare their properties and authorize sales agents. This is the foundation of Property Governance - it defines what properties exist and who can sell them.
 
+### Unified declaration model
+
+`adagents.json` serves as the declaration mechanism for both **property authorization** and **signal data provider** registration. A single file at `/.well-known/adagents.json` can declare both `properties` and `signals` top-level fields simultaneously.
+
+```json
+{
+  "version": "1.0",
+  "properties": [
+    {
+      "domain": "publisher.example.com",
+      "agents": [
+        { "agent_url": "https://ads.publisher.example.com", "relationship": "direct" }
+      ]
+    }
+  ],
+  "signals": [
+    {
+      "catalog_url": "https://signals.publisher.example.com/catalog.json",
+      "relationship": "direct",
+      "description": "First-party audience signals from publisher.example.com"
+    }
+  ]
+}
+```
+
+This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares signal catalogs (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
+
+See [Signal data providers](/docs/signals/data-providers) for the signals-side documentation.
+
 <Tip>
 **[AdAgents.json Builder](https://agenticadvertising.org/adagents/builder)** - Validate existing files or create new ones with guided validation
 </Tip>

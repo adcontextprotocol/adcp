@@ -419,6 +419,26 @@ function handlePartialSuccess(response) {
 }
 ```
 
+## Governance Error Patterns
+
+[`check_governance`](/docs/governance/campaign/tasks/check_governance) returns a `status` field rather than an error object. Governance results are not errors in the protocol sense — they are decisions. Handle them separately from AdCP task errors.
+
+| Governance status | Meaning | Action |
+|-------------------|---------|--------|
+| `approved` | Plan passes governance | Proceed |
+| `conditions` | Approved with constraints | Apply conditions, re-check |
+| `denied` | Plan violates governance | Block the operation |
+
+If the governance agent needs human review internally (e.g., the action exceeds the agent's authority), `check_governance` behaves like any async task — it returns `submitted`/`working` status and eventually resolves to `approved` or `denied`. Handle this with the standard [async task lifecycle](/docs/building/implementation/task-lifecycle), not special-case logic.
+
+Governance errors from the protocol layer (as opposed to governance decisions) use the standard error format. The most common:
+
+| Code | Recovery | When it occurs |
+|------|----------|----------------|
+| `PLAN_NOT_FOUND` | correctable | `sync_plans` was not called before `check_governance` |
+| `INVALID_REQUEST` | correctable | Missing required fields (e.g., `plan_id`, `caller`) |
+| `AUTH_REQUIRED` | correctable | Governance agent requires authentication |
+
 ## Best Practices
 
 1. **Check `recovery` first** — it's the most reliable signal for how to handle an error

@@ -194,6 +194,62 @@ When a buyer includes a `content_standards_ref` in a `get_products` or `create_m
 
 If you cannot meaningfully enforce a buyer's content standards, reject the buy rather than accepting it and failing silently. See the [content standards implementation guide](/docs/governance/content-standards/implementation-guide) for the full sales agent workflow.
 
+### Execution checks
+
+When a buyer's account has governance agents configured (via [`sync_governance`](/docs/accounts/tasks/sync_governance)), the seller MUST call [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `media_buy_id` and `planned_delivery` before confirming a media buy. This is a binding validation — the governance agent verifies the seller's planned delivery against the buyer's campaign plan.
+
+```javascript
+// Before confirming create_media_buy
+const check = await governanceAgent.checkGovernance({
+  plan_id: mediaBuy.plan_id,  // from the create_media_buy request
+  caller: "https://seller.example.com",
+  governance_context: mediaBuy.governance_context,  // opaque — pass through, do not parse
+  media_buy_id: mediaBuy.media_buy_id,
+  phase: "purchase",
+  planned_delivery: {
+    geo: { countries: ["US"] },
+    channels: ["olv"],
+    start_time: mediaBuy.start_time,
+    end_time: mediaBuy.end_time,
+    total_budget: mediaBuy.total_budget.amount,
+    currency: mediaBuy.total_budget.currency
+  }
+});
+
+if (check.status === "denied") {
+  // Committed checks are always binding — do not confirm the media buy
+  return { error: "GOVERNANCE_DENIED", detail: check.explanation };
+}
+
+if (check.status === "conditions" && retries < 3) {
+  // Conditions restrict what the seller can deliver — e.g., narrower geo,
+  // blocked channels, reduced frequency. The seller adjusts their own
+  // delivery parameters (not the buyer's budget) and re-calls check_governance.
+  // If the seller cannot satisfy the conditions, reject the media buy.
+  const adjusted = applyConditions(plannedDelivery, check.conditions);
+  if (!adjusted) {
+    return { error: "GOVERNANCE_CONDITIONS_UNSATISFIABLE", detail: check.conditions };
+  }
+  // Re-check with adjusted delivery (governance agents SHOULD deny after 3 re-calls)
+  return await checkGovernanceWithRetry(request, adjusted, retries + 1);
+}
+if (check.status === "conditions") {
+  return { error: "GOVERNANCE_CONDITIONS_RETRY_LIMIT", detail: check.conditions };
+}
+
+// check.status === "approved" — proceed with confirmation
+```
+
+Execution checks cover three phases of the media buy lifecycle:
+
+| Phase | When to call | What's checked |
+|-------|-------------|----------------|
+| `purchase` | Before confirming `create_media_buy` | Budget, geo, channels, flight dates, policies |
+| `modification` | Before confirming [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Change magnitude, reallocation, new parameters |
+| `delivery` | Periodically during delivery | Pacing, spend rate, geo drift, channel distribution |
+
+Sellers can adopt execution checks incrementally — start with purchase-only (one call per `create_media_buy`), then add modification and delivery checks. See [`check_governance`](/docs/governance/campaign/tasks/check_governance) for the full specification.
+
 ### Campaign governance context
 
 When a buyer includes `governance_context` in the protocol envelope of a `create_media_buy` request, store it alongside the media buy. This is an opaque value — you don't interpret it, you just persist and forward it.
