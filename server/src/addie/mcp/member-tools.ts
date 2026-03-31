@@ -1620,7 +1620,7 @@ export function createMemberToolHandlers(
     let response = `## Company Listing\n\n`;
     response += `**Name:** ${listing.display_name}\n`;
     response += `**Directory URL:** https://agenticadvertising.org/members/${listing.slug}\n`;
-    response += `**Visibility:** ${listing.is_public ? 'Public' : 'Hidden'}\n\n`;
+    response += `**Visibility:** ${listing.is_public ? 'Public — visible in the member directory' : 'Hidden — not yet published. Publish from the dashboard to appear in the member directory.'}\n\n`;
 
     if (listing.tagline) response += `**Tagline:** ${listing.tagline}\n`;
     if (listing.headquarters) response += `**Headquarters:** ${listing.headquarters}\n`;

@@ -1849,6 +1849,7 @@ export function createAdminToolHandlers(
       const lifecycleStage = computePipelineStage(org);
 
       // Gather all the data in parallel
+      const memberDb = new MemberDatabase();
       const [
         slackUsersResult,
         slackOnlyUsersResult,
@@ -1859,6 +1860,7 @@ export function createAdminToolHandlers(
         pendingInvoicesResult,
         subscriptionHistoryResult,
         stakeholdersResult,
+        memberProfile,
       ] = await Promise.all([
         // Slack users count for this org (mapped members)
         pool.query(
@@ -1931,6 +1933,11 @@ export function createAdminToolHandlers(
            ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at`,
           [orgId]
         ),
+        // Member directory profile
+        memberDb.getProfileByOrgId(orgId).catch(error => {
+          logger.warn({ error, orgId }, 'Failed to get member profile for account lookup');
+          return null;
+        }),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
@@ -2054,6 +2061,27 @@ export function createAdminToolHandlers(
         // Show pending invoices for prospects in negotiating stage too
         response += renderPendingInvoiceSection(pendingInvoices);
         response += '\n';
+      }
+
+      // Directory listing
+      if (memberProfile) {
+        response += `### Directory Listing\n`;
+        response += `**Status:** ${memberProfile.is_public ? 'Published' : 'Draft (not published)'}\n`;
+        if (memberProfile.display_name) response += `**Display Name:** ${memberProfile.display_name}\n`;
+        if (memberProfile.slug) {
+          response += memberProfile.is_public
+            ? `**Live URL:** https://agenticadvertising.org/members/${memberProfile.slug}\n`
+            : `**Slug:** ${memberProfile.slug} (will be at /members/${memberProfile.slug} once published)\n`;
+        }
+        if (!memberProfile.is_public && org.subscription_status === 'active') {
+          response += `_Profile is ready to publish — member has an active subscription but hasn't clicked Publish on the dashboard._\n`;
+        } else if (!memberProfile.is_public && org.subscription_status !== 'active') {
+          response += `_Profile cannot be published without an active subscription._\n`;
+        }
+        response += '\n';
+      } else if (lifecycleStage === 'member') {
+        response += `### Directory Listing\n`;
+        response += `_No directory profile created yet._\n\n`;
       }
 
       // Slack presence
