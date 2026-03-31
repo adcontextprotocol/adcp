@@ -205,11 +205,9 @@ async function readGoogleDoc(
     );
 
     if (!metadataResponse.ok) {
-      if (metadataResponse.status === 404) {
-        return `Error: Document not found. The document may have been deleted or the link is incorrect.`;
-      }
-      if (metadataResponse.status === 403) {
-        return `I don't have access to this Google Doc. Please share it with ${ADDIE_EMAIL} and let me know when you've done that.`;
+      if (metadataResponse.status === 404 || metadataResponse.status === 403) {
+        logger.warn({ status: metadataResponse.status, docId }, 'Google Docs: document inaccessible');
+        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await metadataResponse.text();
       logger.error({ error, status: metadataResponse.status, docId }, 'Google Docs: Failed to get metadata');
@@ -274,8 +272,9 @@ async function readGoogleDoc(
     );
 
     if (!exportResponse.ok) {
-      if (exportResponse.status === 403) {
-        return `I don't have access to export this document. Please share it with ${ADDIE_EMAIL} with at least "Viewer" permissions.`;
+      if (exportResponse.status === 404 || exportResponse.status === 403) {
+        logger.warn({ status: exportResponse.status, docId }, 'Google Docs: export inaccessible');
+        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await exportResponse.text();
       logger.error({ error, status: exportResponse.status, docId }, 'Google Docs: Failed to export');
