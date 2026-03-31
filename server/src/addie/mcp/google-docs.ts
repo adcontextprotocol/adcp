@@ -205,11 +205,8 @@ async function readGoogleDoc(
     );
 
     if (!metadataResponse.ok) {
-      if (metadataResponse.status === 404) {
-        return `Error: Document not found. The document may have been deleted or the link is incorrect.`;
-      }
-      if (metadataResponse.status === 403) {
-        return `I don't have access to this Google Doc. Please share it with ${ADDIE_EMAIL} and let me know when you've done that.`;
+      if (metadataResponse.status === 404 || metadataResponse.status === 403) {
+        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await metadataResponse.text();
       logger.error({ error, status: metadataResponse.status, docId }, 'Google Docs: Failed to get metadata');
