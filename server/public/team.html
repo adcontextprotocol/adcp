@@ -452,6 +452,25 @@
         </table>
       </div>
 
+      <div id="seatRequestsCard" class="card" style="display: none;">
+        <h2>Seat Upgrade Requests</h2>
+        <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">
+          Team members requesting contributor access.
+        </p>
+        <table class="members-table">
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Resource</th>
+              <th>Requested</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="seatRequestsTableBody">
+          </tbody>
+        </table>
+      </div>
+
       <div class="card" id="domainsCard">
         <h2>Verified Domains</h2>
         <div id="domainsContent">
@@ -638,11 +657,13 @@
           document.getElementById('invitationsCard').style.display = 'none';
         }
 
-        // Load join requests (only for admins/owners)
+        // Load join requests and seat requests (only for admins/owners)
         if (canManage) {
           await loadJoinRequests(orgId);
+          await loadSeatRequests(orgId);
         } else {
           document.getElementById('joinRequestsCard').style.display = 'none';
+          document.getElementById('seatRequestsCard').style.display = 'none';
         }
 
         // Load verified domains
@@ -654,11 +675,49 @@
         } else {
           document.getElementById('domainUsersCard').style.display = 'none';
         }
+
+        // Handle deep-link actions (e.g. ?action=promote&user=alice@example.com)
+        if (canManage) {
+          handleDeepLinkAction(data.members || []);
+        }
       } catch (error) {
         console.error('Error loading team members:', error);
         document.getElementById('membersLoading').innerHTML = `
           <p style="color: var(--color-error-600);">Failed to load team members. Please try again.</p>
         `;
+      }
+    }
+
+    /**
+     * Handle deep-link actions from URL params (e.g. ?action=promote&user=email)
+     */
+    function handleDeepLinkAction(members) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const action = urlParams.get('action');
+      const userParam = urlParams.get('user');
+
+      if (action === 'promote' && userParam) {
+        const member = members.find(m =>
+          m.email?.toLowerCase() === userParam.toLowerCase()
+        );
+        if (member && member.id) {
+          openEditRoleModal(
+            member.id,
+            member.email,
+            member.role,
+            member.seat_type || 'community_only',
+            member.slack_linked || false
+          );
+          // Pre-select contributor seat type
+          const seatTypeSelect = document.getElementById('editSeatType');
+          if (seatTypeSelect) seatTypeSelect.value = 'contributor';
+        }
+
+        // Clear the action params to prevent re-triggering on refresh
+        const url = new URL(window.location);
+        url.searchParams.delete('action');
+        url.searchParams.delete('user');
+        window.history.replaceState({}, '', url);
       }
     }
 
@@ -831,7 +890,7 @@
               data-membership-id="${escapeHtml(member.id)}"
               data-email="${escapeHtml(member.email)}"
               data-role="${escapeHtml(member.role)}"
-              data-seat-type="${escapeHtml(member.seat_type || 'contributor')}"
+              data-seat-type="${escapeHtml(member.seat_type || 'community_only')}"
               data-slack-linked="${member.slack_linked ? 'true' : 'false'}">
               Edit
             </button>
@@ -1443,6 +1502,84 @@
         revokeInvitation(btn.dataset.invitationId);
       }
     });
+
+    // =========================================================================
+    // SEAT UPGRADE REQUESTS
+    // =========================================================================
+
+    async function loadSeatRequests(orgId) {
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/seat-requests`, { credentials: 'include' });
+        if (!response.ok) return;
+        const data = await response.json();
+        const requests = data.requests || [];
+
+        if (requests.length > 0) {
+          document.getElementById('seatRequestsCard').style.display = 'block';
+          renderSeatRequests(requests);
+        } else {
+          document.getElementById('seatRequestsCard').style.display = 'none';
+        }
+      } catch (err) {
+        console.error('Error loading seat requests:', err);
+      }
+    }
+
+    function renderSeatRequests(requests) {
+      const tbody = document.getElementById('seatRequestsTableBody');
+      tbody.innerHTML = requests.map(r => {
+        const date = new Date(r.created_at).toLocaleDateString();
+        const resourceLabel = r.resource_name || r.resource_type.replace(/_/g, ' ');
+        return `
+          <tr>
+            <td>${r.workos_user_id}</td>
+            <td>${resourceLabel}</td>
+            <td>${date}</td>
+            <td>
+              <button class="btn btn-primary btn-sm" onclick="approveSeatRequest('${r.id}')">Approve</button>
+              <button class="btn btn-secondary btn-sm" onclick="denySeatRequest('${r.id}')" style="margin-left: 4px;">Deny</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function approveSeatRequest(requestId) {
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/seat-requests/${requestId}/approve`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+          const err = await response.json();
+          alert(err.message || 'Failed to approve request');
+          return;
+        }
+        loadTeamMembers();
+      } catch (err) {
+        console.error('Error approving seat request:', err);
+      }
+    }
+
+    async function denySeatRequest(requestId) {
+      if (!confirm('Deny this seat upgrade request?')) return;
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/seat-requests/${requestId}/deny`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+          const err = await response.json();
+          alert(err.message || 'Failed to deny request');
+          return;
+        }
+        loadTeamMembers();
+      } catch (err) {
+        console.error('Error denying seat request:', err);
+      }
+    }
 
     // Initialize
     loadUserData();
