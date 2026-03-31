@@ -67,7 +67,7 @@ export interface ComplianceObservation {
 export interface ComplianceTrackResult {
   track: ComplianceTrack;
   label: string;
-  status: 'pass' | 'fail' | 'partial' | 'skip' | 'expected';
+  status: 'pass' | 'fail' | 'partial' | 'skip';
   scenarios: TestResult[];
   duration_ms: number;
 }
@@ -115,7 +115,7 @@ const TRACK_LABELS: Record<ComplianceTrack, string> = {
   audiences: 'Audience sync',
 };
 
-const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
+export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
   core: ['health_check', 'discovery', 'capability_discovery'],
   products: ['behavior_analysis', 'response_consistency', 'schema_compliance'],
   media_buy: [
@@ -127,7 +127,7 @@ const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
     'temporal_validation',
   ],
   creative: ['creative_sync', 'creative_inline', 'creative_flow'],
-  reporting: [],
+  reporting: ['full_sales_flow'],
   governance: ['governance_property_lists', 'governance_content_standards', 'property_list_filters'],
   signals: ['signals_flow'],
   si: ['si_session_lifecycle', 'si_availability', 'si_handoff'],
@@ -297,7 +297,7 @@ function buildTrackResults(
       return {
         track,
         label: TRACK_LABELS[track],
-        status: track === 'reporting' ? 'expected' : 'skip',
+        status: 'skip',
         scenarios: [],
         duration_ms: 0,
       };
@@ -370,7 +370,7 @@ function buildPlatformCoherence(
   const trackStatus = new Map(trackResults.map((track) => [track.track, track.status]));
   const missingTracks = profile.expected_tracks.filter((track) => {
     const status = trackStatus.get(track);
-    return status === undefined || status === 'skip' || status === 'expected';
+    return status === undefined || status === 'skip';
   });
 
   const findings: PlatformCoherenceFinding[] = [];
@@ -416,13 +416,13 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
   const tracks_passed = trackResults.filter((track) => track.status === 'pass').length;
   const tracks_failed = trackResults.filter((track) => track.status === 'fail').length;
   const tracks_partial = trackResults.filter((track) => track.status === 'partial').length;
-  const tracks_skipped = trackResults.filter((track) => track.status === 'skip' || track.status === 'expected').length;
+  const tracks_skipped = trackResults.filter((track) => track.status === 'skip').length;
 
   return {
     agent_profile: suite.agent_profile,
     tracks: trackResults,
     summary: {
-      headline: `${tracks_passed} track${tracks_passed === 1 ? '' : 's'} passed, ${tracks_failed} failed, ${tracks_partial} partial, ${tracks_skipped} skipped/expected`,
+      headline: `${tracks_passed} track${tracks_passed === 1 ? '' : 's'} passed, ${tracks_failed} failed, ${tracks_partial} partial, ${tracks_skipped} skipped`,
       tracks_passed,
       tracks_failed,
       tracks_partial,
