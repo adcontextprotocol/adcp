@@ -242,7 +242,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         channel: {
           type: 'string',
-          description: 'Optional channel name to filter results (e.g., "governance-wg", "general"). Partial matches work.',
+          description: 'Optional channel name to filter results (e.g., "technical-standards-wg", "general"). Partial matches work.',
         },
         limit: {
           type: 'number',
@@ -262,7 +262,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
       properties: {
         channel: {
           type: 'string',
-          description: 'Channel name to get activity from (e.g., "governance-wg", "general"). Partial matches work.',
+          description: 'Channel name to get activity from (e.g., "technical-standards-wg", "general"). Partial matches work.',
         },
         days: {
           type: 'number',
@@ -726,7 +726,7 @@ ${excerpt}`;
       const messages = await addieDb.getChannelActivity(channel, { days, limit });
 
       if (messages.length === 0) {
-        return `No recent activity found in channels matching "${channel}".\n\nThis could mean:\n- The channel name might be different (try partial matches like "govern" for "governance-wg")\n- No messages in the last ${days ?? 30} days\n- The channel may not be indexed yet`;
+        return `No recent activity found in channels matching "${channel}".\n\nThis could mean:\n- The channel name might be different (try partial matches like "technical" for "technical-standards-wg")\n- No messages in the last ${days ?? 30} days\n- The channel may not be indexed yet`;
       }
 
       // Group messages by user to help with "who's most active" analysis
