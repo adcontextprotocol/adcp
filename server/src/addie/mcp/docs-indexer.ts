@@ -555,11 +555,21 @@ export async function initializeDocsIndex(): Promise<void> {
   const categories = [...new Set(docsIndex.map((d) => d.category))];
   const websiteCount = docsIndex.filter((d) => d.category === 'website').length;
   const workingGroupCount = docsIndex.filter((d) => d.category.startsWith('working group')).length;
+  const protocolDocCount = docsIndex.length - websiteCount - workingGroupCount;
+
+  // Warn if protocol docs index seems suspiciously empty (expect 50+ docs)
+  if (docsRoot && protocolDocCount < 10) {
+    logger.error(
+      { protocolDocCount, docsRoot },
+      'Addie Docs: Protocol doc count is suspiciously low — search_docs may return incomplete results'
+    );
+  }
 
   logger.info(
     {
       totalDocs: docsIndex.length,
       totalHeadings: headingsIndex.length,
+      protocolDocs: protocolDocCount,
       websitePages: websiteCount,
       workingGroupDocs: workingGroupCount,
       categories: categories.join(', '),
