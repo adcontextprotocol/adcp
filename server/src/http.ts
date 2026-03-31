@@ -1885,7 +1885,6 @@ export class HTTPServer {
           using_database: true,
         },
       };
-      if (dbError) body.db_error = dbError;
       res.status(200).json(body);
     });
 
