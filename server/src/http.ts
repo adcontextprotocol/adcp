@@ -4965,8 +4965,11 @@ Disallow: /api/admin/
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
             p.content, p.external_url, p.external_site_name,
             p.author_name, p.author_title, p.featured_image_url,
+            u.avatar_url as author_avatar_url,
+            u.headline as author_headline,
             p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
           FROM perspectives p
+          LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.slug = $1 AND p.status = 'published'
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
