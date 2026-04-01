@@ -51,7 +51,7 @@ A fitness app triggers an interstitial after a workout completes:
   "property_id": "pulsefit-ios",
   "property_type": "mobile_app",
   "placement_id": "interstitial_main",
-  "artifacts": [
+  "artifact_refs": [
     { "type": "custom", "value": "screen:workout-complete" },
     { "type": "custom", "value": "screen:workout-summary" }
   ]
@@ -92,7 +92,7 @@ A recipe app shows sponsored content cards in its recipe feed:
   "property_id": "tastecraft-android",
   "property_type": "mobile_app",
   "placement_id": "banner_feed",
-  "artifacts": [
+  "artifact_refs": [
     { "type": "url", "value": "https://tastecraft.example.com/weeknight-pasta-recipes" }
   ]
 }
@@ -112,10 +112,10 @@ A recipe app shows sponsored content cards in its recipe feed:
       "creative_manifest": {
         "format_id": { "agent_url": "https://tastecraft.example.com", "id": "native_card" },
         "assets": {
-          "headline": { "asset_type": "text", "text": "Everything for pasta night" },
-          "body": { "asset_type": "text", "text": "Fresh basil, San Marzano tomatoes, and artisan pasta. 20% off your next order." },
-          "image": { "asset_type": "image", "url": "https://cdn.freshmart.example/campaigns/pasta-night-card.jpg" },
-          "cta": { "asset_type": "text", "text": "Shop Now" }
+          "headline": { "content": "Everything for pasta night" },
+          "body": { "content": "Fresh basil, San Marzano tomatoes, and artisan pasta. 20% off your next order." },
+          "image": { "url": "https://cdn.freshmart.example/campaigns/pasta-night-card.jpg", "width": 1200, "height": 628 },
+          "cta": { "content": "Shop Now" }
         }
       },
       "macros": {
@@ -130,10 +130,10 @@ A recipe app shows sponsored content cards in its recipe feed:
       "creative_manifest": {
         "format_id": { "agent_url": "https://tastecraft.example.com", "id": "native_card" },
         "assets": {
-          "headline": { "asset_type": "text", "text": "The only pan you need" },
-          "body": { "asset_type": "text", "text": "Pre-seasoned 12-inch cast iron. Free shipping this week." },
-          "image": { "asset_type": "image", "url": "https://cdn.ironpan.example/campaigns/skillet-card.jpg" },
-          "cta": { "asset_type": "text", "text": "Learn More" }
+          "headline": { "content": "The only pan you need" },
+          "body": { "content": "Pre-seasoned 12-inch cast iron. Free shipping this week." },
+          "image": { "url": "https://cdn.ironpan.example/campaigns/skillet-card.jpg", "width": 1200, "height": 628 },
+          "cta": { "content": "Learn More" }
         }
       }
     }
@@ -235,7 +235,7 @@ Rewarded video follows the same activation pattern as interstitials. The placeme
   "property_id": "puzzlequest-ios",
   "property_type": "mobile_app",
   "placement_id": "rewarded_video",
-  "artifacts": [
+  "artifact_refs": [
     { "type": "custom", "value": "screen:level-complete-42" }
   ]
 }

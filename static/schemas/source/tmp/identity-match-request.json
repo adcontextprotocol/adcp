@@ -5,6 +5,11 @@
   "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks.",
   "type": "object",
   "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional schema URI for validation. Ignored at runtime."
+    },
     "protocol_version": {
       "type": "string",
       "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",

@@ -6,7 +6,7 @@ description: How TMP activates packages for CTV pod composition with creative va
 
 # TMP for CTV
 
-Connected TV apps compose ad pods -- sequences of ads that fill commercial breaks during streaming content. Pod composition means activating multiple packages simultaneously while respecting competitive separation, frequency limits, and duration constraints. TMP handles package activation and identity eligibility; the broadcaster's ad server handles pod assembly.
+Connected TV apps compose ad pods — sequences of ads that fill commercial breaks during streaming content. Pod composition means activating multiple packages simultaneously while respecting competitive separation, frequency limits, and duration constraints. TMP handles package activation and identity eligibility; the broadcaster's ad server handles pod assembly.
 
 ## How It Works Today
 
@@ -18,7 +18,7 @@ A CTV ad break involves four TMP messages: a context match request and response 
 
 ### Context Match Request
 
-When a pod break approaches, the broadcaster sends a context match request. The `placement_id` identifies the ad break position (e.g., `pre_roll`, `mid_roll_1`, `pod_break_2`). The `artifacts` reference the show and episode, which buyer agents use for content-level targeting. No package list is sent — the provider uses its synced package set for this placement.
+When a pod break approaches, the broadcaster sends a context match request. The `placement_id` identifies the ad break position (e.g., `pre_roll`, `mid_roll_1`, `pod_break_2`). The `artifact_refs` reference the show and episode, which buyer agents use for content-level targeting. No package list is sent — the provider uses its synced package set for this placement.
 
 ```json
 {
@@ -27,7 +27,7 @@ When a pod break approaches, the broadcaster sends a context match request. The 
   "property_id": "riverview-streaming",
   "property_type": "ctv_app",
   "placement_id": "mid_roll_1",
-  "artifacts": [
+  "artifact_refs": [
     { "type": "gracenote", "value": "SH032541890000" },
     { "type": "eidr", "value": "10.5240/B1A2-C3D4-E5F6-7890-1234-X" }
   ]
@@ -51,13 +51,12 @@ Each buyer agent evaluates the content context and responds with offers for pack
     {
       "package_id": "pkg-sparklean-30s",
       "brand": { "domain": "sparklean.example.com" },
-      "summary": "Kitchen cleaning product -- contextual fit with cooking drama",
+      "summary": "Kitchen cleaning product — contextual fit with cooking drama",
       "creative_manifest": {
         "format_id": { "agent_url": "https://riverview.example.com", "id": "video_30s" },
         "assets": {
           "video": {
-            "asset_type": "video",
-            "mime_type": "application/xml",
+            "delivery_type": "url",
             "url": "https://creatives.sparklean.example/vast/kitchen-30s.xml"
           }
         }
@@ -65,13 +64,12 @@ Each buyer agent evaluates the content context and responds with offers for pack
     },
     {
       "package_id": "pkg-greenleaf-15s",
-      "summary": "Organic grocery -- recipe content alignment",
+      "summary": "Organic grocery — recipe content alignment",
       "creative_manifest": {
         "format_id": { "agent_url": "https://riverview.example.com", "id": "video_15s" },
         "assets": {
           "video": {
-            "asset_type": "video",
-            "mime_type": "application/xml",
+            "delivery_type": "url",
             "url": "https://creatives.greenleaf.example/vast/spring-15s.xml"
           }
         }
@@ -87,7 +85,7 @@ For CTV creatives, the `creative_manifest` typically references a VAST URL rathe
 
 ### Identity Match Request
 
-Separately, the broadcaster sends an identity match request with a household token. The `package_ids` list includes ALL active packages for each buyer -- not just the ones in this pod break. This prevents a buyer from correlating the identity request with a specific context request by comparing package sets.
+Separately, the broadcaster sends an identity match request with a household token. The `package_ids` list includes ALL active packages for each buyer — not just the ones in this pod break. This prevents a buyer from correlating the identity request with a specific context request by comparing package sets.
 
 ```json
 {
@@ -111,7 +109,7 @@ The list includes packages from other surfaces (web display, mobile native, audi
 
 ### Identity Match Response
 
-Each buyer agent evaluates the household token against its own data (frequency caps, audience membership, purchase history) and returns a boolean `eligible` flag per package, plus an optional `intent_score`. The buyer does not disclose the reasons -- the publisher only needs to know whether the household qualifies.
+Each buyer agent evaluates the household token against its own data (frequency caps, audience membership, purchase history) and returns a boolean `eligible` flag per package, plus an optional `intent_score`. The buyer does not disclose the reasons — the publisher only needs to know whether the household qualifies.
 
 ```json
 {
@@ -139,29 +137,40 @@ The broadcaster now has two sets of results and composes the pod locally:
 1. **Filter by context activation.** Only packages with offers from context match are candidates: Sparklean (30s) and Greenleaf (15s). Vaultline and Driftmoto did not activate.
 2. **Filter by identity eligibility.** Of the context-activated packages, check household eligibility: Sparklean is eligible, Greenleaf is eligible. Both pass.
 3. **Rank eligible offers.** Use `intent_score` if available, combined with the ad server's own priority and pacing rules. Sparklean has higher intent (0.7 vs 0.4).
-4. **Apply competitive separation.** The broadcaster's ad server enforces competitive separation rules -- two brands in the same advertiser category cannot appear in the same pod. Sparklean (cleaning) and Greenleaf (grocery) are in different categories, so no conflict.
+4. **Apply competitive separation.** The broadcaster's ad server enforces competitive separation rules — two brands in the same advertiser category cannot appear in the same pod. Sparklean (cleaning) and Greenleaf (grocery) are in different categories, so no conflict.
 5. **Assemble the pod.** Fill the available duration. A typical mid-roll pod might be 60 seconds:
-   - Slot 1 (30s): Sparklean -- context match, household eligible, high intent
-   - Slot 2 (15s): Greenleaf -- context match, household eligible
+   - Slot 1 (30s): Sparklean — context match, household eligible, high intent
+   - Slot 2 (15s): Greenleaf — context match, household eligible
    - Remaining 15s: filled by other demand sources (programmatic, house ads)
 
 Competitive separation is the publisher's responsibility. TMP provides the activation and eligibility signals; the broadcaster's ad server applies business rules about which brands can appear together. This keeps the protocol simple and avoids encoding category taxonomies into TMP messages.
 
-## Show and Episode Artifacts
+## SSAI Integration
+
+Server-side ad insertion (SSAI) is the dominant CTV delivery model. The TMP Router runs server-side alongside the SSAI engine, keeping the entire activation flow off the client device.
+
+- **Flow.** The SSAI engine receives a pod break signal from the content stream, queries the TMP Router for context and identity matches, receives offers, and stitches VAST creatives into the stream before delivery.
+- **Creative delivery.** The `creative_manifest` in Context Match responses includes VAST URLs that the SSAI engine can fetch and splice directly. No client-side ad loading is required.
+- **Latency budget.** The SSAI engine's overall ad insertion budget is typically 200-500ms (larger than client-side insertion), since stitching happens before stream delivery. The TMP Router still targets sub-50ms for its portion; the extra budget gives the SSAI engine time for VAST fetching and stream stitching.
+- **Companion ads.** If the VAST response includes companion creatives, the SSAI engine can pass them to the CTV app's display layer for rendering alongside the video content.
+
+## Show and Episode Artifact Refs
 
 CTV artifacts typically reference both a show and a specific episode using industry-standard identifiers:
 
 ```json
-"artifacts": [
+"artifact_refs": [
   { "type": "gracenote", "value": "SH032541890000" },
   { "type": "eidr", "value": "10.5240/B1A2-C3D4-E5F6-7890-1234-X" }
 ]
 ```
 
+EIDR (Entertainment Identifier Registry) provides globally unique IDs for shows, seasons, and episodes. Gracenote TMS IDs are equally valid. The key requirement: the identifier must be publicly resolvable so buyers can independently look up metadata.
+
 A buyer agent can use these at different granularities:
 
-- **Show-level targeting.** "Activate on any episode of The Night Kitchen" -- the agent checks whether the Gracenote show ID is in its targeting rules.
-- **Episode-level targeting.** "Activate only on the season premiere" -- the agent checks the specific EIDR episode ID.
+- **Show-level targeting.** "Activate on any episode of The Night Kitchen" — the agent checks whether the Gracenote show ID is in its targeting rules.
+- **Episode-level targeting.** "Activate only on the season premiere" — the agent checks the specific EIDR episode ID.
 - **Genre or topic targeting.** The agent resolves genre and topic metadata from its cached artifact data. This works for broad category targeting without hard-coding specific show IDs in targeting rules.
 
 ## Example Flow

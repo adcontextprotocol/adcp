@@ -120,8 +120,11 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
 ### Reading list
 
 <CardGroup cols={2}>
-  <Card title="Agentic execution engine" icon="microchip" href="/docs/media-buy/advanced-topics/agentic-execution-engine">
-    The AXE engine for real-time execution and how it bridges agentic and programmatic.
+  <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
+    The real-time execution layer: context match, identity match, and cross-publisher activation.
+  </Card>
+  <Card title="AdCP and OpenRTB" icon="arrows-left-right" href="/docs/building/understanding/adcp-vs-openrtb">
+    The clearest view of how AdCP campaign workflows connect to impression-time execution.
   </Card>
   <Card title="Async operations" icon="hourglass-half" href="/docs/building/implementation/async-operations">
     Handling long-running operations — essential for bridging real-time and agentic systems.
@@ -138,11 +141,19 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
   <Card title="Implementor FAQ" icon="circle-question" href="/docs/reference/implementor-faq">
     Common questions and answers from teams building AdCP integrations.
   </Card>
+  <Card title="Router architecture" icon="diagram-project" href="/docs/trusted-match/router-architecture">
+    Deployment, fan-out, and provider configuration for the TMP Router.
+  </Card>
+  <Card title="AI mediation" icon="microchip-ai" href="/docs/trusted-match/ai-mediation">
+    How demand reaches AI assistants through the Trusted Match Protocol.
+  </Card>
 </CardGroup>
 
 ### Key concepts
 
 - **Coexistence strategy** — run AdCP alongside OpenRTB, gradually migrating workflows
+- **TMP as the bridge** — TMP connects planning-time media buys to serve-time decisions through two structurally separated operations (Context Match and Identity Match). The TMP Router fans out to configured providers in parallel and the publisher joins responses locally. This is how cross-publisher frequency capping, suppression, and suitability work at impression time
+- **Router deployment and fan-out patterns** — how the TMP Router is deployed, provider configuration, and parallel fan-out to multiple match providers
 - **Platform-specific migration** — DSPs wrap bidding logic, SSPs expose inventory, exchanges translate
 - **Performance benchmarking** — compare agentic vs traditional on campaign performance, efficiency, cost
 

@@ -27,7 +27,7 @@ The router is a single Go binary with two structurally separate code paths: one 
 │  │    Context Match Path      │  │    Identity Match Path     ││
 │  │                            │  │                            ││
 │  │  Inputs:                   │  │  Inputs:                   ││
-│  │  • Content artifact IDs    │  │  • Opaque user token       ││
+│  │  • Artifact IDs / artifact  │  │  • Opaque user token       ││
 │  │  • Context signals         │  │  • ALL active package IDs  ││
 │  │  • Geo, URL hash           │  │                            ││
 │  │  • Available packages      │  │                            ││
@@ -93,11 +93,11 @@ Identity tokens come from existing providers (ID5, LiveRamp, UID2, etc.) that ar
 
 When the publisher sends a Context Match request:
 
-1. The router identifies all providers configured for the request's `property_id` with `context_match` capability.
+1. The router identifies all providers configured for the request's `property_rid` with `context_match` capability.
 2. It sends the request to all matching providers in parallel over HTTP/2.
 3. It waits for responses up to the latency budget (default: 50ms).
 4. It merges responses:
-   - **Offers** are collected from all providers. If two providers return offers for the same package (uncommon — packages are typically provider-specific), the router includes both and flags the conflict for the publisher.
+   - **Offers** are collected from all providers. If two providers return offers for the same `package_id` (uncommon — packages are typically provider-specific), the router keeps the first response received. Duplicate `package_id` across providers is a configuration error; the router SHOULD log a warning.
    - **Enrichment signals** are concatenated. Segments from all providers are combined into a single list. Targeting key-values from different providers are namespaced to prevent collisions.
 5. It returns the merged response to the publisher.
 
@@ -109,9 +109,11 @@ If two providers return eligibility for the same package (uncommon), the router 
 
 ### Timeout handling
 
-Providers that respond within the latency budget are included in the merged response. Providers that exceed the budget are skipped — their packages are treated as "not activated" for this request.
+The default latency budget is 50ms per operation. The router allocates this proportionally across providers based on provider count and historical performance.
 
-The router tracks per-provider latency percentiles (p50, p95, p99) and may deprioritize or preemptively skip providers whose p95 latency consistently exceeds the budget. This is an operational decision, not a protocol requirement.
+- **Single provider timeout**: Skip that provider, log its latency percentile, proceed with responses from remaining providers. The skipped provider's packages are treated as "not activated" for this request.
+- **All providers timeout**: Return an empty response — no offers for Context Match, no eligibility for Identity Match. The publisher falls back to existing demand sources (Prebid open auction, direct-sold, etc.).
+- **Adaptive timeout**: The router tracks per-provider latency percentiles (p50, p95, p99) and adjusts allocation over time. Consistently slow providers receive smaller timeout allocations or are preemptively skipped. This is an operational decision, not a protocol requirement.
 
 ## Latency Budget
 
@@ -154,3 +156,65 @@ TEE-based auction infrastructure (encrypted bids, attestation proofs, verifiable
 TMP handles matching. TEE auctions handle competition. Publishers choose whether they need competition at all — many surfaces (editorial AI content, CTV pod composition, retail carousels) are better served by publisher-side relevance ranking than by price-based auctions.
 
 TEE auction infrastructure (AWS Nitro Enclaves, attestation, key management) is directly applicable when upgrading the TMP Router to TEE-attested operation, making it a natural infrastructure partner for the protocol.
+
+## Deployment
+
+The TMP Router is a single Go binary. It reads a configuration file listing providers and their capabilities, then exposes a single HTTP/2 endpoint. The request `type` field distinguishes Context Match from Identity Match — the router uses type-based dispatch, not URL paths.
+
+### Configuration
+
+```yaml
+# tmp-router.yaml
+listen: ":8443"
+tls:
+  cert: /etc/tmp/tls.crt
+  key: /etc/tmp/tls.key
+
+providers:
+  - id: acme-outdoor
+    endpoint: https://tmp.acmeoutdoor.example/v1
+    context_match: true
+    identity_match: true
+    timeout_ms: 40
+    properties: ["01916f3a-9c4e-7000-8000-000000000010"]
+
+  - id: enrichment-co
+    endpoint: https://enrichment.example/v1
+    context_match: true
+    identity_match: false
+    timeout_ms: 30
+
+latency_budget_ms: 50
+adaptive_timeout: true
+```
+
+### Container deployment
+
+```dockerfile
+FROM ghcr.io/adcontextprotocol/tmp-router:latest
+COPY tmp-router.yaml /etc/tmp/config.yaml
+EXPOSE 8443
+```
+
+The router is stateless — no database, no persistent storage. It can be horizontally scaled behind any load balancer. Health checks are available at `/healthz`.
+
+### Capacity planning
+
+Each router instance handles approximately 10,000 requests per second on a 2-vCPU container. Memory usage scales linearly with the number of concurrent connections to providers, not with request volume.
+
+For web publishers, one router instance per point of presence (PoP) is typical. For AI platforms, a centralized deployment with regional failover is sufficient since the router adds < 5ms to end-to-end latency.
+
+### Monitoring
+
+The router exposes Prometheus metrics at `/metrics`:
+
+| Metric | Description |
+|---|---|
+| `tmp_context_match_duration_ms` | Context Match end-to-end latency histogram |
+| `tmp_identity_match_duration_ms` | Identity Match end-to-end latency histogram |
+| `tmp_provider_duration_ms` | Per-provider response time histogram |
+| `tmp_provider_timeout_total` | Per-provider timeout counter |
+| `tmp_provider_error_total` | Per-provider error counter |
+| `tmp_offers_total` | Total offers returned across all providers |
+
+Alert on `tmp_provider_timeout_total` increasing — a provider consistently exceeding its timeout budget degrades match quality for all requests that include it.

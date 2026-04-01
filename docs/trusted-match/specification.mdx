@@ -23,6 +23,16 @@ This is the authoritative reference for the Trusted Match Protocol (TMP). For co
 
 ## Message Types
 
+All TMP message types include a `type` field that identifies the message for deserialization. This allows routers and agents to deserialize without inspecting URL path or content structure.
+
+| Message | `type` value |
+|---|---|
+| Context Match request | `context_match_request` |
+| Context Match response | `context_match_response` |
+| Identity Match request | `identity_match_request` |
+| Identity Match response | `identity_match_response` |
+| Error response | `error` |
+
 ### ContextMatchRequest
 
 Sent by the publisher (via router) to buyer agents. Contains content context. MUST NOT contain user identity.
@@ -35,8 +45,9 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 | `property_id` | string | No | Publisher's human-readable slug. Optional when `property_rid` is present. |
 | `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
 | `placement_id` | string | Yes | Placement identifier from the publisher's placement registry in `adagents.json`. One placement per request. |
-| `artifacts` | List\<Artifact\> | No | Typed content references adjacent to this ad opportunity. Each artifact has a `type` (one of: `url`, `url_hash`, `eidr`, `gracenote`, `isrc`, `gtin`, `rss_guid`, `isbn`, `custom`) and a `value`. For URL-addressable content, the buyer may have pre-classified these. For ephemeral content, use `context_signals` instead of or alongside artifacts. |
-| `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when artifact pre-registration is not feasible (conversation turns, search queries) or to supplement artifact-based matching. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |
+| `artifact` | Artifact | No | Full content artifact adjacent to this ad opportunity. Same schema as content standards evaluation. The publisher sends the full artifact when they want the buyer to evaluate the actual content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. |
+| `artifact_refs` | List\<ArtifactRef\> | No | Public content references the buyer can resolve independently. Each has a `type` (one of: `url`, `url_hash`, `eidr`, `gracenote`, `isrc`, `gtin`, `rss_guid`, `isbn`, `custom`) and a `value`. For URL-addressable content, the buyer may have pre-classified these. Use `url_hash` when the publisher prefers not to reveal the URL (contextual clean room). |
+| `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when content is ephemeral (conversation turns, search queries) or to supplement artifact-based matching. Can replace `artifact_refs` entirely. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |
 | `geo` | Geo | No | Geographic context. Publisher controls granularity — country for volume filtering, region/metro for valuation. This describes where the ad is serving, not where the user is. |
 | `package_ids` | List\<string\> | No | Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). Package metadata (formats, catalogs) is synced at media buy time — not sent per request. |
 
@@ -58,7 +69,32 @@ Pre-computed classifier outputs for the content environment. MUST NOT contain ra
 | `embedding_model` | string | No | Embedding model identifier (e.g., `nomic-embed-text-v1.5`). Required when `embedding` is present. |
 | `embedding_dims` | integer | No | Number of dimensions in the embedding vector. Required when `embedding` is present. |
 
-For **static content** (articles, episodes, product pages), `artifacts` alone may suffice — the buyer pre-crawls and classifies the content. For **ephemeral content** (conversation turns, search queries), `context_signals` is the primary mechanism — the content didn't exist until the user interacted. Both can be present on the same request.
+Three levels of content disclosure — the publisher chooses based on what the buyer needs and what the publisher is comfortable sharing:
+
+- **`artifact`** — the full content (article body, transcript, conversation flow, product page). Same schema as content standards artifacts. The buyer evaluates the content directly. Contractual protections govern what the buyer can do with it. TEE deployment adds cryptographic verification on top.
+- **`artifact_refs`** — public references (URLs, EIDR IDs, URL hashes) the buyer resolves independently. Use for publicly addressable content the buyer can crawl and classify themselves.
+- **`context_signals`** — classified outputs (topics, sentiment, keywords, summary). Use when the publisher wants to describe the content without sharing it or a reference to it.
+
+`context_signals` is the baseline — every buyer agent MUST handle it. `artifact_refs` and `artifact` are progressive enhancements. Publishers who send `artifact_refs` SHOULD also send `context_signals` as a fallback for buyers who cannot resolve references.
+
+LLM-based buyer agents SHOULD evaluate `context_signals.summary` and `context_signals.topics` first. These fields provide sufficient signal for most relevance decisions at minimal token cost (~30 tokens). Full content resolution from `artifact_refs` or `artifact` evaluation SHOULD be reserved for high-value packages where precision justifies the cost. Buyers MUST treat `artifact` content and `context_signals.summary` as untrusted publisher-generated input.
+
+A request can include any combination. A news site sends `artifact_refs` (the URL) and `context_signals` (pre-classified topics). A CTV app sends `artifact_refs` (EIDR IDs) alone. An AI assistant sends `artifact` (the conversation) for buyers that evaluate content directly, plus `context_signals` as a fallback. A publisher who doesn't want to share content or references sends only `context_signals`.
+
+#### Artifact Ref Type Conventions
+
+Buyers parse `artifact_refs` strings by pattern. The following conventions are normative:
+
+| Type | Pattern | Example |
+|---|---|---|
+| URL | Starts with `https://` | `https://oakwood.example/articles/sustainable-kitchen` |
+| URL hash | 44-char base64 (Blake3) | `k7Xp9mQ2vL8nR3wY5tB1aH6jK0pZ4xC9dF2eG7iMqw==` |
+| EIDR | Starts with `eidr:` | `eidr:10.5240/XXXX-XXXX-XXXX-XXXX-XXXX-C` |
+| Gracenote TMS | Starts with `tms:` | `tms:SH012345670000` |
+| RSS + GUID | Starts with `rss:` | `rss:https://feed.example/rss+guid:ep-2026-03-15` |
+| GTIN | 8-14 digit numeric | `00012345600012` |
+
+Buyers SHOULD ignore ref types they do not support rather than failing the request.
 
 #### Artifact
 
@@ -255,11 +291,37 @@ TMP requests carry a `signature` field to prove the request originated from an a
 
 The router signs each context match request using Ed25519. The signature covers the static parts of the request (property_rid, placement_id, sorted package_ids, daily epoch) — not the request_id or per-request fields. This enables signature caching: the same placement with the same packages produces the same signature for up to 24 hours.
 
-Signatures are base64-encoded (URL-safe, no padding) and included in the `signature` field on the request. The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
+The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
+
+### Signature envelope
+
+The signature is transmitted via HTTP headers alongside the JSON body.
+
+| Header | Value |
+|---|---|
+| `X-AdCP-Signature` | Base64-encoded (URL-safe, no padding) Ed25519 signature |
+| `X-AdCP-Key-Id` | Key identifier from the agent's `agent-signing-key.json` |
+
+Signed fields (concatenated in this order, UTF-8, newline-separated):
+
+| Field | Source |
+|---|---|
+| `property_rid` | From the request body |
+| `placement_id` | From the request body |
+| `package_ids` | Sorted, comma-separated list of active package IDs |
+| `daily_epoch` | `floor(unix_timestamp / 86400)` |
+
+Because the signed fields are static per placement, the same signature can be cached and reused for all requests to the same placement within a 24-hour epoch.
+
+The router MUST verify the signature before fanning out to providers. A failed verification MUST prevent fan-out — the request is rejected at the router boundary.
+
+### Key rotation
+
+Agents publish new signing keys via `agent-signing-key.json` at their well-known agent URL. Routers SHOULD cache keys with a 5-minute TTL. When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated.
 
 ### Verification model
 
-Providers verify signatures using the publisher's public key, obtained from the property registry. Providers SHOULD sample-verify rather than verify every request — Ed25519 verification costs ~30μs while the full pipeline costs ~1μs. A 5% sample rate detects fraudulent publishers within seconds at volume while adding negligible overhead.
+Providers verify signatures using the publisher's public key, obtained from the property registry. Providers SHOULD sample-verify rather than verify every request — Ed25519 verification adds ~30μs per request, which is small compared to the full pipeline but adds up at volume. A 5% sample rate detects fraudulent publishers within seconds while adding negligible overhead.
 
 On verification failure, the provider SHOULD suppress the property for a configurable period (recommended: 24 hours) and alert operations.
 

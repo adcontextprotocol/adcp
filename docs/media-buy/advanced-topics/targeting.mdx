@@ -37,23 +37,26 @@ Publishers then return products that include the targeting capabilities to reach
 - **No surprises**: Buyers know the complete cost upfront
 - **Market-driven**: Pricing reflects true market value of targeted inventory
 
-## Real-Time Decisioning with AXE
+## Real-Time Decisioning with TMP
 
-For targeting decisions that must happen at impression time, buyers can use the **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)**. AXE is the real-time execution layer between orchestrators and decisioning platforms.
+For targeting decisions that must happen at impression time, AdCP uses the **[Trusted Match Protocol (TMP)](/docs/trusted-match)**. TMP is the real-time execution layer that evaluates pre-negotiated packages at serve time across any surface.
+
+TMP gives the buyer a real-time look at each eligible impression through two structurally separated operations — Context Match (content relevance) and Identity Match (user eligibility) — without exposing user identity and page context to the buyer simultaneously.
 
 **Key capabilities:**
-- **Dynamic audience targeting**: Bring your own DMP/CDP segments to publisher inventory
-- **Brand suitability enforcement**: Real-time content evaluation and blocking
-- **Cross-campaign frequency**: Manage user exposure across multiple publishers
-- **First-party data activation**: Use your customer data without sharing PII
+- **Cross-publisher frequency capping**: Manage user exposure across multiple publishers via the Identity Match path
+- **Dynamic audience targeting**: Evaluate audience membership at impression time without sharing PII
+- **Brand suitability enforcement**: Real-time content evaluation through the Context Match path
+- **First-party data activation**: Use your customer data without exposing it to publishers
 
-**When to use AXE:**
-- Audience segments that can't be expressed in a brief
+**When to use TMP:**
+- Cross-publisher frequency caps
 - Suppression lists (existing customers, past converters)
+- Audience segments that can't be expressed in a brief
 - Real-time brand suitability beyond static rules
-- High-cardinality targeting (millions of segment members)
+- Any impression-time decision across web, mobile, CTV, AI assistants, or retail media
 
-See the [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for implementation details.
+See the [TMP documentation](/docs/trusted-match) for the full specification and surface-specific integration guides.
 
 ## How Publishers Include Targeting
 
@@ -483,18 +486,18 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
 ### axe_include_segment
-- **Description**: AXE segment ID for inclusion targeting
-- **Format**: String segment identifier from your AXE platform
+- **Description**: Segment ID for inclusion targeting (legacy AXE field)
+- **Format**: String segment identifier
 - **Examples**: `"seg_auto_intenders_q1"`, `"audience_lapsed_buyers_30d"`
 - **Use cases**: Dynamic audience targeting, first-party data activation
-- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
+- **Note**: This field is from the legacy AXE integration. New implementations should use [TMP](/docs/trusted-match), where audience targeting is handled through the Identity Match path.
 
 ### axe_exclude_segment
-- **Description**: AXE segment ID for exclusion targeting
-- **Format**: String segment identifier from your AXE platform
+- **Description**: Segment ID for exclusion targeting (legacy AXE field)
+- **Format**: String segment identifier
 - **Examples**: `"seg_existing_customers"`, `"audience_past_converters"`
 - **Use cases**: Customer suppression, frequency management
-- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
+- **Note**: This field is from the legacy AXE integration. New implementations should use [TMP](/docs/trusted-match), where suppression is handled through the Identity Match path.
 
 ### audience_include
 - **Description**: Restrict delivery to users who are members of these first-party CRM audiences. Only people on the uploaded list are eligible to see the ad.
@@ -845,7 +848,7 @@ To remove all keyword targeting while preserving other overlay fields, send the 
 
 ## Related Documentation
 
-- **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)** - Real-time execution layer for dynamic targeting
+- **[Trusted Match Protocol (TMP)](/docs/trusted-match)** - Real-time execution layer for impression-time targeting, frequency capping, and brand suitability
 - **[Signals Protocol](/docs/signals/overview)** - Real-time targeting signals for brand suitability and contextual targeting
 - **[Product Discovery](/docs/media-buy/product-discovery/)** - How briefs lead to targeted product recommendations
 - **[Example Briefs](/docs/media-buy/product-discovery/example-briefs)** - Real examples of effective targeting briefs

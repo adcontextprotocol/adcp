@@ -164,11 +164,13 @@ For audio formats with content context:
 | `{INSTALLMENT_ID}` | Podcast episode identifier | `ep_2025_01_15` |
 | `{AUDIO_DURATION}` | Content duration in seconds | `3600` |
 
-### AXE Integration
+### AXE Integration (Legacy)
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{AXEM}` | AXE contextual metadata (encoded blob) | `eyJjb250ZXh0IjoiLi4uIn0=` |
+
+The `{AXEM}` macro is from the legacy AXE integration. In [TMP](/docs/trusted-match), contextual data is delivered through the creative manifest in the Context Match response rather than an encoded macro.
 
 ### Catalog Item Macros
 

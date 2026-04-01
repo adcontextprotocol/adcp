@@ -833,7 +833,7 @@ Packages can use different currencies when sellers support it. See [Pricing Mode
 Use overlays only for:
 - Geographic restrictions (RCT testing, regulatory compliance)
 - Frequency capping
-- AXE segment inclusion/exclusion
+- AXE segment inclusion/exclusion (legacy — new integrations use [TMP](/docs/trusted-match))
 
 See [Targeting](/docs/media-buy/advanced-topics/targeting) for details.
 
@@ -1255,7 +1255,7 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 
 - Total budget is distributed across packages based on individual `budget` values
 - Creative assets must be uploaded before deadline for campaign activation
-- AXE segments enable advanced audience targeting
+- Impression-time targeting (audience, frequency, suitability) is handled by [TMP](/docs/trusted-match)
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.

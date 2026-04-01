@@ -1,74 +1,236 @@
 ---
 title: Trusted Match Protocol
-description: AdCP's real-time execution layer for activating pre-negotiated packages across any surface.
+sidebarTitle: Overview
+testable: true
+"og:image": /images/walkthrough/tmp-01-wasted-budget.png
+description: "AdCP's real-time execution layer — follow a cross-publisher frequency capping story from wasted budget to structural privacy, across every surface."
 "og:title": "AdCP Trusted Match Protocol"
 ---
 
-# Trusted Match Protocol
+<img src="/images/walkthrough/tmp-01-wasted-budget.png" alt="A viewer sees the same outdoor gear ad on their TV and phone within minutes — a budget meter drains with diminishing returns" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-The Trusted Match Protocol (TMP) is the execution layer of AdCP. When a user visits a page, opens an app, or starts a conversation with an AI assistant, TMP determines which pre-negotiated packages should activate and how.
+Priya is Director of Ad Products at StreamHaus, a CTV publisher. She designed how StreamHaus's inventory looks to buyer agents — product catalogs, creative specs, pricing.
 
-## The problem
+Sam's Acme Outdoor campaign runs on StreamHaus, OutdoorNet, and PodTrail with a frequency policy: **5 impressions per week, minimum 2 hours between exposures**. Sam chose this because spaced exposure outperforms concentrated repetition — the same ad every commercial break produces fatigue, not engagement.
 
-AdCP defines the full lifecycle for agent-to-agent media buying: discovery (`get_products`), negotiation (`create_media_buy`), and reporting (`get_media_buy_delivery`). But between negotiation and reporting there is an execution gap. Deals are agreed, but activating them at serve time has no protocol-level definition. Publishers fall back to manual ad-ops, vendor-specific RTB modules, or surface-specific SDK integrations. Every surface solves it differently and none of them connect back to the deal.
+The problem: each publisher counts independently.
 
-TMP fills this gap with a single protocol that works the same way on web, mobile, CTV, retail media, and AI assistants.
+## Step 1: The problem — wasted budget
 
-## Two operations, structural separation
+StreamHaus, OutdoorNet, and PodTrail each count independently. A viewer who watches hiking content on StreamHaus after dinner, then browses OutdoorNet on their phone 30 minutes later, gets the same ad again — well inside the 2-hour recency window Sam set.
 
-TMP defines two operations that never share data:
+Multiply across a week and the viewer gets 15 impressions instead of 5, concentrated instead of spaced:
 
-**Context Match** -- the publisher sends content artifact IDs and placement context. The provider evaluates all eligible packages for the placement using its synced package set from media buy setup. No user identity crosses this boundary.
-
-**Identity Match** -- the publisher sends an opaque user token and the full set of active package IDs for that buyer. The buyer responds with a boolean `eligible` flag and an optional `intent_score` per package. No page context crosses this boundary. The reasons behind eligibility (frequency caps, audience membership, purchase history) are opaque to the publisher.
-
-The publisher -- the party that already has both context and identity -- joins the two responses locally at decision time. Buyers never observe both signals simultaneously. This separation holds without TEE; TEE attestation is an upgrade path that makes the guarantee cryptographically verifiable.
-
-## The offer spectrum
-
-A context match response contains offers. Every offer requires a `package_id`; everything else is optional. This creates a spectrum from minimal activation to rich integration:
-
-| Integration | What the offer contains | Publisher behavior |
+| Publisher | Impressions counted | Actual viewer experience |
 |---|---|---|
-| GAM activation | `package_id` only | Publisher's ad server activates the corresponding line item via key-values |
-| Catalog steering | `package_id` + catalog items | Publisher renders preferred products from a synced catalog |
-| Creative delivery | `package_id` + `creative_manifest` | Publisher renders the inline creative (or fetches assets via URLs in the manifest) |
-| AI assistant integration | `package_id` + `brand` + `summary` + `creative_manifest` | Assistant weaves sponsored content into the conversation |
+| StreamHaus | 5 (within cap) | Same ad every session |
+| OutdoorNet | 5 (within cap) | Same ad every session |
+| PodTrail | 5 (within cap) | Same ad every session |
+| **Total** | **15** | **3x over Sam's cap** |
 
-Publishers declare what they can accept on each product via the `trusted_match` field on `get_products`, which includes `context_match`, `identity_match`, `response_types`, and `dynamic_brands`. The buyer reads these capabilities at planning time and adapts its offers accordingly.
+Every redundant impression is budget that could have reached someone new. Advertising works better with spacing — each exposure after the first few produces diminishing returns. Sam is buying frequency when he should be buying reach.
 
-## Anti-correlation by design
+This isn't a StreamHaus problem. It's a structural problem. No single publisher can enforce a cross-publisher cap because no single publisher sees the full picture.
 
-Two rules prevent buyers from correlating the context and identity paths:
+## Step 2: Adding the TMP Router
 
-1. **Context Match sends no package list.** The provider evaluates its synced package set for the placement — the same packages for every user. Because no package list is sent per request, the publisher cannot accidentally leak identity through package filtering.
+<img src="/images/walkthrough/tmp-02-router-setup.png" alt="Priya at a terminal, deploying a TMP Router — a diagram materializes showing context and identity paths splitting into separate channels" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-2. **`package_ids`** on the identity match request includes ALL active packages for the buyer, not just those on the current page. Sending only the page-specific subset would let a buyer match package sets across the two operations.
+Priya deploys the TMP Router — the piece that sits between her ad server and buyer agents, with structurally separate paths for context and identity. She configures Sam's buyer agent (Pinnacle) as a TMP provider, alongside other buyers.
 
-The publisher intersects the results after both responses arrive.
+The router sits between StreamHaus's ad server and the buyer agents. When a user loads a page, the router handles the real-time evaluation. Priya didn't write surface-specific code — the same router handles StreamHaus's website, their mobile app, and their CTV app.
 
-## Connection to AXE and Scope3
+<Accordion title="What Priya configures">
 
-TMP generalizes what AXE (Ad eXchange Environment, Scope3's curation product) already does: evaluate packages against content context in real time. Where AXE is a specific implementation, TMP is the protocol layer that lets any buyer agent participate in the same decision, across any surface, with structural privacy guarantees.
+Priya registers Sam's buyer agent (Pinnacle) as a TMP provider on the router:
 
-## Architecture
-
-The TMP Router is a single binary that handles both context match and identity match requests, with structurally separate code paths. It fans out requests to configured providers in parallel and merges their responses. Publishers configure the router with the TMP providers they want to use -- similar to configuring Prebid modules today.
-
+```json
+{
+  "providers": [
+    {
+      "name": "Pinnacle (Acme Outdoor)",
+      "endpoint": "https://pinnacle.acme.example/tmp",
+      "context_match": true,
+      "identity_match": true,
+      "properties": ["01J5A2B3C4-streamhaus-web", "01J5A2B3C5-streamhaus-ios"],
+      "latency_budget_ms": 50,
+      "priority": 1
+    }
+  ]
+}
 ```
-Publisher --> Router (context path) --> Provider A, B, C --> merged offers
-Publisher --> Router (identity path) --> Provider A, B, C --> merged eligibility
-                                                                   |
-Publisher joins both responses and activates packages <-------------+
+
+`context_match: true` means the router sends content context to Pinnacle for targeting. `identity_match: true` means it also sends opaque user tokens so Pinnacle can enforce frequency caps and audience eligibility. `properties` scopes which StreamHaus properties this provider serves — Pinnacle evaluates web and iOS, not CTV. `latency_budget_ms` sets a per-provider timeout; if Pinnacle consistently exceeds it, the router deprioritizes it.
+
+The router fans out to all configured providers in parallel and merges their responses.
+
+</Accordion>
+
+## Step 3: Context Match — what's on the page?
+
+<img src="/images/walkthrough/tmp-03-context-match.png" alt="A StreamHaus article about hiking gear with content signals radiating outward — Sam's buyer agent responds with a package offer and creative manifest" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+A viewer opens a StreamHaus article about hiking gear. StreamHaus's properties are registered in the [property catalog](/docs/building/property-catalog) with stable `property_rid` identifiers, so the buyer knows exactly which property this request came from. StreamHaus sends a **Context Match** request: the article URL, and all available packages for the placement.
+
+Sam's buyer agent evaluates: "This hiking content matches `pkg-outdoor-display`." It responds with an offer that includes a creative manifest — the Trail Pro 3000 banner.
+
+The key constraint: **no user identity crosses this boundary.** The buyer evaluates content, not people. It doesn't know who is reading the article — only what the article is about.
+
+<Accordion title="Context Match request and response">
+
+Request from StreamHaus to Sam's buyer agent:
+
+```json
+{
+  "request_id": "ctx-8f3a2b",
+  "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
+  "property_type": "website",
+  "placement_id": "article-sidebar",
+  "artifact_refs": [
+    { "type": "url", "value": "https://streamhaus.example/articles/hiking-gear-2026" }
+  ]
+}
 ```
 
-TEE attestation is an upgrade path. The separation works without TEE; TEE makes it independently verifiable.
+The buyer agent already knows which packages are active for this placement — it set them up via `create_media_buy`. No package list needs to travel on the wire.
 
-## Reading order
+Response from Sam's buyer agent:
 
-1. **[The Execution Gap](/docs/trusted-match/execution-gap)** -- why existing protocols fail and why TMP takes a matching approach instead of an auction approach
-2. **[Context and Identity](/docs/trusted-match/context-and-identity)** -- both operations with concrete examples, including catalog refinement and the publisher-side join
-3. **[Specification](/docs/trusted-match/specification)** -- authoritative message types, field tables, and conformance requirements
-4. **[Privacy Architecture](/docs/trusted-match/privacy-architecture)** -- structural separation, temporal decorrelation, TEE attestation
-5. **[Router Architecture](/docs/trusted-match/router-architecture)** -- deployment, fan-out, provider configuration
-6. **Surfaces**: [Web](/docs/trusted-match/surfaces/web) | [AI Assistants](/docs/trusted-match/surfaces/ai-assistants) | [Mobile](/docs/trusted-match/surfaces/mobile) | [Retail Media](/docs/trusted-match/surfaces/retail-media) | [CTV](/docs/trusted-match/surfaces/ctv)
+```json
+{
+  "request_id": "ctx-8f3a2b",
+  "offers": [
+    {
+      "package_id": "pkg-outdoor-display"
+    }
+  ]
+}
+```
+
+</Accordion>
+
+## Step 4: Identity Match — is this user eligible?
+
+<img src="/images/walkthrough/tmp-04-identity-match.png" alt="An opaque user token with package IDs flows to Sam's buyer agent — a timeline shows last exposure 45 minutes ago, recency window 2 hours, verdict: not eligible" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Separately, StreamHaus sends an **Identity Match** request: an opaque user token and ALL of Sam's active package IDs across every publisher.
+
+Sam's buyer agent checks its exposure history: "This user saw 1 impression 45 minutes ago on OutdoorNet. The 2-hour recency window hasn't elapsed. **Not eligible.**"
+
+The key constraint: **no page context crosses this boundary.** The buyer checks eligibility, not content fit. It doesn't know what the user is looking at — only whether this user should see more ads right now.
+
+The recency check crosses publisher boundaries because Sam's buyer agent maintains a shared exposure store. StreamHaus, OutdoorNet, and PodTrail all send Identity Match requests to the same buyer agent — so it knows the user's total exposure across all three.
+
+<Accordion title="Identity Match request and response">
+
+Request from StreamHaus to Sam's buyer agent:
+
+```json
+{
+  "request_id": "id-7c9e1d",
+  "user_token": "opaque-streamhaus-token-abc123",
+  "uid_type": "uid2",
+  "package_ids": [
+    "pkg-outdoor-display",
+    "pkg-outdoor-ctv",
+    "pkg-outdoor-audio"
+  ]
+}
+```
+
+Response from Sam's buyer agent:
+
+```json
+{
+  "request_id": "id-7c9e1d",
+  "eligibility": [
+    {
+      "package_id": "pkg-outdoor-display",
+      "eligible": false
+    },
+    {
+      "package_id": "pkg-outdoor-ctv",
+      "eligible": false
+    },
+    {
+      "package_id": "pkg-outdoor-audio",
+      "eligible": true,
+      "intent_score": 0.7
+    }
+  ]
+}
+```
+
+The `package_ids` list includes ALL of Sam's active packages — not just those relevant to the current page. Sending only the page-specific subset would let the buyer match package sets across Context Match and Identity Match, breaking the structural separation.
+
+</Accordion>
+
+## Step 5: The join — StreamHaus makes the decision
+
+<img src="/images/walkthrough/tmp-05-publisher-join.png" alt="Two response cards merge at StreamHaus — the Trail Pro ad fades while a different advertiser's ad activates in its place" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+StreamHaus joins both responses locally:
+
+- **Context Match** said: "Activate `pkg-outdoor-display` with this creative manifest."
+- **Identity Match** said: "Not eligible — recency window."
+
+Result: **suppress the ad.** A different advertiser's campaign fills the slot. Sam's budget is preserved for a better moment — one where the viewer hasn't seen the ad recently and the impression will actually matter.
+
+The buyer never saw user identity and page context together. Privacy isn't a policy that could be violated — it's structural. The two paths never share data, and the publisher (who already has both signals) makes the final decision.
+
+## Step 6: Three winners
+
+<img src="/images/walkthrough/tmp-06-three-winners.png" alt="Three panels: a viewer relaxing with varied ads across devices, Sam's dashboard showing increased unique reach, Priya seeing rising buyer satisfaction metrics" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+**The viewer** had a normal evening across three platforms. They saw the Trail Pro ad during hiking content on StreamHaus — relevant, well-timed. When they browsed OutdoorNet 30 minutes later, a different ad appeared. No sense of being followed across the internet.
+
+**Sam** got spaced exposure instead of concentrated repetition. His 5 weekly impressions land across different contexts and moments, each one more effective than the 6th or 7th impression would have been. And the budget freed by suppression reaches viewers who haven't seen the ad yet — more unique reach for the same spend.
+
+**Priya** differentiated StreamHaus. Buyers prefer publishers that support TMP because their frequency policies actually work. StreamHaus's inventory is more valuable per impression because buyers know they're not wasting budget on over-exposed viewers.
+
+| Before TMP | With TMP |
+|---|---|
+| Each publisher counts independently | Buyer agent tracks exposure across all publishers |
+| 15 impressions per viewer per week | 5 impressions per viewer per week, properly spaced |
+| Budget buys frequency | Budget buys reach |
+| Concentrated repetition, ad fatigue | Spaced exposure, higher effectiveness per impression |
+| Publishers compete on volume | Publishers compete on quality and buyer experience |
+
+## Step 7: Same protocol, every surface
+
+<img src="/images/walkthrough/tmp-07-every-surface.png" alt="Five surface icons — web, mobile, CTV, retail media, AI assistant — connected to a single TMP Router hub, all in teal" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The same TMP Router handles StreamHaus's website, their mobile app, their CTV app, and their AI assistant. Sam's buyer agent works across all of them without surface-specific logic. The protocol handles the surface differences. Priya and Sam handle the business.
+
+## Go deeper
+
+<CardGroup cols={2}>
+  <Card title="AI assistant mediation" icon="robot" href="/docs/trusted-match/ai-mediation">
+    The first mediation protocol for AI assistants — how demand finds conversational AI when the context can't be broadcast.
+  </Card>
+  <Card title="The execution gap" icon="puzzle-piece" href="/docs/trusted-match/execution-gap">
+    Why existing protocols fail at serve time and why TMP takes a matching approach instead of an auction approach.
+  </Card>
+  <Card title="Context and identity" icon="arrows-split-up-and-left" href="/docs/trusted-match/context-and-identity">
+    Both operations with concrete examples, including catalog refinement and the publisher-side join.
+  </Card>
+  <Card title="Specification" icon="scroll" href="/docs/trusted-match/specification">
+    Authoritative message types, field tables, and conformance requirements.
+  </Card>
+  <Card title="Privacy architecture" icon="shield-halved" href="/docs/trusted-match/privacy-architecture">
+    Structural separation, temporal decorrelation, and TEE attestation.
+  </Card>
+  <Card title="Router architecture" icon="diagram-project" href="/docs/trusted-match/router-architecture">
+    Deployment, fan-out, and provider configuration.
+  </Card>
+</CardGroup>
+
+### Surface guides
+
+<CardGroup cols={3}>
+  <Card title="Web" icon="globe" href="/docs/trusted-match/surfaces/web" />
+  <Card title="AI assistants" icon="robot" href="/docs/trusted-match/surfaces/ai-assistants" />
+  <Card title="Mobile" icon="mobile" href="/docs/trusted-match/surfaces/mobile" />
+  <Card title="Retail media" icon="store" href="/docs/trusted-match/surfaces/retail-media" />
+  <Card title="CTV" icon="tv" href="/docs/trusted-match/surfaces/ctv" />
+</CardGroup>

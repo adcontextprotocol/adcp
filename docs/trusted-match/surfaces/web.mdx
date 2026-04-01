@@ -27,7 +27,7 @@ When a page loads, the TMP Prebid module sends a Context Match request to the ro
   "property_id": "oakwood-publishing-main",
   "property_type": "website",
   "placement_id": "article-sidebar-300x250",
-  "artifacts": [
+  "artifact_refs": [
     { "type": "url", "value": "https://oakwood.example.com/sustainable-kitchen-2026-03" }
   ]
 }
@@ -36,7 +36,7 @@ When a page loads, the TMP Prebid module sends a Context Match request to the ro
 Key points:
 
 - No package list is sent per request. The provider evaluates all eligible packages for this placement using its synced package set from media buy setup. The same packages are evaluated for every user, preventing identity leakage into the context path and enabling response caching.
-- `artifacts` references content by type and value. The buyer agent resolves artifact metadata from its cache — no inline signals needed on the request.
+- `artifact_refs` references content by type and value. The buyer agent resolves artifact metadata from its cache — no inline signals needed on the request.
 
 ### Context Match Response
 
@@ -153,9 +153,19 @@ GAM line items are pre-configured to target on `adcp_pkg` values. When the ad re
 
 GAM applies its own priority rules, competitive exclusions, and pacing logic across all eligible line items -- including both TMP-activated deals and other demand sources. TMP does not override GAM's ad selection; it provides the inputs.
 
+## GAM Line Item Configuration
+
+For each active package, the publisher creates a GAM line item targeting `adcp_pkg = <package_id>`. This is the link between TMP activation and GAM ad selection.
+
+- **Line item type.** Sponsorship or Standard, depending on deal terms from `create_media_buy`. Guaranteed deals use Sponsorship; non-guaranteed deals use Standard.
+- **Priority.** Set based on deal type. Guaranteed deals at priority 4-8, non-guaranteed at priority 12-16. This determines how TMP demand competes with other line items in GAM's selection logic.
+- **Creative assignment.** Reference pre-synced creatives from `sync_creatives`, or use the creative manifest from the Context Match response if the buyer provides one.
+- **Lifecycle.** When a media buy ends or is cancelled, deactivate the corresponding line item. The router stops including the package in Identity Match within 1 hour.
+- **Automation.** Publishers can automate line item creation by listening for new `create_media_buy` completions and mapping package details to GAM API calls. The package ID, deal type, priority, and creative references are all available from the media buy response.
+
 ## Prebid Integration
 
-The TMP Prebid module replaces vendor-specific RTD modules. It handles the full flow:
+The TMP Prebid module is a Real-Time Data (RTD) module that replaces vendor-specific RTD modules. It is defined by the [TMP Prebid proposal](/specs/prebid-tmp-proposal) and follows the standard Prebid RTD module interface. It handles the full flow:
 
 1. **On auction init**: Send Context Match request to the TMP router for each placement on the page.
 2. **On context match response**: Store offers and targeting signals.
@@ -188,6 +198,15 @@ Page Load
   |-- Set targeting KVs on GAM ad request
   |-- GAM selects and serves ad
 ```
+
+## Coexistence with OpenRTB
+
+Most publishers run TMP alongside Prebid header bidding, which sources demand via OpenRTB. The two systems are complementary.
+
+- **TMP as additional demand.** TMP packages appear as line items in GAM, competing with Prebid line items on priority and price. GAM handles the yield decision — TMP does not replace Prebid, it adds pre-negotiated demand.
+- **Competitive exclusion.** Configure GAM competitive exclusion rules to prevent conflicting brands from appearing together across TMP and Prebid demand sources.
+- **Revenue attribution.** TMP-activated impressions are tracked via `get_media_buy_delivery`, while Prebid impressions flow through existing SSP reporting. Publishers reconcile in their BI layer.
+- **Timeout independence.** TMP and Prebid requests run in parallel. TMP timeout (50ms) is typically faster than Prebid timeout (1000-1500ms), so TMP results are ready before GAM needs them.
 
 ## Privacy Constraints for Web
 

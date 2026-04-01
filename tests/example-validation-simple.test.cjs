@@ -487,6 +487,137 @@ async function runTests() {
     'list_creative_formats request with disclosure filters (media-buy domain)'
   );
 
+  // TMP examples from walkthrough docs
+
+  // Context Match request — web (from index.mdx)
+  await validateExample(
+    {
+      "request_id": "ctx-8f3a2b",
+      "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
+      "property_type": "website",
+      "placement_id": "article-sidebar",
+      "artifact_refs": [
+        { "type": "url", "value": "https://streamhaus.example/articles/hiking-gear-2026" }
+      ]
+    },
+    '/schemas/tmp/context-match-request.json',
+    'TMP Context Match request — web (overview walkthrough)'
+  );
+
+  // Context Match response — web (from index.mdx)
+  await validateExample(
+    {
+      "request_id": "ctx-8f3a2b",
+      "offers": [
+        {
+          "package_id": "pkg-outdoor-display"
+        }
+      ]
+    },
+    '/schemas/tmp/context-match-response.json',
+    'TMP Context Match response — web (overview walkthrough)'
+  );
+
+  // Identity Match request — web (from index.mdx)
+  await validateExample(
+    {
+      "request_id": "id-7c9e1d",
+      "user_token": "opaque-streamhaus-token-abc123",
+      "uid_type": "uid2",
+      "package_ids": [
+        "pkg-outdoor-display",
+        "pkg-outdoor-ctv",
+        "pkg-outdoor-audio"
+      ]
+    },
+    '/schemas/tmp/identity-match-request.json',
+    'TMP Identity Match request — web (overview walkthrough)'
+  );
+
+  // Identity Match response — web (from index.mdx)
+  await validateExample(
+    {
+      "request_id": "id-7c9e1d",
+      "eligibility": [
+        {
+          "package_id": "pkg-outdoor-display",
+          "eligible": false
+        },
+        {
+          "package_id": "pkg-outdoor-ctv",
+          "eligible": false
+        },
+        {
+          "package_id": "pkg-outdoor-audio",
+          "eligible": true,
+          "intent_score": 0.7
+        }
+      ]
+    },
+    '/schemas/tmp/identity-match-response.json',
+    'TMP Identity Match response — web (overview walkthrough)'
+  );
+
+  // Context Match request — AI assistant (from ai-mediation.mdx)
+  await validateExample(
+    {
+      "request_id": "ctx-trail-shoes-01",
+      "property_rid": "01916f3a-f8cb-7000-8000-000000000051",
+      "property_type": "ai_assistant",
+      "placement_id": "chat-inline-recommendation",
+      "context_signals": {
+        "topics": ["596", "477"],
+        "taxonomy_source": "iab",
+        "taxonomy_id": 7,
+        "sentiment": "positive",
+        "keywords": ["trail shoes", "rocky terrain", "ankle support"],
+        "language": "en",
+        "summary": "User seeking trail shoe recommendations for rocky terrain with ankle support"
+      }
+    },
+    '/schemas/tmp/context-match-request.json',
+    'TMP Context Match request — AI assistant (ai-mediation walkthrough)'
+  );
+
+  // Context Match response — AI assistant with creative manifest (from ai-mediation.mdx)
+  await validateExample(
+    {
+      "request_id": "ctx-trail-shoes-01",
+      "offers": [
+        {
+          "package_id": "pkg-outdoor-display",
+          "brand": { "domain": "acmeoutdoor.example" },
+          "summary": "Trail Pro 3000 — ankle-height trail runner with rock plate, relevant to user's terrain needs",
+          "creative_manifest": {
+            "format_id": { "agent_url": "https://streamhaus.example", "id": "sponsored_recommendation" },
+            "assets": {
+              "headline": { "content": "Built for rocky trails" },
+              "body": { "content": "The Trail Pro 3000 has a full rock plate and ankle-height collar for technical terrain. Vibram outsole with 4mm lugs." }
+            }
+          }
+        }
+      ]
+    },
+    '/schemas/tmp/context-match-response.json',
+    'TMP Context Match response — AI assistant with creative manifest (ai-mediation walkthrough)'
+  );
+
+  // Identity Match request with consent (from context-and-identity.mdx)
+  await validateExample(
+    {
+      "request_id": "id-9b2c",
+      "user_token": "tok_hk82mfp1",
+      "uid_type": "uid2",
+      "consent": {
+        "gdpr": true,
+        "tcf_consent": "CPx2XYZABC..."
+      },
+      "package_ids": ["pkg-A", "pkg-B", "pkg-C"]
+    },
+    '/schemas/tmp/identity-match-request.json',
+    'TMP Identity Match request with consent (context-and-identity walkthrough)'
+  );
+
   // Print results
   log('\n===========================================');
   log(`Tests completed: ${totalTests}`);
