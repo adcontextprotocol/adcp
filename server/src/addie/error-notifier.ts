@@ -91,7 +91,11 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
   pruneStaleEntries(now);
 
   const setting = await getCachedErrorChannel();
-  if (!setting?.channel_id) return;
+  if (!setting?.channel_id) {
+    logger.warn({ toolName: ctx.toolName, error: ctx.errorMessage.substring(0, 200) },
+      'Tool error occurred but no error_slack_channel configured — alert dropped');
+    return;
+  }
 
   recentErrors.set(throttleKey, now);
 
@@ -136,7 +140,11 @@ async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
   pruneStaleEntries(now);
 
   const setting = await getCachedErrorChannel();
-  if (!setting?.channel_id) return;
+  if (!setting?.channel_id) {
+    logger.warn({ source: ctx.source, error: ctx.errorMessage.substring(0, 200) },
+      'System error occurred but no error_slack_channel configured — alert dropped');
+    return;
+  }
 
   recentErrors.set(throttleKey, now);
 
