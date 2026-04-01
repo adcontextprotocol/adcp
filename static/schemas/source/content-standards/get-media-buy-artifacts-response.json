@@ -67,26 +67,25 @@
             "required": ["record_id", "artifact"]
           }
         },
-        "sampling_info": {
+        "collection_info": {
           "type": "object",
-          "description": "Information about how the sample was generated",
+          "description": "Information about artifact collection for this media buy. Sampling is configured at buy creation time — this reports what was actually collected.",
           "properties": {
             "total_deliveries": {
               "type": "integer",
-              "description": "Total deliveries in the time range"
+              "description": "Total deliveries in the requested time range"
             },
-            "sampled_count": {
+            "total_collected": {
               "type": "integer",
-              "description": "Number of artifacts in this response"
+              "description": "Total artifacts collected (per the buy's sampling configuration)"
+            },
+            "returned_count": {
+              "type": "integer",
+              "description": "Number of artifacts in this response (may be less than total_collected due to pagination or filters)"
             },
             "effective_rate": {
               "type": "number",
-              "description": "Actual sampling rate achieved"
-            },
-            "method": {
-              "type": "string",
-              "enum": ["random", "stratified", "recent", "failures_only"],
-              "description": "Sampling method used"
+              "description": "Actual collection rate achieved (total_collected / total_deliveries)"
             }
           }
         },

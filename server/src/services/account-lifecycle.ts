@@ -139,14 +139,15 @@ export function computeEngagementLevel(signals: EngagementSignals, slackUserCoun
 }
 
 // ============================================================================
-// Fire score — map 0-100 engagement_score to 0-4 fires for UI
+// Fire score — map community points to 0-4 fires for UI
+// Tiers: Explorer (<100), Connector (100+), Champion (500+), Pioneer (1500+)
 // ============================================================================
 
-export function scoreToFires(score: number): number {
-  if (score >= 76) return 4;
-  if (score >= 56) return 3;
-  if (score >= 36) return 2;
-  if (score >= 16) return 1;
+export function scoreToFires(communityPoints: number): number {
+  if (communityPoints >= 1500) return 4; // Pioneer
+  if (communityPoints >= 500) return 3;  // Champion
+  if (communityPoints >= 100) return 2;  // Connector
+  if (communityPoints > 0) return 1;     // Explorer with activity
   return 0;
 }
 
@@ -154,14 +155,14 @@ export function scoreToFires(score: number): number {
 // "Hot prospect" criteria — used in SQL filters and business logic
 // ============================================================================
 
-export const HOT_PROSPECT_SCORE_THRESHOLD = 50;
+export const HOT_PROSPECT_POINTS_THRESHOLD = 100; // Connector tier
 export const HOT_PROSPECT_INTEREST_LEVELS = ['high', 'very_high'] as const;
 
 export function isHotProspect(org: {
-  engagement_score?: number | null;
+  community_points?: number | null;
   interest_level?: string | null;
 }): boolean {
-  if ((org.engagement_score ?? 0) >= HOT_PROSPECT_SCORE_THRESHOLD) return true;
+  if ((org.community_points ?? 0) >= HOT_PROSPECT_POINTS_THRESHOLD) return true;
   if (org.interest_level && (HOT_PROSPECT_INTEREST_LEVELS as readonly string[]).includes(org.interest_level)) return true;
   return false;
 }
@@ -171,7 +172,7 @@ export function isHotProspect(org: {
 // ============================================================================
 
 export const GOING_COLD_DAYS = 30;
-export const GOING_COLD_MIN_SCORE = 30;
+export const GOING_COLD_MIN_POINTS = 10;
 
 // ============================================================================
 // Churned subscription statuses

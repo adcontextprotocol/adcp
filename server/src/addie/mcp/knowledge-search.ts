@@ -14,6 +14,7 @@
  */
 
 import { logger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import {
   initializeDocsIndex,
@@ -242,7 +243,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         channel: {
           type: 'string',
-          description: 'Optional channel name to filter results (e.g., "governance-wg", "general"). Partial matches work.',
+          description: 'Optional channel name to filter results (e.g., "technical-standards-wg", "general"). Partial matches work.',
         },
         limit: {
           type: 'number',
@@ -262,7 +263,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
       properties: {
         channel: {
           type: 'string',
-          description: 'Channel name to get activity from (e.g., "governance-wg", "general"). Partial matches work.',
+          description: 'Channel name to get activity from (e.g., "technical-standards-wg", "general"). Partial matches work.',
         },
         days: {
           type: 'number',
@@ -505,6 +506,10 @@ export function createKnowledgeToolHandlers(slackUserId?: string): Map<
     }).catch(err => logger.warn({ err }, 'Failed to log search'));
 
     if (results.length === 0) {
+      logger.warn(
+        { query, category, indexReady: isDocsIndexReady(), docCount: getDocCount() },
+        'Addie search_docs: zero results'
+      );
       return `No documentation found for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry using web_search for external sources or search_slack for community discussions.`;
     }
 
@@ -722,7 +727,7 @@ ${excerpt}`;
       const messages = await addieDb.getChannelActivity(channel, { days, limit });
 
       if (messages.length === 0) {
-        return `No recent activity found in channels matching "${channel}".\n\nThis could mean:\n- The channel name might be different (try partial matches like "govern" for "governance-wg")\n- No messages in the last ${days ?? 30} days\n- The channel may not be indexed yet`;
+        return `No recent activity found in channels matching "${channel}".\n\nThis could mean:\n- The channel name might be different (try partial matches like "technical" for "technical-standards-wg")\n- No messages in the last ${days ?? 30} days\n- The channel may not be indexed yet`;
       }
 
       // Group messages by user to help with "who's most active" analysis
@@ -770,7 +775,7 @@ ${formatted}
 **When summarizing:** Focus on key themes, decisions, and who contributed to each topic. Cite specific messages using their Slack permalinks.`;
     } catch (error) {
       logger.error({ error, channel }, 'Addie: get_channel_activity failed');
-      return `Failed to get channel activity: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to get channel activity: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -853,7 +858,7 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
       return `Bookmarked "${title}" for indexing. The content will be fetched, summarized, and added to the knowledge base shortly. You can search for it later using search_resources.`;
     } catch (error) {
       logger.error({ error, url }, 'Addie: Bookmark failed');
-      return `Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -907,7 +912,7 @@ ${article.addie_notes ? `**Addie's Take:** ${article.addie_notes}` : ''}`;
       return `Found ${results.length} recent articles${topicNote} from the last ${days} days:\n\n${formatted}\n\n**Remember to cite the source URL when sharing this information.**`;
     } catch (error) {
       logger.error({ error }, 'Addie: get_recent_news failed');
-      return `Failed to fetch recent news: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to fetch recent news: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -956,7 +961,7 @@ export function createUserScopedBookmarkHandler(
       return `Bookmarked "${title}" for indexing. The content will be fetched, summarized, and added to the knowledge base shortly. You can search for it later using search_resources.`;
     } catch (error) {
       logger.error({ error, url, slackUserId }, 'Addie: User-scoped bookmark failed');
-      return `Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 }

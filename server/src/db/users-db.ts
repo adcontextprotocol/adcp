@@ -74,9 +74,13 @@ export class UsersDatabase {
    */
   async findUsersByCity(city: string): Promise<User[]> {
     const result = await query<User>(
-      `SELECT * FROM users
-       WHERE LOWER(city) = LOWER($1)
-       ORDER BY engagement_score DESC`,
+      `SELECT u.* FROM users u
+       LEFT JOIN (
+         SELECT workos_user_id, SUM(points) AS total_points
+         FROM community_points GROUP BY workos_user_id
+       ) cp ON cp.workos_user_id = u.workos_user_id
+       WHERE LOWER(u.city) = LOWER($1)
+       ORDER BY COALESCE(cp.total_points, 0) DESC`,
       [city]
     );
     return result.rows;
@@ -87,9 +91,13 @@ export class UsersDatabase {
    */
   async findUsersByCountry(country: string): Promise<User[]> {
     const result = await query<User>(
-      `SELECT * FROM users
-       WHERE LOWER(country) = LOWER($1)
-       ORDER BY engagement_score DESC`,
+      `SELECT u.* FROM users u
+       LEFT JOIN (
+         SELECT workos_user_id, SUM(points) AS total_points
+         FROM community_points GROUP BY workos_user_id
+       ) cp ON cp.workos_user_id = u.workos_user_id
+       WHERE LOWER(u.country) = LOWER($1)
+       ORDER BY COALESCE(cp.total_points, 0) DESC`,
       [country]
     );
     return result.rows;
@@ -100,9 +108,13 @@ export class UsersDatabase {
    */
   async findUsersWithoutLocation(limit = 100): Promise<User[]> {
     const result = await query<User>(
-      `SELECT * FROM users
-       WHERE city IS NULL AND country IS NULL
-       ORDER BY engagement_score DESC
+      `SELECT u.* FROM users u
+       LEFT JOIN (
+         SELECT workos_user_id, SUM(points) AS total_points
+         FROM community_points GROUP BY workos_user_id
+       ) cp ON cp.workos_user_id = u.workos_user_id
+       WHERE u.city IS NULL AND u.country IS NULL
+       ORDER BY COALESCE(cp.total_points, 0) DESC
        LIMIT $1`,
       [limit]
     );
@@ -154,9 +166,13 @@ export class UsersDatabase {
    */
   async findUsersByTimezone(timezone: string): Promise<User[]> {
     const result = await query<User>(
-      `SELECT * FROM users
-       WHERE timezone = $1
-       ORDER BY engagement_score DESC`,
+      `SELECT u.* FROM users u
+       LEFT JOIN (
+         SELECT workos_user_id, SUM(points) AS total_points
+         FROM community_points GROUP BY workos_user_id
+       ) cp ON cp.workos_user_id = u.workos_user_id
+       WHERE u.timezone = $1
+       ORDER BY COALESCE(cp.total_points, 0) DESC`,
       [timezone]
     );
     return result.rows;
@@ -167,9 +183,13 @@ export class UsersDatabase {
    */
   async findUsersWithoutTimezone(limit = 100): Promise<User[]> {
     const result = await query<User>(
-      `SELECT * FROM users
-       WHERE timezone IS NULL
-       ORDER BY engagement_score DESC
+      `SELECT u.* FROM users u
+       LEFT JOIN (
+         SELECT workos_user_id, SUM(points) AS total_points
+         FROM community_points GROUP BY workos_user_id
+       ) cp ON cp.workos_user_id = u.workos_user_id
+       WHERE u.timezone IS NULL
+       ORDER BY COALESCE(cp.total_points, 0) DESC
        LIMIT $1`,
       [limit]
     );

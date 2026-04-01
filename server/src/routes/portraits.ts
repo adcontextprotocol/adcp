@@ -60,15 +60,41 @@ async function isPaidMember(
 
   const user = req.user;
   const requestedOrgId = req.query.org as string | undefined;
-  const memberships = user?.organizationMemberships || [];
+  const userId = user?.id;
+  if (!userId) return false;
 
-  for (const m of memberships) {
-    const orgId = m.organization?.id || m.organizationId;
+  // Resolve memberships from the local DB so eligibility does not depend on
+  // whatever org context happened to be embedded in the current session.
+  const membershipRows = await dbQuery<{ workos_organization_id: string }>(
+    `SELECT DISTINCT workos_organization_id
+     FROM organization_memberships
+     WHERE workos_user_id = $1
+       AND workos_organization_id IS NOT NULL`,
+    [userId]
+  );
+
+  const orgIds = membershipRows.rows.map(row => row.workos_organization_id);
+  if (requestedOrgId && !orgIds.includes(requestedOrgId)) {
+    orgIds.unshift(requestedOrgId);
+  }
+
+  for (const orgId of orgIds) {
     if (requestedOrgId && orgId !== requestedOrgId) continue;
     if (await orgDb.hasActiveSubscription(orgId)) return true;
     // Founding/invoice members may not have a subscription record
     const profile = await memberDb.getProfileByOrgId(orgId);
     if (profile) return true;
+  }
+
+  // Portraits belong to the user, not a specific org. If a requested org was
+  // provided and is not eligible, fall back to any paid membership the user has.
+  if (requestedOrgId) {
+    for (const orgId of orgIds) {
+      if (orgId === requestedOrgId) continue;
+      if (await orgDb.hasActiveSubscription(orgId)) return true;
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      if (profile) return true;
+    }
   }
 
   return false;
@@ -151,12 +177,14 @@ export function createPortraitRouter(config: PortraitRoutesConfig): Router {
       const portrait = await portraitDb.getActivePortrait(userId);
       const pending = await portraitDb.getLatestGenerated(userId);
       const monthlyCount = await portraitDb.countMonthlyGenerations(userId);
+      const canGenerate = await isPaidMember(req, orgDb, memberDb);
 
       res.json({
         portrait: portrait || null,
         pending: pending || null,
         generationsThisMonth: monthlyCount,
         maxMonthlyGenerations: MAX_MONTHLY_GENERATIONS,
+        canGenerate,
         vibeOptions: Object.keys(VIBE_OPTIONS),
       });
     } catch (err) {

@@ -557,7 +557,7 @@
             registerTopics(topics);
 
             var card = document.createElement('a');
-            card.href = item.external_url || ('/perspectives/' + item.slug);
+            card.href = item.external_url || ('/perspectives/' + item.slug + '?from=stories');
             card.className = 'carousel-card';
             card.setAttribute('data-topics', topics);
             if (item.external_url) {

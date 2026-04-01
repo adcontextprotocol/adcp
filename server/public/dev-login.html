@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dev Login - Select User</title>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="/csrf.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -289,7 +290,7 @@
   <script>
     // Get return_to from URL params
     const urlParams = new URLSearchParams(window.location.search);
-    const returnTo = urlParams.get('return_to') || '/dashboard';
+    const returnTo = urlParams.get('return_to') || '/member-hub';
 
     function loginAs(userKey) {
       // POST to dev login endpoint to set the cookie

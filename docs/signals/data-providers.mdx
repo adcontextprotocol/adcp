@@ -50,7 +50,7 @@ This follows the same pattern as publishers declaring properties - instead of "w
 | Use `property_ids` / `property_tags` | Use `signal_ids` / `signal_tags` |
 | Buyers verify via `publisher_domain` | Buyers verify via `data_provider_domain` |
 
-Both use `/.well-known/adagents.json` as the publishing mechanism.
+Both use `/.well-known/adagents.json` as the publishing mechanism. A single `adagents.json` file can declare both `properties` and `signals` simultaneously — see [Unified declaration model](/docs/governance/property/adagents#unified-declaration-model).
 
 ## File Location
 
@@ -605,6 +605,17 @@ A signal can declare both when it touches restricted personal data and is releva
 ```
 
 Without governance metadata, a governance agent must infer sensitivity from signal names — this is fragile and produces false positives. Declared attributes enable deterministic matching.
+
+### Relationship to the Policy Registry
+
+Signal definitions declare `policy_categories` and `restricted_attributes` using the same vocabulary as the [Policy Registry](/docs/governance/policy-registry). These fields enable governance agents to match signal metadata against policy entries during campaign validation.
+
+| Signal field | Registry equivalent | Purpose |
+|-------------|-------------------|---------|
+| `policy_categories` | `policy_categories` on [policy entries](/docs/governance/policy-registry#policy-category-definitions) | Declares which regulatory regimes the signal touches (e.g., `children_directed`, `health_wellness`) |
+| `restricted_attributes` | `restricted_attributes` on [policy categories](/docs/governance/policy-registry#restricted-attribute-definitions) | Declares which GDPR Article 9 special categories the signal touches (e.g., `health_data`, `racial_ethnic_origin`) |
+
+Values MUST match the canonical definitions in the Policy Registry. See [policy category definitions](/docs/governance/policy-registry#policy-category-definitions) for the full list of valid `policy_categories` values and [restricted attribute definitions](/docs/governance/policy-registry#restricted-attribute-definitions) for valid `restricted_attributes` values.
 
 ## Integration with get_adcp_capabilities
 

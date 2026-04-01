@@ -1,6 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import { csrfProtection } from "./middleware/csrf.js";
+import { slowResponseTracker } from "./middleware/slow-response.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
@@ -449,23 +450,8 @@ export class HTTPServer {
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
 
-    // Request logging for /api/me/member-profile to help diagnose issues
-    this.app.use('/api/me/member-profile', (req, res, next) => {
-      const startTime = Date.now();
-      logger.debug({ method: req.method, path: req.path, query: req.query }, 'member-profile request received');
-
-      // Log when response finishes
-      res.on('finish', () => {
-        logger.debug({
-          method: req.method,
-          path: req.path,
-          statusCode: res.statusCode,
-          durationMs: Date.now() - startTime
-        }, 'member-profile response sent');
-      });
-
-      next();
-    });
+    // Track slow API responses and alert ops
+    this.app.use(slowResponseTracker);
 
     // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
@@ -1610,17 +1596,37 @@ export class HTTPServer {
       }
     };
 
-    this.app.get('/dashboard/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
-    this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
-    this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
-    this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
+    this.app.get('/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
+    this.app.get('/account', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
+    this.app.get('/dashboard/organization', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}`);
+    });
+    this.app.get('/dashboard/team', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}#team`);
+    });
+    this.app.get('/dashboard/settings', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/account${query}`);
+    });
+    this.app.get('/dashboard/membership', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}#membership`);
+    });
     // Redirect old billing path to new membership path
     this.app.get('/dashboard/billing', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/dashboard/membership${query}`);
+      res.redirect(301, `/organization${query}#membership`);
     });
-    this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
-    this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
+    this.app.get('/dashboard/emails', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/account${query}#notifications`);
+    });
+    this.app.get('/dashboard/api-keys', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}#agents`);
+    });
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // My Content - unified CMS for all authenticated users
@@ -1885,7 +1891,6 @@ export class HTTPServer {
           using_database: true,
         },
       };
-      if (dbError) body.db_error = dbError;
       res.status(200).json(body);
     });
 
@@ -1971,8 +1976,8 @@ export class HTTPServer {
     });
 
     // Member hub
-    this.app.get("/member-hub", (req, res) => {
-      res.redirect(302, '/dashboard/organization');
+    this.app.get("/member-hub", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'membership/hub.html');
     });
 
     // Persona assessment
@@ -3218,7 +3223,8 @@ export class HTTPServer {
       try {
         event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
       } catch (err) {
-        logger.error({ err }, 'Webhook signature verification failed');
+        logger.error({ err }, 'Stripe webhook signature verification failed');
+        notifySystemError({ source: 'stripe-webhook-sig', errorMessage: 'Stripe webhook signature verification failed — check STRIPE_WEBHOOK_SECRET' });
         return res.status(400).json({ error: 'Webhook signature verification failed' });
       }
 
@@ -3397,10 +3403,16 @@ export class HTTPServer {
                         }
 
                         if (adminEmails.length > 0) {
+                          // Compute seat limits for the welcome message
+                          const { getSeatLimits } = await import('./db/organization-db.js');
+                          const welcomeTier = inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
+                          const seatLimits = getSeatLimits(welcomeTier);
+
                           await notifySubscriptionThankYou({
                             orgId: org.workos_organization_id,
                             orgName: org.name || 'Organization',
                             adminEmails,
+                            seatLimits,
                           });
                         }
                       } catch (err) {
@@ -3480,6 +3492,13 @@ export class HTTPServer {
                   ? inferMembershipTier(amount, interval, org.is_personal)
                   : null;
 
+                // Capture current tier before update for change detection
+                const oldTierResult = await pool.query<{ membership_tier: string | null }>(
+                  'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+                  [org.workos_organization_id]
+                );
+                const oldTier = oldTierResult.rows[0]?.membership_tier;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
@@ -3502,6 +3521,35 @@ export class HTTPServer {
                     membershipTier,
                   ]
                 );
+
+                // Detect tier change and notify admins
+                if (membershipTier && oldTier && membershipTier !== oldTier) {
+                  const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
+                  const { notifyTierChange } = await import('./slack/org-group-dm.js');
+                  const { getOrgAdminEmails } = await import('./utils/org-admins.js');
+
+                  (async () => {
+                    try {
+                      const oldLimits = getSeatLimits(oldTier);
+                      const newLimits = getSeatLimits(membershipTier);
+                      const currentUsage = await getSeatUsage(org.workos_organization_id);
+                      const adminEmails = await getOrgAdminEmails(workos!, org.workos_organization_id);
+
+                      if (adminEmails.length > 0) {
+                        await notifyTierChange({
+                          orgId: org.workos_organization_id,
+                          orgName: org.name || 'Organization',
+                          adminEmails,
+                          oldLimits,
+                          newLimits,
+                          currentUsage,
+                        });
+                      }
+                    } catch (err) {
+                      logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send tier change notification');
+                    }
+                  })();
+                }
 
                 logger.info({
                   orgId: org.workos_organization_id,
@@ -4121,7 +4169,9 @@ export class HTTPServer {
 
         res.json({ received: true });
       } catch (error) {
+        const errMsg = error instanceof Error ? (error as Error).message : String(error);
         logger.error({ err: error }, 'Error processing webhook');
+        notifySystemError({ source: 'stripe-webhook', errorMessage: `Failed to process Stripe ${event?.type || 'unknown'} event: ${errMsg}` });
         res.status(500).json({ error: 'Webhook processing failed' });
       }
     });
@@ -4902,18 +4952,25 @@ Disallow: /api/admin/
       try {
         const pool = getPool();
         const authored = req.query.authored === 'true';
+        const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 100);
         const result = await pool.query(
           `SELECT
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
             p.external_url, p.external_site_name,
             p.author_name, p.author_title, p.featured_image_url,
+            u.slug as author_slug,
+            u.avatar_url as author_avatar_url,
+            u.headline as author_headline,
             p.published_at, p.display_order, p.tags, p.like_count
           FROM perspectives p
+          LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.status = 'published'
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
             ${authored ? "AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))" : ''}
-          ORDER BY p.published_at DESC NULLS LAST`
+          ORDER BY p.published_at DESC NULLS LAST
+          LIMIT $1`,
+          [limit]
         );
 
         res.json(result.rows);
@@ -4935,8 +4992,12 @@ Disallow: /api/admin/
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
             p.content, p.external_url, p.external_site_name,
             p.author_name, p.author_title, p.featured_image_url,
+            u.slug as author_slug,
+            u.avatar_url as author_avatar_url,
+            u.headline as author_headline,
             p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
           FROM perspectives p
+          LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.slug = $1 AND p.status = 'published'
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
@@ -5183,7 +5244,7 @@ Disallow: /api/admin/
       try {
         // Dev mode: show dev login page
         if (isDevModeEnabled()) {
-          const returnTo = req.query.return_to as string || '/dashboard/organization';
+          const returnTo = req.query.return_to as string || '/member-hub';
           return res.redirect(`/dev-login.html?return_to=${encodeURIComponent(returnTo)}`);
         }
 
@@ -5275,7 +5336,7 @@ Disallow: /api/admin/
       }
 
       // Validate return_to is a relative path to prevent open redirect
-      let safeReturnTo = '/dashboard/organization';
+      let safeReturnTo = '/member-hub';
       if (return_to && typeof return_to === 'string' && return_to.startsWith('/') && !return_to.startsWith('//')) {
         safeReturnTo = return_to;
       }
@@ -5534,7 +5595,7 @@ Disallow: /api/admin/
         }
 
         // Parse return_to, slack_user_id, and native mode from state
-        let returnTo = '/dashboard/organization';
+        let returnTo = '/member-hub';
         let slackUserIdToLink: string | undefined;
         let isNativeMode = false;
         let nativeRedirectUri = 'addie://auth/callback';
@@ -7514,6 +7575,13 @@ Disallow: /api/admin/
         webUi: `http://localhost:${port}`,
         api: `http://localhost:${port}/api/agents`,
       }, 'AdCP Registry HTTP server running');
+
+      // Start seat request reminder scheduler
+      if (workos) {
+        import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
+          startSeatRequestReminders(workos!);
+        }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+      }
     });
 
     // Setup graceful shutdown handlers
@@ -7555,6 +7623,11 @@ Disallow: /api/admin/
 
     // Stop all scheduled jobs
     jobScheduler.stopAll();
+
+    // Stop seat request reminders
+    import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
+      stopSeatRequestReminders();
+    }).catch(() => {});
 
     // Close HTTP server
     if (this.server) {

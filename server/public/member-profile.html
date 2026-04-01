@@ -776,7 +776,7 @@
             <span style="font-size: 20px;">💡</span>
             <div style="flex: 1;">
               <p id="account-type-notice-text" style="margin: 0 0 8px 0; color: var(--color-primary-700); font-size: 14px;"></p>
-              <a id="account-type-switch-link" href="/dashboard/settings" style="font-size: 13px; color: var(--color-primary-600); font-weight: 500;">Change account type in Settings →</a>
+              <a id="account-type-switch-link" href="/organization" style="font-size: 13px; color: var(--color-primary-600); font-weight: 500;">Manage this in Organization →</a>
             </div>
             <button type="button" onclick="dismissAccountTypeNotice()" style="background: none; border: none; color: var(--color-primary-400); cursor: pointer; padding: 4px; font-size: 16px;">×</button>
           </div>
@@ -1131,7 +1131,7 @@
           <div class="btn-group">
             <button type="submit" class="btn btn-primary" id="save-btn">Save Profile</button>
             <a href="#" class="btn btn-secondary" id="preview-btn" style="display: none;" target="_blank">View Live Profile</a>
-            <button type="button" class="btn btn-secondary" id="back-btn" onclick="goToDashboard()">Back to Dashboard</button>
+            <button type="button" class="btn btn-secondary" id="back-btn" onclick="goToDashboard()">Back to organization</button>
             <button type="button" class="btn btn-danger" id="delete-btn" style="display: none;" onclick="deleteProfile()">Delete Profile</button>
           </div>
         </form>
@@ -1556,7 +1556,15 @@
           verifiedEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; brand.json verified</span>';
           document.getElementById('brand-pointer-callout').style.display = 'none';
         } else {
-          verifiedEl.innerHTML = '<span style="color: var(--color-text-muted);">No brand.json on domain yet &mdash; </span>' +
+          var msg;
+          if (!data.variant) {
+            msg = 'No brand.json on domain yet &mdash; ';
+          } else if (data.reason === 'no_hosted_brand') {
+            msg = 'brand.json found but no hosted brand on AAO yet &mdash; ';
+          } else {
+            msg = 'brand.json found but AAO pointer not verified &mdash; ';
+          }
+          verifiedEl.innerHTML = '<span style="color: var(--color-text-muted);">' + msg + '</span>' +
             '<button onclick="verifyBrandNow(\'' + escapeHtml(domain) + '\')" ' +
             'id="brand-verify-btn" style="background: none; border: none; color: var(--color-primary-600); cursor: pointer; font-size: var(--text-sm); padding: 0; text-decoration: underline;">Check now</button>';
         }
@@ -2016,7 +2024,7 @@
           return;
         }
         const img = document.createElement('img');
-        img.src = photoUrl;
+        img.src = parsed.href;
         img.alt = 'Profile photo';
         img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
         img.onerror = function() {
@@ -2234,7 +2242,7 @@
 
     function goToDashboard() {
       const orgParam = currentOrgId ? `?org=${currentOrgId}` : '';
-      window.location.href = `/dashboard${orgParam}`;
+      window.location.href = `/organization${orgParam}`;
     }
 
     async function deleteProfile() {

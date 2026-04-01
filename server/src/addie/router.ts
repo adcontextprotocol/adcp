@@ -76,6 +76,8 @@ export interface RoutingContext {
   channelName?: string;
   /** Whether the user is an AAO platform admin (checked via aao-admin working group) */
   isAAOAdmin?: boolean;
+  /** Recent thread messages for context (compact "Speaker: text" lines) */
+  threadMessages?: string[];
 }
 
 /**
@@ -316,7 +318,8 @@ The user has NOT linked their Slack account to AgenticAdvertising.org.
     conditionalRules += `
 The user is an ADMIN.
 - They have access to the "admin" tool set for system operations
-- Be more direct and technical in responses`;
+- Be more direct and technical in responses
+- In admin channels (e.g., #aao-admin), ALWAYS include "admin" in tool_sets.`;
   } else {
     conditionalRules += `
 The user is NOT an admin.
@@ -407,7 +410,11 @@ ${reactList}
 - Questions outside Addie's core expertise (legal, HR, scheduling, general business) — even if tangentially related to ad tech
 - Questions where a knowledgeable human in the workspace is likely better positioned to answer
 
-## Message
+${ctx.threadMessages && ctx.threadMessages.length > 0 ? `## Thread Context
+Recent messages in this thread (oldest first):
+${ctx.threadMessages.join('\n')}
+
+` : ''}## Message
 "${ctx.message.substring(0, 500)}"
 
 ## Instructions
@@ -620,30 +627,54 @@ export class AddieRouter {
     const startTime = Date.now();
     const text = ctx.message.toLowerCase().trim();
 
-    // Check for simple acknowledgments to ignore
-    for (const pattern of ROUTING_RULES.ignore.patterns) {
-      if (text === pattern || text === pattern + '.') {
+    // In threads, brief messages ("yes", "done", "ok") are responses to
+    // something Addie said — let the LLM router see them with thread context.
+    // Only auto-ignore in standalone (non-thread) messages.
+    const isInThread = ctx.isThread === true;
+    if (!isInThread) {
+      for (const pattern of ROUTING_RULES.ignore.patterns) {
+        if (text === pattern || text === pattern + '.') {
+          return {
+            action: 'ignore',
+            reason: 'Simple acknowledgment',
+            decision_method: 'quick_match',
+            latency_ms: Date.now() - startTime,
+          };
+        }
+      }
+    }
+
+    // Admin engagement/analytics queries - route to admin tools
+    if (ctx.isAAOAdmin) {
+      const adminAnalyticsPattern =
+        /engagement\s+(score|users|members|ranking|top|analytics|stats)|most\s+engaged|top\s+contributors|lifecycle\s+stage|who\s+to\s+invite|engagement\s+analytics|outreach\s+stats|action\s+items/i;
+      if (adminAnalyticsPattern.test(text)) {
         return {
-          action: 'ignore',
-          reason: 'Simple acknowledgment',
+          action: 'respond',
+          tool_sets: ['admin'],
+          confidence: 'high',
+          reason: 'Admin engagement/analytics query',
           decision_method: 'quick_match',
           latency_ms: Date.now() - startTime,
         };
       }
     }
 
-    // Check for greeting patterns to react
-    for (const [key, rule] of Object.entries(ROUTING_RULES.reactWith)) {
-      for (const pattern of rule.patterns) {
-        // Only match if the message is very short (likely just a greeting)
-        if (text.length < 20 && text.includes(pattern.toLowerCase())) {
-          return {
-            action: 'react',
-            emoji: rule.emoji,
-            reason: `Matched ${key} pattern`,
-            decision_method: 'quick_match',
-            latency_ms: Date.now() - startTime,
-          };
+    // Check for greeting/thanks patterns to react (standalone channel messages only —
+    // in DMs these should fall through to the LLM for a real response)
+    const isStandaloneChannelMessage = ctx.source === 'channel' && !isInThread;
+    if (isStandaloneChannelMessage) {
+      for (const [key, rule] of Object.entries(ROUTING_RULES.reactWith)) {
+        for (const pattern of rule.patterns) {
+          if (text.length < 20 && text.includes(pattern.toLowerCase())) {
+            return {
+              action: 'react',
+              emoji: rule.emoji,
+              reason: `Matched ${key} pattern`,
+              decision_method: 'quick_match',
+              latency_ms: Date.now() - startTime,
+            };
+          }
         }
       }
     }

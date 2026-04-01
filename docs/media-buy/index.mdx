@@ -153,24 +153,41 @@ Before any money moves, Sam's governance agent validates the buy:
 
 If the buy exceeds Sam's authority — say, if the total across all sellers hit $75K — the governance agent escalates to his manager. The campaign pauses at `pending_approval` until a human signs off.
 
+Campaign governance requires the orchestrator to register the campaign plan via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) before any governance checks. The plan defines authorized parameters — budget limits, channels, flight dates, and compliance policies — against which all subsequent actions are validated. The full governance sequence is `sync_plans` → `check_governance` (proposed) → `create_media_buy` → `check_governance` (committed by seller). See [Campaign Governance](/docs/governance/campaign/index) for the complete specification.
+
 <Accordion title="What governance looks like in the protocol">
 
 ```javascript
+// Step 1: Register the campaign plan with the governance agent
+const plan = await governance.syncPlans({
+  plans: [{
+    plan_id: "acme-q2-trail-pro",
+    brand: { domain: "acmeoutdoor.com" },
+    objectives: "Q2 Trail Pro 3000 launch across sports and outdoor lifestyle publishers",
+    budget: { total: 50000, currency: "USD", authority_level: "agent_limited" },
+    flight: { start: "2026-04-01T00:00:00Z", end: "2026-06-30T23:59:59Z" },
+    countries: ["US", "CA"]
+  }]
+});
+
+// Step 2: Check governance before sending to seller (intent check)
 const check = await governance.checkGovernance({
   plan_id: "acme-q2-trail-pro",
-  binding: "proposed",
   caller: "https://orchestrator.pinnacle-agency.example",
   tool: "create_media_buy",
-  phase: "purchase",
   payload: buy
 });
 
-// Attach governance_context to the media buy envelope for the seller
-const governanceContext = check.governance_context;
-
-if (check.status === "denied" || check.status === "escalated") {
-  // Escalate to human — don't proceed
+if (check.status === "denied") {
+  // Don't proceed — governance rejected the plan
 }
+
+// Step 3: Send the buy to the seller with governance_context attached
+const governanceContext = check.governance_context;
+const mediaBuy = await seller.createMediaBuy({ ...buy, governance_context: governanceContext });
+
+// Step 4: The seller independently calls check_governance with media_buy_id +
+// planned_delivery before confirming — validating against the same plan
 ```
 
 </Accordion>

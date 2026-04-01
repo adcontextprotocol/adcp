@@ -1208,9 +1208,13 @@ export function createEventsRouter(): {
         const { getUserSeatType } = await import('../db/organization-db.js');
         const seatType = await getUserSeatType(user.id);
         if (seatType === 'community_only') {
+          const userOrgId = await getUserOrgId(user.id);
           return res.status(403).json({
             error: "Contributor access required",
             message: "Product summit registration requires a contributor seat. Ask your org admin to upgrade your access.",
+            can_request: !!userOrgId,
+            request_url: userOrgId ? `/api/organizations/${userOrgId}/seat-requests` : undefined,
+            request_body: userOrgId ? { resource_type: 'product_summit', resource_id: event.id, resource_name: event.title } : undefined,
           });
         }
       }
@@ -1258,7 +1262,7 @@ export function createEventsRouter(): {
 
       // Award community points + check badges (fire-and-forget)
       const communityDb = new CommunityDatabase();
-      communityDb.awardPoints(user.id, 'event_registered', 10, event.id, 'event').catch(err => {
+      communityDb.awardPoints(user.id, 'event_registered', 5, event.id, 'event').catch(err => {
         logger.error({ err, userId: user.id }, 'Failed to award event registration points');
       });
       communityDb.checkAndAwardBadges(user.id, 'event').catch(err => {

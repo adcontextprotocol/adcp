@@ -8,7 +8,7 @@ const logger = createLogger('org-filters');
  *
  * Three mutually exclusive tiers (highest wins):
  * - Members: active subscription (including comped members with $0 amount)
- * - Engaged: not paying, but has at least one site user with engagement_score > 0
+ * - Engaged: not paying, but has at least one site user with community points
  *            OR at least one Slack user with activity in the last 30 days
  * - Registered: not paying, no engaged users, but has at least one user on site/Slack
  *
@@ -40,13 +40,12 @@ export const HAS_USER = `(
   )
 )`;
 
-/** Organization has at least one user with engagement_score > 0 OR Slack user with recent activity */
+/** Organization has at least one user with community points OR Slack user with recent activity */
 export const HAS_ENGAGED_USER = `(
   EXISTS (
     SELECT 1 FROM organization_memberships om
-    JOIN users u ON u.workos_user_id = om.workos_user_id
+    JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
     WHERE om.workos_organization_id = organizations.workos_organization_id
-    AND u.engagement_score > 0
   )
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
@@ -89,13 +88,12 @@ export const HAS_USER_ALIASED = `(
   )
 )`;
 
-/** Organization has at least one user with engagement_score > 0 OR Slack user with recent activity (aliased) */
+/** Organization has at least one user with community points OR Slack user with recent activity (aliased) */
 export const HAS_ENGAGED_USER_ALIASED = `(
   EXISTS (
     SELECT 1 FROM organization_memberships om
-    JOIN users u ON u.workos_user_id = om.workos_user_id
+    JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
     WHERE om.workos_organization_id = o.workos_organization_id
-    AND u.engagement_score > 0
   )
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm

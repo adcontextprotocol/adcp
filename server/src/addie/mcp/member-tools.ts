@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { ToolError } from '../tool-error.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
   setAgentTesterLogger,
@@ -1154,7 +1155,7 @@ export function createMemberToolHandlers(
     const result = await callApi('GET', `/api/working-groups?${queryParams}`, memberContext);
 
     if (!result.ok) {
-      return `Failed to fetch working groups: ${result.error}`;
+      throw new ToolError(`Failed to fetch working groups: ${result.error}`);
     }
 
     const data = result.data as { working_groups: Array<{
@@ -1203,7 +1204,7 @@ export function createMemberToolHandlers(
       if (result.status === 404) {
         return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
       }
-      return `Failed to fetch working group: ${result.error}`;
+      throw new ToolError(`Failed to fetch working group: ${result.error}`);
     }
 
     const data = result.data as { working_group: {
@@ -1297,7 +1298,7 @@ export function createMemberToolHandlers(
       if (result.status === 409) {
         return `You're already a member of the "${slug}" working group!`;
       }
-      return `Failed to join working group: ${result.error}`;
+      throw new ToolError(`Failed to join working group: ${result.error}`);
     }
 
     return `✅ Successfully joined the "${slug}" working group! You can now participate in discussions and see group posts.`;
@@ -1311,7 +1312,7 @@ export function createMemberToolHandlers(
     const result = await callApi('GET', '/api/me/working-groups', memberContext);
 
     if (!result.ok) {
-      return `Failed to fetch your working groups: ${result.error}`;
+      throw new ToolError(`Failed to fetch your working groups: ${result.error}`);
     }
 
     const data = result.data as { working_groups: Array<{
@@ -1357,7 +1358,7 @@ export function createMemberToolHandlers(
       if (result.status === 404) {
         return `Could not find a council or committee with slug "${slug}". Use list_working_groups with type "council" to see available councils.`;
       }
-      return `Failed to express interest: ${result.error}`;
+      throw new ToolError(`Failed to express interest: ${result.error}`);
     }
 
     const data = result.data as { message?: string };
@@ -1381,7 +1382,7 @@ export function createMemberToolHandlers(
         }
         return `Could not find a council or committee with slug "${slug}".`;
       }
-      return `Failed to withdraw interest: ${result.error}`;
+      throw new ToolError(`Failed to withdraw interest: ${result.error}`);
     }
 
     const data = result.data as { message?: string };
@@ -1396,7 +1397,7 @@ export function createMemberToolHandlers(
     const result = await callApi('GET', '/api/me/working-groups/interests', memberContext);
 
     if (!result.ok) {
-      return `Failed to fetch your council interests: ${result.error}`;
+      throw new ToolError(`Failed to fetch your council interests: ${result.error}`);
     }
 
     const interests = result.data as Array<{
@@ -1568,7 +1569,7 @@ export function createMemberToolHandlers(
       );
 
       if (updateResult.rowCount === 0) {
-        return 'Failed to update profile: user not found.';
+        throw new ToolError('Failed to update profile: user not found.');
       }
     } catch (err) {
       logger.error({ err, userId }, 'update_my_profile: DB error');
@@ -1620,7 +1621,7 @@ export function createMemberToolHandlers(
     let response = `## Company Listing\n\n`;
     response += `**Name:** ${listing.display_name}\n`;
     response += `**Directory URL:** https://agenticadvertising.org/members/${listing.slug}\n`;
-    response += `**Visibility:** ${listing.is_public ? 'Public' : 'Hidden'}\n\n`;
+    response += `**Visibility:** ${listing.is_public ? 'Public — visible in the member directory' : 'Hidden — not yet published. Publish from the dashboard to appear in the member directory.'}\n\n`;
 
     if (listing.tagline) response += `**Tagline:** ${listing.tagline}\n`;
     if (listing.headquarters) response += `**Headquarters:** ${listing.headquarters}\n`;
@@ -1753,7 +1754,7 @@ export function createMemberToolHandlers(
     const result = await callApi('GET', `/api/perspectives?limit=${limit}`, memberContext);
 
     if (!result.ok) {
-      return `Failed to fetch perspectives: ${result.error}`;
+      throw new ToolError(`Failed to fetch perspectives: ${result.error}`);
     }
 
     const perspectives = result.data as Array<{
@@ -1829,7 +1830,7 @@ export function createMemberToolHandlers(
       if (result.status === 403) {
         return `You're not a member of the "${slug}" working group. Join it first using join_working_group.`;
       }
-      return `Failed to create post: ${result.error}`;
+      throw new ToolError(`Failed to create post: ${result.error}`);
     }
 
     return `✅ Post created successfully in the "${slug}" working group!\n\n**Title:** ${title}\n\nYour post is now visible to other working group members.`;
@@ -1895,7 +1896,7 @@ export function createMemberToolHandlers(
       if (result.error?.includes('No collection found')) {
         return `Committee "${committeeSlug}" not found. Use list_working_groups to see available committees.`;
       }
-      return `Failed to create content: ${result.error}`;
+      throw new ToolError(`Failed to create content: ${result.error}`);
     }
 
     let response = `## Content ${result.status === 'published' ? 'Published' : 'Submitted'}\n\n`;
@@ -1949,7 +1950,7 @@ export function createMemberToolHandlers(
     const result = await callApi('GET', `/api/me/content${queryString}`, memberContext);
 
     if (!result.ok) {
-      return `Failed to fetch your content: ${result.error}`;
+      throw new ToolError(`Failed to fetch your content: ${result.error}`);
     }
 
     const data = result.data as {
@@ -2042,7 +2043,7 @@ export function createMemberToolHandlers(
     const result = await callApi('GET', `/api/content/pending${queryString}`, memberContext);
 
     if (!result.ok) {
-      return `Failed to fetch pending content: ${result.error}`;
+      throw new ToolError(`Failed to fetch pending content: ${result.error}`);
     }
 
     const data = result.data as {
@@ -2124,7 +2125,7 @@ export function createMemberToolHandlers(
       if (result.status === 400) {
         return `This content is not pending review. It may have already been processed.`;
       }
-      return `Failed to approve content: ${result.error}`;
+      throw new ToolError(`Failed to approve content: ${result.error}`);
     }
 
     const data = result.data as { status: string; message: string };
@@ -2165,7 +2166,7 @@ export function createMemberToolHandlers(
       if (result.status === 400) {
         return `This content is not pending review. It may have already been processed.`;
       }
-      return `Failed to reject content: ${result.error}`;
+      throw new ToolError(`Failed to reject content: ${result.error}`);
     }
 
     return `❌ Content rejected. The author will see the following reason:\n\n> ${reason}\n\nThey can revise and resubmit if appropriate.`;
@@ -2217,7 +2218,7 @@ export function createMemberToolHandlers(
       if (result.status === 404) {
         return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
       }
-      return `Failed to add document: ${result.error}`;
+      throw new ToolError(`Failed to add document: ${result.error}`);
     }
 
     let response = `✅ Document added to "${slug}"!\n\n`;
@@ -2238,7 +2239,7 @@ export function createMemberToolHandlers(
       if (result.status === 404) {
         return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
       }
-      return `Failed to list documents: ${result.error}`;
+      throw new ToolError(`Failed to list documents: ${result.error}`);
     }
 
     const data = result.data as { documents?: Array<{
@@ -2336,7 +2337,7 @@ export function createMemberToolHandlers(
       if (result.status === 404) {
         return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
       }
-      return `Failed to update document: ${result.error}`;
+      throw new ToolError(`Failed to update document: ${result.error}`);
     }
 
     const data = result.data as { document?: { title: string } } | undefined;
@@ -2376,7 +2377,7 @@ export function createMemberToolHandlers(
       if (result.status === 404) {
         return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
       }
-      return `Failed to delete document: ${result.error}`;
+      throw new ToolError(`Failed to delete document: ${result.error}`);
     }
 
     return `✅ Document removed from "${slug}".\n\nThe document will no longer be tracked or displayed on the committee page.`;
@@ -2603,7 +2604,7 @@ export function createMemberToolHandlers(
     });
 
     if (!result.ok) {
-      return `Failed to check authorization: ${result.error}`;
+      throw new ToolError(`Failed to check authorization: ${result.error}`);
     }
 
     const data = result.data as {
@@ -2736,7 +2737,7 @@ export function createMemberToolHandlers(
       output += `### Capability Tracks\n\n`;
       output += `**Summary:** ${result.summary.headline}\n\n`;
 
-      const statusLabel: Record<string, string> = { pass: 'PASS', fail: 'FAIL', partial: 'PARTIAL', skip: 'SKIP', expected: 'EXPECTED' };
+      const statusLabel: Record<string, string> = { pass: 'PASS', fail: 'FAIL', partial: 'PARTIAL', skip: 'SKIP' };
       for (const track of result.tracks) {
         const status = statusLabel[track.status] ?? track.status.toUpperCase();
         const scenarioCount = track.scenarios.length;
@@ -2744,8 +2745,6 @@ export function createMemberToolHandlers(
 
         if (track.status === 'skip') {
           output += `- **${track.label}** [${status}] — not applicable\n`;
-        } else if (track.status === 'expected') {
-          output += `- **${track.label}** [${status}] — expected for this platform type but not yet implemented\n`;
         } else {
           output += `- **${track.label}** [${status}] — ${passedCount}/${scenarioCount} scenarios pass (${(track.duration_ms / 1000).toFixed(1)}s)\n`;
           for (const scenario of track.scenarios) {
@@ -2803,7 +2802,7 @@ export function createMemberToolHandlers(
       if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
-      return `Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`;
+      throw new ToolError(`Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`);
     }
   });
 
@@ -3052,7 +3051,7 @@ export function createMemberToolHandlers(
       if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
-      return `Failed to compare media kit for ${resolved.resolvedUrl}: ${msg}`;
+      throw new ToolError(`Failed to compare media kit for ${resolved.resolvedUrl}: ${msg}`);
     }
   });
 
@@ -3280,7 +3279,7 @@ export function createMemberToolHandlers(
       if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
         return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
-      return `Failed to test RFP response for ${agentUrl}: <external_error>${msg}</external_error>`;
+      throw new ToolError(`Failed to test RFP response for ${agentUrl}: <external_error>${msg}</external_error>`);
     }
   });
 
@@ -3659,7 +3658,7 @@ export function createMemberToolHandlers(
       if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
         return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
-      return `Failed to test IO execution for ${agentUrl}: <external_error>${msg}</external_error>`;
+      throw new ToolError(`Failed to test IO execution for ${agentUrl}: <external_error>${msg}</external_error>`);
     }
   });
 
@@ -3835,7 +3834,7 @@ export function createMemberToolHandlers(
       return response;
     } catch (error) {
       logger.error({ error, agentUrl }, 'Addie: save_agent failed');
-      return `Failed to save agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to save agent: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -3891,7 +3890,7 @@ export function createMemberToolHandlers(
       return response;
     } catch (error) {
       logger.error({ error }, 'Addie: list_saved_agents failed');
-      return `Failed to list agents: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to list agents: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -3930,7 +3929,7 @@ export function createMemberToolHandlers(
       return response;
     } catch (error) {
       logger.error({ error, agentUrl }, 'Addie: remove_saved_agent failed');
-      return `Failed to remove agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to remove agent: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -4142,7 +4141,7 @@ export function createMemberToolHandlers(
       return response;
     } catch (error) {
       logger.error({ error, query: searchQuery }, 'Addie: search_members failed');
-      return `Failed to search members: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to search members: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -4255,7 +4254,7 @@ export function createMemberToolHandlers(
       return response;
     } catch (error) {
       logger.error({ error, memberSlug }, 'Addie: request_introduction failed');
-      return `Failed to process introduction request: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to process introduction request: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -4323,7 +4322,7 @@ export function createMemberToolHandlers(
       return response;
     } catch (error) {
       logger.error({ error }, 'Addie: get_my_search_analytics failed');
-      return `Failed to fetch analytics: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to fetch analytics: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 
@@ -4413,12 +4412,14 @@ export function createMemberToolHandlers(
       const [orgData, milestones, signals, recommendedGroups] = await Promise.all([
         query<{
           journey_stage: string | null;
-          engagement_score: number | null;
+          community_points: number | null;
           persona: string | null;
           persona_source: string | null;
           aspiration_persona: string | null;
         }>(
-          `SELECT journey_stage, engagement_score, persona, persona_source, aspiration_persona
+          `SELECT journey_stage,
+            (SELECT COALESCE(SUM(cp.points), 0)::int FROM organization_memberships om JOIN community_points cp ON cp.workos_user_id = om.workos_user_id WHERE om.workos_organization_id = $1) AS community_points,
+            persona, persona_source, aspiration_persona
            FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         ).then(r => r.rows[0] ?? null).catch(() => null),
@@ -4443,7 +4444,7 @@ export function createMemberToolHandlers(
       const result = {
         journey_stage: orgData?.journey_stage ?? null,
         next_stage: nextStage,
-        engagement_score: orgData?.engagement_score ?? null,
+        community_points: orgData?.community_points ?? null,
         persona: orgData?.persona ? PERSONA_LABELS[orgData.persona] ?? orgData.persona : null,
         persona_key: orgData?.persona ?? null,
         persona_source: orgData?.persona_source ?? null,

@@ -12,6 +12,7 @@ import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL } from '../../training-agent/config.js';
+import { ToolError } from '../tool-error.js';
 
 const logger = createLogger('certification-tools');
 
@@ -1192,7 +1193,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to list certification tracks');
-      return 'Failed to load certification tracks. Please try again.';
+      throw new ToolError('Failed to load certification tracks. Please try again.');
     }
   });
 
@@ -1274,7 +1275,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to get certification module');
-      return 'Failed to load module. Please try again.';
+      throw new ToolError('Failed to load module. Please try again.');
     }
   });
 
@@ -1418,7 +1419,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to start certification module');
-      return 'Failed to start module. Please try again.';
+      throw new ToolError('Failed to start module. Please try again.');
     }
   });
 
@@ -1509,7 +1510,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to complete certification module');
-      return 'Failed to record module completion. Please try again.';
+      throw new ToolError('Failed to record module completion. Please try again.');
     }
   });
 
@@ -1584,7 +1585,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to get learner progress');
-      return 'Failed to load progress. Please try again.';
+      throw new ToolError('Failed to load progress. Please try again.');
     }
   });
 
@@ -1663,7 +1664,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to test out modules');
-      return 'Failed to record test-out. Please try again.';
+      throw new ToolError('Failed to record test-out. Please try again.');
     }
   });
 
@@ -1727,7 +1728,7 @@ export function createCertificationToolHandlers(
 
       // Start the module and create an attempt
       await certDb.startModule(userId, moduleId);
-      const attempt = await certDb.createAttempt(userId, mod.track_id, undefined, moduleId);
+      const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
 
       const criteria = mod.assessment_criteria as certDb.AssessmentCriteria | null;
       const lessonPlan = mod.lesson_plan as certDb.LessonPlan | null;
@@ -1825,7 +1826,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to start specialist capstone');
-      return 'Failed to start capstone. Please try again.';
+      throw new ToolError('Failed to start capstone. Please try again.');
     }
   });
 
@@ -1840,7 +1841,24 @@ export function createCertificationToolHandlers(
 
       if (!attemptId || !scores || typeof scores !== 'object') return 'attempt_id and scores are required.';
 
-      const attempt = await certDb.getAttempt(attemptId);
+      // Look up the active attempt: accept the UUID directly, or resolve from module ID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
+      let attempt: certDb.CertificationAttempt | null;
+      if (isUuid) {
+        attempt = await certDb.getAttempt(attemptId);
+      } else {
+        // Claude sometimes sends the module ID instead of the attempt UUID
+        logger.warn({ attemptId, userId }, 'complete_certification_exam received module ID instead of UUID, resolving');
+        const trackPrefix = attemptId.replace(/[0-9]+$/, '').toUpperCase();
+        if (!/^[A-Z]{1,2}$/.test(trackPrefix)) {
+          return `Invalid attempt_id "${attemptId}". Provide the UUID returned by start_certification_exam.`;
+        }
+        attempt = await certDb.getActiveAttempt(userId, trackPrefix);
+        if (attempt && attempt.module_id?.toUpperCase() !== attemptId.toUpperCase()) {
+          logger.warn({ attemptId, attemptModuleId: attempt.module_id }, 'Active attempt module_id does not match, discarding');
+          attempt = null;
+        }
+      }
       if (!attempt) return 'Exam attempt not found.';
       if (attempt.workos_user_id !== userId) return 'This exam attempt belongs to a different user.';
       if (attempt.status !== 'in_progress') return 'This exam attempt is already completed.';
@@ -1908,7 +1926,10 @@ export function createCertificationToolHandlers(
       const allAboveThreshold = Object.values(scores).every(s => s >= 70);
       const passing = allAboveThreshold && overallScore >= 70;
 
-      await certDb.completeAttempt(attemptId, scores, overallScore, passing);
+      await certDb.completeAttempt(attempt.id, scores, overallScore, passing);
+
+      // --- From this point the attempt is recorded. Failures below must not ---
+      // --- surface as "Failed to record capstone results" to the learner.   ---
 
       const lines: string[] = [];
 
@@ -1918,8 +1939,10 @@ export function createCertificationToolHandlers(
         lines.push('Congratulate them warmly — they earned this. Do NOT share any scores or percentages.');
 
         // Mark the capstone module as completed
-        if (capstoneMod) {
+        try {
           await certDb.completeModule(userId, capstoneMod.id, scores);
+        } catch (modError) {
+          logger.error({ error: modError, userId, moduleId: capstoneMod.id }, 'Failed to record module completion after attempt passed');
         }
 
         // Auto-award credentials (including specialist)
@@ -1951,7 +1974,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error, userId, attemptId: input.attempt_id }, 'Failed to complete capstone');
-      return 'Failed to record capstone results. Please try again or contact support if the problem persists.';
+      throw new ToolError('Failed to record capstone results. Please try again or contact support if the problem persists.');
     }
   });
 
@@ -2026,7 +2049,7 @@ export function createCertificationToolHandlers(
       return `Teaching checkpoint saved for ${moduleId}. Phase: ${current_phase}. Covered ${concepts_covered.length} concepts, ${concepts_remaining.length} remaining. Demonstrations verified: ${demoCount}.`;
     } catch (error) {
       logger.error({ error }, 'Failed to save teaching checkpoint');
-      return 'Failed to save checkpoint. Try again before completing the module — a checkpoint is required for completion.';
+      throw new ToolError('Failed to save checkpoint. Try again before completing the module — a checkpoint is required for completion.');
     }
   });
 
@@ -2064,7 +2087,7 @@ export function createCertificationToolHandlers(
       return `Thank you — feedback recorded for module ${moduleId}.`;
     } catch (error) {
       logger.error({ error }, 'Failed to save learner feedback');
-      return 'Failed to save feedback, but thank you for sharing.';
+      throw new ToolError('Failed to save feedback, but thank you for sharing.');
     }
   });
 

@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 
 // Addie's email for access requests
@@ -125,6 +126,171 @@ function isValidDocId(id: string): boolean {
 }
 
 /**
+ * Check if a URL points to a Google Docs document (not a Drive file, Sheet, etc.)
+ */
+function isGoogleDocUrl(urlOrId: string): boolean {
+  try {
+    const url = new URL(urlOrId);
+    return url.hostname === 'docs.google.com' && url.pathname.includes('/document/d/');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a URL points to a Google Sheets spreadsheet
+ */
+function isGoogleSheetsUrl(urlOrId: string): boolean {
+  try {
+    const url = new URL(urlOrId);
+    return url.hostname === 'docs.google.com' && url.pathname.includes('/spreadsheets/d/');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extract plain text from a Google Docs API document response
+ */
+function extractTextFromDocsResponse(doc: {
+  title?: string;
+  body?: { content?: Array<{
+    paragraph?: { elements?: Array<{ textRun?: { content?: string } }> };
+  }> };
+}): string {
+  const parts: string[] = [];
+  for (const item of doc.body?.content ?? []) {
+    for (const elem of item.paragraph?.elements ?? []) {
+      const text = elem.textRun?.content;
+      if (text) parts.push(text);
+    }
+  }
+  return parts.join('');
+}
+
+/**
+ * Read a Google Doc using the Docs API (docs.googleapis.com).
+ * This works even when the Drive API is restricted.
+ */
+async function readViaDocsApi(
+  docId: string,
+  accessToken: string,
+): Promise<string | null> {
+  const response = await fetch(
+    `https://docs.googleapis.com/v1/documents/${docId}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    },
+  );
+
+  if (!response.ok) {
+    logger.debug({ status: response.status, docId }, 'Google Docs API: request failed, will try Drive API');
+    return null;
+  }
+
+  const doc = await response.json() as {
+    title?: string;
+    body?: { content?: Array<{
+      paragraph?: { elements?: Array<{ textRun?: { content?: string } }> };
+    }> };
+  };
+
+  const title = doc.title || 'Untitled';
+  const text = extractTextFromDocsResponse(doc);
+
+  if (!text.trim()) {
+    return `**${title}**\n\n(Document is empty)`;
+  }
+
+  if (text.length > MAX_CONTENT_SIZE) {
+    return `**${title}**\n\n${text.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]`;
+  }
+
+  return `**${title}**\n\n${text}`;
+}
+
+/**
+ * Read a Google Sheet using the Sheets API (sheets.googleapis.com).
+ * Returns the sheet data as CSV text.
+ * Requires the spreadsheets.readonly scope and the Sheets API enabled in the GCP project.
+ */
+async function readViaSheetsApi(
+  spreadsheetId: string,
+  accessToken: string,
+): Promise<string | null> {
+  // Get spreadsheet metadata and first sheet name
+  const metaResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties.title`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    },
+  );
+
+  if (!metaResponse.ok) {
+    logger.debug({ status: metaResponse.status, spreadsheetId }, 'Google Sheets API: metadata request failed, will try Drive API');
+    return null;
+  }
+
+  const meta = await metaResponse.json() as {
+    properties?: { title?: string };
+    sheets?: Array<{ properties?: { title?: string } }>;
+  };
+
+  const title = meta.properties?.title || 'Untitled Spreadsheet';
+  const sheetNames = (meta.sheets ?? []).map(s => s.properties?.title).filter(Boolean) as string[];
+
+  if (sheetNames.length === 0) {
+    return `**${title}**\n\n(Spreadsheet has no sheets)`;
+  }
+
+  // Read all values from the first sheet
+  const firstSheet = sheetNames[0];
+  const valuesResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(firstSheet)}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    },
+  );
+
+  if (!valuesResponse.ok) {
+    logger.debug({ status: valuesResponse.status, spreadsheetId }, 'Google Sheets API: values request failed');
+    return null;
+  }
+
+  const valuesData = await valuesResponse.json() as {
+    values?: string[][];
+  };
+
+  const rows = valuesData.values ?? [];
+  if (rows.length === 0) {
+    return `**${title}**\n\n(Sheet "${firstSheet}" is empty)`;
+  }
+
+  // Convert to CSV
+  const csv = rows
+    .map(row => row.map(cell => {
+      const str = String(cell ?? '');
+      return str.includes(',') || str.includes('"') || str.includes('\n')
+        ? `"${str.replace(/"/g, '""')}"`
+        : str;
+    }).join(','))
+    .join('\n');
+
+  const sheetInfo = sheetNames.length > 1
+    ? `\n\n(Showing sheet "${firstSheet}" — ${sheetNames.length} sheets total: ${sheetNames.join(', ')})`
+    : '';
+
+  if (csv.length > MAX_CONTENT_SIZE) {
+    return `**${title}** (csv)\n\n${csv.substring(0, MAX_CONTENT_SIZE)}\n\n[Content truncated to ${MAX_CONTENT_SIZE / 1024}KB]${sheetInfo}`;
+  }
+
+  return `**${title}** (csv)\n\n${csv}${sheetInfo}`;
+}
+
+/**
  * Extract Google Doc/Drive ID from various URL formats
  *
  * Supports:
@@ -188,14 +354,30 @@ async function readGoogleDoc(
 ): Promise<string> {
   const docId = extractDocId(urlOrId);
   if (!docId) {
-    return `Error: Could not extract document ID from "${urlOrId}". Please provide a valid Google Docs or Google Drive URL.`;
+    throw new ToolError(`Could not extract document ID from "${urlOrId}". Please provide a valid Google Docs or Google Drive URL.`);
   }
 
   try {
     const auth = getAuthManager(config);
     const accessToken = await auth.getAccessToken();
 
-    // First, check what type of file this is using Drive API
+    // Try direct APIs first (Docs, Sheets) before Drive API.
+    // These use sensitive scopes (documents.readonly, spreadsheets.readonly) that work
+    // even when the restricted drive.readonly scope is silently blocked by Google
+    // for unverified OAuth apps.
+    if (isGoogleDocUrl(urlOrId)) {
+      const docsResult = await readViaDocsApi(docId, accessToken);
+      if (docsResult !== null) {
+        return docsResult;
+      }
+    } else if (isGoogleSheetsUrl(urlOrId)) {
+      const sheetsResult = await readViaSheetsApi(docId, accessToken);
+      if (sheetsResult !== null) {
+        return sheetsResult;
+      }
+    }
+
+    // Fall through to Drive API for Drive file links, raw IDs, or if direct APIs failed
     const metadataResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files/${docId}?fields=name,mimeType,capabilities`,
       {
@@ -205,15 +387,21 @@ async function readGoogleDoc(
     );
 
     if (!metadataResponse.ok) {
-      if (metadataResponse.status === 404) {
-        return `Error: Document not found. The document may have been deleted or the link is incorrect.`;
-      }
-      if (metadataResponse.status === 403) {
-        return `I don't have access to this Google Doc. Please share it with ${ADDIE_EMAIL} and let me know when you've done that.`;
+      if (metadataResponse.status === 404 || metadataResponse.status === 403) {
+        // Drive API may be blocked for unverified OAuth apps. Try direct APIs
+        // as a fallback before telling the user we can't access the document.
+        logger.debug({ status: metadataResponse.status, docId }, 'Google Docs: Drive API inaccessible, trying direct APIs');
+        const docsResult = await readViaDocsApi(docId, accessToken);
+        if (docsResult !== null) return docsResult;
+        const sheetsResult = await readViaSheetsApi(docId, accessToken);
+        if (sheetsResult !== null) return sheetsResult;
+
+        logger.warn({ status: metadataResponse.status, docId }, 'Google Docs: document inaccessible via all APIs');
+        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await metadataResponse.text();
       logger.error({ error, status: metadataResponse.status, docId }, 'Google Docs: Failed to get metadata');
-      return `Error: Failed to access document (${metadataResponse.status})`;
+      throw new ToolError(`Failed to access document (${metadataResponse.status})`);
     }
 
     const metadata = await metadataResponse.json() as { name: string; mimeType: string };
@@ -252,7 +440,7 @@ async function readGoogleDoc(
       );
 
       if (!downloadResponse.ok) {
-        return `Error: Failed to download file (${downloadResponse.status})`;
+        throw new ToolError(`Failed to download file (${downloadResponse.status})`);
       }
 
       const content = await downloadResponse.text();
@@ -274,12 +462,13 @@ async function readGoogleDoc(
     );
 
     if (!exportResponse.ok) {
-      if (exportResponse.status === 403) {
-        return `I don't have access to export this document. Please share it with ${ADDIE_EMAIL} with at least "Viewer" permissions.`;
+      if (exportResponse.status === 404 || exportResponse.status === 403) {
+        logger.warn({ status: exportResponse.status, docId }, 'Google Docs: export inaccessible');
+        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await exportResponse.text();
       logger.error({ error, status: exportResponse.status, docId }, 'Google Docs: Failed to export');
-      return `Error: Failed to export document (${exportResponse.status})`;
+      throw new ToolError(`Failed to export document (${exportResponse.status})`);
     }
 
     const content = await exportResponse.text();
@@ -290,11 +479,12 @@ async function readGoogleDoc(
 
     return `**${name}** (${exportFormat})\n\n${content}`;
   } catch (error) {
+    if (error instanceof ToolError) throw error;
     logger.error({ error, docId }, 'Google Docs: Unexpected error');
     if (error instanceof Error) {
-      return `Error reading Google Doc: ${error.message}`;
+      throw new ToolError(error.message);
     }
-    return 'Error: Unknown error reading Google Doc';
+    throw new ToolError('Unknown error reading Google Doc');
   }
 }
 
@@ -348,7 +538,7 @@ export function createGoogleDocsToolHandlers(): Record<string, (input: Record<st
 
       // Validate input
       if (typeof url !== 'string' || !url.trim()) {
-        return 'Error: URL parameter is required and must be a non-empty string';
+        throw new ToolError('URL parameter is required and must be a non-empty string');
       }
 
       const docId = extractDocId(url);

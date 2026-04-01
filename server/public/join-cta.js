@@ -423,7 +423,7 @@ async function renderJoinCta(options = {}) {
     '20+ contributor seats — includes community access',
     'Unlimited community-only seats',
     'API access — registry, agent testing, sandbox',
-    'Lead councils — chair and set agendas',
+    'Convene councils — recruit stakeholders, set the agenda',
     'Board eligible — voting rights',
     'First access to sponsorships, white papers, co-branded research'
   ];
@@ -638,7 +638,7 @@ function renderMemberConfirmation(userContext, showContactLine) {
       </div>
       <div class="join-cta-member-actions">
         <a href="/dashboard/membership?org=${encodeURIComponent(userContext.orgId || '')}" class="btn btn-primary">Manage Membership</a>
-        <a href="/dashboard/profile?org=${encodeURIComponent(userContext.orgId || '')}" class="btn btn-secondary">View Your Profile</a>
+        <a href="/account#profileSection" class="btn btn-secondary">Edit your profile</a>
       </div>
     </div>
     ${showContactLine ? `
@@ -755,4 +755,3 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
-

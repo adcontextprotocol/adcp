@@ -16,17 +16,17 @@ Campaign Governance distributes validation across three independent parties:
 
 ```mermaid
 flowchart LR
-    O[Orchestrator] -->|"1. proposed check"| G[Governance Agent]
+    O[Orchestrator] -->|"1. intent check"| G[Governance Agent]
     G -->|"approved/denied"| O
     O -->|"2. create_media_buy"| S[Seller]
-    S -->|"3. committed check"| G
+    S -->|"3. execution check"| G
     G -->|"approved/denied"| S
     S -->|"4. confirmed"| O
     O -->|"5. report outcome"| G
 ```
 
-1. The **orchestrator** checks its intended action against the plan before sending it to any seller (`binding: "proposed"`)
-2. The **seller** independently checks its planned delivery against the same plan before executing (`binding: "committed"`)
+1. The **orchestrator** checks its intended action against the plan before sending it to any seller (intent check: `tool` + `payload`)
+2. The **seller** independently checks its planned delivery against the same plan before executing (execution check: `media_buy_id` + `planned_delivery`)
 3. The **governance agent** validates both sides against the campaign plan, maintaining state across the full lifecycle
 
 No party grades its own homework. The orchestrator cannot skip governance because the seller checks independently. The seller cannot deliver something different from what was approved because the governance agent has a record of the planned delivery.
@@ -45,21 +45,21 @@ The orchestrator cannot bypass compliance because it does not carry the policies
 
 ## Crawl-walk-run adoption
 
-Campaign Governance supports three operating modes so organizations can build confidence incrementally:
+Governance agents support three internal operating modes so organizations can build confidence incrementally. Mode is configured on the governance agent itself — it is not a protocol field, and callers act on the status they receive regardless of mode.
 
 | Mode | What happens | Risk |
 |------|-------------|------|
 | **Audit** | Log everything, never block. Always returns `approved` with findings attached. | Zero. See what governance would flag without affecting live campaigns. |
-| **Advisory** | Return real statuses (`denied`, `conditions`, `escalated`) but don't block execution. | Minimal. Humans review findings post-hoc and act on them. |
+| **Advisory** | Return real statuses (`denied`, `conditions`) but the organization treats denials as non-blocking. | Minimal. Humans review findings post-hoc and act on them. |
 | **Enforce** | Block on violations. Require resolution before proceeding. | Production governance with full protection. |
 
-Start in audit mode to evaluate false positive rates and calibrate policies. Move to advisory to test findings with real campaigns. Switch to enforce when confidence is established. The `mode` field on each governance check response lets audit trails distinguish "denied in advisory mode (action proceeded)" from "denied in enforce mode (action blocked)."
+Start in audit mode to evaluate false positive rates and calibrate policies. Move to advisory to test findings with real campaigns. Switch to enforce when confidence is established. The governance agent's audit logs record which mode was active for each check, so post-hoc analysis can distinguish audit-mode approvals from enforce-mode approvals.
 
 ## Budget protection
 
 Budget is committed based on confirmed outcomes, not intended actions:
 
-1. `check_governance` with `binding: "proposed"` checks whether the spend fits the plan. No budget is committed.
+1. `check_governance` with `tool` + `payload` (intent check) checks whether the spend fits the plan. No budget is committed.
 2. The orchestrator sends the action to the seller.
 3. `report_plan_outcome` reports the seller's confirmed amount. Only then is budget committed.
 
@@ -75,17 +75,17 @@ Governance findings include confidence scores (0 to 1) and explanations that dis
 - **Medium confidence (0.6-0.9)**: Depends on context the governance agent cannot fully resolve. Audience segments that may include minors, geo targeting that partially overlaps regulated jurisdictions.
 - **Low confidence (below 0.6)**: Speculative. Flagged for human review rather than acted on autonomously.
 
-Every finding includes a human-readable `explanation` and structured `details` for programmatic consumption. Escalations include the `reason`, `severity`, and optionally the `approval_tier` needed to resolve them. Nothing is a black box.
+Every finding includes a human-readable `explanation` and structured `details` for programmatic consumption. When human review is triggered internally, the governance agent records the reason, severity, and resolution in its audit logs. Nothing is a black box.
 
 ## Drift detection
 
 The audit log surfaces aggregate metrics that detect oversight erosion over time:
 
-- **Escalation rate** -- fraction of checks escalated to humans, with trend direction
+- **Human review rate** -- fraction of checks that required internal human review, with trend direction
 - **Auto-approval rate** -- fraction of checks approved without human intervention
-- **Human override rate** -- fraction of escalations where the human disagreed with the governance agent
+- **Human override rate** -- fraction of human reviews where the human disagreed with the governance agent
 
-Organizations set thresholds on these metrics. When a threshold is breached, the governance agent includes a finding on the next check. A declining escalation rate may mean well-calibrated governance or eroding oversight -- the threshold breach surfaces the question so the organization can decide.
+Organizations set thresholds on these metrics. When a threshold is breached, the governance agent includes a finding on the next check. A declining human review rate may mean well-calibrated governance or eroding oversight -- the threshold breach surfaces the question so the organization can decide.
 
 ## Multi-brand and agency governance
 
@@ -111,7 +111,7 @@ Set [`authority_level: "agent_limited"`](/docs/governance/campaign/specification
 |---------------|-------------------------------|
 | Agency trading desk QA | Automated validation against the plan |
 | DSP pre-bid rules | Budget authority and targeting compliance checks |
-| Advertiser approval workflows | Human escalation with `approval_tier` routing |
+| Advertiser approval workflows | Human review for high-risk actions |
 | Post-campaign audit | `get_plan_audit_logs` with drift metrics |
 | Compliance review | Policy registry + jurisdiction-scoped validation |
 

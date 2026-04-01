@@ -8,6 +8,6 @@ export const PERSONA_LABELS: Record<string, string> = {
   pureblood_protector: 'Mold Breaker',
   resops_integrator: 'RevOps Integrator',
   ladder_climber: 'Positionless Marketer',
-  simple_starter: 'Simple Simon',
+  simple_starter: 'Early Explorer',
   pragmatic_builder: 'Pragmatic Builder',
 };

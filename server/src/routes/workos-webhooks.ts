@@ -27,6 +27,14 @@ import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain } from '../services/brand-enrichment.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
+import { notifySystemError } from '../addie/error-notifier.js';
+import {
+  upsertOrganizationMembership,
+  deleteOrganizationMembership,
+  consumeInvitationSeatType,
+  findSuccessorForPromotion,
+  setMembershipRole,
+} from '../db/membership-db.js';
 
 const logger = createLogger('workos-webhooks');
 
@@ -83,8 +91,6 @@ async function upsertMembership(
   membership: OrganizationMembershipData,
   user?: UserData
 ): Promise<void> {
-  const pool = getPool();
-
   // If we don't have user data, fetch it from WorkOS
   let userData = user;
   if (!userData) {
@@ -114,83 +120,110 @@ async function upsertMembership(
   const role = membership.role?.slug || 'member';
 
   // Consume any pending seat_type assignment from the invitation
-  const seatResult = await pool.query<{ seat_type: string }>(
-    `DELETE FROM invitation_seat_types
-     WHERE workos_organization_id = $1 AND lower(email) = lower($2)
-     RETURNING seat_type`,
-    [membership.organization_id, userData.email]
-  );
-  const hasExplicitSeatType = seatResult.rows.length > 0;
-  const seatType = seatResult.rows[0]?.seat_type || 'contributor';
+  const consumedSeatType = await consumeInvitationSeatType(membership.organization_id, userData.email);
+  const hasExplicitSeatType = consumedSeatType !== null;
+  const seatType = consumedSeatType || 'community_only';
 
-  await pool.query(
-    `INSERT INTO organization_memberships (
-      workos_user_id,
-      workos_organization_id,
-      workos_membership_id,
-      email,
-      first_name,
-      last_name,
-      role,
-      seat_type,
-      synced_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-    ON CONFLICT (workos_user_id, workos_organization_id)
-    DO UPDATE SET
-      workos_membership_id = EXCLUDED.workos_membership_id,
-      email = EXCLUDED.email,
-      first_name = EXCLUDED.first_name,
-      last_name = EXCLUDED.last_name,
-      role = EXCLUDED.role,
-      seat_type = CASE
-        WHEN $9 THEN EXCLUDED.seat_type
-        ELSE organization_memberships.seat_type
-      END,
-      synced_at = NOW(),
-      updated_at = NOW()`,
-    [
-      membership.user_id,
-      membership.organization_id,
-      membership.id,
-      userData.email,
-      userData.first_name,
-      userData.last_name,
-      role,
-      seatType,
-      hasExplicitSeatType,
-    ]
-  );
+  const { assigned_role } = await upsertOrganizationMembership({
+    user_id: membership.user_id,
+    organization_id: membership.organization_id,
+    membership_id: membership.id,
+    email: userData.email,
+    first_name: userData.first_name,
+    last_name: userData.last_name,
+    role,
+    seat_type: seatType,
+    has_explicit_seat_type: hasExplicitSeatType,
+  });
+
+  // If the DB promoted this member to owner, sync the change to WorkOS
+  if (assigned_role === 'owner' && role === 'member') {
+    try {
+      await workos.userManagement.updateOrganizationMembership(membership.id, {
+        roleSlug: 'owner',
+      });
+      logger.info({
+        membershipId: membership.id,
+        userId: membership.user_id,
+        orgId: membership.organization_id,
+      }, 'Promoted member to owner — org had no admin');
+    } catch (err) {
+      // Roll back local promotion to stay in sync with WorkOS
+      await setMembershipRole(membership.user_id, membership.organization_id, 'member')
+        .catch((rollbackErr) => {
+          logger.error({ err: rollbackErr, orgId: membership.organization_id },
+            'Failed to roll back local owner promotion — local/WorkOS role divergence');
+        });
+      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote member to owner in WorkOS, rolled back local role');
+    }
+  }
 
   // Set primary_organization_id if not already set (prefer paying orgs)
   const preferredOrg = await resolvePreferredOrganization(membership.user_id);
   if (preferredOrg) {
     await backfillPrimaryOrganization(membership.user_id, preferredOrg);
   }
-
-  logger.info({
-    membershipId: membership.id,
-    userId: membership.user_id,
-    orgId: membership.organization_id,
-  }, 'Upserted organization membership');
 }
 
 /**
  * Delete organization membership from local database
  */
 async function deleteMembership(membership: OrganizationMembershipData): Promise<void> {
-  const pool = getPool();
-
-  await pool.query(
-    `DELETE FROM organization_memberships
-     WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-    [membership.user_id, membership.organization_id]
-  );
+  const deletedRole = await deleteOrganizationMembership(membership.user_id, membership.organization_id);
 
   logger.info({
     membershipId: membership.id,
     userId: membership.user_id,
     orgId: membership.organization_id,
+    role: deletedRole,
   }, 'Deleted organization membership');
+
+  // If an admin/owner was removed, check if the org still has one.
+  // Promote the longest-tenured remaining member to prevent ownerless orgs.
+  if (deletedRole === 'admin' || deletedRole === 'owner') {
+    try {
+      const target = await findSuccessorForPromotion(membership.organization_id);
+      if (!target) return;
+
+      // Promote in WorkOS first, then mirror locally
+      let promotedInWorkos = false;
+      if (target.workos_membership_id) {
+        await workos.userManagement.updateOrganizationMembership(
+          target.workos_membership_id,
+          { roleSlug: 'owner' }
+        );
+        promotedInWorkos = true;
+      } else {
+        // No cached membership ID — look it up from WorkOS
+        const memberships = await workos.userManagement.listOrganizationMemberships({
+          organizationId: membership.organization_id,
+          userId: target.workos_user_id,
+        });
+        if (memberships.data.length > 0) {
+          await workos.userManagement.updateOrganizationMembership(
+            memberships.data[0].id,
+            { roleSlug: 'owner' }
+          );
+          promotedInWorkos = true;
+        } else {
+          logger.warn({
+            orgId: membership.organization_id,
+            userId: target.workos_user_id,
+          }, 'Successor has no WorkOS membership — cannot promote, org may be ownerless');
+        }
+      }
+      if (promotedInWorkos) {
+        await setMembershipRole(target.workos_user_id, membership.organization_id, 'owner');
+        logger.info({
+          orgId: membership.organization_id,
+          promotedUserId: target.workos_user_id,
+          previousOwnerId: membership.user_id,
+        }, 'Promoted longest-tenured member to owner after admin/owner removal');
+      }
+    } catch (err) {
+      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote successor after owner removal');
+    }
+  }
 }
 
 /**
@@ -596,6 +629,7 @@ export function createWorkOSWebhooksRouter(): Router {
 
         if (!WORKOS_WEBHOOK_SECRET) {
           logger.error('WORKOS_WEBHOOK_SECRET not configured — rejecting webhook');
+          notifySystemError({ source: 'workos-webhook', errorMessage: 'WORKOS_WEBHOOK_SECRET not configured — all webhooks rejected' });
           return res.status(401).json({ error: 'Webhook verification unavailable' });
         }
 
@@ -612,6 +646,7 @@ export function createWorkOSWebhooksRouter(): Router {
           });
         } catch (err) {
           logger.warn({ err }, 'WorkOS webhook signature verification failed');
+          notifySystemError({ source: 'workos-webhook-sig', errorMessage: `Signature verification failed for ${req.body?.event || 'unknown'} — check WORKOS_WEBHOOK_SECRET` });
           return res.status(401).json({ error: 'Invalid signature' });
         }
 
@@ -772,7 +807,10 @@ export function createWorkOSWebhooksRouter(): Router {
         return res.status(200).json({ ok: true });
       } catch (error) {
         const durationMs = Date.now() - startTime;
-        logger.error({ error, durationMs }, 'Error processing WorkOS webhook');
+        const eventType = req.body?.event || 'unknown';
+        const errMsg = error instanceof Error ? error.message : String(error);
+        logger.error({ error, durationMs, event: eventType }, 'Error processing WorkOS webhook');
+        notifySystemError({ source: 'workos-webhook', errorMessage: `Failed to process ${eventType}: ${errMsg}` });
         return res.status(500).json({ error: 'Internal error' });
       }
     }
@@ -833,33 +871,18 @@ export async function backfillOrganizationMemberships(): Promise<{
                   (m) => m.organizationId === org.workos_organization_id,
                 );
                 if (membership && membership.status === 'active') {
-                  await pool.query(
-                    `INSERT INTO organization_memberships (
-                      workos_user_id,
-                      workos_organization_id,
-                      workos_membership_id,
-                      email,
-                      first_name,
-                      last_name,
-                      synced_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
-                    ON CONFLICT (workos_user_id, workos_organization_id)
-                    DO UPDATE SET
-                      workos_membership_id = EXCLUDED.workos_membership_id,
-                      email = EXCLUDED.email,
-                      first_name = EXCLUDED.first_name,
-                      last_name = EXCLUDED.last_name,
-                      synced_at = NOW(),
-                      updated_at = NOW()`,
-                    [
-                      user.id,
-                      org.workos_organization_id,
-                      membership.id,
-                      user.email,
-                      user.firstName,
-                      user.lastName,
-                    ]
-                  );
+                  const role = membership.role?.slug || 'member';
+                  await upsertOrganizationMembership({
+                    user_id: user.id,
+                    organization_id: org.workos_organization_id,
+                    membership_id: membership.id,
+                    email: user.email,
+                    first_name: user.firstName,
+                    last_name: user.lastName,
+                    role,
+                    seat_type: 'community_only',
+                    has_explicit_seat_type: false,
+                  });
                   result.membershipsCreated++;
                 }
               } catch (memberError) {

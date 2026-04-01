@@ -52,7 +52,7 @@ Pre-computed classifier outputs for the content environment. MUST NOT contain ra
 | `sentiment` | enum | No | Content sentiment: `positive`, `negative`, `neutral`, `mixed`. |
 | `keywords` | List\<string\> | No | Content keywords extracted by the publisher's classifier. |
 | `language` | string | No | ISO 639-1 language code. |
-| `content_policies` | List\<string\> | No | Policy IDs from the AdCP policy registry that this content satisfies (e.g., `common_sense_brand_safety` for Common Sense Brand Standards). Buyers filter on policies they require. |
+| `content_policies` | List\<string\> | No | Policy IDs from the [AdCP Policy Registry](/docs/governance/policy-registry) that this content satisfies. Routers populate this from the publisher's property governance configuration or content metadata. Buyers filter on policies they require via `required_policies` on packages. This is a **pre-filtering optimization** — contexts missing required policies are excluded before reaching downstream governance. Definitive enforcement happens at the governance layer via [`check_governance`](/docs/governance/campaign/tasks/check_governance). |
 | `summary` | string | No | Natural language summary for relevance judgment. Useful for LLM-native buyers that evaluate semantically. |
 | `embedding` | string | No | Content embedding as base64-encoded int8 vector. Captures semantic content beyond topics and keywords. |
 | `embedding_model` | string | No | Embedding model identifier (e.g., `nomic-embed-text-v1.5`). Required when `embedding` is present. |

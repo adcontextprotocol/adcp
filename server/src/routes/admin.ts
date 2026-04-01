@@ -200,6 +200,33 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           insights?: Array<{ type_key: string; type_name: string; value: string }>;
         } = { ...context };
 
+        if (workosUserId) {
+          // Get community points breakdown
+          const pointsBreakdownResult = await pool.query<{
+            action: string;
+            action_points: number;
+            action_count: number;
+          }>(`
+            SELECT action, SUM(points)::int AS action_points, COUNT(*)::int AS action_count
+            FROM community_points
+            WHERE workos_user_id = $1
+            GROUP BY action
+            ORDER BY action_points DESC
+          `, [workosUserId]);
+
+          if (pointsBreakdownResult.rows.length > 0) {
+            const total = pointsBreakdownResult.rows.reduce((sum, r) => sum + r.action_points, 0);
+            (extendedContext as typeof extendedContext & { community_points?: unknown }).community_points = {
+              total,
+              breakdown: pointsBreakdownResult.rows.map(r => ({
+                action: r.action,
+                points: r.action_points,
+                count: r.action_count,
+              })),
+            };
+          }
+        }
+
         if (workosUserId || slackUserId) {
           // Get goal from unified contacts view
           const goalQuery = workosUserId

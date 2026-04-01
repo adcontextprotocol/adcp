@@ -8,6 +8,7 @@ import type { AdminPanel, GoalProgress } from '../types.js';
 import { AddieDatabase } from '../../../db/addie-db.js';
 import { getPool } from '../../../db/client.js';
 import { logger } from '../../../logger.js';
+import { HOT_PROSPECT_POINTS_THRESHOLD } from '../../../services/account-lifecycle.js';
 
 const addieDb = new AddieDatabase();
 
@@ -66,7 +67,7 @@ export async function buildAdminPanel(adminUserId?: string): Promise<AdminPanel>
       const result = await pool.query(`
         SELECT
           COUNT(*) as total,
-          COUNT(CASE WHEN o.engagement_score >= 30 THEN 1 END) as hot,
+          COUNT(CASE WHEN ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD} THEN 1 END) as hot,
           COUNT(CASE
             WHEN EXISTS (
               SELECT 1 FROM org_activities
@@ -82,6 +83,12 @@ export async function buildAdminPanel(adminUserId?: string): Promise<AdminPanel>
             THEN 1
           END) as needs_followup
         FROM organizations o
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+          FROM organization_memberships om2
+          JOIN community_points cp ON cp.workos_user_id = om2.workos_user_id
+          WHERE om2.workos_organization_id = o.workos_organization_id
+        ) ocp ON true
         JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
         WHERE os.user_id = $1
           AND os.role = 'owner'

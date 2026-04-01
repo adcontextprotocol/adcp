@@ -20,6 +20,15 @@ export interface DigestSocialPostIdea {
   description: string;
 }
 
+export interface DigestMemberPerspective {
+  slug: string;
+  title: string;
+  url: string;
+  excerpt: string;
+  authorName: string;
+  publishedAt: string | null;
+}
+
 export interface DigestEditEntry {
   editedBy: string;
   editedAt: string;
@@ -34,6 +43,7 @@ export interface DigestSpotlightAction {
 
 export interface DigestContent {
   intro: string;
+  memberPerspectives?: DigestMemberPerspective[];
   news: DigestNewsItem[];
   newMembers: DigestNewMember[];
   conversations: DigestConversation[];
@@ -93,6 +103,14 @@ export interface DigestArticle {
   addie_notes: string;
   quality_score: number;
   relevance_tags: string[];
+  published_at: Date | null;
+}
+
+export interface DigestPerspective {
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  author_name: string | null;
   published_at: Date | null;
 }
 
@@ -261,6 +279,41 @@ export async function getRecentArticlesForDigest(
            AND wd.content::jsonb -> 'news' @> jsonb_build_array(jsonb_build_object('knowledgeId', k.id))
        )
      ORDER BY k.quality_score DESC, k.published_at DESC NULLS LAST
+     LIMIT $2`,
+    [days, limit],
+  );
+  return result.rows;
+}
+
+/**
+ * Get recent published member perspectives for digest inclusion.
+ * Excludes items already included in a previously sent digest.
+ */
+export async function getRecentMemberPerspectivesForDigest(
+  days: number = 7,
+  limit: number = 5,
+): Promise<DigestPerspective[]> {
+  const result = await query<DigestPerspective>(
+    `SELECT
+        p.slug,
+        p.title,
+        p.excerpt,
+        p.author_name,
+        p.published_at
+     FROM perspectives p
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.status = 'published'
+       AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
+       AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+       AND p.published_at IS NOT NULL
+       AND p.published_at > NOW() - make_interval(days => $1)
+       AND NOT EXISTS (
+         SELECT 1 FROM weekly_digests wd
+         WHERE wd.status = 'sent'
+           AND COALESCE(wd.content::jsonb -> 'memberPerspectives', '[]'::jsonb)
+             @> jsonb_build_array(jsonb_build_object('slug', p.slug))
+       )
+     ORDER BY p.published_at DESC
      LIMIT $2`,
     [days, limit],
   );

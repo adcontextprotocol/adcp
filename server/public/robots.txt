@@ -4,6 +4,7 @@
 # Allow all standard crawlers
 User-agent: *
 Allow: /
+Disallow: /aao-w9.pdf
 
 # Explicitly allow AI crawlers
 User-agent: GPTBot

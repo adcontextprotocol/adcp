@@ -14,6 +14,7 @@ import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { HOT_PROSPECT_POINTS_THRESHOLD } from "../../services/account-lifecycle.js";
 import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
 import { MemberDatabase } from "../../db/member-db.js";
 import {
@@ -181,29 +182,38 @@ export function setupStatsRoutes(apiRouter: Router): void {
           WHERE rating IS NOT NULL
         `),
 
-        // User engagement stats
+        // User engagement stats (community points)
         pool.query(`
           SELECT
-            COUNT(*) as total_users,
-            COUNT(CASE WHEN engagement_score >= 30 THEN 1 END) as active_users,
-            COUNT(CASE WHEN engagement_score >= 60 THEN 1 END) as engaged_users,
-            COUNT(CASE WHEN excitement_score >= 75 THEN 1 END) as champions,
-            COALESCE(AVG(engagement_score), 0) as avg_engagement
-          FROM users
-          WHERE engagement_score IS NOT NULL
+            COUNT(DISTINCT u.workos_user_id) as total_users,
+            COUNT(DISTINCT CASE WHEN cp.total >= 100 THEN u.workos_user_id END) as connectors,
+            COUNT(DISTINCT CASE WHEN cp.total >= 500 THEN u.workos_user_id END) as champions,
+            COUNT(DISTINCT CASE WHEN cp.total >= 1500 THEN u.workos_user_id END) as pioneers,
+            COALESCE(AVG(cp.total), 0) as avg_community_points
+          FROM users u
+          LEFT JOIN (
+            SELECT workos_user_id, SUM(points) as total
+            FROM community_points GROUP BY workos_user_id
+          ) cp ON cp.workos_user_id = u.workos_user_id
         `),
 
-        // Org lifecycle stats (derived from subscription_status and engagement_score)
+        // Org lifecycle stats (derived from subscription_status and community points)
         pool.query(`
           SELECT
             COUNT(*) as total_orgs,
             COUNT(CASE WHEN ${MEMBER_FILTER} THEN 1 END) as active_orgs,
-            COUNT(CASE WHEN engagement_score >= 50 AND NOT (${MEMBER_FILTER}) THEN 1 END) as prospects,
-            COUNT(CASE WHEN engagement_score >= 30 AND engagement_score < 50 AND NOT (${MEMBER_FILTER}) THEN 1 END) as evaluating,
-            COUNT(CASE WHEN engagement_score > 0 AND engagement_score < 30 AND NOT (${MEMBER_FILTER}) THEN 1 END) as trials,
+            COUNT(CASE WHEN ocp.total >= 100 AND NOT (${MEMBER_FILTER}) THEN 1 END) as prospects,
+            COUNT(CASE WHEN ocp.total >= 50 AND ocp.total < 100 AND NOT (${MEMBER_FILTER}) THEN 1 END) as evaluating,
+            COUNT(CASE WHEN ocp.total > 0 AND ocp.total < 50 AND NOT (${MEMBER_FILTER}) THEN 1 END) as trials,
             COUNT(CASE WHEN ${MEMBER_FILTER} THEN 1 END) as paying,
-            COUNT(CASE WHEN engagement_score >= 50 AND NOT (${MEMBER_FILTER}) THEN 1 END) as engaged_prospects
-          FROM organizations
+            COUNT(CASE WHEN ocp.total >= 100 AND NOT (${MEMBER_FILTER}) THEN 1 END) as engaged_prospects
+          FROM organizations o
+          LEFT JOIN (
+            SELECT om.workos_organization_id, SUM(cp.points) as total
+            FROM community_points cp
+            JOIN organization_memberships om ON om.workos_user_id = cp.workos_user_id
+            GROUP BY om.workos_organization_id
+          ) ocp ON ocp.workos_organization_id = o.workos_organization_id
         `),
 
         // Recent bookings (last 30 days)
@@ -322,12 +332,12 @@ export function setupStatsRoutes(apiRouter: Router): void {
         addie_positive_ratings: parseInt(ratings.positive_ratings) || 0,
         addie_negative_ratings: parseInt(ratings.negative_ratings) || 0,
 
-        // User stats
+        // User stats (community points tiers)
         total_users: parseInt(users.total_users) || 0,
-        active_users: parseInt(users.active_users) || 0,
-        engaged_users: parseInt(users.engaged_users) || 0,
+        connector_users: parseInt(users.connectors) || 0,
         champion_users: parseInt(users.champions) || 0,
-        avg_engagement_score: (parseFloat(users.avg_engagement) || 0).toFixed(0),
+        pioneer_users: parseInt(users.pioneers) || 0,
+        avg_community_points: (parseFloat(users.avg_community_points) || 0).toFixed(0),
 
         // Org stats
         total_orgs: parseInt(orgs.total_orgs) || 0,
@@ -392,23 +402,30 @@ export function setupStatsRoutes(apiRouter: Router): void {
 
       // Get all stats in parallel
       const [hotProspects, needsFollowup, recentActivity, counts] = await Promise.all([
-        // Hot prospects (engagement >= 30)
+        // Hot prospects
         pool.query(`
           SELECT
             o.workos_organization_id as org_id,
             o.name,
             o.email_domain,
-            o.engagement_score,
+            ocp.org_points as community_points,
+            ocp.org_points as engagement_score,
             o.prospect_status,
             o.interest_level
           FROM organizations o
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+            FROM organization_memberships om
+            JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+            WHERE om.workos_organization_id = o.workos_organization_id
+          ) ocp ON true
           JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
             AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
-            AND o.engagement_score >= 30
-          ORDER BY o.engagement_score DESC
+            AND ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
+          ORDER BY ocp.org_points DESC
           LIMIT 5
         `, [userId]),
 
@@ -419,7 +436,8 @@ export function setupStatsRoutes(apiRouter: Router): void {
               o.workos_organization_id as org_id,
               o.name,
               o.email_domain,
-              o.engagement_score,
+              ocp.org_points as community_points,
+              ocp.org_points as engagement_score,
               ns.description as next_step,
               ns.next_step_due_date,
               (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
@@ -428,6 +446,12 @@ export function setupStatsRoutes(apiRouter: Router): void {
                 o.created_at
               )) as days_since_activity
             FROM organizations o
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+              FROM organization_memberships om
+              JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+              WHERE om.workos_organization_id = o.workos_organization_id
+            ) ocp ON true
             JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
             LEFT JOIN LATERAL (
               SELECT description, next_step_due_date
@@ -480,7 +504,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
         pool.query(`
           SELECT
             COUNT(*) as total,
-            COUNT(CASE WHEN o.engagement_score >= 30 THEN 1 END) as hot,
+            COUNT(CASE WHEN ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD} THEN 1 END) as hot,
             COUNT(CASE
               WHEN EXISTS (
                 SELECT 1 FROM org_activities
@@ -496,6 +520,12 @@ export function setupStatsRoutes(apiRouter: Router): void {
               THEN 1
             END) as needs_followup
           FROM organizations o
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+            FROM organization_memberships om
+            JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+            WHERE om.workos_organization_id = o.workos_organization_id
+          ) ocp ON true
           JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
           WHERE os.user_id = $1
             AND os.role = 'owner'

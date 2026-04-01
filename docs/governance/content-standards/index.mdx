@@ -83,11 +83,15 @@ sequenceDiagram
         Note over Seller: Local model evaluates artifacts
     end
 
-    Buyer->>Seller: get_media_buy_artifacts (sampled)
+    Buyer->>Seller: get_media_buy_artifacts
     Seller-->>Buyer: Content artifacts
     Buyer->>Verifier: validate_content_delivery
     Verifier-->>Buyer: Validation results
 ```
+
+<Warning>
+**Calibration is required before production use.** Content standards created via `create_content_standards` define what to evaluate, but calibration via [`calibrate_content`](/docs/governance/content-standards/tasks/calibrate_content) aligns the seller's local model with the verification agent's interpretation. Without calibration, the seller's local model produces uncalibrated evaluations — policy violations may go undetected or safe content may be incorrectly blocked. Always calibrate before activating a media buy with content standards.
+</Warning>
 
 **Key insight**: Runtime decisioning happens locally at the seller (for scale). Buyers pull content samples from sellers and validate against the verification agent.
 
@@ -153,7 +157,7 @@ Sampling rate is negotiated in the media buy:
 }
 ```
 
-Higher sampling rates typically cost more but provide stronger guarantees. The seller is responsible for implementing the agreed sampling rate and reporting actual coverage.
+Higher sampling rates typically cost more but provide stronger guarantees. The seller is responsible for implementing the agreed sampling rate and reporting actual coverage. Buyers retrieve collected artifacts via [get_media_buy_artifacts](./tasks/get_media_buy_artifacts) (pull) or receive them via `artifact_webhook` (push) — both deliver artifacts sampled per the buy agreement.
 
 ## Validation Thresholds
 

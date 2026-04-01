@@ -304,8 +304,13 @@ function extractHtmlContent(content: string): string {
   content = content.replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n');
   content = content.replace(/<br\s*\/?>/gi, '\n');
 
-  // Remove all remaining HTML tags
-  content = content.replace(/<[^>]+>/g, '');
+  // Remove all remaining HTML tags (loop to catch tags reconstructed by entity decode)
+  let tagPrev = '';
+  let tagIterations = 0;
+  while (tagPrev !== content && tagIterations++ < 100) {
+    tagPrev = content;
+    content = content.replace(/<[^>]+>/g, '');
+  }
 
   // Clean up whitespace
   content = content.replace(/\n{3,}/g, '\n\n');
@@ -555,11 +560,21 @@ export async function initializeDocsIndex(): Promise<void> {
   const categories = [...new Set(docsIndex.map((d) => d.category))];
   const websiteCount = docsIndex.filter((d) => d.category === 'website').length;
   const workingGroupCount = docsIndex.filter((d) => d.category.startsWith('working group')).length;
+  const protocolDocCount = docsIndex.length - websiteCount - workingGroupCount;
+
+  // Warn if protocol docs index seems suspiciously empty (expect 50+ docs)
+  if (docsRoot && protocolDocCount < 10) {
+    logger.error(
+      { protocolDocCount, docsRoot },
+      'Addie Docs: Protocol doc count is suspiciously low — search_docs may return incomplete results'
+    );
+  }
 
   logger.info(
     {
       totalDocs: docsIndex.length,
       totalHeadings: headingsIndex.length,
+      protocolDocs: protocolDocCount,
       websitePages: websiteCount,
       workingGroupDocs: workingGroupCount,
       categories: categories.join(', '),
@@ -636,10 +651,16 @@ export function searchDocs(
 }
 
 /**
- * Get a doc by ID
+ * Get a doc by ID.
+ * Accepts the canonical ID (e.g. "doc:media-buy/advanced-topics/targeting")
+ * or a bare path without the prefix (e.g. "media-buy/advanced-topics/targeting").
  */
 export function getDocById(id: string): IndexedDoc | null {
-  return docsIndex.find((doc) => doc.id === id) || null;
+  return docsIndex.find((doc) => doc.id === id)
+    || docsIndex.find((doc) => doc.id === `doc:${id}`)
+    || docsIndex.find((doc) => doc.id === `website:${id}`)
+    || docsIndex.find((doc) => doc.id === `wg-doc:${id}`)
+    || null;
 }
 
 /**

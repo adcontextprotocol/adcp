@@ -13,7 +13,7 @@ import { query } from '../../db/client.js';
 import { getThreadService } from '../thread-service.js';
 
 /** Engagement score threshold for "hot" prospects (🔥 indicator) */
-const HOT_ENGAGEMENT_THRESHOLD = 30;
+const HOT_COMMUNITY_POINTS_THRESHOLD = 100; // Connector tier
 
 interface TaskReminder {
   user_id: string;
@@ -25,7 +25,7 @@ interface TaskReminder {
   task_description: string;
   due_date: Date;
   days_until_due: number;
-  engagement_score: number;
+  community_points: number;
 }
 
 interface ReminderBatch {
@@ -53,7 +53,7 @@ async function getTasksNeedingReminders(): Promise<ReminderBatch[]> {
       oa.description as task_description,
       oa.next_step_due_date as due_date,
       (oa.next_step_due_date - CURRENT_DATE)::integer as days_until_due,
-      COALESCE(o.engagement_score, 0) as engagement_score
+      COALESCE((SELECT SUM(cp.points) FROM organization_memberships om JOIN community_points cp ON cp.workos_user_id = om.workos_user_id WHERE om.workos_organization_id = o.workos_organization_id), 0)::int as community_points
     FROM org_activities oa
     JOIN organizations o ON o.workos_organization_id = oa.organization_id
     LEFT JOIN users u ON u.workos_user_id = oa.next_step_owner_user_id
@@ -78,7 +78,7 @@ async function getTasksNeedingReminders(): Promise<ReminderBatch[]> {
       o.prospect_next_action as task_description,
       o.prospect_next_action_date as due_date,
       (o.prospect_next_action_date - CURRENT_DATE)::integer as days_until_due,
-      COALESCE(o.engagement_score, 0) as engagement_score
+      COALESCE((SELECT SUM(cp.points) FROM organization_memberships om JOIN community_points cp ON cp.workos_user_id = om.workos_user_id WHERE om.workos_organization_id = o.workos_organization_id), 0)::int as community_points
     FROM organizations o
     JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id AND os.role = 'owner'
     LEFT JOIN slack_user_mappings sm ON sm.workos_user_id = os.user_id
@@ -137,7 +137,7 @@ function buildReminderMessage(batch: ReminderBatch): string {
     parts.push(`⚠️ *Overdue Tasks* (${batch.overdue.length})`);
     for (const task of batch.overdue) {
       const daysOverdue = Math.abs(task.days_until_due);
-      const hot = task.engagement_score >= HOT_ENGAGEMENT_THRESHOLD ? ' 🔥' : '';
+      const hot = task.community_points >= HOT_COMMUNITY_POINTS_THRESHOLD ? ' 🔥' : '';
       parts.push(`• *${task.org_name}*${hot}: ${task.task_description} (${daysOverdue} day${daysOverdue === 1 ? '' : 's'} overdue)`);
     }
     parts.push('');
@@ -146,7 +146,7 @@ function buildReminderMessage(batch: ReminderBatch): string {
   if (batch.today.length > 0) {
     parts.push(`📌 *Due Today* (${batch.today.length})`);
     for (const task of batch.today) {
-      const hot = task.engagement_score >= HOT_ENGAGEMENT_THRESHOLD ? ' 🔥' : '';
+      const hot = task.community_points >= HOT_COMMUNITY_POINTS_THRESHOLD ? ' 🔥' : '';
       parts.push(`• *${task.org_name}*${hot}: ${task.task_description}`);
     }
     parts.push('');
@@ -155,7 +155,7 @@ function buildReminderMessage(batch: ReminderBatch): string {
   if (batch.tomorrow.length > 0) {
     parts.push(`📅 *Due Tomorrow* (${batch.tomorrow.length})`);
     for (const task of batch.tomorrow) {
-      const hot = task.engagement_score >= HOT_ENGAGEMENT_THRESHOLD ? ' 🔥' : '';
+      const hot = task.community_points >= HOT_COMMUNITY_POINTS_THRESHOLD ? ' 🔥' : '';
       parts.push(`• *${task.org_name}*${hot}: ${task.task_description}`);
     }
     parts.push('');

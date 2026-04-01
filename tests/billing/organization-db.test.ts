@@ -198,6 +198,151 @@ describe('organization-db', () => {
     });
   });
 
+  describe('getSeatUsage', () => {
+    test('counts Slack-mapped users as contributors', async () => {
+      // 3 total members, 1 is a derived contributor (Slack-mapped)
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ total: '3', contributor: '1' }],
+      });
+
+      const { getSeatUsage } = await import('../../server/src/db/organization-db.js');
+      const usage = await getSeatUsage('org_123');
+
+      expect(usage).toEqual({ contributor: 1, community_only: 2 });
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining('slack_user_mappings'),
+        ['org_123']
+      );
+    });
+
+    test('counts working group members as contributors', async () => {
+      // 5 total, 3 are contributors (mix of Slack, WG, admin-assigned)
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ total: '5', contributor: '3' }],
+      });
+
+      const { getSeatUsage } = await import('../../server/src/db/organization-db.js');
+      const usage = await getSeatUsage('org_123');
+
+      expect(usage).toEqual({ contributor: 3, community_only: 2 });
+    });
+
+    test('returns zeros for empty org', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ total: '0', contributor: '0' }],
+      });
+
+      const { getSeatUsage } = await import('../../server/src/db/organization-db.js');
+      const usage = await getSeatUsage('org_123');
+
+      expect(usage).toEqual({ contributor: 0, community_only: 0 });
+    });
+
+    test('includes admin-assigned contributor seat_type in derivation', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ total: '2', contributor: '2' }],
+      });
+
+      const { getSeatUsage } = await import('../../server/src/db/organization-db.js');
+      const usage = await getSeatUsage('org_123');
+
+      expect(usage).toEqual({ contributor: 2, community_only: 0 });
+      // Verify the query checks seat_type = 'contributor' in the FILTER
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining("seat_type = 'contributor'"),
+        ['org_123']
+      );
+    });
+  });
+
+  describe('getUserSeatType', () => {
+    test('returns contributor for Slack-mapped user', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ is_contributor: true }],
+      });
+
+      const { getUserSeatType } = await import('../../server/src/db/organization-db.js');
+      const result = await getUserSeatType('user_123');
+
+      expect(result).toBe('contributor');
+    });
+
+    test('returns community_only for user with no Slack or WG access', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ is_contributor: false }],
+      });
+
+      const { getUserSeatType } = await import('../../server/src/db/organization-db.js');
+      const result = await getUserSeatType('user_456');
+
+      expect(result).toBe('community_only');
+    });
+
+    test('returns null for user with no org membership', async () => {
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
+
+      const { getUserSeatType } = await import('../../server/src/db/organization-db.js');
+      const result = await getUserSeatType('user_unknown');
+
+      expect(result).toBeNull();
+    });
+
+    test('checks admin-assigned seat_type in derivation', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ is_contributor: true }],
+      });
+
+      const { getUserSeatType } = await import('../../server/src/db/organization-db.js');
+      await getUserSeatType('user_789');
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining("seat_type = 'contributor'"),
+        ['user_789']
+      );
+    });
+  });
+
+  describe('resolveMembershipTier', () => {
+    test('returns explicit tier when set', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: 'company_standard',
+        subscription_status: 'active',
+        subscription_amount: 5000000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_standard');
+    });
+
+    test('infers tier from active subscription when membership_tier is null', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'active',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_standard');
+    });
+
+    test('returns null when membership_tier is null and subscription is not active', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: null,
+        subscription_status: 'canceled',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBeNull();
+    });
+
+    test('returns null for null/undefined org', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier(null)).toBeNull();
+      expect(resolveMembershipTier(undefined)).toBeNull();
+    });
+  });
+
   describe('canAddSeat', () => {
     test('infers tier from subscription when membership_tier is null', async () => {
       const client = mockPool._mockClient;
@@ -213,10 +358,10 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      // Seat usage (members + pending invitations)
-      client.query.mockResolvedValueOnce({
-        rows: [],
-      });
+      // Member counts (total + contributor via FILTER)
+      client.query.mockResolvedValueOnce({ rows: [{ total: '0', contributor: '0' }] });
+      // Pending invitations
+      client.query.mockResolvedValueOnce({ rows: [] });
       // COMMIT
       client.query.mockResolvedValueOnce({ rows: [] });
 
@@ -239,7 +384,8 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      client.query.mockResolvedValueOnce({ rows: [] }); // seat usage
+      client.query.mockResolvedValueOnce({ rows: [{ total: '0', contributor: '0' }] }); // member counts
+      client.query.mockResolvedValueOnce({ rows: [] }); // pending invitations
       client.query.mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const { canAddSeat } = await import('../../server/src/db/organization-db.js');
@@ -260,7 +406,8 @@ describe('organization-db', () => {
           is_personal: false,
         }],
       });
-      client.query.mockResolvedValueOnce({ rows: [] }); // seat usage
+      client.query.mockResolvedValueOnce({ rows: [{ total: '0', contributor: '0' }] }); // member counts
+      client.query.mockResolvedValueOnce({ rows: [] }); // pending invitations
       client.query.mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const { canAddSeat } = await import('../../server/src/db/organization-db.js');

@@ -65,7 +65,7 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
 
 ### Channel mix targets
 
-The `mix_targets` field defines acceptable allocation ranges. The governance agent validates that aggregate spend across all media buys stays within these ranges. A `create_media_buy` that would push video spend above 70% of total budget triggers a `conditions` or `escalated` status.
+The `mix_targets` field defines acceptable allocation ranges. The governance agent validates that aggregate spend across all media buys stays within these ranges. A `create_media_buy` that would push video spend above 70% of total budget triggers a `conditions` or `denied` status.
 
 ### Delegations
 
@@ -251,13 +251,13 @@ When status is `suspended`, the governance agent MUST reject all `check_governan
 
 Budget is committed based on **confirmed outcomes**, not validated actions. The flow:
 
-1. `check_governance` with `binding: "proposed"` checks whether the proposed spend fits within the plan. No budget is committed yet.
+1. `check_governance` with `tool` + `payload` (intent check) checks whether the proposed spend fits within the plan. No budget is committed yet.
 2. The orchestrator executes the action with the seller.
 3. `report_plan_outcome` reports the seller's confirmed amount. The governance agent commits this amount to the plan budget.
 
 This ensures budget tracking reflects reality. If a seller reduces the budget from \$150K to \$120K, the governance agent commits \$120K and returns findings about the discrepancy. If the action fails entirely, the governance agent commits \$0.
 
-A `committed` approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
+An execution check approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
 
 Budget checks are point-in-time: `check_governance` validates against the current committed total but does not reserve budget. If multiple agents execute concurrently against the same plan, two checks could both pass and the combined outcomes could exceed the authorized budget. The governance agent detects overspend at outcome reporting time and returns a `budget_authority` finding. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
 
@@ -270,8 +270,8 @@ The audit log includes `drift_metrics` that surface aggregate governance trends 
   "summary": {
     "checks_performed": 847,
     "drift_metrics": {
-      "escalation_rate": 0.03,
-      "escalation_rate_trend": "declining",
+      "human_review_rate": 0.03,
+      "human_review_rate_trend": "declining",
       "auto_approval_rate": 0.91,
       "human_override_rate": 0.02,
       "mean_confidence": 0.88
@@ -280,14 +280,14 @@ The audit log includes `drift_metrics` that surface aggregate governance trends 
 }
 ```
 
-These metrics detect oversight drift -- the gradual migration of control away from humans. A declining escalation rate may indicate the governance agent is well-calibrated, or it may indicate that oversight is eroding. Surfacing the trend lets the organization make that judgment.
+These metrics detect oversight drift -- the gradual migration of control away from humans. A declining human review rate may indicate the governance agent is well-calibrated, or it may indicate that oversight is eroding. Surfacing the trend lets the organization make that judgment.
 
 | Metric | What it measures |
 |--------|-----------------|
-| `escalation_rate` | Fraction of checks that resulted in escalation |
-| `escalation_rate_trend` | Direction over the plan's lifetime (`increasing`, `stable`, `declining`) |
+| `human_review_rate` | Fraction of checks that required internal human review |
+| `human_review_rate_trend` | Direction over the plan's lifetime (`increasing`, `stable`, `declining`) |
 | `auto_approval_rate` | Fraction of checks approved without human intervention |
-| `human_override_rate` | Fraction of escalations where the human overrode the governance agent |
+| `human_override_rate` | Fraction of human reviews where the human overrode the governance agent |
 | `mean_confidence` | Average confidence score across findings (when confidence is reported) |
 
 Organizations can set thresholds on drift metrics. When a metric crosses its threshold, the governance agent SHOULD include a finding (severity `warning`) on the next governance check:
@@ -295,20 +295,20 @@ Organizations can set thresholds on drift metrics. When a metric crosses its thr
 ```json
 {
   "drift_metrics": {
-    "escalation_rate": 0.01,
-    "escalation_rate_trend": "declining",
+    "human_review_rate": 0.01,
+    "human_review_rate_trend": "declining",
     "auto_approval_rate": 0.97,
     "thresholds": {
-      "escalation_rate_min": 0.02,
+      "human_review_rate_min": 0.02,
       "auto_approval_rate_max": 0.95
     }
   }
 }
 ```
 
-In this example, both thresholds are breached -- the escalation rate (0.01) is below the minimum (0.02) and the auto-approval rate (0.97) exceeds the maximum (0.95). This could indicate that the governance agent is approving too broadly, or that policies are well-calibrated for a low-risk campaign. The threshold breach surfaces the question; the organization decides the answer.
+In this example, both thresholds are breached -- the human review rate (0.01) is below the minimum (0.02) and the auto-approval rate (0.97) exceeds the maximum (0.95). This could indicate that the governance agent is approving too broadly, or that policies are well-calibrated for a low-risk campaign. The threshold breach surfaces the question; the organization decides the answer.
 
-Organizations set only the thresholds relevant to their concern. An `escalation_rate_min` catches oversight erosion; an `escalation_rate_max` catches policy miscalibration. A `human_override_rate_max` catches a governance agent whose recommendations are consistently wrong. All threshold fields are optional.
+Organizations set only the thresholds relevant to their concern. A `human_review_rate_min` catches oversight erosion; a `human_review_rate_max` catches policy miscalibration. A `human_override_rate_max` catches a governance agent whose recommendations are consistently wrong. All threshold fields are optional.
 
 ### Plan amendments
 
@@ -320,7 +320,7 @@ The governance agent evaluates each [validation category](/docs/governance/campa
 
 - If **any** category has status `failed` and the failure is correctable, the status is `conditions` with suggested fixes
 - If **any** category has status `failed` and the failure is not correctable by the caller, the status is `denied`
-- If all categories pass but the overall risk profile warrants human review, the status is `escalated`
+- If all categories pass but the overall risk profile warrants human review, the governance agent handles the review internally (the task goes async) and eventually resolves to `approved` or `denied`
 - If all categories pass, the status is `approved`
 
 The `conditions` array is only present when the status is `conditions`. Each condition identifies a specific field, its current value, a suggested value, and the reason for the change.
@@ -483,21 +483,16 @@ The seller stores these endpoints and presents the credentials when calling `che
 
 ### Governance modes
 
-The governance agent's operating mode can be set per-plan via the `mode` field in [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), defaulting to `enforce`. Mode is not exposed to sellers -- the seller calls `check_governance` and acts on the response status. It does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
+Governance mode (audit, advisory, enforce) is an internal implementation detail of the governance agent, not a protocol-level field. The caller sends `check_governance` and receives `approved`, `denied`, or `conditions` — it does not need to know what mode produced that decision.
 
-| Mode | Behavior | Use case |
-|------|----------|----------|
-| `audit` | Log all checks. Never block -- always return `approved`, with findings attached for review. | Initial rollout. See what governance would flag without disrupting live campaigns. |
-| `advisory` | Return findings with real statuses (`denied`, `conditions`, `escalated`), but do not block execution. | Post-hoc human review. The governance agent expresses opinions; humans act on them. |
-| `enforce` | Block on `denied` or `escalated`. Require resolution before proceeding. | Production governance. The default. |
+This means:
+- A governance agent in audit mode internally always returns `approved` with findings attached
+- A governance agent in advisory mode internally may return `denied` but the organization treats it as non-blocking
+- A governance agent in enforce mode returns `denied` and expects the caller to stop
 
-Default is `enforce`. Organizations can start in `audit` mode to build confidence in the governance agent's calibration before enabling enforcement.
+Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent MAY include mode information in its audit logs or `get_plan_audit_logs` response for post-hoc analysis, but callers MUST NOT branch behavior based on mode — they act on the status they receive.
 
-In `audit` mode, the governance agent still performs full evaluation and returns findings -- the only difference is that the status is always `approved`. This produces a complete audit trail that the organization can review to assess false positive rates and calibrate policies before going live.
-
-In `advisory` mode, the governance agent returns the real status it would have returned under enforcement. The check response includes a `mode` field so auditors can distinguish "denied in advisory mode (action proceeded)" from "denied in enforce mode (action blocked)."
-
-In all modes, delegation violations, credential mismatches, and other authorization checks are logged as findings. In `audit` and `advisory` modes, these findings do not block the action -- they are recorded for review. Only in `enforce` mode are authorization violations blocking.
+See the [safety model](/docs/governance/campaign/safety-model) for the crawl-walk-run adoption path.
 
 ### Governance context
 
@@ -620,7 +615,6 @@ The governance agent controls the reporting cadence through `next_check`. It can
   "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "binding": "committed",
     "caller": "https://seller.example.com",
     "media_buy_id": "mb_seller_456",
     "phase": "purchase",
@@ -645,7 +639,6 @@ The governance agent controls the reporting cadence through `next_check`. It can
 {
   "check_id": "auth_001",
   "status": "approved",
-  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z",
@@ -661,7 +654,6 @@ The `next_check` field signals that the governance agent expects delivery report
 {
   "check_id": "auth_002",
   "status": "denied",
-  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
@@ -684,7 +676,6 @@ The `next_check` field signals that the governance agent expects delivery report
 {
   "check_id": "auth_004",
   "status": "approved",
-  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight.",
   "next_check": "2026-03-29T00:00:00Z"
@@ -695,7 +686,7 @@ The `next_check` field signals that the governance agent expects delivery report
 
 When `governance_agents` is present on the account, the seller MUST call `check_governance` before confirming any media buy. The buyer provided the endpoints specifically so that purchases are independently verified -- skipping it defeats the purpose.
 
-When `governance_agents` is absent, the seller processes media buy requests normally. The buyer-side governance loop (`check_governance(binding: proposed)` -> execute -> `report_plan_outcome`) still applies, but there is no seller-side verification.
+When `governance_agents` is absent, the seller processes media buy requests normally. The buyer-side governance loop (intent check -> execute -> `report_plan_outcome`) still applies, but there is no seller-side verification.
 
 Sellers MUST NOT require governance checks as a prerequisite for all accounts. A seller that refuses to process media buys from accounts without `governance_agents` would break interoperability with buyers who do not use Campaign Governance.
 
@@ -703,11 +694,11 @@ The `delivery` phase is optional even when `purchase` phase governance is used. 
 
 If the governance agent is unreachable (timeout, network error), the seller MUST NOT proceed with the media buy. Governance checks are a prerequisite for confirming purchases on accounts with registered `governance_agents`. The seller SHOULD retry the check after a brief delay and reject the media buy with a `GOVERNANCE_UNAVAILABLE` error if the agent remains unreachable.
 
-When the orchestrator receives `GOVERNANCE_UNAVAILABLE` from a seller, it SHOULD retry the `create_media_buy` after a delay. If the governance agent remains unavailable, the orchestrator SHOULD escalate to a human rather than attempting alternative sellers -- the governance outage affects all sellers on the same account. A prior `proposed` approval from the orchestrator does not substitute for the seller's `committed` check; the seller validates independently and cannot use the orchestrator's approval.
+When the orchestrator receives `GOVERNANCE_UNAVAILABLE` from a seller, it SHOULD retry the `create_media_buy` after a delay. If the governance agent remains unavailable, the orchestrator SHOULD escalate to a human rather than attempting alternative sellers -- the governance outage affects all sellers on the same account. A prior intent check approval from the orchestrator does not substitute for the seller's execution check; the seller validates independently and cannot use the orchestrator's approval.
 
 ### Performance expectations
 
-Governance agent implementations SHOULD respond to `check_governance` calls within 5 seconds for `proposed` checks and 10 seconds for `committed` checks. Sellers SHOULD configure appropriate timeouts and treat timeouts the same as unavailability (retry, then reject with `GOVERNANCE_UNAVAILABLE`).
+Governance agent implementations SHOULD respond to `check_governance` calls within 5 seconds for intent checks and 10 seconds for execution checks. Sellers SHOULD configure appropriate timeouts and treat timeouts the same as unavailability (retry, then reject with `GOVERNANCE_UNAVAILABLE`).
 
 ### Wire format
 
@@ -717,7 +708,7 @@ The seller calls each governance agent at its registered URL using MCP over HTTP
 
 Accounts MAY register multiple governance agents via [`sync_governance`](/docs/accounts/tasks/sync_governance), each responsible for different validation categories. For example, one agent handles budget authority and strategic alignment while another handles regulatory compliance and brand policy.
 
-When multiple governance agents are registered, the seller MUST call each agent whose `categories` overlap with the action being validated. All applicable agents must approve for the action to proceed (unanimous approval). If any agent returns `denied` or `escalated`, the action is blocked.
+When multiple governance agents are registered, the seller MUST call each agent whose `categories` overlap with the action being validated. All applicable agents must approve for the action to proceed (unanimous approval). If any agent returns `denied`, the action is blocked.
 
 For accounts with a single governance agent, pass a one-element array.
 
@@ -725,7 +716,7 @@ For accounts with a single governance agent, pass a one-element array.
 
 Governance checks complement the buyer-side governance loop, they do not replace it:
 
-| Concern | Buyer-side (`check_governance`, `binding: "proposed"`) | Seller-side (`check_governance`, `binding: "committed"`) |
+| Concern | Intent checks (orchestrator, `tool` + `payload`) | Execution checks (seller, `media_buy_id` + `planned_delivery`) |
 |---------|--------------------------------------|---------------------------------------|
 | **Who checks** | Buyer's governance agent, called by orchestrator | Buyer's governance agent, called by seller |
 | **When** | Before the buyer sends the request | Before confirm, on update, during delivery |
@@ -743,14 +734,14 @@ The buyer-side and seller-side governance checks MAY be handled by the same agen
 ```mermaid
 flowchart TD
     A[Sync plan] --> B[Agent decides to act]
-    B --> C["check_governance(binding: proposed, plan_id, ref, tool, payload)"]
+    B --> C["check_governance(plan_id, tool, payload)"]
     C --> D{Status?}
     D -->|approved| E[Send create_media_buy to seller]
     D -->|conditions| F[Apply conditions]
     F --> C
     D -->|denied| G[Log denial, skip action]
-    D -->|escalated| J[Pause, notify human]
-    J --> K[Human resolves]
+    D -->|async| J[Task goes async — human review internal to governance agent]
+    J --> K[Resolves to approved or denied]
     K --> C
     E --> L{Governance agent?}
     L -->|yes| M["Seller calls check_governance (purchase)"]
@@ -766,8 +757,8 @@ flowchart TD
     T -->|findings| V[Review findings, decide next action]
     V --> U
     U --> W{Update needed?}
-    W -->|yes| X["check_governance(binding: proposed, update_media_buy)"]
-    X --> Y["Seller calls check_governance(binding: committed, modification)"]
+    W -->|yes| X["check_governance(tool: update_media_buy, payload)"]
+    X --> Y["Seller calls check_governance(media_buy_id, phase: modification)"]
     W -->|no| Z{Delivery active?}
     Z -->|yes| AA["Seller calls check_governance (delivery) periodically"]
     AA --> AB{Delivery approved?}
@@ -777,7 +768,7 @@ flowchart TD
     AD --> Z
 ```
 
-The governance check is a synchronous call in the orchestrator's action loop. The orchestrator calls `check_governance` with `binding: "proposed"` before sending requests to sellers. Seller-side governance checks use `binding: "committed"` and are transparent to the orchestrator -- the orchestrator sends the same `create_media_buy` request regardless of whether governance checks are configured. Modification and delivery phase checks happen between the seller and governance agent, independent of the orchestrator's governance loop.
+The governance check is a synchronous call in the orchestrator's action loop. The orchestrator calls `check_governance` with `tool` + `payload` (intent check) before sending requests to sellers. Seller-side execution checks are transparent to the orchestrator — the orchestrator sends the same `create_media_buy` request regardless of whether governance checks are configured. Modification and delivery phase checks happen between the seller and governance agent, independent of the orchestrator's governance loop.
 
 ## Audit trail
 
@@ -787,8 +778,8 @@ Every plan maintains an ordered audit trail of all validated actions and reporte
 - The status and category evaluations
 - Outcome status and committed budget
 - Any findings from outcome reports
-- Any escalations and their resolutions
-- The human approver identity (when escalated)
+- Any internal escalations and their resolutions (recorded by the governance agent)
+- The human approver identity (when human review occurred internally)
 - Delivery metrics over time
 
 This audit trail serves compliance and reporting needs. For regulated categories (political advertising, financial services), the trail provides evidence that governance was applied to every transaction.

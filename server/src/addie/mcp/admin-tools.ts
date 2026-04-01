@@ -14,6 +14,7 @@
  */
 
 import { createLogger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -1052,20 +1053,29 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   },
   {
     name: 'list_users_by_engagement',
-    description: 'List WorkOS-registered users ranked by engagement score. Returns name, organization, lifecycle stage, and engagement/excitement scores. Does not include Slack-only contacts.',
-    usage_hints: 'Use when asked about most active people, top contributors, highly engaged individuals, who to invite to events, or Tier 3 / most engaged members. For org-level ranking use list_organizations_by_users instead.',
+    description: 'List community members ranked by community points (earned from events, working groups, content, connections, GitHub). Shows relationship stage, organization, and points breakdown by action type.',
+    usage_hints: 'Use when asked about most active people, top contributors, highly engaged individuals, who to invite to events, or Tier 3 / most engaged members. Use membership_tier to filter by individual vs company members. For org-level ranking use list_organizations_by_users instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
         limit: { type: 'number', description: 'Max results (default: 25)' },
-        lifecycle_stage: {
+        stage: {
           type: 'string',
-          enum: ['new', 'active', 'engaged', 'champion', 'at_risk', 'all'],
-          description: 'Filter by lifecycle stage (default: all)',
+          enum: ['prospect', 'welcomed', 'exploring', 'participating', 'contributing', 'leading', 'all'],
+          description: 'Filter by relationship stage (default: all)',
         },
         member_only: {
           type: 'boolean',
           description: 'Only include users from paying member organizations (default: false)',
+        },
+        membership_tier: {
+          type: 'string',
+          enum: ['individual', 'company', 'all'],
+          description: 'Filter by membership tier: "individual" (personal workspaces), "company" (company orgs), or "all" (default: all)',
+        },
+        include_breakdown: {
+          type: 'boolean',
+          description: 'Include points breakdown by action type (default: false)',
         },
       },
     },
@@ -1849,6 +1859,7 @@ export function createAdminToolHandlers(
       const lifecycleStage = computePipelineStage(org);
 
       // Gather all the data in parallel
+      const memberDb = new MemberDatabase();
       const [
         slackUsersResult,
         slackOnlyUsersResult,
@@ -1859,6 +1870,7 @@ export function createAdminToolHandlers(
         pendingInvoicesResult,
         subscriptionHistoryResult,
         stakeholdersResult,
+        memberProfile,
       ] = await Promise.all([
         // Slack users count for this org (mapped members)
         pool.query(
@@ -1931,6 +1943,11 @@ export function createAdminToolHandlers(
            ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at`,
           [orgId]
         ),
+        // Member directory profile
+        memberDb.getProfileByOrgId(orgId).catch(error => {
+          logger.warn({ error, orgId }, 'Failed to get member profile for account lookup');
+          return null;
+        }),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
@@ -2054,6 +2071,27 @@ export function createAdminToolHandlers(
         // Show pending invoices for prospects in negotiating stage too
         response += renderPendingInvoiceSection(pendingInvoices);
         response += '\n';
+      }
+
+      // Directory listing
+      if (memberProfile) {
+        response += `### Directory Listing\n`;
+        response += `**Status:** ${memberProfile.is_public ? 'Published' : 'Draft (not published)'}\n`;
+        if (memberProfile.display_name) response += `**Display Name:** ${memberProfile.display_name}\n`;
+        if (memberProfile.slug) {
+          response += memberProfile.is_public
+            ? `**Live URL:** https://agenticadvertising.org/members/${memberProfile.slug}\n`
+            : `**Slug:** ${memberProfile.slug} (will be at /members/${memberProfile.slug} once published)\n`;
+        }
+        if (!memberProfile.is_public && org.subscription_status === 'active') {
+          response += `_Profile is ready to publish — member has an active subscription but hasn't clicked Publish on the dashboard._\n`;
+        } else if (!memberProfile.is_public && org.subscription_status !== 'active') {
+          response += `_Profile cannot be published without an active subscription._\n`;
+        }
+        response += '\n';
+      } else if (lifecycleStage === 'member') {
+        response += `### Directory Listing\n`;
+        response += `_No directory profile created yet._\n\n`;
       }
 
       // Slack presence
@@ -2452,17 +2490,25 @@ export function createAdminToolHandlers(
       if (!userId) return '❌ Could not determine your user ID.';
 
       let query = `
+        WITH org_points AS (
+          SELECT om.workos_organization_id, SUM(cp.points) as total_points
+          FROM community_points cp
+          JOIN organization_memberships om ON om.workos_user_id = cp.workos_user_id
+          GROUP BY om.workos_organization_id
+        )
         SELECT o.workos_organization_id as org_id, o.name, o.email_domain,
-               o.engagement_score, o.prospect_status, o.interest_level, o.company_type,
+               COALESCE(op.total_points, 0)::int as community_points,
+               o.prospect_status, o.interest_level, o.company_type,
                (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
         FROM organizations o
         JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+        LEFT JOIN org_points op ON op.workos_organization_id = o.workos_organization_id
         WHERE os.user_id = $1 AND os.role = 'owner'
           AND o.is_personal IS NOT TRUE
           AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
       `;
-      if (hotOnly) query += ` AND o.engagement_score >= 30`;
-      query += ` ORDER BY o.engagement_score DESC NULLS LAST LIMIT $2`;
+      if (hotOnly) query += ` AND COALESCE(op.total_points, 0) >= 100`;
+      query += ` ORDER BY COALESCE(op.total_points, 0) DESC NULLS LAST LIMIT $2`;
 
       const result = await pool.query(query, [userId, limit]);
       if (result.rows.length === 0) {
@@ -2473,10 +2519,10 @@ export function createAdminToolHandlers(
 
       let response = `## Your ${hotOnly ? 'Hot ' : ''}Engaged Prospects\n\n`;
       for (const row of result.rows) {
-        const emoji = (row.engagement_score || 0) >= 30 ? '🔥' : '📊';
+        const emoji = (row.community_points || 0) >= 100 ? '🔥' : '📊';
         response += `${emoji} **${row.name}**`;
         if (row.email_domain) response += ` (${row.email_domain})`;
-        response += `\n   Score: ${row.engagement_score || 0}`;
+        response += `\n   Points: ${row.community_points || 0}`;
         if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
         if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
         response += '\n';
@@ -2493,9 +2539,15 @@ export function createAdminToolHandlers(
       if (!userId) return '❌ Could not determine your user ID.';
 
       const result = await pool.query(`
-        WITH prospect_activity AS (
+        WITH org_points AS (
+          SELECT om.workos_organization_id, SUM(cp.points) as total_points
+          FROM community_points cp
+          JOIN organization_memberships om ON om.workos_user_id = cp.workos_user_id
+          GROUP BY om.workos_organization_id
+        ),
+        prospect_activity AS (
           SELECT o.workos_organization_id as org_id, o.name, o.email_domain,
-                 o.engagement_score, o.prospect_status,
+                 COALESCE(op.total_points, 0)::int as community_points, o.prospect_status,
                  o.prospect_next_action, o.prospect_next_action_date,
                  (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
                  EXTRACT(DAY FROM NOW() - COALESCE(
@@ -2504,6 +2556,7 @@ export function createAdminToolHandlers(
                  )) as days_since_activity
           FROM organizations o
           JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+          LEFT JOIN org_points op ON op.workos_organization_id = o.workos_organization_id
           WHERE os.user_id = $1 AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
             AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
@@ -2536,7 +2589,7 @@ export function createAdminToolHandlers(
           response += `⏰ **${row.name}** - ${Math.round(row.days_since_activity)} days since activity\n`;
         }
         if (row.last_activity) response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
-        if (row.engagement_score) response += `   Engagement: ${row.engagement_score}${row.engagement_score >= 30 ? ' 🔥' : ''}\n`;
+        if (row.community_points) response += `   Points: ${row.community_points}${row.community_points >= 100 ? ' 🔥' : ''}\n`;
         response += '\n';
       }
       return response;
@@ -2544,34 +2597,41 @@ export function createAdminToolHandlers(
 
     // --- View: unassigned ---
     if (view === 'unassigned') {
-      const minEngagement = (input.min_engagement as number) || 10;
+      const minPoints = (input.min_engagement as number) || 10;
       const result = await pool.query(`
+        WITH org_points AS (
+          SELECT om.workos_organization_id, SUM(cp.points) as total_points
+          FROM community_points cp
+          JOIN organization_memberships om ON om.workos_user_id = cp.workos_user_id
+          GROUP BY om.workos_organization_id
+        )
         SELECT o.workos_organization_id as org_id, o.name, o.email_domain,
-               o.engagement_score, o.prospect_status, o.company_type
+               COALESCE(op.total_points, 0)::int as community_points, o.prospect_status, o.company_type
         FROM organizations o
+        LEFT JOIN org_points op ON op.workos_organization_id = o.workos_organization_id
         WHERE o.is_personal IS NOT TRUE
           AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
-          AND o.engagement_score >= $1
+          AND COALESCE(op.total_points, 0) >= $1
           AND NOT EXISTS (
             SELECT 1 FROM org_stakeholders os
             WHERE os.organization_id = o.workos_organization_id AND os.role = 'owner'
           )
-        ORDER BY o.engagement_score DESC NULLS LAST
+        ORDER BY COALESCE(op.total_points, 0) DESC NULLS LAST
         LIMIT $2
-      `, [minEngagement, limit]);
+      `, [minPoints, limit]);
 
       if (result.rows.length === 0) {
-        return minEngagement > 10
-          ? `No unassigned prospects with engagement >= ${minEngagement}. Try lowering min_engagement.`
+        return minPoints > 10
+          ? `No unassigned prospects with points >= ${minPoints}. Try lowering min_engagement.`
           : 'All engaged prospects have owners.';
       }
 
-      let response = `## Unassigned Prospects (engagement >= ${minEngagement})\n\n`;
+      let response = `## Unassigned Prospects (points >= ${minPoints})\n\n`;
       for (const row of result.rows) {
-        const emoji = (row.engagement_score || 0) >= 30 ? '🔥' : '📊';
+        const emoji = (row.community_points || 0) >= 100 ? '🔥' : '📊';
         response += `${emoji} **${row.name}**`;
         if (row.email_domain) response += ` (${row.email_domain})`;
-        response += `\n   Score: ${row.engagement_score || 0}`;
+        response += `\n   Points: ${row.community_points || 0}`;
         if (row.company_type) response += ` | Type: ${row.company_type}`;
         response += `\n   ID: ${row.org_id}\n\n`;
       }
@@ -4760,6 +4820,7 @@ Use add_committee_leader to assign a leader.`;
         // Step 1: Get users from secondary org in WorkOS before merge
         let workosUsersToMigrate: string[] = [];
         let workosErrors: string[] = [];
+        let secondaryRoles = new Map<string, string>();
 
         try {
           // Get all memberships from the secondary org in WorkOS
@@ -4780,9 +4841,11 @@ Use add_committee_leader to assign a leader.`;
           });
           const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
 
-          workosUsersToMigrate = memberships.data
-            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
-            .map(m => m.userId);
+          const usersToMigrate = memberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId));
+          workosUsersToMigrate = usersToMigrate.map(m => m.userId);
+          // Preserve roles from secondary org so owners/admins keep their role
+          secondaryRoles = new Map(usersToMigrate.map(m => [m.userId, m.role?.slug || 'member']));
 
           logger.info({ count: workosUsersToMigrate.length, secondaryOrgId }, 'Found WorkOS users to migrate');
         } catch (err) {
@@ -4806,10 +4869,11 @@ Use add_committee_leader to assign a leader.`;
 
         for (const userId of workosUsersToMigrate) {
           try {
+            const roleSlug = secondaryRoles.get(userId) || 'member';
             await workos.userManagement.createOrganizationMembership({
               userId,
               organizationId: primaryOrgId,
-              roleSlug: 'member', // Default to member role
+              roleSlug,
             });
             workosAdded++;
             logger.debug({ userId, primaryOrgId }, 'Added user to primary org in WorkOS');
@@ -5599,7 +5663,7 @@ Use add_committee_leader to assign a leader.`;
             AND is_personal IS NOT TRUE
           ORDER BY
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
-            engagement_score DESC NULLS LAST
+            name ASC
           LIMIT 1
         `, [`%${escapedName}%`, companyName]);
 
@@ -5862,7 +5926,7 @@ Use add_committee_leader to assign a leader.`;
             AND is_personal IS NOT TRUE
           ORDER BY
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
-            engagement_score DESC NULLS LAST
+            name ASC
           LIMIT 1
         `, [`%${escapedName}%`, companyName]);
 
@@ -5987,7 +6051,7 @@ Use add_committee_leader to assign a leader.`;
             AND is_personal IS NOT TRUE
           ORDER BY
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
-            engagement_score DESC NULLS LAST
+            name ASC
           LIMIT 1
         `, [`%${escapedName}%`, companyName]);
 
@@ -6060,7 +6124,7 @@ Use add_committee_leader to assign a leader.`;
           oa.activity_type,
           o.name as org_name,
           o.workos_organization_id as org_id,
-          o.engagement_score
+          COALESCE((SELECT SUM(cp.points) FROM organization_memberships om JOIN community_points cp ON cp.workos_user_id = om.workos_user_id WHERE om.workos_organization_id = o.workos_organization_id), 0)::int as community_points
         FROM org_activities oa
         JOIN organizations o ON o.workos_organization_id = oa.organization_id
         WHERE oa.is_next_step = TRUE
@@ -6079,7 +6143,7 @@ Use add_committee_leader to assign a leader.`;
           o.prospect_next_action_date,
           o.name as org_name,
           o.workos_organization_id as org_id,
-          o.engagement_score
+          COALESCE((SELECT SUM(cp.points) FROM organization_memberships om JOIN community_points cp ON cp.workos_user_id = om.workos_user_id WHERE om.workos_organization_id = o.workos_organization_id), 0)::int as community_points
         FROM organizations o
         JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
         WHERE os.user_id = $1
@@ -6099,7 +6163,7 @@ Use add_committee_leader to assign a leader.`;
         due_date: Date;
         org_name: string;
         org_id: string;
-        engagement_score: number;
+        community_points: number;
       }> = [];
 
       for (const row of result.rows) {
@@ -6109,7 +6173,7 @@ Use add_committee_leader to assign a leader.`;
           due_date: new Date(row.next_step_due_date),
           org_name: row.org_name,
           org_id: row.org_id,
-          engagement_score: row.engagement_score || 0,
+          community_points: row.community_points || 0,
         });
       }
 
@@ -6120,7 +6184,7 @@ Use add_committee_leader to assign a leader.`;
             due_date: new Date(row.prospect_next_action_date),
             org_name: row.org_name,
             org_id: row.org_id,
-            engagement_score: row.engagement_score || 0,
+            community_points: row.community_points || 0,
           });
         }
       }
@@ -6152,7 +6216,7 @@ Use add_committee_leader to assign a leader.`;
           response += `\n### ${label}\n`;
         }
 
-        const hotEmoji = task.engagement_score >= 30 ? ' 🔥' : '';
+        const hotEmoji = task.community_points >= 100 ? ' 🔥' : '';
         response += `• **${task.org_name}**${hotEmoji}: ${task.description}\n`;
       }
 
@@ -6203,7 +6267,7 @@ Use add_committee_leader to assign a leader.`;
             AND is_personal IS NOT TRUE
           ORDER BY
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
-            engagement_score DESC NULLS LAST
+            name ASC
           LIMIT 1
         `, [`%${escapedName}%`, companyName]);
 
@@ -6673,40 +6737,92 @@ Use add_committee_leader to assign a leader.`;
     try {
       const pool = getPool();
       const limit = Math.min(Math.max((input.limit as number) || 25, 1), 100);
-      const validStages = ['prospect', 'welcomed', 'exploring', 'participating', 'contributing', 'leading'];
-      const rawStage = (input.lifecycle_stage as string) || 'all';
-      const stageFilter = validStages.includes(rawStage) ? rawStage : 'all';
+      const validRelStages = ['prospect', 'welcomed', 'exploring', 'participating', 'contributing', 'leading'];
+      const rawStage = (input.stage as string) || 'all';
+      const stageFilter = validRelStages.includes(rawStage) ? rawStage : 'all';
+      const memberOnly = input.member_only === true;
+      const validTiers = ['individual', 'company', 'all'];
+      const membershipTier = validTiers.includes(input.membership_tier as string) ? (input.membership_tier as string) : 'all';
+      const includeBreakdown = input.include_breakdown === true;
 
       const result = await pool.query<{
+        workos_user_id: string;
         display_name: string | null;
         email: string | null;
-        stage: string;
-        interaction_count: number;
-        unreplied_outreach_count: number;
+        stage: string | null;
+        total_points: number;
+        org_name: string | null;
+        is_personal: boolean | null;
+        membership_tier: string | null;
         sentiment_trend: string | null;
         last_person_message_at: string | null;
-        last_addie_message_at: string | null;
       }>(`
         SELECT
-          pr.display_name,
-          pr.email,
-          pr.stage,
-          pr.interaction_count,
-          pr.unreplied_outreach_count,
+          u.workos_user_id,
+          COALESCE(u.first_name || ' ' || u.last_name, pr.display_name) AS display_name,
+          COALESCE(u.email, pr.email) AS email,
+          COALESCE(pr.stage, 'unknown') AS stage,
+          COALESCE(cp.total_points, 0) AS total_points,
+          org.org_name,
+          org.is_personal,
+          org.membership_tier,
           pr.sentiment_trend,
-          pr.last_person_message_at,
-          pr.last_addie_message_at
-        FROM person_relationships pr
-        WHERE pr.opted_out = FALSE
-          AND ($1 = 'all' OR pr.stage = $1)
-        ORDER BY pr.interaction_count DESC
+          pr.last_person_message_at
+        FROM users u
+        LEFT JOIN (
+          SELECT workos_user_id, SUM(points) AS total_points
+          FROM community_points
+          GROUP BY workos_user_id
+        ) cp ON cp.workos_user_id = u.workos_user_id
+        LEFT JOIN person_relationships pr ON pr.workos_user_id = u.workos_user_id
+        LEFT JOIN LATERAL (
+          SELECT o.name AS org_name, o.is_personal, o.membership_tier, o.workos_organization_id
+          FROM organization_memberships om
+          JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+          WHERE om.workos_user_id = u.workos_user_id
+          ORDER BY o.is_personal ASC NULLS LAST, o.name ASC
+          LIMIT 1
+        ) org ON true
+        WHERE (pr.opted_out IS NULL OR pr.opted_out = FALSE)
+          AND ($1 = 'all' OR COALESCE(pr.stage, 'prospect') = $1)
+          AND (NOT $3::boolean OR org.workos_organization_id IS NOT NULL)
+          AND ($4 = 'all'
+            OR ($4 = 'individual' AND org.is_personal = true)
+            OR ($4 = 'company' AND (org.is_personal = false OR org.is_personal IS NULL) AND org.workos_organization_id IS NOT NULL))
+        ORDER BY COALESCE(cp.total_points, 0) DESC
         LIMIT $2
-      `, [stageFilter, limit]);
+      `, [stageFilter, limit, memberOnly, membershipTier]);
 
       const sorted = result.rows;
 
       if (sorted.length === 0) {
-        return `No people found${stageFilter !== 'all' ? ` with stage: ${stageFilter}` : ''}.`;
+        const filters = [];
+        if (stageFilter !== 'all') filters.push(`stage: ${stageFilter}`);
+        if (memberOnly) filters.push('members only');
+        if (membershipTier !== 'all') filters.push(`tier: ${membershipTier}`);
+        return `No people found${filters.length > 0 ? ` (${filters.join(', ')})` : ''}.`;
+      }
+
+      // Fetch per-action breakdown if requested
+      let breakdownMap = new Map<string, Record<string, number>>();
+      if (includeBreakdown && sorted.length > 0) {
+        const userIds = sorted.map(u => u.workos_user_id);
+        const breakdownResult = await pool.query<{
+          workos_user_id: string;
+          action: string;
+          action_points: number;
+        }>(`
+          SELECT workos_user_id, action, SUM(points)::int AS action_points
+          FROM community_points
+          WHERE workos_user_id = ANY($1)
+          GROUP BY workos_user_id, action
+        `, [userIds]);
+
+        for (const row of breakdownResult.rows) {
+          const existing = breakdownMap.get(row.workos_user_id) || {};
+          existing[row.action] = row.action_points;
+          breakdownMap.set(row.workos_user_id, existing);
+        }
       }
 
       const stageEmoji: Record<string, string> = {
@@ -6718,23 +6834,56 @@ Use add_committee_leader to assign a leader.`;
         prospect: '🆕',
       };
 
-      let response = `## Most Engaged Community Members\n\n`;
-      if (stageFilter !== 'all') response += `_Filtered to: ${stageFilter}_\n\n`;
+      const actionLabels: Record<string, string> = {
+        event_attended: 'Events',
+        wg_joined: 'Groups',
+        wg_leadership: 'Leadership',
+        content_published: 'Content',
+        connection_made: 'Connections',
+        event_registered: 'Registrations',
+        meeting_rsvp_accepted: 'Meetings',
+        topic_subscribed: 'Topics',
+        github_linked: 'GitHub',
+        daily_visit: 'Visits',
+      };
 
-      response += `| Rank | Name | Stage | Interactions | Unreplied | Sentiment | Last active |\n`;
-      response += `|------|------|-------|-------------|-----------|-----------|-------------|\n`;
+      let response = `## Most Engaged Community Members\n\n`;
+      const filters = [];
+      if (stageFilter !== 'all') filters.push(`stage: ${stageFilter}`);
+      if (memberOnly) filters.push('members only');
+      if (membershipTier !== 'all') filters.push(`tier: ${membershipTier}`);
+      if (filters.length > 0) response += `_Filtered: ${filters.join(', ')}_\n\n`;
+
+      response += `| # | Name | Org | Points | Stage | Sentiment | Last active |\n`;
+      response += `|---|------|-----|--------|-------|-----------|-------------|\n`;
 
       for (let i = 0; i < sorted.length; i++) {
         const u = sorted[i];
-        const name = u.display_name || u.email || '—';
-        const emoji = stageEmoji[u.stage] || '—';
-        const lastActive = u.last_person_message_at
-          ? new Date(u.last_person_message_at).toLocaleDateString()
-          : '—';
-        response += `| ${i + 1} | **${name}** | ${emoji} ${u.stage} | ${u.interaction_count} | ${u.unreplied_outreach_count} | ${u.sentiment_trend || 'neutral'} | ${lastActive} |\n`;
+        const name = u.display_name?.trim() || u.email || '—';
+        const stage = u.stage ? `${stageEmoji[u.stage] || ''} ${u.stage}` : '—';
+        const org = u.org_name || '—';
+        const sentiment = u.sentiment_trend || '—';
+        const lastActive = u.last_person_message_at ? new Date(u.last_person_message_at).toLocaleDateString() : '—';
+        response += `| ${i + 1} | **${name}** | ${org} | ${u.total_points} | ${stage} | ${sentiment} | ${lastActive} |\n`;
       }
 
-      response += `\n_Ranked by interaction count from person_relationships. Showing top ${sorted.length}._\n`;
+      response += `\n_Ranked by community points._\n`;
+
+      if (includeBreakdown && breakdownMap.size > 0) {
+        response += `\n### Points Breakdown\n\n`;
+        for (let i = 0; i < sorted.length; i++) {
+          const u = sorted[i];
+          const breakdown = breakdownMap.get(u.workos_user_id);
+          if (!breakdown) continue;
+          const name = u.display_name?.trim() || u.email || '—';
+          const parts = Object.entries(breakdown)
+            .sort(([, a], [, b]) => b - a)
+            .map(([action, pts]) => `${actionLabels[action] || action}: ${pts}`)
+            .join(', ');
+          response += `**${i + 1}. ${name}** (${u.total_points}): ${parts}\n`;
+        }
+      }
+
       return response;
     } catch (error) {
       logger.error({ error }, 'Error listing users by engagement');
@@ -7889,7 +8038,7 @@ Use add_committee_leader to assign a leader.`;
       return `${items.length} ${status} action items:\n\n${summary}`;
     } catch (error) {
       logger.error({ error }, 'Error fetching action items');
-      return `Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 

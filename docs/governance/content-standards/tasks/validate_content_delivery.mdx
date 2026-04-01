@@ -20,8 +20,8 @@ sequenceDiagram
     participant Seller as Seller Agent
     participant Verifier as Verification Agent
 
-    Buyer->>Seller: get_media_buy_artifacts (sampled)
-    Seller-->>Buyer: Artifacts with content
+    Buyer->>Seller: get_media_buy_artifacts
+    Seller-->>Buyer: Collected artifacts
     Buyer->>Verifier: validate_content_delivery
     Verifier-->>Buyer: Validation results
 ```

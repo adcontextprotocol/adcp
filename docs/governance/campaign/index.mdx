@@ -28,7 +28,7 @@ Without a governance layer on the buy side:
 
 Campaign Governance fills this gap with three mechanisms: **plans** that define what's allowed (independent of the agent), **seller-side governance checks** that verify purchases independently of the buyer, and a **policy registry** that standardizes compliance rules across governance agents.
 
-Governance supports incremental adoption through three operating modes: **audit** (log everything, never block), **advisory** (flag issues for post-hoc review), and **enforce** (block on violations). Organizations can start in audit mode to build confidence before enabling enforcement.
+Governance supports incremental adoption — organizations configure their governance agent to start in audit mode (log everything, approve everything), move to advisory (flag violations without blocking), and eventually enforce (block on violations). See the [safety model](/docs/governance/campaign/safety-model) for the adoption path. Mode is internal to the governance agent, not a protocol field.
 
 ### Industry precedent
 
@@ -44,7 +44,7 @@ Campaign Governance formalizes patterns that exist in ad tech today as manual pr
 
 ## How it works
 
-The orchestrator pushes campaign plans via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), then calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `binding: "proposed"` before every action it sends to a seller. The seller independently calls `check_governance` with `binding: "committed"` before executing. After receiving the seller's response, the orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to close the loop. The governance agent tracks budget from confirmed outcomes -- not just attempted actions.
+The orchestrator pushes campaign plans via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), then calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `tool` + `payload` before every action it sends to a seller. The seller independently calls `check_governance` with `media_buy_id` + `planned_delivery` before executing. After receiving the seller's response, the orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to close the loop. The governance agent tracks budget from confirmed outcomes -- not just attempted actions.
 
 ```mermaid
 flowchart LR
@@ -56,15 +56,14 @@ flowchart LR
         policy -->|"configure compliance"| gov
         buying -->|"operate"| orchestrator
         orchestrator -->|"1. sync plan"| gov
-        orchestrator -->|"2. check_governance<br/>(binding: proposed)"| gov
+        orchestrator -->|"2. check_governance<br/>(tool + payload)"| gov
         orchestrator -->|"5. report outcome"| gov
         gov -->|"status / findings"| orchestrator
     end
 
     orchestrator -->|"3. create_media_buy<br/>(plan_id)"| seller["Seller Agent"]
-    seller -->|"4. check_governance<br/>(binding: committed)"| gov
+    seller -->|"4. check_governance<br/>(media_buy_id + planned_delivery)"| gov
     seller -->|"confirmed + planned_delivery"| orchestrator
-    gov -.->|"escalation"| human["Human approver"]
 ```
 
 Three parties participate in campaign governance:
@@ -102,9 +101,9 @@ The **[policy registry](/docs/governance/policy-registry)** is a community-maint
 
 Every seller interaction follows a before/after pattern:
 
-1. **Before**: The orchestrator calls `check_governance` with `binding: "proposed"`, the tool, and payload it intends to send. The governance agent returns a status.
+1. **Before**: The orchestrator calls `check_governance` with `tool` and `payload` — the action it intends to send. The governance agent returns a status.
 2. **Execute**: If approved, the orchestrator sends the action to the seller, including `plan_id` and `governance_context`.
-3. **Check**: If the account has `governance_agents`, the seller calls `check_governance` with `binding: "committed"` and its `planned_delivery` -- what it will actually run. The governance agent approves or denies.
+3. **Check**: If the account has `governance_agents`, the seller calls `check_governance` with `media_buy_id` and `planned_delivery` — what it will actually deliver. The governance agent approves or denies.
 4. **After**: The orchestrator calls `report_plan_outcome` with the seller's response. The governance agent updates its state and flags any discrepancies.
 
 This pattern applies to discovery (`get_products`), purchase (`create_media_buy`, `update_media_buy`), and periodic delivery reporting.
@@ -140,15 +139,15 @@ Sellers that implement governance checks gain a competitive advantage: they can 
 
 ## Adoption path
 
-Campaign Governance supports three operating modes, configured on the governance agent by the buyer's policy team:
+Governance agents support incremental adoption through their internal mode configuration. The protocol surface is the same regardless of mode — callers always receive `approved`, `denied`, or `conditions` and act on the status. How the governance agent arrives at that decision is its own concern.
 
-| Mode | Behavior | When to use |
-|------|----------|-------------|
-| `audit` | Log all checks, never block. Always returns `approved` with findings attached. | Initial rollout. Build confidence in calibration before enabling enforcement. |
-| `advisory` | Return real statuses (`denied`, `conditions`, `escalated`) but the seller treats all responses as non-blocking. | Post-hoc human review. The governance agent expresses opinions; humans act on them. |
-| `enforce` | Block on `denied` or `escalated`. Require resolution before proceeding. | Production governance. The default. |
+In practice, organizations configure their governance agent to progress through three stages:
 
-Start in `audit` mode to see what governance would flag. Move to `advisory` to test findings with real campaigns. Switch to `enforce` when confidence is established. This works the same way for a single brand buying direct and for a holding company with 35 brands and multiple agency partners.
+1. **Audit** — Log everything, approve everything. The governance agent evaluates fully but always returns `approved` with findings attached. The organization reviews findings to assess false positive rates and calibrate policies.
+2. **Advisory** — Return real statuses (`denied`, `conditions`) but the organization treats denials as non-blocking. Humans review findings post-hoc.
+3. **Enforce** — Block on violations. The default for production governance.
+
+This works the same way for a single brand buying direct and for a holding company with 35 brands and multiple agency partners.
 
 ### For small brands
 
@@ -172,7 +171,7 @@ Governance findings include optional [confidence scores](/docs/governance/campai
 
 ### Drift detection
 
-The [audit log](/docs/governance/campaign/tasks/get_plan_audit_logs) includes aggregate metrics -- escalation rate, auto-approval rate, human override rate -- with trend indicators. A declining escalation rate may mean the system is well-calibrated or that oversight is eroding. Surfacing the trend lets the organization make that call.
+The [audit log](/docs/governance/campaign/tasks/get_plan_audit_logs) includes aggregate metrics -- human review rate, auto-approval rate, human override rate -- with trend indicators. A declining human review rate may mean the system is well-calibrated or that oversight is eroding. Surfacing the trend lets the organization make that call.
 
 ## Lifecycle phases
 
@@ -208,17 +207,14 @@ Every governance check returns a structured status:
 | `approved` | Passes all checks | Proceed |
 | `denied` | Violates a hard policy | Do not proceed; report to user |
 | `conditions` | Could pass with specific changes | Apply conditions, re-call `check_governance` |
-| `escalated` | Requires human review | Pause and notify human approver |
 
 Finding severity levels indicate urgency:
 
-- **`info`** -- Logged for audit. Used on `approved` responses for advisory findings.
+- **`info`** -- Logged for audit. Used on `approved` responses for informational findings.
 - **`warning`** -- Human should review. Used on `approved` responses when action is allowed but attention is needed.
-- **`critical`** -- Action is blocked. Used on `escalated` responses when human approval is required.
+- **`critical`** -- Action is blocked. Used on `denied` responses.
 
-When the status is `escalated`, the caller MUST NOT proceed regardless of severity. Non-blocking concerns use `approved` status with `findings` attached.
-
-Human escalation integrates with the existing AdCP HITL mechanism. An escalated action returns `input-required` status in the protocol envelope, and the orchestrator pauses until the human resolves it via the standard `context_id` continuation.
+When the governance agent determines that human review is required (e.g., the action exceeds the plan's `authority_level` thresholds), the task goes async — it returns standard async task lifecycle statuses and eventually resolves to `approved` or `denied` once the human acts. This integrates with the existing AdCP async task mechanism. The caller does not need special handling beyond supporting async tasks (see [task lifecycle](/docs/building/implementation/task-lifecycle)).
 
 ## Relationship to other governance domains
 

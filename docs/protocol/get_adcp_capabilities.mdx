@@ -100,8 +100,35 @@ Optional media-buy features. **If declared true, seller MUST honor requests usin
 |---------|-------------|
 | `inline_creative_management` | Accepts creatives inline in `create_media_buy` requests |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
-| `content_standards` | Full support for content standards configuration |
+| `content_standards` | Full support for content standards configuration (see `content_standards_detail` for specifics) |
 | `audience_targeting` | Support for audience targeting and ingestion, including `sync_audiences` |
+
+#### content_standards_detail
+
+When `features.content_standards` is `true`, sellers can provide additional detail about their content standards implementation. This gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supports_local_evaluation` | boolean | Whether the seller runs a local evaluation model. When `false`, `local_verdict` will always be `unevaluated` and the `failures_only` filter on `get_media_buy_artifacts` is not useful. |
+| `supported_channels` | string[] | Channels for which the seller can provide content artifacts. Helps buyers understand which parts of a mixed-channel buy will have content standards coverage. |
+| `supports_webhook_delivery` | boolean | Whether the seller supports push-based artifact delivery via `artifact_webhook` configured at buy creation time. |
+
+**Example:**
+
+```json
+{
+  "features": {
+    "content_standards": true
+  },
+  "content_standards_detail": {
+    "supports_local_evaluation": true,
+    "supported_channels": ["display", "olv", "podcast"],
+    "supports_webhook_delivery": true
+  }
+}
+```
+
+If `supports_local_evaluation` is `false`, the `failures_only` filter on `get_media_buy_artifacts` will return an empty result set — all verdicts will be `unevaluated`.
 
 #### execution
 
@@ -109,9 +136,20 @@ Technical execution capabilities:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `axe_integrations` | string[] | Agentic ad exchange (AXE) URLs this seller can execute through |
+| `axe_integrations` | string[] | Agentic ad exchange (AXE) URLs this seller can execute through. See [axe_integrations](#axe_integrations) below. |
 | `creative_specs` | object | Creative specification support (VAST versions, MRAID, etc.) |
 | `targeting` | object | Targeting capabilities (geo granularity) |
+
+##### axe_integrations
+
+`axe_integrations` is an array of Agentic Ad Exchange (AXE) endpoint URLs that this seller can execute through. AXE is the real-time execution layer for AdCP campaigns — it connects buyer agents to programmatic inventory via standardized exchanges.
+
+When a seller declares AXE URLs in their capabilities, buyers can:
+- Route impression-level execution through the declared exchange
+- Use the exchange's targeting, optimization, and measurement capabilities
+- Execute alongside the seller's direct-sold inventory
+
+Buyers discover AXE support via `get_adcp_capabilities` and filter products to AXE-enabled sellers using `required_axe_integrations` on [`get_products`](/docs/media-buy/task-reference/get_products).
 
 ##### creative_specs
 
@@ -227,20 +265,44 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 
 ### governance
 
-Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents provide property data like compliance scores, brand suitability ratings, quality metrics, and sustainability metrics.
+Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents declare capabilities across four domains: property evaluation, creative evaluation, content standards verification, and policy registry integration.
 
 #### property_features
 
-Array of property features this governance agent can evaluate:
+Array of property features this governance agent can evaluate. See [Property Governance](/docs/governance/property/index).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `feature_id` | string | **Required.** Unique identifier (e.g., `mfa_score`, `coppa_certified`) |
+| `feature_id` | string | **Required.** Unique identifier (e.g., `mfa_score`, `coppa_certified`). Use `registry:{policy_id}` prefix for features mapped to [Policy Registry](/docs/governance/policy-registry) entries. |
 | `type` | string | **Required.** Data type: `binary`, `quantitative`, or `categorical` |
 | `range` | object | For quantitative: `{ min, max }` |
 | `categories` | string[] | For categorical: valid values |
 | `description` | string | Human-readable description |
 | `methodology_url` | string | URL to methodology documentation |
+
+#### creative_features
+
+Array of creative features this governance agent can evaluate. Same field schema as `property_features`. See [Creative Governance](/docs/governance/creative/index).
+
+Creative governance agents evaluate creatives for security, content categorization, and regulatory compliance. Buyers filter creatives by feature requirements — for example, blocking creatives flagged for `auto_redirect` or requiring `registry:eu_ai_act_article_50` compliance.
+
+#### content_standards
+
+Content standards verification capabilities. See [Content Standards](/docs/governance/content-standards/index).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | Whether this agent can serve as a content standards verification agent |
+| `calibration_formats` | string[] | Artifact asset types this agent can evaluate (e.g., `text`, `image`, `video`, `audio`) |
+
+#### policy_registry
+
+Policy registry integration capabilities. See [Policy Registry](/docs/governance/policy-registry).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | Whether this agent consumes policies from the AdCP Policy Registry |
+| `domains` | string[] | Governance domains this agent covers (e.g., `campaign`, `property`, `creative`, `content_standards`) |
 
 **Example governance agent response:**
 
@@ -253,9 +315,23 @@ Array of property features this governance agent can evaluate:
     "property_features": [
       { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising detection (0=quality content, 100=likely MFA)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
       { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
-      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://scope3.com/methodology/carbon-score" },
-      { "feature_id": "content_category", "type": "categorical", "categories": ["news", "entertainment", "sports", "finance"], "description": "Primary content category" }
-    ]
+      { "feature_id": "registry:uk_hfss", "type": "binary", "description": "UK HFSS advertising restrictions compliance" },
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://scope3.com/methodology/carbon-score" }
+    ],
+    "creative_features": [
+      { "feature_id": "registry:eu_ai_act_article_50", "type": "binary", "description": "EU AI Act Article 50 — AI-generated content disclosure" },
+      { "feature_id": "registry:ca_sb_942", "type": "binary", "description": "California SB 942 — AI transparency compliance" },
+      { "feature_id": "auto_redirect", "type": "binary", "description": "Detects auto-redirect behavior in creative code" },
+      { "feature_id": "credential_harvest", "type": "binary", "description": "Detects credential harvesting patterns" }
+    ],
+    "content_standards": {
+      "supported": true,
+      "calibration_formats": ["text", "image", "video"]
+    },
+    "policy_registry": {
+      "supported": true,
+      "domains": ["campaign", "property", "creative", "content_standards"]
+    }
   }
 }
 ```
