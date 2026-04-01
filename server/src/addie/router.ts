@@ -318,7 +318,8 @@ The user has NOT linked their Slack account to AgenticAdvertising.org.
     conditionalRules += `
 The user is an ADMIN.
 - They have access to the "admin" tool set for system operations
-- Be more direct and technical in responses`;
+- Be more direct and technical in responses
+- In admin channels (e.g., #aao-admin), ALWAYS include "admin" in tool_sets.`;
   } else {
     conditionalRules += `
 The user is NOT an admin.
@@ -626,30 +627,38 @@ export class AddieRouter {
     const startTime = Date.now();
     const text = ctx.message.toLowerCase().trim();
 
-    // Check for simple acknowledgments to ignore
-    for (const pattern of ROUTING_RULES.ignore.patterns) {
-      if (text === pattern || text === pattern + '.') {
-        return {
-          action: 'ignore',
-          reason: 'Simple acknowledgment',
-          decision_method: 'quick_match',
-          latency_ms: Date.now() - startTime,
-        };
-      }
-    }
-
-    // Check for greeting patterns to react
-    for (const [key, rule] of Object.entries(ROUTING_RULES.reactWith)) {
-      for (const pattern of rule.patterns) {
-        // Only match if the message is very short (likely just a greeting)
-        if (text.length < 20 && text.includes(pattern.toLowerCase())) {
+    // In threads, brief messages ("yes", "done", "ok") are responses to
+    // something Addie said — let the LLM router see them with thread context.
+    // Only auto-ignore in standalone (non-thread) messages.
+    const isInThread = ctx.isThread === true;
+    if (!isInThread) {
+      for (const pattern of ROUTING_RULES.ignore.patterns) {
+        if (text === pattern || text === pattern + '.') {
           return {
-            action: 'react',
-            emoji: rule.emoji,
-            reason: `Matched ${key} pattern`,
+            action: 'ignore',
+            reason: 'Simple acknowledgment',
             decision_method: 'quick_match',
             latency_ms: Date.now() - startTime,
           };
+        }
+      }
+    }
+
+    // Check for greeting/thanks patterns to react (standalone channel messages only —
+    // in DMs these should fall through to the LLM for a real response)
+    const isStandaloneChannelMessage = ctx.source === 'channel' && !isInThread;
+    if (isStandaloneChannelMessage) {
+      for (const [key, rule] of Object.entries(ROUTING_RULES.reactWith)) {
+        for (const pattern of rule.patterns) {
+          if (text.length < 20 && text.includes(pattern.toLowerCase())) {
+            return {
+              action: 'react',
+              emoji: rule.emoji,
+              reason: `Matched ${key} pattern`,
+              decision_method: 'quick_match',
+              latency_ms: Date.now() - startTime,
+            };
+          }
         }
       }
     }
