@@ -1083,7 +1083,7 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   {
     name: 'list_paying_members',
     description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.',
-    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, or getting member contact lists.',
+    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, getting member contact lists, or checking for payment issues.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1091,9 +1091,13 @@ Roles: member (default), admin (can manage team), owner (full control)`,
           type: 'boolean',
           description: 'Include individual (personal) memberships (default: true)',
         },
+        include_payment_issues: {
+          type: 'boolean',
+          description: 'Also include members with past_due or unpaid subscriptions, flagged in output (default: false)',
+        },
         limit: {
           type: 'number',
-          description: 'Maximum results (default: 50)',
+          description: 'Maximum results (default: 50, max: 200)',
         },
       },
     },
@@ -6610,7 +6614,11 @@ Use add_committee_leader to assign a leader.`;
     try {
       const pool = getPool();
       const includeIndividual = input.include_individual !== false;
-      const limit = Math.min(Math.max((input.limit as number) || 50, 1), 100);
+      const includePaymentIssues = input.include_payment_issues === true;
+      const limit = Math.min(Math.max((input.limit as number) || 50, 1), 200);
+      const allowedStatuses = includePaymentIssues
+        ? ['active', 'past_due', 'unpaid']
+        : ['active'];
 
       const result = await pool.query(
         `SELECT
@@ -6635,16 +6643,16 @@ Use add_committee_leader to assign a leader.`;
           ORDER BY om.created_at ASC
           LIMIT 1
         ) primary_contact ON true
-        WHERE o.subscription_status = 'active'
+        WHERE o.subscription_status = ANY($3::text[])
           AND o.subscription_canceled_at IS NULL
           AND ($1 = true OR o.is_personal = false)
         ORDER BY o.subscription_amount DESC NULLS LAST, o.name ASC
         LIMIT $2`,
-        [includeIndividual, limit]
+        [includeIndividual, limit, allowedStatuses]
       );
 
       if (result.rows.length === 0) {
-        return `No active members found${includeIndividual ? '' : ' (corporate only)'}.`;
+        return `No paying members found${includeIndividual ? '' : ' (corporate only)'}.`;
       }
 
       // Group by annual subscription amount level.
@@ -6674,7 +6682,7 @@ Use add_committee_leader to assign a leader.`;
         }
       }
 
-      const formatRow = (org: { name: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date; contact_email: string | null; contact_first_name: string | null; contact_last_name: string | null }) => {
+      const formatRow = (org: { name: string; subscription_status: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date; contact_email: string | null; contact_first_name: string | null; contact_last_name: string | null }) => {
         const amount = org.subscription_amount
           ? formatCurrency(org.subscription_amount, org.subscription_currency || 'usd')
           : 'Comped';
@@ -6688,13 +6696,29 @@ Use add_committee_leader to assign a leader.`;
           : org.contact_email
             ? ` — ${org.contact_email}`
             : '';
-        return `- **${org.name}**${contact} — ${amount}${interval} (since ${since})\n`;
+        const statusFlag = org.subscription_status === 'past_due' ? ' [PAST DUE]'
+          : org.subscription_status === 'unpaid' ? ' [UNPAID]'
+          : '';
+        return `- **${org.name}**${statusFlag}${contact} — ${amount}${interval} (since ${since})\n`;
       };
 
-      let response = `## Active Members\n\n`;
-      response += `**${result.rows.length} active member${result.rows.length !== 1 ? 's' : ''}**`;
+      const pastDueCount = result.rows.filter((r: { subscription_status: string }) => r.subscription_status === 'past_due').length;
+      const unpaidCount = result.rows.filter((r: { subscription_status: string }) => r.subscription_status === 'unpaid').length;
+      const activeCount = result.rows.length - pastDueCount - unpaidCount;
+
+      let response = includePaymentIssues
+        ? `## Members\n\n`
+        : `## Active Members\n\n`;
+      response += `**${result.rows.length} member${result.rows.length !== 1 ? 's' : ''}**`;
       if (!includeIndividual) response += ` (corporate only)`;
-      response += `\n\n`;
+      if (includePaymentIssues) {
+        response += ` — ${activeCount} active, ${pastDueCount} past due, ${unpaidCount} unpaid`;
+      }
+      response += `\n`;
+      if (result.rows.length >= limit) {
+        response += `> Results truncated at ${limit}. Increase limit for full list.\n`;
+      }
+      response += `\n`;
 
       if (groups.icl.length > 0) {
         response += `### Industry Council Leaders ($50K/yr)\n`;
