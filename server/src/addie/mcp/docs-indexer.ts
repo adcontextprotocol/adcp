@@ -304,8 +304,13 @@ function extractHtmlContent(content: string): string {
   content = content.replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n');
   content = content.replace(/<br\s*\/?>/gi, '\n');
 
-  // Remove all remaining HTML tags
-  content = content.replace(/<[^>]+>/g, '');
+  // Remove all remaining HTML tags (loop to catch tags reconstructed by entity decode)
+  let tagPrev = '';
+  let tagIterations = 0;
+  while (tagPrev !== content && tagIterations++ < 100) {
+    tagPrev = content;
+    content = content.replace(/<[^>]+>/g, '');
+  }
 
   // Clean up whitespace
   content = content.replace(/\n{3,}/g, '\n\n');

@@ -83,7 +83,7 @@ sequenceDiagram
         Note over Seller: Local model evaluates artifacts
     end
 
-    Buyer->>Seller: get_media_buy_artifacts (sampled)
+    Buyer->>Seller: get_media_buy_artifacts
     Seller-->>Buyer: Content artifacts
     Buyer->>Verifier: validate_content_delivery
     Verifier-->>Buyer: Validation results
@@ -157,7 +157,7 @@ Sampling rate is negotiated in the media buy:
 }
 ```
 
-Higher sampling rates typically cost more but provide stronger guarantees. The seller is responsible for implementing the agreed sampling rate and reporting actual coverage.
+Higher sampling rates typically cost more but provide stronger guarantees. The seller is responsible for implementing the agreed sampling rate and reporting actual coverage. Buyers retrieve collected artifacts via [get_media_buy_artifacts](./tasks/get_media_buy_artifacts) (pull) or receive them via `artifact_webhook` (push) — both deliver artifacts sampled per the buy agreement.
 
 ## Validation Thresholds
 
