@@ -263,7 +263,7 @@ export async function handleEmailInvocation(
     const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
     // Add billing tool handlers
-    const billingHandlers = createBillingToolHandlers();
+    const billingHandlers = createBillingToolHandlers(memberContext);
     for (const [name, handler] of billingHandlers) {
       handlers.set(name, handler);
     }
