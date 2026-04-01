@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": major
 ---
 
 Remove FormatCategory enum and `type` field from Format objects

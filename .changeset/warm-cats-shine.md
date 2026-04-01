@@ -1,3 +1,3 @@
 ---
-"adcontextprotocol": patch
 ---
+

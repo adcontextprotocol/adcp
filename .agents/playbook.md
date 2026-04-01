@@ -107,7 +107,7 @@ When linking to schemas in docs, use the correct version alias:
 3. If only in `static/schemas/source/`, use `latest`
 
 **Version aliases:**
-- `/schemas/v3/` → latest 3.x release (currently 3.0.0-beta.3)
+- `/schemas/v3/` → latest 3.x release (currently 3.0.0-rc.3)
 - `/schemas/v2/` → latest 2.x release (currently 2.5.3)
 - `/schemas/v1/` → points to `latest` (for backward compatibility)
 - `/schemas/latest/` → development version (`static/schemas/source/`)
