@@ -55,6 +55,10 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for this media buy. Resolved to full brand identity at execution time from brand.json or the registry."
     },
+    "advertiser_industry": {
+      "$ref": "/schemas/enums/advertiser-industry.json",
+      "description": "Industry classification for this specific campaign. A brand may operate across multiple industries (brand.json industries field), but each media buy targets one. For example, a consumer health company running a wellness campaign sends 'healthcare.wellness', not 'cpg'. Sellers map this to platform-native codes (e.g., Spotify ADV categories, LinkedIn industry IDs). When omitted, sellers may infer from the brand manifest's industries field."
+    },
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",
       "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."

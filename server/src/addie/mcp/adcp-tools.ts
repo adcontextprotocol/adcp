@@ -308,6 +308,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           },
           required: ['domain'],
         },
+        advertiser_industry: {
+          type: 'string',
+          description: "Industry for this campaign — top-level category or category.subcategory (e.g., 'automotive', 'media_entertainment.podcasts', 'technology.software'). Sellers map to platform-native codes. When omitted, sellers may infer from the brand manifest.",
+        },
         invoice_recipient: {
           type: 'object',
           description: 'Override the account default billing entity for this buy. When provided, the seller invoices this entity instead.',

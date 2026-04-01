@@ -242,9 +242,9 @@
         },
         "industries": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "$ref": "/schemas/enums/advertiser-industry.json" },
           "minItems": 1,
-          "description": "Brand industries (e.g., ['automotive'] or ['pharmaceutical', 'cpg'] for a consumer health company). Describes what the company does — not what regulatory regimes apply (use policy_categories for that)."
+          "description": "Brand industries (e.g., ['automotive'] or ['healthcare.pharmaceutical', 'cpg'] for a consumer health company). Describes what the company does — not what regulatory regimes apply (use policy_categories for that). When create_media_buy omits advertiser_industry, sellers may infer from this field."
         },
         "target_audience": {
           "type": "string",
