@@ -31,6 +31,63 @@ function escapeSlackMrkdwn(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/** Slack link pattern: <url|label> or <url> */
+const SLACK_LINK_RE = /<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g;
+
+/**
+ * Convert Slack-format links to HTML anchor tags, escaping all other content.
+ * <url|label> → <a href="url">label</a>, <url> → <a href="url">url</a>
+ */
+function slackLinksToHtml(text: string): string {
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const re = new RegExp(SLACK_LINK_RE.source, 'g');
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(escapeHtml(text.slice(lastIndex, match.index)));
+    }
+    const url = match[1];
+    const label = match[2] || url;
+    parts.push(`<a href="${escapeHtml(url)}" style="color: #2563eb;">${escapeHtml(label)}</a>`);
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(escapeHtml(text.slice(lastIndex)));
+  }
+  return parts.join('');
+}
+
+/**
+ * Convert Slack-format links to plain text: <url|label> → "label (url)", <url> → url
+ */
+function slackLinksToPlainText(text: string): string {
+  return text
+    .replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g, '$2 ($1)')
+    .replace(/<(https?:\/\/[^>]+)>/g, '$1');
+}
+
+/**
+ * Escape Slack mrkdwn special chars while preserving Slack-format links.
+ */
+function escapeSlackMrkdwnPreserveLinks(text: string): string {
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const re = new RegExp(SLACK_LINK_RE.source, 'g');
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(escapeSlackMrkdwn(text.slice(lastIndex, match.index)));
+    }
+    parts.push(match[0]); // preserve link as-is
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(escapeSlackMrkdwn(text.slice(lastIndex)));
+  }
+  return parts.join('');
+}
+
 export type DigestSegment = 'website_only' | 'slack_only' | 'both' | 'active';
 
 /**
@@ -70,7 +127,7 @@ export function renderDigestEmail(
 
     ${content.editorsNote ? `
     <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
-      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${escapeHtml(content.editorsNote)}</p>
+      <p style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${slackLinksToHtml(content.editorsNote)}</p>
     </div>
     ` : ''}
 
@@ -308,7 +365,7 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
   lines.push(content.intro, '');
 
   if (content.editorsNote) {
-    lines.push(content.editorsNote, '');
+    lines.push(slackLinksToPlainText(content.editorsNote), '');
   }
 
   if (content.spotlightAction) {
@@ -408,7 +465,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   if (content.editorsNote) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: escapeSlackMrkdwn(content.editorsNote).split('\n').map((line) => `> ${line}`).join('\n') },
+      text: { type: 'mrkdwn', text: escapeSlackMrkdwnPreserveLinks(content.editorsNote).split('\n').map((line) => `> ${line}`).join('\n') },
     });
   }
 
