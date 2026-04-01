@@ -1847,6 +1847,7 @@ export function createCertificationToolHandlers(
         attempt = await certDb.getAttempt(attemptId);
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID
+        logger.warn({ attemptId, userId }, 'complete_certification_exam received module ID instead of UUID, resolving');
         const trackPrefix = attemptId.replace(/[0-9]+$/, '').toUpperCase();
         attempt = await certDb.getActiveAttempt(userId, trackPrefix);
         if (attempt && attempt.module_id?.toUpperCase() !== attemptId.toUpperCase()) {

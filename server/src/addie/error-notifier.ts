@@ -105,8 +105,11 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
     : '';
   const kind = ctx.threw ? 'Tool exception' : 'Tool error';
 
+  const sensitiveKeys = new Set(['password', 'token', 'secret', 'api_key']);
   const inputLine = ctx.toolInput
-    ? `*Input:* \`${JSON.stringify(ctx.toolInput).substring(0, 300)}\``
+    ? `*Input:* \`${JSON.stringify(ctx.toolInput, (key, val) =>
+        sensitiveKeys.has(key) ? '[redacted]' : val
+      ).substring(0, 300)}\``
     : '';
 
   const lines = [

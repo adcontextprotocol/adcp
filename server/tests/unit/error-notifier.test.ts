@@ -59,6 +59,24 @@ describe('error-notifier', () => {
       expect(text).toContain('thread-abc');
     });
 
+    it('sanitizes display names containing Slack formatting characters', async () => {
+      const name = uniqueName('tool_sanitize');
+      notifyToolError({
+        toolName: name,
+        errorMessage: 'fail',
+        userDisplayName: '<script>*bold*_italic_',
+        threadId: 'thread-san',
+        threw: true,
+      });
+
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
+
+      const text = mockSendChannelMessage.mock.calls[0][1].text;
+      expect(text).toContain('script');
+      expect(text).not.toContain('<script>');
+      expect(text).not.toContain('*bold*');
+    });
+
     it('includes tool input and web user display name', async () => {
       const name = uniqueName('tool_input');
       notifyToolError({
