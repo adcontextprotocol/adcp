@@ -1,0 +1,372 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.3/core/product-filters.json",
+  "title": "Product Filters",
+  "description": "Structured filters for product discovery",
+  "type": "object",
+  "properties": {
+    "delivery_type": {
+      "$ref": "/schemas/3.0.0-rc.3/enums/delivery-type.json"
+    },
+    "exclusivity": {
+      "$ref": "/schemas/3.0.0-rc.3/enums/exclusivity.json",
+      "description": "Filter by exclusivity level. Returns products matching the specified exclusivity (e.g., 'exclusive' returns only sole-sponsorship products)."
+    },
+    "is_fixed_price": {
+      "type": "boolean",
+      "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter by specific format IDs",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.3/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "standard_formats_only": {
+      "type": "boolean",
+      "description": "Only return products accepting IAB standard formats"
+    },
+    "min_exposures": {
+      "type": "integer",
+      "description": "Minimum exposures/impressions needed for measurement validity",
+      "minimum": 1
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign start date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "budget_range": {
+      "type": "object",
+      "description": "Budget range to filter appropriate products",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum budget amount",
+          "minimum": 0
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum budget amount",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "currency"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "min"
+          ]
+        },
+        {
+          "required": [
+            "max"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "countries": {
+      "type": "array",
+      "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Works for all inventory types.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "regions": {
+      "type": "array",
+      "description": "Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA', 'GB-SCT']). Use for locally-bound inventory (regional OOH, local TV) where products have region-specific coverage.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]+$"
+      },
+      "minItems": 1
+    },
+    "metros": {
+      "type": "array",
+      "description": "Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV). Use when products have DMA/metro-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-rc.3/enums/metro-system.json",
+            "description": "Metro classification system"
+          },
+          "code": {
+            "type": "string",
+            "description": "Metro code within the system (e.g., '501' for NYC DMA)"
+          }
+        },
+        "required": ["system", "code"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "channels": {
+      "type": "array",
+      "description": "Filter by advertising channels (e.g., ['display', 'ctv', 'dooh'])",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.3/enums/channels.json"
+      },
+      "minItems": 1
+    },
+    "required_axe_integrations": {
+      "type": "array",
+      "description": "Deprecated: Use trusted_match filter instead. Filter to products executable through specific agentic ad exchanges. URLs are canonical identifiers.",
+      "deprecated": true,
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1
+    },
+    "trusted_match": {
+      "type": "object",
+      "description": "Filter products by Trusted Match Protocol capabilities. Only products with matching TMP support are returned.",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "description": "Filter to products with specific TMP providers and match types. Each entry identifies a provider by agent_url and optionally requires specific match capabilities. Products must match at least one entry.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Provider's agent URL from the registry."
+              },
+              "context_match": {
+                "type": "boolean",
+                "description": "When true, require this provider to support context match."
+              },
+              "identity_match": {
+                "type": "boolean",
+                "description": "When true, require this provider to support identity match."
+              }
+            },
+            "required": ["agent_url"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "response_types": {
+          "type": "array",
+          "description": "Filter to products supporting specific TMP response types (e.g., 'activation', 'creative', 'catalog_items'). Products must support at least one of the listed types.",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.3/enums/response-type.json"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "required_features": {
+      "$ref": "/schemas/3.0.0-rc.3/core/media-buy-features.json",
+      "description": "Filter to products from sellers supporting specific protocol features. Only features set to true are used for filtering."
+    },
+    "required_geo_targeting": {
+      "type": "array",
+      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "$ref": "/schemas/3.0.0-rc.3/enums/geo-level.json",
+            "description": "Geographic targeting level (country, region, metro, postal_area)"
+          },
+          "system": {
+            "type": "string",
+            "description": "Classification system within the level. Required for metro (e.g., 'nielsen_dma') and postal_area (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
+          }
+        },
+        "required": ["level"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "signal_targeting": {
+      "type": "array",
+      "description": "Filter to products supporting specific signals from data provider catalogs. Products must have the requested signals in their data_provider_signals and signal_targeting_allowed must be true (or all signals requested).",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.3/core/signal-targeting.json"
+      },
+      "minItems": 1
+    },
+    "postal_areas": {
+      "type": "array",
+      "description": "Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, local campaigns). Use when products have postal-area-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-rc.3/enums/postal-system.json",
+            "description": "Postal code system (e.g., 'us_zip', 'gb_outward')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "geo_proximity": {
+      "type": "array",
+      "description": "Filter by proximity to geographic points. Returns products with inventory coverage near these locations. Follows the same format as the targeting overlay — each entry uses exactly one method: travel_time + transport_mode, radius, or geometry. For locally-bound inventory (DOOH, radio), filters to products with coverage in the area. For digital inventory, filters to products from sellers supporting geo_proximity targeting.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Latitude in decimal degrees (WGS 84)"
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Longitude in decimal degrees (WGS 84)"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label (e.g., 'Düsseldorf', 'Heathrow Airport')"
+          },
+          "travel_time": {
+            "type": "object",
+            "description": "Travel time limit for isochrone calculation",
+            "properties": {
+              "value": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Travel time limit"
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["min", "hr"],
+                "description": "Time unit"
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "transport_mode": {
+            "$ref": "/schemas/3.0.0-rc.3/enums/transport-mode.json",
+            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
+          },
+          "radius": {
+            "type": "object",
+            "description": "Simple radius from the point",
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Radius distance"
+              },
+              "unit": {
+                "$ref": "/schemas/3.0.0-rc.3/enums/distance-unit.json",
+                "description": "Distance unit"
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "geometry": {
+            "type": "object",
+            "description": "Pre-computed GeoJSON geometry defining the proximity boundary",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Polygon", "MultiPolygon"],
+                "description": "GeoJSON geometry type"
+              },
+              "coordinates": {
+                "type": "array",
+                "description": "GeoJSON coordinates array"
+              }
+            },
+            "required": ["type", "coordinates"],
+            "additionalProperties": false
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["lat", "lng", "travel_time", "transport_mode"],
+            "not": {
+              "anyOf": [
+                { "required": ["radius"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["lat", "lng", "radius"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["geometry"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["radius"] }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "keywords": {
+      "type": "array",
+      "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "default": "broad",
+            "description": "Desired match type: broad matches related queries, phrase matches queries containing the keyword phrase, exact matches the query exactly. Defaults to broad."
+          }
+        },
+        "required": ["keyword"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": true
+}

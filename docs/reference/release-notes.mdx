@@ -9,6 +9,62 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.0-rc.3
+
+**Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)
+
+### What's New
+
+1. **Trusted Match Protocol (TMP)** — Real-time execution layer for AdCP. 9 schemas, 12 documentation pages, provider discovery on products, typed artifacts for content resolution, and lightweight context matching. Deprecates AXE.
+
+2. **Order Lifecycle Management** — `confirmed_at` on order creation, cancellation at media buy and package level with `canceled_by` attribution, per-package `creative_deadline`, `valid_actions` for state-aware agents, `revision` for optimistic concurrency, and `include_history` for revision audit trails. 7 new error codes.
+
+3. **Governance Simplification** — Remove `binding` field from `check_governance` (inferred from discriminating fields), remove `mode` from `sync_plans` (governance agent configuration, not protocol), remove `escalated` status (handled via async task lifecycle). Three terminal statuses: `approved`, `denied`, `conditions`.
+
+4. **Seller-Assigned IDs** — Remove `buyer_ref`, `buyer_campaign_ref`, and `campaign_ref`. Seller-assigned `media_buy_id` and `package_id` are canonical. `idempotency_key` on all mutating requests. Opaque `governance_context` string replaces structured schema.
+
+5. **Proposal Lifecycle** — Draft/committed proposal status, finalization via refine action, insertion order signing, and expiry enforcement on `create_media_buy`. Guaranteed products start as draft with indicative pricing.
+
+6. **Audience Bias Governance** — Structured audience data for fairness validation. New schemas for audience selectors, constraints, policy categories, and restricted attributes (GDPR Article 9). 10 policy category definitions, 8 restricted attribute definitions, 13 seed policies across US, EU, and platform regulations.
+
+7. **Streaming and Audio Delivery Metrics** — `completed_views` (renamed from `video_completions`), `reach`, `reach_unit`, and `frequency` in aggregated totals. Audio/podcast-native metrics. `reach_unit` co-occurrence constraint on `delivery-metrics.json`.
+
+8. **Availability Forecasts** — `budget` now optional on `ForecastPoint` for total available inventory. New `availability` forecast range unit. Guaranteed products include availability forecasts with estimated cost.
+
+9. **Advertiser Industry Taxonomy** — Two-level dot-notation categories on brand manifest and `create_media_buy`. Restricted categories (gambling, cannabis, dating) require explicit declaration.
+
+10. **Content Standards Detail** — `content_standards_detail` on `get_adcp_capabilities` for pre-buy visibility into local evaluation and artifact delivery capabilities. `sampling` removed from `get_media_buy_artifacts` (configured at creation time).
+
+11. **Event Source Health** — Optional `health` on event sources (status, match rate, event volume, issues) and `measurement_readiness` on products for buyer event setup evaluation.
+
+12. **Collection/Installment Extensions** — `special` and `limited_series` fields, installment deadlines with deadline policies, print-capable creative formats with physical units, DPI, bleed, and color space.
+
+13. **Scoped adagents.json Authorization** — Delegation types, placement governance, signing keys, country and time-window constraints on `authorized_agents`.
+
+### Breaking Changes
+
+| Change | rc.2 | rc.3 |
+|--------|------|------|
+| Buyer references | `buyer_ref`, `buyer_campaign_ref`, `campaign_ref` on requests | Removed — seller-assigned `media_buy_id` and `package_id` are canonical |
+| Idempotency | `buyer_ref` as implicit dedup key | Explicit `idempotency_key` on all mutating requests |
+| Governance context | Structured `governance-context.json` schema | Opaque `governance_context` string |
+| `check_governance` binding | `binding` field on request | Removed — inferred from discriminating fields |
+| `sync_plans` mode | `mode` field (audit/advisory/enforce) | Removed — governance agent configuration |
+| `check_governance` status | `escalated` as possible status | Removed — use async task lifecycle |
+| `get_media_buy_artifacts` | `sampling` parameter on request | Removed — sampling configured at media buy creation |
+| FormatCategory | `format-category.json` enum, `type` on Format | Removed — use `assets` array or `asset_types` filter |
+| Shows/episodes | `show`, `episode`, `show_id`, `episode_id` | Renamed to `collection`, `installment`, `collection_id`, `installment_id` |
+
+### Migration Notes For rc.2 Adopters
+
+- **Buyer references** — Remove `buyer_ref` and `campaign_ref` from request payloads. Use `idempotency_key` for safe retries instead.
+- **Governance** — Remove `binding` from `check_governance` calls, `mode` from `sync_plans`, and stop handling `escalated` status. Use async task polling for human review workflows.
+- **Artifacts** — Remove `sampling` from `get_media_buy_artifacts` requests. Configure sampling at `create_media_buy` time.
+- **Format filtering** — Replace `format_types` filters with `asset_types` on `list_creative_formats` or `channels` on `get_products`.
+- **Collections** — Rename `show`/`episode` references to `collection`/`installment` throughout.
+
+---
+
 ## Version 3.0.0-rc.2
 
 **Status:** Release Candidate | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)
