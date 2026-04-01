@@ -1940,11 +1940,9 @@ export function createCertificationToolHandlers(
 
         // Mark the capstone module as completed
         try {
-          if (capstoneMod) {
-            await certDb.completeModule(userId, capstoneMod.id, scores);
-          }
+          await certDb.completeModule(userId, capstoneMod.id, scores);
         } catch (modError) {
-          logger.error({ error: modError, userId, moduleId: capstoneMod?.id }, 'Failed to record module completion after attempt passed');
+          logger.error({ error: modError, userId, moduleId: capstoneMod.id }, 'Failed to record module completion after attempt passed');
         }
 
         // Auto-award credentials (including specialist)
