@@ -59,6 +59,12 @@ Passing earns the **AdCP specialist — Media buy** credential.
   <Card title="Media buys overview" icon="layer-group" href="/docs/media-buy/media-buys/index">
     Campaign structure, states, and the approval lifecycle.
   </Card>
+  <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
+    How TMP handles impression-time decisions such as cross-publisher frequency capping.
+  </Card>
+  <Card title="AdCP and OpenRTB" icon="arrows-left-right" href="/docs/building/understanding/adcp-vs-openrtb">
+    How campaign workflows in AdCP connect to impression-time execution patterns.
+  </Card>
   <Card title="Orchestrator design" icon="diagram-project" href="/docs/building/implementation/orchestrator-design">
     Architecture patterns for multi-agent orchestration.
   </Card>
@@ -67,6 +73,12 @@ Passing earns the **AdCP specialist — Media buy** credential.
   </Card>
   <Card title="Performance feedback" icon="comment-dots" href="/docs/media-buy/task-reference/provide_performance_feedback">
     Seller optimization feedback based on campaign performance.
+  </Card>
+  <Card title="Context and Identity Match" icon="arrows-split-up-and-left" href="/docs/trusted-match/context-and-identity">
+    The two structurally separated operations that power impression-time execution.
+  </Card>
+  <Card title="Router architecture" icon="diagram-project" href="/docs/trusted-match/router-architecture">
+    Deployment, fan-out, and provider configuration for the TMP Router.
   </Card>
 </CardGroup>
 
@@ -78,7 +90,7 @@ During the module, Addie will guide you through hands-on exercises:
 2. **Proposal and forecasting** — Request proposals, analyze delivery forecasts (spend curves and availability)
 3. **Campaign creation and optimization** — Create a media buy, monitor delivery, execute updates
 4. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
-5. **Multi-agent orchestration** — Manage campaigns across multiple sellers simultaneously
+5. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated.
 
 ## Assessment
 

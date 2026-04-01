@@ -5,9 +5,9 @@
   "description": "Content artifact for safety and suitability evaluation. An artifact represents content adjacent to an ad placement - a news article, podcast segment, video chapter, or social post. Artifacts are collections of assets (text, images, video, audio) plus metadata and signals.",
   "type": "object",
   "properties": {
-    "property_id": {
-      "$ref": "/schemas/core/identifier.json",
-      "description": "Identifier for the property where this artifact appears"
+    "property_rid": {
+      "type": "string",
+      "description": "Stable property identifier from the property catalog. Globally unique across the ecosystem."
     },
     "artifact_id": {
       "type": "string",
@@ -39,6 +39,7 @@
     "assets": {
       "type": "array",
       "description": "Artifact assets in document flow order - text blocks, images, video, audio",
+      "maxItems": 200,
       "items": {
         "oneOf": [
           {
@@ -53,7 +54,14 @@
               },
               "content": {
                 "type": "string",
-                "description": "Text content"
+                "description": "Text content. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation.",
+                "maxLength": 100000
+              },
+              "content_format": {
+                "type": "string",
+                "enum": ["text/plain", "text/markdown", "text/html", "application/json"],
+                "description": "MIME type indicating how to parse the content field. Default: text/plain.",
+                "default": "text/plain"
               },
               "language": {
                 "type": "string",
@@ -129,7 +137,14 @@
               },
               "transcript": {
                 "type": "string",
-                "description": "Video transcript"
+                "description": "Video transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation.",
+                "maxLength": 200000
+              },
+              "transcript_format": {
+                "type": "string",
+                "enum": ["text/plain", "text/markdown", "application/json"],
+                "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
+                "default": "text/plain"
               },
               "transcript_source": {
                 "type": "string",
@@ -168,7 +183,14 @@
               },
               "transcript": {
                 "type": "string",
-                "description": "Audio transcript"
+                "description": "Audio transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation.",
+                "maxLength": 200000
+              },
+              "transcript_format": {
+                "type": "string",
+                "enum": ["text/plain", "text/markdown", "application/json"],
+                "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
+                "default": "text/plain"
               },
               "transcript_source": {
                 "type": "string",
@@ -253,7 +275,7 @@
       "additionalProperties": true
     }
   },
-  "required": ["property_id", "artifact_id", "assets"],
+  "required": ["property_rid", "artifact_id", "assets"],
   "additionalProperties": true,
   "$defs": {
     "asset_access": {

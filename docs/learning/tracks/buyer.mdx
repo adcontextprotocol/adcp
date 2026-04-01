@@ -44,6 +44,12 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
   <Card title="Targeting" icon="crosshairs" href="/docs/media-buy/advanced-topics/targeting">
     Targeting options, audience overlays, and geo-targeting.
   </Card>
+  <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
+    How your campaigns execute at impression time: context match, identity match, and cross-publisher frequency capping.
+  </Card>
+  <Card title="TMP Buyer Guide" icon="code" href="/docs/trusted-match/buyer-guide">
+    Endpoint integration: responding to Context Match and Identity Match requests, structuring offers, provider registration.
+  </Card>
   <Card title="get_media_buys task" icon="list-check" href="/docs/media-buy/task-reference/get_media_buys">
     Operational monitoring: lifecycle state, creative approvals, valid actions, delivery snapshots.
   </Card>
@@ -56,6 +62,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 - **Order lifecycle** — `confirmed_at` on creation, pause/resume, cancellation via `update_media_buy`, terminal states
 - **Valid actions** — `get_media_buys` returns `valid_actions` so agents know what operations are permitted
 - **Audience targeting** — `sync_audiences` for custom segments
+- **Impression-time execution** — campaigns activate through TMP at serve time; frequency caps, audience eligibility, and brand suitability are enforced via Identity Match without exposing user data to buyers alongside content context
 - **Account setup** — `sync_accounts` to establish billing before buying
 
 <Card title="Start C1 with Addie" icon="play" href="https://agenticadvertising.org/chat">

@@ -428,6 +428,31 @@
                         ]
                       }
                     ]
+                  },
+                  {
+                    "group": "Trusted Match",
+                    "expanded": false,
+                    "pages": [
+                      "docs/trusted-match/index",
+                      "docs/trusted-match/ai-mediation",
+                      "docs/trusted-match/buyer-guide",
+                      "docs/trusted-match/execution-gap",
+                      "docs/trusted-match/context-and-identity",
+                      "docs/trusted-match/specification",
+                      "docs/trusted-match/router-architecture",
+                      "docs/trusted-match/privacy-architecture",
+                      "docs/trusted-match/migration-from-axe",
+                      {
+                        "group": "Surface Guides",
+                        "pages": [
+                          "docs/trusted-match/surfaces/web",
+                          "docs/trusted-match/surfaces/ctv",
+                          "docs/trusted-match/surfaces/mobile",
+                          "docs/trusted-match/surfaces/retail-media",
+                          "docs/trusted-match/surfaces/ai-assistants"
+                        ]
+                      }
+                    ]
                   }
                 ]
               },

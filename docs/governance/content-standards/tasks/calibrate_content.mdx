@@ -30,12 +30,12 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 
 **Schema**: [artifact.json](https://adcontextprotocol.org/schemas/v3/content-standards/artifact.json)
 
-An artifact represents content context where ad placements occur - identified by `property_id` + `artifact_id` and represented as a collection of assets:
+An artifact represents content context where ad placements occur - identified by `property_rid` + `artifact_id` and represented as a collection of assets:
 
 ```json
 {
   "$schema": "/schemas/content-standards/artifact.json",
-  "property_id": {"type": "domain", "value": "reddit.com"},
+  "property_rid": "01916f3a-a1d3-7000-8000-000000000040",
   "artifact_id": "r_fitness_abc123",
   "assets": [
     {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
