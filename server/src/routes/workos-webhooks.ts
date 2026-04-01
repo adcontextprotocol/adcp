@@ -963,8 +963,8 @@ export async function backfillOrganizationMemberships(): Promise<{
  * Backfill users table from WorkOS
  * Fetches all users from all organizations and upserts them into the users table.
  *
- * Also removes local user rows that no longer appear in any WorkOS org
- * (deleted during a webhook outage).
+ * Also removes local user rows for users confirmed deleted from WorkOS
+ * (verified via individual getUser calls).
  */
 export async function backfillUsers(): Promise<{
   usersProcessed: number;
@@ -1111,8 +1111,9 @@ export async function backfillUsers(): Promise<{
                 client.release();
               }
             } else {
-              // WorkOS API error — don't delete, log the error
-              result.errors.push(`Could not verify user ${row.workos_user_id}: ${getErr}`);
+              // WorkOS API error — don't delete, log full error server-side only
+              logger.warn({ error: getErr, userId: row.workos_user_id }, 'Backfill: WorkOS API error during user verification');
+              result.errors.push(`Could not verify user ${row.workos_user_id}: WorkOS API error (status ${getErr?.status || 'unknown'})`);
               result.usersSkipped++;
             }
           }
