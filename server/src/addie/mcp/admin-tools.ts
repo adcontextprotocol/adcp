@@ -1082,7 +1082,7 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   },
   {
     name: 'list_paying_members',
-    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Members with past_due or unpaid subscriptions are flagged. Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.',
+    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.',
     usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, getting member contact lists, or checking for payment issues.',
     input_schema: {
       type: 'object' as const,
@@ -1093,11 +1093,11 @@ Roles: member (default), admin (can manage team), owner (full control)`,
         },
         include_payment_issues: {
           type: 'boolean',
-          description: 'Also include members with past_due or unpaid subscriptions, flagged in output (default: true)',
+          description: 'Also include members with past_due or unpaid subscriptions, flagged in output (default: false)',
         },
         limit: {
           type: 'number',
-          description: 'Maximum results (default: 200, max: 500)',
+          description: 'Maximum results (default: 50, max: 200)',
         },
       },
     },
@@ -6614,12 +6614,11 @@ Use add_committee_leader to assign a leader.`;
     try {
       const pool = getPool();
       const includeIndividual = input.include_individual !== false;
-      const includePaymentIssues = input.include_payment_issues !== false;
-      const limit = Math.min(Math.max((input.limit as number) || 200, 1), 500);
-
-      const statusFilter = includePaymentIssues
-        ? `o.subscription_status IN ('active', 'past_due', 'unpaid')`
-        : `o.subscription_status = 'active'`;
+      const includePaymentIssues = input.include_payment_issues === true;
+      const limit = Math.min(Math.max((input.limit as number) || 50, 1), 200);
+      const allowedStatuses = includePaymentIssues
+        ? ['active', 'past_due', 'unpaid']
+        : ['active'];
 
       const result = await pool.query(
         `SELECT
@@ -6644,12 +6643,12 @@ Use add_committee_leader to assign a leader.`;
           ORDER BY om.created_at ASC
           LIMIT 1
         ) primary_contact ON true
-        WHERE ${statusFilter}
+        WHERE o.subscription_status = ANY($3::text[])
           AND o.subscription_canceled_at IS NULL
           AND ($1 = true OR o.is_personal = false)
         ORDER BY o.subscription_amount DESC NULLS LAST, o.name ASC
         LIMIT $2`,
-        [includeIndividual, limit]
+        [includeIndividual, limit, allowedStatuses]
       );
 
       if (result.rows.length === 0) {
@@ -6707,14 +6706,19 @@ Use add_committee_leader to assign a leader.`;
       const unpaidCount = result.rows.filter((r: { subscription_status: string }) => r.subscription_status === 'unpaid').length;
       const activeCount = result.rows.length - pastDueCount - unpaidCount;
 
-      let response = `## Members\n\n`;
+      let response = includePaymentIssues
+        ? `## Members\n\n`
+        : `## Active Members\n\n`;
       response += `**${result.rows.length} member${result.rows.length !== 1 ? 's' : ''}**`;
       if (!includeIndividual) response += ` (corporate only)`;
       if (includePaymentIssues) {
-        response += ` (${activeCount} active, ${pastDueCount} past due, ${unpaidCount} unpaid)`;
+        response += ` — ${activeCount} active, ${pastDueCount} past due, ${unpaidCount} unpaid`;
       }
-      if (result.rows.length >= limit) response += ` (results truncated at ${limit} — increase limit for full list)`;
-      response += `\n\n`;
+      response += `\n`;
+      if (result.rows.length >= limit) {
+        response += `> Results truncated at ${limit}. Increase limit for full list.\n`;
+      }
+      response += `\n`;
 
       if (groups.icl.length > 0) {
         response += `### Industry Council Leaders ($50K/yr)\n`;
