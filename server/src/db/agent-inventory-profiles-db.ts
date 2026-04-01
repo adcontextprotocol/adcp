@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { PROPERTY_COUNT_WEIGHT, TMP_BOOST } from '../registry-sync/scoring.js';
 
 const MAX_SEARCH_LIMIT = 200;
 const DEFAULT_SEARCH_LIMIT = 50;
@@ -185,7 +186,7 @@ export class AgentInventoryProfilesDatabase {
    * Search profiles with structured filters. OR within each filter dimension,
    * AND across dimensions. Returns results ranked by relevance score.
    *
-   * Relevance = matched_dimensions / total_query_dimensions + ln(property_count+1) * 0.1 + (has_tmp ? 0.05 : 0)
+   * Uses shared scoring constants from registry-sync/scoring.ts — must match client-side AgentIndex.
    *
    * Known limitation: cursor pagination on computed scores means rows can be
    * skipped or duplicated if profiles are updated between pages.
@@ -234,7 +235,8 @@ export class AgentInventoryProfilesDatabase {
     const matchedDimensionsSql = scoreParts.length > 0
       ? `(${scoreParts.join(' + ')})`
       : '0';
-    const relevanceScore = `(${matchedDimensionsSql}::float / ${totalDimensions} + ln(property_count + 1) * 0.1 + CASE WHEN has_tmp THEN 0.05 ELSE 0 END)`;
+    // Scoring constants shared with client-side AgentIndex (registry-sync/scoring.ts)
+    const relevanceScore = `(${matchedDimensionsSql}::float / ${totalDimensions} + ln(property_count + 1) * ${PROPERTY_COUNT_WEIGHT} + CASE WHEN has_tmp THEN ${TMP_BOOST} ELSE 0 END)`;
 
     // Build matched_filters array for the response
     const matchedFiltersSql = activeFilters.length > 0

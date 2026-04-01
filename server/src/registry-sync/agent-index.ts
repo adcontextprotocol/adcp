@@ -3,6 +3,8 @@
  * Mirrors the server-side search logic for local queries without network roundtrips.
  */
 
+import { PROPERTY_COUNT_WEIGHT, TMP_BOOST } from './scoring.js';
+
 export interface AgentProfile {
   agent_url: string;
   name?: string;
@@ -81,7 +83,7 @@ export class AgentIndex {
    * Search profiles with the same scoring formula as the server SQL.
    * OR within each filter dimension, AND across dimensions.
    *
-   * score = matched_dimensions / total_query_dimensions + ln(property_count+1) * 0.1 + (has_tmp ? 0.05 : 0)
+   * Uses shared scoring constants from scoring.ts — must match server SQL.
    */
   search(query: AgentSearchQuery): AgentSearchResult[] {
     const limit = Math.min(Math.max(1, query.limit ?? 50), 200);
@@ -131,8 +133,8 @@ export class AgentIndex {
       const matchedDimensionCount = matchedFilters.length;
       const relevanceScore =
         matchedDimensionCount / totalDimensions +
-        Math.log(profile.property_count + 1) * 0.1 +
-        (profile.has_tmp ? 0.05 : 0);
+        Math.log(profile.property_count + 1) * PROPERTY_COUNT_WEIGHT +
+        (profile.has_tmp ? TMP_BOOST : 0);
 
       results.push({
         ...profile,

@@ -130,7 +130,8 @@ export class CatalogEventsDatabase {
 
     if (types && types.length > 0) {
       const typeConditions = types.map(t => {
-        const pattern = t.replace(/\*/g, '%');
+        // Escape _ (single-char wildcard in LIKE) before converting * to %
+        const pattern = t.replace(/_/g, '\\_').replace(/\*/g, '%');
         params.push(pattern);
         return `event_type LIKE $${paramIdx++}`;
       });

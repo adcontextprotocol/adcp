@@ -516,16 +516,12 @@ export class CrawlerService {
   // ── State Snapshot & Diffing ─────────────────────────────────────
 
   private async snapshotAgentState(): Promise<Map<string, { domains: Set<string> }>> {
+    // Single query for all agent→domain pairs instead of O(N) per-agent queries
+    const agentDomains = await this.federatedIndex.getAllAgentDomainPairs();
     const snapshot = new Map<string, { domains: Set<string> }>();
-    const agents = await this.federatedIndex.listAllAgents();
-
-    for (const agent of agents) {
-      const domains = await this.federatedIndex.getDomainsForAgent(agent.url);
-      snapshot.set(agent.url, {
-        domains: new Set(domains),
-      });
+    for (const [agentUrl, domains] of agentDomains) {
+      snapshot.set(agentUrl, { domains });
     }
-
     return snapshot;
   }
 
