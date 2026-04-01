@@ -550,12 +550,24 @@ export async function initializeDocsIndex(): Promise<void> {
     logger.warn({ error }, 'Addie Docs: Failed to index working group documents');
   }
 
+  // Index published perspectives from database
+  try {
+    const perspectives = await loadPublishedPerspectives();
+    docsIndex.push(...perspectives);
+    if (perspectives.length > 0) {
+      logger.info({ count: perspectives.length }, 'Addie Docs: Indexed published perspectives');
+    }
+  } catch (error) {
+    logger.warn({ error }, 'Addie Docs: Failed to index perspectives');
+  }
+
   initialized = true;
 
   const categories = [...new Set(docsIndex.map((d) => d.category))];
   const websiteCount = docsIndex.filter((d) => d.category === 'website').length;
   const workingGroupCount = docsIndex.filter((d) => d.category.startsWith('working group')).length;
-  const protocolDocCount = docsIndex.length - websiteCount - workingGroupCount;
+  const perspectiveCount = docsIndex.filter((d) => d.category === 'perspective').length;
+  const protocolDocCount = docsIndex.length - websiteCount - workingGroupCount - perspectiveCount;
 
   // Warn if protocol docs index seems suspiciously empty (expect 50+ docs)
   if (docsRoot && protocolDocCount < 10) {
@@ -572,6 +584,7 @@ export async function initializeDocsIndex(): Promise<void> {
       protocolDocs: protocolDocCount,
       websitePages: websiteCount,
       workingGroupDocs: workingGroupCount,
+      perspectives: perspectiveCount,
       categories: categories.join(', '),
     },
     'Addie Docs: Indexing complete'
@@ -800,6 +813,48 @@ async function loadWorkingGroupDocuments(): Promise<IndexedDoc[]> {
   }
 
   return indexed;
+}
+
+/**
+ * Load published perspectives from the database into the in-memory index.
+ * Perspectives include articles, white papers, and reports authored by
+ * members or the AAO itself.
+ */
+async function loadPublishedPerspectives(): Promise<IndexedDoc[]> {
+  const { query: dbQuery } = await import('../../db/client.js');
+  const result = await dbQuery<{
+    slug: string;
+    title: string;
+    content: string | null;
+    excerpt: string | null;
+    author_name: string | null;
+    category: string | null;
+    content_origin: string | null;
+  }>(
+    `SELECT slug, title, content, excerpt, author_name, category, content_origin
+     FROM perspectives
+     WHERE status = 'published' AND content_type = 'article' AND content IS NOT NULL
+     ORDER BY published_at DESC`
+  );
+
+  return result.rows.map((row) => {
+    let body = row.content || '';
+    if (row.author_name) {
+      body = `By ${row.author_name}.\n\n${body}`;
+    }
+    if (row.excerpt && !body.startsWith(row.excerpt)) {
+      body = `${row.excerpt}\n\n${body}`;
+    }
+
+    return {
+      id: `perspective:${row.slug}`,
+      title: row.title,
+      category: 'perspective',
+      path: `perspectives/${row.slug}`,
+      content: cleanContent(body),
+      sourceUrl: `${process.env.BASE_URL || 'https://agenticadvertising.org'}/perspectives/${row.slug}`,
+    };
+  });
 }
 
 /**

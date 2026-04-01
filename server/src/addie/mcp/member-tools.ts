@@ -2119,7 +2119,7 @@ export function createMemberToolHandlers(
 
     // Store
     const { createAsset } = await import('../../db/perspective-asset-db.js');
-    const asset = await createAsset({
+    await createAsset({
       perspective_id: perspectiveId,
       asset_type: assetType,
       file_name: fileName,

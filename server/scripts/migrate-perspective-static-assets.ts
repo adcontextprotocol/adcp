@@ -10,7 +10,7 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
-import { getPool, initPool } from '../src/db/client.js';
+import { getPool, initializeDatabase } from '../src/db/client.js';
 import { createAsset } from '../src/db/perspective-asset-db.js';
 
 const PERSPECTIVE_SLUG = 'building-future-of-marketing';
@@ -32,7 +32,7 @@ const ASSETS = [
 ];
 
 async function main() {
-  initPool();
+  initializeDatabase({ connectionString: process.env.DATABASE_URL || '' });
   const pool = getPool();
 
   // Find the perspective

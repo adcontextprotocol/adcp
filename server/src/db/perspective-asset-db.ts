@@ -7,9 +7,6 @@
  */
 
 import { query, getPool } from './client.js';
-import { createLogger } from '../logger.js';
-
-const logger = createLogger('perspective-asset-db');
 
 export interface PerspectiveAsset {
   id: string;

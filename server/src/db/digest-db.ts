@@ -32,12 +32,22 @@ export interface DigestSpotlightAction {
   linkLabel?: string;
 }
 
+export interface DigestPerspective {
+  title: string;
+  slug: string;
+  excerpt: string;
+  authorName: string;
+  category: string;
+  contentOrigin: string;
+}
+
 export interface DigestContent {
   intro: string;
   news: DigestNewsItem[];
   newMembers: DigestNewMember[];
   conversations: DigestConversation[];
   workingGroups: DigestWorkingGroup[];
+  perspectives?: DigestPerspective[];
   socialPostIdeas?: DigestSocialPostIdea[];
   spotlightAction?: DigestSpotlightAction;
   editorsNote?: string;

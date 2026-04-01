@@ -85,6 +85,21 @@ export function renderDigestEmail(
 
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
+    <!-- Perspectives -->
+    ${content.perspectives && content.perspectives.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">New Perspectives</h2>
+    ${content.perspectives.map((p, i) => `
+    <div style="margin-bottom: 16px; padding: 12px; background: ${p.contentOrigin === 'official' ? '#f0fdf4' : '#f8f9fa'}; border-radius: 6px;${p.contentOrigin === 'official' ? ' border-left: 4px solid #047857;' : ''}">
+      <h3 style="font-size: 15px; margin: 0 0 4px 0;">
+        <a href="${t(`perspective_${i}`, `${BASE_URL}/perspectives/${p.slug}`)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(p.title)}</a>
+      </h3>
+      <p style="font-size: 13px; color: #666; margin: 2px 0 6px 0;">by ${escapeHtml(p.authorName)}${p.contentOrigin === 'official' ? ' &middot; AAO Official' : ''}</p>
+      ${p.excerpt ? `<p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(p.excerpt.slice(0, 200))}${p.excerpt.length > 200 ? '...' : ''}</p>` : ''}
+    </div>
+    `).join('')}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
     <!-- Working Group Updates -->
     ${renderWorkingGroupsHtml(content.workingGroups, userWorkingGroupNames)}
 
