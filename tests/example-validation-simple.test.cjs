@@ -492,6 +492,7 @@ async function runTests() {
   // Context Match request — web (from index.mdx)
   await validateExample(
     {
+      "type": "context_match_request",
       "request_id": "ctx-8f3a2b",
       "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
       "property_type": "website",
@@ -521,6 +522,7 @@ async function runTests() {
   // Identity Match request — web (from index.mdx)
   await validateExample(
     {
+      "type": "identity_match_request",
       "request_id": "id-7c9e1d",
       "user_token": "opaque-streamhaus-token-abc123",
       "uid_type": "uid2",
@@ -561,6 +563,7 @@ async function runTests() {
   // Context Match request — AI assistant (from ai-mediation.mdx)
   await validateExample(
     {
+      "type": "context_match_request",
       "request_id": "ctx-trail-shoes-01",
       "property_rid": "01916f3a-f8cb-7000-8000-000000000051",
       "property_type": "ai_assistant",
@@ -605,6 +608,7 @@ async function runTests() {
   // Identity Match request with consent (from context-and-identity.mdx)
   await validateExample(
     {
+      "type": "identity_match_request",
       "request_id": "id-9b2c",
       "user_token": "tok_hk82mfp1",
       "uid_type": "uid2",

@@ -10,6 +10,11 @@
       "format": "uri",
       "description": "Optional schema URI for validation. Ignored at runtime."
     },
+    "type": {
+      "type": "string",
+      "const": "context_match_request",
+      "description": "Message type discriminator for deserialization."
+    },
     "protocol_version": {
       "type": "string",
       "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
@@ -109,8 +114,7 @@
         },
         "taxonomy_source": {
           "type": "string",
-          "description": "Organization that defines the topic taxonomy. Default: 'iab'. Other sources can be added as the ecosystem evolves.",
-          "enum": ["iab"],
+          "description": "Organization that defines the topic taxonomy. Use 'iab' for IAB Content Taxonomy. Publishers may use other values for custom taxonomies.",
           "default": "iab"
         },
         "taxonomy_id": {

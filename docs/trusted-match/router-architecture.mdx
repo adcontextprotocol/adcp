@@ -121,7 +121,7 @@ TMP targets sub-50ms end-to-end latency: publisher sends request, router fans ou
 
 This is achievable because:
 
-- **Small messages**: TMP requests are 200-600 bytes of JSON — orders of magnitude smaller than OpenRTB. Serialization is sub-microsecond.
+- **Small messages**: TMP requests are 200-600 bytes of JSON — roughly 10-20x smaller than a typical OpenRTB bid request. Serialization is sub-microsecond.
 - **No price computation**: Packages are pre-negotiated. The provider evaluates targeting criteria, not auction dynamics.
 - **Parallel fan-out**: All providers are called simultaneously. The total latency is the slowest provider's response time, not the sum.
 - **Stateless router**: No database lookups in the hot path. The router's only job is forwarding and merging.

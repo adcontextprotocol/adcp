@@ -10,6 +10,11 @@
       "format": "uri",
       "description": "Optional schema URI for validation. Ignored at runtime."
     },
+    "type": {
+      "type": "string",
+      "const": "identity_match_request",
+      "description": "Message type discriminator for deserialization."
+    },
     "protocol_version": {
       "type": "string",
       "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",

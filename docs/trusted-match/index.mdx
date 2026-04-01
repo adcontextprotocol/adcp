@@ -36,7 +36,7 @@ This isn't a StreamHaus problem. It's a structural problem. No single publisher 
 
 <img src="/images/walkthrough/tmp-02-router-setup.png" alt="Priya at a terminal, deploying a TMP Router — a diagram materializes showing context and identity paths splitting into separate channels" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Priya deploys the TMP Router — the piece that sits between her ad server and buyer agents, with structurally separate paths for context and identity. She configures Sam's buyer agent (Pinnacle) as a TMP provider, alongside other buyers.
+Priya deploys the Trusted Match Protocol (TMP) Router — the piece that sits between her ad server and buyer agents, with structurally separate paths for context and identity. She configures Sam's buyer agent (Pinnacle) as a TMP provider, alongside other buyers.
 
 The router sits between StreamHaus's ad server and the buyer agents. When a user loads a page, the router handles the real-time evaluation. Priya didn't write surface-specific code — the same router handles StreamHaus's website, their mobile app, and their CTV app.
 
@@ -206,7 +206,7 @@ The same TMP Router handles StreamHaus's website, their mobile app, their CTV ap
 
 <CardGroup cols={2}>
   <Card title="AI assistant mediation" icon="robot" href="/docs/trusted-match/ai-mediation">
-    The first mediation protocol for AI assistants — how demand finds conversational AI when the context can't be broadcast.
+    A mediation protocol for AI assistants — how demand finds conversational AI when the context can't be broadcast.
   </Card>
   <Card title="The execution gap" icon="puzzle-piece" href="/docs/trusted-match/execution-gap">
     Why existing protocols fail at serve time and why TMP takes a matching approach instead of an auction approach.

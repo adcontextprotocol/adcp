@@ -6,7 +6,7 @@ description: How TMP activates pre-negotiated packages on web pages using Prebid
 
 # TMP for Web Publishers
 
-Web publishers typically run an ad server (GAM, Kevel, FreeWheel) that manages line items, targeting rules, and ad selection. TMP integrates with this infrastructure through a Prebid module -- it tells the ad server which deals to activate, it does not replace the ad server.
+Web publishers typically run an ad server (GAM, Kevel, FreeWheel) that manages line items, targeting rules, and ad selection. TMP integrates with this infrastructure through a Prebid module — it tells the ad server which deals to activate, it does not replace the ad server.
 
 ## How It Works Today
 
@@ -64,12 +64,12 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
 Key points:
 
 - `offers` contains one entry per activated package. The provider's synced set for this placement included three packages — these two matched the kitchen/sustainability context, the third (`pkg-display-0103`) did not and is absent.
-- For web/GAM activation, offers are simple -- just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
+- For web/GAM activation, offers are simple — just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
 - `signals.targeting_kvs` are the key-value pairs that the Prebid module sets on the GAM ad request. GAM line items are configured to match on these keys.
 
 ## Identity Match
 
-Separately, the TMP Prebid module sends an Identity Match request with the user's opaque token. This request carries no page context. The `package_ids` list includes ALL active packages for the buyer -- not just the packages on this page.
+Separately, the TMP Prebid module sends an Identity Match request with the user's opaque token. This request carries no page context. The `package_ids` list includes ALL active packages for the buyer — not just the packages on this page.
 
 ### Identity Match Request
 
@@ -124,7 +124,7 @@ Key points:
 
 ## Activation: Joining Context and Identity
 
-The publisher joins context match and identity match locally. This is where the two halves come together -- the router never sees both at the same time.
+The publisher joins context match and identity match locally. This is where the two halves come together — the router never sees both at the same time.
 
 ### Step 1: Intersect
 
@@ -151,7 +151,7 @@ GAM line items are pre-configured to target on `adcp_pkg` values. When the ad re
 
 ### Step 3: GAM Selects
 
-GAM applies its own priority rules, competitive exclusions, and pacing logic across all eligible line items -- including both TMP-activated deals and other demand sources. TMP does not override GAM's ad selection; it provides the inputs.
+GAM applies its own priority rules, competitive exclusions, and pacing logic across all eligible line items — including both TMP-activated deals and other demand sources. TMP does not override GAM's ad selection; it provides the inputs.
 
 ## GAM Line Item Configuration
 
