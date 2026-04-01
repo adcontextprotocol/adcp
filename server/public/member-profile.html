@@ -2024,7 +2024,7 @@
           return;
         }
         const img = document.createElement('img');
-        img.src = photoUrl;
+        img.src = parsed.href;
         img.alt = 'Profile photo';
         img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
         img.onerror = function() {
