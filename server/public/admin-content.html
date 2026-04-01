@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Admin - Content - AAO</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-lg);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+
+    .filters {
+      display: flex;
+      gap: var(--space-3);
+      margin-bottom: var(--space-5);
+      flex-wrap: wrap;
+    }
+    .filters select {
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      background: var(--color-bg-card);
+    }
+
+    .content-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .content-table th {
+      text-align: left;
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wide);
+      color: var(--color-text-muted);
+      border-bottom: 2px solid var(--color-border);
+    }
+    .content-table td {
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      border-bottom: 1px solid var(--color-border);
+      vertical-align: top;
+    }
+    .content-table tr:hover td {
+      background: var(--color-gray-50);
+    }
+    .content-title-cell {
+      max-width: 300px;
+    }
+    .content-title-cell a {
+      color: var(--color-text-heading);
+      font-weight: var(--font-semibold);
+      text-decoration: none;
+    }
+    .content-title-cell a:hover {
+      color: var(--color-brand);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      font-size: 0.6875rem;
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-published { background: #ecfdf5; color: #047857; }
+    .badge-pending { background: #fffbeb; color: #b45309; }
+    .badge-draft { background: var(--color-gray-100); color: var(--color-text-muted); }
+    .badge-official { background: var(--color-primary-100); color: var(--color-brand); }
+    .badge-member { background: var(--color-gray-100); color: var(--color-text-secondary); }
+
+    .origin-select {
+      padding: 2px 6px;
+      font-size: var(--text-xs);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: var(--space-10);
+      color: var(--color-text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+  <div class="container">
+    <h1>Content Management</h1>
+    <p style="color: var(--color-text-secondary); margin-bottom: var(--space-6);">Manage all perspectives, reports, and articles across the site.</p>
+
+    <div class="filters">
+      <select id="filter-status">
+        <option value="all">All Statuses</option>
+        <option value="published" selected>Published</option>
+        <option value="pending_review">Pending Review</option>
+        <option value="draft">Draft</option>
+        <option value="archived">Archived</option>
+      </select>
+      <select id="filter-origin">
+        <option value="all">All Origins</option>
+        <option value="official">Official (AAO)</option>
+        <option value="member">Member</option>
+      </select>
+      <select id="filter-category">
+        <option value="all">All Categories</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <table class="content-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Origin</th>
+            <th>Category</th>
+            <th>Author</th>
+            <th>Status</th>
+            <th>Published</th>
+            <th>Assets</th>
+          </tr>
+        </thead>
+        <tbody id="content-body">
+          <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const BASE = window.__CONFIG__?.baseUrl || '';
+
+    async function loadContent() {
+      const statusFilter = document.getElementById('filter-status').value;
+      const originFilter = document.getElementById('filter-origin').value;
+      const categoryFilter = document.getElementById('filter-category').value;
+
+      const res = await fetch(`${BASE}/api/admin/content`);
+      if (!res.ok) return;
+      const data = await res.json();
+      let items = data.items || [];
+
+      // Populate category filter
+      const categories = [...new Set(items.map(i => i.category).filter(Boolean))].sort();
+      const catSelect = document.getElementById('filter-category');
+      const currentCat = catSelect.value;
+      catSelect.innerHTML = '<option value="all">All Categories</option>';
+      categories.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === currentCat) opt.selected = true;
+        catSelect.appendChild(opt);
+      });
+
+      // Apply filters
+      if (statusFilter !== 'all') items = items.filter(i => i.status === statusFilter);
+      if (originFilter !== 'all') items = items.filter(i => i.content_origin === originFilter);
+      if (categoryFilter !== 'all') items = items.filter(i => i.category === categoryFilter);
+
+      const tbody = document.getElementById('content-body');
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No content matches the filters.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = items.map(item => {
+        const statusClass = item.status === 'published' ? 'badge-published'
+          : item.status === 'pending_review' ? 'badge-pending'
+          : 'badge-draft';
+        const date = item.published_at ? new Date(item.published_at).toLocaleDateString() : '-';
+        const rawHref = item.content_type === 'link' ? item.external_url : `/perspectives/${item.slug}`;
+        const safeHref = (rawHref || '').toLowerCase().startsWith('javascript') ? '#' : esc(rawHref || '#');
+        const hasImage = item.featured_image_url ? 'Y' : '-';
+
+        return `<tr>
+          <td class="content-title-cell"><a href="${safeHref}" target="_blank">${esc(item.title)}</a></td>
+          <td>
+            <select class="origin-select" data-id="${esc(item.id)}" onchange="updateOrigin(this)">
+              <option value="official"${item.content_origin === 'official' ? ' selected' : ''}>Official</option>
+              <option value="member"${item.content_origin === 'member' ? ' selected' : ''}>Member</option>
+              <option value="external"${item.content_origin === 'external' ? ' selected' : ''}>External</option>
+            </select>
+          </td>
+          <td>${esc(item.category || '-')}</td>
+          <td>${esc(item.author_name || '-')}</td>
+          <td><span class="badge ${esc(statusClass)}">${esc(item.status)}</span></td>
+          <td>${esc(date)}</td>
+          <td>${hasImage}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+    async function updateOrigin(select) {
+      const id = select.dataset.id;
+      const origin = select.value;
+      const res = await fetch(`${BASE}/api/admin/content/${id}/origin`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_origin: origin }),
+      });
+      if (!res.ok) {
+        alert('Failed to update origin');
+        loadContent();
+      }
+    }
+
+    document.getElementById('filter-status').addEventListener('change', loadContent);
+    document.getElementById('filter-origin').addEventListener('change', loadContent);
+    document.getElementById('filter-category').addEventListener('change', loadContent);
+
+    loadContent();
+  </script>
+</body>
+</html>

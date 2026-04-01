@@ -40,6 +40,7 @@ import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
+import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -4906,7 +4907,8 @@ Disallow: /api/admin/
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
             p.external_url, p.external_site_name,
             p.author_name, p.author_title, p.featured_image_url,
-            p.published_at, p.display_order, p.tags, p.like_count
+            p.published_at, p.display_order, p.tags, p.like_count,
+            p.content_origin
           FROM perspectives p
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.status = 'published'
@@ -5005,6 +5007,49 @@ Disallow: /api/admin/
       } catch (error) {
         logger.error({ err: error, slug: req.params.slug }, 'Card image generation error');
         res.status(500).send('Failed to generate card');
+      }
+    });
+
+    // GET /api/perspectives/:slug/assets/:filename - Serve perspective assets (images, PDFs)
+    const SAFE_ASSET_TYPES: Record<string, string> = {
+      'image/jpeg': 'image/jpeg',
+      'image/png': 'image/png',
+      'image/webp': 'image/webp',
+      'image/gif': 'image/gif',
+      'application/pdf': 'application/pdf',
+    };
+    this.app.get('/api/perspectives/:slug/assets/:filename', async (req, res) => {
+      try {
+        const { slug, filename } = req.params;
+        const pool = getPool();
+
+        const perspResult = await pool.query(
+          `SELECT p.id FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE p.slug = $1 AND p.status = 'published'
+             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
+          [slug]
+        );
+        if (perspResult.rows.length === 0) {
+          return res.status(404).send('Not found');
+        }
+
+        const asset = await getPerspectiveAssetData(perspResult.rows[0].id, filename);
+        if (!asset) {
+          return res.status(404).send('Asset not found');
+        }
+
+        const contentType = SAFE_ASSET_TYPES[asset.file_mime_type] || 'application/octet-stream';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Security-Policy', "default-src 'none'");
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(asset.file_name)}"`);
+        res.setHeader('Content-Length', asset.file_data.length);
+        res.send(asset.file_data);
+      } catch (error) {
+        logger.error({ err: error, slug: req.params.slug }, 'Serve perspective asset error');
+        res.status(500).send('Failed to serve asset');
       }
     });
 
@@ -5124,9 +5169,50 @@ Disallow: /api/admin/
 
     // Note: /admin/billing is now served from billing.ts router
 
-    // Redirect old admin perspectives to unified CMS
-    this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
-      res.redirect(301, '/my-content');
+    // Admin content management
+    this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-content.html');
+    });
+
+    // GET /api/admin/content - List all perspectives for admin
+    this.app.get('/api/admin/content', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT p.id, p.slug, p.content_type, p.title, p.category, p.excerpt,
+                  p.external_url, p.author_name, p.author_title,
+                  p.featured_image_url, p.status, p.published_at,
+                  p.content_origin, p.source_type,
+                  wg.slug as committee_slug, wg.name as committee_name
+           FROM perspectives p
+           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+           ORDER BY p.published_at DESC NULLS LAST`
+        );
+        res.json({ items: result.rows });
+      } catch (error) {
+        logger.error({ err: error }, 'GET /api/admin/content error');
+        res.status(500).json({ error: 'Failed to fetch content' });
+      }
+    });
+
+    // PUT /api/admin/content/:id/origin - Update content_origin
+    this.app.put('/api/admin/content/:id/origin', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { content_origin } = req.body;
+        if (!content_origin || !['official', 'member', 'external'].includes(content_origin)) {
+          return res.status(400).json({ error: 'content_origin must be official, member, or external' });
+        }
+        const pool = getPool();
+        await pool.query(
+          `UPDATE perspectives SET content_origin = $1, updated_at = NOW() WHERE id = $2`,
+          [content_origin, id]
+        );
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'PUT /api/admin/content/:id/origin error');
+        res.status(500).json({ error: 'Failed to update content origin' });
+      }
     });
 
     this.app.get('/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {

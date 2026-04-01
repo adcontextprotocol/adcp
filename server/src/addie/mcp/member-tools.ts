@@ -584,15 +584,35 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Title' },
+        subtitle: { type: 'string', description: 'Subtitle' },
         content: { type: 'string', description: 'Content in markdown' },
         content_type: { type: 'string', enum: ['article', 'link'], description: 'Type (default: article)' },
         external_url: { type: 'string', description: 'URL for link type' },
         excerpt: { type: 'string', description: 'Short excerpt/summary' },
-        category: { type: 'string', description: 'Category (e.g., Op-Ed, Interview, Ecosystem)' },
+        category: { type: 'string', description: 'Category (e.g., Op-Ed, Interview, Ecosystem, White Paper, Press Release)' },
+        author_title: { type: 'string', description: 'Author title/role (e.g., CEO, JourneySpark Consulting)' },
+        featured_image_url: { type: 'string', description: 'URL for cover/featured image' },
+        content_origin: { type: 'string', enum: ['official', 'member'], description: 'Content origin: official (AAO reports, press releases) or member (member perspectives). Default: member' },
         committee_slug: { type: 'string', description: 'Target committee slug (default: editorial for Perspectives). Use list_working_groups to see options.' },
         co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
       },
       required: ['title'],
+    },
+  },
+  {
+    name: 'attach_content_asset',
+    description:
+      'Attach a file (image, PDF) to a published perspective. Fetches from a URL and stores it. Use after propose_content to add cover images or report PDFs.',
+    usage_hints: 'use for "attach image to perspective", "upload report PDF", "add cover image"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        perspective_slug: { type: 'string', description: 'The slug of the perspective to attach the file to' },
+        source_url: { type: 'string', description: 'URL to fetch the file from (public URL or Slack file URL)' },
+        asset_type: { type: 'string', enum: ['cover_image', 'report', 'attachment'], description: 'Type of asset: cover_image (sets featured image), report (downloadable PDF), attachment (general)' },
+        file_name: { type: 'string', description: 'Override filename (default: derived from URL)' },
+      },
+      required: ['perspective_slug', 'source_url', 'asset_type'],
     },
   },
   {
@@ -1845,11 +1865,15 @@ export function createMemberToolHandlers(
     }
 
     const title = input.title as string;
+    const subtitle = input.subtitle as string | undefined;
     const contentBody = input.content as string | undefined;
     const contentType = (input.content_type as string) || 'article';
     const externalUrl = input.external_url as string | undefined;
     const excerpt = input.excerpt as string | undefined;
     const category = input.category as string | undefined;
+    const authorTitle = input.author_title as string | undefined;
+    const featuredImageUrl = input.featured_image_url as string | undefined;
+    const contentOrigin = (input.content_origin as string | undefined) || 'member';
     const coAuthorEmails = input.co_author_emails as string[] | undefined;
 
     // Support both new format (committee_slug) and legacy format (collection.committee_slug)
@@ -1883,11 +1907,15 @@ export function createMemberToolHandlers(
       },
       {
         title,
+        subtitle,
         content: contentBody,
         content_type: contentType as 'article' | 'link',
         external_url: externalUrl,
         excerpt,
         category,
+        author_title: authorTitle,
+        featured_image_url: featuredImageUrl,
+        content_origin: contentOrigin as 'official' | 'member',
         collection: { committee_slug: committeeSlug },
       }
     );
@@ -1929,6 +1957,200 @@ export function createMemberToolHandlers(
     }
 
     return response;
+  });
+
+  handlers.set('attach_content_asset', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to attach assets. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const perspectiveSlug = input.perspective_slug as string;
+    const sourceUrl = input.source_url as string;
+    const assetType = input.asset_type as 'cover_image' | 'report' | 'attachment';
+    const fileNameOverride = input.file_name as string | undefined;
+
+    if (!perspectiveSlug || !sourceUrl || !assetType) {
+      return 'perspective_slug, source_url, and asset_type are all required.';
+    }
+
+    // Validate URL
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(sourceUrl);
+    } catch {
+      throw new ToolError('Invalid URL format');
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new ToolError('Only HTTP/HTTPS URLs are supported');
+    }
+
+    // SSRF protection
+    const { validateFetchUrl } = await import('../../utils/url-security.js');
+    try {
+      await validateFetchUrl(parsedUrl);
+    } catch (err) {
+      throw new ToolError(err instanceof Error ? err.message : 'URL validation failed');
+    }
+
+    // Look up perspective
+    const pool = (await import('../../db/client.js')).getPool();
+    const perspResult = await pool.query(
+      `SELECT id FROM perspectives WHERE slug = $1`,
+      [perspectiveSlug]
+    );
+    if (perspResult.rows.length === 0) {
+      return `Perspective "${perspectiveSlug}" not found.`;
+    }
+    const perspectiveId = perspResult.rows[0].id;
+
+    // Check permission
+    const userId = memberContext.workos_user.workos_user_id;
+    const { isWebUserAAOAdmin: checkAdmin } = await import('./admin-tools.js');
+    const userIsAdmin = await checkAdmin(userId);
+    if (!userIsAdmin) {
+      const authorCheck = await pool.query(
+        `SELECT 1 FROM perspectives WHERE id = $1 AND (author_user_id = $2 OR proposer_user_id = $2)
+         UNION SELECT 1 FROM content_authors WHERE perspective_id = $1 AND user_id = $2`,
+        [perspectiveId, userId]
+      );
+      if (authorCheck.rows.length === 0) {
+        return 'You must be an author or admin to attach assets to this perspective.';
+      }
+    }
+
+    // Fetch the file with redirect validation (SSRF protection)
+    const { validateRedirectTarget } = await import('../../utils/url-security.js');
+    const isSlackUrl = parsedUrl.hostname.endsWith('.slack.com');
+    const headers: Record<string, string> = {
+      'User-Agent': 'AgenticAdvertising/1.0',
+    };
+    if (isSlackUrl) {
+      const slackToken = process.env.SLACK_BOT_TOKEN;
+      if (slackToken) {
+        headers['Authorization'] = `Bearer ${slackToken}`;
+      }
+    }
+
+    const MAX_REDIRECTS = 5;
+    let currentUrl = sourceUrl;
+    let redirectCount = 0;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      while (true) {
+        response = await fetch(currentUrl, {
+          signal: controller.signal,
+          headers,
+          redirect: 'manual',
+        });
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          if (++redirectCount > MAX_REDIRECTS) {
+            throw new ToolError('Too many redirects');
+          }
+          const location = response.headers.get('location');
+          if (!location) throw new ToolError('Redirect with no Location header');
+          const redirectUrl = await validateRedirectTarget(location, currentUrl);
+          currentUrl = redirectUrl.toString();
+          continue;
+        }
+        break;
+      }
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof ToolError) throw err;
+      throw new ToolError(`Failed to fetch file: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+    clearTimeout(timeout);
+
+    if (!response!.ok) {
+      throw new ToolError(`Failed to fetch file: HTTP ${response!.status}`);
+    }
+
+    const contentType = response!.headers.get('content-type')?.split(';')[0].trim() || '';
+    const ALLOWED_TYPES = new Set([
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
+    ]);
+    if (!ALLOWED_TYPES.has(contentType)) {
+      throw new ToolError(`Unsupported file type: ${contentType}. Allowed: JPEG, PNG, WebP, GIF, PDF`);
+    }
+
+    const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+    const MAX_DOC_SIZE = 50 * 1024 * 1024;
+    const maxSize = contentType.startsWith('image/') ? MAX_IMAGE_SIZE : MAX_DOC_SIZE;
+
+    // Check Content-Length header before buffering full body
+    const declaredLength = parseInt(response!.headers.get('content-length') || '0', 10);
+    if (declaredLength > maxSize) {
+      throw new ToolError(`File too large (${(declaredLength / 1024 / 1024).toFixed(1)}MB). Max: ${maxSize / 1024 / 1024}MB`);
+    }
+
+    // Stream with limit enforcement
+    const reader = response!.body!.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.length;
+      if (totalBytes > maxSize) {
+        reader.cancel();
+        throw new ToolError(`File too large. Max: ${maxSize / 1024 / 1024}MB`);
+      }
+      chunks.push(value);
+    }
+    const buffer = Buffer.concat(chunks);
+
+    // Determine filename
+    const urlPath = parsedUrl.pathname.split('/').pop() || 'asset';
+    const ext = contentType === 'application/pdf' ? '.pdf'
+      : contentType === 'image/jpeg' ? '.jpg'
+      : contentType === 'image/png' ? '.png'
+      : contentType === 'image/webp' ? '.webp'
+      : contentType === 'image/gif' ? '.gif'
+      : '';
+    let fileName = fileNameOverride || decodeURIComponent(urlPath);
+    if (!fileName.includes('.') && ext) {
+      fileName += ext;
+    }
+    fileName = fileName.replace(/[^\w.\-() ]/g, '_').slice(0, 200);
+
+    // Store
+    const { createAsset } = await import('../../db/perspective-asset-db.js');
+    const asset = await createAsset({
+      perspective_id: perspectiveId,
+      asset_type: assetType,
+      file_name: fileName,
+      file_mime_type: contentType,
+      file_data: buffer,
+      uploaded_by_user_id: userId,
+    });
+
+    const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+    const assetUrl = `${baseUrl}/api/perspectives/${perspectiveSlug}/assets/${encodeURIComponent(fileName)}`;
+
+    // Auto-update featured_image_url for cover images
+    if (assetType === 'cover_image') {
+      await pool.query(
+        `UPDATE perspectives SET featured_image_url = $1, updated_at = NOW() WHERE id = $2`,
+        [assetUrl, perspectiveId]
+      );
+    }
+
+    let result_msg = `## Asset Attached\n\n`;
+    result_msg += `**File:** ${fileName} (${(buffer.length / 1024).toFixed(0)} KB)\n`;
+    result_msg += `**Type:** ${assetType}\n`;
+    result_msg += `**URL:** ${assetUrl}\n`;
+    if (assetType === 'cover_image') {
+      result_msg += `\n_Featured image has been automatically updated._\n`;
+    }
+    if (assetType === 'report') {
+      result_msg += `\nTo link this report in article content, use: \`[Download Report](${assetUrl})\`\n`;
+    }
+
+    return result_msg;
   });
 
   handlers.set('get_my_content', async (input) => {
