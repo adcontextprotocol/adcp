@@ -177,6 +177,7 @@ Seven package IDs — all active packages for this buyer across every placement 
 
 ```json
 {
+  "type": "identity_match_response",
   "request_id": "id-mob-e4d782",
   "eligible_package_ids": [
     "pkg-sports-inter-01",
@@ -203,10 +204,10 @@ From the interstitial example above:
 
 | Package | Context Match | Identity Match | Result |
 |---|---|---|---|
-| `pkg-sports-inter-01` | Activated | Eligible (0.82) | Passed to mediator |
+| `pkg-sports-inter-01` | Activated | Eligible | Passed to mediator |
 | `pkg-nutrition-inter-02` | Activated | Eligible | Passed to mediator |
 | `pkg-telecom-inter-03` | Not activated | Ineligible | Skipped |
-| `pkg-auto-inter-04` | Not activated | Eligible (0.34) | Skipped (no context match) |
+| `pkg-auto-inter-04` | Not activated | Eligible | Skipped (no context match) |
 
 Two packages pass: `pkg-sports-inter-01` and `pkg-nutrition-inter-02`. The TMP SDK registers them as custom demand sources in the mediation layer with their pre-negotiated CPMs.
 

@@ -11,14 +11,14 @@ As a buyer agent, you receive Context Match and Identity Match requests from TMP
 
 ## What You Build
 
-A buyer agent exposes two HTTP endpoints:
+A buyer agent exposes a single HTTP/2 endpoint. The router sends JSON POST requests with a `type` field that distinguishes message types:
 
-| Endpoint | Receives | Returns |
+| Message type | Receives | Returns |
 |---|---|---|
-| Context Match | Page/content signals, placement, geo | Offers with creative manifests |
-| Identity Match | Opaque user token, all active package IDs | Eligible package IDs + TTL |
+| `context_match_request` | Page/content signals, placement, geo | Offers with creative manifests |
+| `identity_match_request` | Opaque user token, all active package IDs | Eligible package IDs + TTL |
 
-Both endpoints must respond in under 50ms. The router enforces this budget and will skip slow providers.
+Your handler dispatches on the `type` field. Both message types must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
 The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides Go types, request parsing, and response builders for both endpoints.
 
@@ -39,6 +39,7 @@ The router sends you page context. You evaluate your active packages against tha
 ```json
 // Request you receive
 {
+  "type": "context_match_request",
   "request_id": "ctx-8f3a2b",
   "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
   "property_type": "website",
@@ -64,6 +65,7 @@ The router sends you page context. You evaluate your active packages against tha
 ```json
 // Your response
 {
+  "type": "context_match_response",
   "request_id": "ctx-8f3a2b",
   "offers": [
     {
@@ -93,6 +95,7 @@ The router sends you an opaque user token and a list of ALL your active package 
 ```json
 // Request you receive
 {
+  "type": "identity_match_request",
   "request_id": "id-9c4e",
   "user_token": "opaque-token-abc123",
   "uid_type": "publisher_first_party",
@@ -112,6 +115,7 @@ The router sends you an opaque user token and a list of ALL your active package 
 ```json
 // Your response
 {
+  "type": "identity_match_response",
   "request_id": "id-9c4e",
   "eligible_package_ids": ["acme-outdoor-q2", "acme-loyalty-retarget"],
   "ttl_sec": 60
@@ -160,7 +164,7 @@ Provider registration is an out-of-band process. After establishing a media buy 
 }
 ```
 
-Context Match is required. Identity Match is optional — you can support Context Match only (contextual targeting without frequency capping) or both. Providers MUST NOT support Identity Match without Context Match — the publisher joins offers from Context Match with eligibility from Identity Match. Without offers, there's nothing to activate.
+You can support either or both endpoints. Context Match only means contextual targeting without frequency capping. Identity Match only means the publisher evaluates context locally from your media buy's targeting rules and calls you only for frequency checks. Both means full TMP integration.
 
 ## Error Handling
 
@@ -213,7 +217,7 @@ TMP does not define an impression callback — the buyer learns about impression
 | | OpenRTB | TMP |
 |---|---|---|
 | **You receive** | Full bid request (user + content + device) | Either content OR identity, never both |
-| **You return** | Bid price | Offer (creative manifest) or eligibility (boolean) |
+| **You return** | Bid price | Offer (creative manifest) or eligible package IDs + TTL |
 | **Auction** | Exchange runs auction | No auction — publisher joins locally |
 | **Frequency** | Per-DSP only | Cross-publisher via Identity Match |
 | **Integration** | Per-exchange SSP adapter | Single endpoint, any surface |

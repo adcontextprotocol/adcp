@@ -103,6 +103,7 @@ The buyer evaluates the user against all requested packages and returns the IDs 
 
 ```json
 {
+  "type": "identity_match_response",
   "request_id": "id-3k9p-oakwood-d4f1",
   "eligible_package_ids": [
     "pkg-display-0041",
@@ -131,8 +132,8 @@ Take the offers from context match and filter by identity match eligibility.
 
 | Package | Context Match | Identity Match | Result |
 |---|---|---|---|
-| `pkg-display-0041` | Offered | Eligible (intent: 0.82) | Activate |
-| `pkg-native-0078` | Offered | Eligible (intent: 0.65) | Activate |
+| `pkg-display-0041` | Offered | Eligible | Activate |
+| `pkg-native-0078` | Offered | Eligible | Activate |
 | `pkg-display-0103` | Not offered | Not eligible | Skip |
 
 Only two packages survive: `pkg-display-0041` and `pkg-native-0078`.

@@ -508,6 +508,7 @@ async function runTests() {
   // Context Match response — web (from index.mdx)
   await validateExample(
     {
+      "type": "context_match_response",
       "request_id": "ctx-8f3a2b",
       "offers": [
         {
@@ -539,6 +540,7 @@ async function runTests() {
   // Identity Match response — web (from index.mdx)
   await validateExample(
     {
+      "type": "identity_match_response",
       "request_id": "id-7c9e1d",
       "eligible_package_ids": ["pkg-outdoor-audio"],
       "ttl_sec": 60
@@ -572,6 +574,7 @@ async function runTests() {
   // Context Match response — AI assistant with creative manifest (from ai-mediation.mdx)
   await validateExample(
     {
+      "type": "context_match_response",
       "request_id": "ctx-trail-shoes-01",
       "offers": [
         {

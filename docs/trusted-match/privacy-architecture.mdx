@@ -18,7 +18,7 @@ The TMP Router is a single binary with two structurally separate code paths: one
 |---|---|---|
 | **Inputs** | Page URL, content signals, topic IDs | Opaque user token, package IDs |
 | **Never receives** | Any user identity | Any page context |
-| **Returns** | Activated packages, enrichment signals | Boolean eligibility per package, optional intent score |
+| **Returns** | Activated packages, enrichment signals | Eligible package IDs + TTL (seconds) |
 
 The context code path has no access to identity data. The identity code path has no access to context data. The two paths share no state: no shared memory, no shared database, no communication channel, no shared logs or telemetry.
 

@@ -65,7 +65,7 @@ Additional configuration per provider:
 - **Latency budget**: Per-provider timeout threshold
 - **Priority**: Provider ordering for tie-breaking in merge conflicts
 
-Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match` — the join requires offers from Context Match to intersect with eligibility from Identity Match. Without offers, eligibility has nothing to activate.
+Providers MAY support any combination of `context_match` and `identity_match`. A context-only provider handles enrichment or contextual targeting. An identity-only provider handles frequency capping — the publisher evaluates context locally from the media buy's targeting rules and calls the buyer only for identity checks.
 
 All communication uses JSON over HTTP/2. TMP messages are small (200-600 bytes) — at these sizes, serialization format is less than 1% of total latency.
 

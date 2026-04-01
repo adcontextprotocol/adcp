@@ -173,21 +173,21 @@ Sent by the publisher (via router) to buyer agents. Contains an opaque user toke
 | `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
 | `uid_type` | enum | No | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
 | `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information. |
-| `package_ids` | List\<string\> | Yes | ALL active packages for this buyer. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
+| `package_ids` | List\<string\> | Yes | ALL active packages for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
 
 ### IdentityMatchResponse
 
-Returned by the buyer agent. An eligibility matrix for the requested packages.
+Returned by the buyer agent. A list of eligible package IDs with a caching TTL.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
-| `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. During this window, the router serves at most one ad per eligible package without re-querying the buyer. |
+| `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. A value of `0` means do not cache — re-query on every request. |
 
 The response is a flat list of eligible package IDs and a TTL. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
 
-The `ttl_sec` field is a caching contract. The buyer is saying: "Cache this for N seconds. During that window, serve at most one ad per eligible package." This eliminates the need for pod-specific or batch-specific protocol semantics — the router has cached eligibility and allocates across whatever placements exist during the TTL window (a CTV ad pod, a web page with 20 slots, a single pre-roll). The buyer doesn't need to know the allocation details.
+The `ttl_sec` field is a caching contract. The buyer is saying: "Cache this for N seconds." The router caches the `eligible_package_ids` list and returns it for subsequent requests during the window — it does not track which packages have been served. The publisher enforces allocation rules (at most one ad per package, competitive separation, pod composition) using the cached eligibility as input. This eliminates the need for pod-specific or batch-specific protocol semantics — the router has cached eligibility and the publisher allocates across whatever placements exist during the TTL window (a CTV ad pod, a web page with 20 slots, a single pre-roll). The buyer doesn't need to know the allocation details.
 
 #### Consent
 
@@ -202,7 +202,7 @@ Privacy consent signals for the identity match. Publishers MUST include consent 
 
 ### Error Response
 
-Returned by a provider or router when a request cannot be processed. Distinct from an empty result — an empty `offers` array or `eligibility` array is a valid response meaning no matches, not an error.
+Returned by a provider or router when a request cannot be processed. Distinct from an empty result — an empty `offers` array or empty `eligible_package_ids` list is a valid response meaning no matches, not an error.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -221,7 +221,7 @@ TMP providers are registered with the router via publisher configuration. The pu
 | `context_match` | bool | Yes | Provider supports Context Match requests. |
 | `identity_match` | bool | No | Provider supports Identity Match requests. Default: false. |
 
-Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match` — the join requires offers from Context Match to intersect with eligibility from Identity Match. Without offers, eligibility has nothing to activate.
+Providers MAY support any combination of `context_match` and `identity_match`. A provider that supports only `context_match` is a pure enrichment or contextual targeting provider. A provider that supports only `identity_match` is a frequency capping provider — the publisher evaluates context locally from the media buy's targeting rules and calls the buyer only for identity checks.
 
 ## Product Integration
 
@@ -257,7 +257,7 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 ### Package set decorrelation
 
 - Context Match MUST NOT be filtered by user identity or audience. The provider evaluates its synced package set for the placement — the same packages for every user. No per-request package list is sent, so the publisher cannot accidentally leak identity through package filtering.
-- Identity Match `package_ids` MUST include ALL active packages for the buyer, not just those available on the current page. Sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets.
+- Identity Match `package_ids` MUST include ALL active packages for the buyer at this publisher, not just those available on the current page. Sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets.
 - The publisher SHOULD maintain a cached list of all active package IDs per buyer and send the full set on every Identity Match request.
 - The publisher performs the intersection of context match offers and identity match eligibility locally, after both responses arrive.
 
@@ -280,11 +280,11 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 
 ## Request Authentication
 
-TMP requests carry a `signature` field to prove the request originated from an authorized router. This prevents unauthorized parties from sending forged requests to providers to probe their targeting logic or extract sponsored content.
+TMP requests carry a signature to prove the request originated from an authorized router. This prevents unauthorized parties from sending forged requests to providers to probe targeting logic, extract sponsored content, or manipulate frequency state.
 
 ### Signing model
 
-The router signs each context match request using Ed25519. The signature covers the static parts of the request (property_rid, placement_id, sorted package_ids, daily epoch) — not the request_id or per-request fields. This enables signature caching: the same placement with the same packages produces the same signature for up to 24 hours.
+The router signs all requests using Ed25519. Both Context Match and Identity Match requests are signed, but with different signed fields reflecting their different contents and caching characteristics.
 
 The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
 
@@ -297,7 +297,9 @@ The signature is transmitted via HTTP headers alongside the JSON body.
 | `X-AdCP-Signature` | Base64-encoded (URL-safe, no padding) Ed25519 signature |
 | `X-AdCP-Key-Id` | Key identifier from the agent's `agent-signing-key.json` |
 
-Signed fields (concatenated in this order, UTF-8, newline-separated):
+#### Context Match signed fields
+
+Concatenated in this order, UTF-8, newline-separated:
 
 | Field | Source |
 |---|---|
@@ -308,17 +310,31 @@ Signed fields (concatenated in this order, UTF-8, newline-separated):
 
 Because the signed fields are static per placement, the same signature can be cached and reused for all requests to the same placement within a 24-hour epoch.
 
+#### Identity Match signed fields
+
+Concatenated in this order, UTF-8, newline-separated:
+
+| Field | Source |
+|---|---|
+| `request_id` | From the request body |
+| `user_token` | From the request body |
+| `uid_type` | From the request body |
+| `package_ids` | Sorted, comma-separated list of active package IDs |
+| `daily_epoch` | `floor(unix_timestamp / 86400)` |
+
+Identity Match signatures include `request_id` and `user_token`, so they are unique per request and cannot be cached. This is intentional — Identity Match responses affect buyer-side frequency state and must be idempotent. The `request_id` in the signed fields lets the buyer deduplicate retried requests.
+
+### Signature verification
+
 The router MUST verify the signature before fanning out to providers. A failed verification MUST prevent fan-out — the request is rejected at the router boundary.
-
-### Key rotation
-
-Agents publish new signing keys via `agent-signing-key.json` at their well-known agent URL. Routers SHOULD cache keys with a 5-minute TTL. When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated.
-
-### Verification model
 
 Providers verify signatures using the publisher's public key, obtained from the property registry. Providers SHOULD sample-verify rather than verify every request — Ed25519 verification adds ~30μs per request, which is small compared to the full pipeline but adds up at volume. A 5% sample rate detects fraudulent publishers within seconds while adding negligible overhead.
 
 On verification failure, the provider SHOULD suppress the property for a configurable period (recommended: 24 hours) and alert operations.
+
+### Key rotation
+
+Agents publish new signing keys via `agent-signing-key.json` at their well-known agent URL. Routers SHOULD cache keys with a 5-minute TTL. When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated.
 
 ### Key distribution
 
@@ -340,6 +356,18 @@ TMP messages are small (200-600 bytes per request/response). At these sizes, ser
 - Connections SHOULD be reused via HTTP/2 multiplexing.
 - The router SHOULD maintain a connection pool to each buyer agent.
 - The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides the reference client and server implementation. Conformance tests validate compatibility — implementations in other languages MUST pass the same test suite.
+
+### HTTP Status Codes
+
+TMP uses HTTP status codes for transport-level errors only. Application-level results (including TMP error responses) are always returned with HTTP `200`:
+
+| HTTP Status | Meaning |
+|---|---|
+| `200` | Request processed. Body contains the TMP response (success, empty result, or TMP error). |
+| `400` | Malformed request (invalid JSON, missing `type` field). Not a TMP response — no body to parse. |
+| `503` | Provider temporarily unavailable. The router should retry or skip. |
+
+This means a `200` with an empty `offers` array is a valid "no matches" response, and a `200` with a TMP error body (`"type": "error"`) is a valid application error. The router handles one response format regardless of outcome.
 
 ## Latency
 
@@ -370,7 +398,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 
 All of Basic, plus:
 - Supports `identity_match` capability
-- Responds to IdentityMatchRequest with valid IdentityMatchResponse including eligibility matrix
+- Responds to IdentityMatchRequest with valid IdentityMatchResponse (eligible package IDs + TTL)
 - Supports rich offers (brand, price, summary, creative manifest) when the product declares matching `response_types`
 
 ### TMP Router (Basic)

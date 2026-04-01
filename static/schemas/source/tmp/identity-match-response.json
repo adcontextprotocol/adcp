@@ -28,6 +28,7 @@
     }
   },
   "required": [
+    "type",
     "request_id",
     "eligible_package_ids",
     "ttl_sec"

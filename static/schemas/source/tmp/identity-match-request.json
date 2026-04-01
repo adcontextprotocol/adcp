@@ -57,7 +57,7 @@
     },
     "package_ids": {
       "type": "array",
-      "description": "ALL active package identifiers for this buyer. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.",
+      "description": "ALL active package identifiers for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.",
       "items": {
         "type": "string"
       },
@@ -65,6 +65,7 @@
     }
   },
   "required": [
+    "type",
     "request_id",
     "user_token",
     "package_ids"

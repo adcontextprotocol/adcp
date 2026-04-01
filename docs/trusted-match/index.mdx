@@ -70,7 +70,7 @@ The router fans out to all configured providers in parallel and merges their res
 
 <img src="/images/walkthrough/tmp-03-context-match.png" alt="A StreamHaus article about hiking gear with content signals radiating outward — Sam's buyer agent responds with a package offer and creative manifest" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-A viewer opens a StreamHaus article about hiking gear. StreamHaus's properties are registered in the [property governance](/docs/governance/property) with stable `property_rid` identifiers, so the buyer knows exactly which property this request came from. StreamHaus sends a **Context Match** request: the article URL, and all available packages for the placement.
+A viewer opens a StreamHaus article about hiking gear. StreamHaus's properties are registered in the [property governance](/docs/governance/property) with stable `property_rid` identifiers, so the buyer knows exactly which property this request came from. StreamHaus sends a **Context Match** request with the article's content signals, placement, and geo.
 
 Sam's buyer agent evaluates: "This hiking content matches `pkg-outdoor-display`." It responds with an offer that includes a creative manifest — the Trail Pro 3000 banner.
 
@@ -148,6 +148,7 @@ Response from Sam's buyer agent:
 
 ```json
 {
+  "type": "identity_match_response",
   "request_id": "id-7c9e1d",
   "eligible_package_ids": ["pkg-outdoor-audio"],
   "ttl_sec": 60

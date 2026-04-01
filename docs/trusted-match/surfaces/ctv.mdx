@@ -117,6 +117,7 @@ Each buyer agent evaluates the household token against its own data (frequency c
 
 ```json
 {
+  "type": "identity_match_response",
   "request_id": "id-7k2m-p4w1",
   "eligible_package_ids": [
     "pkg-sparklean-30s",
@@ -142,7 +143,7 @@ The broadcaster now has two sets of results and composes the pod locally:
 3. **Rank eligible offers.** Use the ad server's own priority and pacing rules to rank the eligible offers.
 4. **Apply competitive separation.** The broadcaster's ad server enforces competitive separation rules — two brands in the same advertiser category cannot appear in the same pod. Sparklean (cleaning) and Greenleaf (grocery) are in different categories, so no conflict.
 5. **Assemble the pod.** Fill the available duration. A typical mid-roll pod might be 60 seconds:
-   - Slot 1 (30s): Sparklean — context match, household eligible, high intent
+   - Slot 1 (30s): Sparklean — context match, household eligible
    - Slot 2 (15s): Greenleaf — context match, household eligible
    - Remaining 15s: filled by other demand sources (programmatic, house ads)
 

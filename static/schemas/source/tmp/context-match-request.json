@@ -182,6 +182,7 @@
     }
   },
   "required": [
+    "type",
     "request_id",
     "property_rid",
     "property_type",

@@ -21,6 +21,11 @@
         "$ref": "/schemas/tmp/offer.json"
       }
     },
+    "cache_ttl": {
+      "type": "integer",
+      "description": "Optional override for the default 5-minute cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching (e.g., when targeting configuration has just changed).",
+      "minimum": 0
+    },
     "signals": {
       "type": "object",
       "description": "Response-level targeting signals for ad server pass-through. In the GAM case, these carry the key-value pairs that trigger line items. Not per-offer — applies to the response as a whole.",
@@ -59,6 +64,7 @@
     }
   },
   "required": [
+    "type",
     "request_id",
     "offers"
   ],
