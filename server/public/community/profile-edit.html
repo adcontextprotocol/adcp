@@ -867,6 +867,27 @@
       }
     }
 
+    // Fetch billing data in the background and update member fields when ready
+    async function fetchBillingData(orgId) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const billingResp = await fetch(`/api/organizations/${encodeURIComponent(orgId)}/billing`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (billingResp.ok) {
+          memberBillingData = await billingResp.json();
+          // Re-render member fields with billing data if this is a personal account
+          if (isPersonalAccount) {
+            populateMemberFields(memberProfileData, memberBillingData, false);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load billing info:', e);
+      }
+    }
+
     // Adapt UI for new vs returning members
     function adaptForMemberState() {
       const isNew = !profileData || (!profileData.headline && !profileData.bio);
@@ -913,6 +934,7 @@
         profileData = data.profile || {};
 
         // Detect individual account from /api/me organizations
+        let billingOrgId = null;
         if (meResponse.ok) {
           const meData = await meResponse.json();
           userData = meData.user || null;
@@ -922,34 +944,12 @@
             memberProfileData = memberData.profile || null;
             const targetOrg = orgs.find(o => o.id === memberData.organization_id);
             isPersonalAccount = targetOrg?.is_personal || false;
-
-            // Load billing for subscription status display
-            if (memberData.organization_id) {
-              try {
-                const billingResp = await fetch(`/api/organizations/${memberData.organization_id}/billing`);
-                if (billingResp.ok) {
-                  memberBillingData = await billingResp.json();
-                }
-              } catch (e) {
-                console.warn('Could not load billing info:', e);
-              }
-            }
+            billingOrgId = memberData.organization_id || null;
           } else if (orgParam) {
             // No member profile yet, but check if the requested org is personal
             const targetOrg = orgs.find(o => o.id === orgParam);
             isPersonalAccount = targetOrg?.is_personal || false;
-
-            // Load billing even without a member profile (for subscription status)
-            if (targetOrg) {
-              try {
-                const billingResp = await fetch(`/api/organizations/${targetOrg.id}/billing`);
-                if (billingResp.ok) {
-                  memberBillingData = await billingResp.json();
-                }
-              } catch (e) {
-                console.warn('Could not load billing info:', e);
-              }
-            }
+            billingOrgId = targetOrg ? targetOrg.id : null;
           }
         }
 
@@ -959,12 +959,17 @@
         // Show member directory section for individual accounts and restructure layout
         if (isPersonalAccount) {
           document.getElementById('member-directory-section').style.display = 'block';
-          populateMemberFields(memberProfileData, memberBillingData);
+          populateMemberFields(memberProfileData, memberBillingData, true);
           restructureForIndividual();
         }
 
         document.getElementById('edit-loading').style.display = 'none';
         document.getElementById('edit-content').style.display = 'block';
+
+        // Load billing data in the background (doesn't block page render)
+        if (billingOrgId) {
+          fetchBillingData(billingOrgId);
+        }
 
         // Load portrait status (non-blocking)
         initPortraitWidget();
@@ -975,8 +980,19 @@
       }
     }
 
-    function populateMemberFields(memberProfile, billingData) {
+    // populateFormValues: if true, set checkbox/input values from memberProfile.
+    // False when called from the background billing callback to avoid overwriting user edits.
+    function populateMemberFields(memberProfile, billingData, populateFormValues) {
       const isSubscribed = billingData?.subscription?.status === 'active';
+
+      // Reset disabled state so re-calls with updated billing data work correctly
+      document.getElementById('offering-consulting').disabled = false;
+      document.getElementById('offering-other').disabled = false;
+      const offeringsHint = document.getElementById('offerings-hint');
+      if (offeringsHint) {
+        offeringsHint.textContent = '';
+        offeringsHint.style.display = 'none';
+      }
 
       if (!memberProfile) {
         const statusEl = document.getElementById('member-directory-status');
@@ -995,7 +1011,6 @@
           // Disable offerings checkboxes for non-subscribers
           document.getElementById('offering-consulting').disabled = true;
           document.getElementById('offering-other').disabled = true;
-          const offeringsHint = document.getElementById('offerings-hint');
           if (offeringsHint) {
             offeringsHint.textContent = 'Subscribe to a membership to set your offerings.';
             offeringsHint.style.display = '';
@@ -1003,12 +1018,14 @@
         }
         return;
       }
-      const offerings = memberProfile.offerings || [];
-      document.getElementById('offering-consulting').checked = offerings.includes('consulting');
-      document.getElementById('offering-other').checked = offerings.includes('other');
-      document.getElementById('field-contact-email').value = memberProfile.contact_email || '';
-      document.getElementById('field-contact-phone').value = memberProfile.contact_phone || '';
-      document.getElementById('field-contact-website').value = memberProfile.contact_website || '';
+      if (populateFormValues) {
+        const offerings = memberProfile.offerings || [];
+        document.getElementById('offering-consulting').checked = offerings.includes('consulting');
+        document.getElementById('offering-other').checked = offerings.includes('other');
+        document.getElementById('field-contact-email').value = memberProfile.contact_email || '';
+        document.getElementById('field-contact-phone').value = memberProfile.contact_phone || '';
+        document.getElementById('field-contact-website').value = memberProfile.contact_website || '';
+      }
 
       // Show visibility status
       const statusEl = document.getElementById('member-directory-status');
@@ -1371,33 +1388,33 @@
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
 
-      const payload = {
-        is_public: document.getElementById('field-is-public').checked,
-        slug: document.getElementById('field-slug').value.trim() || undefined,
-        headline: document.getElementById('field-headline').value.trim() || undefined,
-        bio: document.getElementById('field-bio').value.trim() || undefined,
-        expertise: expertiseTags,
-        interests: interestsTags,
-        city: document.getElementById('field-city').value.trim() || undefined,
-        linkedin_url: document.getElementById('field-linkedin-url').value.trim() || undefined,
-        twitter_url: document.getElementById('field-twitter-url').value.trim() || undefined,
-        github_username: document.getElementById('field-github-username').value.trim() || undefined,
-        open_to_coffee_chat: document.getElementById('field-coffee-chat').checked,
-        open_to_intros: document.getElementById('field-intros').checked,
-      };
-
-      // Include member directory fields for individual accounts
-      if (isPersonalAccount) {
-        const offerings = [];
-        if (document.getElementById('offering-consulting').checked) offerings.push('consulting');
-        if (document.getElementById('offering-other').checked) offerings.push('other');
-        payload.offerings = offerings;
-        payload.contact_email = document.getElementById('field-contact-email').value.trim() || undefined;
-        payload.contact_phone = document.getElementById('field-contact-phone').value.trim() || undefined;
-        payload.contact_website = document.getElementById('field-contact-website').value.trim() || undefined;
-      }
-
       try {
+        const payload = {
+          is_public: document.getElementById('field-is-public').checked,
+          slug: document.getElementById('field-slug').value.trim() || undefined,
+          headline: document.getElementById('field-headline').value.trim() || undefined,
+          bio: document.getElementById('field-bio').value.trim() || undefined,
+          expertise: expertiseTags,
+          interests: interestsTags,
+          city: document.getElementById('field-city').value.trim() || undefined,
+          linkedin_url: document.getElementById('field-linkedin-url').value.trim() || undefined,
+          twitter_url: document.getElementById('field-twitter-url').value.trim() || undefined,
+          github_username: document.getElementById('field-github-username').value.trim() || undefined,
+          open_to_coffee_chat: document.getElementById('field-coffee-chat').checked,
+          open_to_intros: document.getElementById('field-intros').checked,
+        };
+
+        // Include member directory fields for individual accounts
+        if (isPersonalAccount) {
+          const offerings = [];
+          if (document.getElementById('offering-consulting').checked) offerings.push('consulting');
+          if (document.getElementById('offering-other').checked) offerings.push('other');
+          payload.offerings = offerings;
+          payload.contact_email = document.getElementById('field-contact-email').value.trim() || undefined;
+          payload.contact_phone = document.getElementById('field-contact-phone').value.trim() || undefined;
+          payload.contact_website = document.getElementById('field-contact-website').value.trim() || undefined;
+        }
+
         const response = await fetch('/api/me/community-profile', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

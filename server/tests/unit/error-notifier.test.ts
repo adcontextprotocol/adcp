@@ -58,6 +58,59 @@ describe('error-notifier', () => {
       expect(text).toContain('<@U999>');
       expect(text).toContain('thread-abc');
     });
+
+    it('sanitizes display names containing Slack formatting characters', async () => {
+      const name = uniqueName('tool_sanitize');
+      notifyToolError({
+        toolName: name,
+        errorMessage: 'fail',
+        userDisplayName: '<script>*bold*_italic_',
+        threadId: 'thread-san',
+        threw: true,
+      });
+
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
+
+      const text = mockSendChannelMessage.mock.calls[0][1].text;
+      expect(text).toContain('script');
+      expect(text).not.toContain('<script>');
+      expect(text).not.toContain('*bold*');
+    });
+
+    it('includes tool input and web user display name', async () => {
+      const name = uniqueName('tool_input');
+      notifyToolError({
+        toolName: name,
+        errorMessage: 'invalid input syntax for type uuid',
+        toolInput: { attempt_id: 'S1', scores: { mastery: 80 } },
+        userDisplayName: 'Bryan',
+        threadId: 'thread-xyz',
+        threw: true,
+      });
+
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
+
+      const text = mockSendChannelMessage.mock.calls[0][1].text;
+      expect(text).toContain('"attempt_id":"S1"');
+      expect(text).toContain('Bryan (web)');
+    });
+
+    it('redacts sensitive keys from tool input', async () => {
+      const name = uniqueName('tool_redact');
+      notifyToolError({
+        toolName: name,
+        errorMessage: 'auth failure',
+        toolInput: { attempt_id: 'S1', token: 'sk-secret-value', api_key: 'key123' },
+        threw: true,
+      });
+
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
+
+      const text = mockSendChannelMessage.mock.calls[0][1].text;
+      expect(text).toContain('[redacted]');
+      expect(text).not.toContain('sk-secret-value');
+      expect(text).not.toContain('key123');
+    });
   });
 
   describe('notifySystemError', () => {

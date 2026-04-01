@@ -123,6 +123,7 @@ import * as personEvents from '../db/person-events-db.js';
  * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
  */
 const SLACKBOT_USER_ID = 'USLACKBOT';
+const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
 
 /**
  * Shared database instance for working group lookups
@@ -1012,9 +1013,13 @@ async function selectRoutedToolsForSlackResponse(
 
   if (!addieRouter) {
     logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
+    const fallbackSets = ['knowledge'];
+    if (userIsAdmin && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG) {
+      fallbackSets.push('admin');
+    }
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
-      ['knowledge'],
+      fallbackSets,
       userIsAdmin,
       false
     );
@@ -1050,6 +1055,13 @@ async function selectRoutedToolsForSlackResponse(
   if (options?.hasCertificationContext) {
     selectedSets.length = 0;
     selectedSets.push('certification');
+  }
+
+  // Admin channel: always include admin tools so brief messages ("yes", "done") work
+  if (userIsAdmin && !options?.hasCertificationContext
+      && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG
+      && !selectedSets.includes('admin')) {
+    selectedSets.push('admin');
   }
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -3597,7 +3609,11 @@ async function handleChannelMessage({
 
     // Get all user-scoped tools then filter by selected tool sets
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
-    const { filteredTools, unavailableHint } = filterToolsBySet(userTools, plan.tool_sets, userIsAdmin, channelContext?.viewing_channel_is_private === false);
+    const proposedSets = [...plan.tool_sets];
+    if (userIsAdmin && channelContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG && !proposedSets.includes('admin')) {
+      proposedSets.push('admin');
+    }
+    const { filteredTools, unavailableHint } = filterToolsBySet(userTools, proposedSets, userIsAdmin, channelContext?.viewing_channel_is_private === false);
 
     // Build SI context from retrieved agents
     const siContext = siRetrievalResult?.agents.length

@@ -27,6 +27,7 @@ import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain } from '../services/brand-enrichment.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
+import { notifySystemError } from '../addie/error-notifier.js';
 
 const logger = createLogger('workos-webhooks');
 
@@ -709,6 +710,7 @@ export function createWorkOSWebhooksRouter(): Router {
 
         if (!WORKOS_WEBHOOK_SECRET) {
           logger.error('WORKOS_WEBHOOK_SECRET not configured — rejecting webhook');
+          notifySystemError({ source: 'workos-webhook', errorMessage: 'WORKOS_WEBHOOK_SECRET not configured — all webhooks rejected' });
           return res.status(401).json({ error: 'Webhook verification unavailable' });
         }
 
@@ -725,6 +727,7 @@ export function createWorkOSWebhooksRouter(): Router {
           });
         } catch (err) {
           logger.warn({ err }, 'WorkOS webhook signature verification failed');
+          notifySystemError({ source: 'workos-webhook-sig', errorMessage: `Signature verification failed for ${req.body?.event || 'unknown'} — check WORKOS_WEBHOOK_SECRET` });
           return res.status(401).json({ error: 'Invalid signature' });
         }
 
@@ -885,7 +888,10 @@ export function createWorkOSWebhooksRouter(): Router {
         return res.status(200).json({ ok: true });
       } catch (error) {
         const durationMs = Date.now() - startTime;
-        logger.error({ error, durationMs }, 'Error processing WorkOS webhook');
+        const eventType = req.body?.event || 'unknown';
+        const errMsg = error instanceof Error ? error.message : String(error);
+        logger.error({ error, durationMs, event: eventType }, 'Error processing WorkOS webhook');
+        notifySystemError({ source: 'workos-webhook', errorMessage: `Failed to process ${eventType}: ${errMsg}` });
         return res.status(500).json({ error: 'Internal error' });
       }
     }

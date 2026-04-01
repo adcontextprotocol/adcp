@@ -321,7 +321,7 @@ export class CommunityDatabase {
       FROM users u
       LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
       ${whereClause}
-      ORDER BY u.engagement_score DESC NULLS LAST, u.first_name ASC
+      ORDER BY COALESCE((SELECT SUM(points) FROM community_points cp WHERE cp.workos_user_id = u.workos_user_id), 0) DESC, u.first_name ASC
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
 
@@ -865,7 +865,7 @@ export class CommunityDatabase {
         AND u.is_public = true
         AND u.slug IS NOT NULL
         AND u.workos_user_id NOT IN (SELECT connected_user_id FROM existing_connections)
-      ORDER BY score DESC, u.engagement_score DESC NULLS LAST
+      ORDER BY score DESC, COALESCE((SELECT SUM(points) FROM community_points cp WHERE cp.workos_user_id = u.workos_user_id), 0) DESC
       LIMIT $2`,
       [userId, limit]
     );

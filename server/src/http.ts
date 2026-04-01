@@ -1,6 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import { csrfProtection } from "./middleware/csrf.js";
+import { slowResponseTracker } from "./middleware/slow-response.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
@@ -450,23 +451,8 @@ export class HTTPServer {
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
 
-    // Request logging for /api/me/member-profile to help diagnose issues
-    this.app.use('/api/me/member-profile', (req, res, next) => {
-      const startTime = Date.now();
-      logger.debug({ method: req.method, path: req.path, query: req.query }, 'member-profile request received');
-
-      // Log when response finishes
-      res.on('finish', () => {
-        logger.debug({
-          method: req.method,
-          path: req.path,
-          statusCode: res.statusCode,
-          durationMs: Date.now() - startTime
-        }, 'member-profile response sent');
-      });
-
-      next();
-    });
+    // Track slow API responses and alert ops
+    this.app.use(slowResponseTracker);
 
     // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
@@ -3218,7 +3204,8 @@ export class HTTPServer {
       try {
         event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
       } catch (err) {
-        logger.error({ err }, 'Webhook signature verification failed');
+        logger.error({ err }, 'Stripe webhook signature verification failed');
+        notifySystemError({ source: 'stripe-webhook-sig', errorMessage: 'Stripe webhook signature verification failed — check STRIPE_WEBHOOK_SECRET' });
         return res.status(400).json({ error: 'Webhook signature verification failed' });
       }
 
@@ -3397,10 +3384,16 @@ export class HTTPServer {
                         }
 
                         if (adminEmails.length > 0) {
+                          // Compute seat limits for the welcome message
+                          const { getSeatLimits } = await import('./db/organization-db.js');
+                          const welcomeTier = inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
+                          const seatLimits = getSeatLimits(welcomeTier);
+
                           await notifySubscriptionThankYou({
                             orgId: org.workos_organization_id,
                             orgName: org.name || 'Organization',
                             adminEmails,
+                            seatLimits,
                           });
                         }
                       } catch (err) {
@@ -3480,6 +3473,13 @@ export class HTTPServer {
                   ? inferMembershipTier(amount, interval, org.is_personal)
                   : null;
 
+                // Capture current tier before update for change detection
+                const oldTierResult = await pool.query<{ membership_tier: string | null }>(
+                  'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+                  [org.workos_organization_id]
+                );
+                const oldTier = oldTierResult.rows[0]?.membership_tier;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
@@ -3502,6 +3502,35 @@ export class HTTPServer {
                     membershipTier,
                   ]
                 );
+
+                // Detect tier change and notify admins
+                if (membershipTier && oldTier && membershipTier !== oldTier) {
+                  const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
+                  const { notifyTierChange } = await import('./slack/org-group-dm.js');
+                  const { getOrgAdminEmails } = await import('./utils/org-admins.js');
+
+                  (async () => {
+                    try {
+                      const oldLimits = getSeatLimits(oldTier);
+                      const newLimits = getSeatLimits(membershipTier);
+                      const currentUsage = await getSeatUsage(org.workos_organization_id);
+                      const adminEmails = await getOrgAdminEmails(workos!, org.workos_organization_id);
+
+                      if (adminEmails.length > 0) {
+                        await notifyTierChange({
+                          orgId: org.workos_organization_id,
+                          orgName: org.name || 'Organization',
+                          adminEmails,
+                          oldLimits,
+                          newLimits,
+                          currentUsage,
+                        });
+                      }
+                    } catch (err) {
+                      logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send tier change notification');
+                    }
+                  })();
+                }
 
                 logger.info({
                   orgId: org.workos_organization_id,
@@ -4121,7 +4150,9 @@ export class HTTPServer {
 
         res.json({ received: true });
       } catch (error) {
+        const errMsg = error instanceof Error ? (error as Error).message : String(error);
         logger.error({ err: error }, 'Error processing webhook');
+        notifySystemError({ source: 'stripe-webhook', errorMessage: `Failed to process Stripe ${event?.type || 'unknown'} event: ${errMsg}` });
         res.status(500).json({ error: 'Webhook processing failed' });
       }
     });
@@ -7599,6 +7630,13 @@ Disallow: /api/admin/
         webUi: `http://localhost:${port}`,
         api: `http://localhost:${port}/api/agents`,
       }, 'AdCP Registry HTTP server running');
+
+      // Start seat request reminder scheduler
+      if (workos) {
+        import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
+          startSeatRequestReminders(workos!);
+        }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+      }
     });
 
     // Setup graceful shutdown handlers
@@ -7640,6 +7678,11 @@ Disallow: /api/admin/
 
     // Stop all scheduled jobs
     jobScheduler.stopAll();
+
+    // Stop seat request reminders
+    import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
+      stopSeatRequestReminders();
+    }).catch(() => {});
 
     // Close HTTP server
     if (this.server) {

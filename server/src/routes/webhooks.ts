@@ -38,6 +38,7 @@ import {
   handleEmailInvocation,
   type InboundEmailContext,
 } from '../addie/email-handler.js';
+import { notifySystemError } from '../addie/error-notifier.js';
 import {
   parseForwardedEmailHeaders,
   formatEmailAddress,
@@ -1079,7 +1080,9 @@ export function createWebhooksRouter(): Router {
       return res.status(200).json({ ok: true });
     } catch (error) {
       const totalDurationMs = Date.now() - requestStartTime;
+      const errMsg = error instanceof Error ? error.message : String(error);
       logger.error({ error, totalDurationMs }, 'Error processing Luma webhook');
+      notifySystemError({ source: 'luma-webhook', errorMessage: `Failed to process Luma webhook: ${errMsg}` });
       return res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -1304,7 +1307,9 @@ export function createWebhooksRouter(): Router {
         }
       } catch (error) {
         const totalDurationMs = Date.now() - requestStartTime;
+        const errMsg = error instanceof Error ? error.message : String(error);
         logger.error({ error, totalDurationMs }, 'Error processing Resend inbound webhook');
+        notifySystemError({ source: 'resend-inbound-webhook', errorMessage: `Failed to process inbound email: ${errMsg}` });
         res.status(500).json({ error: 'Internal error' });
       }
     }
@@ -1426,7 +1431,9 @@ export function createWebhooksRouter(): Router {
 
         return res.status(200).json({ ok: true });
       } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
         logger.error({ error }, 'Error processing Resend tracking webhook');
+        notifySystemError({ source: 'resend-tracking-webhook', errorMessage: `Failed to process email tracking event: ${errMsg}` });
         res.status(500).json({ error: 'Internal error' });
       }
     }
@@ -1486,6 +1493,7 @@ export function createWebhooksRouter(): Router {
           const webhookSecret = process.env.ZOOM_WEBHOOK_SECRET;
           if (!webhookSecret) {
             logger.error('ZOOM_WEBHOOK_SECRET not configured - cannot validate endpoint');
+            notifySystemError({ source: 'zoom-webhook', errorMessage: 'ZOOM_WEBHOOK_SECRET not configured — all Zoom webhooks rejected' });
             return res.status(500).json({ error: 'Webhook secret not configured' });
           }
 
@@ -1579,7 +1587,9 @@ export function createWebhooksRouter(): Router {
         return res.status(200).json({ ok: true });
       } catch (error) {
         const totalDurationMs = Date.now() - requestStartTime;
+        const errMsg = error instanceof Error ? error.message : String(error);
         logger.error({ error, totalDurationMs }, 'Error processing Zoom webhook');
+        notifySystemError({ source: 'zoom-webhook', errorMessage: `Failed to process Zoom event: ${errMsg}` });
         return res.status(500).json({ error: 'Internal error' });
       }
     }

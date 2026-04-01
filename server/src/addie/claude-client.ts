@@ -228,6 +228,8 @@ export interface ProcessMessageOptions {
   maxMessages?: number;
   /** Slack user ID — used for error notifications so admins know who was affected */
   slackUserId?: string;
+  /** Fallback display name for error notifications when slackUserId is unavailable (e.g. web chat) */
+  userDisplayName?: string;
   /** Thread ID — used for error notification links to admin view */
   threadId?: string;
 }
@@ -980,7 +982,7 @@ export class AddieClaudeClient {
               logger.warn({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool returned expected error');
             } else {
               logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw unexpected exception');
-              notifyToolError({ toolName, errorMessage, slackUserId: options?.slackUserId, threadId: options?.threadId, threw: true });
+              notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
             }
             toolResults.push({
               tool_use_id: toolUseId,
@@ -1454,7 +1456,7 @@ export class AddieClaudeClient {
                 logger.warn({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool returned expected error');
               } else {
                 logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool threw unexpected exception');
-                notifyToolError({ toolName, errorMessage, slackUserId: options?.slackUserId, threadId: options?.threadId, threw: true });
+                notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
               }
               toolResults.push({
                 tool_use_id: toolUseId,

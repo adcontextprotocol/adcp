@@ -39,10 +39,14 @@ interface ToolErrorContext {
   errorMessage: string;
   /** Slack user ID of the person who triggered the conversation */
   slackUserId?: string;
+  /** Fallback display name when slackUserId is unavailable (e.g. web chat users) */
+  userDisplayName?: string;
   /** Addie thread ID for linking to admin view */
   threadId?: string;
   /** Whether the tool threw (true) vs returned an error string (false) */
   threw: boolean;
+  /** Tool input parameters — included in notification for debugging */
+  toolInput?: Record<string, unknown>;
 }
 
 /**
@@ -91,17 +95,32 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
 
   recentErrors.set(throttleKey, now);
 
-  const userLine = ctx.slackUserId ? `*User:* <@${ctx.slackUserId}>` : '*User:* unknown';
+  const userLine = ctx.slackUserId
+    ? `*User:* <@${ctx.slackUserId}>`
+    : ctx.userDisplayName
+      ? `*User:* ${ctx.userDisplayName.replace(/[<>&*_~`]/g, '')} (web)`
+      : '*User:* unknown';
   const threadLine = ctx.threadId
     ? `<https://agenticadvertising.org/admin/addie?thread=${ctx.threadId}|View thread>`
     : '';
   const kind = ctx.threw ? 'Tool exception' : 'Tool error';
+
+  const sensitivePattern = /password|token|secret|key|auth|credential/i;
+  const inputLine = ctx.toolInput
+    ? `*Input:* \`${(() => {
+        const raw = JSON.stringify(ctx.toolInput, (key, val) =>
+          key && sensitivePattern.test(key) ? '[redacted]' : val
+        );
+        return raw.length > 300 ? raw.substring(0, 300) + '...' : raw;
+      })()}\``
+    : '';
 
   const lines = [
     `:warning: *${kind}: ${ctx.toolName}*`,
     '',
     `> ${ctx.errorMessage.substring(0, 500)}`,
     '',
+    inputLine,
     userLine,
     threadLine,
   ].filter(Boolean);

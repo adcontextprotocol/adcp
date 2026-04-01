@@ -11,6 +11,7 @@ import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth.js";
 import { MeetingsDatabase } from "../db/meetings-db.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
+import { CommunityDatabase } from "../db/community-db.js";
 import { getChannelMembers } from "../slack/client.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import type { WorkingGroupTopic, MeetingStatus } from "../types.js";
@@ -866,6 +867,14 @@ export function createMeetingRouters(): {
             : user.email,
           rsvp_status,
           invite_source: 'request',
+        });
+      }
+
+      // Award community points for accepted RSVPs (fire-and-forget)
+      if (rsvp_status === 'accepted') {
+        const communityDb = new CommunityDatabase();
+        communityDb.awardPoints(user.id, 'meeting_rsvp_accepted', 5, id, 'meeting').catch(err => {
+          logger.error({ err, userId: user.id }, 'Failed to award meeting RSVP points');
         });
       }
 
