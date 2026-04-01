@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
   upsertOrganizationMembership,
@@ -21,7 +21,6 @@ import type { Pool } from 'pg';
 const TEST_ORG_ID = 'org_webhook_membership_test';
 const TEST_USER_1 = 'user_wh_test_1';
 const TEST_USER_2 = 'user_wh_test_2';
-const TEST_USER_3 = 'user_wh_test_3';
 
 describe('Membership webhook DB operations', () => {
   let pool: Pool;
