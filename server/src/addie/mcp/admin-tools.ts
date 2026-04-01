@@ -89,6 +89,7 @@ import {
   type EscalationStatus,
 } from '../../db/escalation-db.js';
 import { sendDirectMessage } from '../../slack/client.js';
+import { sendEscalationResolutionEmail } from '../../notifications/email.js';
 import {
   computePipelineStage,
   PIPELINE_STAGE_EMOJI,
@@ -1109,14 +1110,16 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   // ============================================
   {
     name: 'list_escalations',
-    description: `List escalations that need admin attention. Use this to see what requests Addie couldn't handle and need human action.
+    description: `List escalations that need admin attention, or look up a specific escalation by ID.
 
-Filter by status to see open escalations, ones in progress, or recently resolved.`,
-    usage_hints: 'Check open escalations regularly. Start with status=open.',
+Use escalation_id to get details on a specific escalation (any status).
+Use status filter to browse escalations (defaults to open).`,
+    usage_hints: 'Use escalation_id for a specific lookup. Use status=open to browse unresolved escalations.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        status: { type: 'string', enum: ['open', 'acknowledged', 'in_progress', 'resolved', 'wont_do', 'expired'], description: 'Filter by status (default: open)' },
+        escalation_id: { type: 'number', description: 'Look up a specific escalation by ID (ignores status filter)' },
+        status: { type: 'string', enum: ['open', 'acknowledged', 'in_progress', 'resolved', 'wont_do', 'expired'], description: 'Filter by status (default: open). Ignored when escalation_id is provided.' },
         category: { type: 'string', enum: ['capability_gap', 'needs_human_action', 'complex_request', 'sensitive_topic', 'other'], description: 'Filter by category' },
         limit: { type: 'number', description: 'Max results (default: 10)' },
       },
@@ -1125,22 +1128,25 @@ Filter by status to see open escalations, ones in progress, or recently resolved
   },
   {
     name: 'resolve_escalation',
-    description: `Mark an escalation as resolved and optionally notify the user. Use this after you've handled a request that was previously escalated.
+    description: `Mark an escalation as resolved and notify the user via Slack DM or email. Use this after you've handled a request that was previously escalated.
 
 IMPORTANT: Always notify the user unless there's a reason not to (e.g., test escalation, duplicate).
+Notification is sent via Slack DM when a Slack user ID is on record, or via email as fallback.
+This is how you notify users about escalation outcomes — use it whenever asked to "let someone know", "follow up", or "close the loop" on an escalation.
 
 Examples:
 - User needed admin role → used update_org_member_role → resolve and notify
 - User needed co-leader added → used add_committee_co_leader → resolve and notify
+- Admin says "this is fixed, let them know" → resolve and notify
 - Duplicate request → resolve with wont_do, no notification needed`,
-    usage_hints: 'After handling an escalated request, resolve it and notify the user.',
+    usage_hints: 'After handling an escalated request, resolve it and notify the user. Also use when asked to let someone know about a resolved escalation.',
     input_schema: {
       type: 'object' as const,
       properties: {
         escalation_id: { type: 'number', description: 'Escalation ID to resolve' },
         status: { type: 'string', enum: ['resolved', 'wont_do'], description: 'Resolution status (default: resolved)' },
         resolution_notes: { type: 'string', description: 'Notes about what was done to resolve' },
-        notify_user: { type: 'boolean', description: 'Send DM to user about resolution (default: true)' },
+        notify_user: { type: 'boolean', description: 'Notify user about resolution via Slack DM or email (default: true)' },
         notification_message: { type: 'string', description: 'Custom message to include in notification' },
       },
       required: ['escalation_id'],
@@ -7068,6 +7074,40 @@ Use add_committee_leader to assign a leader.`;
   handlers.set('list_escalations', async (input) => {
 
     try {
+      // Direct ID lookup — returns a single escalation regardless of status
+      const escalationId = input.escalation_id as number | undefined;
+      if (typeof escalationId === 'number' && Number.isInteger(escalationId) && escalationId > 0) {
+        const esc = await getEscalation(escalationId);
+        if (!esc) {
+          return `❌ Escalation #${escalationId} not found.`;
+        }
+        let response = `## Escalation #${esc.id}\n\n`;
+        response += `**Summary**: ${esc.summary}\n`;
+        response += `**Status**: ${esc.status} | **Category**: ${esc.category} | **Priority**: ${esc.priority}\n`;
+        if (esc.user_display_name) {
+          response += `**User**: ${esc.user_display_name}`;
+          if (esc.user_email) response += ` (${esc.user_email})`;
+          if (esc.slack_user_id) response += ` — Slack: <@${esc.slack_user_id}>`;
+          response += '\n';
+        } else if (esc.user_email) {
+          response += `**Contact**: ${esc.user_email}\n`;
+        }
+        if (esc.original_request) {
+          response += `**Request**: ${esc.original_request}\n`;
+        }
+        if (esc.addie_context) {
+          response += `**Why escalated**: ${esc.addie_context}\n`;
+        }
+        if (esc.resolution_notes) {
+          response += `**Resolution notes**: ${esc.resolution_notes}\n`;
+        }
+        response += `**Created**: ${new Date(esc.created_at).toLocaleDateString()}\n`;
+        if (esc.status !== 'resolved' && esc.status !== 'wont_do') {
+          response += `\n---\nUse \`resolve_escalation\` with escalation_id ${esc.id} to mark as resolved.`;
+        }
+        return response;
+      }
+
       const status = (input.status as EscalationStatus) || 'open';
       const category = input.category as string | undefined;
       const limit = (input.limit as number) || 10;
@@ -7160,7 +7200,7 @@ Use add_committee_leader to assign a leader.`;
 
       let response = `✅ Escalation #${escalationId} marked as ${status}.`;
 
-      // Notify user if requested and we have their Slack ID
+      // Notify user if requested
       if (notifyUser && escalation.slack_user_id) {
         const messageText = buildResolutionNotificationMessage(escalation, status, notificationMessage);
 
@@ -7172,11 +7212,41 @@ Use add_committee_leader to assign a leader.`;
           response += `\n📬 Notified user via Slack DM.`;
           logger.info({ escalationId, slackUserId: escalation.slack_user_id }, 'Sent escalation resolution notification');
         } else {
-          response += `\n⚠️ Could not notify user (DM failed).`;
+          response += `\n⚠️ Could not notify user via Slack (DM failed).`;
           logger.warn({ escalationId, slackUserId: escalation.slack_user_id, error: dmResult.error }, 'Failed to send notification');
+
+          // Fall back to email if Slack DM failed and we have an email
+          if (escalation.user_email) {
+            const emailSent = await sendEscalationResolutionEmail({
+              to: escalation.user_email,
+              userName: escalation.user_display_name || undefined,
+              summary: escalation.summary,
+              status,
+              notificationMessage,
+            });
+            if (emailSent) {
+              response += `\n📧 Notified user via email (${escalation.user_email}).`;
+            } else {
+              response += `\n⚠️ Email fallback also failed.`;
+            }
+          }
         }
-      } else if (notifyUser && !escalation.slack_user_id) {
-        response += `\nℹ️ No Slack user ID on record - could not send notification.`;
+      } else if (notifyUser && !escalation.slack_user_id && escalation.user_email) {
+        // No Slack ID but we have their email — send notification via email
+        const emailSent = await sendEscalationResolutionEmail({
+          to: escalation.user_email,
+          userName: escalation.user_display_name || undefined,
+          summary: escalation.summary,
+          status,
+          notificationMessage,
+        });
+        if (emailSent) {
+          response += `\n📧 Notified user via email (${escalation.user_email}).`;
+        } else {
+          response += `\n⚠️ Could not notify user (email send failed).`;
+        }
+      } else if (notifyUser) {
+        response += `\nℹ️ No Slack user ID or email on record — could not send notification.`;
       }
 
       if (resolutionNotes) {
