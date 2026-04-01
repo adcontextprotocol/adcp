@@ -131,7 +131,7 @@
       }
     }
 
-    const isPerspectivesActive = currentPath.startsWith('/perspectives');
+    const isStoriesActive = currentPath.startsWith('/stories') || currentPath.startsWith('/perspectives') || currentPath.startsWith('/latest');
     const isCertificationActive = currentPath.startsWith('/academy') || currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
     const isCommunityActive = currentPath.startsWith('/community') || currentPath.startsWith('/events') || currentPath.startsWith('/committees') || currentPath.startsWith('/meetings');
     const isRegistryActive = currentPath === '/registry'
@@ -176,7 +176,7 @@
               </div>
             </a>
             <div class="navbar__links-desktop">
-              <a href="/perspectives" class="navbar__link ${isPerspectivesActive ? 'active' : ''}">Perspectives</a>
+              <a href="/stories" class="navbar__link ${isStoriesActive ? 'active' : ''}">Stories</a>
               <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
               <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
               <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
@@ -199,7 +199,7 @@
         </div>
         <div class="navbar__backdrop" id="mobileBackdrop" aria-hidden="true" role="presentation"></div>
         <div class="navbar__mobile-menu" id="mobileMenu" role="navigation" aria-label="Mobile navigation">
-          <a href="/perspectives" class="navbar__link ${isPerspectivesActive ? 'active' : ''}">Perspectives</a>
+          <a href="/stories" class="navbar__link ${isStoriesActive ? 'active' : ''}">Stories</a>
           <a href="/certification" class="navbar__link ${isCertificationActive ? 'active' : ''}">Academy</a>
           <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
           <a href="${communityUrl}" class="navbar__link ${isCommunityActive ? 'active' : ''}">Community</a>
@@ -967,7 +967,7 @@
               <ul class="aao-footer__list">
                 <li><a href="${eventsUrl}">Events</a></li>
                 <li><a href="${committeesUrl}">Committees</a></li>
-                <li><a href="/perspectives">Perspectives</a></li>
+                <li><a href="/stories">Stories</a></li>
               </ul>
             </div>
           </div>
