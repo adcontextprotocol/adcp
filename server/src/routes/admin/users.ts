@@ -447,6 +447,7 @@ export function createAdminUsersRouter(): Router {
         users_processed: result.usersProcessed,
         users_created: result.usersCreated,
         users_removed: result.usersRemoved,
+        users_skipped: result.usersSkipped,
         errors: result.errors,
       });
     } catch (error) {

@@ -970,6 +970,7 @@ export async function backfillUsers(): Promise<{
   usersProcessed: number;
   usersCreated: number;
   usersRemoved: number;
+  usersSkipped: number;
   errors: string[];
 }> {
   const pool = getPool();
@@ -977,6 +978,7 @@ export async function backfillUsers(): Promise<{
     usersProcessed: 0,
     usersCreated: 0,
     usersRemoved: 0,
+    usersSkipped: 0,
     errors: [] as string[],
   };
 
@@ -991,7 +993,6 @@ export async function backfillUsers(): Promise<{
     const processedUserIds = new Set<string>();
     const BATCH_SIZE = 10;
     const orgs = orgsResult.rows;
-    let anyOrgFailed = false;
 
     for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
       const batch = orgs.slice(i, i + BATCH_SIZE);
@@ -1059,7 +1060,6 @@ export async function backfillUsers(): Promise<{
               : undefined;
           } while (after);
         } catch (orgError) {
-          anyOrgFailed = true;
           const msg = `Failed to fetch users for org ${org.workos_organization_id}: ${orgError}`;
           result.errors.push(msg);
           logger.warn({ error: orgError, orgId: org.workos_organization_id }, 'Backfill: failed to fetch org users');
@@ -1067,32 +1067,56 @@ export async function backfillUsers(): Promise<{
       }));
     }
 
-    // Remove local users not found in any WorkOS org.
-    // Only safe when every org was fetched successfully — a single org
-    // failure could make a multi-org user look deleted.
-    if (!anyOrgFailed && processedUserIds.size > 0) {
+    // Remove local users that no longer exist in WorkOS.
+    // Verify each candidate against WorkOS directly — a user may exist
+    // in WorkOS without being in any org (e.g. individual members).
+    if (processedUserIds.size > 0) {
       const localUsers = await pool.query<{ workos_user_id: string }>(
         `SELECT workos_user_id FROM users`,
       );
 
-      for (const row of localUsers.rows) {
-        if (!processedUserIds.has(row.workos_user_id)) {
-          const client = await pool.connect();
+      const candidates = localUsers.rows.filter(
+        row => !processedUserIds.has(row.workos_user_id)
+      );
+
+      logger.info({ count: candidates.length }, 'Backfill: verifying deletion candidates against WorkOS');
+
+      const VERIFY_BATCH_SIZE = 10;
+      for (let i = 0; i < candidates.length; i += VERIFY_BATCH_SIZE) {
+        const batch = candidates.slice(i, i + VERIFY_BATCH_SIZE);
+
+        await Promise.all(batch.map(async (row) => {
           try {
-            await client.query('BEGIN');
-            await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
-            await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
-            await client.query('COMMIT');
-            result.usersRemoved++;
-            logger.info({ userId: row.workos_user_id }, 'Backfill: removed stale user not found in WorkOS');
-          } catch (err) {
-            await client.query('ROLLBACK');
-            result.errors.push(`Failed to remove stale user ${row.workos_user_id}: ${err}`);
-            logger.warn({ error: err, userId: row.workos_user_id }, 'Backfill: failed to remove stale user');
-          } finally {
-            client.release();
+            // Confirm the user is actually gone from WorkOS before deleting
+            await workos.userManagement.getUser(row.workos_user_id);
+            // User still exists in WorkOS — skip deletion
+            result.usersSkipped++;
+          } catch (getErr: any) {
+            if (getErr?.status === 404 || getErr?.code === 'entity_not_found') {
+              const client = await pool.connect();
+              try {
+                await client.query('BEGIN');
+                await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
+                await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
+                await client.query('COMMIT');
+                result.usersRemoved++;
+                logger.info({ userId: row.workos_user_id }, 'Backfill: removed user confirmed deleted from WorkOS');
+              } catch (err) {
+                await client.query('ROLLBACK');
+                // FK constraints prevent deletion of users with platform activity
+                // (community_points, certifications, etc.) — this is expected
+                result.usersSkipped++;
+                logger.info({ error: err, userId: row.workos_user_id }, 'Backfill: user deleted from WorkOS but retained locally due to platform activity');
+              } finally {
+                client.release();
+              }
+            } else {
+              // WorkOS API error — don't delete, log the error
+              result.errors.push(`Could not verify user ${row.workos_user_id}: ${getErr}`);
+              result.usersSkipped++;
+            }
           }
-        }
+        }));
       }
     }
 

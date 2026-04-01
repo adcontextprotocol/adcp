@@ -1391,7 +1391,7 @@
           const usersResp = await fetch('/api/admin/users/sync-users', { method: 'POST' });
           if (usersResp.ok) {
             const r = await usersResp.json();
-            summary.push(`Users: ${r.users_created} synced, ${r.users_removed || 0} removed`);
+            summary.push(`Users: ${r.users_created} synced, ${r.users_removed || 0} removed, ${r.users_skipped || 0} skipped (still in WorkOS)`);
             if (!r.success) errors.push(...(r.errors || []));
           } else {
             errors.push('Users sync request failed');
