@@ -844,6 +844,9 @@ export interface InvoiceRequestData {
   lookupKey: string; // Stripe price lookup key (e.g., 'aao_invoice_membership_10k')
   workosOrganizationId?: string;
   couponId?: string; // Stripe coupon ID to apply discount to the invoice
+  daysUntilDue?: number; // Payment terms in days (default: 30)
+  invoiceDate?: string; // ISO date (YYYY-MM-DD) for backdating the invoice
+  dueDate?: string; // ISO date (YYYY-MM-DD) for explicit due date
 }
 
 /**
@@ -942,6 +945,24 @@ export async function createAndSendInvoice(
       }
     }
 
+    // Validate date inputs if provided
+    const invoiceDateUnix = data.invoiceDate
+      ? Math.floor(new Date(data.invoiceDate).getTime() / 1000)
+      : undefined;
+    const dueDateUnix = data.dueDate
+      ? Math.floor(new Date(data.dueDate).getTime() / 1000)
+      : undefined;
+
+    if (invoiceDateUnix && invoiceDateUnix > Math.floor(Date.now() / 1000)) {
+      logger.error({ invoiceDate: data.invoiceDate }, 'createAndSendInvoice: invoiceDate cannot be in the future');
+      return null;
+    }
+
+    if (dueDateUnix && invoiceDateUnix && dueDateUnix <= invoiceDateUnix) {
+      logger.error({ invoiceDate: data.invoiceDate, dueDate: data.dueDate }, 'createAndSendInvoice: dueDate must be after invoiceDate');
+      return null;
+    }
+
     // Create subscription with invoice billing
     // This creates a subscription AND generates an invoice for the first payment
     // When the invoice is paid, the subscription becomes active and will auto-renew
@@ -949,7 +970,9 @@ export async function createAndSendInvoice(
       customer: customer.id,
       items: [{ price: priceId }],
       collection_method: 'send_invoice',
-      days_until_due: 30,
+      days_until_due: data.daysUntilDue ?? 30,
+      // Backdate subscription start if invoice date is in the past
+      ...(invoiceDateUnix && { backdate_start_date: invoiceDateUnix }),
       // Apply coupon if validated
       ...(validatedCouponId && { discounts: [{ coupon: validatedCouponId }] }),
       metadata: {
@@ -989,10 +1012,24 @@ export async function createAndSendInvoice(
       invoiceId,
       subscriptionId: subscription.id,
       amountDue: invoice.amount_due,
+      invoiceDate: data.invoiceDate,
+      dueDate: data.dueDate,
+      daysUntilDue: data.daysUntilDue,
     }, 'createAndSendInvoice: Sending invoice');
 
-    // Send the invoice email - this finalizes the invoice and returns the updated invoice
-    const sentInvoice = await stripe.invoices.sendInvoice(invoiceId);
+    // When backdating or setting explicit due date, update the draft invoice
+    // before sending (sendInvoice auto-finalizes, so updates must happen first)
+    let sentInvoice: Stripe.Invoice;
+    if (invoiceDateUnix || dueDateUnix) {
+      const updateParams: Stripe.InvoiceUpdateParams = {};
+      if (invoiceDateUnix) updateParams.effective_at = invoiceDateUnix;
+      if (dueDateUnix) updateParams.due_date = dueDateUnix;
+      await stripe.invoices.update(invoiceId, updateParams);
+
+      sentInvoice = await stripe.invoices.sendInvoice(invoiceId);
+    } else {
+      sentInvoice = await stripe.invoices.sendInvoice(invoiceId);
+    }
 
     logger.info({
       subscriptionId: subscription.id,

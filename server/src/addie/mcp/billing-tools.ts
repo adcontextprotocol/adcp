@@ -114,6 +114,19 @@ After calling this, confirm the details with the customer, then call confirm_sen
           type: 'string',
           description: 'Explicit Stripe coupon ID to apply (optional - org discount is used automatically if available)',
         },
+        payment_terms: {
+          type: 'number',
+          enum: [30, 45, 60, 90],
+          description: 'Payment terms in days (net-30, net-45, net-60, net-90). Defaults to 30.',
+        },
+        invoice_date: {
+          type: 'string',
+          description: 'Invoice date as YYYY-MM-DD for backdating. Must be in the past. Controls the date shown on the invoice PDF.',
+        },
+        due_date: {
+          type: 'string',
+          description: 'Explicit due date as YYYY-MM-DD. Overrides the date calculated from payment_terms.',
+        },
       },
       required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
     },
@@ -158,6 +171,19 @@ Pass the same billing information as send_invoice.`,
         coupon_id: {
           type: 'string',
           description: 'Explicit Stripe coupon ID to apply (optional)',
+        },
+        payment_terms: {
+          type: 'number',
+          enum: [30, 45, 60, 90],
+          description: 'Payment terms in days (net-30, net-45, net-60, net-90). Defaults to 30.',
+        },
+        invoice_date: {
+          type: 'string',
+          description: 'Invoice date as YYYY-MM-DD for backdating. Must be in the past. Controls the date shown on the invoice PDF.',
+        },
+        due_date: {
+          type: 'string',
+          description: 'Explicit due date as YYYY-MM-DD. Overrides the date calculated from payment_terms.',
         },
       },
       required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
@@ -353,6 +379,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     const contactEmail = input.contact_email as string;
     const explicitCouponId = input.coupon_id as string | undefined;
     const companyName = input.company_name as string;
+    const paymentTerms = input.payment_terms as number | undefined;
+    const invoiceDate = input.invoice_date as string | undefined;
+    const dueDate = input.due_date as string | undefined;
 
     // Use authenticated org context directly; fall back to name search for Slack-only users
     let effectiveCouponId = explicitCouponId;
@@ -410,6 +439,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         discount_applied: preview.discountApplied,
         discount_description: orgDiscount,
         discount_warning: preview.discountWarning,
+        payment_terms: paymentTerms ?? 30,
+        invoice_date: invoiceDate ?? 'today',
+        due_date: dueDate ?? 'calculated from payment terms',
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error previewing invoice');
@@ -435,6 +467,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       country: string;
     };
     const explicitCouponId = input.coupon_id as string | undefined;
+    const paymentTerms = input.payment_terms as number | undefined;
+    const invoiceDate = input.invoice_date as string | undefined;
+    const dueDate = input.due_date as string | undefined;
 
     // Same org coupon lookup as send_invoice
     let effectiveCouponId = explicitCouponId;
@@ -474,6 +509,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         billingAddress,
         couponId: effectiveCouponId,
         workosOrganizationId: workosOrgId,
+        daysUntilDue: paymentTerms,
+        invoiceDate,
+        dueDate,
       });
 
       if (!result) {
