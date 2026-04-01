@@ -1687,7 +1687,17 @@ export class HTTPServer {
     });
 
     this.app.post("/api/validate", async (req, res) => {
-      const { domain, agent_url } = req.body;
+      const {
+        domain,
+        agent_url,
+        property_id,
+        property_tags,
+        collection_ids,
+        placement_ids,
+        placement_tags,
+        country,
+        at,
+      } = req.body;
 
       if (!domain || !agent_url) {
         return res.status(400).json({
@@ -1696,7 +1706,15 @@ export class HTTPServer {
       }
 
       try {
-        const result = await this.validator.validate(domain, agent_url);
+        const result = await this.validator.validate(domain, agent_url, {
+          property_id,
+          property_tags,
+          collection_ids,
+          placement_ids,
+          placement_tags,
+          country,
+          at,
+        });
         res.json(result);
       } catch (error) {
         logger.error({ err: error, domain, agent_url }, 'Validation failed');
@@ -1826,6 +1844,7 @@ export class HTTPServer {
     // Health check - verifies critical services are operational
     this.app.get("/health", async (req, res) => {
       const checks: Record<string, boolean> = {};
+      let dbError: string | null = null;
 
       // Database check is informational only. The app serves static pages,
       // docs, and cached content without DB. A DB blip must not take the
@@ -1846,23 +1865,27 @@ export class HTTPServer {
         checks.database = true;
       } catch (dbErr) {
         checks.database = false;
+        const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+        console.error('Database health check failed:', errMsg);
         notifySystemError({
           source: 'health-check',
-          errorMessage: 'Database health check failed',
+          errorMessage: `Database health check failed: ${errMsg}`,
         });
+        dbError = errMsg;
       }
 
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
 
-      res.status(200).json({
+      const body: Record<string, unknown> = {
         status: checks.database ? "ok" : "degraded",
         checks,
         registry: {
           mode: "database",
           using_database: true,
         },
-      });
+      };
+      res.status(200).json(body);
     });
 
     // Homepage route - serve different homepage based on host
@@ -3373,10 +3396,16 @@ export class HTTPServer {
                         }
 
                         if (adminEmails.length > 0) {
+                          // Compute seat limits for the welcome message
+                          const { getSeatLimits } = await import('./db/organization-db.js');
+                          const welcomeTier = inferMembershipTier(amount ?? null, interval ?? null, org.is_personal || false);
+                          const seatLimits = getSeatLimits(welcomeTier);
+
                           await notifySubscriptionThankYou({
                             orgId: org.workos_organization_id,
                             orgName: org.name || 'Organization',
                             adminEmails,
+                            seatLimits,
                           });
                         }
                       } catch (err) {
@@ -3456,6 +3485,13 @@ export class HTTPServer {
                   ? inferMembershipTier(amount, interval, org.is_personal)
                   : null;
 
+                // Capture current tier before update for change detection
+                const oldTierResult = await pool.query<{ membership_tier: string | null }>(
+                  'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+                  [org.workos_organization_id]
+                );
+                const oldTier = oldTierResult.rows[0]?.membership_tier;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
@@ -3478,6 +3514,35 @@ export class HTTPServer {
                     membershipTier,
                   ]
                 );
+
+                // Detect tier change and notify admins
+                if (membershipTier && oldTier && membershipTier !== oldTier) {
+                  const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
+                  const { notifyTierChange } = await import('./slack/org-group-dm.js');
+                  const { getOrgAdminEmails } = await import('./utils/org-admins.js');
+
+                  (async () => {
+                    try {
+                      const oldLimits = getSeatLimits(oldTier);
+                      const newLimits = getSeatLimits(membershipTier);
+                      const currentUsage = await getSeatUsage(org.workos_organization_id);
+                      const adminEmails = await getOrgAdminEmails(workos!, org.workos_organization_id);
+
+                      if (adminEmails.length > 0) {
+                        await notifyTierChange({
+                          orgId: org.workos_organization_id,
+                          orgName: org.name || 'Organization',
+                          adminEmails,
+                          oldLimits,
+                          newLimits,
+                          currentUsage,
+                        });
+                      }
+                    } catch (err) {
+                      logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send tier change notification');
+                    }
+                  })();
+                }
 
                 logger.info({
                   orgId: org.workos_organization_id,
@@ -7490,6 +7555,13 @@ Disallow: /api/admin/
         webUi: `http://localhost:${port}`,
         api: `http://localhost:${port}/api/agents`,
       }, 'AdCP Registry HTTP server running');
+
+      // Start seat request reminder scheduler
+      if (workos) {
+        import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
+          startSeatRequestReminders(workos!);
+        }).catch(err => logger.warn({ err }, 'Failed to start seat request reminders'));
+      }
     });
 
     // Setup graceful shutdown handlers
@@ -7531,6 +7603,11 @@ Disallow: /api/admin/
 
     // Stop all scheduled jobs
     jobScheduler.stopAll();
+
+    // Stop seat request reminders
+    import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
+      stopSeatRequestReminders();
+    }).catch(() => {});
 
     // Close HTTP server
     if (this.server) {

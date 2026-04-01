@@ -58,6 +58,10 @@
       background: var(--color-primary-100);
       color: var(--color-brand);
     }
+    .level-badge-founding {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
 
     .level-badge-num {
       font-size: var(--text-xs);
@@ -999,6 +1003,7 @@
             <h1>${escapeHtml(organization_name || 'Your organization')}</h1>
             <div class="hub-header-meta">
               <span class="level-badge">${escapeHtml(tier.label)}</span>
+              ${profile?.is_founding_member ? '<span class="level-badge level-badge-founding">Founding Member</span>' : ''}
               <span class="stage-desc">${escapeHtml(tier.price)}</span>
             </div>
           </div>
@@ -1026,7 +1031,10 @@
               ${isFreeTier ? `
                 <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-primary" style="width: 100%; text-align: center; cursor: pointer;">Upgrade membership</button>
               ` : `
-                <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
+                <div style="display: flex; align-items: center; gap: var(--space-3);">
+                  <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
+                  <a href="/aao-w9.pdf" download="AAO-W9.pdf" class="btn btn-ghost btn-sm" style="cursor: pointer;">Download W-9</a>
+                </div>
               `}
             </div>
 
@@ -1718,6 +1726,7 @@
       try {
         const res = await fetch(`/api/organizations/${orgId}/billing/portal`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
         });
         if (!res.ok) {

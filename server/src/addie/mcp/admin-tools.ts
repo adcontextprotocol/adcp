@@ -14,6 +14,7 @@
  */
 
 import { createLogger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -67,6 +68,7 @@ import {
   createChannel,
   getSlackChannels,
   setChannelPurpose,
+  inviteToChannel,
 } from '../../slack/client.js';
 import {
   getProductsForCustomer,
@@ -1857,6 +1859,7 @@ export function createAdminToolHandlers(
       const lifecycleStage = computePipelineStage(org);
 
       // Gather all the data in parallel
+      const memberDb = new MemberDatabase();
       const [
         slackUsersResult,
         slackOnlyUsersResult,
@@ -1867,6 +1870,7 @@ export function createAdminToolHandlers(
         pendingInvoicesResult,
         subscriptionHistoryResult,
         stakeholdersResult,
+        memberProfile,
       ] = await Promise.all([
         // Slack users count for this org (mapped members)
         pool.query(
@@ -1939,6 +1943,11 @@ export function createAdminToolHandlers(
            ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at`,
           [orgId]
         ),
+        // Member directory profile
+        memberDb.getProfileByOrgId(orgId).catch(error => {
+          logger.warn({ error, orgId }, 'Failed to get member profile for account lookup');
+          return null;
+        }),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
@@ -2062,6 +2071,27 @@ export function createAdminToolHandlers(
         // Show pending invoices for prospects in negotiating stage too
         response += renderPendingInvoiceSection(pendingInvoices);
         response += '\n';
+      }
+
+      // Directory listing
+      if (memberProfile) {
+        response += `### Directory Listing\n`;
+        response += `**Status:** ${memberProfile.is_public ? 'Published' : 'Draft (not published)'}\n`;
+        if (memberProfile.display_name) response += `**Display Name:** ${memberProfile.display_name}\n`;
+        if (memberProfile.slug) {
+          response += memberProfile.is_public
+            ? `**Live URL:** https://agenticadvertising.org/members/${memberProfile.slug}\n`
+            : `**Slug:** ${memberProfile.slug} (will be at /members/${memberProfile.slug} once published)\n`;
+        }
+        if (!memberProfile.is_public && org.subscription_status === 'active') {
+          response += `_Profile is ready to publish — member has an active subscription but hasn't clicked Publish on the dashboard._\n`;
+        } else if (!memberProfile.is_public && org.subscription_status !== 'active') {
+          response += `_Profile cannot be published without an active subscription._\n`;
+        }
+        response += '\n';
+      } else if (lifecycleStage === 'member') {
+        response += `### Directory Listing\n`;
+        response += `_No directory profile created yet._\n\n`;
       }
 
       // Slack presence
@@ -4514,6 +4544,18 @@ export function createAdminToolHandlers(
         invalidateWebAdminStatusCache(userId);
       }
 
+      // Auto-invite to the group's Slack channel (fire-and-forget)
+      if (committee.slack_channel_id) {
+        const slackDb = new SlackDatabase();
+        slackDb.getByWorkosUserId(userId).then(mapping => {
+          if (mapping?.slack_user_id) {
+            return inviteToChannel(committee.slack_channel_id!, [mapping.slack_user_id]);
+          }
+        }).catch(err => {
+          logger.error({ err, userId, channelId: committee.slack_channel_id }, 'Failed to auto-invite leader to Slack channel');
+        });
+      }
+
       logger.info({ committeeSlug, committeeName: committee.name, userId, userEmail }, 'Added committee leader via Addie');
 
       const emailInfo = userEmail ? ` (${userEmail})` : '';
@@ -4778,6 +4820,7 @@ Use add_committee_leader to assign a leader.`;
         // Step 1: Get users from secondary org in WorkOS before merge
         let workosUsersToMigrate: string[] = [];
         let workosErrors: string[] = [];
+        let secondaryRoles = new Map<string, string>();
 
         try {
           // Get all memberships from the secondary org in WorkOS
@@ -4798,9 +4841,11 @@ Use add_committee_leader to assign a leader.`;
           });
           const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
 
-          workosUsersToMigrate = memberships.data
-            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
-            .map(m => m.userId);
+          const usersToMigrate = memberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId));
+          workosUsersToMigrate = usersToMigrate.map(m => m.userId);
+          // Preserve roles from secondary org so owners/admins keep their role
+          secondaryRoles = new Map(usersToMigrate.map(m => [m.userId, m.role?.slug || 'member']));
 
           logger.info({ count: workosUsersToMigrate.length, secondaryOrgId }, 'Found WorkOS users to migrate');
         } catch (err) {
@@ -4824,10 +4869,11 @@ Use add_committee_leader to assign a leader.`;
 
         for (const userId of workosUsersToMigrate) {
           try {
+            const roleSlug = secondaryRoles.get(userId) || 'member';
             await workos.userManagement.createOrganizationMembership({
               userId,
               organizationId: primaryOrgId,
-              roleSlug: 'member', // Default to member role
+              roleSlug,
             });
             workosAdded++;
             logger.debug({ userId, primaryOrgId }, 'Added user to primary org in WorkOS');
@@ -7992,7 +8038,7 @@ Use add_committee_leader to assign a leader.`;
       return `${items.length} ${status} action items:\n\n${summary}`;
     } catch (error) {
       logger.error({ error }, 'Error fetching action items');
-      return `Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 

@@ -14,6 +14,7 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
+import { ToolError } from '../tool-error.js';
 
 // Schema base URLs for different versions
 const SCHEMA_BASE_URLS: Record<string, string> = {
@@ -76,6 +77,37 @@ async function fetchSchema(schemaUrl: string): Promise<unknown> {
     logger.warn({ error, schemaUrl }, 'Failed to fetch schema');
     throw error;
   }
+}
+
+/**
+ * Find the closest matching schema path from COMMON_SCHEMAS.
+ * Returns the match if one is found, null otherwise.
+ */
+function findClosestSchema(schemaPath: string): string | null {
+  const clean = schemaPath.replace(/^\//, '').replace(/\.json$/, '').toLowerCase();
+  // Exact match
+  if (COMMON_SCHEMAS.includes(schemaPath)) return schemaPath;
+  // Match by filename stem (e.g., "creative" matches "core/creative-manifest.json")
+  const stem = clean.split('/').pop() || clean;
+  const matches = COMMON_SCHEMAS.filter(s => {
+    const sStem = s.replace(/\.json$/, '').split('/').pop() || '';
+    return sStem === stem || sStem.startsWith(stem);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
+ * Resolve and sanitize a schema path, applying fuzzy correction if needed.
+ * Returns { resolved, corrected } where corrected is true if the path was auto-fixed.
+ */
+function resolveSchemaPath(schemaPath: string): { resolved: string; corrected: boolean } {
+  if (COMMON_SCHEMAS.includes(schemaPath)) return { resolved: schemaPath, corrected: false };
+  const closest = findClosestSchema(schemaPath);
+  if (closest) {
+    logger.info({ requested: schemaPath, resolved: closest }, 'Auto-corrected schema path');
+    return { resolved: closest, corrected: true };
+  }
+  return { resolved: schemaPath, corrected: false };
 }
 
 /**
@@ -270,7 +302,7 @@ export function createSchemaToolHandlers(): Map<
     const json = input.json;
     // Validate input is a non-null object
     if (!json || typeof json !== 'object' || Array.isArray(json)) {
-      return 'Error: json must be a non-null object, not an array or primitive value.';
+      throw new ToolError('json must be a non-null object, not an array or primitive value.');
     }
     const jsonObj = json as Record<string, unknown>;
     let schemaPath = input.schema_path as string | undefined;
@@ -292,6 +324,9 @@ export function createSchemaToolHandlers(): Map<
       return `Cannot determine schema. Please provide schema_path (e.g., "core/format.json") or include a $schema field in the JSON.`;
     }
 
+    const { resolved: resolvedPath } = resolveSchemaPath(schemaPath);
+    schemaPath = resolvedPath;
+
     version = version || 'v2';
     const schemaUrl = buildSchemaUrl(version, schemaPath);
 
@@ -312,18 +347,18 @@ ${errorList}
 **Tip:** Use \`get_schema\` to see the exact schema definition and understand what fields are expected.`;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return `Failed to validate: ${message}
+      throw new ToolError(`Failed to validate: ${message}
 
 Make sure the schema path is correct. Available schemas include:
-${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
+${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`);
     }
   });
 
   handlers.set('get_schema', async (input) => {
-    const schemaPath = input.schema_path as string;
     const version = (input.version as string) || 'v2';
     const property = input.property as string | undefined;
 
+    const { resolved: schemaPath } = resolveSchemaPath(input.schema_path as string);
     const schemaUrl = buildSchemaUrl(version, schemaPath);
 
     try {
@@ -376,12 +411,12 @@ ${displayJson}
 ${truncated ? '\n**Note:** Schema truncated. Use the `property` parameter to focus on specific sections.' : ''}`;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return `Failed to fetch schema: ${message}
+      throw new ToolError(`Failed to fetch schema: ${message}
 
 **Schema URL attempted:** ${schemaUrl}
 
 Available schemas include:
-${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
+${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`);
     }
   });
 
@@ -418,7 +453,7 @@ ${COMMON_SCHEMAS.map((s) => `- \`${s}\` → ${baseUrl}/${s}`).join('\n')}
   });
 
   handlers.set('compare_schema_versions', async (input) => {
-    const schemaPath = input.schema_path as string;
+    const { resolved: schemaPath } = resolveSchemaPath(input.schema_path as string);
     const fromVersion = (input.from_version as string) || 'v2';
     const toVersion = (input.to_version as string) || 'v3';
 
@@ -521,7 +556,7 @@ ${COMMON_SCHEMAS.map((s) => `- ${s}`).join('\n')}`;
       return report;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return `Failed to compare schemas: ${message}`;
+      throw new ToolError(`Failed to compare schemas: ${message}`);
     }
   });
 

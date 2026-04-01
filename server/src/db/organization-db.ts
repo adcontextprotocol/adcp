@@ -136,6 +136,24 @@ export function getSeatLimits(tier: string | null): SeatLimits {
 }
 
 /**
+ * Resolve the effective membership tier for an organization.
+ * Uses explicit membership_tier if set, otherwise infers from active subscription data.
+ */
+export function resolveMembershipTier(org: {
+  membership_tier: string | null;
+  subscription_status: string | null;
+  subscription_amount: number | null;
+  subscription_interval: string | null;
+  is_personal: boolean;
+} | null | undefined): MembershipTier | null {
+  if (!org) return null;
+  return (org.membership_tier as MembershipTier)
+    ?? (org.subscription_status === 'active'
+      ? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal)
+      : null);
+}
+
+/**
  * Infer membership tier from subscription amount and organization type.
  * Many orgs created before the membership_tier column was added have active subscriptions
  * but no tier recorded. Amounts are in cents. Monthly amounts are annualized.
@@ -166,20 +184,28 @@ export function inferMembershipTier(
 
 /**
  * Count current seat usage by type for an organization.
+ * A member is a contributor if any of:
+ *   - admin assigned seat_type = 'contributor'
+ *   - they have a mapped Slack account
+ *   - they are an active member of a working group
  */
 export async function getSeatUsage(orgId: string): Promise<{ contributor: number; community_only: number }> {
   const pool = getPool();
-  const result = await pool.query<{ seat_type: string; count: string }>(
-    `SELECT seat_type, COUNT(*) as count FROM organization_memberships
-     WHERE workos_organization_id = $1 GROUP BY seat_type`,
+  const result = await pool.query<{ total: string; contributor: string }>(
+    `SELECT
+       COUNT(*) as total,
+       COUNT(*) FILTER (WHERE
+         om.seat_type = 'contributor'
+         OR EXISTS (SELECT 1 FROM slack_user_mappings sm WHERE sm.workos_user_id = om.workos_user_id AND sm.mapping_status = 'mapped')
+         OR EXISTS (SELECT 1 FROM working_group_memberships wgm WHERE wgm.workos_user_id = om.workos_user_id AND wgm.status = 'active')
+       ) as contributor
+     FROM organization_memberships om
+     WHERE om.workos_organization_id = $1`,
     [orgId]
   );
-  const usage = { contributor: 0, community_only: 0 };
-  for (const row of result.rows) {
-    if (row.seat_type === 'contributor') usage.contributor = parseInt(row.count, 10);
-    if (row.seat_type === 'community_only') usage.community_only = parseInt(row.count, 10);
-  }
-  return usage;
+  const total = parseInt(result.rows[0]?.total ?? '0', 10);
+  const contributor = parseInt(result.rows[0]?.contributor ?? '0', 10);
+  return { contributor, community_only: total - contributor };
 }
 
 /**
@@ -208,26 +234,41 @@ export async function canAddSeat(
       [orgId]
     );
     const org = orgResult.rows[0];
-    const tier = org?.membership_tier
-      ?? (org?.subscription_status === 'active'
-        ? inferMembershipTier(org?.subscription_amount ?? null, org?.subscription_interval ?? null, org?.is_personal ?? false)
-        : null);
+    const tier = resolveMembershipTier(org);
     const limits = getSeatLimits(tier);
 
-    // Count active members + pending invitations as used seats
-    const usageResult = await client.query<{ seat_type: string; count: string }>(
-      `SELECT seat_type, COUNT(*) as count FROM (
-        SELECT seat_type FROM organization_memberships WHERE workos_organization_id = $1
-        UNION ALL
-        SELECT seat_type FROM invitation_seat_types WHERE workos_organization_id = $1
-      ) combined GROUP BY seat_type`,
+    // Count active members (contributor = admin-assigned OR Slack-mapped OR in working group)
+    const memberResult = await client.query<{ total: string; contributor: string }>(
+      `SELECT
+         COUNT(*) as total,
+         COUNT(*) FILTER (WHERE
+           om.seat_type = 'contributor'
+           OR EXISTS (SELECT 1 FROM slack_user_mappings sm WHERE sm.workos_user_id = om.workos_user_id AND sm.mapping_status = 'mapped')
+           OR EXISTS (SELECT 1 FROM working_group_memberships wgm WHERE wgm.workos_user_id = om.workos_user_id AND wgm.status = 'active')
+         ) as contributor
+       FROM organization_memberships om
+       WHERE om.workos_organization_id = $1`,
       [orgId]
     );
-    const usage = { contributor: 0, community_only: 0 };
-    for (const row of usageResult.rows) {
-      if (row.seat_type === 'contributor') usage.contributor = parseInt(row.count, 10);
-      if (row.seat_type === 'community_only') usage.community_only = parseInt(row.count, 10);
+    const total = parseInt(memberResult.rows[0]?.total ?? '0', 10);
+    const contributors = parseInt(memberResult.rows[0]?.contributor ?? '0', 10);
+
+    // Pending invitations also reserve seats
+    const pendingResult = await client.query<{ seat_type: string; count: string }>(
+      `SELECT seat_type, COUNT(*) as count FROM invitation_seat_types WHERE workos_organization_id = $1 GROUP BY seat_type`,
+      [orgId]
+    );
+    let pendingContributors = 0;
+    let pendingCommunity = 0;
+    for (const row of pendingResult.rows) {
+      if (row.seat_type === 'contributor') pendingContributors = parseInt(row.count, 10);
+      if (row.seat_type === 'community_only') pendingCommunity = parseInt(row.count, 10);
     }
+
+    const usage = {
+      contributor: contributors + pendingContributors,
+      community_only: (total - contributors) + pendingCommunity,
+    };
 
     await client.query('COMMIT');
 
@@ -247,19 +288,297 @@ export async function canAddSeat(
 }
 
 /**
- * Get a user's seat type from their primary organization membership.
+ * Get a user's effective seat type. A user is a contributor if any of:
+ *   - admin assigned seat_type = 'contributor'
+ *   - they have a mapped Slack account
+ *   - they are an active member of a working group
  */
 export async function getUserSeatType(userId: string): Promise<SeatType | null> {
   const pool = getPool();
-  const result = await pool.query<{ seat_type: SeatType }>(
-    `SELECT om.seat_type FROM organization_memberships om
-     JOIN users u ON u.primary_organization_id = om.workos_organization_id
-       AND u.workos_user_id = om.workos_user_id
-     WHERE om.workos_user_id = $1
-     LIMIT 1`,
+  const result = await pool.query<{ is_contributor: boolean }>(
+    `SELECT (
+       EXISTS (SELECT 1 FROM organization_memberships WHERE workos_user_id = $1 AND seat_type = 'contributor')
+       OR EXISTS (SELECT 1 FROM slack_user_mappings WHERE workos_user_id = $1 AND mapping_status = 'mapped')
+       OR EXISTS (SELECT 1 FROM working_group_memberships WHERE workos_user_id = $1 AND status = 'active')
+     ) as is_contributor
+     FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
     [userId]
   );
-  return result.rows[0]?.seat_type ?? null;
+  if (result.rows.length === 0) return null;
+  return result.rows[0]?.is_contributor ? 'contributor' : 'community_only';
+}
+
+// ==================== Seat Warning Threshold Management ====================
+
+export interface SeatWarningResult {
+  shouldNotify: boolean;
+  threshold: 80 | 100;
+}
+
+/**
+ * Check whether seat usage has crossed a notification threshold and atomically
+ * update the stored threshold to prevent duplicate notifications.
+ *
+ * Uses hysteresis: the 80% threshold re-arms when usage drops below 60%.
+ * Individual tiers (1-seat plans) are excluded from percentage-based warnings.
+ *
+ * Returns null if no notification needed, or the threshold to notify at.
+ */
+export async function checkAndUpdateSeatWarning(
+  orgId: string,
+  seatType: 'contributor' | 'community',
+  usage: number,
+  limit: number,
+  tier: string | null
+): Promise<SeatWarningResult | null> {
+  // Skip individual tiers (percentage-based warnings are meaningless for 1 seat)
+  if (tier?.startsWith('individual_')) return null;
+
+  // Skip unlimited or zero-limit seat types
+  if (limit <= 0) return null;
+
+  const VALID_COLUMNS = ['last_contributor_seat_warning', 'last_community_seat_warning'] as const;
+  const column = seatType === 'contributor' ? VALID_COLUMNS[0] : VALID_COLUMNS[1];
+
+  const percentage = (usage / limit) * 100;
+  const pool = getPool();
+
+  // If at or above 100%, try to upgrade threshold to 100
+  if (percentage >= 100) {
+    const result = await pool.query(
+      `UPDATE organizations SET ${column} = 100, updated_at = NOW()
+       WHERE workos_organization_id = $1 AND ${column} < 100
+       RETURNING workos_organization_id`,
+      [orgId]
+    );
+    if (result.rows.length > 0) {
+      return { shouldNotify: true, threshold: 100 };
+    }
+    return null;
+  }
+
+  // If at or above 80%, try to upgrade threshold to 80
+  if (percentage >= 80) {
+    const result = await pool.query(
+      `UPDATE organizations SET ${column} = 80, updated_at = NOW()
+       WHERE workos_organization_id = $1 AND ${column} < 80
+       RETURNING workos_organization_id`,
+      [orgId]
+    );
+    if (result.rows.length > 0) {
+      return { shouldNotify: true, threshold: 80 };
+    }
+    return null;
+  }
+
+  // If below 60%, re-arm the threshold (hysteresis)
+  if (percentage < 60) {
+    await pool.query(
+      `UPDATE organizations SET ${column} = 0, updated_at = NOW()
+       WHERE workos_organization_id = $1 AND ${column} > 0`,
+      [orgId]
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Reset seat warning threshold when a seat frees up.
+ * Returns the previous threshold so callers know whether to send a "seat freed" notification.
+ */
+export async function resetSeatWarningIfNeeded(
+  orgId: string,
+  seatType: 'contributor' | 'community',
+  newUsage: number,
+  limit: number
+): Promise<number> {
+  if (limit <= 0) return 0;
+
+  const column = seatType === 'contributor'
+    ? 'last_contributor_seat_warning'
+    : 'last_community_seat_warning';
+
+  const percentage = (newUsage / limit) * 100;
+
+  // Compute new threshold with hysteresis: preserve current value in the 60-79% band
+  // so re-adding a member after removal doesn't re-trigger the 80% warning
+  let newThreshold: number;
+  if (percentage >= 100) newThreshold = 100;
+  else if (percentage >= 80) newThreshold = 80;
+  else if (percentage < 60) newThreshold = 0;
+  else {
+    // 60-79% band: preserve current threshold (hysteresis)
+    const current = await getPool().query<{ val: number }>(
+      `SELECT ${column} AS val FROM organizations WHERE workos_organization_id = $1`,
+      [orgId]
+    );
+    newThreshold = current.rows[0]?.val ?? 0;
+  }
+
+  // Capture old value via CTE before updating
+  const result = await getPool().query<{ old_threshold: number }>(
+    `WITH old AS (
+       SELECT ${column} AS val FROM organizations WHERE workos_organization_id = $1
+     )
+     UPDATE organizations
+     SET ${column} = $2, updated_at = NOW()
+     WHERE workos_organization_id = $1
+     RETURNING (SELECT val FROM old) AS old_threshold`,
+    [orgId, newThreshold]
+  );
+
+  return result.rows[0]?.old_threshold ?? 0;
+}
+
+// ==================== Seat Upgrade Requests ====================
+
+export interface SeatUpgradeRequest {
+  id: string;
+  workos_organization_id: string;
+  workos_user_id: string;
+  requested_seat_type: string;
+  resource_type: string;
+  resource_id: string | null;
+  resource_name: string | null;
+  status: 'pending' | 'approved' | 'denied';
+  created_at: Date;
+  resolved_at: Date | null;
+  resolved_by: string | null;
+  admin_reminder_sent_at: Date | null;
+  member_timeout_notified_at: Date | null;
+}
+
+export async function createSeatUpgradeRequest(data: {
+  orgId: string;
+  userId: string;
+  resourceType: string;
+  resourceId?: string;
+  resourceName?: string;
+}): Promise<SeatUpgradeRequest> {
+  const pool = getPool();
+  const result = await pool.query<SeatUpgradeRequest>(
+    `INSERT INTO seat_upgrade_requests (workos_organization_id, workos_user_id, resource_type, resource_id, resource_name)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [data.orgId, data.userId, data.resourceType, data.resourceId || '', data.resourceName || null]
+  );
+  return result.rows[0];
+}
+
+export async function getSeatUpgradeRequest(requestId: string): Promise<SeatUpgradeRequest | null> {
+  const pool = getPool();
+  const result = await pool.query<SeatUpgradeRequest>(
+    'SELECT * FROM seat_upgrade_requests WHERE id = $1',
+    [requestId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function listSeatUpgradeRequests(
+  orgId: string,
+  options?: { userId?: string; status?: string }
+): Promise<SeatUpgradeRequest[]> {
+  const pool = getPool();
+  const conditions = ['workos_organization_id = $1'];
+  const params: any[] = [orgId];
+
+  if (options?.userId) {
+    conditions.push(`workos_user_id = $${params.length + 1}`);
+    params.push(options.userId);
+  }
+  if (options?.status) {
+    conditions.push(`status = $${params.length + 1}`);
+    params.push(options.status);
+  }
+
+  const result = await pool.query<SeatUpgradeRequest>(
+    `SELECT * FROM seat_upgrade_requests WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`,
+    params
+  );
+  return result.rows;
+}
+
+export async function resolveSeatUpgradeRequest(
+  requestId: string,
+  status: 'approved' | 'denied',
+  resolvedBy: string
+): Promise<SeatUpgradeRequest | null> {
+  const pool = getPool();
+  const result = await pool.query<SeatUpgradeRequest>(
+    `UPDATE seat_upgrade_requests
+     SET status = $1, resolved_at = NOW(), resolved_by = $2
+     WHERE id = $3 AND status = 'pending'
+     RETURNING *`,
+    [status, resolvedBy, requestId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function hasPendingSeatRequest(
+  orgId: string,
+  userId: string,
+  resourceType: string,
+  resourceId?: string
+): Promise<boolean> {
+  const pool = getPool();
+  const result = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM seat_upgrade_requests
+       WHERE workos_organization_id = $1
+         AND workos_user_id = $2
+         AND resource_type = $3
+         AND COALESCE(resource_id, '') = COALESCE($4, '')
+         AND status = 'pending'
+     ) as exists`,
+    [orgId, userId, resourceType, resourceId || '']
+  );
+  return result.rows[0]?.exists ?? false;
+}
+
+/**
+ * Find stale pending requests for sending reminders/timeout notifications.
+ */
+export async function findStaleSeatRequests(): Promise<{
+  needsAdminReminder: SeatUpgradeRequest[];
+  needsMemberTimeout: SeatUpgradeRequest[];
+}> {
+  const pool = getPool();
+
+  const adminResult = await pool.query<SeatUpgradeRequest>(
+    `SELECT * FROM seat_upgrade_requests
+     WHERE status = 'pending'
+       AND admin_reminder_sent_at IS NULL
+       AND created_at < NOW() - INTERVAL '48 hours'
+     LIMIT 100`
+  );
+
+  const memberResult = await pool.query<SeatUpgradeRequest>(
+    `SELECT * FROM seat_upgrade_requests
+     WHERE status = 'pending'
+       AND member_timeout_notified_at IS NULL
+       AND created_at < NOW() - INTERVAL '7 days'
+     LIMIT 100`
+  );
+
+  return {
+    needsAdminReminder: adminResult.rows,
+    needsMemberTimeout: memberResult.rows,
+  };
+}
+
+export async function markAdminReminderSent(requestId: string): Promise<void> {
+  await getPool().query(
+    'UPDATE seat_upgrade_requests SET admin_reminder_sent_at = NOW() WHERE id = $1',
+    [requestId]
+  );
+}
+
+export async function markMemberTimeoutNotified(requestId: string): Promise<void> {
+  await getPool().query(
+    'UPDATE seat_upgrade_requests SET member_timeout_notified_at = NOW() WHERE id = $1',
+    [requestId]
+  );
 }
 
 export class OrganizationDatabase {

@@ -18,14 +18,22 @@ import type {
 type PricingOption = Product['pricing_options'][number];
 type PriceGuidance = NonNullable<Extract<PricingOption, { pricing_model: 'cpm' }>['price_guidance']>;
 type Installment = NonNullable<Product['installments']>[number];
-type CollectionSelector = NonNullable<Product['collections']>[number];
+type InstallmentStatus = NonNullable<Installment['status']>;
 type MediaChannel = NonNullable<Product['channels']>[number];
 type DeliveryType = Product['delivery_type'];
-type Exclusivity = NonNullable<Product['exclusivity']>;
 type PublisherPropertySelector = Product['publisher_properties'][number];
-type InstallmentStatus = NonNullable<Installment['status']>;
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
+type CollectionSelector = {
+  publisher_domain: string;
+  collection_ids: string[];
+};
+type TrainingProduct = Product & {
+  collections?: CollectionSelector[];
+  installments?: Installment[];
+  exclusivity?: 'exclusive' | 'category';
+  collection_targeting_allowed?: boolean;
+};
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
@@ -50,6 +58,17 @@ function inferPrimaryAssetType(channels: string[]): string {
   if (channels.some(c => ['radio', 'streaming_audio', 'podcast'].includes(c))) return 'audio';
   if (channels.some(c => ['social', 'influencer'].includes(c))) return 'social';
   return 'display';
+}
+
+function normalizeInstallmentStatus(status: string): InstallmentStatus {
+  switch (status) {
+    case 'completed':
+      return 'aired';
+    case 'canceled':
+      return 'cancelled';
+    default:
+      return status as InstallmentStatus;
+  }
 }
 
 function buildPriceGuidance(template: PricingTemplate): PriceGuidance | undefined {
@@ -400,12 +419,34 @@ function buildProduct(
     }
   }
 
-  // Build forecast for non-guaranteed products
+  // Build forecast
   let forecast: Product['forecast'];
-  if (template.deliveryType === 'non_guaranteed') {
-    const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
-    const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
+  const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
+  const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
+  const currency = effectivePricing[0]?.currency || 'USD';
 
+  if (template.deliveryType === 'guaranteed') {
+    // Availability forecast — total inventory available, no budget input.
+    // Cast needed until @adcp/client types are regenerated with optional budget
+    // and the 'availability' forecast_range_unit value.
+    const availableImpressions = impressionsPer1k * 30;
+    const estimatedSpend = Math.round(availableImpressions * baseCpm / 1000);
+    forecast = {
+      points: [
+        {
+          metrics: {
+            impressions: { low: Math.round(availableImpressions * 0.85), mid: availableImpressions, high: Math.round(availableImpressions * 1.1) },
+            reach: { low: Math.round(availableImpressions * 0.5), mid: Math.round(availableImpressions * 0.65), high: Math.round(availableImpressions * 0.75) },
+            spend: { low: Math.round(estimatedSpend * 0.85), mid: estimatedSpend, high: Math.round(estimatedSpend * 1.1) },
+          },
+        },
+      ],
+      forecast_range_unit: 'availability',
+      method: 'guaranteed',
+      currency,
+    } as unknown as Product['forecast'];
+  } else {
+    // Spend curve — metrics at ascending budget levels
     forecast = {
       points: [
         {
@@ -424,7 +465,7 @@ function buildProduct(
         },
       ],
       method: 'modeled',
-      currency: effectivePricing[0]?.currency || 'USD',
+      currency,
     };
   }
 
@@ -440,7 +481,7 @@ function buildProduct(
 
   // Build collection/installment associations
   let collectionSelectors: CollectionSelector[] | undefined;
-  let exclusivity: Exclusivity | undefined;
+  let exclusivity: 'exclusive' | 'category' | undefined;
   let installments: Installment[] | undefined;
   let collectionTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
@@ -465,10 +506,9 @@ function buildProduct(
             installment_id: ep.episodeId,
             collection_id: show.showId,
             name: ep.title,
-            status: ep.status as InstallmentStatus,
+            status: normalizeInstallmentStatus(ep.status),
             scheduled_at: ep.scheduledAt,
             duration_seconds: ep.durationSeconds,
-            ...(ep.special && { special: ep.special as Installment['special'] }),
           };
           builtInstallments.push(installment);
         }
@@ -479,7 +519,7 @@ function buildProduct(
     }
   }
 
-  const product: Product = {
+  const product: TrainingProduct = {
     product_id: productId,
     name: template.name,
     description: template.description,
@@ -553,7 +593,7 @@ function buildProduct(
   };
 
   return {
-    product,
+    product: product as Product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
@@ -596,9 +636,10 @@ function buildShowObject(show: ShowDefinition): ShowResponse {
 export function buildShowsForProducts(products: Product[]): ShowResponse[] {
   const referencedIds = new Set<string>();
   for (const p of products) {
-    if (p.collections) {
-      for (const selector of p.collections) {
-        selector.collection_ids.forEach(id => referencedIds.add(id));
+    const collections = (p as Product & { collections?: CollectionSelector[] }).collections;
+    if (collections) {
+      for (const selector of collections) {
+        selector.collection_ids.forEach((id: string) => referencedIds.add(id));
       }
     }
   }

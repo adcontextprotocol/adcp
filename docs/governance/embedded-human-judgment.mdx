@@ -188,6 +188,20 @@ Decisions must be explainable at multiple levels:
 
 Decision intent is captured by design within the protocol for each message and targeting instruction.
 
+## Protocol mapping
+
+Each EHJ principle surfaces in specific protocol mechanisms:
+
+| EHJ Principle | Protocol surface | Where documented |
+|--------------|-----------------|-----------------|
+| Humans define boundaries | `authority_level` and `reallocation_threshold` on plans | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) |
+| Oversight is architectural | Three-party model (orchestrator, governance, seller) | [Safety model](/docs/governance/campaign/safety-model) |
+| Judgment cannot be delegated to software | `authority_level: human_required` forces async human review — `check_governance` goes async and resolves to `approved` or `denied` | [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance) |
+| Accountability requires legibility | `get_plan_audit_logs`, structured findings with confidence scores | [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) |
+| Adoption must be incremental | Governance agents choose their own enforcement strategy internally | [Campaign governance](/docs/governance/campaign/index) |
+
+The `authority_level` on campaign plans maps directly to EHJ decision types — `agent_full` grants autonomous execution, `agent_limited` sets guardrails with thresholds, and `human_required` mandates human approval for every action. When human review is needed, `check_governance` behaves as an async task — it returns async status and resolves to `approved` or `denied` once the human acts. The caller does not need to know whether a human was involved.
+
 ## How this manifests in practice
 
 The [governance protocol overview](/docs/governance/overview) walks through a complete campaign scenario where every one of these principles is visible in action — from plan registration through human approval to audit trail. The [campaign governance safety model](/docs/governance/campaign/safety-model) details the structural controls that implement these principles at the protocol level.

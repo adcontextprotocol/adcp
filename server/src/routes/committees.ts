@@ -33,12 +33,17 @@ const logger = createLogger("committee-routes");
 const documentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+  fileFilter: (_req: Request, file: { mimetype: string }, cb: (error: Error | null, acceptFile?: boolean) => void) => {
+    const allowed = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF and PPTX files are accepted'));
+      cb(new Error('Only PDF, PPTX, XLSX, and DOCX files are accepted'));
     }
   },
 });
@@ -86,7 +91,7 @@ const ALLOWED_FILE_HOSTING_DOMAINS = [
   'www.agenticadvertising.org',
 ];
 
-const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.pptx'];
+const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.pptx', '.xlsx', '.docx'];
 
 function isAllowedDocumentUrl(url: string): boolean {
   try {
@@ -596,6 +601,19 @@ export function createCommitteeRouters(): {
       invalidateMemberContextCache();
       invalidateWebAdminStatusCache(workos_user_id);
 
+      // Auto-invite new member to the group's Slack channel (fire-and-forget)
+      const group = await workingGroupDb.getWorkingGroupById(id);
+      if (group?.slack_channel_id) {
+        const slackDb = new SlackDatabase();
+        slackDb.getByWorkosUserId(workos_user_id).then(mapping => {
+          if (mapping?.slack_user_id) {
+            return inviteToChannel(group.slack_channel_id!, [mapping.slack_user_id]);
+          }
+        }).catch(err => {
+          logger.error({ err, userId: workos_user_id, channelId: group.slack_channel_id }, 'Failed to auto-invite to Slack channel on admin add');
+        });
+      }
+
       res.status(201).json(membership);
     } catch (error) {
       logger.error({ err: error }, 'Add working group member error:');
@@ -981,9 +999,20 @@ export function createCommitteeRouters(): {
       const { getUserSeatType } = await import('../db/organization-db.js');
       const seatType = await getUserSeatType(user.id);
       if (seatType === 'community_only') {
+        // Look up user's org for seat request capability
+        const orgResult = await getPool().query<{ workos_organization_id: string }>(
+          'SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1',
+          [user.id]
+        );
+        const userOrgId = orgResult.rows[0]?.workos_organization_id;
+        const resourceType = group.committee_type === 'council' ? 'council' : 'working_group';
+
         return res.status(403).json({
           error: 'Contributor access required',
           message: 'Working group membership requires a contributor seat. Ask your org admin to upgrade your access.',
+          can_request: !!userOrgId,
+          request_url: userOrgId ? `/api/organizations/${userOrgId}/seat-requests` : undefined,
+          request_body: userOrgId ? { resource_type: resourceType, resource_id: group.id, resource_name: group.name } : undefined,
         });
       }
 
@@ -1863,7 +1892,7 @@ export function createCommitteeRouters(): {
       if (!file) {
         return res.status(400).json({
           error: 'Missing file',
-          message: 'A PDF or PPTX file is required',
+          message: 'A PDF, PPTX, XLSX, or DOCX file is required',
         });
       }
 
@@ -1876,7 +1905,7 @@ export function createCommitteeRouters(): {
       }
 
       const sanitizedFilename = file.originalname.replace(/[^\w.\-() ]/g, '_').slice(0, 200);
-      const title = (req.body.title || sanitizedFilename.replace(/\.(pdf|pptx)$/i, '')).slice(0, 500);
+      const title = (req.body.title || sanitizedFilename.replace(/\.(pdf|pptx|xlsx|docx)$/i, '')).slice(0, 500);
       const description = req.body.description || null;
       const displayOrder = parseInt(req.body.display_order) || 0;
       const isFeatured = req.body.is_featured === 'true';
@@ -1973,6 +2002,10 @@ export function createCommitteeRouters(): {
         'application/pdf': 'application/pdf',
         'application/vnd.openxmlformats-officedocument.presentationml.presentation':
           'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       };
       res.setHeader('Content-Type', SAFE_SERVE_TYPES[fileData.file_mime_type] || 'application/octet-stream');
       res.setHeader('X-Content-Type-Options', 'nosniff');

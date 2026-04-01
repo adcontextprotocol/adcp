@@ -12,6 +12,7 @@ import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL } from '../../training-agent/config.js';
+import { ToolError } from '../tool-error.js';
 
 const logger = createLogger('certification-tools');
 
@@ -1192,7 +1193,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to list certification tracks');
-      return 'Failed to load certification tracks. Please try again.';
+      throw new ToolError('Failed to load certification tracks. Please try again.');
     }
   });
 
@@ -1274,7 +1275,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to get certification module');
-      return 'Failed to load module. Please try again.';
+      throw new ToolError('Failed to load module. Please try again.');
     }
   });
 
@@ -1418,7 +1419,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to start certification module');
-      return 'Failed to start module. Please try again.';
+      throw new ToolError('Failed to start module. Please try again.');
     }
   });
 
@@ -1509,7 +1510,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to complete certification module');
-      return 'Failed to record module completion. Please try again.';
+      throw new ToolError('Failed to record module completion. Please try again.');
     }
   });
 
@@ -1584,7 +1585,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to get learner progress');
-      return 'Failed to load progress. Please try again.';
+      throw new ToolError('Failed to load progress. Please try again.');
     }
   });
 
@@ -1663,7 +1664,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to test out modules');
-      return 'Failed to record test-out. Please try again.';
+      throw new ToolError('Failed to record test-out. Please try again.');
     }
   });
 
@@ -1825,7 +1826,7 @@ export function createCertificationToolHandlers(
       return lines.join('\n');
     } catch (error) {
       logger.error({ error }, 'Failed to start specialist capstone');
-      return 'Failed to start capstone. Please try again.';
+      throw new ToolError('Failed to start capstone. Please try again.');
     }
   });
 
@@ -1950,8 +1951,8 @@ export function createCertificationToolHandlers(
 
       return lines.join('\n');
     } catch (error) {
-      logger.error({ error }, 'Failed to complete capstone');
-      return 'Failed to record capstone results. Please try again.';
+      logger.error({ error, userId, attemptId: input.attempt_id }, 'Failed to complete capstone');
+      throw new ToolError('Failed to record capstone results. Please try again or contact support if the problem persists.');
     }
   });
 
@@ -2026,7 +2027,7 @@ export function createCertificationToolHandlers(
       return `Teaching checkpoint saved for ${moduleId}. Phase: ${current_phase}. Covered ${concepts_covered.length} concepts, ${concepts_remaining.length} remaining. Demonstrations verified: ${demoCount}.`;
     } catch (error) {
       logger.error({ error }, 'Failed to save teaching checkpoint');
-      return 'Failed to save checkpoint. Try again before completing the module — a checkpoint is required for completion.';
+      throw new ToolError('Failed to save checkpoint. Try again before completing the module — a checkpoint is required for completion.');
     }
   });
 
@@ -2064,7 +2065,7 @@ export function createCertificationToolHandlers(
       return `Thank you — feedback recorded for module ${moduleId}.`;
     } catch (error) {
       logger.error({ error }, 'Failed to save learner feedback');
-      return 'Failed to save feedback, but thank you for sharing.';
+      throw new ToolError('Failed to save feedback, but thank you for sharing.');
     }
   });
 

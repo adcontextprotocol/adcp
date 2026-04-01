@@ -1562,6 +1562,8 @@ export class WorkingGroupDatabase {
       if (parsed.hostname === 'drive.google.com') return 'google_doc';
       if (url.toLowerCase().endsWith('.pdf')) return 'pdf';
       if (url.toLowerCase().endsWith('.pptx')) return 'pptx';
+      if (url.toLowerCase().endsWith('.xlsx')) return 'xlsx';
+      if (url.toLowerCase().endsWith('.docx')) return 'docx';
       return 'external_link';
     } catch {
       return 'external_link';
@@ -1575,6 +1577,8 @@ export class WorkingGroupDatabase {
     const lower = filename.toLowerCase();
     if (lower.endsWith('.pdf')) return 'pdf';
     if (lower.endsWith('.pptx')) return 'pptx';
+    if (lower.endsWith('.xlsx')) return 'xlsx';
+    if (lower.endsWith('.docx')) return 'docx';
     return 'other';
   }
 
@@ -1649,10 +1653,10 @@ export class WorkingGroupDatabase {
        FROM committee_documents cd
        JOIN working_groups wg ON wg.id = cd.working_group_id
        WHERE wg.status = 'active'
-         AND cd.document_type IN ('google_doc', 'google_sheet', 'pdf', 'pptx')
+         AND cd.document_type IN ('google_doc', 'google_sheet', 'pdf', 'pptx', 'xlsx', 'docx')
          AND (
            (cd.index_status IN ('pending', 'success') AND (cd.last_indexed_at IS NULL OR cd.last_indexed_at < NOW() - INTERVAL '1 hour'))
-           OR (cd.index_status = 'failed' AND cd.last_indexed_at < NOW() - INTERVAL '6 hours')
+           OR (cd.index_status = 'error' AND cd.last_indexed_at < NOW() - INTERVAL '6 hours')
          )
        ORDER BY cd.last_indexed_at ASC NULLS FIRST
        LIMIT $1`,

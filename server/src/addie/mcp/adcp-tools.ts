@@ -128,6 +128,87 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
               enum: ['none', 'category', 'exclusive'],
               description: 'Filter by exclusivity level.',
             },
+            countries: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by country coverage using ISO 3166-1 alpha-2 codes, uppercase (e.g., ["US", "GB"])',
+            },
+            regions: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by region coverage using ISO 3166-2 codes (e.g., ["US-NY", "US-CA", "GB-SCT"]). Best for locally-bound inventory like regional OOH or local TV.',
+            },
+            metros: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  system: { type: 'string', enum: ['nielsen_dma', 'uk_itl1', 'uk_itl2', 'eurostat_nuts2', 'custom'], description: 'Metro classification system' },
+                  code: { type: 'string', description: 'Metro code within the system (e.g., "501" for NYC DMA)' },
+                },
+                required: ['system', 'code'],
+              },
+              description: 'Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV)',
+            },
+            postal_areas: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  system: { type: 'string', enum: ['us_zip', 'us_zip_plus_four', 'gb_outward', 'gb_full', 'ca_fsa', 'ca_full', 'de_plz', 'fr_code_postal', 'au_postcode', 'ch_plz', 'at_plz'], description: 'Postal code system' },
+                  values: { type: 'array', items: { type: 'string' }, description: 'Postal codes within the system' },
+                },
+                required: ['system', 'values'],
+              },
+              description: 'Filter by postal area coverage',
+            },
+            geo_proximity: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  lat: { type: 'number', description: 'Latitude (WGS 84)' },
+                  lng: { type: 'number', description: 'Longitude (WGS 84)' },
+                  label: { type: 'string', description: 'Human-readable label' },
+                  radius: {
+                    type: 'object',
+                    properties: {
+                      value: { type: 'number' },
+                      unit: { type: 'string', enum: ['km', 'mi', 'm'] },
+                    },
+                  },
+                  travel_time: {
+                    type: 'object',
+                    properties: {
+                      value: { type: 'number' },
+                      unit: { type: 'string', enum: ['min', 'hr'] },
+                    },
+                  },
+                  transport_mode: { type: 'string', enum: ['driving', 'walking', 'cycling', 'public_transport'] },
+                  geometry: {
+                    type: 'object',
+                    properties: {
+                      type: { type: 'string', enum: ['Polygon', 'MultiPolygon'] },
+                      coordinates: { type: 'array' },
+                    },
+                    description: 'Pre-computed GeoJSON geometry defining the proximity boundary',
+                  },
+                },
+              },
+              description: 'Filter by proximity to geographic points. Each entry uses exactly one boundary method: radius, travel_time + transport_mode, or geometry.',
+            },
+            keywords: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  keyword: { type: 'string' },
+                  match_type: { type: 'string', enum: ['broad', 'phrase', 'exact'] },
+                },
+                required: ['keyword'],
+              },
+              description: 'Filter by keyword relevance for search/retail media',
+            },
           },
         },
         property_list: {

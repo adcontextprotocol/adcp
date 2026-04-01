@@ -688,10 +688,18 @@
 
           <!-- Membership Tier Selection -->
           <div class="form-group" id="companyTierGroup">
-            <label>Select your membership tier *</label>
+            <label>Select your membership tier</label>
             <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
               <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
-                <input type="radio" name="companyTier" value="company_standard" required style="width: 18px; height: 18px; flex-shrink: 0;">
+                <input type="radio" name="companyTier" value="" checked style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div style="flex: 1;">
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Community</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Access Addie, explore training and certification, and test your agents. Upgrade anytime.</div>
+                </div>
+                <div style="font-weight: var(--font-bold); color: var(--color-success-700); white-space: nowrap;">Free</div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyTier" value="company_standard" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div style="flex: 1;">
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Company Membership</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Full membership benefits including member directory listing, event access, and working group participation</div>
@@ -741,10 +749,18 @@
         </div>
         <!-- Membership Tier Selection -->
         <div class="form-group">
-          <label>Select your membership tier *</label>
+          <label>Select your membership tier</label>
           <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
             <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
-              <input type="radio" name="individualTier" value="individual_professional" required style="width: 18px; height: 18px; flex-shrink: 0;">
+              <input type="radio" name="individualTier" value="" checked style="width: 18px; height: 18px; flex-shrink: 0;">
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Community</div>
+                <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Access Addie, explore training and certification, and test your agents. Upgrade anytime.</div>
+              </div>
+              <div style="font-weight: var(--font-bold); color: var(--color-success-700); white-space: nowrap;">Free</div>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <input type="radio" name="individualTier" value="individual_professional" style="width: 18px; height: 18px; flex-shrink: 0;">
               <div style="flex: 1;">
                 <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Professional</div>
                 <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">For industry professionals, consultants, and freelancers</div>
@@ -1313,11 +1329,6 @@
         return;
       }
 
-      if (!companyTier) {
-        showError('Please select your membership tier');
-        return;
-      }
-
       if (!tosAgree) {
         showError('Please agree to the Terms of Use and Privacy Policy');
         return;
@@ -1329,17 +1340,22 @@
       // Get the corporate domain from the user's email
       var corporateDomain = getEmailDomain(currentUser?.email);
 
+      var body = {
+        organization_name: orgName,
+        company_type: companyType.value,
+        revenue_tier: revenueTier.value,
+        corporate_domain: corporateDomain
+      };
+      // Only include membership_tier if a paid tier was selected
+      if (companyTier && companyTier.value) {
+        body.membership_tier = companyTier.value;
+      }
+
       try {
         var response = await fetch('/api/organizations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            organization_name: orgName,
-            company_type: companyType.value,
-            revenue_tier: revenueTier.value,
-            membership_tier: companyTier.value,
-            corporate_domain: corporateDomain
-          }),
+          body: JSON.stringify(body),
         });
 
         var data = await response.json();
@@ -1363,11 +1379,6 @@
       var membershipTier = document.querySelector('input[name="individualTier"]:checked');
       var btn = document.getElementById('individualBtn');
 
-      if (!membershipTier) {
-        showError('Please select a membership tier');
-        return;
-      }
-
       if (!tosAgree) {
         showError('Please agree to the Terms of Use and Privacy Policy');
         return;
@@ -1385,14 +1396,19 @@
           ? fullName + "'s Workspace"
           : 'Personal Workspace';
 
+        var body = {
+          organization_name: workspaceName,
+          is_personal: true,
+        };
+        // Only include membership_tier if a paid tier was selected
+        if (membershipTier && membershipTier.value) {
+          body.membership_tier = membershipTier.value;
+        }
+
         var response = await fetch('/api/organizations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            organization_name: workspaceName,
-            is_personal: true,
-            membership_tier: membershipTier.value
-          }),
+          body: JSON.stringify(body),
         });
 
         var data = await response.json();

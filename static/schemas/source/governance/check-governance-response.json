@@ -14,18 +14,9 @@
       "enum": [
         "approved",
         "denied",
-        "conditions",
-        "escalated"
+        "conditions"
       ],
-      "description": "Governance decision. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved if the caller accepts the listed conditions, then re-calls check_governance with the adjusted parameters. 'escalated': halted pending human review."
-    },
-    "binding": {
-      "type": "string",
-      "enum": [
-        "proposed",
-        "committed"
-      ],
-      "description": "Echoed from request. Lets the caller confirm the governance agent understood the commitment level."
+      "description": "Governance decision. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved if the caller accepts the listed conditions, then re-calls check_governance with the adjusted parameters."
     },
     "plan_id": {
       "type": "string",
@@ -35,13 +26,9 @@
       "type": "string",
       "description": "Human-readable explanation of the governance decision."
     },
-    "mode": {
-      "$ref": "/schemas/enums/governance-mode.json",
-      "description": "The governance mode under which this check was evaluated. Present so audit trails can distinguish 'denied in advisory mode (action proceeded)' from 'denied in enforce mode (action blocked)'."
-    },
     "findings": {
       "type": "array",
-      "description": "Specific issues found during the governance check. Present when status is 'denied', 'conditions', or 'escalated'. MAY also be present on 'approved' for advisory findings (e.g., budget approaching limit).",
+      "description": "Specific issues found during the governance check. Present when status is 'denied' or 'conditions'. MAY also be present on 'approved' for informational findings (e.g., budget approaching limit).",
       "items": {
         "type": "object",
         "properties": {
@@ -109,34 +96,6 @@
         "additionalProperties": false
       }
     },
-    "escalation": {
-      "type": "object",
-      "description": "Present when status is 'escalated'. The action is halted pending human review.",
-      "properties": {
-        "reason": {
-          "type": "string",
-          "description": "Human-readable explanation of why the action was escalated."
-        },
-        "severity": {
-          "$ref": "/schemas/enums/escalation-severity.json",
-          "description": "Escalation severity level."
-        },
-        "requires_human": {
-          "type": "boolean",
-          "description": "Whether human approval is required before proceeding."
-        },
-        "approval_tier": {
-          "type": "string",
-          "description": "Organizational role or tier required to resolve this escalation. The value is organization-defined; the governance agent infers the tier from the escalation context. Common values include 'manager', 'director', 'legal', 'cfo'. Enables programmatic routing of escalations to the right person."
-        }
-      },
-      "required": [
-        "reason",
-        "severity",
-        "requires_human"
-      ],
-      "additionalProperties": false
-    },
     "expires_at": {
       "type": "string",
       "format": "date-time",
@@ -172,7 +131,6 @@
   "required": [
     "check_id",
     "status",
-    "binding",
     "plan_id",
     "explanation"
   ],

@@ -17,7 +17,7 @@ import {
 } from "../middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -32,7 +32,12 @@ import {
 import {
   notifyJoinRequest,
   notifyMemberAdded,
+  notifySeatWarning,
+  notifySeatFreed,
+  notifySeatRequest,
+  notifyMemberSeatChanged,
 } from "../slack/org-group-dm.js";
+import { getOrgAdminEmails } from "../utils/org-admins.js";
 
 const logger = createLogger("organization-routes");
 
@@ -394,10 +399,9 @@ export function createOrganizationsRouter(): Router {
         },
       });
 
-      // Notify org admins via Slack group DM (fire-and-forget)
+      // Notify org admins via Slack (fire-and-forget)
       (async () => {
         try {
-          // Get org name and admin emails
           let orgName = 'Organization';
           try {
             const org = await workos!.organizations.getOrganization(orgId);
@@ -406,34 +410,37 @@ export function createOrganizationsRouter(): Router {
             // Org may not exist
           }
 
-          // Get org admins/owners
-          const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-            organizationId: orgId,
-          });
-          const adminEmails: string[] = [];
-          for (const membership of orgMemberships.data) {
-            if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
-              try {
-                const adminUser = await workos!.userManagement.getUser(membership.userId);
-                if (adminUser.email) {
-                  adminEmails.push(adminUser.email);
-                }
-              } catch {
-                // Skip if can't fetch user
-              }
-            }
-          }
+          const adminEmails = await getOrgAdminEmails(workos!, orgId);
+          if (adminEmails.length === 0) return;
 
-          if (adminEmails.length > 0) {
-            await notifyMemberAdded({
-              orgId,
-              orgName,
-              adminEmails,
-              memberEmail: request.user_email,
-              memberFirstName: request.first_name || undefined,
-              memberLastName: request.last_name || undefined,
-              role,
-            });
+          // Get seat context for the notification
+          const localOrg = await orgDb.getOrganization(orgId);
+          const tier = resolveMembershipTier(localOrg);
+          const seatLimits = getSeatLimits(tier);
+          const seatUsage = await getSeatUsage(orgId);
+          const seatType = await getUserSeatType(request.workos_user_id);
+
+          await notifyMemberAdded({
+            orgId,
+            orgName,
+            adminEmails,
+            memberEmail: request.user_email,
+            memberFirstName: request.first_name || undefined,
+            memberLastName: request.last_name || undefined,
+            role,
+            seatType: seatType || 'community_only',
+            seatUsage,
+            seatLimits,
+          });
+
+          // Check seat warning thresholds for both seat types
+          for (const st of ['contributor', 'community'] as const) {
+            const usage = st === 'contributor' ? seatUsage.contributor : seatUsage.community_only;
+            const limit = st === 'contributor' ? seatLimits.contributor : seatLimits.community;
+            const warning = await checkAndUpdateSeatWarning(orgId, st, usage, limit, tier);
+            if (warning?.shouldNotify) {
+              await notifySeatWarning({ orgId, orgName, adminEmails, seatType: st, threshold: warning.threshold, usage, limit });
+            }
           }
         } catch (err) {
           logger.warn({ err, orgId }, 'Failed to notify admins of new member');
@@ -902,34 +909,34 @@ export function createOrganizationsRouter(): Router {
             // Org may not exist
           }
 
-          // Get org admins/owners for notification
-          const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-            organizationId: orgId,
-          });
-          const adminEmails: string[] = [];
-          for (const membership of orgMemberships.data) {
-            if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
-              try {
-                const memberUser = await workos!.userManagement.getUser(membership.userId);
-                if (memberUser.email) {
-                  adminEmails.push(memberUser.email);
-                }
-              } catch {
-                // Skip if can't fetch user
-              }
-            }
-          }
+          const adminEmails = await getOrgAdminEmails(workos!, orgId);
+          if (adminEmails.length === 0) return;
 
-          if (adminEmails.length > 0) {
-            await notifyMemberAdded({
-              orgId,
-              orgName,
-              adminEmails,
-              memberEmail: email,
-              memberFirstName: slackUser.slack_real_name?.split(' ')[0],
-              memberLastName: slackUser.slack_real_name?.split(' ').slice(1).join(' '),
-              role: roleToAssign,
-            });
+          const localOrg = await orgDb.getOrganization(orgId);
+          const tier = resolveMembershipTier(localOrg);
+          const seatLimits = getSeatLimits(tier);
+          const seatUsage = await getSeatUsage(orgId);
+
+          await notifyMemberAdded({
+            orgId,
+            orgName,
+            adminEmails,
+            memberEmail: email,
+            memberFirstName: slackUser.slack_real_name?.split(' ')[0],
+            memberLastName: slackUser.slack_real_name?.split(' ').slice(1).join(' '),
+            role: roleToAssign,
+            seatType: 'community_only',
+            seatUsage,
+            seatLimits,
+          });
+
+          for (const st of ['contributor', 'community'] as const) {
+            const usage = st === 'contributor' ? seatUsage.contributor : seatUsage.community_only;
+            const limit = st === 'contributor' ? seatLimits.contributor : seatLimits.community;
+            const warning = await checkAndUpdateSeatWarning(orgId, st, usage, limit, tier);
+            if (warning?.shouldNotify) {
+              await notifySeatWarning({ orgId, orgName, adminEmails, seatType: st, threshold: warning.threshold, usage, limit });
+            }
           }
         } catch (err) {
           logger.warn({ err }, 'Failed to send member added notification');
@@ -1271,13 +1278,21 @@ export function createOrganizationsRouter(): Router {
         logger.info({ orgId: workosOrgId, name: trimmedName }, 'WorkOS organization created');
 
         // Add user as organization owner (since they created it)
-        await workos!.userManagement.createOrganizationMembership({
+        const ownerMembership = await workos!.userManagement.createOrganizationMembership({
           userId: user.id,
           organizationId: workosOrgId,
           roleSlug: 'owner',
         });
 
         logger.info({ userId: user.id, orgId: workosOrgId }, 'User added as organization owner');
+
+        // Mirror membership locally so the owner is visible immediately
+        // (rather than waiting for the webhook)
+        await pool.query(`
+          INSERT INTO organization_memberships (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type, created_at, updated_at, synced_at)
+          VALUES ($1, $2, $3, $4, 'owner', 'contributor', NOW(), NOW(), NOW())
+          ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = 'owner', workos_membership_id = $3, updated_at = NOW()
+        `, [user.id, workosOrgId, ownerMembership.id, user.email]);
       }
 
       // Create organization record in our database
@@ -2108,7 +2123,7 @@ export function createOrganizationsRouter(): Router {
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: mappedWorkosUserIds.has(membership.userId),
-              seat_type: seatTypeMap.get(membership.userId) || 'contributor',
+              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
             };
           } catch (error) {
             // User might have been deleted
@@ -2123,7 +2138,7 @@ export function createOrganizationsRouter(): Router {
               status: membership.status,
               created_at: membership.createdAt,
               slack_linked: false,
-              seat_type: seatTypeMap.get(membership.userId) || 'contributor',
+              seat_type: seatTypeMap.get(membership.userId) || 'community_only',
             };
           }
         })
@@ -2150,7 +2165,7 @@ export function createOrganizationsRouter(): Router {
           expires_at: inv.expiresAt,
           created_at: inv.createdAt,
           inviter_user_id: inv.inviterUserId,
-          seat_type: invSeatMap.get(inv.email.toLowerCase()) || 'contributor',
+          seat_type: invSeatMap.get(inv.email.toLowerCase()) || 'community_only',
         }));
 
       // Include seat usage and limits only for admins/owners
@@ -2161,7 +2176,7 @@ export function createOrganizationsRouter(): Router {
         const localOrg = await orgDb.getOrganization(orgId);
         seatInfo = {
           seat_usage: seatUsage,
-          seat_limits: getSeatLimits(localOrg?.membership_tier ?? null),
+          seat_limits: getSeatLimits(resolveMembershipTier(localOrg)),
         };
       }
 
@@ -2184,7 +2199,7 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
       const { email, role, seat_type: requestedSeatType } = req.body;
-      const seatType = requestedSeatType === 'community_only' ? 'community_only' : 'contributor';
+      const seatType = requestedSeatType === 'contributor' ? 'contributor' : 'community_only';
 
       if (!email) {
         return res.status(400).json({
@@ -2421,7 +2436,7 @@ export function createOrganizationsRouter(): Router {
         'DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1 RETURNING seat_type',
         [invitationId]
       );
-      const preservedSeatType = oldSeatResult.rows[0]?.seat_type || 'contributor';
+      const preservedSeatType = oldSeatResult.rows[0]?.seat_type || 'community_only';
 
       // Revoke the old invitation and send a new one
       await workos!.userManagement.revokeInvitation(invitationId);
@@ -2576,7 +2591,7 @@ export function createOrganizationsRouter(): Router {
           'SELECT seat_type FROM organization_memberships WHERE workos_organization_id = $1 AND workos_user_id = $2',
           [orgId, membership.userId]
         );
-        const oldSeatType = oldResult.rows[0]?.seat_type || 'contributor';
+        const oldSeatType = oldResult.rows[0]?.seat_type || 'community_only';
 
         await getPool().query(
           `UPDATE organization_memberships SET seat_type = $1, updated_at = NOW()
@@ -2598,6 +2613,41 @@ export function createOrganizationsRouter(): Router {
               new_seat_type: seat_type,
             },
           });
+
+          // Notify the member their seat type changed (fire-and-forget)
+          notifyMemberSeatChanged({
+            userId: membership.userId,
+            newSeatType: seat_type as 'contributor' | 'community_only',
+            context: 'admin_action',
+          }).catch(err => logger.warn({ err }, 'Failed to notify member of seat change'));
+
+          // Check seat warning thresholds (fire-and-forget)
+          (async () => {
+            try {
+              const localOrg = await orgDb.getOrganization(orgId);
+              const tier = resolveMembershipTier(localOrg);
+              const seatLimits = getSeatLimits(tier);
+              const seatUsage = await getSeatUsage(orgId);
+              let orgName = 'Organization';
+              try { const org = await workos!.organizations.getOrganization(orgId); orgName = org.name; } catch {}
+              const adminEmails = await getOrgAdminEmails(workos!, orgId);
+
+              if (seat_type === 'contributor') {
+                const warning = await checkAndUpdateSeatWarning(orgId, 'contributor', seatUsage.contributor, seatLimits.contributor, tier);
+                if (warning?.shouldNotify && adminEmails.length > 0) {
+                  await notifySeatWarning({ orgId, orgName, adminEmails, seatType: 'contributor', threshold: warning.threshold, usage: seatUsage.contributor, limit: seatLimits.contributor });
+                }
+              } else {
+                // Demoted from contributor — may free a seat
+                const oldThreshold = await resetSeatWarningIfNeeded(orgId, 'contributor', seatUsage.contributor, seatLimits.contributor);
+                if (oldThreshold >= 80 && adminEmails.length > 0) {
+                  await notifySeatFreed({ orgId, orgName, adminEmails, seatType: 'contributor', usage: seatUsage.contributor, limit: seatLimits.contributor });
+                }
+              }
+            } catch (err) {
+              logger.warn({ err }, 'Failed to check seat warnings after seat type change');
+            }
+          })();
         }
       }
 
@@ -2699,7 +2749,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Get user info for audit log before deletion
+      // Get user info and seat type before deletion
       let removedUserEmail = 'Unknown';
       try {
         const removedUser = await workos!.userManagement.getUser(membership.userId);
@@ -2707,6 +2757,7 @@ export function createOrganizationsRouter(): Router {
       } catch {
         // User might already be deleted
       }
+      const removedSeatType = await getUserSeatType(membership.userId);
 
       // Delete the membership from WorkOS
       await workos!.userManagement.deleteOrganizationMembership(membershipId);
@@ -2741,6 +2792,30 @@ export function createOrganizationsRouter(): Router {
           removed_role: targetRole,
         },
       });
+
+      // Check if a seat freed up and notify admins (fire-and-forget)
+      if (removedSeatType === 'contributor') {
+        (async () => {
+          try {
+            const localOrg = await orgDb.getOrganization(orgId);
+            const tier = resolveMembershipTier(localOrg);
+            const seatLimits = getSeatLimits(tier);
+            const seatUsage = await getSeatUsage(orgId);
+            const oldThreshold = await resetSeatWarningIfNeeded(orgId, 'contributor', seatUsage.contributor, seatLimits.contributor);
+
+            if (oldThreshold >= 80) {
+              let orgName = 'Organization';
+              try { const org = await workos!.organizations.getOrganization(orgId); orgName = org.name; } catch {}
+              const adminEmails = await getOrgAdminEmails(workos!, orgId);
+              if (adminEmails.length > 0) {
+                await notifySeatFreed({ orgId, orgName, adminEmails, seatType: 'contributor', usage: seatUsage.contributor, limit: seatLimits.contributor });
+              }
+            }
+          } catch (err) {
+            logger.warn({ err }, 'Failed to send seat freed notification');
+          }
+        })();
+      }
 
       res.json({
         success: true,
@@ -2977,6 +3052,307 @@ export function createOrganizationsRouter(): Router {
     } catch (error) {
       logger.error({ err: error }, 'Error revoking referral code');
       res.status(500).json({ error: 'Failed to revoke referral code' });
+    }
+  });
+
+  // =========================================================================
+  // SEAT UPGRADE REQUESTS
+  // =========================================================================
+
+  const VALID_RESOURCE_TYPES = ['working_group', 'council', 'product_summit'];
+
+  // POST /api/organizations/:orgId/seat-requests - Request a seat upgrade
+  router.post('/:orgId/seat-requests', requireAuth, invitationRateLimiter, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+      const { resource_type, resource_id, resource_name } = req.body;
+
+      if (!resource_type || !VALID_RESOURCE_TYPES.includes(resource_type)) {
+        return res.status(400).json({
+          error: 'Invalid resource type',
+          message: `resource_type must be one of: ${VALID_RESOURCE_TYPES.join(', ')}`,
+        });
+      }
+
+      if (resource_id && (typeof resource_id !== 'string' || resource_id.length > 255)) {
+        return res.status(400).json({ error: 'Invalid resource_id' });
+      }
+      if (resource_name && (typeof resource_name !== 'string' || resource_name.length > 500)) {
+        return res.status(400).json({ error: 'Invalid resource_name' });
+      }
+
+      // Verify user is a member of this org
+      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+      if (userMemberships.data.length === 0) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'You are not a member of this organization',
+        });
+      }
+
+      // Verify user is community_only
+      const seatType = await getUserSeatType(user.id);
+      if (seatType === 'contributor') {
+        return res.status(400).json({
+          error: 'Already a contributor',
+          message: 'You already have contributor access',
+        });
+      }
+
+      // Check for existing pending request for this resource
+      const hasPending = await hasPendingSeatRequest(orgId, user.id, resource_type, resource_id);
+      if (hasPending) {
+        return res.status(409).json({
+          error: 'Request already pending',
+          message: 'You already have a pending request for this resource',
+        });
+      }
+
+      const request = await createSeatUpgradeRequest({
+        orgId,
+        userId: user.id,
+        resourceType: resource_type,
+        resourceId: resource_id,
+        resourceName: resource_name,
+      });
+
+      // Notify admins (fire-and-forget)
+      (async () => {
+        try {
+          let orgName = 'Organization';
+          try { const org = await workos!.organizations.getOrganization(orgId); orgName = org.name; } catch {}
+          const adminEmails = await getOrgAdminEmails(workos!, orgId);
+
+          let memberName = user.email;
+          try {
+            const workosUser = await workos!.userManagement.getUser(user.id);
+            if (workosUser.firstName && workosUser.lastName) {
+              memberName = `${workosUser.firstName} ${workosUser.lastName}`;
+            }
+          } catch {}
+
+          if (adminEmails.length > 0) {
+            await notifySeatRequest({
+              orgId,
+              orgName,
+              adminEmails,
+              memberName,
+              memberEmail: user.email,
+              resourceType: resource_type,
+              resourceName: resource_name,
+            });
+          }
+        } catch (err) {
+          logger.warn({ err }, 'Failed to notify admins of seat upgrade request');
+        }
+      })();
+
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'seat_upgrade_requested',
+        resource_type: 'seat_upgrade_request',
+        resource_id: request.id,
+        details: { resource_type, resource_id, resource_name },
+      });
+
+      res.json({ id: request.id, status: 'pending' });
+    } catch (error: any) {
+      // Handle unique constraint violation (duplicate pending request)
+      if (error?.code === '23505') {
+        return res.status(409).json({
+          error: 'Request already pending',
+          message: 'You already have a pending request for this resource',
+        });
+      }
+      logger.error({ err: error }, 'Create seat upgrade request error');
+      res.status(500).json({ error: 'Failed to create seat upgrade request' });
+    }
+  });
+
+  // GET /api/organizations/:orgId/seat-requests - List seat upgrade requests
+  router.get('/:orgId/seat-requests', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+
+      // Verify user is a member of this org
+      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+      if (userMemberships.data.length === 0) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'You are not a member of this organization',
+        });
+      }
+
+      const userRole = resolveUserRole(userMemberships.data);
+      const isAdmin = userRole === 'admin' || userRole === 'owner';
+
+      // Admins see all pending requests; members see their own
+      const requests = isAdmin
+        ? await listSeatUpgradeRequests(orgId, { status: 'pending' })
+        : await listSeatUpgradeRequests(orgId, { userId: user.id });
+
+      res.json({ requests });
+    } catch (error) {
+      logger.error({ err: error }, 'List seat upgrade requests error');
+      res.status(500).json({ error: 'Failed to list seat upgrade requests' });
+    }
+  });
+
+  // POST /api/organizations/:orgId/seat-requests/:requestId/approve - Approve a seat upgrade request
+  router.post('/:orgId/seat-requests/:requestId/approve', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId, requestId } = req.params;
+
+      // Verify admin/owner
+      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+      if (userMemberships.data.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      const userRole = resolveUserRole(userMemberships.data);
+      if (userRole !== 'admin' && userRole !== 'owner') {
+        return res.status(403).json({ error: 'Only admins and owners can approve seat requests' });
+      }
+
+      const request = await getSeatUpgradeRequest(requestId);
+      if (!request || request.workos_organization_id !== orgId) {
+        return res.status(404).json({ error: 'Request not found' });
+      }
+      if (request.status !== 'pending') {
+        return res.status(400).json({ error: 'Request already resolved' });
+      }
+
+      // Check seat availability
+      const seatCheck = await canAddSeat(orgId, 'contributor');
+      if (!seatCheck.allowed) {
+        return res.status(403).json({
+          error: 'Seat limit reached',
+          message: seatCheck.reason,
+        });
+      }
+
+      // Approve the request (atomic: only succeeds if still pending)
+      const resolved = await resolveSeatUpgradeRequest(requestId, 'approved', user.id);
+      if (!resolved) {
+        return res.status(409).json({ error: 'Request was already resolved' });
+      }
+
+      // Update the member's seat type
+      await getPool().query(
+        `UPDATE organization_memberships SET seat_type = 'contributor', updated_at = NOW()
+         WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+        [orgId, request.workos_user_id]
+      );
+
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'seat_upgrade_approved',
+        resource_type: 'seat_upgrade_request',
+        resource_id: requestId,
+        details: { target_user_id: request.workos_user_id, resource_type: request.resource_type },
+      });
+
+      // Notify member (fire-and-forget)
+      notifyMemberSeatChanged({
+        userId: request.workos_user_id,
+        newSeatType: 'contributor',
+        context: 'request_approved',
+        resourceName: request.resource_name || undefined,
+      }).catch(err => logger.warn({ err }, 'Failed to notify member of approved seat request'));
+
+      // Check seat warning thresholds after approval (fire-and-forget)
+      (async () => {
+        try {
+          const localOrg = await orgDb.getOrganization(orgId);
+          const tier = resolveMembershipTier(localOrg);
+          const seatLimits = getSeatLimits(tier);
+          const seatUsage = await getSeatUsage(orgId);
+          const warning = await checkAndUpdateSeatWarning(orgId, 'contributor', seatUsage.contributor, seatLimits.contributor, tier);
+          if (warning?.shouldNotify) {
+            let orgName = 'Organization';
+            try { const org = await workos!.organizations.getOrganization(orgId); orgName = org.name; } catch {}
+            const adminEmails = await getOrgAdminEmails(workos!, orgId);
+            if (adminEmails.length > 0) {
+              await notifySeatWarning({ orgId, orgName, adminEmails, seatType: 'contributor', threshold: warning.threshold, usage: seatUsage.contributor, limit: seatLimits.contributor });
+            }
+          }
+        } catch (err) {
+          logger.warn({ err }, 'Failed to check seat warnings after seat request approval');
+        }
+      })();
+
+      res.json({ success: true, status: 'approved' });
+    } catch (error) {
+      logger.error({ err: error }, 'Approve seat upgrade request error');
+      res.status(500).json({ error: 'Failed to approve seat upgrade request' });
+    }
+  });
+
+  // POST /api/organizations/:orgId/seat-requests/:requestId/deny - Deny a seat upgrade request
+  router.post('/:orgId/seat-requests/:requestId/deny', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId, requestId } = req.params;
+
+      // Verify admin/owner
+      const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+      if (userMemberships.data.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      const userRole = resolveUserRole(userMemberships.data);
+      if (userRole !== 'admin' && userRole !== 'owner') {
+        return res.status(403).json({ error: 'Only admins and owners can deny seat requests' });
+      }
+
+      const request = await getSeatUpgradeRequest(requestId);
+      if (!request || request.workos_organization_id !== orgId) {
+        return res.status(404).json({ error: 'Request not found' });
+      }
+      if (request.status !== 'pending') {
+        return res.status(400).json({ error: 'Request already resolved' });
+      }
+
+      const resolved = await resolveSeatUpgradeRequest(requestId, 'denied', user.id);
+      if (!resolved) {
+        return res.status(409).json({ error: 'Request was already resolved' });
+      }
+
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'seat_upgrade_denied',
+        resource_type: 'seat_upgrade_request',
+        resource_id: requestId,
+        details: { target_user_id: request.workos_user_id },
+      });
+
+      // Notify member (fire-and-forget)
+      notifyMemberSeatChanged({
+        userId: request.workos_user_id,
+        newSeatType: 'community_only',
+        context: 'request_denied',
+      }).catch(err => logger.warn({ err }, 'Failed to notify member of denied seat request'));
+
+      res.json({ success: true, status: 'denied' });
+    } catch (error) {
+      logger.error({ err: error }, 'Deny seat upgrade request error');
+      res.status(500).json({ error: 'Failed to deny seat upgrade request' });
     }
   });
 

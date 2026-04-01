@@ -18,7 +18,7 @@ TMP fills this gap with a single protocol that works the same way on web, mobile
 
 TMP defines two operations that never share data:
 
-**Context Match** -- the publisher sends content artifact IDs and a list of all available packages for the placement. The buyer resolves artifact metadata from its cache and responds with offers for the packages it wants to activate. No user identity crosses this boundary.
+**Context Match** -- the publisher sends content artifact IDs and placement context. The provider evaluates all eligible packages for the placement using its synced package set from media buy setup. No user identity crosses this boundary.
 
 **Identity Match** -- the publisher sends an opaque user token and the full set of active package IDs for that buyer. The buyer responds with a boolean `eligible` flag and an optional `intent_score` per package. No page context crosses this boundary. The reasons behind eligibility (frequency caps, audience membership, purchase history) are opaque to the publisher.
 
@@ -41,7 +41,7 @@ Publishers declare what they can accept on each product via the `trusted_match` 
 
 Two rules prevent buyers from correlating the context and identity paths:
 
-1. **`available_packages`** on the context match request includes ALL packages for the placement -- a stable per-placement set that does not change based on the user. This enables caching and prevents user-dependent filtering from leaking identity into the context path.
+1. **Context Match sends no package list.** The provider evaluates its synced package set for the placement — the same packages for every user. Because no package list is sent per request, the publisher cannot accidentally leak identity through package filtering.
 
 2. **`package_ids`** on the identity match request includes ALL active packages for the buyer, not just those on the current page. Sending only the page-specific subset would let a buyer match package sets across the two operations.
 

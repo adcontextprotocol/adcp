@@ -177,14 +177,3 @@ CREATE UNIQUE INDEX idx_catalog_activity_daily_pk
   ON catalog_activity_daily(property_rid, member_id, provenance_type, resolve_date);
 CREATE INDEX idx_catalog_activity_daily_property
   ON catalog_activity_daily(property_rid);
-
--- =============================================================================
--- 8. Extend edit bans to cover catalog scope
--- =============================================================================
-
-ALTER TABLE registry_edit_bans
-  DROP CONSTRAINT IF EXISTS registry_edit_bans_entity_type_check;
-
-ALTER TABLE registry_edit_bans
-  ADD CONSTRAINT registry_edit_bans_entity_type_check
-  CHECK (entity_type IN ('brand', 'property', 'catalog'));

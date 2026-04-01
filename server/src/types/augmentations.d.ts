@@ -37,3 +37,13 @@ declare module '@workos-inc/node' {
     };
   }
 }
+
+declare global {
+  namespace Express {
+    interface Request {
+      file?: import('multer').MulterFile;
+    }
+  }
+}
+
+export {};

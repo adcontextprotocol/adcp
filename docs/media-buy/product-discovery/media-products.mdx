@@ -183,6 +183,9 @@ Products can optionally declare specific ad placements within their inventory. W
 - **Buyers purchase the entire product** - Packages always target the whole product, not individual placements
 - **Placement targeting happens at creative assignment** - Different creatives can be assigned to different placements
 - **Omitting placement targeting** - Creatives without placement_ids run on all placements in the package
+- **Reuse registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD reuse those `placement_id` values
+- **Preserve registry semantics** - When a product reuses a registered `placement_id`, it is referring to that same placement. The product may narrow `format_ids` or add operational detail, but it should not change the placement's meaning incompatibly
+- **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
 
 #### Placement Object Structure
 
@@ -192,6 +195,7 @@ Products can optionally declare specific ad placements within their inventory. W
   "placement_id": "homepage_banner",
   "name": "Homepage Banner",
   "description": "Above-the-fold banner on the homepage",
+  "tags": ["homepage", "display", "premium"],
   "format_ids": [
     {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
     {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250"}
@@ -214,11 +218,13 @@ Products can optionally declare specific ad placements within their inventory. W
     {
       "placement_id": "homepage_banner",
       "name": "Homepage Banner",
+      "tags": ["homepage", "display", "premium"],
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}]
     },
     {
       "placement_id": "article_sidebar",
       "name": "Article Sidebar",
+      "tags": ["article", "display"],
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]
     }
   ],
@@ -796,7 +802,7 @@ Proposals are optional — publishers may return only products if allocation gui
 
 Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
 
-Each forecast contains a `points` array of one or more ForecastPoints, each pairing a budget level with metric ranges (low/mid/high). A single point is a standard forecast; multiple points ordered by ascending budget show how metrics scale with spend.
+Each forecast contains a `points` array of one or more ForecastPoints. For spend curves, each point pairs a budget level with metric ranges (low/mid/high) — multiple points at ascending budgets show how delivery scales with spend. For availability forecasts, points omit budget and express total available inventory for the requested targeting and dates.
 
 Metric keys come from two vocabularies:
 - **Delivery/engagement**: `forecastable-metric` enum values (impressions, reach, clicks, spend, views, completed_views, grps, etc.)
@@ -813,6 +819,7 @@ This lets sellers forecast both delivery ("1.2M impressions") and outcomes ("1,8
 The `forecast_range_unit` field tells consumers how to interpret the points array — what axis the curve represents:
 
 - **`spend`** (default) — points at ascending budget levels. Standard budget curve.
+- **`availability`** — each point represents total available inventory for the requested targeting and dates. Budget is omitted; use `metrics.spend` to express estimated cost. Typical for guaranteed and direct-sold inventory.
 - **`reach_freq`** — points at ascending reach/frequency targets. Used in broadcast planning where the publisher shows how cost scales with frequency goals.
 - **`weekly`** / **`daily`** — metrics are per-period values. Budget refers to total campaign spend. A frequency of 3.2 with `weekly` means 3.2 exposures per week.
 - **`clicks`** / **`conversions`** — points at ascending outcome targets. Used in goal-based planning (e.g., "tell me your conversion goal, I'll tell you the budget").
@@ -868,6 +875,29 @@ Multiple forecast points at ascending budget levels show how metrics scale with 
 ```
 
 The curve reveals diminishing returns — doubling budget from \$50K to \$100K increases reach by ~56%, not 2x. Buyers can use this to negotiate or reallocate budget across publishers.
+
+#### Availability Forecast
+
+For guaranteed and direct-sold inventory, the forecast is an availability check — how much inventory exists on this placement with this targeting in this flight window. Budget is omitted because available inventory doesn't depend on how much the buyer wants to spend. The seller can include `metrics.spend` to express the estimated cost of the available inventory:
+
+```json
+{
+  "points": [
+    {
+      "metrics": {
+        "impressions": { "low": 320000, "mid": 400000, "high": 480000 },
+        "reach": { "low": 200000, "mid": 260000, "high": 300000 },
+        "spend": { "low": 6400, "mid": 8000, "high": 9600 }
+      }
+    }
+  ],
+  "forecast_range_unit": "availability",
+  "method": "guaranteed",
+  "currency": "USD"
+}
+```
+
+The buyer agent can compare available impressions against budget requirements to identify underdelivery. If the buyer needs 500,000 impressions at a \$20 CPM to spend their full \$10K budget, and the forecast shows 400,000 mid available, the buyer knows \$2K of budget must be allocated elsewhere.
 
 #### CTV with GRP Demographics
 

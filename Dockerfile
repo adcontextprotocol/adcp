@@ -25,6 +25,12 @@ RUN apk add --no-cache git
 
 WORKDIR /repos
 
+# Copy package.json to bust Docker layer cache on every deploy.
+# Without this, the clone script layer is cached indefinitely because its
+# content never changes, causing search_repos to serve stale repo content.
+COPY package.json /tmp/_cachebust
+RUN rm /tmp/_cachebust
+
 COPY <<'CLONE' /repos/clone.sh
 #!/bin/sh
 set -e

@@ -83,10 +83,8 @@ When the orchestrator is ready to buy, it calls `check_governance` before execut
 ```javascript
 const check = await governance.checkGovernance({
   plan_id: "acme-q2-trail-pro",
-  binding: "proposed",
   caller: "https://orchestrator.pinnacle-agency.example",
   tool: "create_media_buy",
-  phase: "purchase",
   payload: {
     seller: "https://streamhaus.example",
     amount: 25000,
@@ -117,19 +115,20 @@ This is not a failure — it is the system working as designed. The agent doesn'
 
 Two options:
 1. **Reduce the transaction** to \$20,000 or less
-2. **Escalate to a human** for approval
+2. **Wait for human approval** — the governance agent handles this internally
 
-The orchestrator escalates. Jordan receives the flagged plan with full context — what the agent wants to buy, why it was flagged, and which policy triggered it.
+The governance agent determines that human review is needed. It holds the `check_governance` request async — the orchestrator sees standard async task status (`submitted`, `working`) while Jordan receives the flagged plan with full context: what the agent wants to buy, why it was flagged, and which policy triggered it.
 
-<Accordion title="What the escalation looks like">
+<Accordion title="What the orchestrator sees">
+
+The `check_governance` task goes async. The orchestrator polls or receives a webhook when it resolves. Internally, the governance agent routes to Jordan for approval. Once she acts, the task completes with `approved` or `denied`.
 
 ```json
 {
   "check_id": "chk-q2-ctv-001",
-  "status": "escalated",
-  "binding": "proposed",
+  "status": "denied",
   "plan_id": "acme-q2-trail-pro",
-  "explanation": "Budget authority exceeded. Human approval required.",
+  "explanation": "Budget authority exceeded. Transaction amount $25,000 exceeds agent authority limit of $20,000.",
   "findings": [
     {
       "category_id": "budget",
@@ -138,14 +137,11 @@ The orchestrator escalates. Jordan receives the flagged plan with full context �
       "explanation": "Transaction amount $25,000 exceeds agent authority limit of $20,000.",
       "confidence": 1.0
     }
-  ],
-  "escalation": {
-    "reason": "Transaction exceeds agent_limited authority",
-    "severity": "must",
-    "requires_human": true
-  }
+  ]
 }
 ```
+
+If Jordan approves (potentially with conditions), the governance agent returns `approved` instead.
 
 </Accordion>
 
@@ -231,15 +227,9 @@ Every decision, every approval, every outcome — structured, timestamped, attri
 
 ## Crawl, walk, run
 
-Jordan didn't start with full enforcement. She started in audit mode:
+Jordan didn't start with full enforcement. She configured the governance agent to start in audit mode — it evaluated every check fully but always returned `approved`, attaching findings for her to review. After two weeks she reviewed the logs, tuned policies to reduce false positives, and moved to advisory. In advisory mode, the governance agent returned real `denied` statuses but Jordan's team treated them as non-blocking. When she trusted the system, she switched to enforce.
 
-| Mode | Behavior | When to use |
-|---|---|---|
-| **Audit** | Log everything, block nothing | First deployment — see what governance would flag without disrupting workflows |
-| **Advisory** | Warn on violations, don't block | Building confidence — review warnings and tune policies before enforcing |
-| **Enforce** | Block violations, require resolution | Production — governance has teeth |
-
-She ran audit mode for two weeks. Reviewed the logs. Tuned policies to reduce false positives. Moved to advisory when she trusted the signals. Moved to enforce when she trusted the system.
+The callers (orchestrator, sellers) never changed their code. They always acted on the status they received. The mode was entirely the governance agent's internal configuration.
 
 <Accordion title="Budget commitment phases">
 
@@ -282,6 +272,17 @@ The Governance Protocol covers five domains:
     Automated validation of buy-side transactions against authorized plans, budgets, and brand compliance configuration.
   </Card>
 </CardGroup>
+
+### Sponsored Intelligence (Planned)
+
+Full protocol-level governance integration for [Sponsored Intelligence](/docs/sponsored-intelligence/overview) is under development. When available, SI platforms will support:
+
+1. **Campaign registration** via `sync_plans` — register SI campaigns with governance agents
+2. **Session-lifecycle governance** via `check_governance` — validate actions during SI sessions
+3. **Content standards for AI-generated content** — apply brand suitability to LLM-generated sponsored responses
+4. **Property governance for AI assistant placements** — validate that AI platforms are authorized delivery surfaces
+
+Today, SI platforms enforce governance at the application layer using [content standards](/docs/governance/content-standards/index) and [brand identity](/docs/brand-protocol/brand-json). The informal governance references in SI documentation reflect this application-layer integration, not protocol-level governance tasks.
 
 ## Go deeper
 

@@ -804,6 +804,14 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 - `implementation_date` indicates when changes take effect (null if pending approval)
 - **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
 
+<Note>
+**Campaign Governance — Modification Phase**
+
+When a buyer's account has governance agents configured, sellers MUST call [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `media_buy_id`, `planned_delivery`, and `phase: "modification"` before confirming an update. The governance agent validates change magnitude, budget reallocation, and new parameters against the campaign plan.
+
+See the [seller integration guide](/docs/building/implementation/seller-integration#execution-checks) for the full execution check workflow and code example.
+</Note>
+
 ## Next Steps
 
 After updating a media buy:

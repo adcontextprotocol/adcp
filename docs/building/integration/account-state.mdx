@@ -21,6 +21,7 @@ An account holds six categories of state, each managed by a dedicated task:
 | **Creatives** | `sync_creatives` | Creative assets with format-specific manifests | Per-campaign, updated as needed |
 | **Audiences** | `sync_audiences` | First-party CRM audience lists | Incremental — add/remove members over time |
 | **Event sources** | `sync_event_sources` | Conversion tracking configuration (pixels, S2S, app events) | Setup once per source, rarely changes |
+| **Governance** | `sync_governance` | Governance agent configuration for this account | Setup once per account, update when governance agents change |
 | **Campaigns** | `create_media_buy` | Active campaigns with packages and targeting | Created when ready, updated throughout flight |
 
 Each sync task follows the same pattern:
@@ -40,8 +41,10 @@ flowchart LR
     B --> D[sync_creatives]
     C --> D
     A --> E[sync_audiences]
+    A --> G[sync_governance]
     D --> F[create_media_buy]
     E --> F
+    G --> F
 ```
 
 ### 1. Establish the account
@@ -102,7 +105,25 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
 }
 ```
 
-### 4. Sync creatives
+### 4. Configure governance
+
+[`sync_governance`](/docs/accounts/tasks/sync_governance) registers governance agents on the account. Once configured, sellers with governance support will call [`check_governance`](/docs/governance/campaign/tasks/check_governance) before confirming media buys.
+
+```json
+{
+  "account": { "account_id": "acct_001" },
+  "governance_agents": [{
+    "agent_url": "https://governance.acme-corp.com/adcp",
+    "domains": ["campaign", "creative", "content_standards"]
+  }]
+}
+```
+
+<Note>
+Changing governance agents on a live account affects all active campaigns. If a governance agent is removed, sellers will stop calling `check_governance` for that domain. If a new agent is added, existing campaigns are not retroactively validated — only new transactions go through the updated governance configuration.
+</Note>
+
+### 5. Sync creatives
 
 `sync_creatives` submits creative assets that reference the catalogs synced in step 2. For catalog-driven formats, the creative's `catalogs` field references synced catalogs by `catalog_id` instead of embedding items inline.
 
@@ -131,7 +152,7 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
 }
 ```
 
-### 5. Upload audiences
+### 6. Upload audiences
 
 `sync_audiences` uploads first-party audience lists for targeting. Members are hashed before sending.
 
@@ -149,7 +170,7 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
 }
 ```
 
-### 6. Create the campaign
+### 7. Create the campaign
 
 With all state in place, `create_media_buy` activates a campaign that references the synced state:
 

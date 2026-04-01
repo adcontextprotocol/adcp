@@ -331,7 +331,7 @@ Each attribute definition includes:
 | `genetic_data` | GDPR Article 9(1) | DNA profiles, genetic test results, hereditary conditions |
 | `biometric_data` | GDPR Article 9(1) | Fingerprints, facial geometry, voice prints, gait analysis |
 
-Data providers can reference these definitions when declaring `restricted_attributes` on their signal definitions. See [Declaring governance metadata](/docs/signals/data-providers#declaring-governance-metadata).
+Data providers can reference these definitions when declaring `restricted_attributes` on their signal definitions. See [Declaring governance metadata](/docs/signals/data-providers#declaring-governance-metadata). Governance agents match signal-declared attributes against plan-level `restricted_attributes` during [`check_governance`](/docs/governance/campaign/tasks/check_governance) validation — signals with matching restricted attributes are blocked from targeting for that campaign.
 
 ## Contributing policies
 

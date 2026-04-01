@@ -92,3 +92,8 @@ Multiple standards cannot have overlapping scopes for the same country/channel/l
 
 - [list_content_standards](./list_content_standards) - List all configurations
 - [update_content_standards](./update_content_standards) - Update a configuration
+- [calibrate_content](./calibrate_content) - Calibrate seller's local model against these standards
+
+<Warning>
+**Calibrate before production use.** After creating content standards, sellers MUST calibrate their local evaluation models via [`calibrate_content`](/docs/governance/content-standards/tasks/calibrate_content) before using the standards in production. Uncalibrated standards produce inconsistent evaluations — the verification agent and the seller's local model may interpret the same policy differently without alignment. See the [Calibration section](/docs/governance/content-standards/index#calibration) for the full workflow.
+</Warning>

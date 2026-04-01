@@ -16,29 +16,27 @@ TMP replaces vendor-specific RTD modules with a single Prebid module that speaks
 
 ## Context Match
 
-When a page loads, the TMP Prebid module sends a Context Match request to the router. The request includes the page context and ALL packages available for the placement -- not filtered by the user viewing the page.
+When a page loads, the TMP Prebid module sends a Context Match request to the router. The request includes the page context. No package list is sent — the provider uses its synced package set for this placement.
 
 ### Context Match Request
 
 ```json
 {
   "request_id": "ctx-7f2a-oakwood-91b3",
+  "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
   "property_id": "oakwood-publishing-main",
   "property_type": "website",
   "placement_id": "article-sidebar-300x250",
-  "artifacts": ["article:sustainable-kitchen-2026-03"],
-  "available_packages": [
-    { "package_id": "pkg-display-0041", "media_buy_id": "mb-pinnacle-q1", "format_ids": ["display_300x250", "display_728x90"] },
-    { "package_id": "pkg-native-0078", "media_buy_id": "mb-greenleaf-q1", "format_ids": ["native_infeed"] },
-    { "package_id": "pkg-display-0103", "media_buy_id": "mb-summit-q1", "format_ids": ["display_300x250"] }
+  "artifacts": [
+    { "type": "url", "value": "https://oakwood.example.com/sustainable-kitchen-2026-03" }
   ]
 }
 ```
 
 Key points:
 
-- `available_packages` includes ALL packages for this placement, across all buyers. This prevents user-identity leakage into the context path and enables caching the response across users.
-- `artifacts` references registered content. The buyer agent resolves artifact metadata from its cache — no inline signals needed on the request.
+- No package list is sent per request. The provider evaluates all eligible packages for this placement using its synced package set from media buy setup. The same packages are evaluated for every user, preventing identity leakage into the context path and enabling response caching.
+- `artifacts` references content by type and value. The buyer agent resolves artifact metadata from its cache — no inline signals needed on the request.
 
 ### Context Match Response
 
@@ -65,7 +63,7 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
 
 Key points:
 
-- `offers` contains one entry per activated package. Here, two of three packages matched. The third (`pkg-display-0103`) did not match the kitchen/sustainability context, so it is absent.
+- `offers` contains one entry per activated package. The provider's synced set for this placement included three packages — these two matched the kitchen/sustainability context, the third (`pkg-display-0103`) did not and is absent.
 - For web/GAM activation, offers are simple -- just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
 - `signals.targeting_kvs` are the key-value pairs that the Prebid module sets on the GAM ad request. GAM line items are configured to match on these keys.
 
@@ -159,7 +157,7 @@ GAM applies its own priority rules, competitive exclusions, and pacing logic acr
 
 The TMP Prebid module replaces vendor-specific RTD modules. It handles the full flow:
 
-1. **On auction init**: Send Context Match request to the TMP router with all available packages for each placement on the page.
+1. **On auction init**: Send Context Match request to the TMP router for each placement on the page.
 2. **On context match response**: Store offers and targeting signals.
 3. **After temporal delay** (100-2000ms, randomized): Send Identity Match request with the user's opaque token and ALL active package IDs for each buyer.
 4. **On identity match response**: Join with context match results. Set targeting key-values on the ad unit.
@@ -195,7 +193,7 @@ Page Load
 
 These constraints apply to all surfaces but are worth restating for the web case:
 
-- **Context match carries no user data.** No cookies, no user tokens, no IP addresses. The available_packages list is the same for every user viewing that placement.
+- **Context match carries no user data.** No cookies, no user tokens, no IP addresses. The provider evaluates the same synced package set for every user on a placement.
 - **Identity match carries no page data.** No URLs, no content signals, no placement IDs. The package_ids list includes all active packages for the buyer, not just the ones on this page.
 - **The publisher joins locally.** The router never sees both context and identity for the same impression. Only the publisher, who already has both the page context and the user identity, performs the intersection.
 - **Temporal decorrelation.** A random delay between the two requests prevents timing-based correlation at the network level.

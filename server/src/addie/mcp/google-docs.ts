@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 
 // Addie's email for access requests
@@ -188,7 +189,7 @@ async function readGoogleDoc(
 ): Promise<string> {
   const docId = extractDocId(urlOrId);
   if (!docId) {
-    return `Error: Could not extract document ID from "${urlOrId}". Please provide a valid Google Docs or Google Drive URL.`;
+    throw new ToolError(`Could not extract document ID from "${urlOrId}". Please provide a valid Google Docs or Google Drive URL.`);
   }
 
   try {
@@ -205,15 +206,13 @@ async function readGoogleDoc(
     );
 
     if (!metadataResponse.ok) {
-      if (metadataResponse.status === 404) {
-        return `Error: Document not found. The document may have been deleted or the link is incorrect.`;
-      }
-      if (metadataResponse.status === 403) {
-        return `I don't have access to this Google Doc. Please share it with ${ADDIE_EMAIL} and let me know when you've done that.`;
+      if (metadataResponse.status === 404 || metadataResponse.status === 403) {
+        logger.warn({ status: metadataResponse.status, docId }, 'Google Docs: document inaccessible');
+        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await metadataResponse.text();
       logger.error({ error, status: metadataResponse.status, docId }, 'Google Docs: Failed to get metadata');
-      return `Error: Failed to access document (${metadataResponse.status})`;
+      throw new ToolError(`Failed to access document (${metadataResponse.status})`);
     }
 
     const metadata = await metadataResponse.json() as { name: string; mimeType: string };
@@ -252,7 +251,7 @@ async function readGoogleDoc(
       );
 
       if (!downloadResponse.ok) {
-        return `Error: Failed to download file (${downloadResponse.status})`;
+        throw new ToolError(`Failed to download file (${downloadResponse.status})`);
       }
 
       const content = await downloadResponse.text();
@@ -274,12 +273,13 @@ async function readGoogleDoc(
     );
 
     if (!exportResponse.ok) {
-      if (exportResponse.status === 403) {
-        return `I don't have access to export this document. Please share it with ${ADDIE_EMAIL} with at least "Viewer" permissions.`;
+      if (exportResponse.status === 404 || exportResponse.status === 403) {
+        logger.warn({ status: exportResponse.status, docId }, 'Google Docs: export inaccessible');
+        return `I don't have access to this document. Please share it with ${ADDIE_EMAIL} (Viewer access is fine) and let me know when you've done that.`;
       }
       const error = await exportResponse.text();
       logger.error({ error, status: exportResponse.status, docId }, 'Google Docs: Failed to export');
-      return `Error: Failed to export document (${exportResponse.status})`;
+      throw new ToolError(`Failed to export document (${exportResponse.status})`);
     }
 
     const content = await exportResponse.text();
@@ -290,11 +290,12 @@ async function readGoogleDoc(
 
     return `**${name}** (${exportFormat})\n\n${content}`;
   } catch (error) {
+    if (error instanceof ToolError) throw error;
     logger.error({ error, docId }, 'Google Docs: Unexpected error');
     if (error instanceof Error) {
-      return `Error reading Google Doc: ${error.message}`;
+      throw new ToolError(error.message);
     }
-    return 'Error: Unknown error reading Google Doc';
+    throw new ToolError('Unknown error reading Google Doc');
   }
 }
 
@@ -348,7 +349,7 @@ export function createGoogleDocsToolHandlers(): Record<string, (input: Record<st
 
       // Validate input
       if (typeof url !== 'string' || !url.trim()) {
-        return 'Error: URL parameter is required and must be a non-empty string';
+        throw new ToolError('URL parameter is required and must be a non-empty string');
       }
 
       const docId = extractDocId(url);

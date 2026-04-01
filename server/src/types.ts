@@ -104,13 +104,97 @@ export interface AgentWithStats extends Agent {
   property_summary?: PropertySummary;
 }
 
+export interface AgentSigningKey {
+  kid: string;
+  kty: string;
+  alg?: string;
+  use?: string;
+  crv?: string;
+  x?: string;
+  y?: string;
+  n?: string;
+  e?: string;
+}
+
+export interface CollectionSelector {
+  publisher_domain: string;
+  collection_ids: string[];
+}
+
+export interface PublisherPropertySelector {
+  publisher_domain: string;
+  selection_type: "all" | "by_id" | "by_tag";
+  property_ids?: string[];
+  property_tags?: string[];
+}
+
+export interface PropertyIdentifier {
+  type: string;
+  value: string;
+}
+
+export interface PropertyDefinition {
+  property_id?: string;
+  name?: string;
+  publisher_domain?: string;
+  identifiers?: PropertyIdentifier[];
+  tags?: string[];
+}
+
+export interface PlacementTagDefinition {
+  name: string;
+  description: string;
+}
+
+export interface PlacementDefinition {
+  placement_id: string;
+  name?: string;
+  publisher_domain?: string;
+  tags?: string[];
+  property_ids?: string[];
+  property_tags?: string[];
+  collection_ids?: string[];
+}
+
+export interface AuthorizedAgentEntry {
+  url: string;
+  authorized_for?: string;
+  authorization_type?: "property_ids" | "property_tags" | "inline_properties" | "publisher_properties" | "signal_ids" | "signal_tags";
+  property_ids?: string[];
+  property_tags?: string[];
+  properties?: PropertyDefinition[];
+  publisher_properties?: PublisherPropertySelector[];
+  collections?: CollectionSelector[];
+  placement_ids?: string[];
+  placement_tags?: string[];
+  delegation_type?: "direct" | "delegated" | "ad_network";
+  exclusive?: boolean;
+  countries?: string[];
+  effective_from?: string;
+  effective_until?: string;
+  signal_ids?: string[];
+  signal_tags?: string[];
+  signing_keys?: AgentSigningKey[];
+}
+
 export interface AdAgentsJson {
   $schema?: string;
-  authorized_agents: Array<{
-    url: string;
-    authorized_for?: string;
-  }>;
+  authoritative_location?: string;
+  authorized_agents?: AuthorizedAgentEntry[];
+  properties?: PropertyDefinition[];
+  placements?: PlacementDefinition[];
+  placement_tags?: Record<string, PlacementTagDefinition>;
   last_updated?: string;
+}
+
+export interface AuthorizationScope {
+  property_id?: string;
+  property_tags?: string[];
+  collection_ids?: string[];
+  placement_ids?: string[];
+  placement_tags?: string[];
+  country?: string;
+  at?: string;
 }
 
 export interface AuthorizationResult {
@@ -120,6 +204,18 @@ export interface AuthorizationResult {
   checked_at: string;
   source?: string;
   error?: string;
+  matched_authorization?: {
+    authorization_type?: string;
+    delegation_type?: string;
+    exclusive?: boolean;
+    countries?: string[];
+    collection_ids?: string[];
+    placement_ids?: string[];
+    placement_tags?: string[];
+    effective_from?: string;
+    effective_until?: string;
+    signing_keys?: AgentSigningKey[];
+  };
 }
 
 // Billing & Company Types
@@ -775,7 +871,7 @@ export interface AddWorkingGroupMemberInput {
 
 // Committee Documents Types
 
-export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'pptx' | 'other';
+export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'pptx' | 'xlsx' | 'docx' | 'other';
 export type DocumentIndexStatus = 'pending' | 'success' | 'access_denied' | 'error' | 'disabled';
 
 export interface CommitteeDocument {

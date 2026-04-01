@@ -425,7 +425,7 @@ Formats that require synced catalogs declare `catalog` asset types in their `ass
 
 ### Find products
 
-Query `get_products` with `channels: ["retail_media"]` to find commerce media products. The brand identity enables the seller to filter by catalog eligibility:
+Query `get_products` with `channels: ["retail_media"]` to find commerce media products. The brand identity enables the seller to filter by catalog eligibility, and the `keywords` filter signals search terms you want to target so the seller can assess availability and recommend products where those terms are actionable:
 
 ```json
 {
@@ -434,7 +434,11 @@ Query `get_products` with `channels: ["retail_media"]` to find commerce media pr
     "domain": "summitfoods.example.com"
   },
   "filters": {
-    "channels": ["retail_media"]
+    "channels": ["retail_media"],
+    "keywords": [
+      { "keyword": "organic ketchup", "match_type": "exact" },
+      { "keyword": "condiments" }
+    ]
   }
 }
 ```
