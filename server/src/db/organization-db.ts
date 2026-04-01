@@ -400,13 +400,23 @@ export async function resetSeatWarningIfNeeded(
     : 'last_community_seat_warning';
 
   const percentage = (newUsage / limit) * 100;
-  let newThreshold = 0;
+
+  // Compute new threshold with hysteresis: preserve current value in the 60-79% band
+  // so re-adding a member after removal doesn't re-trigger the 80% warning
+  let newThreshold: number;
   if (percentage >= 100) newThreshold = 100;
   else if (percentage >= 80) newThreshold = 80;
-  else if (percentage >= 60) newThreshold = 0; // hysteresis: stays at current
-  else newThreshold = 0;
+  else if (percentage < 60) newThreshold = 0;
+  else {
+    // 60-79% band: preserve current threshold (hysteresis)
+    const current = await getPool().query<{ val: number }>(
+      `SELECT ${column} AS val FROM organizations WHERE workos_organization_id = $1`,
+      [orgId]
+    );
+    newThreshold = current.rows[0]?.val ?? 0;
+  }
 
-  // Capture old value via CTE before updating (RETURNING subquery sees post-update state)
+  // Capture old value via CTE before updating
   const result = await getPool().query<{ old_threshold: number }>(
     `WITH old AS (
        SELECT ${column} AS val FROM organizations WHERE workos_organization_id = $1
