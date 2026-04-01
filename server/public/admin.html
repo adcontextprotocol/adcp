@@ -580,13 +580,13 @@
             <div class="metric-label">Messages (30d)</div>
             <div class="metric-trend" id="messagesTrend">-</div>
           </div>
-          <div class="metric-card clickable" onclick="window.location.href='/admin/insights'">
-            <div class="metric-value" id="avgEngagement">-</div>
-            <div class="metric-label">Avg Engagement Score</div>
+          <div class="metric-card clickable" onclick="window.location.href='/admin/users'">
+            <div class="metric-value" id="avgCommunityPoints">-</div>
+            <div class="metric-label">Avg Community Points</div>
           </div>
-          <div class="metric-card clickable" onclick="window.location.href='/admin/insights'">
-            <div class="metric-value" id="champions">-</div>
-            <div class="metric-label">Champions</div>
+          <div class="metric-card clickable" onclick="window.location.href='/admin/users'">
+            <div class="metric-value" id="connectorPlus">-</div>
+            <div class="metric-label">Connector+ (100pts)</div>
           </div>
         </div>
 
@@ -800,8 +800,8 @@
         // ENGAGEMENT
         document.getElementById('activeUsers30d').textContent = formatNumber(stats.slack_active_users_30d);
         document.getElementById('messages30d').textContent = formatNumber(trends.messages?.current || stats.slack_messages_7d * 4);
-        document.getElementById('avgEngagement').textContent = stats.avg_engagement_score || '-';
-        document.getElementById('champions').textContent = formatNumber(stats.champion_users);
+        document.getElementById('avgCommunityPoints').textContent = stats.avg_community_points || '-';
+        document.getElementById('connectorPlus').textContent = formatNumber((stats.connector_users || 0) + (stats.champion_users || 0) + (stats.pioneer_users || 0));
 
         // Engagement trends
         if (trends.active_users) {
@@ -890,7 +890,7 @@
               <div class="prospect-item" onclick="window.location.href='/admin/accounts/${p.org_id}'">
                 <div>
                   <div class="prospect-item-name">${escapeHtml(p.name)}</div>
-                  <div class="prospect-item-meta">Score: ${p.engagement_score || 0}</div>
+                  <div class="prospect-item-meta">Score: ${p.community_points || 0}</div>
                 </div>
                 <span class="prospect-item-badge hot">🔥 Hot</span>
               </div>

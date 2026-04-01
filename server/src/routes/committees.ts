@@ -1058,7 +1058,7 @@ export function createCommitteeRouters(): {
 
       // Award community points + check badges (fire-and-forget)
       const communityDb = new CommunityDatabase();
-      communityDb.awardPoints(user.id, 'wg_joined', 15, group.id, 'working_group').catch(err => {
+      communityDb.awardPoints(user.id, 'wg_joined', 10, group.id, 'working_group').catch(err => {
         logger.error({ err, userId: user.id }, 'Failed to award WG join points');
       });
       communityDb.checkAndAwardBadges(user.id, 'wg').catch(err => {

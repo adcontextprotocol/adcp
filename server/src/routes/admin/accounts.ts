@@ -6,7 +6,7 @@
  *
  * Key simplifications:
  * - member_status derived from subscription (not a separate field)
- * - Uses engagement_score only (removes engagement_level computation)
+ * - Uses community_points aggregation (SUM from community_points table)
  * - No prospect_status pipeline stages (uses interest_level + activity log)
  */
 
@@ -34,10 +34,10 @@ import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
 import {
   computeEngagementTier,
   scoreToFires,
-  HOT_PROSPECT_SCORE_THRESHOLD,
+  HOT_PROSPECT_POINTS_THRESHOLD,
   HOT_PROSPECT_INTEREST_LEVELS,
   GOING_COLD_DAYS,
-  GOING_COLD_MIN_SCORE,
+  GOING_COLD_MIN_POINTS,
   CHURNED_STATUSES,
 } from "../../services/account-lifecycle.js";
 
@@ -119,6 +119,12 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+              FROM organization_memberships om
+              JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+              WHERE om.workos_organization_id = o.workos_organization_id
+            ) ocp ON true
             LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
@@ -134,7 +140,7 @@ export function setupAccountRoutes(
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
                     OR (
-                      COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+                      ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
                       AND NOT EXISTS (
                         SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
                       )
@@ -174,9 +180,15 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+              FROM organization_memberships om
+              JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+              WHERE om.workos_organization_id = o.workos_organization_id
+            ) ocp ON true
             WHERE (${NOT_MEMBER_ALIASED})
               AND (
-                COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+                ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
                 OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
               )
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -586,8 +598,15 @@ export function setupAccountRoutes(
         // Get engagement signals
         const engagementSignals = await orgDb.getEngagementSignals(orgId);
 
-        // Use stored engagement_score, compute fires from it
-        const engagementScore = org.engagement_score || 0;
+        // Aggregate community points for the org
+        const cpResult = await pool.query(
+          `SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+           FROM organization_memberships om
+           JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+           WHERE om.workos_organization_id = $1`,
+          [orgId]
+        );
+        const engagementScore = parseInt(cpResult.rows[0]?.org_points) || 0;
         const engagementFires = scoreToFires(engagementScore);
 
         // Fetch pending invoices - try Stripe first, fall back to local DB
@@ -646,8 +665,9 @@ export function setupAccountRoutes(
           is_disqualified: isDisqualified,
           disqualification_reason: org.disqualification_reason,
 
-          // Engagement (score only, no level)
-          engagement_score: engagementScore,
+          // Engagement (aggregated community points)
+          community_points: engagementScore,
+          engagement_score: engagementScore, // backwards compat
           engagement_fires: engagementFires,
           engagement_signals: engagementSignals,
 
@@ -803,6 +823,15 @@ export function setupAccountRoutes(
       const limit = Math.min(Math.max(parseInt(limitParam as string) || 100, 1), 500);
       const offset = Math.max(parseInt(offsetParam as string) || 0, 0);
 
+      // Lateral subquery to aggregate community points per org
+      const communityPointsJoin = `
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(cp.points), 0)::int AS org_points
+          FROM organization_memberships om
+          JOIN community_points cp ON cp.workos_user_id = om.workos_user_id
+          WHERE om.workos_organization_id = o.workos_organization_id
+        ) ocp ON true`;
+
       // Base SELECT fields
       const selectFields = `
         SELECT
@@ -815,7 +844,7 @@ export function setupAccountRoutes(
           o.subscription_product_name,
           o.subscription_current_period_end,
           o.subscription_canceled_at,
-          o.engagement_score,
+          ocp.org_points as community_points,
           o.interest_level,
           o.interest_level_set_by,
           o.invoice_requested_at,
@@ -851,7 +880,7 @@ export function setupAccountRoutes(
               WHEN oi.stripe_invoice_id IS NOT NULL THEN 'open_invoice'
               WHEN o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 AND ${MEMBER_FILTER_ALIASED} THEN 'expiring_soon'
-              WHEN COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD} AND NOT EXISTS (
+              WHEN ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD} AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
               WHEN EXISTS (
@@ -862,6 +891,7 @@ export function setupAccountRoutes(
               ELSE 'needs_review'
             END as attention_reason
             FROM organizations o
+            ${communityPointsJoin}
             LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
@@ -877,7 +907,7 @@ export function setupAccountRoutes(
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
                     OR (
-                      COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+                      ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
                       AND NOT EXISTS (
                         SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
                       )
@@ -907,7 +937,7 @@ export function setupAccountRoutes(
               ELSE 4
             END,
             na.next_step_due_date ASC NULLS LAST,
-            o.engagement_score DESC NULLS LAST`;
+            ocp.org_points DESC NULLS LAST`;
           break;
 
         case "needs_followup":
@@ -917,6 +947,7 @@ export function setupAccountRoutes(
             na.next_step_due_date as next_step_due,
             na.description as next_step_description
             FROM organizations o
+            ${communityPointsJoin}
             INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
@@ -934,6 +965,7 @@ export function setupAccountRoutes(
             oi.status as invoice_status,
             oi.due_date as invoice_due_date
             FROM organizations o
+            ${communityPointsJoin}
             INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
               AND oi.status IN ('draft', 'open')
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -946,14 +978,15 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE (${NOT_MEMBER_ALIASED})
             AND (
-              COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+              ocp.org_points >= ${HOT_PROSPECT_POINTS_THRESHOLD}
               OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
-          orderBy = ` ORDER BY o.engagement_score DESC NULLS LAST`;
+          orderBy = ` ORDER BY ocp.org_points DESC NULLS LAST`;
           break;
 
         case "going_cold":
@@ -961,6 +994,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '${GOING_COLD_DAYS} days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -976,6 +1010,7 @@ export function setupAccountRoutes(
             ${selectFields},
             latest_activity.latest_activity_at as last_insight_at
             FROM organizations o
+            ${communityPointsJoin}
             INNER JOIN LATERAL (
               SELECT MAX(sm.last_slack_activity_at) as latest_activity_at
               FROM organization_memberships om
@@ -994,6 +1029,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE ${MEMBER_FILTER_ALIASED}
           `;
           orderBy = ` ORDER BY o.name ASC`;
@@ -1004,6 +1040,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
@@ -1017,10 +1054,11 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE ${MEMBER_FILTER_ALIASED}
-              AND COALESCE(o.engagement_score, 0) < ${GOING_COLD_MIN_SCORE}
+              AND ocp.org_points < ${GOING_COLD_MIN_POINTS}
           `;
-          orderBy = ` ORDER BY o.engagement_score ASC NULLS FIRST`;
+          orderBy = ` ORDER BY ocp.org_points ASC NULLS FIRST`;
           break;
 
         case "my_accounts":
@@ -1032,6 +1070,7 @@ export function setupAccountRoutes(
             ${selectFields},
             os.role as stakeholder_role
             FROM organizations o
+            ${communityPointsJoin}
             INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
               AND os.user_id = $1
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -1046,6 +1085,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (${NOT_MEMBER_ALIASED})
@@ -1058,6 +1098,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE o.prospect_status = 'disqualified'
           `;
           orderBy = ` ORDER BY o.updated_at DESC`;
@@ -1077,10 +1118,11 @@ export function setupAccountRoutes(
                 AND sm.slack_is_deleted = false), 0)
             ) as computed_user_count
             FROM organizations o
+            ${communityPointsJoin}
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND o.is_personal = false
           `;
-          orderBy = ` ORDER BY computed_user_count DESC, o.engagement_score DESC NULLS LAST`;
+          orderBy = ` ORDER BY computed_user_count DESC, ocp.org_points DESC NULLS LAST`;
           break;
 
         case "missing_owner":
@@ -1088,6 +1130,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE EXISTS (
               SELECT 1 FROM organization_memberships om
               WHERE om.workos_organization_id = o.workos_organization_id
@@ -1106,6 +1149,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE o.subscription_status IN (${CHURNED_STATUSES.map(s => `'${s}'`).join(', ')})
           `;
           orderBy = ` ORDER BY o.updated_at DESC`;
@@ -1116,6 +1160,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
+            ${communityPointsJoin}
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
           orderBy = ` ORDER BY o.updated_at DESC`;
@@ -1274,7 +1319,7 @@ export function setupAccountRoutes(
       // Transform results
       const accounts = result.rows.map((row) => {
         const memberStatus = computeEngagementTier(row);
-        const engagementScore = row.engagement_score || 0;
+        const engagementScore = row.community_points || 0;
         const stakeholders =
           stakeholdersMap.get(row.workos_organization_id) || [];
         const owner = stakeholders.find((s) => s.role === "owner");
@@ -1289,7 +1334,8 @@ export function setupAccountRoutes(
           is_disqualified: row.prospect_status === "disqualified",
 
           // Engagement
-          engagement_score: engagementScore,
+          community_points: engagementScore,
+          engagement_score: engagementScore, // backwards compat
           engagement_fires: scoreToFires(engagementScore),
           interest_level: row.interest_level,
 

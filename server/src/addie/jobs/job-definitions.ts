@@ -455,7 +455,6 @@ export const JOB_NAMES = {
   FEED_FETCHER: 'feed-fetcher',
   ALERT_PROCESSOR: 'alert-processor',
   TASK_REMINDER: 'task-reminder',
-  ENGAGEMENT_SCORING: 'engagement-scoring',
   PERSONA_INFERENCE: 'persona-inference',
   JOURNEY_COMPUTATION: 'journey-computation',
   KNOWLEDGE_STALENESS: 'knowledge-staleness',

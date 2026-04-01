@@ -1,5 +1,6 @@
 import { query } from './client.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
+import { CommunityDatabase } from './community-db.js';
 import type {
   WorkingGroup,
   WorkingGroupLeader,
@@ -844,6 +845,10 @@ export class WorkingGroupDatabase {
       computeJourneyStage(orgResult.rows[0].workos_organization_id, 'leadership_change', `working_group:${workingGroupId}`)
         .catch(() => {});
     }
+
+    // Award community points for leadership (fire-and-forget)
+    new CommunityDatabase().awardPoints(canonicalUserId, 'wg_leadership', 30, workingGroupId, 'working_group')
+      .catch(() => {});
   }
 
   /**
