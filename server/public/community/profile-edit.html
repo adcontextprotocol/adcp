@@ -528,11 +528,11 @@
   <script src="/nav.js"></script>
 
   <div class="edit-container">
-    <a id="back-link" href="/community" class="back-link">
+    <a id="back-link" href="/account" class="back-link">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="15 18 9 12 15 6"></polyline>
       </svg>
-      Back to hub
+      Back to account
     </a>
 
     <!-- Loading state -->
@@ -1006,7 +1006,7 @@
           // (community profile save creates the member profile automatically)
           statusEl.innerHTML = 'Save your profile to create your member directory listing.';
         } else {
-          statusEl.innerHTML = 'You don\'t have a member directory listing yet. <a href="/dashboard/settings" style="color: var(--color-brand); font-weight: var(--font-medium);">Subscribe</a> to create one and appear in the directory.';
+          statusEl.innerHTML = 'You don\'t have a member directory listing yet. <a href="/organization#membership" style="color: var(--color-brand); font-weight: var(--font-medium);">Manage organization membership</a> to create one and appear in the directory.';
 
           // Disable offerings checkboxes for non-subscribers
           document.getElementById('offering-consulting').disabled = true;
@@ -1039,7 +1039,7 @@
         statusEl.style.background = 'var(--color-warning-50)';
         statusEl.style.color = 'var(--color-warning-700)';
         statusEl.style.border = 'var(--border-1) solid var(--color-warning-200)';
-        statusEl.innerHTML = 'Your listing is not yet visible in the member directory. <a href="/dashboard/settings" style="color: var(--color-warning-700); font-weight: var(--font-medium);">Manage subscription</a>';
+        statusEl.innerHTML = 'Your listing is not yet visible in the member directory. <a href="/organization#membership" style="color: var(--color-warning-700); font-weight: var(--font-medium);">Manage organization membership</a>.';
       }
     }
 
@@ -1111,6 +1111,13 @@
         }
 
         const data = await resp.json();
+        if (!data.canGenerate) {
+          document.getElementById('portrait-ineligible').style.display = '';
+          document.getElementById('portrait-ineligible-msg').textContent =
+            'Active membership required to generate an illustrated portrait.';
+          return;
+        }
+
         const remaining = data.maxMonthlyGenerations - data.generationsThisMonth;
 
         document.getElementById('portrait-generate').style.display = '';
@@ -1461,11 +1468,11 @@
       document.querySelector('.edit-title').textContent = 'Your profile';
       const orgParam = new URLSearchParams(window.location.search).get('org');
       if (orgParam) {
-        const dashboardUrl = '/dashboard?org=' + encodeURIComponent(orgParam);
+        const dashboardUrl = '/organization?org=' + encodeURIComponent(orgParam);
         const backLink = document.getElementById('back-link');
         if (backLink) {
           backLink.href = dashboardUrl;
-          backLink.lastChild.textContent = ' Back to dashboard';
+          backLink.lastChild.textContent = ' Back to organization';
         }
         const cancelLink = document.getElementById('cancel-link');
         if (cancelLink) cancelLink.href = dashboardUrl;
@@ -1508,7 +1515,7 @@
         const toggleLabel = visibilityToggle.querySelector('.toggle-label');
         const toggleDesc = visibilityToggle.querySelector('.toggle-description');
         if (toggleLabel) toggleLabel.textContent = 'Show in directories';
-        if (toggleDesc) toggleDesc.innerHTML = 'Make your profile visible in the <a href="/community/people">community directory</a>. Member directory visibility requires an active <a href="/dashboard/settings">membership</a>.';
+        if (toggleDesc) toggleDesc.innerHTML = 'Make your profile visible in the <a href="/community/people">community directory</a>. Member directory visibility requires an active <a href="/organization#membership">organization membership</a>.';
       }
 
       // Member directory status message
