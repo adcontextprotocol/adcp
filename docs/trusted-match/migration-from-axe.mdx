@@ -16,7 +16,7 @@ This page maps AXE concepts to TMP equivalents and describes how to run both in 
 | AXE | TMP | Notes |
 |---|---|---|
 | `axei` (include segment) | Context Match offer | Package matched the content |
-| `axex` (exclude segment) | Identity Match `eligible: false` | User fails frequency cap, suppression list, or audience rule |
+| `axex` (exclude segment) | Identity Match `eligible: false` | User fails suppression list, audience rule, or buyer-side frequency check |
 | `axem` (macro data) | Creative manifest | TMP returns structured assets instead of base64-encoded blobs |
 | Orchestrator AXE endpoint | TMP Router | Single binary with two isolated code paths |
 | Prebid Real-Time Data (RTD) module | TMP Prebid module | Replaces vendor-specific RTD modules with a single module |
@@ -56,11 +56,8 @@ During migration, publishers can run AXE and TMP simultaneously:
 2. **New media buys** use TMP (no `axe_include_segment` / `axe_exclude_segment`)
 3. **Existing media buys** continue using AXE segments until they expire
 4. **GAM line items** for both: AXE line items target `axei`/`axex`, TMP line items target `adcp_pkg`
-5. **Frequency state** is separate during parallel operation — AXE tracks its own counters, TMP tracks its own
 
-<Warning>
-During parallel operation, campaigns on AXE and campaigns on TMP maintain independent frequency counters. A user exposed to an AXE campaign will not have that exposure reflected in TMP's Identity Match, and vice versa. To avoid over-frequency during migration, avoid running the same campaign on both systems simultaneously. Migrate campaigns one at a time: move a campaign to TMP, let its AXE frequency state expire, then move the next.
-</Warning>
+TMP does not currently maintain its own frequency state, so there is no risk of double-counting during parallel operation. Frequency enforcement remains buyer-side via Identity Match eligibility responses. When the buyer's exposure store is updated from delivery reports (`get_media_buy_delivery`), it reflects impressions from both systems.
 
 ### Cutover
 
@@ -77,7 +74,7 @@ AXE targeting fields in `create_media_buy` map to TMP behavior:
 | AXE field | TMP equivalent |
 |---|---|
 | `axe_include_segment` | Context Match — buyer evaluates targeting in real time |
-| `axe_exclude_segment` | Identity Match — buyer checks suppression/frequency |
+| `axe_exclude_segment` | Identity Match — buyer checks suppression and audience rules |
 
 New media buys should omit AXE fields entirely. The buyer agent's Context Match and Identity Match logic replaces the orchestrator's segment evaluation.
 
