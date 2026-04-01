@@ -715,7 +715,9 @@ export function createContentRouter(): Router {
       let redirectCount = 0;
 
       while (true) {
-        response = await fetch(currentUrl, {
+        // SSRF-safe: currentUrl is validated by validateFetchUrl (initial) and
+        // validateRedirectTarget (each hop) which reject private IPs and non-HTTPS schemes
+        response = await fetch(currentUrl, { // lgtm[js/request-forgery]
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
             'Accept': 'text/html,application/xhtml+xml',
