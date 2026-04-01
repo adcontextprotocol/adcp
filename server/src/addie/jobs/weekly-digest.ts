@@ -7,6 +7,8 @@ import {
   markSent,
   getDigestEmailRecipients,
   getUserWorkingGroupMap,
+  isLegacyContent,
+  type DigestContent,
   type DigestRecord,
   type DigestSendStats,
 } from '../../db/digest-db.js';
@@ -100,12 +102,12 @@ async function generateDraft(editionDate: string): Promise<WeeklyDigestResult> {
 
   // Check minimum content threshold
   if (!hasMinimumContent(content)) {
-    logger.info({ editionDate }, 'Not enough content for digest this week');
+    logger.info({ editionDate }, 'Not enough content for The Prompt this week');
     result.skipped = true;
     return result;
   }
 
-  // Save draft (ON CONFLICT handles race condition if two instances run simultaneously)
+  // Save draft
   const digest = await createDigest(editionDate, content);
   if (!digest) {
     logger.debug({ editionDate }, 'Digest already created by another instance');
@@ -125,9 +127,9 @@ async function generateDraft(editionDate: string): Promise<WeeklyDigestResult> {
 
   if (postResult.ok && postResult.ts) {
     await setReviewMessage(digest.id, editorial.slack_channel_id, postResult.ts);
-    logger.info({ editionDate, channel: editorial.slack_channel_id }, 'Digest draft posted for review');
+    logger.info({ editionDate, channel: editorial.slack_channel_id }, 'The Prompt draft posted for review');
   } else {
-    logger.error({ error: postResult.error }, 'Failed to post digest review to Editorial channel');
+    logger.error({ error: postResult.error }, 'Failed to post The Prompt review to Editorial channel');
   }
 
   return result;
@@ -135,8 +137,6 @@ async function generateDraft(editionDate: string): Promise<WeeklyDigestResult> {
 
 /**
  * Check if the approved digest is ready to send, or nudge if still waiting.
- * No longer auto-skips — the draft stays editable until someone approves or
- * a new edition is generated next week.
  */
 async function sendApprovedDigest(editionDate: string, etHour: number): Promise<WeeklyDigestResult> {
   const result: WeeklyDigestResult = { generated: false, sent: 0, skipped: false };
@@ -146,23 +146,22 @@ async function sendApprovedDigest(editionDate: string, etHour: number): Promise<
     return result;
   }
 
-  // Already sent or skipped
   if (digest.status === 'sent' || digest.status === 'skipped') {
     return result;
   }
 
-  // Still a draft — nudge once at 10am, then leave it alone
+  // Still a draft — nudge once at 10am
   if (digest.status === 'draft') {
     if (etHour >= 10 && etHour < 11 && digest.review_channel_id && digest.review_message_ts) {
       await sendChannelMessage(digest.review_channel_id, {
-        text: `This week's digest is still waiting for approval. React with :white_check_mark: to send now, or reply in this thread with edits.`,
+        text: `This week's Prompt is still waiting for approval. React with :white_check_mark: to send now, or reply in this thread with edits.`,
         thread_ts: digest.review_message_ts,
       });
     }
     return result;
   }
 
-  // Status is 'approved' - send it
+  // Status is 'approved' — send it
   const sendResult = await sendDigest(digest);
   result.sent = sendResult.sent;
   return result;
@@ -178,23 +177,28 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
     return { sent: 0 };
   }
 
+  // Only send current-format digests
+  if (isLegacyContent(digest.content)) {
+    logger.error({ digestId: digest.id }, 'Cannot send legacy-format digest');
+    return { sent: 0 };
+  }
+
+  const content = digest.content;
   const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
   const stats: DigestSendStats = { email_count: 0, slack_count: 0, by_segment: {} };
 
   // Post to Slack #announcements
   if (ANNOUNCEMENTS_CHANNEL) {
-    const slackMessage = renderDigestSlack(digest.content, editionDate);
+    const slackMessage = renderDigestSlack(content, editionDate);
     const slackResult = await sendChannelMessage(ANNOUNCEMENTS_CHANNEL, slackMessage);
     if (slackResult.ok) {
       stats.slack_count = 1;
     }
   }
 
-  // Prepare and batch-send emails with link tracking
+  // Prepare and batch-send emails
   const recipients = await getDigestEmailRecipients();
-  const subject = generateDigestSubject(digest.content);
-
-  // Pre-fetch all user WG memberships for personalization (single query)
+  const subject = generateDigestSubject(content);
   const userWGMap = await getUserWorkingGroupMap();
 
   const emailBatch: TrackedBatchMarketingEmail[] = [];
@@ -207,7 +211,7 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
       to: recipient.email,
       subject,
       render: (trackingId: string) => {
-        const { html, text } = renderDigestEmail(digest.content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs);
+        const { html, text } = renderDigestEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs);
         return { htmlContent: html, textContent: text };
       },
       category: 'weekly_digest',
@@ -221,27 +225,26 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
   const batchResult = await sendTrackedBatchMarketingEmails(emailBatch);
   stats.email_count = batchResult.sent;
 
-  // Adjust segment counts if there were failures
   if (batchResult.failed > 0) {
     stats.by_segment = { total: batchResult.sent };
   }
 
-  // Only mark as sent if at least something was delivered
+  // Mark as sent
   if (stats.email_count > 0 || stats.slack_count > 0) {
     await markSent(digest.id, stats);
   } else {
-    logger.error({ editionDate, batchResult }, 'Digest delivery failed - nothing delivered, leaving as approved for retry');
+    logger.error({ editionDate, batchResult }, 'The Prompt delivery failed — leaving as approved for retry');
   }
 
   logger.info(
     { editionDate, emailCount: stats.email_count, slackCount: stats.slack_count },
-    'Weekly digest sent',
+    'The Prompt sent',
   );
 
   // Notify Editorial channel
   if (digest.review_channel_id && digest.review_message_ts) {
     await sendChannelMessage(digest.review_channel_id, {
-      text: `Digest sent! ${stats.email_count} emails, ${stats.slack_count} Slack posts.`,
+      text: `The Prompt sent! ${stats.email_count} emails, ${stats.slack_count} Slack posts.`,
       thread_ts: digest.review_message_ts,
     });
   }

@@ -13,8 +13,8 @@ export interface DigestEditResult {
 const EDITORS_NOTE_PATTERN = /^editor'?s?\s*note[:\s]/i;
 
 const VALID_OPS = new Set([
-  'remove_news', 'update_intro', 'set_editors_note', 'clear_editors_note',
-  'set_subject', 'reorder_news', 'update_why_it_matters', 'multiple', 'clarify',
+  'remove_article', 'update_opening_take', 'set_editors_note', 'clear_editors_note',
+  'set_subject', 'reorder_articles', 'update_why_it_matters', 'multiple', 'clarify',
 ]);
 
 const MAX_EDIT_DEPTH = 2;
@@ -99,34 +99,33 @@ async function interpretAndApplyEdit(
   const contentSummary = summarizeForEdit(current);
 
   const result = await complete({
-    system: `You are Addie, editing a weekly digest for AgenticAdvertising.org based on editorial feedback.
+    system: `You are Addie, editing The Prompt — a weekly newsletter for the agentic advertising community.
 
-Given the current digest content and an editor's instruction, return a JSON object describing the edit to apply.
+Given the current content and an editor's instruction, return a JSON object describing the edit to apply.
 
 Available operations:
-- {"op": "remove_news", "index": 0} — Remove a news article by index (0-based)
-- {"op": "update_intro", "guidance": "..."} — Regenerate the intro with specific guidance
+- {"op": "remove_article", "index": 0} — Remove a "What to watch" article by index (0-based)
+- {"op": "update_opening_take", "guidance": "..."} — Regenerate the opening take with specific guidance
 - {"op": "set_editors_note", "text": "..."} — Set or update the editor's note
 - {"op": "clear_editors_note"} — Remove the editor's note
 - {"op": "set_subject", "text": "..."} — Set a custom email subject line
-- {"op": "reorder_news", "indices": [2, 0, 1]} — Reorder news articles
-- {"op": "update_why_it_matters", "index": 0, "text": "..."} — Update a specific article's "why it matters"
+- {"op": "reorder_articles", "indices": [2, 0, 1]} — Reorder "What to watch" articles
+- {"op": "update_why_it_matters", "index": 0, "text": "..."} — Update a specific article's take
 - {"op": "multiple", "edits": [...]} — Apply multiple operations (max 5, no nesting)
 
 If the instruction is unclear, return {"op": "clarify", "question": "..."}.
 
 Respond with ONLY valid JSON, no markdown fences.`,
-    prompt: `Current digest:\n${contentSummary}\n\nEditor's instruction: "${instruction}"`,
+    prompt: `Current content:\n${contentSummary}\n\nEditor's instruction: "${instruction}"`,
     maxTokens: 500,
     model: 'fast',
-    operationName: 'digest-edit-interpret',
+    operationName: 'prompt-edit-interpret',
   });
 
   try {
     const cleaned = result.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '');
     const edit = JSON.parse(cleaned);
 
-    // Validate op before executing
     if (!edit.op || !VALID_OPS.has(String(edit.op))) {
       return { content: current, summary: `I didn't understand that. Try "remove the first article", "editor's note: ...", or "regenerate".` };
     }
@@ -156,34 +155,34 @@ async function executeEdit(
     return { content: current, summary: `Unknown edit operation. Try "remove the first article", "editor's note: ...", or "regenerate".` };
   }
 
-  const updated = { ...current, news: [...current.news] };
+  const updated = { ...current, whatToWatch: [...current.whatToWatch] };
 
   switch (edit.op) {
-    case 'remove_news': {
+    case 'remove_article': {
       const idx = typeof edit.index === 'number' ? edit.index : -1;
-      if (idx >= 0 && idx < updated.news.length) {
-        const removed = updated.news.splice(idx, 1)[0];
+      if (idx >= 0 && idx < updated.whatToWatch.length) {
+        const removed = updated.whatToWatch.splice(idx, 1)[0];
         const content = addEditEntry(updated, editorName, `Removed article: ${removed.title}`);
-        return { content, summary: `Removed "${removed.title}" from the digest.` };
+        return { content, summary: `Removed "${removed.title}" from What to watch.` };
       }
-      return { content: current, summary: `Article index ${idx} is out of range (${current.news.length} articles).` };
+      return { content: current, summary: `Article index ${idx} is out of range (${current.whatToWatch.length} articles).` };
     }
 
-    case 'update_intro': {
+    case 'update_opening_take': {
       const guidance = typeof edit.guidance === 'string' ? edit.guidance.slice(0, MAX_TEXT_LENGTH) : '';
       if (!guidance || !isLLMConfigured()) {
-        return { content: current, summary: "Can't regenerate intro without guidance or LLM." };
+        return { content: current, summary: "Can't regenerate opening take without guidance or LLM." };
       }
-      const introResult = await complete({
-        system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org (AAO). Rewrite the weekly digest intro based on the editor's guidance. Lead with community activity. Be warm, concise, and specific. No emojis. 1-2 sentences only.`,
-        prompt: `Current intro: "${current.intro}"\n\nEditor's guidance: "${guidance}"\n\nWorking groups: ${current.workingGroups.length}, new members: ${current.newMembers.length}, conversations: ${current.conversations.length}, news: ${current.news.length}.`,
-        maxTokens: 150,
+      const takeResult = await complete({
+        system: `You are Addie, writing the opening paragraph of The Prompt. Rewrite the opening take based on the editor's guidance. Be specific, opinionated, first person. 2-3 sentences. No emojis.`,
+        prompt: `Current opening: "${current.openingTake}"\n\nEditor's guidance: "${guidance}"\n\nContent: ${current.whatToWatch.length} stories, ${current.fromTheInside.length} working groups, ${current.voices.length} member voices, ${current.newMembers.length} new members.`,
+        maxTokens: 200,
         model: 'fast',
-        operationName: 'digest-edit-intro',
+        operationName: 'prompt-edit-opening-take',
       });
-      updated.intro = introResult.text;
-      const content = addEditEntry(updated, editorName, `Updated intro`);
-      return { content, summary: `Updated the intro based on your guidance.` };
+      updated.openingTake = takeResult.text;
+      const content = addEditEntry(updated, editorName, `Updated opening take`);
+      return { content, summary: `Updated the opening take based on your guidance.` };
     }
 
     case 'set_editors_note': {
@@ -208,17 +207,17 @@ async function executeEdit(
       return { content, summary: `Set email subject to: "${text}"` };
     }
 
-    case 'reorder_news': {
+    case 'reorder_articles': {
       const indices = Array.isArray(edit.indices) ? edit.indices : [];
       const uniqueIndices = new Set(indices);
       if (
-        indices.length === updated.news.length
+        indices.length === updated.whatToWatch.length
         && uniqueIndices.size === indices.length
-        && indices.every((i: unknown) => typeof i === 'number' && i >= 0 && i < updated.news.length)
+        && indices.every((i: unknown) => typeof i === 'number' && i >= 0 && i < updated.whatToWatch.length)
       ) {
-        updated.news = (indices as number[]).map((i) => current.news[i]);
+        updated.whatToWatch = (indices as number[]).map((i) => current.whatToWatch[i]);
         const content = addEditEntry(updated, editorName, 'Reordered articles');
-        return { content, summary: `Reordered articles: ${updated.news.map((n) => n.title).join(', ')}` };
+        return { content, summary: `Reordered articles: ${updated.whatToWatch.map((n) => n.title).join(', ')}` };
       }
       return { content: current, summary: 'Invalid article indices for reorder.' };
     }
@@ -227,10 +226,10 @@ async function executeEdit(
       const idx = typeof edit.index === 'number' ? edit.index : -1;
       const text = typeof edit.text === 'string' ? edit.text.slice(0, MAX_TEXT_LENGTH) : '';
       if (!text) return { content: current, summary: 'No text provided.' };
-      if (idx >= 0 && idx < updated.news.length) {
-        updated.news[idx] = { ...updated.news[idx], whyItMatters: text };
-        const content = addEditEntry(updated, editorName, `Updated "why it matters" for: ${updated.news[idx].title}`);
-        return { content, summary: `Updated "why it matters" for "${updated.news[idx].title}".` };
+      if (idx >= 0 && idx < updated.whatToWatch.length) {
+        updated.whatToWatch[idx] = { ...updated.whatToWatch[idx], whyItMatters: text };
+        const content = addEditEntry(updated, editorName, `Updated take for: ${updated.whatToWatch[idx].title}`);
+        return { content, summary: `Updated take for "${updated.whatToWatch[idx].title}".` };
       }
       return { content: current, summary: `Article index ${idx} is out of range.` };
     }
@@ -240,7 +239,6 @@ async function executeEdit(
       if (edits.length > MAX_BATCH_EDITS) {
         return { content: current, summary: `Too many edits at once (max ${MAX_BATCH_EDITS}). Try one at a time.` };
       }
-      // Prevent nested multiple operations
       if (edits.some((e: Record<string, unknown>) => e.op === 'multiple')) {
         return { content: current, summary: 'Nested batch edits are not supported.' };
       }
@@ -282,24 +280,28 @@ function addEditEntry(content: DigestContent, editorName: string, description: s
  */
 function summarizeForEdit(content: DigestContent): string {
   const parts: string[] = [];
-  parts.push(`Intro: "${content.intro}"`);
+  parts.push(`Opening take: "${content.openingTake}"`);
 
   if (content.editorsNote) {
     parts.push(`Editor's note: "${content.editorsNote}"`);
   }
 
-  if (content.news.length > 0) {
-    parts.push('News articles:');
-    content.news.forEach((item, i) => {
+  if (content.whatToWatch.length > 0) {
+    parts.push('What to watch:');
+    content.whatToWatch.forEach((item, i) => {
       parts.push(`  [${i}] "${item.title}" — ${item.whyItMatters}`);
     });
   }
 
-  if (content.workingGroups.length > 0) {
-    parts.push(`Working groups: ${content.workingGroups.map((wg) => wg.name).join(', ')}`);
+  if (content.fromTheInside.length > 0) {
+    parts.push(`From the inside: ${content.fromTheInside.map((g) => g.name).join(', ')}`);
   }
 
-  parts.push(`New members: ${content.newMembers.length}, Conversations: ${content.conversations.length}`);
+  if (content.voices.length > 0) {
+    parts.push(`Voices: ${content.voices.map((v) => `"${v.title}" by ${v.authorName}`).join(', ')}`);
+  }
+
+  parts.push(`New members: ${content.newMembers.length}`);
 
   if (content.emailSubject) {
     parts.push(`Email subject: "${content.emailSubject}"`);

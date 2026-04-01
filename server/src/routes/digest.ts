@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { getDigestByDate, getCurrentWeekDigest, recordDigestFeedback } from '../db/digest-db.js';
+import { getDigestByDate, getCurrentWeekDigest, recordDigestFeedback, isLegacyContent } from '../db/digest-db.js';
 import { renderDigestWebPage, renderDigestEmail, type DigestSegment } from '../addie/templates/weekly-digest.js';
 
 const logger = createLogger('digest-routes');
@@ -40,6 +40,11 @@ export function createDigestRouter(): Router {
 
       if (!digest) {
         res.status(404).send('No digest found. Generate a draft first.');
+        return;
+      }
+
+      if (isLegacyContent(digest.content)) {
+        res.status(410).send('This digest uses a legacy format and cannot be previewed.');
         return;
       }
 
@@ -103,6 +108,11 @@ export function createDigestRouter(): Router {
 
       if (!digest || digest.status !== 'sent') {
         res.status(404).send('Digest not found');
+        return;
+      }
+
+      if (isLegacyContent(digest.content)) {
+        res.status(410).send('This digest edition is no longer available in web format.');
         return;
       }
 

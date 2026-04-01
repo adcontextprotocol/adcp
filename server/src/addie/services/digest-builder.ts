@@ -8,149 +8,73 @@ import {
   type DigestNewsItem,
   type DigestMemberPerspective,
   type DigestNewMember,
-  type DigestConversation,
-  type DigestWorkingGroup,
-  type DigestPerspective,
-  type DigestSocialPostIdea,
-  type DigestSpotlightAction,
+  type DigestInsiderGroup,
 } from '../../db/digest-db.js';
-import { getRecentSocialPostIdeas } from '../jobs/social-post-ideas.js';
-import { WorkingGroupDatabase } from '../../db/working-group-db.js';
-import { MeetingsDatabase } from '../../db/meetings-db.js';
-
-const workingGroupDb = new WorkingGroupDatabase();
-const meetingsDb = new MeetingsDatabase();
-import { getChannelHistory, resolveSlackUserDisplayName } from '../../slack/client.js';
-import { query } from '../../db/client.js';
+import { buildWgDigestContent, getDigestEligibleGroups } from './wg-digest-builder.js';
 
 const logger = createLogger('digest-builder');
 
-const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
+const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
 /**
- * Build all content sections for the weekly digest.
- * Assembles news, new members, conversations, and working group updates.
+ * Build all content sections for The Prompt.
+ * Assembles: What to Watch, From the Inside, Voices, new members, then
+ * generates the opening take last (it synthesizes everything).
  */
 export async function buildDigestContent(): Promise<DigestContent> {
-  logger.info('Building weekly digest content');
+  logger.info('Building The Prompt content');
 
-  const [memberPerspectives, news, newMembers, conversations, workingGroups, perspectives, socialPostIdeas, spotlightAction] = await Promise.all([
-    buildMemberPerspectivesSection(),
-    buildNewsSection(),
+  const [whatToWatch, fromTheInside, voices, newMembers] = await Promise.all([
+    buildWhatToWatch(),
+    buildInsiderSection(),
+    buildVoicesSection(),
     buildNewMembersSection(),
-    buildConversationsSection(),
-    buildWorkingGroupsSection(),
-    buildPerspectivesSection(),
-    buildSocialPostIdeasSection(),
-    buildSpotlightAction(),
   ]);
 
-  const intro = await generateIntro(memberPerspectives, news, newMembers, conversations, workingGroups);
+  const openingTake = await generateOpeningTake(whatToWatch, fromTheInside, voices, newMembers);
 
   const content: DigestContent = {
-    intro,
-    ...(memberPerspectives.length > 0 ? { memberPerspectives } : {}),
-    news,
+    contentVersion: 2,
+    openingTake,
+    whatToWatch,
+    fromTheInside,
+    voices,
     newMembers,
-    conversations,
-    workingGroups,
-    ...(perspectives.length > 0 ? { perspectives } : {}),
-    ...(socialPostIdeas.length > 0 ? { socialPostIdeas } : {}),
-    ...(spotlightAction ? { spotlightAction } : {}),
     generatedAt: new Date().toISOString(),
   };
 
   logger.info(
     {
-      memberPerspectiveCount: memberPerspectives.length,
-      newsCount: news.length,
+      watchCount: whatToWatch.length,
+      insiderGroupCount: fromTheInside.length,
+      voicesCount: voices.length,
       newMemberCount: newMembers.length,
-      conversationCount: conversations.length,
-      workingGroupCount: workingGroups.length,
-      perspectiveCount: perspectives.length,
-      socialPostIdeasCount: socialPostIdeas.length,
     },
-    'Digest content built',
+    'The Prompt content built',
   );
 
   return content;
 }
 
 /**
- * Check if there's enough content to justify sending a digest this week.
+ * Check if there's enough content to justify sending this week.
  */
 export function hasMinimumContent(content: DigestContent): boolean {
-  const totalItems =
-    (content.memberPerspectives?.length || 0) +
-    (content.perspectives?.length || 0) +
-    content.news.length +
-    content.conversations.length +
-    content.workingGroups.length;
-  return totalItems >= 2;
+  return content.whatToWatch.length + content.fromTheInside.length + content.voices.length >= 2;
 }
 
-// --- Member Perspectives Section ---
+// ─── What to Watch (industry stories) ───────────────────────────────────
 
-async function buildMemberPerspectivesSection(): Promise<DigestMemberPerspective[]> {
-  const perspectives = await getRecentMemberPerspectivesForDigest(7, 4);
-
-  return perspectives.map((perspective) => ({
-    slug: perspective.slug,
-    title: perspective.title,
-    url: `${BASE_URL}/perspectives/${perspective.slug}`,
-    excerpt: perspective.excerpt || '',
-    authorName: perspective.author_name || 'Community member',
-    publishedAt: perspective.published_at ? perspective.published_at.toISOString() : null,
-  }));
-}
-
-// --- Official Perspectives Section ---
-
-async function buildPerspectivesSection(): Promise<DigestPerspective[]> {
-  try {
-    const result = await query<{
-      title: string;
-      slug: string;
-      excerpt: string | null;
-      author_name: string | null;
-      published_at: Date | null;
-    }>(
-      `SELECT title, slug, excerpt, author_name, published_at
-       FROM perspectives
-       WHERE status = 'published'
-         AND content_origin = 'official'
-         AND published_at >= NOW() - INTERVAL '7 days'
-         AND content_type = 'article'
-       ORDER BY published_at DESC
-       LIMIT 5`
-    );
-
-    return result.rows.map((row) => ({
-      slug: row.slug,
-      title: row.title,
-      excerpt: row.excerpt,
-      author_name: row.author_name,
-      published_at: row.published_at,
-    }));
-  } catch (error) {
-    logger.warn({ error }, 'Failed to build official perspectives section');
-    return [];
-  }
-}
-
-// --- News Section ---
-
-async function buildNewsSection(): Promise<DigestNewsItem[]> {
-  const articles = await getRecentArticlesForDigest(7, 10);
+async function buildWhatToWatch(): Promise<DigestNewsItem[]> {
+  const articles = await getRecentArticlesForDigest(7, 12);
 
   if (articles.length === 0) {
-    logger.info('No recent articles for digest');
+    logger.info('No recent articles for The Prompt');
     return [];
   }
 
   if (!isLLMConfigured()) {
-    // Return raw articles without AI curation
-    return articles.slice(0, 3).map((a) => ({
+    return articles.slice(0, 5).map((a) => ({
       title: a.title,
       url: a.source_url,
       summary: a.summary || '',
@@ -160,34 +84,31 @@ async function buildNewsSection(): Promise<DigestNewsItem[]> {
     }));
   }
 
-  // Use Claude to select top 3 and generate "why it matters"
   const articleList = articles
     .map((a, i) => `${i + 1}. "${a.title}" (score: ${a.quality_score}) - ${a.summary || 'No summary'}`)
     .join('\n');
 
   const result = await complete({
-    system: `You are Addie, the AI assistant for AgenticAdvertising.org, a membership organization building the Ad Context Protocol (AdCP) for agentic advertising.
+    system: `You are Addie, writing The Prompt — the weekly newsletter for practitioners navigating the agentic advertising revolution.
 
-Select the 3 most relevant articles for our weekly digest and write a brief "why it matters" take for each.
+Select the top 5 articles and write your take on why each one matters. Write in first person. Be direct and opinionated — your readers are practitioners who want signal, not press releases.
 
-Editorial guidelines:
-- Frame every "why it matters" from AgenticAdvertising.org's perspective — how does this affect our members, our protocol work, or the agentic advertising ecosystem?
-- Do NOT promote competitor organizations' initiatives (e.g., IAB Tech Lab, AAMP) as industry leadership. If covering competitor news, frame it in terms of what it means for AgenticAdvertising.org members and where our approach differs.
-- Prefer articles about trends, adoption, and real-world applications of agentic advertising over articles about other organizations' announcements.
-- Be direct and opinionated. Our members are practitioners who want signal, not press releases.
+Frame each take as: why should someone building or buying agentic advertising care about this? What does it mean for their work this quarter?
 
-Respond in JSON format: [{"index": 1, "whyItMatters": "..."}]
-Keep each "whyItMatters" to 1-2 sentences.`,
-    prompt: `Select the top 3 articles from this list for our weekly digest:\n\n${articleList}`,
-    maxTokens: 500,
+Do not promote competitor orgs as industry leaders. If covering their news, frame it as what it means for the ecosystem.
+
+Respond in JSON: [{"index": 1, "whyItMatters": "..."}]
+1-2 sentences per take.`,
+    prompt: `Select the top 5 articles from this list for The Prompt:\n\n${articleList}`,
+    maxTokens: 800,
     model: 'fast',
-    operationName: 'digest-news-selection',
+    operationName: 'prompt-news-selection',
   });
 
   try {
     const cleaned = result.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '');
     const selections: Array<{ index: number; whyItMatters: string }> = JSON.parse(cleaned);
-    return selections.slice(0, 3).map((sel) => {
+    return selections.slice(0, 5).map((sel) => {
       const article = articles[sel.index - 1];
       if (!article) return null;
       return {
@@ -200,8 +121,8 @@ Keep each "whyItMatters" to 1-2 sentences.`,
       };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
   } catch {
-    logger.warn('Failed to parse LLM news selection, using top 3 by score');
-    return articles.slice(0, 3).map((a) => ({
+    logger.warn('Failed to parse LLM news selection, using top 5 by score');
+    return articles.slice(0, 5).map((a) => ({
       title: a.title,
       url: a.source_url,
       summary: a.summary || '',
@@ -212,271 +133,144 @@ Keep each "whyItMatters" to 1-2 sentences.`,
   }
 }
 
-// --- New Members Section ---
+// ─── From the Inside (merged WG content) ────────────────────────────────
 
-async function buildNewMembersSection(): Promise<DigestNewMember[]> {
-  const orgs = await getNewOrganizations(7);
-  return orgs.map((org) => ({
-    name: org.name,
-  }));
-}
+async function buildInsiderSection(): Promise<DigestInsiderGroup[]> {
+  const groups = await getDigestEligibleGroups();
+  const results: DigestInsiderGroup[] = [];
 
-// --- Notable Conversations Section ---
-
-async function buildConversationsSection(): Promise<DigestConversation[]> {
-  // Get public working group channels to scan for notable threads
-  const groups = await query<{
-    id: string;
-    name: string;
-    slack_channel_id: string;
-  }>(
-    `SELECT id, name, slack_channel_id
-     FROM working_groups
-     WHERE slack_channel_id IS NOT NULL
-       AND is_private = FALSE
-       AND status = 'active'`,
-  );
-
-  if (groups.rows.length === 0) {
-    return [];
-  }
-
-  const oneWeekAgo = String(Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000));
-  const notableThreads: Array<{
-    channelName: string;
-    channelId: string;
-    text: string;
-    ts: string;
-    replyCount: number;
-    user?: string;
-  }> = [];
-
-  // Scan each public channel for threads with high reply counts
-  for (const group of groups.rows) {
+  for (const group of groups) {
     try {
-      const history = await getChannelHistory(group.slack_channel_id, {
-        oldest: oneWeekAgo,
-        limit: 50,
+      const wgContent = await buildWgDigestContent(group.id);
+      if (!wgContent) continue;
+
+      results.push({
+        name: wgContent.groupName,
+        groupId: group.id,
+        summary: wgContent.summary || 'Active this week',
+        meetingRecaps: wgContent.meetingRecaps.map((r) => ({
+          title: r.title,
+          date: r.date,
+          summary: r.summary,
+          meetingUrl: r.meetingUrl,
+        })),
+        activeThreads: wgContent.activeThreads.map((t) => ({
+          summary: t.summary,
+          replyCount: t.replyCount,
+          threadUrl: t.threadUrl,
+          starter: t.starter,
+          participantCount: t.participantCount,
+        })),
+        nextMeeting: wgContent.nextMeeting
+          ? `${wgContent.nextMeeting.title} — ${wgContent.nextMeeting.date}`
+          : undefined,
       });
-
-      for (const msg of history.messages) {
-        if (msg.reply_count && msg.reply_count >= 3 && msg.text && !msg.bot_id) {
-          notableThreads.push({
-            channelName: group.name,
-            channelId: group.slack_channel_id,
-            text: msg.text.slice(0, 200),
-            ts: msg.ts,
-            replyCount: msg.reply_count,
-            user: msg.user,
-          });
-        }
-      }
     } catch (err) {
-      logger.warn({ channelId: group.slack_channel_id, error: err }, 'Failed to fetch channel history');
+      logger.warn({ groupId: group.id, error: err }, 'Failed to build insider content for group');
     }
-  }
-
-  if (notableThreads.length === 0) {
-    return [];
-  }
-
-  // Sort by reply count and take top 2
-  notableThreads.sort((a, b) => b.replyCount - a.replyCount);
-  const topThreads = notableThreads.slice(0, 2);
-
-  const conversations: DigestConversation[] = [];
-  for (const thread of topThreads) {
-    let participantName = 'A member';
-    if (thread.user) {
-      const resolved = await resolveSlackUserDisplayName(thread.user);
-      if (resolved?.display_name) {
-        participantName = resolved.display_name;
-      }
-    }
-
-    const threadUrl = `${SLACK_WORKSPACE_URL}/archives/${thread.channelId}/p${thread.ts.replace('.', '')}`;
-
-    conversations.push({
-      summary: `${participantName} started a discussion with ${thread.replyCount} replies: "${thread.text.slice(0, 100)}..."`,
-      channelName: thread.channelName,
-      threadUrl,
-      participants: [participantName],
-    });
-  }
-
-  return conversations;
-}
-
-// --- Working Groups Section ---
-
-async function buildWorkingGroupsSection(): Promise<DigestWorkingGroup[]> {
-  const groups = await query<{
-    id: string;
-    name: string;
-  }>(
-    `SELECT id, name FROM working_groups
-     WHERE status = 'active'
-       AND committee_type IN ('working_group', 'steering_committee')
-     ORDER BY display_order`,
-  );
-
-  const results: DigestWorkingGroup[] = [];
-  const allUpcomingMeetings = await meetingsDb.getUpcomingMeetings(10);
-
-  for (const group of groups.rows) {
-    const summaries = await workingGroupDb.getCurrentSummaries(group.id);
-    const groupMeetings = allUpcomingMeetings.filter(
-      (m: { working_group_id?: string }) => m.working_group_id === group.id,
-    );
-
-    // Only include groups with recent activity
-    if (summaries.length === 0 && groupMeetings.length === 0) {
-      continue;
-    }
-
-    const latestSummary = summaries[0];
-    const nextMeeting = groupMeetings[0];
-
-    results.push({
-      name: group.name,
-      summary: latestSummary?.summary_text?.slice(0, 200) || 'Active this week',
-      nextMeeting: nextMeeting
-        ? `${nextMeeting.title} - ${new Date(nextMeeting.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
-        : undefined,
-    });
   }
 
   return results;
 }
 
-// --- Intro Generation ---
+// ─── Voices (member perspectives) ───────────────────────────────────────
 
-async function generateIntro(
-  memberPerspectives: DigestMemberPerspective[],
-  news: DigestNewsItem[],
+async function buildVoicesSection(): Promise<DigestMemberPerspective[]> {
+  const perspectives = await getRecentMemberPerspectivesForDigest(7, 4);
+
+  return perspectives.map((perspective) => ({
+    slug: perspective.slug,
+    title: perspective.title,
+    url: `${BASE_URL}/perspectives/${perspective.slug}`,
+    excerpt: perspective.excerpt || '',
+    authorName: perspective.author_name || 'Community member',
+    publishedAt: perspective.published_at ? perspective.published_at.toISOString() : null,
+  }));
+}
+
+// ─── New Members ────────────────────────────────────────────────────────
+
+async function buildNewMembersSection(): Promise<DigestNewMember[]> {
+  const orgs = await getNewOrganizations(7);
+  return orgs.map((org) => ({ name: org.name }));
+}
+
+// ─── Opening Take (generated last — synthesizes everything) ─────────────
+
+async function generateOpeningTake(
+  whatToWatch: DigestNewsItem[],
+  fromTheInside: DigestInsiderGroup[],
+  voices: DigestMemberPerspective[],
   newMembers: DigestNewMember[],
-  conversations: DigestConversation[],
-  workingGroups: DigestWorkingGroup[],
 ): Promise<string> {
   if (!isLLMConfigured()) {
-    return `This week at AgenticAdvertising.org: ${workingGroups.length} working group updates, ${memberPerspectives.length} member perspective${memberPerspectives.length === 1 ? '' : 's'}, ${newMembers.length} new members, ${conversations.length} notable conversations, and ${news.length} industry stories.`;
+    const parts: string[] = [];
+    if (whatToWatch.length > 0) parts.push(`${whatToWatch.length} stories to watch`);
+    if (fromTheInside.length > 0) parts.push(`${fromTheInside.length} working groups active`);
+    if (voices.length > 0) parts.push(`${voices.length} member perspectives`);
+    if (newMembers.length > 0) parts.push(`${newMembers.length} new members`);
+    return `This week in agentic advertising: ${parts.join(', ')}.`;
   }
 
-  // Lead with community activity, industry news last
-  const context = [];
-  if (workingGroups.length > 0) context.push(`${workingGroups.length} working group update${workingGroups.length > 1 ? 's' : ''}`);
-  if (memberPerspectives.length > 0) context.push(`${memberPerspectives.length} member perspective${memberPerspectives.length > 1 ? 's' : ''}`);
-  if (newMembers.length > 0) context.push(`${newMembers.length} new member${newMembers.length > 1 ? 's' : ''}`);
-  if (conversations.length > 0) context.push(`${conversations.length} notable conversation${conversations.length > 1 ? 's' : ''}`);
-  if (news.length > 0) context.push(`${news.length} industry stories`);
+  const contextLines: string[] = [];
+  if (whatToWatch.length > 0) {
+    contextLines.push(`${whatToWatch.length} industry stories: ${whatToWatch.map((n) => n.title).join('; ')}`);
+  }
+  if (fromTheInside.length > 0) {
+    contextLines.push(`Working groups: ${fromTheInside.map((g) => `${g.name} (${g.summary.slice(0, 80)})`).join('; ')}`);
+  }
+  if (voices.length > 0) {
+    contextLines.push(`${voices.length} member perspective${voices.length > 1 ? 's' : ''}: ${voices.map((v) => `"${v.title}" by ${v.authorName}`).join('; ')}`);
+  }
+  if (newMembers.length > 0) {
+    contextLines.push(`${newMembers.length} new member${newMembers.length > 1 ? 's' : ''}`);
+  }
 
   const result = await complete({
-    system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org. Write a 1-2 sentence intro for the weekly digest. Lead with what's happening in our community — working groups, member perspectives, and conversations. Mention industry news second. Be warm, concise, and specific. No emojis.`,
-    prompt: `Write an intro for this week's digest. Content: ${context.join(', ')}.`,
-    maxTokens: 150,
+    system: `You are Addie, writing the opening paragraph of The Prompt — your weekly note to the agentic advertising community.
+
+You have unique perspective: you sit inside working group conversations, read every industry article, and talk to practitioners daily. Write a 2-3 sentence opening that captures the week's theme.
+
+Be specific and opinionated. Name the tension, the trend, or the surprise. Write in first person. No emojis. No "this week at AAO." No "in this edition."`,
+    prompt: `Write the opening take for this week's Prompt.\n\nContent this week:\n${contextLines.join('\n')}`,
+    maxTokens: 200,
     model: 'fast',
-    operationName: 'digest-intro',
+    operationName: 'prompt-opening-take',
   });
 
   return result.text;
 }
 
-// --- Spotlight Action ---
-
-const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
-
-async function buildSpotlightAction(): Promise<DigestSpotlightAction | null> {
-  try {
-    const upcoming = await meetingsDb.getUpcomingMeetings(5);
-    // Find the soonest meeting that's within the next 7 days
-    const oneWeekOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const soonest = upcoming.find((m) => new Date(m.start_time) <= oneWeekOut);
-
-    if (!soonest) return null;
-
-    const meetingDate = new Date(soonest.start_time);
-    const dayStr = meetingDate.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' });
-    const timeStr = meetingDate.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZone: 'America/New_York',
-      timeZoneName: 'short',
-    });
-
-    const groupName = soonest.working_group_name || 'a working group';
-    const title = soonest.title || 'meeting';
-
-    return {
-      text: `This week: ${groupName} meets ${dayStr} at ${timeStr} for ${title}.`,
-      linkUrl: `${BASE_URL}/working-groups`,
-      linkLabel: 'See all meetings',
-    };
-  } catch (err) {
-    logger.warn({ error: err }, 'Failed to build spotlight action');
-    return null;
-  }
-}
-
-// --- Social Post Ideas Section ---
-
-async function buildSocialPostIdeasSection(): Promise<DigestSocialPostIdea[]> {
-  try {
-    const recentPosts = await getRecentSocialPostIdeas(7, 2);
-    return recentPosts.map((post) => ({
-      title: post.title,
-      url: post.source_url,
-      description: post.addie_notes || post.summary || '',
-    }));
-  } catch (error) {
-    logger.warn({ error }, 'Failed to build social post ideas section');
-    return [];
-  }
-}
-
-// --- Subject Line Generation ---
+// ─── Subject Line ───────────────────────────────────────────────────────
 
 /**
- * Generate a community-focused email subject line for the digest.
- * Uses a template with the most concrete content item — no AI generation.
+ * Generate the email subject line for The Prompt.
  */
 export function generateDigestSubject(content: DigestContent): string {
-  // If editor set a custom subject, use it
   if (content.emailSubject) {
     return content.emailSubject;
   }
 
-  // Template: "This week: [single concrete thing] | AgenticAdvertising.org Weekly"
-  // Pick the most specific item available
-  if (content.spotlightAction) {
-    // e.g., "This week: Measurement WG meets Thursday | AgenticAdvertising.org Weekly"
-    const short = content.spotlightAction.text
-      .replace(/^This week:\s*/i, '')
-      .replace(/\.\s*$/, '');
-    if (short.length <= 50) {
-      return `This week: ${short} | AgenticAdvertising.org Weekly`;
+  // Use top news headline as subject hook
+  if (content.whatToWatch.length > 0) {
+    const topTitle = content.whatToWatch[0].title;
+    if (topTitle.length <= 50) {
+      return `The Prompt: ${topTitle}`;
     }
+    return `The Prompt: ${topTitle.slice(0, 47)}...`;
   }
 
-  if (content.workingGroups.length > 0) {
-    const topWG = content.workingGroups[0].name;
-    if (content.workingGroups.length === 1) {
-      return `This week: ${topWG} update | AgenticAdvertising.org Weekly`;
-    }
-    return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AgenticAdvertising.org Weekly`;
+  // Use most active WG
+  if (content.fromTheInside.length > 0) {
+    const topGroup = content.fromTheInside[0].name;
+    return `The Prompt: ${topGroup} + ${content.fromTheInside.length - 1} more this week`;
   }
 
-  if (content.memberPerspectives && content.memberPerspectives.length > 0) {
-    const topPerspective = content.memberPerspectives[0];
-    const author = topPerspective.authorName || 'A member';
-    const shortTitle = topPerspective.title.length > 44
-      ? `${topPerspective.title.slice(0, 41)}...`
-      : topPerspective.title;
-    return `This week: ${author} on ${shortTitle} | AgenticAdvertising.org Weekly`;
+  // Use voices
+  if (content.voices.length > 0) {
+    const topVoice = content.voices[0];
+    return `The Prompt: ${topVoice.authorName} on ${topVoice.title.slice(0, 40)}`;
   }
 
-  if (content.newMembers.length > 0) {
-    return `This week: ${content.newMembers.length} new members joined | AgenticAdvertising.org Weekly`;
-  }
-
-  return 'This week at AgenticAdvertising.org';
+  return 'The Prompt — This week in agentic advertising';
 }
