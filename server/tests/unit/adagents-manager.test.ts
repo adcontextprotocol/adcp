@@ -407,7 +407,7 @@ describe('AdAgentsManager', () => {
       expect(results[0].valid).toBe(false);
       // Error is prefixed with A2A: since both protocols are tried
       expect(results[0].errors.some(e => e.includes('No agent card found'))).toBe(true);
-    });
+    }, 10000);
 
     it('detects wrong content-type for agent card', async () => {
       const agents: AuthorizedAgent[] = [

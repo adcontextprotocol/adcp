@@ -1,7 +1,8 @@
--- Migration: 338_backfill_community_points.sql
+-- Migration: 344_backfill_community_points.sql
 -- Backfill community_points from existing activity data.
 -- Deletes existing backfill rows first to ensure consistent point values,
 -- then re-inserts at canonical values. Safe to run multiple times.
+-- Only inserts rows for current users to avoid FK violations from legacy orphaned records.
 
 -- 0. Clear existing backfill rows so point values are consistent.
 -- Only deletes actions that are backfill-able (not daily_visit etc.)
@@ -25,6 +26,7 @@ SELECT
 FROM working_group_memberships wgm
 WHERE wgm.workos_user_id IS NOT NULL
   AND wgm.status = 'active'
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = wgm.workos_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -40,6 +42,7 @@ SELECT
 FROM event_registrations er
 WHERE er.workos_user_id IS NOT NULL
   AND er.registration_status = 'registered'
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = er.workos_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -55,6 +58,7 @@ SELECT
 FROM event_registrations er
 WHERE er.workos_user_id IS NOT NULL
   AND er.attended = TRUE
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = er.workos_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -70,6 +74,7 @@ SELECT
 FROM perspectives p
 WHERE p.author_user_id IS NOT NULL
   AND p.status = 'published'
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = p.author_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -84,6 +89,7 @@ SELECT
   COALESCE(c.responded_at, c.created_at)
 FROM connections c
 WHERE c.status = 'accepted'
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = c.requester_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -97,6 +103,7 @@ SELECT
   COALESCE(c.responded_at, c.created_at)
 FROM connections c
 WHERE c.status = 'accepted'
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = c.recipient_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -112,6 +119,7 @@ SELECT
 FROM meeting_attendees ma
 WHERE ma.workos_user_id IS NOT NULL
   AND ma.rsvp_status = 'accepted'
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = ma.workos_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -142,6 +150,7 @@ SELECT
   wgts.created_at
 FROM working_group_topic_subscriptions wgts
 WHERE wgts.workos_user_id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM users u WHERE u.workos_user_id = wgts.workos_user_id)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
