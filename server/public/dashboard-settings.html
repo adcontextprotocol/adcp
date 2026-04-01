@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account - Dashboard</title>
+  <title>Account settings - AgenticAdvertising.org</title>
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -689,7 +689,7 @@
   </div>
 
   <div class="page-header">
-    <h1>Account</h1>
+    <h1>Account settings</h1>
     <p>Your profile, linked emails, and notification preferences</p>
   </div>
 
@@ -871,13 +871,19 @@
           </div>
           <label class="toggle">
             <input type="checkbox"
+                   data-category-id="${escapeHtml(cat.category_id)}"
                    ${cat.enabled ? 'checked' : ''}
-                   ${isGloballyUnsubscribed ? 'disabled' : ''}
-                   onchange="toggleCategory('${cat.category_id}', this.checked)">
+                   ${isGloballyUnsubscribed ? 'disabled' : ''}>
             <span class="toggle-slider"></span>
           </label>
         </div>
       `).join('');
+
+      container.querySelectorAll('[data-category-id]').forEach(function(input) {
+        input.addEventListener('change', function() {
+          toggleCategory(input.dataset.categoryId, input.checked);
+        });
+      });
     }
 
     async function toggleCategory(categoryId, enabled) {

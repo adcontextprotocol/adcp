@@ -114,9 +114,8 @@
             </button>
             <div class="navbar__dropdown" id="accountDropdown">
               <div class="navbar__dropdown-header">${escapeHtml(safeEmail || 'Signed in')}</div>
-              <a href="${authBaseUrl}/member-hub" class="navbar__dropdown-item">My hub</a>
-              <a href="${authBaseUrl}/account" class="navbar__dropdown-item">Account</a>
-              <a href="${authBaseUrl}/organization" class="navbar__dropdown-item">Organization</a>
+              <a href="${authBaseUrl}/account" class="navbar__dropdown-item">Account settings</a>
+              <a href="${authBaseUrl}/organization" class="navbar__dropdown-item">Member settings</a>
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>
