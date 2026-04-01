@@ -968,13 +968,13 @@
     var DEFAULT_TIER = { label: 'Explorer', contributor: 0, community: 1, price: 'Free' };
 
     function renderTeamCertProgress(summary) {
-      if (!summary || !summary.total_members) return '';
-      const pct = Math.round((summary.certified_members / summary.total_members) * 100);
+      if (!summary || !summary.total_members || summary.members_with_credentials == null) return '';
+      const pct = Math.round((summary.members_with_credentials / summary.total_members) * 100);
       return `
         <div style="border-left: 1px solid var(--color-border); padding-left: var(--space-6);">
           <div style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text-heading);">${pct}%</div>
           <div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Team certified</div>
-          <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">${Number(summary.certified_members)} of ${Number(summary.total_members)} members</div>
+          <div style="font-size: 10px; color: var(--color-text-muted); margin-top: var(--space-1);">${Number(summary.members_with_credentials)} of ${Number(summary.total_members)} members</div>
         </div>`;
     }
 
