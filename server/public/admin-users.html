@@ -1381,23 +1381,66 @@
       const originalHtml = btn.innerHTML;
       btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 11-9-9"/></svg> Syncing...';
 
+      const summary = [];
+      const errors = [];
+
       try {
-        const response = await fetch('/api/admin/users/sync-workos', { method: 'POST' });
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            alert(`Synced users from WorkOS:\n• ${result.orgs_processed} organizations processed\n• ${result.memberships_created} user memberships synced`);
+        // 1. Sync users first (so new users exist before memberships reference them)
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 11-9-9"/></svg> Syncing users...';
+        try {
+          const usersResp = await fetch('/api/admin/users/sync-users', { method: 'POST' });
+          if (usersResp.ok) {
+            const r = await usersResp.json();
+            summary.push(`Users: ${r.users_created} synced, ${r.users_removed || 0} removed`);
+            if (!r.success) errors.push(...(r.errors || []));
           } else {
-            alert(`Sync completed with errors:\n• ${result.orgs_processed} organizations processed\n• ${result.memberships_created} memberships created\n• ${result.errors.length} errors`);
+            errors.push('Users sync request failed');
           }
-          await loadUsers();
-        } else {
-          const error = await response.json().catch(() => ({}));
-          alert('Failed to sync WorkOS users: ' + (error.message || 'Unknown error'));
+        } catch (e) {
+          errors.push('Users sync error: ' + e.message);
         }
+
+        // 2. Sync memberships
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 11-9-9"/></svg> Syncing memberships...';
+        try {
+          const membResp = await fetch('/api/admin/users/sync-workos', { method: 'POST' });
+          if (membResp.ok) {
+            const r = await membResp.json();
+            summary.push(`Memberships: ${r.memberships_created} synced, ${r.memberships_removed || 0} removed (${r.orgs_processed} orgs)`);
+            if (!r.success) errors.push(...(r.errors || []));
+          } else {
+            errors.push('Memberships sync request failed');
+          }
+        } catch (e) {
+          errors.push('Memberships sync error: ' + e.message);
+        }
+
+        // 3. Sync domains
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 11-9-9"/></svg> Syncing domains...';
+        try {
+          const domResp = await fetch('/api/admin/users/sync-domains', { method: 'POST' });
+          if (domResp.ok) {
+            const r = await domResp.json();
+            summary.push(`Domains: ${r.domains_synced} synced (${r.orgs_processed} orgs)`);
+            if (!r.success) errors.push(...(r.errors || []));
+          } else {
+            errors.push('Domains sync request failed');
+          }
+        } catch (e) {
+          errors.push('Domains sync error: ' + e.message);
+        }
+
+        const msg = ['WorkOS sync complete:', ...summary.map(s => '• ' + s)];
+        if (errors.length > 0) {
+          msg.push('', `${errors.length} error(s):`);
+          msg.push(...errors.slice(0, 5).map(e => '• ' + e));
+          if (errors.length > 5) msg.push(`• ... and ${errors.length - 5} more`);
+        }
+        alert(msg.join('\n'));
+        await loadUsers();
       } catch (error) {
-        console.error('Error syncing WorkOS users:', error);
-        alert('Error syncing WorkOS users');
+        console.error('Error syncing WorkOS:', error);
+        alert('Error syncing WorkOS: ' + error.message);
       } finally {
         btn.disabled = false;
         btn.innerHTML = originalHtml;

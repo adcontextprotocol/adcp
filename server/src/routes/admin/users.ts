@@ -13,7 +13,7 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
-import { backfillOrganizationMemberships, backfillUsers } from '../workos-webhooks.js';
+import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 
 const logger = createLogger('admin-users-routes');
@@ -416,7 +416,7 @@ export function createAdminUsersRouter(): Router {
   });
 
   // POST /api/admin/users/sync-workos - Backfill organization_memberships table from WorkOS
-  // Call this once after setting up the webhook to populate existing data
+  // Upserts active memberships and removes stale local rows not found in WorkOS
   router.post('/sync-workos', requireAuth, requireAdmin, async (_req, res) => {
     try {
       const result = await backfillOrganizationMemberships();
@@ -425,6 +425,7 @@ export function createAdminUsersRouter(): Router {
         success: result.errors.length === 0,
         orgs_processed: result.orgsProcessed,
         memberships_created: result.membershipsCreated,
+        memberships_removed: result.membershipsRemoved,
         errors: result.errors,
       });
     } catch (error) {
@@ -436,7 +437,7 @@ export function createAdminUsersRouter(): Router {
   });
 
   // POST /api/admin/users/sync-users - Backfill users table from WorkOS
-  // Populates canonical users table with WorkOS user data for engagement tracking
+  // Upserts users and removes stale local rows not found in any WorkOS org
   router.post('/sync-users', requireAuth, requireAdmin, async (_req, res) => {
     try {
       const result = await backfillUsers();
@@ -445,12 +446,33 @@ export function createAdminUsersRouter(): Router {
         success: result.errors.length === 0,
         users_processed: result.usersProcessed,
         users_created: result.usersCreated,
+        users_removed: result.usersRemoved,
         errors: result.errors,
       });
     } catch (error) {
       logger.error({ err: error }, 'Backfill users error');
       res.status(500).json({
         error: 'Failed to backfill users',
+      });
+    }
+  });
+
+  // POST /api/admin/users/sync-domains - Backfill organization_domains table from WorkOS
+  // Fetches each org's domains from WorkOS and syncs to local table
+  router.post('/sync-domains', requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const result = await backfillOrganizationDomains();
+
+      res.json({
+        success: result.errors.length === 0,
+        orgs_processed: result.orgsProcessed,
+        domains_synced: result.domainsSynced,
+        errors: result.errors,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Backfill domains error');
+      res.status(500).json({
+        error: 'Failed to backfill domains',
       });
     }
   });

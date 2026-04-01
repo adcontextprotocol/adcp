@@ -821,17 +821,22 @@ export function createWorkOSWebhooksRouter(): Router {
 
 /**
  * Backfill organization memberships from WorkOS
- * Call this to populate the table initially or to resync
+ * Call this to populate the table initially or to resync.
+ *
+ * Upserts every active membership from WorkOS and removes local rows
+ * whose memberships no longer exist (deleted during a webhook outage).
  */
 export async function backfillOrganizationMemberships(): Promise<{
   orgsProcessed: number;
   membershipsCreated: number;
+  membershipsRemoved: number;
   errors: string[];
 }> {
   const pool = getPool();
   const result = {
     orgsProcessed: 0,
     membershipsCreated: 0,
+    membershipsRemoved: 0,
     errors: [] as string[],
   };
 
@@ -845,6 +850,11 @@ export async function backfillOrganizationMemberships(): Promise<{
 
     const BATCH_SIZE = 10;
     const orgs = orgsResult.rows;
+
+    // Track every active (user, org) pair seen in WorkOS
+    const seenMemberships = new Set<string>();
+    // Track orgs that were fully fetched without errors
+    const successfulOrgIds = new Set<string>();
 
     for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
       const batch = orgs.slice(i, i + BATCH_SIZE);
@@ -871,6 +881,7 @@ export async function backfillOrganizationMemberships(): Promise<{
                   (m) => m.organizationId === org.workos_organization_id,
                 );
                 if (membership && membership.status === 'active') {
+                  seenMemberships.add(`${user.id}:${org.workos_organization_id}`);
                   const role = membership.role?.slug || 'member';
                   await upsertOrganizationMembership({
                     user_id: user.id,
@@ -897,6 +908,7 @@ export async function backfillOrganizationMemberships(): Promise<{
               : undefined;
           } while (after);
 
+          successfulOrgIds.add(org.workos_organization_id);
           result.orgsProcessed++;
         } catch (orgError) {
           const msg = `Failed to process org ${org.workos_organization_id}: ${orgError}`;
@@ -904,6 +916,35 @@ export async function backfillOrganizationMemberships(): Promise<{
           logger.warn({ error: orgError, orgId: org.workos_organization_id }, 'Backfill: failed to process org');
         }
       }));
+    }
+
+    // Remove local memberships that no longer exist in WorkOS.
+    // Only delete for orgs we successfully processed (avoid deleting
+    // rows when the WorkOS fetch failed for that org).
+    const processedOrgIds = [...successfulOrgIds];
+
+    if (processedOrgIds.length > 0) {
+      const localMemberships = await pool.query<{
+        workos_user_id: string;
+        workos_organization_id: string;
+      }>(
+        `SELECT workos_user_id, workos_organization_id
+         FROM organization_memberships
+         WHERE workos_organization_id = ANY($1)`,
+        [processedOrgIds],
+      );
+
+      for (const row of localMemberships.rows) {
+        const key = `${row.workos_user_id}:${row.workos_organization_id}`;
+        if (!seenMemberships.has(key)) {
+          await deleteOrganizationMembership(row.workos_user_id, row.workos_organization_id);
+          result.membershipsRemoved++;
+          logger.info({
+            userId: row.workos_user_id,
+            orgId: row.workos_organization_id,
+          }, 'Backfill: removed stale membership not found in WorkOS');
+        }
+      }
     }
 
     // Invalidate cache after backfill
@@ -920,17 +961,22 @@ export async function backfillOrganizationMemberships(): Promise<{
 
 /**
  * Backfill users table from WorkOS
- * Fetches all users from all organizations and upserts them into the users table
+ * Fetches all users from all organizations and upserts them into the users table.
+ *
+ * Also removes local user rows that no longer appear in any WorkOS org
+ * (deleted during a webhook outage).
  */
 export async function backfillUsers(): Promise<{
   usersProcessed: number;
   usersCreated: number;
+  usersRemoved: number;
   errors: string[];
 }> {
   const pool = getPool();
   const result = {
     usersProcessed: 0,
     usersCreated: 0,
+    usersRemoved: 0,
     errors: [] as string[],
   };
 
@@ -945,6 +991,7 @@ export async function backfillUsers(): Promise<{
     const processedUserIds = new Set<string>();
     const BATCH_SIZE = 10;
     const orgs = orgsResult.rows;
+    let anyOrgFailed = false;
 
     for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
       const batch = orgs.slice(i, i + BATCH_SIZE);
@@ -1012,11 +1059,41 @@ export async function backfillUsers(): Promise<{
               : undefined;
           } while (after);
         } catch (orgError) {
+          anyOrgFailed = true;
           const msg = `Failed to fetch users for org ${org.workos_organization_id}: ${orgError}`;
           result.errors.push(msg);
           logger.warn({ error: orgError, orgId: org.workos_organization_id }, 'Backfill: failed to fetch org users');
         }
       }));
+    }
+
+    // Remove local users not found in any WorkOS org.
+    // Only safe when every org was fetched successfully — a single org
+    // failure could make a multi-org user look deleted.
+    if (!anyOrgFailed && processedUserIds.size > 0) {
+      const localUsers = await pool.query<{ workos_user_id: string }>(
+        `SELECT workos_user_id FROM users`,
+      );
+
+      for (const row of localUsers.rows) {
+        if (!processedUserIds.has(row.workos_user_id)) {
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
+            await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
+            await client.query('COMMIT');
+            result.usersRemoved++;
+            logger.info({ userId: row.workos_user_id }, 'Backfill: removed stale user not found in WorkOS');
+          } catch (err) {
+            await client.query('ROLLBACK');
+            result.errors.push(`Failed to remove stale user ${row.workos_user_id}: ${err}`);
+            logger.warn({ error: err, userId: row.workos_user_id }, 'Backfill: failed to remove stale user');
+          } finally {
+            client.release();
+          }
+        }
+      }
     }
 
     // Invalidate cache after backfill
@@ -1026,6 +1103,76 @@ export async function backfillUsers(): Promise<{
     return result;
   } catch (error) {
     logger.error({ error }, 'Users backfill failed');
+    result.errors.push(`Backfill failed: ${error}`);
+    return result;
+  }
+}
+
+/**
+ * Backfill organization domains from WorkOS
+ * Fetches each org from WorkOS and syncs its domain list using the same
+ * logic as the organization.created/updated webhook handlers.
+ */
+export async function backfillOrganizationDomains(): Promise<{
+  orgsProcessed: number;
+  domainsSynced: number;
+  errors: string[];
+}> {
+  const pool = getPool();
+  const result = {
+    orgsProcessed: 0,
+    domainsSynced: 0,
+    errors: [] as string[],
+  };
+
+  logger.info('Starting organization domains backfill from WorkOS');
+
+  try {
+    const orgsResult = await pool.query<{
+      workos_organization_id: string;
+      is_personal: boolean;
+    }>(
+      `SELECT workos_organization_id, COALESCE(is_personal, false) AS is_personal
+       FROM organizations`,
+    );
+
+    const BATCH_SIZE = 10;
+    const orgs = orgsResult.rows.filter(o => !o.is_personal);
+
+    for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
+      const batch = orgs.slice(i, i + BATCH_SIZE);
+
+      await Promise.all(batch.map(async (org) => {
+        try {
+          const workosOrg = await workos.organizations.getOrganization(org.workos_organization_id);
+
+          // Map WorkOS SDK response to the shape syncOrganizationDomains expects
+          const orgData: OrganizationData = {
+            id: workosOrg.id,
+            name: workosOrg.name,
+            domains: (workosOrg.domains || []).map((d: { domain: string; state: string }) => ({
+              domain: d.domain,
+              state: d.state as 'verified' | 'pending',
+            })),
+            created_at: workosOrg.createdAt,
+            updated_at: workosOrg.updatedAt,
+          };
+
+          await syncOrganizationDomains(orgData);
+          result.domainsSynced += orgData.domains.length;
+          result.orgsProcessed++;
+        } catch (orgError) {
+          const msg = `Failed to sync domains for org ${org.workos_organization_id}: ${orgError}`;
+          result.errors.push(msg);
+          logger.warn({ error: orgError, orgId: org.workos_organization_id }, 'Backfill: failed to sync org domains');
+        }
+      }));
+    }
+
+    logger.info(result, 'Completed organization domains backfill');
+    return result;
+  } catch (error) {
+    logger.error({ error }, 'Organization domains backfill failed');
     result.errors.push(`Backfill failed: ${error}`);
     return result;
   }
