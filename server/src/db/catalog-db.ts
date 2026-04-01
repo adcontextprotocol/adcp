@@ -155,9 +155,9 @@ export class CatalogDatabase {
       )]
     );
 
-    // For unknown identifiers in resolve mode, batch-fetch classifications
+    // For unknown identifiers, batch-fetch classifications from catalog_facts
     const unknownNorms = normalized.filter(n => !existing.has(`${n.type}:${n.value}`));
-    const classifications = mode === 'resolve' && unknownNorms.length > 0
+    const classifications = unknownNorms.length > 0
       ? await this.batchGetClassifications(unknownNorms.map(n => `${n.type}:${n.value}`))
       : new Map<string, string>();
 
@@ -215,14 +215,19 @@ export class CatalogDatabase {
           created++;
         }
       } else {
+        const classification = classifications.get(`${norm.type}:${norm.value}`) ?? null;
         results.push({
           identifier: { type: norm.type, value: norm.value },
           property_rid: null,
-          classification: 'unknown',
+          classification: classification ?? 'unknown',
           status: 'excluded',
-          source: null,
+          source: classification ? 'data_partner' : null,
         });
-        notFound++;
+        if (classification === 'ad_infra' || classification === 'publisher_mask') {
+          excluded++;
+        } else {
+          notFound++;
+        }
       }
     }
 
