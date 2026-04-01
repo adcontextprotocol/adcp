@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import { createLogger } from "../logger.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -231,8 +232,8 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
       // Validate slug format if provided
       if (updates.slug) {
         const slug = (updates.slug as string).toLowerCase().trim();
-        if (slug.length < 2 || !/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug)) {
-          return res.status(400).json({ error: 'Slug must be 2+ characters, lowercase alphanumeric and hyphens' });
+        if (slug.length < 2 || slug.length > 80 || !/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug)) {
+          return res.status(400).json({ error: 'Slug must be 2-80 characters, lowercase alphanumeric and hyphens' });
         }
         updates.slug = slug;
       }
@@ -287,12 +288,31 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         }
       }
 
+      const existingProfile = await communityDb.getProfile(user.id);
+
       // Check if github_username is being set for the first time (for one-time points award)
       const awardGithubPoints = updates.github_username
-        ? !(await communityDb.getProfile(user.id))?.github_username
+        ? !existingProfile?.github_username
         : false;
 
-      const profile = await communityDb.updateProfile(user.id, updates);
+      // If setting a slug for the first time and it conflicts, auto-append a suffix
+      // so new members aren't stuck (the slug field is hidden on first save)
+      const isFirstSlug = !existingProfile?.slug && updates.slug;
+
+      let profile: CommunityProfile | null = null;
+      try {
+        profile = await communityDb.updateProfile(user.id, updates);
+      } catch (err: any) {
+        if (err?.constraint === 'users_slug_key' && isFirstSlug) {
+          // Auto-deduplicate with a random suffix so common names don't exhaust retries
+          const baseSlug = (updates.slug as string).slice(0, 74);
+          updates.slug = `${baseSlug}-${randomBytes(2).toString('hex')}`;
+          profile = await communityDb.updateProfile(user.id, updates);
+        } else {
+          throw err;
+        }
+      }
+
       if (!profile) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -433,6 +453,17 @@ async function syncIndividualMemberProfile(
 
   const existingProfile = await memberDb.getProfileByOrgId(user.primary_organization_id);
 
+  // Sync is_public: turning off always syncs; turning on requires active subscription.
+  // Only check subscription when actually toggling on to avoid unnecessary DB call.
+  if (communityProfile.is_public === false) {
+    memberUpdates.is_public = false;
+  } else if (communityProfile.is_public === true && (!existingProfile || !existingProfile.is_public)) {
+    const hasSubscription = await orgDb.hasActiveSubscription(user.primary_organization_id);
+    if (hasSubscription) {
+      memberUpdates.is_public = true;
+    }
+  }
+
   if (existingProfile) {
     // Only sync headline→tagline and bio→description if the listing field hasn't been
     // independently customized (i.e., it's empty or already matches the community value).
@@ -462,6 +493,7 @@ async function syncIndividualMemberProfile(
   } else {
     // Auto-create member profile for personal accounts on first save
     const slug = communityProfile.slug || displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const memberIsPublic = memberUpdates.is_public === true;
     await memberDb.createProfile({
       workos_organization_id: user.primary_organization_id,
       display_name: displayName,
@@ -472,7 +504,7 @@ async function syncIndividualMemberProfile(
       contact_website: memberFields.contact_website,
       contact_phone: memberFields.contact_phone,
       offerings: memberFields.offerings || [],
-      is_public: false,
+      is_public: memberIsPublic,
     });
   }
 
