@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/identity-match-response.json",
   "title": "Identity Match Response",
-  "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and serves at most one ad per eligible package within the TTL window.",
+  "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window.",
   "type": "object",
   "properties": {
     "type": {
@@ -23,7 +23,7 @@
     },
     "ttl_sec": {
       "type": "integer",
-      "description": "How long the router should cache this response, in seconds. During this window, the router serves at most one ad per eligible package without re-querying the buyer.",
+      "description": "How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.",
       "minimum": 0
     }
   },

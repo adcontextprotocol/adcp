@@ -68,6 +68,7 @@
     "type",
     "request_id",
     "user_token",
+    "uid_type",
     "package_ids"
   ],
   "additionalProperties": false

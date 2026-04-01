@@ -22,6 +22,7 @@ When a pod break approaches, the broadcaster sends a context match request. The 
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-9f3a-e7b2",
   "property_rid": "01916f3a-a1d3-7000-8000-000000000020",
   "property_id": "riverview-streaming",
@@ -46,6 +47,7 @@ Each buyer agent evaluates the content context and responds with offers for pack
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-9f3a-e7b2",
   "offers": [
     {
@@ -89,6 +91,7 @@ Separately, the broadcaster sends an identity match request with a household tok
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-7k2m-p4w1",
   "user_token": "tok_household_q7w2",
   "uid_type": "publisher_first_party",

@@ -28,6 +28,7 @@ The publisher sends a Context Match request to the TMP Router, which fans out to
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-7f3a",
   "property_rid": "01916f3a-7b2c-7000-8000-000000000001",
   "property_id": "retailer-web",
@@ -54,6 +55,7 @@ The buyer agent evaluates each package against the context. Package B is homepag
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-7f3a",
   "offers": [
     {
@@ -120,6 +122,7 @@ Separately — and with a random time delay — the publisher sends an Identity 
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-9b2c",
   "user_token": "tok_hk82mfp1",
   "uid_type": "uid2",
@@ -148,7 +151,7 @@ Note what is absent: no URL, no search query, no content signals, no topic IDs. 
 
 The buyer reports that this user is eligible for packages A and B. Package C is absent — the user is not eligible. The publisher does not need to know why — frequency capping, audience mismatch, and other disqualification reasons are buyer-internal.
 
-The `ttl_sec: 60` tells the router: "Cache this for 60 seconds. During that window, serve at most one ad per eligible package." The router uses this cached eligibility to fill whatever placements exist — a single slot, a CTV ad pod, or a page with multiple ad units — without re-querying the buyer.
+The `ttl_sec: 60` tells the router: "Cache this for 60 seconds." The router uses this cached eligibility to fill whatever placements exist — a single slot, a CTV ad pod, or a page with multiple ad units — without re-querying the buyer. The publisher decides how to allocate across placements.
 
 ### What Identity Match never carries
 

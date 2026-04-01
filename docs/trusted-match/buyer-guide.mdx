@@ -122,7 +122,7 @@ The router sends you an opaque user token and a list of ALL your active package 
 }
 ```
 
-Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `ttl_sec` tells the router how long to cache this response — during that window, the router serves at most one ad per eligible package without re-querying you. Set the TTL based on how quickly your eligibility state changes (frequency caps, audience updates, etc.).
+Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `ttl_sec` tells the router how long to cache this response — during that window, the router returns cached eligibility without re-querying you. The publisher uses cached eligibility to allocate across whatever placements exist. Set the TTL based on how quickly your eligibility state changes (frequency caps, audience updates, etc.).
 
 **What you never receive** in Identity Match: page URLs, content topics, keywords, article text, or any content signal. You cannot determine what the user is looking at.
 
@@ -188,10 +188,10 @@ Common scenarios:
 
 The `ttl_sec` field on Identity Match responses is a caching contract between the buyer and the router:
 
-- The router caches the response for `ttl_sec` seconds, keyed by `{uid, provider_id}`
-- During that window, the router serves **at most one ad per eligible package** without re-querying the buyer
-- This works for any allocation scenario — a single pre-roll, a CTV ad pod, or a web page with multiple ad units
-- The buyer doesn't need to know how many placements exist or how the router allocates
+- The router caches the response for `ttl_sec` seconds, keyed by `{user_token, provider_id, hash(package_ids)}`
+- During that window, the router returns cached eligibility without re-querying the buyer
+- The publisher uses cached eligibility to allocate across whatever placements exist — a single pre-roll, a CTV ad pod, or a web page with multiple ad units
+- The buyer doesn't need to know how many placements exist or how the publisher allocates
 
 **Choosing a TTL**: Set the TTL based on how quickly your eligibility state changes. If frequency caps reset hourly, a 300-second TTL is reasonable. If a user is close to a cap limit, return a shorter TTL (e.g., 30 seconds) so the router re-checks sooner.
 

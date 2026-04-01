@@ -46,6 +46,7 @@ A fitness app triggers an interstitial after a workout completes:
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-mob-7f3a91",
   "property_rid": "01916f3a-b4e7-7000-8000-000000000030",
   "property_id": "pulsefit-ios",
@@ -64,6 +65,7 @@ No package list is sent per request. The provider evaluates all eligible package
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-mob-7f3a91",
   "offers": [
     {
@@ -87,6 +89,7 @@ A recipe app shows sponsored content cards in its recipe feed:
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-mob-b2c419",
   "property_rid": "01916f3a-c5f8-7000-8000-000000000031",
   "property_id": "tastecraft-android",
@@ -102,6 +105,7 @@ A recipe app shows sponsored content cards in its recipe feed:
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-mob-b2c419",
   "offers": [
     {
@@ -153,6 +157,7 @@ The `package_ids` list includes all active packages for the buyer, not just the 
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-mob-e4d782",
   "user_token": "tok_idfv_a9c3e7",
   "uid_type": "publisher_first_party",
@@ -234,6 +239,7 @@ Rewarded video follows the same activation pattern as interstitials. The placeme
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-mob-c8f201",
   "property_rid": "01916f3a-d6a9-7000-8000-000000000032",
   "property_id": "puzzlequest-ios",

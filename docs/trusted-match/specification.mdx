@@ -39,6 +39,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `type` | string | Yes | `"context_match_request"`. Message type discriminator for dispatch. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. Allows receivers to handle semantic differences across versions. |
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
@@ -121,6 +122,7 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `type` | string | Yes | `"context_match_response"`. Message type discriminator. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `offers` | List\<Offer\> | Yes | Offers from the buyer, one per activated package. Empty list means no packages matched. |
 | `signals` | Signals | No | Response-level targeting signals for ad server pass-through. Not per-offer — applies to the response as a whole. In the GAM case, these carry the key-value pairs that trigger line items. |
@@ -168,10 +170,11 @@ Sent by the publisher (via router) to buyer agents. Contains an opaque user toke
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `type` | string | Yes | `"identity_match_request"`. Message type discriminator for dispatch. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
 | `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
-| `uid_type` | enum | No | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
+| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. Required for signature verification. See `uid-type` enum. |
 | `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information. |
 | `package_ids` | List\<string\> | Yes | ALL active packages for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
 
@@ -181,6 +184,7 @@ Returned by the buyer agent. A list of eligible package IDs with a caching TTL.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `type` | string | Yes | `"identity_match_response"`. Message type discriminator. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
 | `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. A value of `0` means do not cache — re-query on every request. |
@@ -206,6 +210,7 @@ Returned by a provider or router when a request cannot be processed. Distinct fr
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `type` | string | Yes | `"error"`. Message type discriminator. |
 | `request_id` | string | Yes | Echo of the original request's `request_id`. |
 | `code` | enum | Yes | Machine-readable error code: `invalid_request`, `unknown_package`, `rate_limited`, `timeout`, `internal_error`, `provider_unavailable`. |
 | `message` | string | No | Human-readable error description for debugging. |
@@ -273,6 +278,11 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 - Attestation documents SHOULD be available on request to publishers and auditors.
 - Attestation SHOULD include measurements confirming service code integrity and isolation.
 
+### Consent handling
+
+- When `consent` is omitted from an Identity Match request, buyers MUST treat this as "consent status unknown" rather than "consent not required."
+- Buyers in jurisdictions where consent is required MUST reject Identity Match requests that omit `consent`, not assume consent.
+
 ### User token requirements
 
 - User tokens MUST be opaque to buyer agents. Tokens may originate from identity providers (ID5, LiveRamp, UID2) or be publisher-generated.
@@ -303,6 +313,7 @@ Concatenated in this order, UTF-8, newline-separated:
 
 | Field | Source |
 |---|---|
+| `type` | `context_match_request` |
 | `property_rid` | From the request body |
 | `placement_id` | From the request body |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
@@ -316,6 +327,7 @@ Concatenated in this order, UTF-8, newline-separated:
 
 | Field | Source |
 |---|---|
+| `type` | `identity_match_request` |
 | `request_id` | From the request body |
 | `user_token` | From the request body |
 | `uid_type` | From the request body |
@@ -326,9 +338,9 @@ Identity Match signatures include `request_id` and `user_token`, so they are uni
 
 ### Signature verification
 
-The router MUST verify the signature before fanning out to providers. A failed verification MUST prevent fan-out — the request is rejected at the router boundary.
+The router MUST authenticate incoming requests from the publisher before signing and fanning out. The mechanism for publisher-to-router authentication is deployment-specific (mTLS, API key, etc.) and outside the scope of TMP signing, but MUST be enforced. This prevents a compromised publisher-side component from laundering unauthenticated requests through the router's signature.
 
-Providers verify signatures using the publisher's public key, obtained from the property registry. Providers SHOULD sample-verify rather than verify every request — Ed25519 verification adds ~30μs per request, which is small compared to the full pipeline but adds up at volume. A 5% sample rate detects fraudulent publishers within seconds while adding negligible overhead.
+The router signs requests before fanning out. Providers verify signatures using the publisher's public key, obtained from the property registry. This proves the request originated from an authorized router — not a third party probing the provider's targeting logic. Providers SHOULD sample-verify rather than verify every request — Ed25519 verification adds ~30μs per request, which is small compared to the full pipeline but adds up at volume. A 5% sample rate detects fraudulent publishers within seconds while adding negligible overhead.
 
 On verification failure, the provider SHOULD suppress the property for a configurable period (recommended: 24 hours) and alert operations.
 
@@ -382,7 +394,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 
 - Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
-- Identity Match responses are cached per the `ttl_sec` value in the response. The router serves at most one ad per eligible package within the TTL window. Cache key: `{uid, provider_id}`.
+- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{user_token, provider_id, hash(package_ids)}`. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). The router returns cached eligibility for subsequent requests during the window. The publisher enforces allocation rules (one ad per package, competitive separation, pod composition) using the cached eligibility as input.
 - When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
 
 ## Conformance Levels

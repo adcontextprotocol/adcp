@@ -18,6 +18,7 @@ When a shopper views a search results page or category page, the retailer sends 
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-retail-8f3a",
   "property_rid": "01916f3a-e7ba-7000-8000-000000000040",
   "property_id": "grocery-retailer-web",
@@ -33,6 +34,7 @@ The buyer responds with an offer:
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-retail-8f3a",
   "offers": [
     {
@@ -74,8 +76,10 @@ The retailer sends an Identity Match request with the shopper's loyalty token. T
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-retail-c7b2",
   "user_token": "tok_loyalty_m3p7",
+  "uid_type": "publisher_first_party",
   "package_ids": ["pkg-coffee-sponsored", "pkg-snacks-display", "pkg-dairy-promo", "pkg-bakery-seasonal", "pkg-frozen-meals", "pkg-household-q1"]
 }
 ```

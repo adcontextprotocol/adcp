@@ -26,6 +26,7 @@ When a user sends a message in a conversation, the AI platform sends a Context M
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-a1b2c3d4",
   "property_rid": "01916f3a-f8cb-7000-8000-000000000050",
   "property_id": "chatplatform-assistant",
@@ -54,6 +55,7 @@ The buyer agent responds with an offer:
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-a1b2c3d4",
   "offers": [
     {
@@ -89,6 +91,7 @@ The platform sends an Identity Match request with a session token. The `package_
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-e5f6g7h8",
   "user_token": "tok_session_k2f8",
   "uid_type": "publisher_first_party",

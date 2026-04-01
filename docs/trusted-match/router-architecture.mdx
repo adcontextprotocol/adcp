@@ -105,7 +105,7 @@ When the publisher sends a Context Match request:
 
 The same pattern applies. The router fans out to all providers with `identity_match` capability for the relevant properties, merges eligibility results, and returns a unified response.
 
-If two providers return eligibility for the same package (uncommon), the router applies conservative merging: the package is only eligible if it appears in `eligible_package_ids` from both providers. The router uses the minimum `ttl_sec` across providers.
+Duplicate `package_id` across providers is a configuration error — packages come from media buys and are provider-specific. If it occurs, the router applies conservative merging: the package is only eligible if it appears in `eligible_package_ids` from both providers. The router uses the minimum `ttl_sec` across providers and SHOULD log a warning.
 
 ### Timeout handling
 

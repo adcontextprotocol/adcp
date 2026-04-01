@@ -58,6 +58,7 @@ Before the LLM generates its response, StreamHaus sends a **Context Match** requ
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-trail-shoes-01",
   "property_rid": "01916f3a-f8cb-7000-8000-000000000051",
   "property_type": "ai_assistant",
@@ -95,6 +96,7 @@ Priya chose full recommendation for StreamHaus's assistant:
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-trail-shoes-01",
   "offers": [
     {

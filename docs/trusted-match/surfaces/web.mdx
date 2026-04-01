@@ -22,6 +22,7 @@ When a page loads, the TMP Prebid module sends a Context Match request to the ro
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-7f2a-oakwood-91b3",
   "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
   "property_id": "oakwood-publishing-main",
@@ -44,6 +45,7 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-7f2a-oakwood-91b3",
   "offers": [
     { "package_id": "pkg-display-0041" },
@@ -75,6 +77,7 @@ Separately, the TMP Prebid module sends an Identity Match request with the user'
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-3k9p-oakwood-d4f1",
   "user_token": "tok_uid2_8f2a3b7c",
   "uid_type": "uid2",
@@ -119,7 +122,7 @@ The buyer evaluates the user against all requested packages and returns the IDs 
 Key points:
 
 - Only eligible packages are listed. Packages absent from the list (e.g., `pkg-display-0043`, `pkg-display-0103`, `pkg-video-0201`) are ineligible. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher.
-- `ttl_sec` tells the router how long to cache this response. During that window, the router serves at most one ad per eligible package — across all placements on the page — without re-querying the buyer.
+- `ttl_sec` tells the router how long to cache this response. During that window, the router returns cached eligibility without re-querying the buyer. The publisher uses cached eligibility to allocate across all placements on the page.
 - There is no `frequency_capped`, `audience_match`, or `recency` field. The buyer's internal reasons stay with the buyer.
 
 ## Activation: Joining Context and Identity

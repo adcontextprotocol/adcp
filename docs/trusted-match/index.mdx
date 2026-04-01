@@ -82,6 +82,7 @@ Request from StreamHaus to Sam's buyer agent:
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-8f3a2b",
   "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
   "property_type": "website",
@@ -104,6 +105,7 @@ Response from Sam's buyer agent:
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-8f3a2b",
   "offers": [
     {
@@ -133,6 +135,7 @@ Request from StreamHaus to Sam's buyer agent:
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-7c9e1d",
   "user_token": "opaque-streamhaus-token-abc123",
   "uid_type": "uid2",
