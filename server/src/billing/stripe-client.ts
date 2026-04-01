@@ -945,6 +945,13 @@ export async function createAndSendInvoice(
       }
     }
 
+    // Validate payment terms
+    const allowedTerms = [30, 45, 60, 90];
+    const daysUntilDue = data.daysUntilDue ?? 30;
+    if (!allowedTerms.includes(daysUntilDue)) {
+      throw new Error(`Invalid payment terms: ${daysUntilDue}. Allowed: ${allowedTerms.join(', ')}`);
+    }
+
     // Validate date inputs if provided
     // Use noon UTC to avoid timezone issues — midnight UTC renders as the
     // previous day in US timezones on Stripe invoice PDFs.
@@ -955,14 +962,25 @@ export async function createAndSendInvoice(
       ? Math.floor(new Date(`${data.dueDate}T12:00:00Z`).getTime() / 1000)
       : undefined;
 
+    if (data.invoiceDate && (!invoiceDateUnix || isNaN(invoiceDateUnix))) {
+      throw new Error(`Invalid invoice_date format: "${data.invoiceDate}". Use YYYY-MM-DD.`);
+    }
+    if (data.dueDate && (!dueDateUnix || isNaN(dueDateUnix))) {
+      throw new Error(`Invalid due_date format: "${data.dueDate}". Use YYYY-MM-DD.`);
+    }
+
     if (invoiceDateUnix && invoiceDateUnix > Math.floor(Date.now() / 1000)) {
-      logger.error({ invoiceDate: data.invoiceDate }, 'createAndSendInvoice: invoiceDate cannot be in the future');
-      return null;
+      throw new Error('invoice_date cannot be in the future. Provide a past date in YYYY-MM-DD format.');
+    }
+
+    const maxBackdateDays = 180;
+    const minInvoiceDate = Math.floor(Date.now() / 1000) - (maxBackdateDays * 86400);
+    if (invoiceDateUnix && invoiceDateUnix < minInvoiceDate) {
+      throw new Error(`invoice_date cannot be more than ${maxBackdateDays} days in the past.`);
     }
 
     if (dueDateUnix && invoiceDateUnix && dueDateUnix <= invoiceDateUnix) {
-      logger.error({ invoiceDate: data.invoiceDate, dueDate: data.dueDate }, 'createAndSendInvoice: dueDate must be after invoiceDate');
-      return null;
+      throw new Error('due_date must be after invoice_date.');
     }
 
     // Create subscription with invoice billing
@@ -972,7 +990,7 @@ export async function createAndSendInvoice(
       customer: customer.id,
       items: [{ price: priceId }],
       collection_method: 'send_invoice',
-      days_until_due: data.daysUntilDue ?? 30,
+      days_until_due: daysUntilDue,
       // Backdate subscription start if invoice date is in the past
       ...(invoiceDateUnix && { backdate_start_date: invoiceDateUnix }),
       // Apply coupon if validated

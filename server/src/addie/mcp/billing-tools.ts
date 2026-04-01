@@ -531,9 +531,10 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error sending invoice');
+      const message = error instanceof Error ? error.message : 'Failed to send invoice. Please try again.';
       return JSON.stringify({
         success: false,
-        error: 'Failed to send invoice. Please try again.',
+        error: message,
       });
     }
   });

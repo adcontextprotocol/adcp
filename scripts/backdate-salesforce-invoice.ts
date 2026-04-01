@@ -1,22 +1,50 @@
 /**
- * One-off script: Create a backdated March 1 invoice for Salesforce with net-60 terms.
+ * One-off script: Create a backdated invoice with configurable terms.
  *
  * Usage:
+ *   STRIPE_SECRET_KEY=sk_... \
+ *   CUSTOMER_EMAIL=user@example.com \
+ *   COMPANY_NAME="Acme Inc" \
+ *   CONTACT_NAME="Jane Doe" \
+ *   INVOICE_DATE=2026-03-01 \
+ *   DUE_DATE=2026-04-30 \
  *   npx tsx scripts/backdate-salesforce-invoice.ts [--dry-run]
  *
- * Requires STRIPE_SECRET_KEY in environment.
+ * Environment variables:
+ *   STRIPE_SECRET_KEY  - Stripe API key (required)
+ *   CUSTOMER_EMAIL     - Customer email (required)
+ *   COMPANY_NAME       - Company name for the invoice (required)
+ *   CONTACT_NAME       - Contact person name (required)
+ *   INVOICE_DATE       - Invoice date as YYYY-MM-DD (required)
+ *   DUE_DATE           - Due date as YYYY-MM-DD (required)
+ *   LOOKUP_KEY         - Stripe price lookup key (default: aao_membership_leader_50000)
+ *   DAYS_UNTIL_DUE     - Payment terms in days (default: 60)
  */
 
 import Stripe from 'stripe';
 
-// ─── Configuration ───────────────────────────────────────────────────────────
-const CUSTOMER_EMAIL = 'gjoynt@salesforce.com';
-const COMPANY_NAME = 'Salesforce';
-const CONTACT_NAME = 'Gabe Joynt';
-const LOOKUP_KEY = 'aao_membership_leader_50000';
-const DAYS_UNTIL_DUE = 60; // net-60
-const INVOICE_DATE = new Date('2026-03-01T12:00:00Z');
-const DUE_DATE = new Date('2026-04-30T12:00:00Z'); // March 1 + 60 days
+// ─── Configuration from environment ─────────────────────────────────────────
+const CUSTOMER_EMAIL = process.env.CUSTOMER_EMAIL;
+const COMPANY_NAME = process.env.COMPANY_NAME;
+const CONTACT_NAME = process.env.CONTACT_NAME;
+const LOOKUP_KEY = process.env.LOOKUP_KEY || 'aao_membership_leader_50000';
+const DAYS_UNTIL_DUE = parseInt(process.env.DAYS_UNTIL_DUE || '60', 10);
+const INVOICE_DATE_STR = process.env.INVOICE_DATE;
+const DUE_DATE_STR = process.env.DUE_DATE;
+
+if (!CUSTOMER_EMAIL || !COMPANY_NAME || !CONTACT_NAME || !INVOICE_DATE_STR || !DUE_DATE_STR) {
+  console.error('Required env vars: CUSTOMER_EMAIL, COMPANY_NAME, CONTACT_NAME, INVOICE_DATE, DUE_DATE');
+  process.exit(1);
+}
+
+// Use noon UTC to avoid timezone rendering issues on Stripe invoice PDFs
+const INVOICE_DATE = new Date(`${INVOICE_DATE_STR}T12:00:00Z`);
+const DUE_DATE = new Date(`${DUE_DATE_STR}T12:00:00Z`);
+
+if (isNaN(INVOICE_DATE.getTime()) || isNaN(DUE_DATE.getTime())) {
+  console.error('Invalid date format. Use YYYY-MM-DD.');
+  process.exit(1);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 const dryRun = process.argv.includes('--dry-run');
@@ -72,7 +100,7 @@ async function main() {
     console.log(`\nCreated customer: ${customer.id}`);
   }
 
-  // 3. Create subscription with backdated start and net-60
+  // 3. Create subscription with backdated start and custom terms
   const invoiceDateUnix = Math.floor(INVOICE_DATE.getTime() / 1000);
 
   const subscription = await stripe.subscriptions.create({
@@ -84,7 +112,7 @@ async function main() {
     metadata: {
       lookup_key: LOOKUP_KEY,
       contact_name: CONTACT_NAME,
-      note: 'Backdated invoice per Salesforce procurement requirement',
+      note: 'Backdated invoice created via script',
     },
   });
 
