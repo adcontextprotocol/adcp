@@ -86,6 +86,8 @@ function getResultsArray(response: unknown): any[] {
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let referrerCache: { data: AiReferrerData; timestamp: number } | null = null;
+const PATH_PAGEVIEW_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const pathPageviewCache = new Map<string, { data: PathPageviewCounts; timestamp: number }>();
 
 export interface AiReferrerSource {
   domain: string;
@@ -271,6 +273,12 @@ export async function fetchPathPageviewCounts(
     return {};
   }
 
+  const cacheKey = `${days}:${uniquePathnames.join("|")}`;
+  const cached = pathPageviewCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < PATH_PAGEVIEW_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
   const config = getPostHogQueryConfig();
   if (!config) return null;
 
@@ -328,6 +336,7 @@ export async function fetchPathPageviewCounts(
       counts[pathname] = countValue;
     }
 
+    pathPageviewCache.set(cacheKey, { data: counts, timestamp: Date.now() });
     return counts;
   } catch (err) {
     logger.error({ err, pathCount: uniquePathnames.length }, "Failed to fetch pathname pageviews from PostHog");

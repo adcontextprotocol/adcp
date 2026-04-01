@@ -127,13 +127,13 @@ async function buildNewsSection(): Promise<DigestNewsItem[]> {
     .join('\n');
 
   const result = await complete({
-    system: `You are Addie, the AI assistant for AgenticAdvertising.org (AAO), a membership organization building the Ad Context Protocol (AdCP) for agentic advertising.
+    system: `You are Addie, the AI assistant for AgenticAdvertising.org, a membership organization building the Ad Context Protocol (AdCP) for agentic advertising.
 
 Select the 3 most relevant articles for our weekly digest and write a brief "why it matters" take for each.
 
 Editorial guidelines:
-- Frame every "why it matters" from AAO's perspective — how does this affect our members, our protocol work, or the agentic advertising ecosystem?
-- Do NOT promote competitor organizations' initiatives (e.g., IAB Tech Lab, AAMP) as industry leadership. If covering competitor news, frame it in terms of what it means for AAO members and where AAO's approach differs.
+- Frame every "why it matters" from AgenticAdvertising.org's perspective — how does this affect our members, our protocol work, or the agentic advertising ecosystem?
+- Do NOT promote competitor organizations' initiatives (e.g., IAB Tech Lab, AAMP) as industry leadership. If covering competitor news, frame it in terms of what it means for AgenticAdvertising.org members and where our approach differs.
 - Prefer articles about trends, adoption, and real-world applications of agentic advertising over articles about other organizations' announcements.
 - Be direct and opinionated. Our members are practitioners who want signal, not press releases.
 
@@ -406,24 +406,24 @@ export function generateDigestSubject(content: DigestContent): string {
     return content.emailSubject;
   }
 
-  // Template: "This week: [single concrete thing] | AAO Weekly"
+  // Template: "This week: [single concrete thing] | AgenticAdvertising.org Weekly"
   // Pick the most specific item available
   if (content.spotlightAction) {
-    // e.g., "This week: Measurement WG meets Thursday | AAO Weekly"
+    // e.g., "This week: Measurement WG meets Thursday | AgenticAdvertising.org Weekly"
     const short = content.spotlightAction.text
       .replace(/^This week:\s*/i, '')
       .replace(/\.\s*$/, '');
     if (short.length <= 50) {
-      return `This week: ${short} | AAO Weekly`;
+      return `This week: ${short} | AgenticAdvertising.org Weekly`;
     }
   }
 
   if (content.workingGroups.length > 0) {
     const topWG = content.workingGroups[0].name;
     if (content.workingGroups.length === 1) {
-      return `This week: ${topWG} update | AAO Weekly`;
+      return `This week: ${topWG} update | AgenticAdvertising.org Weekly`;
     }
-    return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AAO Weekly`;
+    return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AgenticAdvertising.org Weekly`;
   }
 
   if (content.memberPerspectives && content.memberPerspectives.length > 0) {
@@ -432,11 +432,11 @@ export function generateDigestSubject(content: DigestContent): string {
     const shortTitle = topPerspective.title.length > 44
       ? `${topPerspective.title.slice(0, 41)}...`
       : topPerspective.title;
-    return `This week: ${author} on ${shortTitle} | AAO Weekly`;
+    return `This week: ${author} on ${shortTitle} | AgenticAdvertising.org Weekly`;
   }
 
   if (content.newMembers.length > 0) {
-    return `This week: ${content.newMembers.length} new members joined | AAO Weekly`;
+    return `This week: ${content.newMembers.length} new members joined | AgenticAdvertising.org Weekly`;
   }
 
   return 'This week at AgenticAdvertising.org';
