@@ -1014,7 +1014,7 @@ async function selectRoutedToolsForSlackResponse(
   if (!addieRouter) {
     logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
     const fallbackSets = ['knowledge'];
-    if (userIsAdmin && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG) {
+    if (userIsAdmin && (source === 'dm' || threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG)) {
       fallbackSets.push('admin');
     }
     const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -1057,10 +1057,12 @@ async function selectRoutedToolsForSlackResponse(
     selectedSets.push('certification');
   }
 
-  // Admin channel: always include admin tools so brief messages ("yes", "done") work
-  if (userIsAdmin && !options?.hasCertificationContext
-      && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG
-      && !selectedSets.includes('admin')) {
+  // Admin DMs and admin channels: always include admin tools.
+  // Admins DMing Addie are almost always asking operational questions; relying on
+  // the Haiku router to guess "admin" from the message is fragile.
+  const isAdminDm = userIsAdmin && source === 'dm';
+  const isAdminChannel = userIsAdmin && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG;
+  if ((isAdminDm || isAdminChannel) && !options?.hasCertificationContext && !selectedSets.includes('admin')) {
     selectedSets.push('admin');
   }
 
@@ -2683,15 +2685,18 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Reply where the user actually is: if they're in a thread, reply there;
-  // if they sent a top-level message, reply at top level. The permanent thread
-  // is still used for conversation history continuity (externalId above).
+  // Always thread the response to the user's message. This ensures:
+  // 1. Slack Assistant "Chat" tab: response appears inline in the conversation
+  //    (first DMs have no thread_ts, so we use event.ts to start the thread)
+  // 2. Regular DMs: response threads to the user's message (Slack shows
+  //    threaded DM replies inline, so UX is unchanged)
+  const replyThreadTs = event.thread_ts || event.ts;
   let responseTs: string | undefined;
   try {
     const postResult = await boltApp.client.chat.postMessage({
       channel: channelId,
       text: wrapUrlsForSlack(outputValidation.sanitized),
-      ...(event.thread_ts ? { thread_ts: event.thread_ts } : {}),
+      thread_ts: replyThreadTs,
     });
     responseTs = postResult.ts;
   } catch (error) {

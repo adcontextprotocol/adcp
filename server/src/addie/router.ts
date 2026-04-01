@@ -319,7 +319,7 @@ The user has NOT linked their Slack account to AgenticAdvertising.org.
 The user is an ADMIN.
 - They have access to the "admin" tool set for system operations
 - Be more direct and technical in responses
-- In admin channels (e.g., #aao-admin), ALWAYS include "admin" in tool_sets.`;
+- In DMs and admin channels (e.g., #aao-admin), ALWAYS include "admin" in tool_sets.`;
   } else {
     conditionalRules += `
 The user is NOT an admin.
@@ -388,6 +388,7 @@ ${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ON
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 - Billing, invoices, payment links, resending invoices → ["billing"]
 - Scheduling meetings, events, calendar, RSVPs, covering topics, joining a call, meeting agendas → ["meetings"]
+- Listing all members with payment/product/invoice status → ["admin"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
 - Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
 - Adding/removing committee or working group leaders (admin action) → ["admin"]
