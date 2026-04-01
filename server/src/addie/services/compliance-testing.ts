@@ -127,7 +127,7 @@ export const TRACK_SCENARIOS: Record<ComplianceTrack, TestScenario[]> = {
     'temporal_validation',
   ],
   creative: ['creative_sync', 'creative_inline', 'creative_flow'],
-  reporting: ['full_sales_flow'],
+  reporting: ['reporting_flow', 'deterministic_delivery'],
   governance: ['governance_property_lists', 'governance_content_standards', 'property_list_filters'],
   signals: ['signals_flow'],
   si: ['si_session_lifecycle', 'si_availability', 'si_handoff'],
