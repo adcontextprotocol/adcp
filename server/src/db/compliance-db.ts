@@ -12,7 +12,7 @@ export type LifecycleStage = 'development' | 'testing' | 'production' | 'depreca
 export type ComplianceStatus = 'passing' | 'degraded' | 'failing' | 'unknown';
 export type OverallRunStatus = 'passing' | 'failing' | 'partial';
 export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook';
-export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip' | 'expected';
+export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip';
 
 export interface AgentRegistryMetadata {
   agent_url: string;
