@@ -450,24 +450,6 @@ export class HTTPServer {
     // Required for express-rate-limit and other middleware that use req.ip
     this.app.set('trust proxy', 1);
 
-    // Request logging for /api/me/member-profile to help diagnose issues
-    this.app.use('/api/me/member-profile', (req, res, next) => {
-      const startTime = Date.now();
-      logger.debug({ method: req.method, path: req.path, query: req.query }, 'member-profile request received');
-
-      // Log when response finishes
-      res.on('finish', () => {
-        logger.debug({
-          method: req.method,
-          path: req.path,
-          statusCode: res.statusCode,
-          durationMs: Date.now() - startTime
-        }, 'member-profile response sent');
-      });
-
-      next();
-    });
-
     // Track slow API responses and alert ops
     this.app.use(slowResponseTracker);
 

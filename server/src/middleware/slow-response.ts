@@ -10,6 +10,7 @@
  */
 
 import { Request, Response, NextFunction } from "express";
+import { sendChannelMessage, isSlackConfigured } from "../slack/client.js";
 import { createLogger } from "../logger.js";
 
 const logger = createLogger("slow-response");
@@ -35,7 +36,6 @@ function shouldAlert(key: string): boolean {
   const last = alertCooldowns.get(key);
   if (last && now - last < ALERT_COOLDOWN_MS) return false;
   alertCooldowns.set(key, now);
-  // Hard cap to prevent unbounded growth
   if (alertCooldowns.size > MAX_COOLDOWN_ENTRIES) {
     const cutoff = now - ALERT_COOLDOWN_MS;
     for (const [k, t] of alertCooldowns) {
@@ -46,35 +46,29 @@ function shouldAlert(key: string): boolean {
 }
 
 function notifySlack(method: string, path: string, durationMs: number, status: number): void {
-  if (!OPS_ALERT_CHANNEL_ID) return;
+  if (!OPS_ALERT_CHANNEL_ID || !isSlackConfigured()) return;
 
-  // Sanitize path for Slack mrkdwn: truncate and strip formatting chars
   const safePath = path.slice(0, 200).replace(/[`*_~<>]/g, "");
+  const seconds = (durationMs / 1000).toFixed(1);
 
-  import("../slack/client.js")
-    .then(({ sendChannelMessage, isSlackConfigured }) => {
-      if (!isSlackConfigured()) return;
-      const seconds = (durationMs / 1000).toFixed(1);
-      return sendChannelMessage(OPS_ALERT_CHANNEL_ID!, {
-        text: `Slow API: ${method} ${safePath} took ${seconds}s (status ${status})`,
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: [
-                `:snail: *Slow API response* on \`${process.env.FLY_APP_NAME || "aao-server"}\``,
-                `*Endpoint:* \`${method} ${safePath}\``,
-                `*Duration:* ${seconds}s`,
-                `*Status:* ${status}`,
-                "_This usually means an external service (Stripe, WorkOS) is slow or hanging._",
-              ].join("\n"),
-            },
-          },
-        ],
-      });
-    })
-    .catch(() => {});
+  sendChannelMessage(OPS_ALERT_CHANNEL_ID, {
+    text: `Slow API: ${method} ${safePath} took ${seconds}s (status ${status})`,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: [
+            `:snail: *Slow API response* on \`${process.env.FLY_APP_NAME || "aao-server"}\``,
+            `*Endpoint:* \`${method} ${safePath}\``,
+            `*Duration:* ${seconds}s`,
+            `*Status:* ${status}`,
+            "_This usually means an external service (Stripe, WorkOS) is slow or hanging._",
+          ].join("\n"),
+        },
+      },
+    ],
+  }).catch(() => {});
 }
 
 /**
@@ -88,32 +82,25 @@ export function slowResponseTracker(req: Request, res: Response, next: NextFunct
 
   const start = process.hrtime.bigint();
 
-  const originalEnd = res.end;
-  res.end = function (this: Response, ...args: unknown[]) {
+  res.on("finish", () => {
     const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
 
-    try {
-      if (durationMs > WARN_THRESHOLD_MS) {
-        logger.warn(
-          {
-            method: req.method,
-            path: req.path,
-            status: res.statusCode,
-            duration_ms: Math.round(durationMs),
-          },
-          `Slow API response: ${req.method} ${req.path} took ${(durationMs / 1000).toFixed(1)}s`
-        );
+    if (durationMs > WARN_THRESHOLD_MS) {
+      logger.warn(
+        {
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          duration_ms: Math.round(durationMs),
+        },
+        `Slow API response: ${req.method} ${req.path} took ${(durationMs / 1000).toFixed(1)}s`
+      );
 
-        if (durationMs > ALERT_THRESHOLD_MS && shouldAlert(normalizeAlertKey(req.method, req.path))) {
-          notifySlack(req.method, req.path, durationMs, res.statusCode);
-        }
+      if (durationMs > ALERT_THRESHOLD_MS && shouldAlert(normalizeAlertKey(req.method, req.path))) {
+        notifySlack(req.method, req.path, durationMs, res.statusCode);
       }
-    } catch (_) {
-      // Never let instrumentation break the response
     }
-
-    return (originalEnd as Function).apply(this, args);
-  } as typeof res.end;
+  });
 
   next();
 }
