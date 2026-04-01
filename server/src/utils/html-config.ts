@@ -312,10 +312,16 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
 
     // Escape </script> sequences in JSON to prevent XSS
     const jsonString = JSON.stringify(jsonLd, null, 2).replace(/<\//g, '<\\/');
-    result = result.replace(
-      /<script type="application\/ld\+json" id="articleJsonLd">[\s\S]*?<\/script>/,
-      `<script type="application/ld+json" id="articleJsonLd">\n${jsonString}\n</script>`
-    );
+    const jsonLdOpen = '<script type="application/ld+json" id="articleJsonLd">';
+    const jsonLdStart = result.indexOf(jsonLdOpen);
+    if (jsonLdStart !== -1) {
+      const jsonLdEnd = result.indexOf('</script>', jsonLdStart + jsonLdOpen.length);
+      if (jsonLdEnd !== -1) {
+        result = result.substring(0, jsonLdStart) +
+          `${jsonLdOpen}\n${jsonString}\n</script>` +
+          result.substring(jsonLdEnd + '</script>'.length);
+      }
+    }
   }
 
   return result;

@@ -477,6 +477,28 @@
           },
           "additionalProperties": true
         },
+        "content_standards_detail": {
+          "type": "object",
+          "description": "Content standards implementation details. Only meaningful when features.content_standards is true. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.",
+          "properties": {
+            "supports_local_evaluation": {
+              "type": "boolean",
+              "description": "Whether the seller runs a local evaluation model. When false, all artifacts will have local_verdict: 'unevaluated' and the failures_only filter on get_media_buy_artifacts is not useful."
+            },
+            "supported_channels": {
+              "type": "array",
+              "description": "Channels for which the seller can provide content artifacts. Helps buyers understand which parts of a mixed-channel buy will have content standards coverage.",
+              "items": {
+                "$ref": "/schemas/enums/channels.json"
+              },
+              "minItems": 1
+            },
+            "supports_webhook_delivery": {
+              "type": "boolean",
+              "description": "Whether the seller supports push-based artifact delivery via artifact_webhook configured at buy creation time."
+            }
+          }
+        },
         "portfolio": {
           "type": "object",
           "description": "Information about the seller's media inventory portfolio",
