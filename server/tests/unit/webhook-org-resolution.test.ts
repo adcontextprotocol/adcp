@@ -3,14 +3,19 @@ import { resolveOrgForStripeCustomer } from '../../src/billing/webhook-helpers.j
 import { StripeCustomerConflictError } from '../../src/db/organization-db.js';
 
 // Mock the logger to avoid console noise in tests
-vi.mock('../../src/logger.js', () => ({
-  createLogger: () => ({
+vi.mock('../../src/logger.js', () => {
+  const childLogger = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  }),
-}));
+    child: vi.fn().mockReturnThis(),
+  };
+  return {
+    logger: childLogger,
+    createLogger: () => childLogger,
+  };
+});
 
 const TEST_CUSTOMER_ID = 'cus_test_123';
 const TEST_ORG_ID = 'org_test_456';

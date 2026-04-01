@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { createLogger } from '../logger.js';
+import { notifySystemError } from '../addie/error-notifier.js';
 
 const logger = createLogger('stripe-client');
 
@@ -511,6 +512,7 @@ export async function createStripeCustomer(data: {
     return customer.id;
   } catch (error) {
     logger.error({ err: error }, 'Error creating Stripe customer');
+    notifySystemError({ source: 'stripe-customer', errorMessage: `Failed to create Stripe customer: ${error instanceof Error ? error.message : String(error)}` });
     return null;
   }
 }
@@ -882,6 +884,7 @@ export async function createAndSendInvoice(
 
     if (!customerId) {
       logger.error({ email: data.contactEmail }, 'Failed to find or create Stripe customer for invoice');
+      notifySystemError({ source: 'stripe-invoice', errorMessage: `Cannot create invoice — failed to find/create customer for ${data.contactEmail}` });
       return null;
     }
 
@@ -898,6 +901,7 @@ export async function createAndSendInvoice(
         lookupKey: data.lookupKey,
         unitAmount: price?.unit_amount,
       }, 'createAndSendInvoice: Price has zero or null amount');
+      notifySystemError({ source: 'stripe-invoice', errorMessage: `Price ${data.lookupKey} has zero/null amount — invoice not created` });
       return null;
     }
 
@@ -968,6 +972,7 @@ export async function createAndSendInvoice(
         priceId,
         lookupKey: data.lookupKey,
       }, 'createAndSendInvoice: Invoice has zero amount - not sending');
+      notifySystemError({ source: 'stripe-invoice', errorMessage: `Invoice ${invoiceId} has zero amount (${data.lookupKey}) — subscription ${subscription.id} orphaned` });
       // Clean up the subscription since we can't send the invoice
       try {
         await stripe.subscriptions.cancel(subscription.id);
@@ -1015,6 +1020,7 @@ export async function createAndSendInvoice(
       companyName: data.companyName,
       contactEmail: data.contactEmail,
     }, 'createAndSendInvoice: Error creating subscription with invoice');
+    notifySystemError({ source: 'stripe-invoice', errorMessage: `Failed to create invoice for ${data.companyName} (${data.lookupKey}): ${stripeError.message || 'unknown error'}` });
     return null;
   }
 }
@@ -1257,6 +1263,7 @@ export async function createCheckoutSession(
     };
   } catch (error) {
     logger.error({ err: error, data }, 'Error creating checkout session');
+    notifySystemError({ source: 'stripe-checkout', errorMessage: `Checkout session failed: ${error instanceof Error ? error.message : String(error)}` });
     throw error;
   }
 }
@@ -1374,6 +1381,7 @@ export async function createProduct(input: CreateProductInput): Promise<BillingP
     };
   } catch (error) {
     logger.error({ err: error, input }, 'Error creating product');
+    notifySystemError({ source: 'stripe-product', errorMessage: `Failed to create product: ${error instanceof Error ? error.message : String(error)}` });
     throw error;
   }
 }
