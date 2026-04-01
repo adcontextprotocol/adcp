@@ -1093,7 +1093,7 @@ Roles: member (default), admin (can manage team), owner (full control)`,
         },
         limit: {
           type: 'number',
-          description: 'Maximum results (default: 50)',
+          description: 'Maximum results (default: 200, max: 500)',
         },
       },
     },
@@ -6610,7 +6610,7 @@ Use add_committee_leader to assign a leader.`;
     try {
       const pool = getPool();
       const includeIndividual = input.include_individual !== false;
-      const limit = Math.min(Math.max((input.limit as number) || 50, 1), 100);
+      const limit = Math.min(Math.max((input.limit as number) || 200, 1), 500);
 
       const result = await pool.query(
         `SELECT
@@ -6694,6 +6694,7 @@ Use add_committee_leader to assign a leader.`;
       let response = `## Active Members\n\n`;
       response += `**${result.rows.length} active member${result.rows.length !== 1 ? 's' : ''}**`;
       if (!includeIndividual) response += ` (corporate only)`;
+      if (result.rows.length >= limit) response += ` (results truncated at ${limit} — increase limit for full list)`;
       response += `\n\n`;
 
       if (groups.icl.length > 0) {
