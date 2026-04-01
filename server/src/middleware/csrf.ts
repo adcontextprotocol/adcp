@@ -26,6 +26,7 @@ const logger = createLogger("csrf");
 const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";
 const TOKEN_BYTES = 32;
+const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === "true";
 
 /** Path prefixes that receive POSTs from external services (not browsers). */
 const EXEMPT_PREFIXES = [
@@ -74,7 +75,7 @@ function setNewCsrfCookie(res: Response): string {
   res.cookie(CSRF_COOKIE, token, {
     httpOnly: false,   // JS must be able to read this
     sameSite: "strict",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production" && !ALLOW_INSECURE_COOKIES,
     path: "/",
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days, matches session cookie
   });

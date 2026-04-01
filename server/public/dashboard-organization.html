@@ -793,7 +793,7 @@
   <script>
     const config = window.__APP_CONFIG__ || {};
     if (!config.user) {
-      window.location.href = '/auth/login?return_to=/dashboard/organization';
+      window.location.href = '/auth/login?return_to=/organization';
     }
 
     document.addEventListener('DOMContentLoaded', loadHub);
@@ -807,7 +807,7 @@
 
         if (!engRes.ok) {
           if (engRes.status === 401) {
-            window.location.href = '/auth/login?return_to=/dashboard/organization';
+            window.location.href = '/auth/login?return_to=/organization';
             return;
           }
           if (engRes.status === 404) {
@@ -837,8 +837,10 @@
         DashboardNav.init({
           showOrgSwitcher: orgs.length > 1,
           currentOrgName: currentOrg?.name || data.organization_name || 'My organization',
-          showAdmin: meData?.isAdmin || false,
+          showAdmin: meData?.user?.isAdmin || meData?.isAdmin || false,
           orgId: currentOrg?.id || null,
+          orgRole: currentOrg?.role || 'member',
+          isPersonal: currentOrg?.is_personal || false,
         });
 
         // Set up org switcher callback for multi-org users
@@ -888,7 +890,7 @@
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
-          '<p>Failed to load. <a href="/dashboard/organization">Try again</a></p>';
+          '<p>Failed to load. <a href="/organization">Try again</a></p>';
       }
     }
 
@@ -930,7 +932,7 @@
       pureblood_protector:  { label: 'Mold Breaker',            desc: 'Champions brand safety, quality, and trust',              icon: '🛡' },
       resops_integrator:    { label: 'RevOps Integrator',       desc: 'Streamlines operations and revenue workflows',             icon: '🔄' },
       ladder_climber:       { label: 'Positionless Marketer',   desc: 'Seeking strategic industry visibility and leadership',     icon: '🎯' },
-      simple_starter:       { label: 'Simple Simon',            desc: 'Getting started with agentic advertising',                icon: '🌱' },
+      simple_starter:       { label: 'Early Explorer',          desc: 'Getting started with agentic advertising',                icon: '🌱' },
       pragmatic_builder:    { label: 'Pragmatic Builder',       desc: 'Cross-functional generalist with test-and-learn culture',  icon: '🔨' },
     };
 

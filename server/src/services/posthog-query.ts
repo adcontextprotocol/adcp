@@ -108,6 +108,10 @@ export interface AiReferrerData {
   period: string;
 }
 
+export interface PathPageviewCounts {
+  [pathname: string]: number;
+}
+
 export async function fetchAiReferrerData(): Promise<AiReferrerData | null> {
   if (referrerCache && Date.now() - referrerCache.timestamp < CACHE_TTL_MS) {
     return referrerCache.data;
@@ -251,3 +255,82 @@ export async function fetchAiReferrerData(): Promise<AiReferrerData | null> {
   }
 }
 
+export async function fetchPathPageviewCounts(
+  pathnames: string[],
+  days = 30
+): Promise<PathPageviewCounts | null> {
+  const uniquePathnames = Array.from(
+    new Set(
+      pathnames
+        .filter((pathname): pathname is string => typeof pathname === "string" && pathname.trim().length > 0)
+        .map((pathname) => pathname.trim())
+    )
+  );
+
+  if (uniquePathnames.length === 0) {
+    return {};
+  }
+
+  const config = getPostHogQueryConfig();
+  if (!config) return null;
+
+  const regex = `^(?:${uniquePathnames.map(escapeRegExp).join("|")})$`;
+
+  try {
+    const query = {
+      kind: "InsightVizNode",
+      source: {
+        kind: "TrendsQuery",
+        dateRange: { date_from: `-${days}d` },
+        series: [
+          {
+            kind: "EventsNode",
+            event: "$pageview",
+            custom_name: "Perspective pageviews",
+            properties: [
+              {
+                key: "$pathname",
+                type: "event",
+                operator: "regex",
+                value: regex,
+              },
+            ],
+          },
+        ],
+        breakdownFilter: {
+          breakdown: "$pathname",
+          breakdown_type: "event",
+          breakdown_limit: uniquePathnames.length,
+        },
+        trendsFilter: { display: "ActionsBarValue" },
+      },
+    };
+
+    const result = await queryPostHog(config, query);
+    const rows = getResultsArray(result);
+
+    const counts = uniquePathnames.reduce<PathPageviewCounts>((acc, pathname) => {
+      acc[pathname] = 0;
+      return acc;
+    }, {});
+
+    for (const row of rows) {
+      const pathname = typeof row?.breakdown_value === "string" ? row.breakdown_value : null;
+      if (!pathname || !(pathname in counts)) continue;
+
+      const countValue =
+        typeof row?.aggregated_value === "number"
+          ? row.aggregated_value
+          : typeof row?.count === "number"
+          ? row.count
+          : Number(row?.aggregated_value ?? row?.count) || 0;
+
+      counts[pathname] = countValue;
+    }
+
+    return counts;
+  } catch (err) {
+    logger.error({ err, pathCount: uniquePathnames.length }, "Failed to fetch pathname pageviews from PostHog");
+    return null;
+  }
+}

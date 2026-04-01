@@ -84,7 +84,10 @@
     if (authEnabled) {
       if (user) {
         // User is logged in - show account dropdown
-        const displayName = user.firstName || user.email.split('@')[0];
+        const safeEmail = typeof user.email === 'string' ? user.email : '';
+        const emailLocalPart = safeEmail.includes('@') ? safeEmail.split('@')[0] : safeEmail;
+        const displayName = user.firstName || emailLocalPart || 'Member';
+        const avatarInitial = ((user.firstName || '')[0] || safeEmail[0] || displayName[0] || 'M').toUpperCase();
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
           <button class="navbar__notif-btn" id="notifBell" aria-label="Notifications">
@@ -103,17 +106,17 @@
           </div>
           <div class="navbar__account">
             <button class="navbar__account-btn" id="accountMenuBtn">
-              <span class="navbar__account-avatar" id="accountAvatar">${escapeHtml((user.firstName || '')[0] || user.email[0]).toUpperCase()}</span>
+              <span class="navbar__account-avatar" id="accountAvatar">${escapeHtml(avatarInitial)}</span>
               <span class="navbar__account-name">${escapeHtml(displayName)}</span>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                 <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
               </svg>
             </button>
             <div class="navbar__dropdown" id="accountDropdown">
-              <div class="navbar__dropdown-header">${escapeHtml(user.email)}</div>
-              <a href="${authBaseUrl}/community/" class="navbar__dropdown-item">My profile</a>
-              <a href="${authBaseUrl}/dashboard/organization" class="navbar__dropdown-item">My organization</a>
-              <a href="${authBaseUrl}/dashboard/emails" class="navbar__dropdown-item">Email preferences</a>
+              <div class="navbar__dropdown-header">${escapeHtml(safeEmail || 'Signed in')}</div>
+              <a href="${authBaseUrl}/member-hub" class="navbar__dropdown-item">My hub</a>
+              <a href="${authBaseUrl}/account" class="navbar__dropdown-item">Account</a>
+              <a href="${authBaseUrl}/organization" class="navbar__dropdown-item">Organization</a>
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>
