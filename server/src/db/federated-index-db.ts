@@ -140,6 +140,16 @@ export class FederatedIndexDatabase {
     return result.rows;
   }
 
+  /**
+   * Get all agent→domain pairs in a single query (for bulk snapshots).
+   */
+  async getAllAgentDomainPairs(): Promise<Array<{ agent_url: string; publisher_domain: string }>> {
+    const result = await query<{ agent_url: string; publisher_domain: string }>(
+      `SELECT agent_url, publisher_domain FROM agent_publisher_authorizations ORDER BY agent_url`
+    );
+    return result.rows;
+  }
+
   // ============================================
   // List All
   // ============================================
