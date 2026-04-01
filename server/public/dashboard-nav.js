@@ -69,7 +69,7 @@
   const isAnchorPage = isDashboardPage || isOrgPage || isAccountPage;
 
   const NAV_CONFIG = {
-    logo: isOrgPage ? 'My organization' : 'Dashboard',
+    logo: isOrgPage ? 'Member settings' : 'Account settings',
     sections: [
       {
         label: 'Organization',
@@ -83,7 +83,7 @@
       {
         label: 'Account',
         items: [
-          { href: '/account', label: 'Account', icon: '⚙️' },
+          { href: '/account', label: 'Account settings', icon: '⚙️' },
         ]
       }
     ],
