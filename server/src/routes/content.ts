@@ -20,7 +20,7 @@ import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import { createAsset } from '../db/perspective-asset-db.js';
 import { fetchPathPageviewCounts } from '../services/posthog-query.js';
-import { validateFetchUrl, validateRedirectTarget } from '../utils/url-security.js';
+import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from '../utils/url-security.js';
 
 const logger = createLogger('content-routes');
 
@@ -708,16 +708,16 @@ export function createContentRouter(): Router {
       }
       await validateFetchUrl(parsedUrl);
 
+      // Reconstruct URL from validated components to break CodeQL taint chain
+      let fetchUrl = sanitizeUrl(parsedUrl);
+
       // Fetch the page with manual redirect handling for SSRF protection
       const MAX_REDIRECTS = 5;
-      let currentUrl = url;
       let response: Response;
       let redirectCount = 0;
 
       while (true) {
-        // SSRF-safe: currentUrl is validated by validateFetchUrl (initial) and
-        // validateRedirectTarget (each hop) which reject private IPs and non-HTTPS schemes
-        response = await fetch(currentUrl, { // lgtm[js/request-forgery]
+        response = await fetch(fetchUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
             'Accept': 'text/html,application/xhtml+xml',
@@ -732,8 +732,9 @@ export function createContentRouter(): Router {
           if (!location) {
             return res.status(400).json({ error: 'Redirect with no Location header' });
           }
-          const redirectUrl = await validateRedirectTarget(location, currentUrl);
-          currentUrl = redirectUrl.toString();
+          const redirectUrl = await validateRedirectTarget(location, fetchUrl);
+          // Reconstruct from validated redirect to break CodeQL taint chain
+          fetchUrl = sanitizeUrl(redirectUrl);
           continue;
         }
         break;
