@@ -946,11 +946,13 @@ export async function createAndSendInvoice(
     }
 
     // Validate date inputs if provided
+    // Use noon UTC to avoid timezone issues — midnight UTC renders as the
+    // previous day in US timezones on Stripe invoice PDFs.
     const invoiceDateUnix = data.invoiceDate
-      ? Math.floor(new Date(data.invoiceDate).getTime() / 1000)
+      ? Math.floor(new Date(`${data.invoiceDate}T12:00:00Z`).getTime() / 1000)
       : undefined;
     const dueDateUnix = data.dueDate
-      ? Math.floor(new Date(data.dueDate).getTime() / 1000)
+      ? Math.floor(new Date(`${data.dueDate}T12:00:00Z`).getTime() / 1000)
       : undefined;
 
     if (invoiceDateUnix && invoiceDateUnix > Math.floor(Date.now() / 1000)) {

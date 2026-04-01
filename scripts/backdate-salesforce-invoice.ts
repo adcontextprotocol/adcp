@@ -15,8 +15,8 @@ const COMPANY_NAME = 'Salesforce';
 const CONTACT_NAME = 'Gabe Joynt';
 const LOOKUP_KEY = 'aao_membership_leader_50000';
 const DAYS_UNTIL_DUE = 60; // net-60
-const INVOICE_DATE = new Date('2026-03-01T00:00:00Z');
-const DUE_DATE = new Date('2026-04-30T00:00:00Z'); // March 1 + 60 days
+const INVOICE_DATE = new Date('2026-03-01T12:00:00Z');
+const DUE_DATE = new Date('2026-04-30T12:00:00Z'); // March 1 + 60 days
 // ─────────────────────────────────────────────────────────────────────────────
 
 const dryRun = process.argv.includes('--dry-run');
