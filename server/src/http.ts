@@ -3217,7 +3217,8 @@ export class HTTPServer {
       try {
         event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
       } catch (err) {
-        logger.error({ err }, 'Webhook signature verification failed');
+        logger.error({ err }, 'Stripe webhook signature verification failed');
+        notifySystemError({ source: 'stripe-webhook-sig', errorMessage: 'Stripe webhook signature verification failed — check STRIPE_WEBHOOK_SECRET' });
         return res.status(400).json({ error: 'Webhook signature verification failed' });
       }
 
@@ -4120,7 +4121,9 @@ export class HTTPServer {
 
         res.json({ received: true });
       } catch (error) {
+        const errMsg = error instanceof Error ? (error as Error).message : String(error);
         logger.error({ err: error }, 'Error processing webhook');
+        notifySystemError({ source: 'stripe-webhook', errorMessage: `Failed to process Stripe ${event?.type || 'unknown'} event: ${errMsg}` });
         res.status(500).json({ error: 'Webhook processing failed' });
       }
     });
