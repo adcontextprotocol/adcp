@@ -982,6 +982,165 @@ registry.registerPath({
   },
 });
 
+// Change Feed & Sync
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/feed",
+  operationId: "getRegistryFeed",
+  summary: "Registry change feed",
+  description:
+    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
+  tags: ["Change Feed"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({
+      cursor: z.string().uuid().optional().openapi({ description: "Resume after this event ID" }),
+      types: z.string().optional().openapi({ description: "Comma-separated event type filters with glob support (e.g. property.*)", example: "property.*,agent.*" }),
+      limit: z.coerce.number().int().min(1).max(10000).optional().openapi({ description: "Max events per page (default 100, max 10,000)" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Feed page",
+      content: {
+        "application/json": {
+          schema: z.object({
+            events: z.array(z.object({
+              event_id: z.string().uuid(),
+              event_type: z.string().openapi({ example: "property.created" }),
+              entity_type: z.string().openapi({ example: "property" }),
+              entity_id: z.string(),
+              payload: z.record(z.string(), z.unknown()),
+              actor: z.string(),
+              created_at: z.string().datetime(),
+            })),
+            cursor: z.string().uuid().nullable().openapi({ description: "Pass as cursor in the next request to continue polling" }),
+            has_more: z.boolean(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid cursor format or type filter", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    410: {
+      description: "Cursor expired (older than 90-day retention window)",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.literal("cursor_expired"),
+            message: z.string(),
+          }),
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/search",
+  operationId: "searchAgentProfiles",
+  summary: "Search agent inventory profiles",
+  description:
+    "Search agents by inventory profile — channels, markets, content categories, property types, and more. Filters use AND across dimensions and OR within a dimension. Results are ranked by relevance score.",
+  tags: ["Agent Discovery"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({
+      channels: z.string().optional().openapi({ description: "Comma-separated channel filter", example: "ctv,olv" }),
+      property_types: z.string().optional().openapi({ description: "Comma-separated property type filter", example: "ctv_app,website" }),
+      markets: z.string().optional().openapi({ description: "Comma-separated market/country code filter", example: "US,GB" }),
+      categories: z.string().optional().openapi({ description: "Comma-separated IAB content category filter", example: "IAB-7,IAB-7-1" }),
+      tags: z.string().optional().openapi({ description: "Comma-separated tag filter", example: "premium" }),
+      delivery_types: z.string().optional().openapi({ description: "Comma-separated delivery type filter", example: "guaranteed,programmatic" }),
+      has_tmp: z.enum(["true", "false"]).optional().openapi({ description: "Require TMP support" }),
+      min_properties: z.coerce.number().int().min(0).optional().openapi({ description: "Minimum number of properties in inventory" }),
+      cursor: z.string().optional().openapi({ description: "Pagination cursor from a previous response" }),
+      limit: z.coerce.number().int().min(1).max(200).optional().openapi({ description: "Max results per page (default 50, max 200)" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Search results ranked by relevance",
+      content: {
+        "application/json": {
+          schema: z.object({
+            results: z.array(z.object({
+              agent_url: z.string().url(),
+              channels: z.array(z.string()),
+              property_types: z.array(z.string()),
+              markets: z.array(z.string()),
+              categories: z.array(z.string()),
+              tags: z.array(z.string()),
+              delivery_types: z.array(z.string()),
+              format_ids: z.array(z.unknown()).openapi({ description: "Creative format identifiers supported by this agent" }),
+              property_count: z.number().int(),
+              publisher_count: z.number().int(),
+              has_tmp: z.boolean(),
+              category_taxonomy: z.string().nullable(),
+              relevance_score: z.number(),
+              matched_filters: z.array(z.string()),
+              updated_at: z.string().datetime(),
+            })),
+            cursor: z.string().nullable(),
+            has_more: z.boolean(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid cursor or parameter", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/crawl-request",
+  operationId: "requestCrawl",
+  summary: "Request domain re-crawl",
+  description:
+    "Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
+  tags: ["Agent Discovery"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string().openapi({ example: "examplepub.com", description: "Publisher domain to re-crawl" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description: "Crawl request accepted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            message: z.literal("Crawl request accepted"),
+            domain: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
+  },
+});
+
 // ── Router factory ──────────────────────────────────────────────
 
 export function createRegistryApiRouter(config: RegistryApiConfig): Router {

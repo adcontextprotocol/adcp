@@ -15,7 +15,7 @@ https://agenticadvertising.org
 
 Most endpoints are **public and require no authentication**. [Authenticated endpoints](#authenticated-endpoints) require a Bearer token.
 
-The full [OpenAPI 3.1 specification](https://adcontextprotocol.org/openapi/registry.yaml) is available for code generation and tooling.
+The full [OpenAPI 3.1 specification](https://agenticadvertising.org/openapi/registry.yaml) is available for code generation and tooling.
 
 ## Quick Start
 
@@ -64,6 +64,7 @@ print(brand["brand_name"], brand["canonical_domain"])
 |----------|-------|
 | Bulk resolve (`/api/brands/resolve/bulk`, `/api/properties/resolve/bulk`) | 20 requests/minute per IP |
 | Save endpoints (`/api/brands/save`, `/api/properties/save`) | 60 requests/hour per user |
+| Crawl request (`/api/registry/crawl-request`) | 5 minutes per domain, 30 requests/hour per user |
 | All other endpoints | No limit |
 
 Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded.
@@ -78,7 +79,10 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
     Resolve publisher domains to property information, validate adagents.json, and browse properties.
   </Card>
   <Card title="Agent Discovery" icon="robot" href="/docs/registry/index#agent-discovery">
-    List registered and discovered agents, publishers, and view registry statistics.
+    List, search, and filter agents by inventory profile. Browse publishers and view registry statistics.
+  </Card>
+  <Card title="Change Feed" icon="clock-rotate-left" href="/docs/registry/index#change-feed">
+    Poll a cursor-based feed of registry changes for local sync.
   </Card>
   <Card title="Lookups & Authorization" icon="shield-check" href="/docs/registry/index#lookups--authorization">
     Look up agents by domain, validate product authorization, and check property authorization in real time.
@@ -123,8 +127,17 @@ All sources produce the same resolution response structure. To get full brand id
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/registry/agents` | List all agents (filter by type, with enrichment) |
+| GET | `/api/registry/agents/search` | Search agents by inventory profile (auth required) |
 | GET | `/api/registry/publishers` | List all publishers |
 | GET | `/api/registry/stats` | Registry statistics |
+| POST | `/api/registry/crawl-request` | Request re-crawl of a publisher domain (auth required) |
+
+### Change Feed
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/feed` | Poll cursor-based registry change feed (auth required) |
+
 
 ### Lookups & Authorization
 
@@ -210,7 +223,7 @@ Authorization: Bearer sk_...
 
 ### Authenticated endpoints
 
-These endpoints require a valid API key. Rate-limited to 60 requests per hour per user.
+These endpoints require a valid API key.
 
 #### Save brand
 
@@ -384,6 +397,242 @@ result = requests.post(
 }
 ```
 
+#### Change feed
+
+`GET /api/registry/feed`
+
+Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cursor` | UUID | — | Resume after this event ID. Omit for the earliest available events. |
+| `types` | string | — | Comma-separated event type filters. Supports glob patterns (e.g. `property.*`). |
+| `limit` | number | 100 | Max events per page (1–10,000). |
+
+**Event types:**
+
+| Type | Description |
+|------|-------------|
+| `property.created` | A new property was added to the registry |
+| `property.updated` | Property metadata changed |
+| `property.merged` | Two property records were merged |
+| `property.stale` | Property failed re-crawl validation |
+| `property.reactivated` | A stale property passed re-crawl |
+| `agent.discovered` | A new agent was found via adagents.json |
+| `agent.removed` | An agent was removed from the registry |
+| `agent.profile_updated` | Agent inventory profile changed |
+| `publisher.adagents_changed` | A publisher's adagents.json was updated |
+| `authorization.granted` | An agent was authorized for a property |
+| `authorization.revoked` | An authorization was removed |
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/registry/feed?types=property.*&limit=50" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/registry/feed?types=property.*&limit=50",
+  { headers: { Authorization: "Bearer YOUR_API_KEY" } }
+);
+const feed = await res.json();
+// Store feed.cursor for next poll
+```
+
+```python Python
+import requests
+
+feed = requests.get(
+    "https://agenticadvertising.org/api/registry/feed",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={"types": "property.*", "limit": 50},
+).json()
+# Store feed["cursor"] for next poll
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "events": [
+    {
+      "event_id": "019539a0-1234-7000-8000-000000000001",
+      "event_type": "property.created",
+      "entity_type": "property",
+      "entity_id": "019539a0-b1c2-7000-8000-000000000002",
+      "payload": {},
+      "actor": "crawler",
+      "created_at": "2026-03-31T10:00:00.000Z"
+    }
+  ],
+  "cursor": "019539a0-1234-7000-8000-000000000001",
+  "has_more": true
+}
+```
+
+When `has_more` is `true`, pass the returned `cursor` value in the next request to continue polling. When `false`, you've reached the end of the current feed — poll again later with the same cursor to pick up new events.
+
+If the cursor has expired (older than 90 days or not found), the response is `410 Gone`:
+
+```json 410 Gone
+{
+  "error": "cursor_expired",
+  "message": "Cursor is older than 90-day retention window. Re-bootstrap from /registry/agents/search and /catalog/sync."
+}
+```
+
+#### Agent search
+
+`GET /api/registry/agents/search`
+
+Search agents by inventory profile — channels, markets, content categories, property types, and more. Filters use AND across dimensions and OR within a dimension. Results are ranked by a relevance score based on filter match breadth, inventory depth, and TMP support.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `channels` | CSV | — | Filter by channel (e.g. `ctv,olv,display`) |
+| `property_types` | CSV | — | Filter by property type (e.g. `ctv_app,website`) |
+| `markets` | CSV | — | Filter by market/country code (e.g. `US,GB`) |
+| `categories` | CSV | — | Filter by IAB content category (e.g. `IAB-7,IAB-7-1`) |
+| `tags` | CSV | — | Filter by tag (e.g. `premium,brand_safe`) |
+| `delivery_types` | CSV | — | Filter by delivery type (e.g. `guaranteed,programmatic`) |
+| `has_tmp` | boolean | — | Require TMP support (`true` or `false`) |
+| `min_properties` | number | — | Minimum number of properties in inventory |
+| `cursor` | string | — | Pagination cursor from a previous response |
+| `limit` | number | 50 | Max results per page (1–200) |
+
+Each CSV parameter accepts up to 100 values.
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/registry/agents/search?channels=ctv,olv&markets=US&has_tmp=true" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/registry/agents/search?channels=ctv,olv&markets=US&has_tmp=true",
+  { headers: { Authorization: "Bearer YOUR_API_KEY" } }
+);
+const agents = await res.json();
+```
+
+```python Python
+import requests
+
+agents = requests.get(
+    "https://agenticadvertising.org/api/registry/agents/search",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={"channels": "ctv,olv", "markets": "US", "has_tmp": "true"},
+).json()
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "results": [
+    {
+      "agent_url": "https://ads.streamhaus.example.com",
+      "channels": ["ctv", "olv"],
+      "property_types": ["ctv_app", "website"],
+      "markets": ["US", "GB", "CA"],
+      "categories": ["IAB-7", "IAB-7-1"],
+      "tags": ["premium"],
+      "delivery_types": ["guaranteed"],
+      "format_ids": [],
+      "property_count": 42,
+      "publisher_count": 3,
+      "has_tmp": true,
+      "category_taxonomy": null,
+      "relevance_score": 0.92,
+      "matched_filters": ["channels", "markets"],
+      "updated_at": "2026-03-31T10:00:00.000Z"
+    }
+  ],
+  "cursor": "MC45Mjpodh...",
+  "has_more": false
+}
+```
+
+The `matched_filters` array shows which filter dimensions matched, useful for understanding why a result was returned. The `relevance_score` combines filter match breadth, `ln(property_count + 1)` weighted at 0.1, and a 0.05 boost for TMP support.
+
+#### Crawl request
+
+`POST /api/registry/crawl-request`
+
+Request an immediate re-crawl of a publisher domain. Use this after updating an `adagents.json` file so the registry picks up changes without waiting for the next scheduled crawl. The crawl runs asynchronously — the endpoint returns `202 Accepted` immediately.
+
+Rate-limited to one request per domain every 5 minutes and 30 requests per user per hour.
+
+**Request body:**
+
+```json
+{
+  "domain": "examplepub.com"
+}
+```
+
+`domain` is required. Domains are normalized (lowercased, trimmed). The endpoint validates the domain format and performs a DNS lookup to reject private/reserved IP addresses.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/registry/crawl-request" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"examplepub.com"}'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/registry/crawl-request",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ domain: "examplepub.com" }),
+  }
+);
+const result = await res.json(); // 202
+```
+
+```python Python
+import requests
+
+result = requests.post(
+    "https://agenticadvertising.org/api/registry/crawl-request",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={"domain": "examplepub.com"},
+).json()
+```
+
+</CodeGroup>
+
+```json 202 Accepted
+{
+  "message": "Crawl request accepted",
+  "domain": "examplepub.com"
+}
+```
+
+```json 429 Too Many Requests
+{
+  "error": "Rate limit exceeded for this domain",
+  "retry_after": 245
+}
+```
+
+`retry_after` is the number of seconds to wait before retrying.
+
 #### Submit brand (legacy)
 
 `POST /api/brands/discovered/community`
@@ -397,7 +646,8 @@ Submit a brand for review. This endpoint predates `/api/brands/save` — prefer 
 | 400 | Missing required fields or invalid domain |
 | 401 | Missing or invalid API key |
 | 409 | Cannot edit an authoritative brand/property (managed via `brand.json` or `adagents.json`) |
-| 429 | Rate limit exceeded (60 requests/hour) |
+| 410 | Cursor expired (change feed — older than 90-day retention window) |
+| 429 | Rate limit exceeded |
 
 ## Protocol vs REST API
 

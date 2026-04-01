@@ -2,16 +2,14 @@ openapi: 3.1.0
 info:
   title: AgenticAdvertising.org Registry API
   description: |-
-    Public REST API for the AgenticAdvertising.org registry. Resolve brands,
+    REST API for the AgenticAdvertising.org registry. Resolve brands,
     discover properties, look up agents, and validate authorization in the
     AdCP ecosystem.
 
-    All endpoints listed here are public and require no authentication.
+    Most endpoints are public and require no authentication. Endpoints marked
+    with a lock icon require a Bearer token — see [Authentication](https://agenticadvertising.org/docs/registry/index#authentication).
 
     **Base URL:** `https://agenticadvertising.org`
-
-    **Rate limits:** Bulk resolve endpoints are limited to 20 requests per minute
-    per IP address. All other endpoints are unmetered.
   version: 1.0.0
   contact:
     name: AgenticAdvertising.org
@@ -3053,13 +3051,396 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/registry/feed:
+    get:
+      operationId: getRegistryFeed
+      summary: Registry change feed
+      description: |-
+        Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days.
+
+        Type filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.
+      tags:
+        - Change Feed
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            description: Resume after this event ID
+          required: false
+          description: Resume after this event ID
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated event type filters with glob support (e.g. property.*)
+            example: property.*,agent.*
+          required: false
+          description: Comma-separated event type filters with glob support (e.g. property.*)
+          name: types
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            description: Max events per page (default 100, max 10,000)
+          required: false
+          description: Max events per page (default 100, max 10,000)
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Feed page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        event_id:
+                          type: string
+                          format: uuid
+                        event_type:
+                          type: string
+                          example: property.created
+                        entity_type:
+                          type: string
+                          example: property
+                        entity_id:
+                          type: string
+                        payload:
+                          type: object
+                          additionalProperties: {}
+                        actor:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                      required:
+                        - event_id
+                        - event_type
+                        - entity_type
+                        - entity_id
+                        - payload
+                        - actor
+                        - created_at
+                  cursor:
+                    type:
+                      - string
+                      - "null"
+                    format: uuid
+                    description: Pass as cursor in the next request to continue polling
+                  has_more:
+                    type: boolean
+                required:
+                  - events
+                  - cursor
+                  - has_more
+        "400":
+          description: Invalid cursor format or type filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: Cursor expired (older than 90-day retention window)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - cursor_expired
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
+  /api/registry/agents/search:
+    get:
+      operationId: searchAgentProfiles
+      summary: Search agent inventory profiles
+      description: Search agents by inventory profile — channels, markets, content categories, property types, and more. Filters use AND across dimensions and OR within a dimension. Results are ranked by relevance score.
+      tags:
+        - Agent Discovery
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            description: Comma-separated channel filter
+            example: ctv,olv
+          required: false
+          description: Comma-separated channel filter
+          name: channels
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated property type filter
+            example: ctv_app,website
+          required: false
+          description: Comma-separated property type filter
+          name: property_types
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated market/country code filter
+            example: US,GB
+          required: false
+          description: Comma-separated market/country code filter
+          name: markets
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated IAB content category filter
+            example: IAB-7,IAB-7-1
+          required: false
+          description: Comma-separated IAB content category filter
+          name: categories
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated tag filter
+            example: premium
+          required: false
+          description: Comma-separated tag filter
+          name: tags
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated delivery type filter
+            example: guaranteed,programmatic
+          required: false
+          description: Comma-separated delivery type filter
+          name: delivery_types
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
+            description: Require TMP support
+          required: false
+          description: Require TMP support
+          name: has_tmp
+          in: query
+        - schema:
+            type:
+              - integer
+              - "null"
+            minimum: 0
+            description: Minimum number of properties in inventory
+          required: false
+          description: Minimum number of properties in inventory
+          name: min_properties
+          in: query
+        - schema:
+            type: string
+            description: Pagination cursor from a previous response
+          required: false
+          description: Pagination cursor from a previous response
+          name: cursor
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            description: Max results per page (default 50, max 200)
+          required: false
+          description: Max results per page (default 50, max 200)
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Search results ranked by relevance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        agent_url:
+                          type: string
+                          format: uri
+                        channels:
+                          type: array
+                          items:
+                            type: string
+                        property_types:
+                          type: array
+                          items:
+                            type: string
+                        markets:
+                          type: array
+                          items:
+                            type: string
+                        categories:
+                          type: array
+                          items:
+                            type: string
+                        tags:
+                          type: array
+                          items:
+                            type: string
+                        delivery_types:
+                          type: array
+                          items:
+                            type: string
+                        format_ids:
+                          type: array
+                          items: {}
+                          description: Creative format identifiers supported by this agent
+                        property_count:
+                          type: integer
+                        publisher_count:
+                          type: integer
+                        has_tmp:
+                          type: boolean
+                        category_taxonomy:
+                          type:
+                            - string
+                            - "null"
+                        relevance_score:
+                          type: number
+                        matched_filters:
+                          type: array
+                          items:
+                            type: string
+                        updated_at:
+                          type: string
+                          format: date-time
+                      required:
+                        - agent_url
+                        - channels
+                        - property_types
+                        - markets
+                        - categories
+                        - tags
+                        - delivery_types
+                        - format_ids
+                        - property_count
+                        - publisher_count
+                        - has_tmp
+                        - category_taxonomy
+                        - relevance_score
+                        - matched_filters
+                        - updated_at
+                  cursor:
+                    type:
+                      - string
+                      - "null"
+                  has_more:
+                    type: boolean
+                required:
+                  - results
+                  - cursor
+                  - has_more
+        "400":
+          description: Invalid cursor or parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/crawl-request:
+    post:
+      operationId: requestCrawl
+      summary: Request domain re-crawl
+      description: |-
+        Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
+      tags:
+        - Agent Discovery
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain:
+                  type: string
+                  example: examplepub.com
+                  description: Publisher domain to re-crawl
+              required:
+                - domain
+      responses:
+        "202":
+          description: Crawl request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    enum:
+                      - Crawl request accepted
+                  domain:
+                    type: string
+                required:
+                  - message
+                  - domain
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
 tags:
   - name: Brand Resolution
     description: Resolve advertiser domains to canonical brand identities.
   - name: Property Resolution
     description: Resolve publisher domains to their property configurations and authorized agents.
   - name: Agent Discovery
-    description: Browse the federated agent network, publisher index, and registry statistics.
+    description: Browse the federated agent network, search agent inventory profiles, publisher index, and registry statistics.
+  - name: Change Feed
+    description: Poll cursor-based registry change events for local sync.
   - name: Lookups & Authorization
     description: Look up agents by domain or property, and validate ad-serving authorization.
   - name: Validation Tools
