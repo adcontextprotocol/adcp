@@ -11,6 +11,7 @@ INSERT INTO perspectives (
   author_name,
   author_title,
   featured_image_url,
+  content_origin,
   status,
   published_at,
   tags
@@ -49,6 +50,7 @@ Be sure to [sign up for membership here](https://agenticadvertising.org/signup).
   'Matthew Egol and Randall Rothenberg',
   'CEO and Senior Advisor, JourneySpark Consulting',
   'https://agenticadvertising.org/images/stories/cover-building-future-of-marketing.jpg',
+  'official',
   'published',
   '2026-03-31 00:00:00+00',
   ARRAY['perspective', 'thought-leadership', 'AdCP', 'marketing-transformation']
