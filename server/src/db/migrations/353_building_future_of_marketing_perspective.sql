@@ -22,7 +22,9 @@ INSERT INTO perspectives (
   'Four permanent changes for brand marketers and their partners',
   'Perspective',
   'The Advertising Context Protocol (AdCP) is driving a fundamental architectural shift in marketing, moving the function''s authority from transactional oversight to the orchestration of value-creating activities across the enterprise.',
-  $article$The Advertising Context Protocol (AdCP) is driving a fundamental architectural shift in marketing, moving the function's authority from transactional oversight to the orchestration of value-creating activities across the enterprise. The ["Building the Future of Marketing"](/reports/building-the-future-of-marketing.pdf) report outlines four core, permanent changes for brand marketers and their partners among publishers, marketing agencies, and technology providers:
+  $article$> **[Download the full report (PDF)](/reports/building-the-future-of-marketing.pdf)**
+
+The Advertising Context Protocol (AdCP) is driving a fundamental architectural shift in marketing, moving the function's authority from transactional oversight to the orchestration of value-creating activities across the enterprise. This report outlines four core, permanent changes for brand marketers and their partners among publishers, marketing agencies, and technology providers:
 
 ## 1. The Rise of the Orchestrator: From Authorship to System Design.
 
@@ -49,7 +51,7 @@ Learn more about the [Agentic Advertising Organization](https://agenticadvertisi
 Be sure to [sign up for membership here](https://agenticadvertising.org/signup).$article$,
   'Matthew Egol and Randall Rothenberg',
   'CEO and Senior Advisor, JourneySpark Consulting',
-  'https://agenticadvertising.org/images/stories/cover-building-future-of-marketing.jpg',
+  NULL,
   'official',
   'published',
   '2026-03-31 00:00:00+00',

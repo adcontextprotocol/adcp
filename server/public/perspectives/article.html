@@ -57,16 +57,7 @@
       display: block;
       width: 100%;
       height: auto;
-      aspect-ratio: 16 / 9;
-      object-fit: cover;
       background: var(--color-gray-100);
-    }
-
-    .article-feature-caption {
-      padding: 0.85rem 1.1rem 1rem;
-      font-size: 0.9rem;
-      color: var(--color-text-secondary);
-      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98));
     }
 
     .article-meta-card {
@@ -165,22 +156,22 @@
 
     /* Article content styling */
     .article-content h2 {
-      font-size: 1.5rem;
+      font-size: var(--text-xl);
       font-weight: 700;
       color: var(--color-text-heading);
       margin-top: 2rem;
       margin-bottom: 1rem;
     }
     .article-content h3 {
-      font-size: 1.25rem;
+      font-size: var(--text-lg);
       font-weight: 600;
       color: var(--color-text-heading);
       margin-top: 1.5rem;
       margin-bottom: 0.75rem;
     }
     .article-content p {
-      font-size: 1.1rem;
-      line-height: 1.8;
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
       color: var(--color-text-heading);
       margin-bottom: 1rem;
     }
@@ -190,8 +181,8 @@
     }
     .article-content li {
       margin-bottom: 0.5rem;
-      font-size: 1.05rem;
-      line-height: 1.7;
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
     }
     .article-content strong {
       font-weight: 600;
@@ -524,7 +515,7 @@
   <section class="hero hero--article" id="heroSection" style="display: none;">
     <div class="hero-container">
       <div class="hero-breadcrumb">
-        <a href="/perspectives" id="heroBackLink">Perspectives</a> / <span id="heroCategory">Article</span>
+        <a href="/stories" id="heroBackLink">Stories</a> / <span id="heroCategory">Article</span>
       </div>
       <h1 id="heroTitle">Loading...</h1>
       <p class="hero-subtitle" id="heroSubtitle"></p>
@@ -539,16 +530,15 @@
   <!-- Main Content -->
   <div class="container" id="mainContent" style="display: none;">
     <div class="article-shell">
-      <a href="/perspectives" class="back-link" id="articleBackLink">
+      <a href="/stories" class="back-link" id="articleBackLink">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span id="articleBackLabel">Back to Perspectives</span>
+        <span id="articleBackLabel">Back to Stories</span>
       </a>
 
       <figure id="articleFeature" class="article-feature" hidden>
         <img id="articleFeatureImage" alt="">
-        <figcaption id="articleFeatureCaption" class="article-feature-caption"></figcaption>
       </figure>
 
       <div id="articleMetaCard" class="article-meta-card" style="display: none;">
@@ -635,23 +625,11 @@
     <div class="loading-state">
       <h2 style="color: var(--color-error-600); margin-bottom: 1rem;">Article Not Found</h2>
       <p>The article you're looking for doesn't exist or has been removed.</p>
-      <p><a href="/perspectives" style="color: var(--color-brand);">Return to Perspectives</a></p>
+      <p><a href="/stories" style="color: var(--color-brand);">Return to Stories</a></p>
     </div>
   </div>
 
-  <!-- Footer -->
-  <footer class="footer footer--centered">
-    <div class="footer-links">
-      <a href="/">Home</a>
-      <a href="/perspectives">Perspectives</a>
-      <a href="https://docs.adcontextprotocol.org">AdCP Documentation</a>
-      <a href="/members">Members</a>
-      <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
-    </div>
-    <div class="footer-copyright">
-      &copy; 2025 AgenticAdvertising.org
-    </div>
-  </footer>
+  <div id="adcp-footer"></div>
 
   <script>
     // Note: userFingerprint, checkUserLike, saveUserLike, escapeHtml, formatDate
@@ -684,13 +662,14 @@
 
       const title = article.author_title || article.author_headline || '';
       primaryName.textContent = article.author_name;
-      primaryName.href = `/perspectives?author=${encodeURIComponent(article.author_name)}`;
+      primaryName.href = `/stories?author=${encodeURIComponent(article.author_name)}`;
       authorRole.textContent = title;
       authorRole.style.display = title ? 'block' : 'none';
 
       avatarText.textContent = getInitials(article.author_name);
-      if (article.author_avatar_url) {
-        avatar.innerHTML = `<img src="${escapeHtml(article.author_avatar_url)}" alt="${escapeHtml(article.author_name)}">`;
+      const avatarUrl = article.author_avatar_url;
+      if (avatarUrl && (avatarUrl.startsWith('/') || avatarUrl.startsWith('https://'))) {
+        avatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(article.author_name)}">`;
       } else {
         avatar.innerHTML = `<span id="authorAvatarText" class="author-avatar-text">${escapeHtml(getInitials(article.author_name))}</span>`;
       }
@@ -699,15 +678,15 @@
     }
 
     function renderFeaturedImage(article) {
-      if (!article.featured_image_url) return;
+      const url = article.featured_image_url;
+      if (!url) return;
+      if (!url.startsWith('/') && !url.startsWith('https://')) return;
 
       const feature = document.getElementById('articleFeature');
       const image = document.getElementById('articleFeatureImage');
-      const caption = document.getElementById('articleFeatureCaption');
 
-      image.src = article.featured_image_url;
+      image.src = url;
       image.alt = article.title || 'Perspective image';
-      caption.textContent = article.excerpt || article.subtitle || article.title || '';
       feature.hidden = false;
     }
 
@@ -761,32 +740,6 @@
         }
       } catch (error) {
         console.error('Error loading related content:', error);
-      }
-    }
-
-    function applyBackContext() {
-      const params = new URLSearchParams(window.location.search);
-      const fromStories = params.get('from') === 'stories';
-      if (!fromStories) return;
-
-      const backHref = '/stories';
-      const backLabel = 'Stories';
-
-      const heroBackLink = document.getElementById('heroBackLink');
-      const articleBackLink = document.getElementById('articleBackLink');
-      const articleBackLabel = document.getElementById('articleBackLabel');
-
-      if (heroBackLink) {
-        heroBackLink.href = backHref;
-        heroBackLink.textContent = backLabel;
-      }
-
-      if (articleBackLink) {
-        articleBackLink.href = backHref;
-      }
-
-      if (articleBackLabel) {
-        articleBackLabel.textContent = `Back to ${backLabel}`;
       }
     }
 
@@ -964,7 +917,7 @@
         if (article.tags && article.tags.length > 0) {
           const tagsContainer = document.getElementById('articleTags');
           tagsContainer.innerHTML = article.tags.map(tag =>
-            `<a class="article-tag" href="/perspectives?tag=${encodeURIComponent(tag)}">${escapeHtml(tag)}</a>`
+            `<a class="article-tag" href="/stories?topic=${encodeURIComponent(tag)}">${escapeHtml(tag)}</a>`
           ).join('');
           tagsContainer.style.display = 'flex';
         }
@@ -1020,7 +973,6 @@
     }
 
     // Load article when page loads
-    applyBackContext();
     loadArticle();
   </script>
 </body>
