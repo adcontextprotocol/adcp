@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/governance/report-plan-outcome-response.json",
+  "title": "Report Plan Outcome Response",
+  "description": "Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent) that manages the plan. Sellers report delivery data via check_governance with phase 'delivery', not via this task.",
+  "type": "object",
+  "properties": {
+    "outcome_id": {
+      "type": "string",
+      "description": "Unique identifier for this outcome record."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["accepted", "findings"],
+      "description": "'accepted' means state updated with no issues. 'findings' means issues were detected."
+    },
+    "committed_budget": {
+      "type": "number",
+      "description": "Budget committed from this outcome. Present for 'completed' and 'failed' outcomes."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Issues detected. Present only when status is 'findings'.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "description": "Which validation category flagged the issue."
+          },
+          "severity": {
+            "$ref": "/schemas/3.0.0-rc.4/enums/escalation-severity.json",
+            "description": "Finding severity."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Human-readable description of the issue."
+          },
+          "details": {
+            "type": "object",
+            "description": "Structured details for programmatic consumption.",
+            "additionalProperties": true
+          }
+        },
+        "required": ["category_id", "severity", "explanation"],
+        "additionalProperties": false
+      }
+    },
+    "plan_summary": {
+      "type": "object",
+      "description": "Updated plan budget state. Present for 'completed' and 'failed' outcomes.",
+      "properties": {
+        "total_committed": {
+          "type": "number",
+          "description": "Total budget committed across all campaigns in the plan."
+        },
+        "budget_remaining": {
+          "type": "number",
+          "description": "Authorized budget minus total committed."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["outcome_id", "status"],
+  "additionalProperties": false
+}

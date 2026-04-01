@@ -1,0 +1,235 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/compliance/comply-test-controller-request.json",
+  "title": "Comply Test Controller Request",
+  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "ListScenarios",
+      "description": "Discover which scenarios this seller supports",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "list_scenarios" },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["scenario"],
+      "additionalProperties": true
+    },
+    {
+      "title": "ForceCreativeStatus",
+      "description": "Transition a creative to the specified status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_creative_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "creative_id": { "type": "string", "description": "Creative to transition" },
+            "status": { "$ref": "/schemas/3.0.0-rc.4/enums/creative-status.json" },
+            "rejection_reason": { "type": "string", "description": "Reason for rejection. Required when status = rejected." }
+          },
+          "required": ["creative_id", "status"],
+          "additionalProperties": true
+        },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
+    },
+    {
+      "title": "ForceAccountStatus",
+      "description": "Transition an account to the specified status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_account_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "account_id": { "type": "string", "description": "Account to transition" },
+            "status": { "$ref": "/schemas/3.0.0-rc.4/enums/account-status.json" }
+          },
+          "required": ["account_id", "status"],
+          "additionalProperties": true
+        },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
+    },
+    {
+      "title": "ForceMediaBuyStatus",
+      "description": "Transition a media buy to the specified status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_media_buy_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "media_buy_id": { "type": "string", "description": "Media buy to transition" },
+            "status": { "$ref": "/schemas/3.0.0-rc.4/enums/media-buy-status.json" },
+            "rejection_reason": { "type": "string", "description": "Reason for rejection. Required when status = rejected." }
+          },
+          "required": ["media_buy_id", "status"],
+          "additionalProperties": true
+        },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
+    },
+    {
+      "title": "ForceSessionStatus",
+      "description": "Transition an SI session to a terminal status",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "force_session_status" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "session_id": { "type": "string", "description": "Session to transition" },
+            "status": {
+              "type": "string",
+              "enum": ["complete", "terminated"],
+              "description": "Target terminal status. Only terminal statuses are valid — active and pending_handoff are session-internal transitions."
+            },
+            "termination_reason": {
+              "type": "string",
+              "description": "Reason for termination (e.g., session_timeout, host_terminated, policy_violation). Required when status = terminated."
+            }
+          },
+          "required": ["session_id", "status"],
+          "additionalProperties": true
+        },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
+    },
+    {
+      "title": "SimulateDelivery",
+      "description": "Inject synthetic delivery data for a media buy",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "simulate_delivery" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "media_buy_id": { "type": "string", "description": "Media buy to add delivery to" },
+            "impressions": { "type": "integer", "minimum": 0, "description": "Impressions to simulate" },
+            "clicks": { "type": "integer", "minimum": 0, "description": "Clicks to simulate" },
+            "reported_spend": {
+              "type": "object",
+              "description": "Spend as reported in delivery data. Does not affect budget.",
+              "properties": {
+                "amount": { "type": "number", "minimum": 0 },
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+              },
+              "required": ["amount", "currency"]
+            },
+            "conversions": { "type": "integer", "minimum": 0, "description": "Conversions to simulate" }
+          },
+          "required": ["media_buy_id"],
+          "additionalProperties": true
+        },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
+    },
+    {
+      "title": "SimulateBudgetSpend",
+      "description": "Simulate budget consumption to a specified percentage",
+      "type": "object",
+      "properties": {
+        "scenario": { "type": "string", "const": "simulate_budget_spend" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "account_id": { "type": "string", "description": "Account (for account-level budget)" },
+            "media_buy_id": { "type": "string", "description": "Media buy (for buy-level budget)" },
+            "spend_percentage": { "type": "number", "minimum": 0, "maximum": 100, "description": "Spend to this percentage of budget (0–100)" }
+          },
+          "required": ["spend_percentage"],
+          "anyOf": [
+            { "required": ["account_id"] },
+            { "required": ["media_buy_id"] }
+          ],
+          "additionalProperties": true
+        },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["scenario", "params"],
+      "additionalProperties": true
+    }
+  ],
+  "examples": [
+    {
+      "description": "List supported scenarios",
+      "data": {
+        "scenario": "list_scenarios"
+      }
+    },
+    {
+      "description": "Force a creative to rejected status",
+      "data": {
+        "scenario": "force_creative_status",
+        "params": {
+          "creative_id": "cr-123",
+          "status": "rejected",
+          "rejection_reason": "Brand safety policy violation"
+        }
+      }
+    },
+    {
+      "description": "Force account suspension",
+      "data": {
+        "scenario": "force_account_status",
+        "params": {
+          "account_id": "acct-456",
+          "status": "suspended"
+        }
+      }
+    },
+    {
+      "description": "Simulate session timeout",
+      "data": {
+        "scenario": "force_session_status",
+        "params": {
+          "session_id": "sess-abc",
+          "status": "terminated",
+          "termination_reason": "session_timeout"
+        }
+      }
+    },
+    {
+      "description": "Simulate delivery data",
+      "data": {
+        "scenario": "simulate_delivery",
+        "params": {
+          "media_buy_id": "mb-789",
+          "impressions": 10000,
+          "clicks": 150,
+          "reported_spend": { "amount": 150.00, "currency": "USD" }
+        }
+      }
+    },
+    {
+      "description": "Simulate budget consumption to 95%",
+      "data": {
+        "scenario": "simulate_budget_spend",
+        "params": {
+          "media_buy_id": "mb-789",
+          "spend_percentage": 95
+        }
+      }
+    }
+  ]
+}

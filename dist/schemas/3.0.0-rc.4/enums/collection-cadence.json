@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/collection-cadence.json",
+  "title": "Collection Cadence",
+  "description": "How frequently a collection releases new installments",
+  "type": "string",
+  "enum": [
+    "daily",
+    "weekly",
+    "monthly",
+    "seasonal",
+    "event",
+    "irregular"
+  ],
+  "enumDescriptions": {
+    "daily": "New installments every day or weekday",
+    "weekly": "New installments weekly",
+    "monthly": "New installments monthly (magazines, newsletters)",
+    "seasonal": "Installments released in defined seasons with breaks between",
+    "event": "One-time or occasional special events",
+    "irregular": "No predictable schedule"
+  }
+}

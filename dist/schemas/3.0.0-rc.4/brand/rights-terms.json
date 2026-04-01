@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/brand/rights-terms.json",
+  "title": "Rights Terms",
+  "description": "Contractual terms for a rights grant. Shared between acquire_rights and update_rights responses.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": { "type": "string" },
+    "amount": { "type": "number", "minimum": 0 },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "period": {
+      "type": "string",
+      "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "one_time"]
+    },
+    "uses": {
+      "type": "array",
+      "items": { "$ref": "/schemas/3.0.0-rc.4/enums/right-use.json" }
+    },
+    "impression_cap": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "overage_cpm": {
+      "type": "number",
+      "minimum": 0
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "exclusivity": {
+      "type": "object",
+      "description": "Exclusivity terms if applicable",
+      "properties": {
+        "scope": { "type": "string" },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["pricing_option_id", "amount", "currency", "uses"],
+  "additionalProperties": true
+}

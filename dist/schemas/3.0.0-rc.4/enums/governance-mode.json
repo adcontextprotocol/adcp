@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/governance-mode.json",
+  "title": "Governance Mode",
+  "description": "Operating mode for a governance agent. Controls whether findings block execution.",
+  "type": "string",
+  "enum": [
+    "audit",
+    "advisory",
+    "enforce"
+  ],
+  "enumDescriptions": {
+    "audit": "Log all checks, never block. Findings are recorded but the governance agent always returns approved.",
+    "advisory": "Flag issues and return findings, but do not block execution. Human reviews happen post-hoc.",
+    "enforce": "Block on denied or escalated. Require resolution before proceeding."
+  }
+}

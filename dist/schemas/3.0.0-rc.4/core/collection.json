@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/collection.json",
+  "title": "Collection",
+  "description": "A recurring inventory container — a named program, publication, event series, or rotation that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling. Declared in the publisher's adagents.json and referenced by products via collection selectors.",
+  "type": "object",
+  "properties": {
+    "collection_id": {
+      "type": "string",
+      "description": "Publisher-assigned identifier for this collection. Declared in the publisher's adagents.json collections array. Products reference collections via collection selectors with publisher_domain and collection_ids. Use distribution identifiers for cross-seller matching across publishers."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable collection name"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["series", "publication", "event_series", "rotation"],
+      "description": "What kind of content program this is. Helps agents interpret installments correctly: 'series' installments are TV/podcast episodes, 'publication' installments are print issues, 'event_series' installments are live event airings, 'rotation' installments are DOOH scheduling periods. Defaults to 'series' when absent."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the collection is about"
+    },
+    "genre": {
+      "type": "array",
+      "description": "Genre tags. When genre_taxonomy is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0 codes). Otherwise free-form.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "genre_taxonomy": {
+      "type": "string",
+      "description": "Taxonomy system for genre values (e.g., 'iab_content_3.0'). When present, genre values should be valid taxonomy IDs. Recommended for machine-readable brand safety evaluation."
+    },
+    "language": {
+      "type": "string",
+      "description": "Primary language (BCP 47 tag, e.g., 'en', 'es-MX')"
+    },
+    "content_rating": {
+      "$ref": "/schemas/3.0.0-rc.4/core/content-rating.json",
+      "description": "Baseline content rating for the collection. Individual installments may override this."
+    },
+    "cadence": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/collection-cadence.json",
+      "description": "How frequently the collection releases new installments"
+    },
+    "season": {
+      "type": "string",
+      "description": "Current or most recent season identifier (e.g., '3', '2026', 'spring_2026'). A lightweight label — not a full season object."
+    },
+    "status": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/collection-status.json",
+      "description": "Lifecycle status of the collection"
+    },
+    "production_quality": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/production-quality.json",
+      "description": "Production quality tier. Seller-declared. Maps to OpenRTB content.prodq (professional=1, prosumer=2, ugc=3)."
+    },
+    "talent": {
+      "type": "array",
+      "description": "Hosts, recurring cast, creators associated with the collection. Each talent entry may include a brand_url linking to their brand.json identity.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/talent.json"
+      }
+    },
+    "special": {
+      "$ref": "/schemas/3.0.0-rc.4/core/special.json",
+      "description": "When present, this collection is a special — content anchored to a real-world event or occasion. Individual installments may override with their own event context."
+    },
+    "limited_series": {
+      "$ref": "/schemas/3.0.0-rc.4/core/limited-series.json",
+      "description": "When present, this collection is a limited series — a bounded run with a defined arc, installment count, and end date."
+    },
+    "distribution": {
+      "type": "array",
+      "description": "Where this collection is distributed. Each entry maps the collection to a publisher platform with platform-specific identifiers. Collections SHOULD include at least one platform-independent identifier (imdb_id, gracenote_id, eidr_id) when available.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/collection-distribution.json"
+      }
+    },
+    "deadline_policy": {
+      "$ref": "/schemas/3.0.0-rc.4/core/deadline-policy.json",
+      "description": "Default deadline rules for installments of this collection. Agents compute absolute deadlines from each installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy."
+    },
+    "related_collections": {
+      "type": "array",
+      "description": "Relationships to other collections (spin-offs, companion collections, etc.). Each entry references another collection by collection_id within the same publisher's adagents.json.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "collection_id": {
+            "type": "string",
+            "description": "The related collection's collection_id within this seller's response"
+          },
+          "relationship": {
+            "$ref": "/schemas/3.0.0-rc.4/enums/collection-relationship.json",
+            "description": "How the collections are related"
+          }
+        },
+        "required": ["collection_id", "relationship"],
+        "additionalProperties": false
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+    }
+  },
+  "required": ["collection_id", "name"],
+  "additionalProperties": true
+}

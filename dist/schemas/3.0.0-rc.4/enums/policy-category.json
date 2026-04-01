@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/policy-category.json",
+  "title": "Policy Category",
+  "description": "The nature of the obligation a policy represents.",
+  "type": "string",
+  "enum": [
+    "regulation",
+    "standard"
+  ],
+  "enumDescriptions": {
+    "regulation": "Legal requirement with jurisdiction scope. Violations have legal consequences. Enforcement is hard (must).",
+    "standard": "Industry best practice, voluntary but recommended. Protects brand value and campaign effectiveness. Enforcement is soft (should)."
+  }
+}

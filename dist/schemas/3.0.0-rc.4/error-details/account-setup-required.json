@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/error-details/account-setup-required.json",
+  "title": "ACCOUNT_SETUP_REQUIRED Details",
+  "description": "Recommended details shape for ACCOUNT_SETUP_REQUIRED errors. Provides setup URL and remaining steps.",
+  "type": "object",
+  "properties": {
+    "setup_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where account setup can be completed"
+    },
+    "setup_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Steps remaining before the account is ready"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/installment.json",
+  "title": "Installment",
+  "description": "A single bookable unit within a collection — one episode, issue, event, or rotation period. The parent collection's kind indicates how to interpret each installment: TV/podcast episodes, print issues, live event airings, newsletter editions, or DOOH rotation periods. Installments inherit collection-level fields they don't override: content_rating defaults to the collection's baseline, guest_talent is additive to the collection's recurring talent, and topics add context beyond the collection's genre.",
+  "type": "object",
+  "properties": {
+    "installment_id": {
+      "type": "string",
+      "description": "Unique identifier for this installment within the collection"
+    },
+    "collection_id": {
+      "type": "string",
+      "description": "Parent collection reference. Required when the product spans multiple collections. Maps to a collection_id declared in one of the publishers' adagents.json files referenced by the product's collection selectors."
+    },
+    "name": {
+      "type": "string",
+      "description": "Installment title"
+    },
+    "season": {
+      "type": "string",
+      "description": "Season identifier (e.g., '1', '2024', 'spring_2026')"
+    },
+    "installment_number": {
+      "type": "string",
+      "description": "Installment number within the season (e.g., '3', '47')"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the installment airs or publishes (ISO 8601)"
+    },
+    "status": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/installment-status.json",
+      "description": "Lifecycle status of the installment"
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Expected duration of the installment in seconds"
+    },
+    "flexible_end": {
+      "type": "boolean",
+      "description": "Whether the end time is approximate (live events, sports)"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this installment data expires and should be re-queried. Agents should re-query before committing budget to products with tentative installments."
+    },
+    "content_rating": {
+      "$ref": "/schemas/3.0.0-rc.4/core/content-rating.json",
+      "description": "Installment-specific content rating. Overrides the collection's baseline content_rating when present."
+    },
+    "topics": {
+      "type": "array",
+      "description": "Content topics for this installment. Uses the same taxonomy as the collection's genre_taxonomy when present. Enables installment-level brand safety evaluation beyond content_rating.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "special": {
+      "$ref": "/schemas/3.0.0-rc.4/core/special.json",
+      "description": "Installment-specific event context. When present, this installment is anchored to a real-world event. Overrides the collection-level special when present."
+    },
+    "guest_talent": {
+      "type": "array",
+      "description": "Installment-specific guests and talent. Additive to the collection's recurring talent.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/talent.json"
+      }
+    },
+    "ad_inventory": {
+      "$ref": "/schemas/3.0.0-rc.4/core/ad-inventory-config.json",
+      "description": "Break-based ad inventory for this installment. For non-break formats (host reads, integrations), use product placements."
+    },
+    "deadlines": {
+      "$ref": "/schemas/3.0.0-rc.4/core/installment-deadlines.json",
+      "description": "Booking, cancellation, and material submission deadlines for this installment. Present when the installment has time-sensitive inventory that requires advance commitment or material delivery."
+    },
+    "derivative_of": {
+      "type": "object",
+      "description": "When this installment is a clip, highlight, or recap derived from a full installment. The source installment_id must reference an installment within the same response.",
+      "properties": {
+        "installment_id": {
+          "type": "string",
+          "description": "The source installment this content is derived from"
+        },
+        "type": {
+          "$ref": "/schemas/3.0.0-rc.4/enums/derivative-type.json",
+          "description": "What kind of derivative content this is"
+        }
+      },
+      "required": ["installment_id", "type"],
+      "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+    }
+  },
+  "required": ["installment_id"],
+  "additionalProperties": true
+}

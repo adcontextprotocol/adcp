@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/collection-selector.json",
+  "title": "Collection Selector",
+  "description": "References collections declared in an adagents.json. Buyers resolve full collection objects by fetching the adagents.json at the given domain and matching collection_ids against its collections array.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the adagents.json declaring these collections is hosted (e.g., 'mrbeast.com'). The collections array in that file contains the authoritative collection definitions.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "collection_ids": {
+      "type": "array",
+      "description": "Collection IDs from the adagents.json collections array. Each ID must match a collection_id declared in that file.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "publisher_domain",
+    "collection_ids"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/pricing-options/price-breakdown.json",
+  "title": "Price Breakdown",
+  "description": "Breaks down the composition of fixed_price from a list (rate card) price through adjustments. Adjustments fall into four kinds: fees (increase buyer price), discounts (reduce buyer price), commissions (revenue splits that don't affect buyer price), and settlement terms (applied at invoicing). The invariant is: list_price with all fee and discount adjustments applied sequentially equals fixed_price. Fees increase the running price; discounts reduce it. This invariant applies only when fixed_price is present on the parent object; on auction-based packages the breakdown is informational only. All monetary values are rounded to currency precision at each step. Budgets are always denominated at the fixed_price level, inclusive of commissions.",
+  "type": "object",
+  "properties": {
+    "list_price": {
+      "type": "number",
+      "description": "Rate card or base price before any adjustments. The starting point from which fixed_price is derived by applying fee and discount adjustments sequentially.",
+      "exclusiveMinimum": 0
+    },
+    "adjustments": {
+      "type": "array",
+      "description": "Ordered list of price adjustments. Fee and discount adjustments walk list_price to fixed_price — fees increase the running price, discounts reduce it. Commission and settlement adjustments are disclosed for transparency but do not affect the buyer's committed price.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "/schemas/3.0.0-rc.4/enums/adjustment-kind.json"
+          },
+          "name": {
+            "type": "string",
+            "description": "Specific adjustment name. Use well-known values where applicable for interoperability.",
+            "maxLength": 64,
+            "examples": [
+              "ad_serving",
+              "data_targeting",
+              "brand_safety",
+              "volume",
+              "negotiated",
+              "early_booking",
+              "agency",
+              "intermediary",
+              "cash_discount",
+              "early_payment"
+            ]
+          },
+          "rate": {
+            "type": "number",
+            "description": "Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive — kind determines the economic effect. Mutually exclusive with amount.",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "amount": {
+            "type": "number",
+            "description": "Adjustment as a fixed monetary amount in the pricing option's currency. Always positive — kind determines the economic effect. Mutually exclusive with rate.",
+            "exclusiveMinimum": 0
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of this adjustment (e.g., 'Malstaffel 12x', '2% Skonto 10 Tage')",
+            "maxLength": 256
+          },
+          "beneficiary": {
+            "type": "string",
+            "description": "Identifies who receives this adjustment's value. For commissions, the intermediary (e.g., a sellers.json domain, an AdCP account ID, or a human-readable party name). Optional but recommended for multi-intermediary transparency.",
+            "maxLength": 256
+          }
+        },
+        "required": ["kind", "name"],
+        "oneOf": [
+          { "required": ["rate"] },
+          { "required": ["amount"] }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 20
+    }
+  },
+  "required": ["list_price", "adjustments"],
+  "additionalProperties": true
+}

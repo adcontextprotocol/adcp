@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/response-type.json",
+  "title": "TMP Response Type",
+  "description": "What the publisher wants back from a TMP context match. Determines the richness level of the buyer's offer response.",
+  "type": "string",
+  "enum": [
+    "activation",
+    "catalog_items",
+    "creative",
+    "deal"
+  ],
+  "enumDescriptions": {
+    "activation": "Binary activation with GAM key-values. Offers identify the package via package_id.",
+    "catalog_items": "Preferred catalog items for rendering. Offers may include catalog item references.",
+    "creative": "Inline creative manifest. Offers include full rendering details.",
+    "deal": "Deal ID for programmatic execution. Offers include deal metadata."
+  }
+}

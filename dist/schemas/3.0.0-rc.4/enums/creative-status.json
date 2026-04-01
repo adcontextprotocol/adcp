@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/creative-status.json",
+  "title": "Creative Status",
+  "description": "Lifecycle status of a creative asset in a creative library. See the Creative Protocol specification for transition rules.",
+  "type": "string",
+  "enum": [
+    "processing",
+    "pending_review",
+    "approved",
+    "rejected",
+    "archived"
+  ],
+  "enumDescriptions": {
+    "processing": "Creative is being ingested, transcoded, or validated. Automatically transitions to pending_review when processing completes, or to rejected if processing fails (e.g., corrupt file, unsupported codec).",
+    "pending_review": "Creative has passed processing and is awaiting platform content policy review. Transitions to approved or rejected after review.",
+    "approved": "Creative has been approved and is eligible for delivery. May be archived by the buyer or re-reviewed by the seller.",
+    "rejected": "Creative was rejected due to content policy or technical issues. Not terminal — the buyer may fix the issue and resubmit via sync_creatives, which returns the creative to processing.",
+    "archived": "Creative has been archived by the buyer and is excluded from default queries. Archived creatives retain their data and may be unarchived back to approved."
+  }
+}

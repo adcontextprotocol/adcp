@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/requirements/image-asset-requirements.json",
+  "title": "Image Asset Requirements",
+  "description": "Requirements for image creative assets. These define the technical constraints for image files.",
+  "type": "object",
+  "properties": {
+    "min_width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Minimum width. Interpretation depends on unit (default: pixels). For exact dimensions, set min_width = max_width."
+    },
+    "max_width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum width. Interpretation depends on unit (default: pixels). For exact dimensions, set min_width = max_width."
+    },
+    "min_height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Minimum height. Interpretation depends on unit (default: pixels). For exact dimensions, set min_height = max_height."
+    },
+    "max_height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum height. Interpretation depends on unit (default: pixels). For exact dimensions, set min_height = max_height."
+    },
+    "unit": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/dimension-unit.json",
+      "description": "Unit of measurement for width/height values. Defaults to 'px' when absent. Print formats use 'inches' or 'cm'."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$",
+      "description": "Required aspect ratio (e.g., '16:9', '1:1', '1.91:1')"
+    },
+    "formats": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff", "pdf", "eps"]
+      },
+      "description": "Accepted image file formats"
+    },
+    "min_dpi": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum resolution in dots per inch. Always in DPI regardless of the dimension unit. Standard print requires 300 DPI, newspaper 150 DPI."
+    },
+    "bleed": {
+      "type": "object",
+      "description": "Required bleed area beyond the trim size. The submitted image must be larger than the declared dimensions: total width = trim width + left bleed + right bleed, total height = trim height + top bleed + bottom bleed. For uniform bleed: total = trim + (2 * uniform). Uses the same unit as the parent dimensions.",
+      "oneOf": [
+        {
+          "properties": {
+            "uniform": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Same bleed on all four sides"
+            }
+          },
+          "required": ["uniform"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "top": { "type": "number", "minimum": 0 },
+            "right": { "type": "number", "minimum": 0 },
+            "bottom": { "type": "number", "minimum": 0 },
+            "left": { "type": "number", "minimum": 0 }
+          },
+          "required": ["top", "right", "bottom", "left"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "color_space": {
+      "type": "string",
+      "enum": ["rgb", "cmyk", "grayscale"],
+      "description": "Required color space. Print typically requires CMYK."
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes"
+    },
+    "transparency_required": {
+      "type": "boolean",
+      "description": "Whether the image must support transparency (requires PNG, WebP, or GIF)"
+    },
+    "animation_allowed": {
+      "type": "boolean",
+      "description": "Whether animated images (GIF, animated WebP) are accepted"
+    },
+    "max_animation_duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum animation duration in milliseconds (if animation_allowed is true)"
+    },
+    "max_weight_grams": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "description": "Maximum weight in grams for the finished physical piece (print inserts, flyers). Affects postage calculations and production constraints. Only applicable to print channels."
+    }
+  },
+  "if": { "required": ["min_dpi"] },
+  "then": { "required": ["unit"] },
+  "additionalProperties": true
+}

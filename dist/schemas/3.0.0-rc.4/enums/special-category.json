@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/special-category.json",
+  "title": "Special Category",
+  "description": "Category of special or event-anchored content",
+  "type": "string",
+  "enum": [
+    "awards",
+    "championship",
+    "concert",
+    "conference",
+    "election",
+    "festival",
+    "gala",
+    "holiday",
+    "premiere",
+    "product_launch",
+    "reunion",
+    "tribute"
+  ],
+  "enumDescriptions": {
+    "awards": "Awards ceremony (Grammys, Emmys, Oscars)",
+    "championship": "Championship or tournament event (Super Bowl, World Cup, Olympics)",
+    "concert": "Live concert or music event",
+    "conference": "Industry conference or summit",
+    "election": "Election coverage or political event",
+    "festival": "Festival event (film, music, cultural)",
+    "gala": "Gala, fundraiser, or formal event",
+    "holiday": "Holiday special or seasonal event",
+    "premiere": "Premiere or launch event",
+    "product_launch": "Product reveal or launch event",
+    "reunion": "Reunion or anniversary special",
+    "tribute": "Tribute or memorial special"
+  }
+}

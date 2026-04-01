@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/account-status.json",
+  "title": "Account Status",
+  "description": "Advertiser account status in the account lifecycle",
+  "type": "string",
+  "enum": [
+    "active",
+    "pending_approval",
+    "rejected",
+    "payment_required",
+    "suspended",
+    "closed"
+  ],
+  "enumDescriptions": {
+    "active": "Account is operational and can create media buys",
+    "pending_approval": "Seller is reviewing the account (credit, contracts)",
+    "rejected": "Seller declined the account request — terminal state",
+    "payment_required": "Credit limit reached or funds depleted",
+    "suspended": "Was active, now paused — operations gated",
+    "closed": "Was active, now terminated — terminal state"
+  }
+}

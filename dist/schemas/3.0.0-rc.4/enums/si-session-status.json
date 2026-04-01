@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/si-session-status.json",
+  "title": "SI Session Status",
+  "description": "State of a Sponsored Intelligence session between a host and a brand agent",
+  "type": "string",
+  "enum": [
+    "active",
+    "pending_handoff",
+    "complete",
+    "terminated"
+  ],
+  "enumDescriptions": {
+    "active": "Session is in progress and accepting messages",
+    "pending_handoff": "Brand agent is requesting handoff to a commerce or external flow; host should process the handoff object",
+    "complete": "Session ended normally after successful conversation or handoff",
+    "terminated": "Session was ended due to timeout, error, policy violation, or explicit host/user action"
+  }
+}

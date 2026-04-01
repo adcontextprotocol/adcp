@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/installment-deadlines.json",
+  "title": "Installment Deadlines",
+  "description": "Deadlines associated with a bookable installment. Applies to any channel where inventory is tied to a scheduled unit: print issues, podcast episodes, linear TV airings, influencer posts, DOOH rotations.",
+  "type": "object",
+  "properties": {
+    "booking_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last date/time to book a placement in this installment (ISO 8601). After this point, the seller will not accept new bookings."
+    },
+    "cancellation_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last date/time to cancel without penalty (ISO 8601). Cancellations after this point may incur fees per the seller's terms."
+    },
+    "material_deadlines": {
+      "type": "array",
+      "description": "Stages for creative material submission. Items MUST be in chronological order by due_at (earliest first). Typical pattern: 'draft' for raw materials the seller will process, 'final' for production-ready assets. Print example: draft artwork then press-ready PDF. Influencer example: talking points then approved script.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/material-deadline.json"
+      },
+      "minItems": 1
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}

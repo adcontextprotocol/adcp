@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/media-buy/update-media-buy-response.json",
+  "title": "Update Media Buy Response",
+  "description": "Response payload for update_media_buy task. Returns either complete success data OR error information, never both. This enforces atomic operation semantics - updates are either fully applied or not applied at all.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "UpdateMediaBuySuccess",
+      "description": "Success response - media buy updated successfully",
+      "type": "object",
+      "properties": {
+        "media_buy_id": {
+          "type": "string",
+          "description": "Seller's identifier for the media buy"
+        },
+        "status": {
+          "$ref": "/schemas/3.0.0-rc.4/enums/media-buy-status.json",
+          "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused')."
+        },
+        "revision": {
+          "type": "integer",
+          "description": "Revision number after this update. Use this value in subsequent update_media_buy requests for optimistic concurrency.",
+          "minimum": 1
+        },
+        "implementation_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when changes take effect (null if pending approval)"
+        },
+        "invoice_recipient": {
+          "$ref": "/schemas/3.0.0-rc.4/core/business-entity.json",
+          "description": "Updated invoice recipient, echoed from the request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only)."
+        },
+        "affected_packages": {
+          "type": "array",
+          "description": "Array of packages that were modified with complete state information",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.4/core/package.json"
+          }
+        },
+        "valid_actions": {
+          "type": "array",
+          "description": "Actions the buyer can perform after this update. Saves a round-trip to get_media_buys.",
+          "items": {
+            "type": "string",
+            "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "add_packages", "sync_creatives"]
+          }
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+        }
+      },
+      "required": [
+        "media_buy_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "UpdateMediaBuyError",
+      "description": "Error response - operation failed, no changes applied",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Array of errors explaining why the operation failed",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.4/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "affected_packages"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/derivative-type.json",
+  "title": "Derivative Type",
+  "description": "What kind of derivative content an installment represents relative to its source installment. The source installment_id must reference an installment within the same response.",
+  "type": "string",
+  "enum": [
+    "clip",
+    "highlight",
+    "recap",
+    "trailer",
+    "bonus"
+  ],
+  "enumDescriptions": {
+    "clip": "Short excerpt from the source installment",
+    "highlight": "Editorially curated best-of segment from the source installment",
+    "recap": "Summary of the source installment's content",
+    "trailer": "Promotional content for the source installment",
+    "bonus": "Supplementary content (behind-the-scenes, extended interviews, deleted segments)"
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/media-buy.json",
+  "title": "Media Buy",
+  "description": "Represents a purchased advertising campaign",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "description": "Seller's unique identifier for the media buy"
+    },
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.4/core/account.json",
+      "description": "Account billed for this media buy"
+    },
+    "status": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/media-buy-status.json"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
+    },
+    "confirmed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller confirmed this media buy. A successful create_media_buy response constitutes order confirmation."
+    },
+    "cancellation": {
+      "type": "object",
+      "description": "Cancellation metadata. Present only when status is 'canceled'.",
+      "required": ["canceled_at", "canceled_by"],
+      "properties": {
+        "canceled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this media buy was canceled."
+        },
+        "canceled_by": {
+          "$ref": "/schemas/3.0.0-rc.4/enums/canceled-by.json",
+          "description": "Which party initiated the cancellation. 'buyer' when canceled via update_media_buy; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason provided when the media buy was canceled.",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "total_budget": {
+      "type": "number",
+      "description": "Total budget amount",
+      "minimum": 0
+    },
+    "packages": {
+      "type": "array",
+      "description": "Array of packages within this media buy",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/package.json"
+      }
+    },
+    "invoice_recipient": {
+      "$ref": "/schemas/3.0.0-rc.4/core/business-entity.json",
+      "description": "Per-buy override for who receives the invoice. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "creative_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for creative upload deadline"
+    },
+    "revision": {
+      "type": "integer",
+      "description": "Monotonically increasing revision number. Incremented on every state change or update. Callers MAY include this in update_media_buy requests for optimistic concurrency — sellers MUST reject with CONFLICT if the provided revision does not match the current value.",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Creation timestamp"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last update timestamp"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+    }
+  },
+  "required": [
+    "media_buy_id",
+    "status",
+    "total_budget",
+    "packages"
+  ],
+  "additionalProperties": true
+}

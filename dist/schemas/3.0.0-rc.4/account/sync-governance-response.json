@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/account/sync-governance-response.json",
+  "title": "Sync Governance Response",
+  "description": "Response from governance agent sync. Returns per-account results confirming sync, or operation-level errors on complete failure.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "SyncGovernanceSuccess",
+      "description": "Sync processed — individual accounts may have errors",
+      "type": "object",
+      "properties": {
+        "accounts": {
+          "type": "array",
+          "description": "Per-account sync results",
+          "items": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "/schemas/3.0.0-rc.4/core/account-ref.json",
+                "description": "Account reference, echoed from request"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["synced", "failed"],
+                "description": "Sync result. synced: governance agents persisted. failed: could not complete (see errors)."
+              },
+              "governance_agents": {
+                "type": "array",
+                "description": "Governance agents now synced on this account. Reflects the persisted state after sync.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "pattern": "^https://",
+                      "description": "Governance agent endpoint URL."
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$" },
+                      "description": "Governance categories this agent handles.",
+                      "maxItems": 20
+                    }
+                  },
+                  "required": ["url"],
+                  "additionalProperties": false
+                }
+              },
+              "errors": {
+                "type": "array",
+                "description": "Per-account errors (only present when status is 'failed')",
+                "items": {
+                  "$ref": "/schemas/3.0.0-rc.4/core/error.json"
+                }
+              }
+            },
+            "required": ["account", "status"],
+            "additionalProperties": true
+          }
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+        }
+      },
+      "required": ["accounts"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "title": "SyncGovernanceError",
+      "description": "Operation failed completely, no accounts were processed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors (e.g., authentication failure, service unavailable)",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.4/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["accounts"]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "description": "Governance agents synced on two accounts",
+      "data": {
+        "accounts": [
+          {
+            "account": { "account_id": "acct-social-001" },
+            "status": "synced",
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com/budget",
+                "categories": ["budget_authority"]
+              }
+            ]
+          },
+          {
+            "account": { "account_id": "acct-social-002" },
+            "status": "synced",
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com/compliance",
+                "categories": ["geo_compliance"]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Partial failure — one account not found",
+      "data": {
+        "accounts": [
+          {
+            "account": { "account_id": "acct-social-001" },
+            "status": "synced",
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com/budget",
+                "categories": ["budget_authority"]
+              }
+            ]
+          },
+          {
+            "account": { "account_id": "acct-unknown" },
+            "status": "failed",
+            "errors": [
+              {
+                "code": "ACCOUNT_NOT_FOUND",
+                "message": "Account 'acct-unknown' does not exist or is not accessible to the authenticated agent."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

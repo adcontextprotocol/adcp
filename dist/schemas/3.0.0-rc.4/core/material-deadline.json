@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/material-deadline.json",
+  "title": "Material Deadline",
+  "description": "A deadline for creative material submission. Sellers declare stages to distinguish draft materials (e.g., talking points, raw artwork) from production-ready assets (e.g., approved scripts, press-ready PDFs).",
+  "type": "object",
+  "properties": {
+    "stage": {
+      "type": "string",
+      "description": "Submission stage identifier. Use 'draft' for materials that need seller processing and 'final' for production-ready assets. Sellers may define additional stages.",
+      "examples": ["draft", "final"]
+    },
+    "due_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When materials for this stage are due (ISO 8601)"
+    },
+    "label": {
+      "type": "string",
+      "description": "What the seller needs at this stage (e.g., 'Talking points and brand guidelines', 'Press-ready PDF with bleed')"
+    }
+  },
+  "required": ["stage", "due_at"],
+  "additionalProperties": true
+}

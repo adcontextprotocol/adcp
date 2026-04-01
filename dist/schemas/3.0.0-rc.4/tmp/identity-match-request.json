@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/tmp/identity-match-request.json",
+  "title": "Identity Match Request",
+  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional schema URI for validation. Ignored at runtime."
+    },
+    "type": {
+      "type": "string",
+      "const": "identity_match_request",
+      "description": "Message type discriminator for deserialization."
+    },
+    "protocol_version": {
+      "type": "string",
+      "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
+      "default": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Unique request identifier. MUST NOT correlate with any context match request_id."
+    },
+    "user_token": {
+      "type": "string",
+      "description": "Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated"
+    },
+    "uid_type": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/uid-type.json",
+      "description": "Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching."
+    },
+    "consent": {
+      "type": "object",
+      "description": "Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information.",
+      "properties": {
+        "gdpr": {
+          "type": "boolean",
+          "description": "Whether GDPR applies to this request."
+        },
+        "tcf_consent": {
+          "type": "string",
+          "description": "IAB TCF v2.2 consent string. Present when gdpr is true."
+        },
+        "gpp": {
+          "type": "string",
+          "description": "IAB Global Privacy Platform string."
+        },
+        "us_privacy": {
+          "type": "string",
+          "description": "US Privacy string (CCPA). Deprecated in favor of GPP but still widely used."
+        }
+      },
+      "additionalProperties": false
+    },
+    "package_ids": {
+      "type": "array",
+      "description": "ALL active package identifiers for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "user_token",
+    "uid_type",
+    "package_ids"
+  ],
+  "additionalProperties": false
+}

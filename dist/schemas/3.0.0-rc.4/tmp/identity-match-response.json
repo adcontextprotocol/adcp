@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/tmp/identity-match-response.json",
+  "title": "Identity Match Response",
+  "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "identity_match_response",
+      "description": "Message type discriminator for deserialization."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the identity match request"
+    },
+    "eligible_package_ids": {
+      "type": "array",
+      "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ttl_sec": {
+      "type": "integer",
+      "description": "How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.",
+      "minimum": 0,
+      "maximum": 86400
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "eligible_package_ids",
+    "ttl_sec"
+  ],
+  "additionalProperties": true
+}

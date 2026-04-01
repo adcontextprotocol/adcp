@@ -1,0 +1,237 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/account.json",
+  "title": "Account",
+  "description": "A billing account representing the relationship between a buyer and seller. The account determines rate cards, payment terms, and billing entity.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Unique identifier for this account"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable account name (e.g., 'Acme', 'Acme c/o Pinnacle')"
+    },
+    "advertiser": {
+      "type": "string",
+      "description": "The advertiser whose rates apply to this account"
+    },
+    "billing_proxy": {
+      "type": "string",
+      "description": "Optional intermediary who receives invoices on behalf of the advertiser (e.g., agency)"
+    },
+    "status": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/account-status.json",
+      "description": "Account lifecycle status. See the Accounts Protocol overview for the operations matrix showing which tasks are permitted in each state."
+    },
+    "brand": {
+      "$ref": "/schemas/3.0.0-rc.4/core/brand-ref.json",
+      "description": "Brand reference identifying the advertiser"
+    },
+    "operator": {
+      "type": "string",
+      "description": "Domain of the entity operating this account. When the brand operates directly, this is the brand's domain.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "billing": {
+      "type": "string",
+      "enum": ["operator", "agent", "advertiser"],
+      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. See billing_entity for the invoiced party's business details."
+    },
+    "billing_entity": {
+      "$ref": "/schemas/3.0.0-rc.4/core/business-entity.json",
+      "description": "Business entity details for the party responsible for payment. Contains the legal name, tax IDs, address, and bank details needed for formal B2B invoicing. Corresponds to whoever billing points to (operator, agent, or advertiser). When this account appears in a response, bank details MUST be omitted (write-only)."
+    },
+    "rate_card": {
+      "type": "string",
+      "description": "Identifier for the rate card applied to this account"
+    },
+    "payment_terms": {
+      "type": "string",
+      "enum": ["net_15", "net_30", "net_45", "net_60", "net_90", "prepay"],
+      "description": "Payment terms agreed for this account. Binding for all invoices when the account is active."
+    },
+    "credit_limit": {
+      "type": "object",
+      "description": "Maximum outstanding balance allowed",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": ["amount", "currency"]
+    },
+    "setup": {
+      "type": "object",
+      "description": "Present when status is 'pending_approval'. Contains next steps for completing account activation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description of what's needed."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this setup link expires."
+        }
+      },
+      "required": ["message"],
+      "additionalProperties": true
+    },
+    "account_scope": {
+      "type": "string",
+      "enum": ["operator", "brand", "operator_brand", "agent"],
+      "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
+    },
+    "governance_agents": {
+      "type": "array",
+      "description": "Governance agent endpoints registered on this account. Authentication credentials are write-only and not included in responses — use sync_governance to set or update credentials.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://",
+            "description": "Governance agent endpoint URL. Must use HTTPS."
+          },
+          "categories": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*$" },
+            "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories.",
+            "maxItems": 20
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      },
+      "maxItems": 10
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this is a sandbox account — no real platform calls, no real spend. For explicit accounts (require_operator_auth: true), sandbox accounts are pre-existing test accounts on the platform discovered via list_accounts. For implicit accounts, sandbox is part of the natural key: the same brand/operator pair can have both a production and sandbox account."
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+    }
+  },
+  "required": ["account_id", "name", "status"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Direct advertiser account",
+      "data": {
+        "account_id": "acc_acme_direct",
+        "name": "Acme",
+        "advertiser": "Acme Corp",
+        "brand": { "domain": "acme-corp.com" },
+        "operator": "acme-corp.com",
+        "status": "active",
+        "billing": "operator",
+        "account_scope": "brand",
+        "rate_card": "acme_vip_2024",
+        "payment_terms": "net_30"
+      }
+    },
+    {
+      "description": "Advertiser account with agency billing proxy",
+      "data": {
+        "account_id": "acc_acme_pinnacle",
+        "name": "Acme c/o Pinnacle",
+        "advertiser": "Acme Corp",
+        "billing_proxy": "Pinnacle Media",
+        "brand": { "domain": "acme-corp.com" },
+        "operator": "pinnacle-media.com",
+        "status": "active",
+        "billing": "operator",
+        "account_scope": "operator_brand",
+        "rate_card": "acme_vip_2024",
+        "payment_terms": "net_60"
+      }
+    },
+    {
+      "description": "Agency as direct buyer",
+      "data": {
+        "account_id": "acc_pinnacle",
+        "name": "Pinnacle",
+        "advertiser": "Pinnacle Media",
+        "brand": { "domain": "pinnacle-media.com" },
+        "operator": "pinnacle-media.com",
+        "status": "active",
+        "billing": "operator",
+        "account_scope": "operator",
+        "rate_card": "agency_standard",
+        "payment_terms": "net_45"
+      }
+    },
+    {
+      "description": "Account with brand identity and operator (via sync_accounts)",
+      "data": {
+        "account_id": "acc_spark_001",
+        "name": "Spark (via Pinnacle)",
+        "advertiser": "Nova Brands",
+        "status": "active",
+        "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+        "operator": "pinnacle-media.com",
+        "billing": "agent",
+        "account_scope": "operator_brand",
+        "payment_terms": "net_30"
+      }
+    },
+    {
+      "description": "Pending account awaiting seller approval",
+      "data": {
+        "account_id": "acc_glow_pending",
+        "name": "Glow",
+        "advertiser": "Nova Brands",
+        "status": "pending_approval",
+        "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+        "operator": "pinnacle-media.com",
+        "billing": "operator",
+        "account_scope": "brand"
+      }
+    },
+    {
+      "description": "Agency operates but advertiser is billed directly with structured billing entity",
+      "data": {
+        "account_id": "acc_acme_direct_bill",
+        "name": "Acme (billed direct)",
+        "advertiser": "Acme Corp",
+        "brand": { "domain": "acme-corp.com" },
+        "operator": "pinnacle-media.com",
+        "status": "active",
+        "billing": "advertiser",
+        "billing_entity": {
+          "legal_name": "Acme Corporation GmbH",
+          "vat_id": "DE987654321",
+          "address": {
+            "street": "Hauptstrasse 42",
+            "city": "Munich",
+            "postal_code": "80331",
+            "country": "DE"
+          },
+          "contacts": [
+            {
+              "role": "billing",
+              "name": "AP Department",
+              "email": "billing@acme-corp.com"
+            }
+          ]
+        },
+        "account_scope": "operator_brand",
+        "payment_terms": "net_30"
+      }
+    }
+  ]
+}

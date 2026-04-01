@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/governance-phase.json",
+  "title": "Governance Phase",
+  "description": "The phase of the media buy lifecycle that triggered the governance check.",
+  "type": "string",
+  "enum": ["purchase", "modification", "delivery"]
+}

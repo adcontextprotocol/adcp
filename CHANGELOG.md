@@ -1,5 +1,163 @@
 # Changelog
 
+## 3.0.0-rc.4
+
+### Major Changes
+
+- 63a33b4: Rename show/episode to collection/installment for cross-channel clarity. Add installment deadlines, deadline policies, and print-capable creative formats.
+
+  Breaking: show→collection, episode→installment across all schemas, enums, and field names (show_id→collection_id, episode_id→installment_id, etc.). Collections gain kind field (series, publication, event_series, rotation) and deadline_policy for lead-time rules. Installments gain optional booking, cancellation, and staged material submission deadlines. Image asset requirements gain physical units (inches/cm/mm), DPI, bleed (uniform or per-side via oneOf), color space, and print file formats (TIFF, PDF, EPS). Format render dimensions support physical units and decimal aspect ratios.
+
+- 5ecc29d: Remove buyer_ref, buyer_campaign_ref, and campaign_ref. Seller-assigned media_buy_id and package_id are canonical. Add idempotency_key to all mutating requests. Replace structured governance-context.json with opaque governance_context string in protocol envelope and check_governance.
+
+### Minor Changes
+
+- d238645: Expand `adagents.json` to support richer publisher authorization and placement governance.
+
+  This adds scoped authorization fields for property-side `authorized_agents`, including:
+
+  - `delegation_type`
+  - `collections`
+  - `placement_ids`
+  - `placement_tags`
+  - `countries`
+  - `effective_from`
+  - `effective_until`
+  - `exclusive`
+  - `signing_keys`
+
+  It also adds publisher-level placement governance with:
+
+  - top-level `placements`
+  - top-level `placement_tags`
+  - canonical `placement-definition.json`
+
+  Validation and tooling are updated to enforce placement-to-property linkage, placement tag scoping, country and time-window constraints, and authoritative-location resolution. Related docs are updated to explain the stronger publisher authorization model and compare `adagents.json` with `ads.txt`.
+
+- c5b3143: Add advertiser industry taxonomy. New `advertiser-industry` enum with two-level dot-notation categories (e.g., `media_entertainment.podcasts`, `technology.software`). The brand manifest `industries` field now references the enum, and `CreateMediaBuyRequest` gains an optional `advertiser_industry` field so agents can classify the advertiser when creating campaigns. Sellers map these to platform-native codes (Spotify ADV categories, LinkedIn industry IDs, IAB Content Taxonomy). Includes restricted categories (gambling_betting, cannabis, dating) that platforms require explicit declaration for.
+- 257463e: Add structured audience data for bias/fairness governance validation.
+
+  **Schemas**: audience-selector (signal ref or description), audience-constraints (include/exclude), policy-category-definition (regulatory regime groupings), attribute-definition (restricted data categories), match-id-type (identity resolution enum), restricted-attribute (GDPR Article 9 enum).
+
+  **Plan fields**: policy_categories, audience constraints (include/exclude), restricted_attributes, restricted_attributes_custom, min_audience_size. Separates brand.industries (what the company is) from plan.policy_categories (what regulatory regimes apply).
+
+  **Governance**: audience_targeting on governance-context and planned-delivery for three-way comparison. audience_distribution on delivery_metrics for demographic drift detection. restricted_attributes and policy_categories on signal-definition.json for structural governance matching.
+
+  **Registry**: 10 policy category definitions (children_directed, political_advertising, age_restricted, gambling_advertising, fair_housing, fair_lending, fair_employment, pharmaceutical_advertising, health_wellness, firearms_weapons). 8 restricted attribute definitions (GDPR Article 9 categories). 13 seed policies covering US (FHA, ECOA, EEOC, COPPA, FDA DTC, FTC health claims, TTB alcohol, state gambling), EU (DSA political targeting, prescription DTC ban, GDPR special category targeting), and platform (special ad categories, firearms) regulations.
+
+  **Media buy**: per-identifier-type match_breakdown and effective_match_rate on sync_audiences response (#1314).
+
+  **Docs**: Updated governance specification, sync_plans, check_governance, policy registry, sync_audiences, brand protocol, and signal/data provider documentation.
+
+  **Breaking changes** (pre-1.0 RC — expected):
+
+  - `brand.industry` (string) renamed to `brand.industries` (string array). See migration guide.
+  - `policy-entry.verticals` renamed to `policy-entry.policy_categories`.
+
+  **Design notes**:
+
+  - `policy_categories` on plans is intentionally freeform `string[]` (not an enum). Unlike GDPR Article 9 restricted attributes (a closed legal text), policy categories are open-ended — new jurisdictions and regulatory regimes add categories over time. Validation is at the registry level, not the schema level.
+  - `audience-selector.json` uses flat `oneOf` with four inline variants (signal-binary, signal-categorical, signal-numeric, description) rather than `allOf` composition with `signal-targeting.json`. This avoids codegen fragility — `allOf` with `$ref` breaks quicktype, go-jsonschema, and similar tools.
+
+- c17b119: Support availability forecasts for guaranteed and direct-sold inventory
+
+  - Make `budget` optional on `ForecastPoint` — when omitted, the point represents total available inventory for the requested targeting and dates
+  - Add `availability` value to `forecast-range-unit` enum for forecasts where metrics express what exists, not what a given spend level buys
+  - Guaranteed products now include availability forecasts with `metrics.spend` expressing estimated cost
+  - Update delivery forecast documentation with availability forecast examples and buyer-side underdelivery calculation guidance
+
+- 9ae4fdc: Add comply_test_controller tool to training agent for deterministic compliance testing. Fix SISessionStatus description in si-initiate-session-response schema.
+- b1cc4ba: Add continuous compliance monitoring to the agent registry. Scheduled heartbeat job runs comply() against registered agents, tracks pass/fail status per track, and notifies publishers on regressions and recoveries.
+- 28ba53a: Add weight_grams on image asset requirements for print inserts, and material_submission on products for print creative delivery instructions. Retry transient network failures in owned-link checker. Driven by DBCFM gap analysis.
+- 949c534: Event source health and measurement readiness for conversion tracking quality.
+
+  - **Event source health**: Optional `health` object on each event source in `sync_event_sources` response. Includes status (insufficient/minimum/good/excellent), seller-defined detail, match rate, evaluated_at timestamp, 24h event volume, and actionable issues. Analogous to Snap EQS / Meta EMQ — sellers without native scores derive status from operational metrics.
+  - **Measurement readiness**: Optional `measurement_readiness` on products in `get_products` response. Evaluates whether the buyer's event setup is sufficient for the product's optimization capabilities. Includes status, required/missing event types, and issues.
+  - New schemas: `event-source-health.json`, `measurement-readiness.json`, `diagnostic-issue.json`, `assessment-status.json` enum
+
+- 0fb4210: Add `sync_governance` task for syncing governance agent endpoints to accounts. Supports both explicit accounts (account_id) and implicit accounts (brand + operator) via account references. Governance agents removed from `sync_accounts` and `list_accounts`.
+- 5c41b60: Add order lifecycle management to the Media Buy Protocol.
+
+  - `confirmed_at` timestamp on create_media_buy response (required) — a successful response constitutes order confirmation
+  - Cancellation via update_media_buy with `canceled: true` and optional `cancellation_reason` at both media buy and package level
+  - `canceled_by` field (buyer/seller) on media buys and packages to identify who initiated cancellation
+  - `canceled_at` timestamp on packages (parity with media buy level)
+  - Per-package `creative_deadline` for mixed-channel orders where packages have different material deadlines (e.g., print vs digital)
+  - `valid_actions` on get_media_buys response — seller declares what actions are permitted in the current state so agents don't need to internalize the state machine
+  - `get_media_buys` MCP tool added to Addie for reading media buy state, creative approvals, and delivery snapshots
+  - `revision` number on media buys for optimistic concurrency — callers pass in update requests, sellers reject on mismatch
+  - `include_history` on get_media_buys request — opt-in revision history per media buy with actor, action, summary, and package attribution
+  - `status` field on update_media_buy response to confirm state transitions
+  - Formal state transition diagram and normative rules in specification
+  - Valid actions mapping table in specification and get_media_buys docs
+  - Curriculum updates: S1 (lifecycle lab), C1 (get_media_buys + lifecycle concepts), A2 (confirmed_at + status check step)
+  - `new_packages` on update_media_buy request for adding packages mid-flight. Sellers advertise `add_packages` in `valid_actions`.
+  - `CREATIVE_DEADLINE_EXCEEDED` error code — separates deadline violations from content policy rejections (`CREATIVE_REJECTED`)
+  - Frozen snapshots: sellers MUST retain delivery data for canceled packages and SHOULD return final snapshot at cancellation time
+  - 7 error codes added to enum: INVALID_STATE, NOT_CANCELLABLE, MEDIA_BUY_NOT_FOUND, PACKAGE_NOT_FOUND, VALIDATION_ERROR, BUDGET_EXCEEDED, CREATIVE_DEADLINE_EXCEEDED
+
+- f132f84: Add structured business entity data to accounts and media buys for B2B invoicing. New `billing_entity` field on accounts provides default invoicing details (legal name, VAT ID, tax ID, address, contacts with roles, bank). New `invoice_recipient` on media buys enables per-buy billing overrides. Add `billing: "advertiser"` option for when operator places orders but advertiser pays directly. Bank details are write-only (never echoed in responses).
+- ed619d7: Compliance monitoring dashboard: org dashboard agents section with track pills, sparklines, history; Addie agent management with platform_type; dev mode member context fix
+- 66a6a30: Add rich product and proposal card rendering with hero images, publisher names, audience data, click-through URLs, and colored allocation bars
+- 37d97f4: Add proposal lifecycle with draft/committed status, finalization via refine action, insertion order signing, and expiry enforcement on create_media_buy. Proposals containing guaranteed products now start as draft (indicative pricing) and must be finalized before purchase. Committed proposals include hold windows and optional insertion orders for formal agreements.
+- ad33379: Remove FormatCategory enum and `type` field from Format objects
+
+  The `format-category.json` enum, `type` field on Format, `format_types` filter on product-filters and creative-filters, and `type` filter on list-creative-formats-request have been removed.
+
+  **What to use instead:**
+
+  - To understand what a format requires: inspect the `assets` array
+  - To filter formats by content type: use the `asset_types` filter on `list_creative_formats`
+  - To filter products by channel: use the `channels` filter on `get_products`
+  - To filter by specific formats: use `format_ids`
+
+  **Breaking changes:**
+
+  - `format-category.json` enum deleted
+  - `type` property removed from `format.json`
+  - `format_types` removed from `product-filters.json` and `creative-filters.json`
+  - `type` filter removed from `list-creative-formats-request.json`
+
+- 5a1710b: Remove `oneOf` from `get-products-request.json` and `build-creative-request.json` to fix code generation issues across TypeScript, Python, and Go. Conditional field validity is documented in field descriptions and validated in application logic.
+
+  Fix webhook HMAC verification contradictions between `security.mdx` and `webhooks.mdx`. `security.mdx` now references `webhooks.mdx` as the normative source and adds guidance on verification order, secret rotation, and SSRF prevention. Three adversarial test vectors added.
+
+  Localize `tagline` in `brand.json` and `get-brand-identity-response.json` — accepts a plain string (backwards compatible) or a localized array keyed by BCP 47 locale codes. Update `localized_name` definition to reference BCP 47 codes. Examples updated to use region-specific locale codes.
+
+- f28c77b: Add `special` and `limited_series` fields to shows and episodes. Specials anchor content to real-world events (championships, awards, elections) with name, category, and date window. Limited series declare bounded content runs with total episode count and end date. Both are composable — a show can be both. Also adds `commentator` and `analyst` to the talent role enum, and fixes pre-existing training agent bugs (content_rating mapped as array, duration as ISO string instead of integer, invalid enum values).
+- fe0f8a0: Add native streaming/audio metrics to delivery schema.
+
+  - Broadens `views` description to cover audio/podcast stream starts
+  - Renames `video_completions` to `completed_views` in aggregated_totals
+  - Adds `views`, `completion_rate`, `reach`, `reach_unit`, `frequency` to aggregated_totals
+  - Adds `reach_unit` field to `delivery-metrics.json` referencing existing `reach-unit.json` enum with `dependencies` co-occurrence constraint (reach requires reach_unit)
+  - Aggregated reach/frequency omitted when media buys have heterogeneous reach units
+  - Updates `frequency` description from "per individual" to "per reach unit"
+  - Training agent: channel-specific completion rates (podcast 87%, streaming audio 72%, CTV 82%), `views` at package level, audio/video metrics rolled up into totals, `reach_unit` emission (accounts for streaming, devices for CTV/OLV)
+
+- bf1773b: feat: deprecate AXE fields, add TMP provider discovery, property_rid, typed artifacts, lightweight context match
+
+  Marks `axe_include_segment`, `axe_exclude_segment`, and `required_axe_integrations` as deprecated in favor of TMP. Adds `trusted_match` filter to product-filters for filtering by TMP provider + match type. Adds `providers` array to the product `trusted_match` object so publishers can declare which TMP providers are integrated per product. Adds `trusted_match` to the `fields` enum on get-products-request. Removes `available_packages` from context match requests — providers use synced package metadata instead of receiving it per-request. Optional `package_ids` narrows the set when needed. Adds `property_rid` (UUID v7 from property catalog) as the primary identifier on context match requests, with `property_id` optional for logging. Replaces plain-string artifacts with typed objects (`url`, `url_hash`, `eidr`, `gracenote`, `rss_guid`, `isbn`, `custom`) so buyers can resolve content via public registries. Removes top-level `url_hash` field (now an artifact type).
+
+- dcbb3c8: feat: Trusted Match Protocol (TMP) — real-time execution layer for AdCP
+
+  Adds 9 TMP schemas, 12 documentation pages, and updates across the protocol to support real-time package activation with structural privacy separation. Deprecates AXE.
+
+### Patch Changes
+
+- 4d7eb0a: Update documentation for audience targeting
+- d81a1ff: fix: weekly digest stays collaborative — no auto-skip, edits revive skipped digests, late approvals send immediately
+- 823ee73:
+- 5d399f4: Fix capstone completion failure (upsert instead of update-only), add fuzzy schema path resolution, improve capstone error logging
+- b85fc0a: fix: Addie replies where user typed, not in stored permanent thread
+- b046963: Fix 7 issues: get_signals docs, members CSS, training agent types, outreach SQL, brand localization, webhook HMAC spec, schema oneOf removal
+- a95f809: fix: escape dollar signs in docs to prevent LaTeX math rendering
+- e75e8a2: Fix production errors: disable Moltbook, auth middleware fail-open on ban check, fix digest/GEO/Slack errors, downgrade rate limit noise
+- 446a625: Add request and response schema links to preview_creative task reference, matching the pattern used by other creative task references.
+- 77e8364: Split Addie's profile tools into personal profile (the person) and company listing (the org's directory entry). Guard sync from overwriting independently customized taglines. Include personal org listings in Addie's ambient context. Add offerings to company listing tool.
+- a4aff56: fix: include editorial working group perspectives in public API
+- 04c3a76:
+
 ## 3.0.0-rc.2
 
 ### Major Changes

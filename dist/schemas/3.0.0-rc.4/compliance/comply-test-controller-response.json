@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/compliance/comply-test-controller-response.json",
+  "title": "Comply Test Controller Response",
+  "description": "Response from the comply_test_controller tool. Shape varies by scenario type: list_scenarios returns available scenarios, force_* returns state transition results, simulate_* returns simulation results.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "ListScenariosSuccess",
+      "description": "Lists which scenarios this seller's test controller supports",
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "const": true },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "force_creative_status",
+              "force_account_status",
+              "force_media_buy_status",
+              "force_session_status",
+              "simulate_delivery",
+              "simulate_budget_spend"
+            ]
+          },
+          "description": "Scenarios this seller has implemented"
+        },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["success", "scenarios"],
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["previous_state"] }, { "required": ["simulated"] }] }
+    },
+    {
+      "title": "StateTransitionSuccess",
+      "description": "A force_* scenario successfully transitioned the entity to the target state",
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "const": true },
+        "previous_state": { "type": "string", "description": "State before this transition" },
+        "current_state": { "type": "string", "description": "State after this transition" },
+        "message": { "type": "string", "description": "Human-readable description of the transition" },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["success", "previous_state", "current_state"],
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["simulated"] }] }
+    },
+    {
+      "title": "SimulationSuccess",
+      "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains impressions/clicks/reported_spend/conversions and cumulative contains running totals. For budget: simulated contains spend_percentage/computed_spend/budget.",
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "const": true },
+        "simulated": {
+          "type": "object",
+          "description": "Values injected or applied by this call. Shape depends on scenario.",
+          "additionalProperties": true
+        },
+        "cumulative": {
+          "type": "object",
+          "description": "Running totals across all simulation calls (simulate_delivery only)",
+          "additionalProperties": true
+        },
+        "message": { "type": "string" },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["success", "simulated"],
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["error"] }, { "required": ["scenarios"] }, { "required": ["previous_state"] }] }
+    },
+    {
+      "title": "ControllerError",
+      "description": "The scenario failed — invalid transition, unknown entity, unsupported scenario, or invalid params",
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "const": false },
+        "error": {
+          "type": "string",
+          "enum": ["INVALID_TRANSITION", "INVALID_STATE", "NOT_FOUND", "UNKNOWN_SCENARIO", "INVALID_PARAMS", "FORBIDDEN", "INTERNAL_ERROR"],
+          "description": "Structured error code"
+        },
+        "error_detail": { "type": "string", "description": "Human-readable explanation of the failure" },
+        "current_state": { "type": ["string", "null"], "description": "Current state of the entity, or null if not found" },
+        "context": { "$ref": "/schemas/3.0.0-rc.4/core/context.json" },
+        "ext": { "$ref": "/schemas/3.0.0-rc.4/core/ext.json" }
+      },
+      "required": ["success", "error"],
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["scenarios"] }, { "required": ["simulated"] }, { "required": ["previous_state"] }] }
+    }
+  ],
+  "examples": [
+    {
+      "description": "List scenarios response",
+      "data": {
+        "success": true,
+        "scenarios": ["force_creative_status", "force_account_status", "force_media_buy_status"]
+      }
+    },
+    {
+      "description": "Successful state transition",
+      "data": {
+        "success": true,
+        "previous_state": "processing",
+        "current_state": "approved",
+        "message": "Creative cr-123 transitioned from processing to approved"
+      }
+    },
+    {
+      "description": "Delivery simulation with cumulative totals",
+      "data": {
+        "success": true,
+        "simulated": {
+          "impressions": 10000,
+          "clicks": 150,
+          "reported_spend": { "amount": 150.00, "currency": "USD" }
+        },
+        "cumulative": {
+          "impressions": 25000,
+          "clicks": 380,
+          "reported_spend": { "amount": 375.00, "currency": "USD" }
+        },
+        "message": "Delivery simulated for mb-789: 10000 impressions, 150 clicks, $150.00 spend"
+      }
+    },
+    {
+      "description": "Budget spend simulation",
+      "data": {
+        "success": true,
+        "simulated": {
+          "spend_percentage": 95,
+          "computed_spend": { "amount": 950.00, "currency": "USD" },
+          "budget": { "amount": 1000.00, "currency": "USD" }
+        },
+        "message": "Budget for mb-789 set to 95% consumed ($950.00 of $1000.00)"
+      }
+    },
+    {
+      "description": "Invalid transition error",
+      "data": {
+        "success": false,
+        "error": "INVALID_TRANSITION",
+        "error_detail": "Cannot transition from archived to processing — archived is terminal",
+        "current_state": "archived"
+      }
+    },
+    {
+      "description": "Entity not found",
+      "data": {
+        "success": false,
+        "error": "NOT_FOUND",
+        "error_detail": "Creative cr-unknown not found",
+        "current_state": null
+      }
+    }
+  ]
+}

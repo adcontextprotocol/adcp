@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/error-details/policy-violation.json",
+  "title": "POLICY_VIOLATION Details",
+  "description": "Recommended details shape for POLICY_VIOLATION errors. Provides policy reference and violated rules so agents can adjust requests.",
+  "type": "object",
+  "properties": {
+    "policy_id": {
+      "type": "string",
+      "description": "Identifier for the violated policy"
+    },
+    "policy_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where the full policy can be reviewed"
+    },
+    "violated_rules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Specific rules that were violated"
+    }
+  },
+  "additionalProperties": true
+}

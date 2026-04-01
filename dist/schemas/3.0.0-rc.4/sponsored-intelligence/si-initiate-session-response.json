@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/sponsored-intelligence/si-initiate-session-response.json",
+  "title": "SI Initiate Session Response",
+  "description": "Brand agent's response to session initiation",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Unique session identifier for subsequent messages"
+    },
+    "response": {
+      "type": "object",
+      "description": "Brand agent's initial response",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Conversational message from brand agent"
+        },
+        "ui_elements": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.4/sponsored-intelligence/si-ui-element.json"
+          },
+          "description": "Visual components to render"
+        }
+      },
+      "additionalProperties": true
+    },
+    "negotiated_capabilities": {
+      "$ref": "/schemas/3.0.0-rc.4/sponsored-intelligence/si-capabilities.json",
+      "description": "Intersection of brand and host capabilities for this session"
+    },
+    "session_status": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/si-session-status.json",
+      "description": "Current session lifecycle state. Returned in initiation, message, and termination responses."
+    },
+    "session_ttl_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Session inactivity timeout in seconds. After this duration without a message, the brand agent may terminate the session. Hosts SHOULD warn users before timeout when possible."
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/error.json"
+      },
+      "description": "Errors during session initiation"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+    }
+  },
+  "required": ["session_id", "session_status"],
+  "additionalProperties": true
+}

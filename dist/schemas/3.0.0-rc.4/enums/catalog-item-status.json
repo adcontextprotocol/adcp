@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/catalog-item-status.json",
+  "title": "Catalog Item Status",
+  "description": "Approval status of an individual item within a synced catalog. Platforms review catalog items and may approve, reject, or flag them for issues (similar to Google Merchant Center product review).",
+  "type": "string",
+  "enum": [
+    "approved",
+    "pending",
+    "rejected",
+    "warning"
+  ],
+  "enumDescriptions": {
+    "approved": "Item passed platform review and is eligible for use in campaigns",
+    "pending": "Item is awaiting platform review. Items enter this state on initial sync and when re-synced after rejection.",
+    "rejected": "Item failed platform review (missing fields, policy violation, invalid data). Not terminal — fix the issue in the catalog and re-sync to reset the item to pending.",
+    "warning": "Item is approved and serving but has issues worth fixing (e.g., low-quality image, missing optional fields). The item remains eligible for delivery."
+  }
+}

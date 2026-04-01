@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/placement-definition.json",
+  "title": "Placement Definition",
+  "description": "Canonical placement definition published in a publisher's adagents.json. Defines stable placement IDs that products can reuse and that authorization rules can reference. When a product reuses a registered placement_id, it is referring to this same semantic placement, not inventing a new one with the same ID.",
+  "type": "object",
+  "properties": {
+    "placement_id": {
+      "type": "string",
+      "description": "Stable placement identifier unique within this adagents.json file."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable placement name (e.g., 'Homepage Banner', 'Pre-roll', 'Sponsored Listing Slot 1')."
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of where and how this placement appears."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for grouping and querying placements across properties and products (e.g., 'homepage', 'native', 'premium', 'pre_roll').",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "property_ids": {
+      "type": "array",
+      "description": "Property IDs in this adagents.json where this placement can appear.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/property-id.json"
+      },
+      "minItems": 1
+    },
+    "property_tags": {
+      "type": "array",
+      "description": "Property tags in this adagents.json where this placement can appear. Useful for network-wide positions such as 'pre_roll' or 'homepage_native_feed'.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/property-tag.json"
+      },
+      "minItems": 1
+    },
+    "collection_ids": {
+      "type": "array",
+      "description": "Optional collection IDs in this adagents.json where this placement is valid. Use to narrow a placement to specific content programs carried on the selected properties.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Optional format IDs supported by this placement across the scoped properties and collections. Lets buyers answer which formats are available on which placements without relying on product-local definitions alone.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+    }
+  },
+  "required": [
+    "placement_id",
+    "name"
+  ],
+  "anyOf": [
+    {
+      "required": ["property_ids"]
+    },
+    {
+      "required": ["property_tags"]
+    }
+  ],
+  "additionalProperties": true
+}

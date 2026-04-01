@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/governance/attribute-definition.json",
+  "title": "Attribute Definition",
+  "description": "Definition of a restricted personal data attribute in the policy registry. Attributes are the shared vocabulary used across campaign plans (restricted_attributes), signal definitions (restricted_attributes), and data marketplace catalogs. Each definition documents the regulatory basis, scope, and common signal patterns for the attribute category.",
+  "type": "object",
+  "properties": {
+    "attribute_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Unique identifier for this attribute. Used in plan.restricted_attributes, signal-definition.restricted_attributes, and data marketplace catalog entries."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name (e.g., 'Health Data')."
+    },
+    "description": {
+      "type": "string",
+      "description": "What this attribute category covers. Defines the boundary — what is and is not included."
+    },
+    "regulatory_basis": {
+      "type": "array",
+      "description": "Regulations that define or restrict this attribute category.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the regulation (e.g., 'GDPR Article 9(1)')."
+          },
+          "jurisdictions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "ISO 3166-1 alpha-2 codes where this regulation applies."
+          },
+          "summary": {
+            "type": "string",
+            "description": "How this regulation defines or restricts the attribute."
+          }
+        },
+        "required": ["name", "summary"],
+        "additionalProperties": false
+      }
+    },
+    "includes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Specific data types that fall within this category (e.g., for health_data: 'medical conditions', 'disability status', 'prescription history', 'inferred health from behavioral signals')."
+    },
+    "excludes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Data types that might seem related but are explicitly outside this category. Helps with boundary cases."
+    },
+    "signal_patterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Common signal naming or tagging patterns that indicate this attribute (e.g., 'health:', 'condition_', 'diagnosis_'). Data providers and governance agents use these as hints when signals lack explicit restricted_attributes declarations."
+    },
+    "guidance": {
+      "type": "string",
+      "description": "Implementation notes. Covers edge cases, inferred vs. declared data, and common pitfalls."
+    }
+  },
+  "required": ["attribute_id", "name", "description"],
+  "additionalProperties": false
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/content-standards/calibrate-content-request.json",
+  "title": "Calibrate Content Request",
+  "description": "Request parameters for evaluating content during calibration. Multi-turn dialogue is handled at the protocol layer via contextId.",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Standards configuration to calibrate against"
+    },
+    "artifact": {
+      "$ref": "/schemas/3.0.0-rc.4/content-standards/artifact.json",
+      "description": "Artifact to evaluate"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. If a request with the same key has already been processed, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255
+    }
+  },
+  "required": [
+    "standards_id",
+    "artifact"
+  ]
+}

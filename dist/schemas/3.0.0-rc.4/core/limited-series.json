@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/limited-series.json",
+  "title": "Limited Series",
+  "description": "A bounded content run with a defined arc. Indicates the collection has a planned beginning, end, and installment count — distinguishing it from ongoing series.",
+  "type": "object",
+  "properties": {
+    "total_installments": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Planned number of installments in the series"
+    },
+    "starts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the series begins (ISO 8601)"
+    },
+    "ends": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the series ends (ISO 8601)"
+    }
+  },
+  "required": ["total_installments"],
+  "additionalProperties": true
+}

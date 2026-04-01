@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/measurement-readiness.json",
+  "title": "Measurement Readiness",
+  "description": "Per-product assessment of whether the buyer's event source setup is sufficient for the product's optimization capabilities. Sellers evaluate this in the context of the buyer's account — the same product may show different readiness for different buyers depending on their event source configuration.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/assessment-status.json",
+      "description": "Overall measurement readiness level for this product given the buyer's event setup. 'insufficient' means the product cannot optimize effectively with the current setup."
+    },
+    "required_event_types": {
+      "type": "array",
+      "description": "Event types this product needs for effective optimization. Buyers should ensure their event sources cover these types.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/enums/event-type.json"
+      },
+      "minItems": 1
+    },
+    "missing_event_types": {
+      "type": "array",
+      "description": "Event types this product requires that the buyer has not configured. Empty or absent when all required types are covered.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/enums/event-type.json"
+      }
+    },
+    "issues": {
+      "type": "array",
+      "description": "Actionable issues preventing full measurement readiness. Sellers should limit to the top 3-5 most actionable items. Buyer agents should sort by severity rather than relying on array position.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/diagnostic-issue.json"
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Seller explanation of the readiness assessment, recommendations for improvement, or context about what the buyer needs to change."
+    }
+  },
+  "required": ["status"],
+  "additionalProperties": true
+}

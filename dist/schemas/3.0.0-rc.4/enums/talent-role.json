@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/talent-role.json",
+  "title": "Talent Role",
+  "description": "Role of a person associated with a collection or installment",
+  "type": "string",
+  "enum": [
+    "host",
+    "guest",
+    "creator",
+    "cast",
+    "narrator",
+    "producer",
+    "correspondent",
+    "commentator",
+    "analyst"
+  ],
+  "enumDescriptions": {
+    "host": "Primary host or anchor of the collection",
+    "guest": "Guest appearing on a specific installment",
+    "creator": "Collection creator or showrunner",
+    "cast": "Regular or recurring cast member",
+    "narrator": "Narrator or voiceover",
+    "producer": "Executive or lead producer with on-screen presence",
+    "correspondent": "Reporter or field correspondent",
+    "commentator": "Play-by-play or event commentator",
+    "analyst": "Color commentator or subject matter analyst"
+  }
+}

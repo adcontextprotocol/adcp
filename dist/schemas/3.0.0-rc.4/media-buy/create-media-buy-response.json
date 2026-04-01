@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/media-buy/create-media-buy-response.json",
+  "title": "Create Media Buy Response",
+  "description": "Response payload for create_media_buy task. Returns either complete success data OR error information, never both. This enforces atomic operation semantics - the media buy is either fully created or not created at all.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "CreateMediaBuySuccess",
+      "description": "Success response - media buy created successfully",
+      "type": "object",
+      "properties": {
+        "media_buy_id": {
+          "type": "string",
+          "description": "Seller's unique identifier for the created media buy"
+        },
+        "account": {
+          "$ref": "/schemas/3.0.0-rc.4/core/account.json",
+          "description": "Account billed for this media buy. Includes advertiser, billing proxy (if any), and rate card applied."
+        },
+        "invoice_recipient": {
+          "$ref": "/schemas/3.0.0-rc.4/core/business-entity.json",
+          "description": "Per-buy invoice recipient, echoed from the request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only)."
+        },
+        "status": {
+          "$ref": "/schemas/3.0.0-rc.4/enums/media-buy-status.json",
+          "description": "Initial media buy status. Either 'active' (immediate activation) or 'pending_activation' (awaiting platform setup)."
+        },
+        "confirmed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this media buy was confirmed by the seller. A successful create_media_buy response constitutes order confirmation."
+        },
+        "creative_deadline": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp for creative upload deadline"
+        },
+        "revision": {
+          "type": "integer",
+          "description": "Initial revision number for this media buy. Use in subsequent update_media_buy requests for optimistic concurrency.",
+          "minimum": 1
+        },
+        "valid_actions": {
+          "type": "array",
+          "description": "Actions the buyer can perform on this media buy after creation. Saves a round-trip to get_media_buys.",
+          "items": {
+            "type": "string",
+            "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "add_packages", "sync_creatives"]
+          }
+        },
+        "packages": {
+          "type": "array",
+          "description": "Array of created packages with complete state information",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.4/core/package.json"
+          }
+        },
+        "planned_delivery": {
+          "$ref": "/schemas/3.0.0-rc.4/core/planned-delivery.json",
+          "description": "The seller's interpreted delivery parameters. Describes what the seller will actually run -- geo, channels, flight dates, frequency caps, and budget. Present when the account has governance_agents or when the seller chooses to provide delivery transparency."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+        }
+      },
+      "required": [
+        "media_buy_id",
+        "packages"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "CreateMediaBuyError",
+      "description": "Error response - operation failed, no media buy created",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Array of errors explaining why the operation failed",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.4/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.4/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "packages"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

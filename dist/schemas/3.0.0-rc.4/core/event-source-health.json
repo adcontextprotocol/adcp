@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/event-source-health.json",
+  "title": "Event Source Health",
+  "description": "Health assessment for a configured event source. Sellers evaluate the quality, completeness, and volume of events received from this source. Sellers with native quality scores (Snap EQS, Meta EMQ) relay them in detail; sellers without native scores derive status from operational metrics (volume, error rates, tag activity).",
+  "type": "object",
+  "properties": {
+    "status": {
+      "$ref": "/schemas/3.0.0-rc.4/enums/assessment-status.json",
+      "description": "Overall health status. Use this for cross-seller decisions — do not rely on detail.score for comparability."
+    },
+    "detail": {
+      "type": "object",
+      "description": "Seller-specific scoring detail. Only present when the seller has a native quality score to relay. Buyer agents should use status (not detail) for cross-seller decisions. Detail is supplementary context for human review or advanced diagnostics.",
+      "properties": {
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seller-defined quality score. Scale varies by seller — only compare within the same seller."
+        },
+        "max_score": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Maximum possible score on this seller's scale."
+        },
+        "label": {
+          "type": "string",
+          "description": "Seller's name for this score (e.g., 'Event Quality Score', 'Event Match Quality')."
+        }
+      },
+      "required": ["score", "max_score"],
+      "additionalProperties": true
+    },
+    "match_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Fraction of events from this source that the seller successfully matched to ad interactions (0.0-1.0). Low match rates indicate weak user_match identifiers. Absent when the seller does not compute match rates."
+    },
+    "last_event_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the most recent event received from this source. Absent when no events have been received."
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when this health assessment was computed. When health is derived from reporting data, this may lag real-time. Buyer agents can use this to decide whether to trust stale assessments or re-request."
+    },
+    "events_received_24h": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of events received from this source in the last 24 hours. Zero indicates the source is configured but not firing."
+    },
+    "issues": {
+      "type": "array",
+      "description": "Actionable issues detected with this event source. Sellers should limit to the top 3-5 most actionable items. Buyer agents should sort by severity rather than relying on array position.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/diagnostic-issue.json"
+      }
+    }
+  },
+  "required": ["status"],
+  "additionalProperties": true
+}

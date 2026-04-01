@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/assessment-status.json",
+  "title": "Assessment Status",
+  "description": "Standardized quality level for health and readiness assessments. Comparable across sellers — buyer agents should use this for cross-seller decisions.",
+  "type": "string",
+  "enum": ["insufficient", "minimum", "good", "excellent"],
+  "enumDescriptions": {
+    "insufficient": "Setup incomplete or event quality too low — optimization cannot run",
+    "minimum": "Functional but data quality limits optimization effectiveness",
+    "good": "Meets quality thresholds for most optimization goals",
+    "excellent": "Exceeds quality thresholds across all dimensions"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/agent-signing-key.json",
+  "title": "Agent Signing Key",
+  "description": "Publisher-attested public key material for an authorized agent. Buyers use these keys to verify signed agent responses against the trust anchor published in adagents.json rather than trusting key discovery from the agent domain alone.",
+  "type": "object",
+  "properties": {
+    "kid": {
+      "type": "string",
+      "description": "Key identifier for selecting the correct signing key."
+    },
+    "kty": {
+      "type": "string",
+      "description": "JWK key type, such as 'OKP', 'EC', or 'RSA'."
+    },
+    "alg": {
+      "type": "string",
+      "description": "Expected signing algorithm for this key, such as 'EdDSA' or 'RS256'."
+    },
+    "use": {
+      "type": "string",
+      "description": "Optional JWK use value. Typically 'sig' for signing keys."
+    },
+    "crv": {
+      "type": "string",
+      "description": "Curve name for OKP or EC keys, such as 'Ed25519' or 'P-256'."
+    },
+    "x": {
+      "type": "string",
+      "description": "Base64url-encoded public key x coordinate or public key value for OKP keys."
+    },
+    "y": {
+      "type": "string",
+      "description": "Base64url-encoded public key y coordinate for EC keys."
+    },
+    "n": {
+      "type": "string",
+      "description": "Base64url-encoded RSA modulus."
+    },
+    "e": {
+      "type": "string",
+      "description": "Base64url-encoded RSA public exponent."
+    }
+  },
+  "required": [
+    "kid",
+    "kty"
+  ],
+  "additionalProperties": true
+}

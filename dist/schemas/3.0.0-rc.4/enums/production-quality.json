@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/production-quality.json",
+  "title": "Production Quality",
+  "description": "Production quality tier for collection content. Maps to OpenRTB content.prodq: professional=1, prosumer=2, ugc=3. Seller-declared — no external validation.",
+  "type": "string",
+  "enum": [
+    "professional",
+    "prosumer",
+    "ugc"
+  ],
+  "enumDescriptions": {
+    "professional": "Studio-produced content with professional crew and equipment",
+    "prosumer": "Semi-professional production (high-quality independent creators)",
+    "ugc": "User-generated content"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/core/deadline-policy.json",
+  "title": "Deadline Policy",
+  "description": "Default deadline rules for installments that do not declare their own deadlines. Agents compute absolute deadlines from the installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy. booking_lead_days SHOULD be >= cancellation_lead_days (bookings close before cancellation window closes).",
+  "type": "object",
+  "properties": {
+    "booking_lead_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Days before scheduled_at by which the placement must be booked"
+    },
+    "cancellation_lead_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Days before scheduled_at by which cancellation is penalty-free"
+    },
+    "material_stages": {
+      "type": "array",
+      "description": "Default material submission stages. Items MUST be in chronological order (earliest due first). Agents compute due_at as: installment.scheduled_at minus lead_days.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "type": "string",
+            "description": "Stage identifier. Standard values: 'draft' (needs seller processing), 'final' (production-ready).",
+            "examples": ["draft", "final"]
+          },
+          "lead_days": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Days before scheduled_at this stage is due"
+          },
+          "label": {
+            "type": "string",
+            "description": "What the seller needs at this stage"
+          }
+        },
+        "required": ["stage", "lead_days"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "business_days_only": {
+      "type": "boolean",
+      "description": "When true, lead_days counts business days (Mon-Fri) rather than calendar days. Defaults to false.",
+      "default": false
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}

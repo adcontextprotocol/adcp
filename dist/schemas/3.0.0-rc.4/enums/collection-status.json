@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/collection-status.json",
+  "title": "Collection Status",
+  "description": "Lifecycle status of a collection",
+  "type": "string",
+  "enum": [
+    "active",
+    "hiatus",
+    "ended",
+    "upcoming"
+  ],
+  "enumDescriptions": {
+    "active": "Currently producing and releasing installments",
+    "hiatus": "Temporarily paused, expected to resume",
+    "ended": "No longer producing new installments",
+    "upcoming": "Announced but not yet released"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/tmp/available-package.json",
+  "title": "Available Package",
+  "description": "A package available for contextual matching. Synced to providers at media buy creation time — not sent per request. Providers cache this metadata and use it when evaluating context match requests for the placement.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Unique identifier for the package"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Media buy that this package belongs to"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Creative format identifiers eligible for this package. Uses the standard AdCP format-id object with agent_url and id for unambiguous format resolution across namespaces.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/format-id.json"
+      }
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "The buyer's catalogs attached to this package, with selectors (ids, gtins, tags, category, query) scoping which items are in play. References synced catalogs by catalog_id. The provider resolves items from its cached copy.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.4/core/catalog.json"
+      }
+    }
+  },
+  "required": [
+    "package_id",
+    "media_buy_id"
+  ],
+  "additionalProperties": false
+}

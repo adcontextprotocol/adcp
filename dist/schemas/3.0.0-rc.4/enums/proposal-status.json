@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.4/enums/proposal-status.json",
+  "title": "Proposal Status",
+  "description": "Lifecycle status of a proposal. Absent means the proposal is ready to buy (backward compatible with pre-v3.1 proposals). 'draft' indicates indicative pricing that must be finalized before purchase. 'committed' indicates firm pricing with inventory reserved until expires_at.",
+  "type": "string",
+  "enum": [
+    "draft",
+    "committed"
+  ],
+  "enumDescriptions": {
+    "draft": "Indicative pricing and availability. The buyer can compare and plan but must finalize before purchasing. Use the 'finalize' refine action to request firm pricing.",
+    "committed": "Firm pricing with inventory reserved. The buyer can execute this proposal via create_media_buy before expires_at. After expires_at, the hold lapses and the buyer must re-finalize or re-discover."
+  }
+}
