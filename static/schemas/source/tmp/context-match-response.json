@@ -24,7 +24,8 @@
     "cache_ttl": {
       "type": "integer",
       "description": "Optional override for the default 5-minute cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching (e.g., when targeting configuration has just changed).",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 86400
     },
     "signals": {
       "type": "object",

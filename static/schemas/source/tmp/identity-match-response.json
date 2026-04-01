@@ -24,7 +24,8 @@
     "ttl_sec": {
       "type": "integer",
       "description": "How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 86400
     }
   },
   "required": [

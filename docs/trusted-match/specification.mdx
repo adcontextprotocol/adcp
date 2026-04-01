@@ -319,6 +319,8 @@ Concatenated in this order, UTF-8, newline-separated:
 | `package_ids` | Sorted, comma-separated list of active package IDs |
 | `daily_epoch` | `floor(unix_timestamp / 86400)` |
 
+When `package_ids` is absent from the request, the signature MUST use an empty string for that field in the signed payload.
+
 Because the signed fields are static per placement, the same signature can be cached and reused for all requests to the same placement within a 24-hour epoch.
 
 #### Identity Match signed fields
@@ -331,10 +333,12 @@ Concatenated in this order, UTF-8, newline-separated:
 | `request_id` | From the request body |
 | `user_token` | From the request body |
 | `uid_type` | From the request body |
+| `consent.gdpr` | From the request body (`false` if absent) |
+| `consent.tcf_consent` | From the request body (empty string if absent) |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
 | `daily_epoch` | `floor(unix_timestamp / 86400)` |
 
-Identity Match signatures include `request_id` and `user_token`, so they are unique per request and cannot be cached. This is intentional — Identity Match responses affect buyer-side frequency state and must be idempotent. The `request_id` in the signed fields lets the buyer deduplicate retried requests.
+Identity Match signatures include `request_id` and `user_token`, so they are unique per request and cannot be cached. This is intentional — Identity Match responses affect buyer-side frequency state and must be idempotent. Buyers MUST deduplicate Identity Match requests by `request_id` within the daily epoch window. A repeated `request_id` MUST return the same response without updating frequency state.
 
 ### Signature verification
 
@@ -396,6 +400,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
 - Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{user_token, provider_id, hash(package_ids)}`. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). The router returns cached eligibility for subsequent requests during the window. The publisher enforces allocation rules (one ad per package, competitive separation, pod composition) using the cached eligibility as input.
 - When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
+- Both `ttl_sec` and `cache_ttl` have a schema-enforced maximum of 86400 seconds (24 hours). Routers SHOULD clamp buyer-provided values to a configured maximum (recommended: 3600 seconds) to limit the blast radius of stale caches.
 
 ## Conformance Levels
 
