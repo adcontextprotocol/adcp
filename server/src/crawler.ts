@@ -8,6 +8,8 @@ import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { AAO_HOST } from "./config/aao.js";
 import { createLogger } from "./logger.js";
+import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
+import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
 
 const log = createLogger('crawler');
 
@@ -23,8 +25,10 @@ export class CrawlerService {
   private brandDb: BrandDatabase;
   private memberDb: MemberDatabase;
   private capabilityDiscovery: CapabilityDiscovery;
+  private eventsDb?: CatalogEventsDatabase;
+  private profilesDb?: AgentInventoryProfilesDatabase;
 
-  constructor() {
+  constructor(options?: { eventsDb?: CatalogEventsDatabase; profilesDb?: AgentInventoryProfilesDatabase }) {
     this.crawler = new PropertyCrawler({ logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'error' });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
@@ -32,6 +36,8 @@ export class CrawlerService {
     this.brandDb = new BrandDatabase();
     this.memberDb = new MemberDatabase();
     this.capabilityDiscovery = new CapabilityDiscovery();
+    this.eventsDb = options?.eventsDb;
+    this.profilesDb = options?.profilesDb;
   }
 
   async crawlAllAgents(agents: Agent[]): Promise<CrawlResult> {
@@ -80,8 +86,17 @@ export class CrawlerService {
         log.warn({ warnings: result.warnings }, 'Crawl warnings');
       }
 
+      // Snapshot pre-crawl state for diffing
+      const preCrawlAgents = await this.snapshotAgentState();
+
       // Populate federated index from PropertyIndex and adagents.json files
       const crawledDomains = await this.populateFederatedIndex(agents);
+
+      // Diff and produce events
+      await this.produceEventsFromDiff(preCrawlAgents);
+
+      // Build and upsert inventory profiles
+      await this.buildInventoryProfiles();
 
       // Scan brand.json for all crawled domains + all hosted brand domains
       const hostedDomains = await this.brandDb.listAllHostedBrandDomains();
@@ -495,6 +510,236 @@ export class CrawlerService {
         agentUrl,
         authorizedFor
       );
+    }
+  }
+
+  // ── State Snapshot & Diffing ─────────────────────────────────────
+
+  private async snapshotAgentState(): Promise<Map<string, { domains: Set<string> }>> {
+    const snapshot = new Map<string, { domains: Set<string> }>();
+    const agents = await this.federatedIndex.listAllAgents();
+
+    for (const agent of agents) {
+      const domains = await this.federatedIndex.getDomainsForAgent(agent.url);
+      snapshot.set(agent.url, {
+        domains: new Set(domains),
+      });
+    }
+
+    return snapshot;
+  }
+
+  private async produceEventsFromDiff(
+    preCrawlAgents: Map<string, { domains: Set<string> }>
+  ): Promise<void> {
+    if (!this.eventsDb) return;
+
+    const events: WriteEventInput[] = [];
+    const postCrawlAgents = await this.snapshotAgentState();
+
+    // Detect new agents
+    for (const [url] of postCrawlAgents) {
+      if (!preCrawlAgents.has(url)) {
+        events.push({
+          event_type: 'agent.discovered',
+          entity_type: 'agent',
+          entity_id: url,
+          payload: { agent_url: url },
+          actor: 'pipeline:crawler',
+        });
+      }
+    }
+
+    // Detect removed agents (global aggregation: gone from ALL publishers)
+    for (const [url] of preCrawlAgents) {
+      if (!postCrawlAgents.has(url)) {
+        events.push({
+          event_type: 'agent.removed',
+          entity_type: 'agent',
+          entity_id: url,
+          payload: { agent_url: url },
+          actor: 'pipeline:crawler',
+        });
+      }
+    }
+
+    // Detect authorization changes per agent
+    for (const [url, postState] of postCrawlAgents) {
+      const preState = preCrawlAgents.get(url);
+      const preDomains = preState?.domains ?? new Set<string>();
+
+      // New authorizations
+      for (const domain of postState.domains) {
+        if (!preDomains.has(domain)) {
+          events.push({
+            event_type: 'authorization.granted',
+            entity_type: 'authorization',
+            entity_id: `${url}:${domain}`,
+            payload: { agent_url: url, publisher_domain: domain },
+            actor: 'pipeline:crawler',
+          });
+        }
+      }
+
+      // Revoked authorizations
+      for (const domain of preDomains) {
+        if (!postState.domains.has(domain)) {
+          events.push({
+            event_type: 'authorization.revoked',
+            entity_type: 'authorization',
+            entity_id: `${url}:${domain}`,
+            payload: { agent_url: url, publisher_domain: domain },
+            actor: 'pipeline:crawler',
+          });
+        }
+      }
+
+      // Detect adagents_changed for domains where agent was present before and after
+      // but authorization details may have changed
+      if (preState && postState.domains.size !== preDomains.size) {
+        // Find publisher domains that had changes
+        const changedDomains = new Set<string>();
+        for (const d of postState.domains) if (!preDomains.has(d)) changedDomains.add(d);
+        for (const d of preDomains) if (!postState.domains.has(d)) changedDomains.add(d);
+
+        for (const domain of changedDomains) {
+          events.push({
+            event_type: 'publisher.adagents_changed',
+            entity_type: 'publisher',
+            entity_id: domain,
+            payload: { publisher_domain: domain },
+            actor: 'pipeline:crawler',
+          });
+        }
+      }
+    }
+
+    if (events.length > 0) {
+      await this.eventsDb.writeEvents(events);
+      log.info({ eventCount: events.length }, 'Catalog events produced from crawl diff');
+    }
+  }
+
+  // ── Inventory Profile Building ───────────────────────────────────
+
+  private async buildInventoryProfiles(): Promise<void> {
+    if (!this.profilesDb) return;
+
+    const agents = await this.federatedIndex.listAllAgents();
+    const profiles: ProfileUpsertInput[] = [];
+
+    for (const agent of agents) {
+      const domains = await this.federatedIndex.getDomainsForAgent(agent.url);
+      if (domains.length === 0) continue;
+
+      const markets = new Set<string>();
+      const propertyTypes = new Set<string>();
+      const tags = new Set<string>();
+      const deliveryTypes = new Set<string>();
+      const publisherDomains = new Set<string>(domains);
+      let propertyCount = 0;
+
+      // Get properties for this agent
+      const properties = await this.federatedIndex.getPropertiesForAgent(agent.url);
+      for (const prop of properties) {
+        propertyCount++;
+        if (prop.property_type) propertyTypes.add(prop.property_type);
+        if (prop.tags) prop.tags.forEach(t => tags.add(t));
+      }
+
+      // Derive channels from property types
+      const channels = new Set<string>();
+      if (propertyTypes.has('website')) channels.add('display');
+      if (propertyTypes.has('ctv_app')) channels.add('ctv');
+      if (propertyTypes.has('mobile_app')) channels.add('mobile');
+      if (propertyTypes.has('audio_stream') || propertyTypes.has('podcast')) channels.add('audio');
+      if (propertyTypes.has('dooh_screen')) channels.add('dooh');
+
+      profiles.push({
+        agent_url: agent.url,
+        channels: [...channels],
+        property_types: [...propertyTypes],
+        markets: [...markets],
+        categories: [],  // Populated when collections have genre_taxonomy
+        tags: [...tags],
+        delivery_types: [...deliveryTypes],
+        property_count: propertyCount,
+        publisher_count: publisherDomains.size,
+        has_tmp: false,  // Updated when TMP registration data is available
+      });
+    }
+
+    if (profiles.length > 0) {
+      await this.profilesDb.upsertProfiles(profiles);
+      const currentUrls = profiles.map(p => p.agent_url);
+      const staleDeleted = await this.profilesDb.deleteStaleProfiles(currentUrls);
+      if (staleDeleted > 0) {
+        log.info({ deleted: staleDeleted }, 'Stale inventory profiles cleaned up');
+      }
+      log.info({ profileCount: profiles.length }, 'Inventory profiles updated');
+    }
+  }
+
+  // ── Single Domain Crawl ──────────────────────────────────────────
+
+  async crawlSingleDomain(domain: string): Promise<void> {
+    if (this.crawling) {
+      log.warn({ domain }, 'Full crawl in progress, skipping single domain crawl');
+      return;
+    }
+
+    log.info({ domain }, 'Single domain crawl requested');
+
+    try {
+      const validation = await this.adAgentsManager.validateDomain(domain);
+
+      if (!validation.valid || !validation.raw_data?.authorized_agents) {
+        log.warn({ domain }, 'No valid adagents.json for domain');
+        return;
+      }
+
+      // Record agents and properties
+      for (const authorizedAgent of validation.raw_data.authorized_agents) {
+        if (!authorizedAgent.url) continue;
+
+        await this.federatedIndex.recordAgentFromAdagentsJson(
+          authorizedAgent.url,
+          domain,
+          authorizedAgent.authorized_for,
+          authorizedAgent.property_ids
+        );
+
+        await this.recordPropertiesForAgent(
+          validation.raw_data.properties || [],
+          domain,
+          authorizedAgent.url,
+          authorizedAgent.authorized_for,
+          authorizedAgent.property_ids
+        );
+      }
+
+      // Produce per-domain events
+      if (this.eventsDb) {
+        await this.eventsDb.writeEvent({
+          event_type: 'publisher.adagents_changed',
+          entity_type: 'publisher',
+          entity_id: domain,
+          payload: {
+            publisher_domain: domain,
+            agent_count: validation.raw_data.authorized_agents.length,
+            property_count: validation.raw_data.properties?.length ?? 0,
+          },
+          actor: 'api:crawl-request',
+        });
+      }
+
+      // Rebuild profiles for affected agents
+      await this.buildInventoryProfiles();
+
+      log.info({ domain }, 'Single domain crawl complete');
+    } catch (err) {
+      log.error({ domain, err }, 'Single domain crawl failed');
+      throw err;
     }
   }
 }

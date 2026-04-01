@@ -73,11 +73,17 @@ export interface RegistryApiConfig {
   propertyDb: PropertyDatabase;
   adagentsManager: AdAgentsManager;
   healthChecker: HealthChecker;
-  crawler: CrawlerService;
+  crawler: CrawlerService & { crawlSingleDomain?: (domain: string) => Promise<void> };
   capabilityDiscovery: CapabilityDiscovery;
   registryRequestsDb: {
     trackRequest(type: string, domain: string): Promise<void>;
     markResolved(type: string, domain: string, resolved: string): Promise<boolean>;
+  };
+  eventsDb?: {
+    queryFeed(cursor: string | null, types: string[] | null, limit?: number): Promise<import('../db/catalog-events-db.js').FeedResult | import('../db/catalog-events-db.js').FeedError>;
+  };
+  profilesDb?: {
+    search(query: import('../db/agent-inventory-profiles-db.js').SearchQuery): Promise<import('../db/agent-inventory-profiles-db.js').SearchResponse>;
   };
   requireAuth?: RequestHandler;
 }
@@ -2972,6 +2978,181 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
       logger.error({ error }, "Failed to save policy");
       return res.status(500).json({ error: "Failed to save policy" });
+    }
+  });
+
+  // ── Registry Feed ───────────────────────────────────────────────
+
+  if (config.eventsDb) {
+    const eventsDb = config.eventsDb;
+
+    router.get("/registry/feed", authMiddleware ?? ((_req, _res, next) => next()), async (req, res) => {
+      try {
+        const cursor = (req.query.cursor as string) || null;
+        const typesParam = req.query.types as string | undefined;
+        const types = typesParam ? typesParam.split(',').map(t => t.trim()).filter(Boolean) : null;
+        const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+
+        // Validate cursor format (should be a UUID if provided)
+        if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cursor)) {
+          return res.status(400).json({ error: "Invalid cursor format. Must be a UUID." });
+        }
+
+        if (rawLimit !== undefined && isNaN(rawLimit)) {
+          return res.status(400).json({ error: "limit must be a number" });
+        }
+
+        // Validate type filter values — only allow safe glob patterns
+        const VALID_TYPE = /^[a-z][a-z0-9_.]*(\*)?$/;
+        if (types) {
+          for (const t of types) {
+            if (!VALID_TYPE.test(t)) {
+              return res.status(400).json({ error: `Invalid type filter: ${t}` });
+            }
+          }
+        }
+
+        const result = await eventsDb.queryFeed(cursor, types, rawLimit);
+
+        if ('error' in result) {
+          return res.status(410).json(result);
+        }
+
+        return res.json(result);
+      } catch (error) {
+        logger.error({ error }, "Failed to query registry feed");
+        return res.status(500).json({ error: "Failed to query registry feed" });
+      }
+    });
+  }
+
+  // ── Agent Search ──────────────────────────────────────────────
+
+  if (config.profilesDb) {
+    const profilesDb = config.profilesDb;
+
+    router.get("/registry/agents/search", authMiddleware ?? ((_req, _res, next) => next()), async (req, res) => {
+      try {
+        const parseCSV = (param: string | undefined): string[] | undefined => {
+          if (!param) return undefined;
+          const values = param.split(',').map(v => v.trim()).filter(Boolean);
+          return values.length > 0 ? values : undefined;
+        };
+
+        const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+        if (rawLimit !== undefined && isNaN(rawLimit)) {
+          return res.status(400).json({ error: "limit must be a number" });
+        }
+
+        const rawMinProps = req.query.min_properties ? parseInt(req.query.min_properties as string, 10) : undefined;
+        if (rawMinProps !== undefined && isNaN(rawMinProps)) {
+          return res.status(400).json({ error: "min_properties must be a number" });
+        }
+
+        const searchQuery = {
+          channels: parseCSV(req.query.channels as string),
+          property_types: parseCSV(req.query.property_types as string),
+          markets: parseCSV(req.query.markets as string),
+          categories: parseCSV(req.query.categories as string),
+          tags: parseCSV(req.query.tags as string),
+          delivery_types: parseCSV(req.query.delivery_types as string),
+          has_tmp: req.query.has_tmp !== undefined ? req.query.has_tmp === 'true' : undefined,
+          min_properties: rawMinProps,
+          cursor: (req.query.cursor as string) || undefined,
+          limit: rawLimit,
+        };
+
+        const response = await profilesDb.search(searchQuery);
+
+        return res.json(response);
+      } catch (error: any) {
+        if (error?.message?.includes('Invalid cursor')) {
+          return res.status(400).json({ error: "Invalid cursor format" });
+        }
+        logger.error({ error }, "Failed to search agent profiles");
+        return res.status(500).json({ error: "Failed to search agent profiles" });
+      }
+    });
+  }
+
+  // ── Crawl Request ─────────────────────────────────────────────
+
+  const crawlRequestRateLimits = new Map<string, number>();  // domain -> last request timestamp
+  const memberCrawlCounts = new Map<string, { count: number; windowStart: number }>();
+  const CRAWL_RATE_LIMIT_MS = 5 * 60 * 1000;  // 5 minutes per domain
+  const MEMBER_CRAWL_LIMIT = 30;               // 30 requests per member per hour
+  const MEMBER_CRAWL_WINDOW_MS = 60 * 60 * 1000;
+  const DOMAIN_RE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+
+  // Periodic cleanup of stale rate limit entries to prevent memory growth
+  const rateLimitCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [domain, timestamp] of crawlRequestRateLimits) {
+      if (now - timestamp > CRAWL_RATE_LIMIT_MS) crawlRequestRateLimits.delete(domain);
+    }
+    for (const [member, state] of memberCrawlCounts) {
+      if (now - state.windowStart > MEMBER_CRAWL_WINDOW_MS) memberCrawlCounts.delete(member);
+    }
+  }, CRAWL_RATE_LIMIT_MS);
+  rateLimitCleanupInterval.unref(); // Don't prevent process exit
+
+  router.post("/registry/crawl-request", authMiddleware ?? ((_req, _res, next) => next()), async (req, res) => {
+    try {
+      const { domain } = req.body;
+      if (!domain || typeof domain !== 'string') {
+        return res.status(400).json({ error: "domain is required" });
+      }
+
+      const normalizedDomain = domain.toLowerCase().trim();
+
+      // Validate domain format to prevent SSRF via internal hostnames
+      if (!DOMAIN_RE.test(normalizedDomain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
+      }
+
+      const memberId = (req as any).member?.id || 'anonymous';
+
+      // Per-domain rate limit
+      const lastCrawl = crawlRequestRateLimits.get(normalizedDomain);
+      if (lastCrawl && Date.now() - lastCrawl < CRAWL_RATE_LIMIT_MS) {
+        const retryAfter = Math.ceil((CRAWL_RATE_LIMIT_MS - (Date.now() - lastCrawl)) / 1000);
+        return res.status(429).json({
+          error: "Rate limit exceeded for this domain",
+          retry_after: retryAfter,
+        });
+      }
+
+      // Per-member hourly rate limit
+      const memberState = memberCrawlCounts.get(memberId);
+      const now = Date.now();
+      if (memberState && now - memberState.windowStart < MEMBER_CRAWL_WINDOW_MS) {
+        if (memberState.count >= MEMBER_CRAWL_LIMIT) {
+          return res.status(429).json({
+            error: "Hourly crawl request limit exceeded",
+            retry_after: Math.ceil((MEMBER_CRAWL_WINDOW_MS - (now - memberState.windowStart)) / 1000),
+          });
+        }
+        memberState.count++;
+      } else {
+        memberCrawlCounts.set(memberId, { count: 1, windowStart: now });
+      }
+
+      crawlRequestRateLimits.set(normalizedDomain, now);
+
+      // Trigger crawl asynchronously — don't wait for completion
+      if (crawler.crawlSingleDomain) {
+        crawler.crawlSingleDomain(normalizedDomain).catch((err: Error) => {
+          logger.error({ err, domain: normalizedDomain }, "Crawl request failed");
+        });
+      }
+
+      return res.status(202).json({
+        message: "Crawl request accepted",
+        domain: normalizedDomain,
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to process crawl request");
+      return res.status(500).json({ error: "Failed to process crawl request" });
     }
   });
 
