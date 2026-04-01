@@ -20,6 +20,7 @@ import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import { createAsset } from '../db/perspective-asset-db.js';
 import { fetchPathPageviewCounts } from '../services/posthog-query.js';
+import { validateFetchUrl, validateRedirectTarget } from '../utils/url-security.js';
 
 const logger = createLogger('content-routes');
 
@@ -697,21 +698,41 @@ export function createContentRouter(): Router {
         });
       }
 
-      // Validate URL protocol to prevent SSRF with non-HTTP schemes
+      // Validate URL protocol and target host (SSRF protection)
       const parsedUrl = new URL(url);
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
         return res.status(400).json({ error: 'Only http and https URLs are supported' });
       }
+      await validateFetchUrl(parsedUrl);
 
-      // Fetch the page
-      // CodeQL: authenticated endpoint, URL protocol validated above
-      const response = await fetch(url, { // lgtm[js/request-forgery]
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
-          'Accept': 'text/html,application/xhtml+xml',
-        },
-        redirect: 'follow',
-      });
+      // Fetch the page with manual redirect handling for SSRF protection
+      const MAX_REDIRECTS = 5;
+      let currentUrl = url;
+      let response: Response;
+      let redirectCount = 0;
+
+      while (true) {
+        response = await fetch(currentUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+          redirect: 'manual',
+        });
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          if (++redirectCount > MAX_REDIRECTS) {
+            return res.status(400).json({ error: 'Too many redirects' });
+          }
+          const location = response.headers.get('location');
+          if (!location) {
+            return res.status(400).json({ error: 'Redirect with no Location header' });
+          }
+          const redirectUrl = await validateRedirectTarget(location, currentUrl);
+          currentUrl = redirectUrl.toString();
+          continue;
+        }
+        break;
+      }
 
       if (!response.ok) {
         throw new Error(`Failed to fetch URL: ${response.status}`);
