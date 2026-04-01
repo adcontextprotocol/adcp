@@ -1532,12 +1532,12 @@
         const resourceLabel = r.resource_name || r.resource_type.replace(/_/g, ' ');
         return `
           <tr>
-            <td>${r.workos_user_id}</td>
-            <td>${resourceLabel}</td>
-            <td>${date}</td>
+            <td>${escapeHtml(r.workos_user_id)}</td>
+            <td>${escapeHtml(resourceLabel)}</td>
+            <td>${escapeHtml(date)}</td>
             <td>
-              <button class="btn btn-primary btn-sm" onclick="approveSeatRequest('${r.id}')">Approve</button>
-              <button class="btn btn-secondary btn-sm" onclick="denySeatRequest('${r.id}')" style="margin-left: 4px;">Deny</button>
+              <button class="btn btn-primary btn-sm" data-request-id="${escapeHtml(r.id)}" onclick="approveSeatRequest(this.dataset.requestId)">Approve</button>
+              <button class="btn btn-secondary btn-sm" data-request-id="${escapeHtml(r.id)}" onclick="denySeatRequest(this.dataset.requestId)" style="margin-left: 4px;">Deny</button>
             </td>
           </tr>
         `;
