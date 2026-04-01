@@ -2,7 +2,7 @@
  * One-time migration: Move static perspective files into the perspective_assets table.
  *
  * Migrates:
- * - server/public/images/stories/cover-building-future-of-marketing.jpg → cover_image
+ * - server/public/images/stories/cover-building-future-of-marketing.png → cover_image
  * - server/public/reports/building-the-future-of-marketing.pdf → report
  *
  * Run: npx tsx server/scripts/migrate-perspective-static-assets.ts
@@ -18,9 +18,9 @@ const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
 const ASSETS = [
   {
-    path: 'server/public/images/stories/cover-building-future-of-marketing.jpg',
-    fileName: 'cover.jpg',
-    mimeType: 'image/jpeg',
+    path: 'server/public/images/stories/cover-building-future-of-marketing.png',
+    fileName: 'cover.png',
+    mimeType: 'image/png',
     assetType: 'cover_image' as const,
   },
   {
