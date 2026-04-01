@@ -29,6 +29,8 @@ import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, inferMembershipTier, type SeatType } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
+import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
+import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
@@ -425,6 +427,8 @@ export class HTTPServer {
   private brandManager: BrandManager;
   private propertyDb: PropertyDatabase;
   private bansDb: BansDatabase;
+  private catalogEventsDb: CatalogEventsDatabase;
+  private agentProfilesDb: AgentInventoryProfilesDatabase;
   private registryRequestsDb = registryRequestsDb;
 
   constructor() {
@@ -433,7 +437,12 @@ export class HTTPServer {
     this.validator = new AgentValidator();
     this.adagentsManager = new AdAgentsManager();
     this.healthChecker = new HealthChecker();
-    this.crawler = new CrawlerService();
+    this.catalogEventsDb = new CatalogEventsDatabase();
+    this.agentProfilesDb = new AgentInventoryProfilesDatabase();
+    this.crawler = new CrawlerService({
+      eventsDb: this.catalogEventsDb,
+      profilesDb: this.agentProfilesDb,
+    });
     this.capabilityDiscovery = new CapabilityDiscovery();
     this.publisherTracker = new PublisherTracker();
     this.propertiesService = new PropertiesService();
@@ -965,6 +974,8 @@ export class HTTPServer {
       crawler: this.crawler,
       capabilityDiscovery: this.capabilityDiscovery,
       registryRequestsDb,
+      eventsDb: this.catalogEventsDb,
+      profilesDb: this.agentProfilesDb,
       requireAuth,
     });
     this.app.use('/api', registryApiRouter);
