@@ -89,11 +89,11 @@ export function slowResponseTracker(req: Request, res: Response, next: NextFunct
       logger.warn(
         {
           method: req.method,
-          path: req.path,
+          path: req.path.slice(0, 200),
           status: res.statusCode,
           duration_ms: Math.round(durationMs),
         },
-        `Slow API response: ${req.method} ${req.path} took ${(durationMs / 1000).toFixed(1)}s`
+        "Slow API response"
       );
 
       if (durationMs > ALERT_THRESHOLD_MS && shouldAlert(normalizeAlertKey(req.method, req.path))) {

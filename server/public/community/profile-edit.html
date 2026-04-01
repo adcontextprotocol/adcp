@@ -880,7 +880,7 @@
           memberBillingData = await billingResp.json();
           // Re-render member fields with billing data if this is a personal account
           if (isPersonalAccount) {
-            populateMemberFields(memberProfileData, memberBillingData);
+            populateMemberFields(memberProfileData, memberBillingData, false);
           }
         }
       } catch (e) {
@@ -959,7 +959,7 @@
         // Show member directory section for individual accounts and restructure layout
         if (isPersonalAccount) {
           document.getElementById('member-directory-section').style.display = 'block';
-          populateMemberFields(memberProfileData, memberBillingData);
+          populateMemberFields(memberProfileData, memberBillingData, true);
           restructureForIndividual();
         }
 
@@ -980,7 +980,9 @@
       }
     }
 
-    function populateMemberFields(memberProfile, billingData) {
+    // populateFormValues: if true, set checkbox/input values from memberProfile.
+    // False when called from the background billing callback to avoid overwriting user edits.
+    function populateMemberFields(memberProfile, billingData, populateFormValues) {
       const isSubscribed = billingData?.subscription?.status === 'active';
 
       // Reset disabled state so re-calls with updated billing data work correctly
@@ -1016,12 +1018,14 @@
         }
         return;
       }
-      const offerings = memberProfile.offerings || [];
-      document.getElementById('offering-consulting').checked = offerings.includes('consulting');
-      document.getElementById('offering-other').checked = offerings.includes('other');
-      document.getElementById('field-contact-email').value = memberProfile.contact_email || '';
-      document.getElementById('field-contact-phone').value = memberProfile.contact_phone || '';
-      document.getElementById('field-contact-website').value = memberProfile.contact_website || '';
+      if (populateFormValues) {
+        const offerings = memberProfile.offerings || [];
+        document.getElementById('offering-consulting').checked = offerings.includes('consulting');
+        document.getElementById('offering-other').checked = offerings.includes('other');
+        document.getElementById('field-contact-email').value = memberProfile.contact_email || '';
+        document.getElementById('field-contact-phone').value = memberProfile.contact_phone || '';
+        document.getElementById('field-contact-website').value = memberProfile.contact_website || '';
+      }
 
       // Show visibility status
       const statusEl = document.getElementById('member-directory-status');
