@@ -339,11 +339,13 @@ TMP messages are small (200-600 bytes per request/response). At these sizes, ser
 
 ## Transport
 
-- All TMP requests use HTTP/2 POST.
+- Baseline: JSON over HTTP/2 POST. Implementations MUST support this.
 - The router calls each provider's configured endpoint URL.
-- The request type is distinguished by a type field in the message, not by URL path.
+- The request type is distinguished by a `type` field in the message, not by URL path.
 - Connections SHOULD be reused via HTTP/2 multiplexing.
 - The router SHOULD maintain a connection pool to each buyer agent.
+- HTTP/3 (QUIC) is a recommended upgrade path — 0-RTT connection establishment and multiplexing without head-of-line blocking improve fan-out performance.
+- Binary serialization (protobuf, Cap'n Proto) MAY be used for high-throughput deployments by mutual agreement between router and provider.
 
 ## Latency
 
@@ -351,6 +353,15 @@ TMP messages are small (200-600 bytes per request/response). At these sizes, ser
 - The router SHOULD apply adaptive per-agent timeouts based on observed latency percentiles.
 - Agents that exceed the timeout are excluded from the merged response for that request.
 - The router MAY preemptively skip agents whose p95 latency consistently exceeds the budget.
+
+## Caching
+
+Context Match responses are cacheable because the same packages are evaluated for every user on a given placement. The recommended cache key is `{property_rid, placement_id, provider_id}`.
+
+- Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
+- Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
+- Identity Match responses MUST NOT be cached — they are user-specific.
+- When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
 
 ## Conformance Levels
 

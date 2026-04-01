@@ -194,12 +194,12 @@ Intent score is optional. If omitted, the publisher treats all eligible packages
 
 | Metric | Target |
 |---|---|
-| Context Match response | < 50ms p99 |
-| Identity Match response | < 50ms p99 |
+| Agent-side processing | < 30ms p95 |
+| End-to-end (publisher → router → agent → router → publisher) | < 50ms p95 |
 | Availability | 99.9% |
 | Error rate | < 0.1% |
 
-These are p99 targets, not hard cutoffs. The router tracks your latency percentiles and adaptively adjusts your timeout allocation. Consistently slow responses (p95 exceeding the budget) result in the router reducing your allocation or skipping your provider.
+The 30ms agent-side budget accounts for network overhead between the router and your endpoint. The router tracks your latency percentiles and adaptively adjusts your timeout allocation. Consistently slow responses result in the router reducing your allocation or skipping your provider.
 
 ## Measurement
 

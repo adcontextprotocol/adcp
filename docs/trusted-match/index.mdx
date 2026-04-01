@@ -88,11 +88,17 @@ Request from StreamHaus to Sam's buyer agent:
   "placement_id": "article-sidebar",
   "artifact_refs": [
     { "type": "url", "value": "https://streamhaus.example/articles/hiking-gear-2026" }
-  ]
+  ],
+  "context_signals": {
+    "topics": ["596"],
+    "taxonomy_source": "iab",
+    "taxonomy_id": 7,
+    "keywords": ["hiking gear", "outdoor equipment"]
+  }
 }
 ```
 
-The buyer agent already knows which packages are active for this placement — it set them up via `create_media_buy`. No package list needs to travel on the wire.
+The publisher sends both `artifact_refs` (for buyers that crawl content directly) and `context_signals` (pre-classified topics and keywords as a fallback). The buyer agent already knows which packages are active for this placement — it set them up via `create_media_buy`. No package list needs to travel on the wire.
 
 Response from Sam's buyer agent:
 
