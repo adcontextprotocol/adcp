@@ -80,23 +80,22 @@ The retailer sends an Identity Match request with the shopper's loyalty token. T
 }
 ```
 
-The buyer responds with eligibility for every package in the request:
+The buyer responds with the IDs of eligible packages and a TTL:
 
 ```json
 {
   "request_id": "id-retail-c7b2",
-  "eligibility": [
-    { "package_id": "pkg-coffee-sponsored", "eligible": true, "intent_score": 0.91 },
-    { "package_id": "pkg-snacks-display", "eligible": true, "intent_score": 0.44 },
-    { "package_id": "pkg-dairy-promo", "eligible": false },
-    { "package_id": "pkg-bakery-seasonal", "eligible": true, "intent_score": 0.62 },
-    { "package_id": "pkg-frozen-meals", "eligible": true, "intent_score": 0.28 },
-    { "package_id": "pkg-household-q1", "eligible": false }
-  ]
+  "eligible_package_ids": [
+    "pkg-coffee-sponsored",
+    "pkg-snacks-display",
+    "pkg-bakery-seasonal",
+    "pkg-frozen-meals"
+  ],
+  "ttl_sec": 60
 }
 ```
 
-The publisher does not need to know why a user is or isn't eligible — just whether they are, and optionally how strong the intent signal is. Catalog items to display come from the creative manifest in the Context Match offer, not from the Identity Match response.
+The publisher does not need to know why a user is or isn't eligible — just whether they are. Catalog items to display come from the creative manifest in the Context Match offer, not from the Identity Match response.
 
 ## Activation
 
@@ -104,8 +103,8 @@ The retailer joins both responses:
 
 - Accept the coffee sponsored offer
 - Use the inline creative manifest from the offer for catalog items, promotion badges, and rendering assets
-- Check Identity Match for eligibility and intent score
-- The retailer's own recommendation engine integrates the sponsored results alongside organic results, using the intent score to influence ranking
+- Check Identity Match: is the package in `eligible_package_ids`?
+- The retailer's own recommendation engine integrates the sponsored results alongside organic results
 
 ## Example Flow
 
@@ -115,9 +114,8 @@ Shopper searches "cold brew"
   → Buyer: offer with creative manifest (cold brew + iced latte items, promo banner, badges)
 
   → (fuzzed) Retailer sends Identity Match: loyalty token + all active package IDs
-  → Buyer: eligible, intent_score 0.91
+  → Buyer: eligible_package_ids includes pkg-coffee-sponsored, ttl_sec: 60
 
   → Retailer joins: accept offer, render items from creative manifest
-  → Use intent score to rank sponsored results
   → Render sponsored carousel in search results
 ```

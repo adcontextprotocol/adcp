@@ -17,7 +17,7 @@ This is the authoritative reference for the Trusted Match Protocol (TMP). For co
 | **TMP Router** | Infrastructure that fans out TMP requests to buyer agents and merges responses. A single binary that handles both context and identity requests, with structurally separate code paths. |
 | **Offer** | A buyer's response to a context match request. Ranges from simple activation (package_id only) to rich proposals with brand, price, summary, and creative manifest. |
 | **Available package** | A package from an active media buy that is eligible for evaluation on a given placement. Package metadata is synced at media buy time. |
-| **Eligibility matrix** | Per-package, per-user status returned by Identity Match. A boolean `eligible` flag plus optional `intent_score`. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
+| **Eligibility** | List of eligible package IDs returned by Identity Match, plus a TTL caching contract. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
 | **Artifact** | A typed content reference associated with a publisher property (article URL, episode EIDR, show Gracenote ID, music ISRC, product GTIN, conversation turn). Each artifact has a `type` and `value`. Referenced in context match requests. |
 | **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
 
@@ -182,17 +182,12 @@ Returned by the buyer agent. An eligibility matrix for the requested packages.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
-| `eligibility` | List\<PackageEligibility\> | Yes | Per-package eligibility. |
+| `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
+| `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. During this window, the router serves at most one ad per eligible package without re-querying the buyer. |
 
-#### PackageEligibility
+The response is a flat list of eligible package IDs and a TTL. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
 
-The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns a single boolean. The publisher does not need to know why — just whether the user is eligible. This keeps the identity response minimal and avoids leaking behavioral detail across the boundary.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `package_id` | string | Yes | Package being evaluated. |
-| `eligible` | bool | Yes | Whether the user is eligible for this package. |
-| `intent_score` | number | No | Buyer's estimate of user intent for this package, 0.0-1.0. Helps the publisher rank when multiple packages are eligible. |
+The `ttl_sec` field is a caching contract. The buyer is saying: "Cache this for N seconds. During that window, serve at most one ad per eligible package." This eliminates the need for pod-specific or batch-specific protocol semantics — the router has cached eligibility and allocates across whatever placements exist during the TTL window (a CTV ad pod, a web page with 20 slots, a single pre-roll). The buyer doesn't need to know the allocation details.
 
 #### Consent
 
@@ -226,7 +221,7 @@ TMP providers are registered with the router via publisher configuration. The pu
 | `context_match` | bool | Yes | Provider supports Context Match requests. |
 | `identity_match` | bool | No | Provider supports Identity Match requests. Default: false. |
 
-Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match`.
+Providers MAY support `context_match` without `identity_match` (e.g., pure enrichment providers). Providers MUST NOT support `identity_match` without `context_match` — the join requires offers from Context Match to intersect with eligibility from Identity Match. Without offers, eligibility has nothing to activate.
 
 ## Product Integration
 
@@ -359,7 +354,7 @@ Context Match responses are cacheable because the same packages are evaluated fo
 
 - Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
-- Identity Match responses MUST NOT be cached — they are user-specific.
+- Identity Match responses are cached per the `ttl_sec` value in the response. The router serves at most one ad per eligible package within the TTL window. Cache key: `{uid, provider_id}`.
 - When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
 
 ## Conformance Levels

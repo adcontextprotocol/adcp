@@ -16,7 +16,7 @@ This page maps AXE concepts to TMP equivalents and describes how to run both in 
 | AXE | TMP | Notes |
 |---|---|---|
 | `axei` (include segment) | Context Match offer | Package matched the content |
-| `axex` (exclude segment) | Identity Match `eligible: false` | User fails suppression list, audience rule, or buyer-side frequency check |
+| `axex` (exclude segment) | Package absent from `eligible_package_ids` | User fails suppression list, audience rule, or buyer-side frequency check |
 | `axem` (macro data) | Creative manifest | TMP returns structured assets instead of base64-encoded blobs |
 | Orchestrator AXE endpoint | TMP Router | Single binary with two isolated code paths |
 | Prebid Real-Time Data (RTD) module | TMP Prebid module | Replaces vendor-specific RTD modules with a single module |

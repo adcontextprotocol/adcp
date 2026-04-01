@@ -1421,10 +1421,6 @@
           "$ref": "/schemas/tmp/offer-price.json",
           "description": "Lightweight price for variable-priced offers"
         },
-        "package-eligibility": {
-          "$ref": "/schemas/tmp/package-eligibility.json",
-          "description": "Identity-based eligibility determination for a package — boolean eligible plus optional intent score"
-        },
         "error": {
           "$ref": "/schemas/tmp/error.json",
           "description": "Error response from a TMP provider or router when a request cannot be processed"

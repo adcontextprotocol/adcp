@@ -55,7 +55,7 @@ TEE is an upgrade path, not a prerequisite. The protocol works without it. Publi
 - Which user tokens exist (opaque, publisher-scoped)
 - Whether each user is eligible for each of the buyer's active packages
 
-The buyer computes eligibility internally from frequency caps, audience membership, purchase history, or whatever signals they have. They return a boolean `eligible` flag and an optional `intent_score`. The publisher does not learn why a user is or is not eligible.
+The buyer computes eligibility internally from frequency caps, audience membership, purchase history, or whatever signals they have. They return a list of eligible package IDs and a TTL. The publisher does not learn why a user is or is not eligible.
 
 **What the buyer cannot do:**
 

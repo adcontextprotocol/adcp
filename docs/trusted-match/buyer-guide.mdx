@@ -16,7 +16,7 @@ A buyer agent exposes two HTTP endpoints:
 | Endpoint | Receives | Returns |
 |---|---|---|
 | Context Match | Page/content signals, placement, geo | Offers with creative manifests |
-| Identity Match | Opaque user token, all active package IDs | Eligibility per package |
+| Identity Match | Opaque user token, all active package IDs | Eligible package IDs + TTL |
 
 Both endpoints must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
@@ -113,13 +113,12 @@ The router sends you an opaque user token and a list of ALL your active package 
 // Your response
 {
   "request_id": "id-9c4e",
-  "eligibility": [
-    { "package_id": "acme-outdoor-q2", "eligible": true, "intent_score": 0.82 },
-    { "package_id": "acme-winter-clearance", "eligible": false },
-    { "package_id": "acme-loyalty-retarget", "eligible": true, "intent_score": 0.45 }
-  ]
+  "eligible_package_ids": ["acme-outdoor-q2", "acme-loyalty-retarget"],
+  "ttl_sec": 60
 }
 ```
+
+Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `ttl_sec` tells the router how long to cache this response — during that window, the router serves at most one ad per eligible package without re-querying you. Set the TTL based on how quickly your eligibility state changes (frequency caps, audience updates, etc.).
 
 **What you never receive** in Identity Match: page URLs, content topics, keywords, article text, or any content signal. You cannot determine what the user is looking at.
 
@@ -129,7 +128,7 @@ The router sends you an opaque user token and a list of ALL your active package 
 
 You never see the combined result. The publisher's router:
 
-1. Intersects your Context Match offers with your Identity Match eligibility
+1. Intersects your Context Match offers with your Identity Match `eligible_package_ids`
 2. Only activates packages that appear in both responses
 3. Sets ad server targeting key-values for matched packages
 4. The ad server makes the final rendering decision
@@ -143,7 +142,8 @@ Cross-publisher frequency capping is the primary use case for Identity Match. Yo
 - **Count impressions** by user token + package ID
 - **Track recency** — when was the last impression for this token?
 - **Apply caps** from the media buy: `max_impressions` per `window`, minimum `recency` between exposures
-- **Return `eligible: false`** when a cap is hit
+- **Exclude the package** from `eligible_package_ids` when a cap is hit
+- **Set `ttl_sec`** to reflect how long this eligibility is valid — a shorter TTL means the router re-checks sooner, which is useful when a cap is close to being reached
 
 Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
 
@@ -160,7 +160,7 @@ Provider registration is an out-of-band process. After establishing a media buy 
 }
 ```
 
-Context Match is required. Identity Match is optional — you can support Context Match only (contextual targeting without frequency capping) or both. Providers MUST NOT support Identity Match without Context Match.
+Context Match is required. Identity Match is optional — you can support Context Match only (contextual targeting without frequency capping) or both. Providers MUST NOT support Identity Match without Context Match — the publisher joins offers from Context Match with eligibility from Identity Match. Without offers, there's nothing to activate.
 
 ## Error Handling
 
@@ -180,15 +180,16 @@ Common scenarios:
 - **Internal failure**: Return an error response. The router skips your provider and proceeds with other providers.
 - **Timeout**: If you can't respond within the latency budget, the router skips you. No error response needed — the router handles this.
 
-## Intent Score
+## The TTL Caching Contract
 
-The `intent_score` field on Identity Match eligibility is a 0.0–1.0 signal indicating how strongly this user matches the package's target audience. Publishers may use it for ranking when multiple packages are eligible.
+The `ttl_sec` field on Identity Match responses is a caching contract between the buyer and the router:
 
-- **0.0–0.3**: Weak match (user is in a broad audience segment)
-- **0.4–0.7**: Moderate match (user shows relevant behavioral signals)
-- **0.8–1.0**: Strong match (user is in a high-intent segment, e.g., recent site visitor, cart abandoner)
+- The router caches the response for `ttl_sec` seconds, keyed by `{uid, provider_id}`
+- During that window, the router serves **at most one ad per eligible package** without re-querying the buyer
+- This works for any allocation scenario — a single pre-roll, a CTV ad pod, or a web page with multiple ad units
+- The buyer doesn't need to know how many placements exist or how the router allocates
 
-Intent score is optional. If omitted, the publisher treats all eligible packages equally.
+**Choosing a TTL**: Set the TTL based on how quickly your eligibility state changes. If frequency caps reset hourly, a 300-second TTL is reasonable. If a user is close to a cap limit, return a shorter TTL (e.g., 30 seconds) so the router re-checks sooner.
 
 ## Performance Requirements
 

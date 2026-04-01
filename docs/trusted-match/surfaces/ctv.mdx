@@ -113,26 +113,25 @@ The list includes packages from other surfaces (web display, mobile native, audi
 
 ### Identity Match Response
 
-Each buyer agent evaluates the household token against its own data (frequency caps, audience membership, purchase history) and returns a boolean `eligible` flag per package, plus an optional `intent_score`. The buyer does not disclose the reasons — the publisher only needs to know whether the household qualifies.
+Each buyer agent evaluates the household token against its own data (frequency caps, audience membership, purchase history) and returns the IDs of eligible packages plus a TTL. The buyer does not disclose the reasons — the publisher only needs to know whether the household qualifies.
 
 ```json
 {
   "request_id": "id-7k2m-p4w1",
-  "eligibility": [
-    { "package_id": "pkg-sparklean-30s", "eligible": true, "intent_score": 0.7 },
-    { "package_id": "pkg-sparklean-display-web", "eligible": true },
-    { "package_id": "pkg-sparklean-native-mobile", "eligible": false },
-    { "package_id": "pkg-greenleaf-15s", "eligible": true, "intent_score": 0.4 },
-    { "package_id": "pkg-greenleaf-display-web", "eligible": true },
-    { "package_id": "pkg-vaultline-30s", "eligible": true },
-    { "package_id": "pkg-vaultline-audio", "eligible": true },
-    { "package_id": "pkg-driftmoto-15s", "eligible": false },
-    { "package_id": "pkg-driftmoto-30s", "eligible": true }
-  ]
+  "eligible_package_ids": [
+    "pkg-sparklean-30s",
+    "pkg-sparklean-display-web",
+    "pkg-greenleaf-15s",
+    "pkg-greenleaf-display-web",
+    "pkg-vaultline-30s",
+    "pkg-vaultline-audio",
+    "pkg-driftmoto-30s"
+  ],
+  "ttl_sec": 90
 }
 ```
 
-The response covers all packages, not just CTV ones. The publisher extracts only the package IDs relevant to the current pod.
+The response covers all packages, not just CTV ones. The `ttl_sec: 90` covers the duration of the ad break — the router uses cached eligibility to fill all pod slots without re-querying. The publisher extracts only the package IDs relevant to the current pod.
 
 ## Pod Composition
 
@@ -140,7 +139,7 @@ The broadcaster now has two sets of results and composes the pod locally:
 
 1. **Filter by context activation.** Only packages with offers from context match are candidates: Sparklean (30s) and Greenleaf (15s). Vaultline and Driftmoto did not activate.
 2. **Filter by identity eligibility.** Of the context-activated packages, check household eligibility: Sparklean is eligible, Greenleaf is eligible. Both pass.
-3. **Rank eligible offers.** Use `intent_score` if available, combined with the ad server's own priority and pacing rules. Sparklean has higher intent (0.7 vs 0.4).
+3. **Rank eligible offers.** Use the ad server's own priority and pacing rules to rank the eligible offers.
 4. **Apply competitive separation.** The broadcaster's ad server enforces competitive separation rules — two brands in the same advertiser category cannot appear in the same pod. Sparklean (cleaning) and Greenleaf (grocery) are in different categories, so no conflict.
 5. **Assemble the pod.** Fill the available duration. A typical mid-roll pod might be 60 seconds:
    - Slot 1 (30s): Sparklean — context match, household eligible, high intent
@@ -191,10 +190,8 @@ Mid-roll break in "The Night Kitchen" S02E07
 
   Identity Match (after temporal decorrelation delay)
   --> Broadcaster sends request: all 9 active packages across all buyers
-  --> Sparklean: eligible (intent_score 0.7)
-  --> Greenleaf: eligible (intent_score 0.4)
-  --> Vaultline: eligible (but was not activated by context match)
-  --> Driftmoto: pkg-driftmoto-15s not eligible, pkg-driftmoto-30s eligible
+  --> Response: eligible_package_ids includes Sparklean, Greenleaf, Vaultline, Driftmoto-30s
+  --> ttl_sec: 90 (covers the ad break)
 
   Pod Assembly (broadcaster's ad server)
   --> Join: Sparklean and Greenleaf both activated and eligible

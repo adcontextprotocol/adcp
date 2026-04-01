@@ -99,28 +99,26 @@ Key points:
 
 ### Identity Match Response
 
-The buyer evaluates the user against all requested packages and returns a boolean `eligible` flag per package, with an optional `intent_score` to help the publisher rank competing offers.
+The buyer evaluates the user against all requested packages and returns the IDs of eligible packages, plus a TTL defining how long the router can cache this response.
 
 ```json
 {
   "request_id": "id-3k9p-oakwood-d4f1",
-  "eligibility": [
-    { "package_id": "pkg-display-0041", "eligible": true, "intent_score": 0.82 },
-    { "package_id": "pkg-display-0042", "eligible": true },
-    { "package_id": "pkg-display-0043", "eligible": false },
-    { "package_id": "pkg-native-0078", "eligible": true, "intent_score": 0.65 },
-    { "package_id": "pkg-native-0079", "eligible": true },
-    { "package_id": "pkg-display-0103", "eligible": false },
-    { "package_id": "pkg-display-0104", "eligible": true },
-    { "package_id": "pkg-video-0201", "eligible": false }
-  ]
+  "eligible_package_ids": [
+    "pkg-display-0041",
+    "pkg-display-0042",
+    "pkg-native-0078",
+    "pkg-native-0079",
+    "pkg-display-0104"
+  ],
+  "ttl_sec": 60
 }
 ```
 
 Key points:
 
-- `eligible` is a boolean. The buyer computes it from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher.
-- `intent_score` is optional. When present, it helps the publisher choose between multiple eligible packages for the same placement.
+- Only eligible packages are listed. Packages absent from the list (e.g., `pkg-display-0043`, `pkg-display-0103`, `pkg-video-0201`) are ineligible. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher.
+- `ttl_sec` tells the router how long to cache this response. During that window, the router serves at most one ad per eligible package — across all placements on the page — without re-querying the buyer.
 - There is no `frequency_capped`, `audience_match`, or `recency` field. The buyer's internal reasons stay with the buyer.
 
 ## Activation: Joining Context and Identity

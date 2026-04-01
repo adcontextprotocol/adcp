@@ -178,21 +178,20 @@ Seven package IDs — all active packages for this buyer across every placement 
 ```json
 {
   "request_id": "id-mob-e4d782",
-  "eligibility": [
-    { "package_id": "pkg-sports-inter-01", "eligible": true, "intent_score": 0.82 },
-    { "package_id": "pkg-nutrition-inter-02", "eligible": true },
-    { "package_id": "pkg-telecom-inter-03", "eligible": false },
-    { "package_id": "pkg-auto-inter-04", "eligible": true, "intent_score": 0.34 },
-    { "package_id": "pkg-sports-banner-05", "eligible": true, "intent_score": 0.82 },
-    { "package_id": "pkg-nutrition-banner-06", "eligible": false },
-    { "package_id": "pkg-sports-rewarded-07", "eligible": true, "intent_score": 0.71 }
-  ]
+  "eligible_package_ids": [
+    "pkg-sports-inter-01",
+    "pkg-nutrition-inter-02",
+    "pkg-auto-inter-04",
+    "pkg-sports-banner-05",
+    "pkg-sports-rewarded-07"
+  ],
+  "ttl_sec": 60
 }
 ```
 
-Each entry is a boolean `eligible` flag plus an optional `intent_score`. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher. The publisher does not learn why `pkg-telecom-inter-03` is ineligible — just that it is.
+Only eligible packages are listed. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher. The publisher does not learn why `pkg-telecom-inter-03` is ineligible — just that it is absent from the list.
 
-`intent_score` helps the publisher rank when multiple packages are eligible. A score of 0.82 for the sports package suggests higher predicted engagement than 0.34 for the auto package.
+The `ttl_sec` tells the router how long to cache this response. During the TTL window, the router uses cached eligibility to fill interstitials, banners, and rewarded ads without re-querying the buyer.
 
 ## Joining and Activation
 
@@ -226,7 +225,7 @@ If no AdCP package wins, the mediator serves a network ad as usual. TMP ensures 
 
 ### Native Feed Activation
 
-For native ads where the product's `trusted_match` config declares creative as the response type, the app renders directly from the creative manifest returned in the Context Match response. The mediator is not involved. The app intersects the context match offers with identity match eligibility, picks the best eligible offer (using `intent_score` or its own ranking logic), and renders the native card using the `creative_manifest` assets.
+For native ads where the product's `trusted_match` config declares creative as the response type, the app renders directly from the creative manifest returned in the Context Match response. The mediator is not involved. The app intersects the context match offers with `eligible_package_ids` from the identity match, picks the best eligible offer using its own ranking logic, and renders the native card using the `creative_manifest` assets.
 
 ## Rewarded Video
 

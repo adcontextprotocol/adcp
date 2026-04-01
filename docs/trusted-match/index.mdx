@@ -149,25 +149,14 @@ Response from Sam's buyer agent:
 ```json
 {
   "request_id": "id-7c9e1d",
-  "eligibility": [
-    {
-      "package_id": "pkg-outdoor-display",
-      "eligible": false
-    },
-    {
-      "package_id": "pkg-outdoor-ctv",
-      "eligible": false
-    },
-    {
-      "package_id": "pkg-outdoor-audio",
-      "eligible": true,
-      "intent_score": 0.7
-    }
-  ]
+  "eligible_package_ids": ["pkg-outdoor-audio"],
+  "ttl_sec": 60
 }
 ```
 
-The `package_ids` list includes ALL of Sam's active packages — not just those relevant to the current page. Sending only the page-specific subset would let the buyer match package sets across Context Match and Identity Match, breaking the structural separation.
+Only eligible packages are listed — `pkg-outdoor-audio` passes the buyer's checks. The `ttl_sec: 60` tells the router to cache this eligibility for 60 seconds.
+
+The `package_ids` in the request includes ALL of Sam's active packages — not just those relevant to the current page. Sending only the page-specific subset would let the buyer match package sets across Context Match and Identity Match, breaking the structural separation.
 
 </Accordion>
 

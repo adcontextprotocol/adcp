@@ -540,21 +540,8 @@ async function runTests() {
   await validateExample(
     {
       "request_id": "id-7c9e1d",
-      "eligibility": [
-        {
-          "package_id": "pkg-outdoor-display",
-          "eligible": false
-        },
-        {
-          "package_id": "pkg-outdoor-ctv",
-          "eligible": false
-        },
-        {
-          "package_id": "pkg-outdoor-audio",
-          "eligible": true,
-          "intent_score": 0.7
-        }
-      ]
+      "eligible_package_ids": ["pkg-outdoor-audio"],
+      "ttl_sec": 60
     },
     '/schemas/tmp/identity-match-response.json',
     'TMP Identity Match response — web (overview walkthrough)'

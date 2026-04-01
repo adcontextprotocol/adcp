@@ -140,27 +140,14 @@ Note what is absent: no URL, no search query, no content signals, no topic IDs. 
 ```json
 {
   "request_id": "id-9b2c",
-  "eligibility": [
-    {
-      "package_id": "pkg-A",
-      "eligible": true,
-      "intent_score": 0.82
-    },
-    {
-      "package_id": "pkg-B",
-      "eligible": true,
-      "intent_score": 0.65
-    },
-    {
-      "package_id": "pkg-C",
-      "eligible": false,
-      "intent_score": 0.71
-    }
-  ]
+  "eligible_package_ids": ["pkg-A", "pkg-B"],
+  "ttl_sec": 60
 }
 ```
 
-The buyer reports that this user is eligible for Package A (high intent score of 0.82). Package B is eligible too, but Context Match already excluded it for this page. Package C is not eligible for this user. The publisher does not need to know why — frequency capping, audience mismatch, and other disqualification reasons are buyer-internal. The publisher gets a boolean `eligible` and an optional `intent_score` (0.0–1.0), which is enough to make the activation decision.
+The buyer reports that this user is eligible for packages A and B. Package C is absent — the user is not eligible. The publisher does not need to know why — frequency capping, audience mismatch, and other disqualification reasons are buyer-internal.
+
+The `ttl_sec: 60` tells the router: "Cache this for 60 seconds. During that window, serve at most one ad per eligible package." The router uses this cached eligibility to fill whatever placements exist — a single slot, a CTV ad pod, or a page with multiple ad units — without re-querying the buyer.
 
 ### What Identity Match never carries
 
@@ -182,13 +169,13 @@ For each offer from Context Match:
 
   pkg-A:
     Context says: offer for cold brew carousel (creative manifest inline)
-    Identity says: eligible, intent 0.82
+    Identity says: eligible (in eligible_package_ids)
     → Accept the offer. Render using the inline creative manifest.
     → Apply "coffee_enthusiast" segment to ad server targeting.
 
   pkg-C:
     Context says: offer for iced beverage promotion
-    Identity says: NOT eligible
+    Identity says: not eligible (absent from eligible_package_ids)
     → Skip this offer for this user.
 
 Result: Accept Package A.
