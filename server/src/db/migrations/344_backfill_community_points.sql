@@ -25,6 +25,7 @@ SELECT
 FROM working_group_memberships wgm
 WHERE wgm.workos_user_id IS NOT NULL
   AND wgm.status = 'active'
+  AND wgm.workos_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -40,6 +41,7 @@ SELECT
 FROM event_registrations er
 WHERE er.workos_user_id IS NOT NULL
   AND er.registration_status = 'registered'
+  AND er.workos_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -55,6 +57,7 @@ SELECT
 FROM event_registrations er
 WHERE er.workos_user_id IS NOT NULL
   AND er.attended = TRUE
+  AND er.workos_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -70,6 +73,7 @@ SELECT
 FROM perspectives p
 WHERE p.author_user_id IS NOT NULL
   AND p.status = 'published'
+  AND p.author_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -84,6 +88,7 @@ SELECT
   COALESCE(c.responded_at, c.created_at)
 FROM connections c
 WHERE c.status = 'accepted'
+  AND c.requester_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -97,6 +102,7 @@ SELECT
   COALESCE(c.responded_at, c.created_at)
 FROM connections c
 WHERE c.status = 'accepted'
+  AND c.recipient_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -112,6 +118,7 @@ SELECT
 FROM meeting_attendees ma
 WHERE ma.workos_user_id IS NOT NULL
   AND ma.rsvp_status = 'accepted'
+  AND ma.workos_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
@@ -142,6 +149,7 @@ SELECT
   wgts.created_at
 FROM working_group_topic_subscriptions wgts
 WHERE wgts.workos_user_id IS NOT NULL
+  AND wgts.workos_user_id IN (SELECT workos_user_id FROM users)
 ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
 DO NOTHING;
 
