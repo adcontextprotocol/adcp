@@ -20,7 +20,7 @@ import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import { createAsset } from '../db/perspective-asset-db.js';
 import { fetchPathPageviewCounts } from '../services/posthog-query.js';
-import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from '../utils/url-security.js';
+import { safeFetch } from '../utils/url-security.js';
 
 const logger = createLogger('content-routes');
 
@@ -701,41 +701,14 @@ export function createContentRouter(): Router {
         });
       }
 
-      // Validate URL protocol and target host (SSRF protection)
-      const parsedUrl = new URL(url);
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        return res.status(400).json({ error: 'Only http and https URLs are supported' });
-      }
-      await validateFetchUrl(parsedUrl);
-
-      // Reconstruct URL from validated components to break CodeQL taint chain
-      let fetchUrl = sanitizeUrl(parsedUrl);
-
-      // Fetch the page with manual redirect handling for SSRF protection
-      let response = await fetch(fetchUrl, { // CodeQL: fetchUrl is from sanitizeUrl(validated parsedUrl), not user input
+      // SSRF-safe fetch: validates URL, DNS resolution, and all redirect hops
+      const response = await safeFetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
           'Accept': 'text/html,application/xhtml+xml',
         },
-        redirect: 'manual',
+        maxRedirects: 5,
       });
-
-      // Follow up to 5 redirects with SSRF validation on each target
-      for (let i = 0; i < 5 && [301, 302, 303, 307, 308].includes(response.status); i++) {
-        const location = response.headers.get('location');
-        if (!location) {
-          return res.status(400).json({ error: 'Redirect with no Location header' });
-        }
-        const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-        fetchUrl = sanitizeUrl(redirectUrl);
-        response = await fetch(fetchUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
-            'Accept': 'text/html,application/xhtml+xml',
-          },
-          redirect: 'manual',
-        });
-      }
 
       if (!response.ok) {
         throw new Error(`Failed to fetch URL: ${response.status}`);

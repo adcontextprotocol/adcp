@@ -98,3 +98,34 @@ export async function validateRedirectTarget(
 export function sanitizeUrl(url: URL): string {
   return `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`;
 }
+
+/**
+ * SSRF-safe fetch: validates the URL and all redirect hops against private IP ranges,
+ * then returns the response. Encapsulates the full validation + fetch cycle so that
+ * callers receive a Response with no tainted URL flowing to fetch().
+ */
+export async function safeFetch(
+  url: string,
+  options?: { headers?: Record<string, string>; maxRedirects?: number },
+): Promise<Response> {
+  const parsedUrl = new URL(url);
+  await validateFetchUrl(parsedUrl);
+
+  const headers = options?.headers ?? {};
+  const maxRedirects = options?.maxRedirects ?? 5;
+
+  // Construct a clean URL string from validated components
+  const safeUrl = `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname}${parsedUrl.search}`;
+
+  let response = await fetch(safeUrl, { headers, redirect: 'manual' });
+
+  for (let i = 0; i < maxRedirects && [301, 302, 303, 307, 308].includes(response.status); i++) {
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Redirect with no Location header');
+    const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+    const safeRedirectUrl = `${redirectUrl.protocol}//${redirectUrl.host}${redirectUrl.pathname}${redirectUrl.search}`;
+    response = await fetch(safeRedirectUrl, { headers, redirect: 'manual' });
+  }
+
+  return response;
+}
