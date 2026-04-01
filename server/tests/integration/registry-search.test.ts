@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { AgentInventoryProfilesDatabase, type ProfileUpsertInput } from '../../src/db/agent-inventory-profiles-db.js';
 import type { Pool } from 'pg';

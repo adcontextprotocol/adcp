@@ -1,7 +1,4 @@
 import { query } from './client.js';
-import { createLogger } from '../logger.js';
-
-const logger = createLogger('agent-inventory-profiles-db');
 
 const MAX_SEARCH_LIMIT = 200;
 const DEFAULT_SEARCH_LIMIT = 50;

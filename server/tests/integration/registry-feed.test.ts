@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { CatalogEventsDatabase, type WriteEventInput } from '../../src/db/catalog-events-db.js';
 import type { Pool } from 'pg';

@@ -165,6 +165,10 @@ export class FeedPoller {
   }
 
   private async saveCursor(cursor: string): Promise<void> {
+    // Validate cursor is a UUID before writing to disk (defense against untrusted API data)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cursor)) {
+      return;
+    }
     try {
       const { writeFile } = await import('node:fs/promises');
       await writeFile(this.config.cursorPath!, cursor, 'utf-8');
