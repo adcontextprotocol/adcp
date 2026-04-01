@@ -105,11 +105,14 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
     : '';
   const kind = ctx.threw ? 'Tool exception' : 'Tool error';
 
-  const sensitiveKeys = new Set(['password', 'token', 'secret', 'api_key']);
+  const sensitivePattern = /password|token|secret|key|auth|credential/i;
   const inputLine = ctx.toolInput
-    ? `*Input:* \`${JSON.stringify(ctx.toolInput, (key, val) =>
-        sensitiveKeys.has(key) ? '[redacted]' : val
-      ).substring(0, 300)}\``
+    ? `*Input:* \`${(() => {
+        const raw = JSON.stringify(ctx.toolInput, (key, val) =>
+          key && sensitivePattern.test(key) ? '[redacted]' : val
+        );
+        return raw.length > 300 ? raw.substring(0, 300) + '...' : raw;
+      })()}\``
     : '';
 
   const lines = [

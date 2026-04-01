@@ -1850,8 +1850,12 @@ export function createCertificationToolHandlers(
         // Claude sometimes sends the module ID instead of the attempt UUID
         logger.warn({ attemptId, userId }, 'complete_certification_exam received module ID instead of UUID, resolving');
         const trackPrefix = attemptId.replace(/[0-9]+$/, '').toUpperCase();
+        if (!/^[A-Z]{1,2}$/.test(trackPrefix)) {
+          return `Invalid attempt_id "${attemptId}". Provide the UUID returned by start_certification_exam.`;
+        }
         attempt = await certDb.getActiveAttempt(userId, trackPrefix);
         if (attempt && attempt.module_id?.toUpperCase() !== attemptId.toUpperCase()) {
+          logger.warn({ attemptId, attemptModuleId: attempt.module_id }, 'Active attempt module_id does not match, discarding');
           attempt = null;
         }
       }

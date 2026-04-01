@@ -94,6 +94,23 @@ describe('error-notifier', () => {
       expect(text).toContain('"attempt_id":"S1"');
       expect(text).toContain('Bryan (web)');
     });
+
+    it('redacts sensitive keys from tool input', async () => {
+      const name = uniqueName('tool_redact');
+      notifyToolError({
+        toolName: name,
+        errorMessage: 'auth failure',
+        toolInput: { attempt_id: 'S1', token: 'sk-secret-value', api_key: 'key123' },
+        threw: true,
+      });
+
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalled());
+
+      const text = mockSendChannelMessage.mock.calls[0][1].text;
+      expect(text).toContain('[redacted]');
+      expect(text).not.toContain('sk-secret-value');
+      expect(text).not.toContain('key123');
+    });
   });
 
   describe('notifySystemError', () => {
