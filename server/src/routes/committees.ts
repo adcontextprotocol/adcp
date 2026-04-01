@@ -999,9 +999,20 @@ export function createCommitteeRouters(): {
       const { getUserSeatType } = await import('../db/organization-db.js');
       const seatType = await getUserSeatType(user.id);
       if (seatType === 'community_only') {
+        // Look up user's org for seat request capability
+        const orgResult = await getPool().query<{ workos_organization_id: string }>(
+          'SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1',
+          [user.id]
+        );
+        const userOrgId = orgResult.rows[0]?.workos_organization_id;
+        const resourceType = group.committee_type === 'council' ? 'council' : 'working_group';
+
         return res.status(403).json({
           error: 'Contributor access required',
           message: 'Working group membership requires a contributor seat. Ask your org admin to upgrade your access.',
+          can_request: !!userOrgId,
+          request_url: userOrgId ? `/api/organizations/${userOrgId}/seat-requests` : undefined,
+          request_body: userOrgId ? { resource_type: resourceType, resource_id: group.id, resource_name: group.name } : undefined,
         });
       }
 
