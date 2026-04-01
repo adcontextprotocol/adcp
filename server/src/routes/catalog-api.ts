@@ -235,7 +235,9 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
   // Admin endpoint: one-shot import from GCS CSVs into catalog tables.
   // Pulls CSVs directly from public GCS bucket, no local filesystem needed.
 
-  const adminMiddleware = adminAuthMiddleware ? [adminAuthMiddleware] : authMiddleware ? [authMiddleware] : [];
+  const adminMiddleware = adminAuthMiddleware
+    ? (authMiddleware ? [authMiddleware, adminAuthMiddleware] : [adminAuthMiddleware])
+    : authMiddleware ? [authMiddleware] : [];
 
   router.post('/catalog/seed/gcs', async (req, res, next) => {
     if (!adminAuthMiddleware && !authMiddleware) {
