@@ -29,6 +29,58 @@
     .page-header .subtitle {
       color: var(--color-text-secondary);
     }
+    .content-playbook {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary-50) 88%, white) 0%, white 100%);
+      border: var(--border-1) solid color-mix(in srgb, var(--color-primary-200) 60%, var(--color-border));
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      margin-bottom: var(--space-6);
+    }
+    .content-playbook-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+      flex-wrap: wrap;
+    }
+    .content-playbook-header h2 {
+      font-size: var(--text-lg);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+    .content-playbook-header p {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      max-width: 68ch;
+    }
+    .content-playbook-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+    .content-playbook-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-4);
+    }
+    .content-playbook-step {
+      background: rgba(255, 255, 255, 0.88);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+    }
+    .content-playbook-step strong {
+      display: block;
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+      font-size: var(--text-sm);
+    }
+    .content-playbook-step p {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+    }
     .tabs {
       display: flex;
       gap: var(--space-1);
@@ -143,6 +195,8 @@
       gap: var(--space-2);
       flex-shrink: 0;
       flex-wrap: wrap;
+      justify-content: flex-end;
+      max-width: 230px;
     }
     .badge {
       display: inline-block;
@@ -192,6 +246,29 @@
     }
     .btn-outline:hover {
       background: var(--color-gray-100);
+    }
+    .content-helper-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+    .helper-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1.5) var(--space-3);
+      border-radius: var(--radius-full);
+      border: var(--border-1) solid var(--color-border);
+      background: white;
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .helper-link:hover {
+      color: var(--color-brand);
+      border-color: color-mix(in srgb, var(--color-brand) 30%, var(--color-border));
     }
     .empty-state {
       text-align: center;
@@ -285,6 +362,9 @@
     }
     @media (max-width: 640px) {
       .form-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 900px) {
+      .content-playbook-grid { grid-template-columns: 1fr; }
     }
     .modal-buttons {
       display: flex;
@@ -453,7 +533,34 @@
     <div class="container">
       <div class="page-header">
         <h1>My Content</h1>
-        <p class="subtitle">Create, manage, and review content for AgenticAdvertising.org</p>
+        <p class="subtitle">Create, publish, and promote your content for AgenticAdvertising.org</p>
+      </div>
+
+      <div class="content-playbook">
+        <div class="content-playbook-header">
+          <div>
+            <h2>Publishing workflow</h2>
+            <p>Use this page as your publishing workspace. Start a perspective or external link, route it into the right collection, then turn published pieces into LinkedIn-first visibility.</p>
+          </div>
+          <div class="content-playbook-actions">
+            <a href="/chat?prompt=Help%20me%20brainstorm%20a%20perspective%20or%20article%20idea%20for%20AgenticAdvertising.org%20based%20on%20my%20current%20work." class="btn btn-secondary">Brainstorm with Addie</a>
+            <a href="/community/profile/edit" class="btn btn-outline">Edit social links</a>
+          </div>
+        </div>
+        <div class="content-playbook-grid">
+          <div class="content-playbook-step">
+            <strong>1. Draft a clear point of view</strong>
+            <p>Start with a specific perspective, announcement, or external link that helps other members understand what you are learning or building.</p>
+          </div>
+          <div class="content-playbook-step">
+            <strong>2. Use the right review path</strong>
+            <p>Some collections publish directly, others require review. This workflow handles both without forcing you to guess.</p>
+          </div>
+          <div class="content-playbook-step">
+            <strong>3. Promote the finished piece</strong>
+            <p>Once something is published, use the share and post-drafting actions below to turn one article into broader visibility.</p>
+          </div>
+        </div>
       </div>
 
       <!-- Alert banner for pending reviews -->
@@ -883,6 +990,16 @@
       const typeBadge = `<span class="badge badge-${item.content_type}">${item.content_type}</span>`;
       const collectionName = item.collection?.committee_name || item.collection?.name || item.collection?.committee_slug || 'Unknown';
       const collectionBadge = `<span class="badge badge-committee">${collectionName}</span>`;
+      const publishedUrl = item.slug ? `${window.location.origin}/perspectives/${item.slug}` : null;
+      const linkedInShareUrl = publishedUrl
+        ? `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(publishedUrl)}`
+        : null;
+      const xShareUrl = publishedUrl
+        ? `https://twitter.com/intent/tweet?url=${encodeURIComponent(publishedUrl)}&text=${encodeURIComponent(`I just published a new perspective on AgenticAdvertising.org: ${item.title}`)}`
+        : null;
+      const addieSocialPrompt = publishedUrl
+        ? `/chat?prompt=${encodeURIComponent(`Help me turn my published article "${item.title}" into a strong LinkedIn post first, then suggest a shorter optional X version. Here is the article URL: ${publishedUrl}`)}`
+        : `/chat?prompt=${encodeURIComponent(`Help me tighten the argument and title for my draft "${item.title}".`)}`;
 
       const relationships = (item.relationships || []).map(r =>
         `<span class="badge badge-${r}">${r}</span>`
@@ -899,6 +1016,8 @@
       const rejectionInfo = item.status === 'rejected' && item.rejection_reason
         ? `<div class="rejection-reason"><strong>Rejection reason:</strong> ${escapeHtml(item.rejection_reason)}</div>`
         : '';
+      const pageviews30dValue = Number(item.performance?.pageviews_last_30d || 0);
+      const pageviews30d = pageviews30dValue > 0 ? formatMetricCount(pageviews30dValue) : null;
 
       let actions = '';
       if (isPendingView) {
@@ -910,8 +1029,20 @@
         actions = `
           ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${item.id}')">Edit</button>` : ''}
           ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${item.id}')">View</button>` : ''}
+          ${item.status === 'published' && linkedInShareUrl ? `<a class="btn btn-small btn-outline" href="${linkedInShareUrl}" target="_blank" rel="noopener">Share on LinkedIn</a>` : ''}
+          <a class="btn btn-small btn-outline" href="${addieSocialPrompt}">${item.status === 'published' ? 'Draft LinkedIn post' : 'Sharpen with Addie'}</a>
+          ${item.status === 'published' && xShareUrl ? `<a class="btn btn-small btn-outline" href="${xShareUrl}" target="_blank" rel="noopener">Optional: X</a>` : ''}
         `;
       }
+
+      const helperLinks = !isPendingView ? `
+        <div class="content-helper-links">
+          ${item.status === 'published' && publishedUrl ? `<a class="helper-link" href="${publishedUrl}" target="_blank" rel="noopener">Open live article ↗</a>` : ''}
+          ${item.status === 'published' && linkedInShareUrl ? `<a class="helper-link" href="${linkedInShareUrl}" target="_blank" rel="noopener">Share on LinkedIn ↗</a>` : ''}
+          ${item.status === 'published' ? `<a class="helper-link" href="${addieSocialPrompt}">Draft LinkedIn-first copy</a>` : ''}
+          ${item.status === 'published' && xShareUrl ? `<a class="helper-link" href="${xShareUrl}" target="_blank" rel="noopener">Optional: share on X ↗</a>` : ''}
+        </div>
+      ` : '';
 
       return `
         <div class="content-item ${item.status === 'pending_review' ? 'pending' : ''}">
@@ -922,11 +1053,13 @@
               ${typeBadge}
               ${collectionBadge}
               ${!isPendingView ? relationships : ''}
+              ${item.status === 'published' && pageviews30d ? `<span>${pageviews30d} pageviews (30d)</span>` : ''}
             </div>
             ${authors ? `<div class="authors-list">${authors}</div>` : ''}
             ${item.excerpt ? `<div class="content-excerpt">${escapeHtml(item.excerpt)}</div>` : ''}
             ${proposerInfo}
             ${rejectionInfo}
+            ${helperLinks}
           </div>
           <div class="content-actions">
             ${actions}
@@ -1248,6 +1381,13 @@
         month: 'short',
         day: 'numeric'
       });
+    }
+
+    function formatMetricCount(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+      return new Intl.NumberFormat('en-US', {
+        notation: value >= 1000 ? 'compact' : 'standard'
+      }).format(value);
     }
 
     function escapeHtml(text) {

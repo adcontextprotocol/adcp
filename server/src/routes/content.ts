@@ -17,6 +17,7 @@ import { sendChannelMessage } from '../slack/client.js';
 import { notifyPublishedPost, sendSocialAmplificationDM } from '../notifications/slack.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
+import { fetchPathPageviewCounts } from '../services/posthog-query.js';
 
 const logger = createLogger('content-routes');
 
@@ -965,7 +966,26 @@ export function createMyContentRouter(): Router {
         return item.relationships.includes(relationship);
       });
 
-      res.json({ items });
+      const publishedPaths = items
+        .filter(item => item.status === 'published' && typeof item.slug === 'string' && item.slug.length > 0)
+        .map(item => `/perspectives/${item.slug}`);
+
+      const pageviewCounts = await fetchPathPageviewCounts(publishedPaths, 30);
+
+      const itemsWithPerformance = items.map(item => {
+        if (item.status !== 'published' || !item.slug || !pageviewCounts) {
+          return item;
+        }
+
+        return {
+          ...item,
+          performance: {
+            pageviews_last_30d: pageviewCounts[`/perspectives/${item.slug}`] ?? 0,
+          },
+        };
+      });
+
+      res.json({ items: itemsWithPerformance });
     } catch (error) {
       logger.error({ err: error }, 'GET /api/me/content error');
       res.status(500).json({

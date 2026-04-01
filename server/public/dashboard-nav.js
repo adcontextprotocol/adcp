@@ -15,7 +15,7 @@
   async function checkProfileInfoRequired() {
     // Skip if already on main dashboard (it handles its own modal)
     const currentPath = window.location.pathname;
-    if (currentPath === '/dashboard' || currentPath === '/dashboard/' || currentPath.startsWith('/dashboard/organization')) return;
+    if (currentPath === '/dashboard' || currentPath === '/dashboard/' || currentPath.startsWith('/dashboard/organization') || currentPath.startsWith('/organization')) return;
 
     // Skip if we already checked this session
     if (sessionStorage.getItem('profileInfoChecked')) return;
@@ -64,8 +64,9 @@
   // Navigation configuration
   // When on dashboard page, use anchor links; otherwise use full page links
   const isDashboardPage = window.location.pathname === '/dashboard' || window.location.pathname === '/dashboard/';
-  const isOrgPage = window.location.pathname === '/dashboard/organization' || window.location.pathname === '/dashboard/organization/';
-  const isAnchorPage = isDashboardPage || isOrgPage;
+  const isOrgPage = window.location.pathname === '/dashboard/organization' || window.location.pathname === '/dashboard/organization/' || window.location.pathname === '/organization' || window.location.pathname === '/organization/';
+  const isAccountPage = window.location.pathname === '/account' || window.location.pathname === '/account/';
+  const isAnchorPage = isDashboardPage || isOrgPage || isAccountPage;
 
   const NAV_CONFIG = {
     logo: isOrgPage ? 'My organization' : 'Dashboard',
@@ -73,22 +74,32 @@
       {
         label: 'Organization',
         items: [
-          { href: isOrgPage ? '#membership' : '/dashboard/organization#membership', label: 'Membership', icon: '⭐', anchor: isOrgPage ? 'membership' : null },
-          { href: isOrgPage ? '#team' : '/dashboard/organization#team', label: 'Team', icon: '👥', anchor: isOrgPage ? 'team' : null },
-          { href: isOrgPage ? '#directory' : '/dashboard/organization#directory', label: 'Directory listing', icon: '🏢', anchor: isOrgPage ? 'directory' : null },
-          { href: isOrgPage ? '#agents' : '/dashboard/organization#agents', label: 'Agents', icon: '🤖', anchor: isOrgPage ? 'agents' : null },
+          { href: isOrgPage ? '#membership' : '/organization#membership', label: 'Membership', icon: '⭐', anchor: isOrgPage ? 'membership' : null },
+          { href: isOrgPage ? '#team' : '/organization#team', label: 'Team', icon: '👥', anchor: isOrgPage ? 'team' : null },
+          { href: isOrgPage ? '#directory' : '/organization#directory', label: 'Directory listing', icon: '🏢', anchor: isOrgPage ? 'directory' : null },
+          { href: isOrgPage ? '#agents' : '/organization#agents', label: 'Agents', icon: '🤖', anchor: isOrgPage ? 'agents' : null },
         ]
       },
       {
         label: 'Account',
         items: [
-          { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
-          { href: '/dashboard/api-keys', label: 'API keys', icon: '🔑' },
+          { href: '/account', label: 'Account', icon: '⚙️' },
         ]
       }
     ],
     backLink: { href: 'https://agenticadvertising.org', label: '← Back to AAO' }
   };
+
+  const ACCOUNT_NAV_SECTIONS = [
+    {
+      label: 'Account',
+      items: [
+        { href: isAccountPage ? '#profileSection' : '/account#profileSection', label: 'Profile', icon: '👤', anchor: isAccountPage ? 'profileSection' : null },
+        { href: isAccountPage ? '#linked-emails' : '/account#linked-emails', label: 'Linked emails', icon: '✉️', anchor: isAccountPage ? 'linked-emails' : null },
+        { href: isAccountPage ? '#notifications' : '/account#notifications', label: 'Notifications', icon: '🔔', anchor: isAccountPage ? 'notifications' : null },
+      ]
+    }
+  ];
 
   // Sidebar styles
   // Note: top nav is ~60px, so sidebar starts below it
@@ -543,12 +554,24 @@
       currentOrgName = 'Organization',
       isPersonal = false,
       isSubscribed = false,
-      orgId = null
+      orgId = null,
+      orgRole = 'member',
+      accountOnly = false
     } = options;
 
     const currentHash = window.location.hash;
 
-    const sectionsHTML = NAV_CONFIG.sections.map(section => {
+    const canManageOrg = orgRole === 'owner' || orgRole === 'admin';
+
+    const navSections = accountOnly
+      ? ACCOUNT_NAV_SECTIONS
+      : NAV_CONFIG.sections;
+
+    const sectionsHTML = navSections.map(section => {
+      if (section.label === 'Organization' && !canManageOrg) {
+        return '';
+      }
+
       const itemsHTML = section.items.map(item => {
         // Hide Team, Directory listing, and Agents for personal workspaces
         if (isPersonal && (item.label === 'Team' || item.label === 'Directory listing' || item.label === 'Agents')) {
@@ -564,7 +587,7 @@
         let isActive = false;
         if (itemAnchor && isAnchorPage) {
           // On dashboard with anchor links - check if hash matches or default to profile
-          const defaultAnchor = isOrgPage ? 'membership' : 'profile';
+          const defaultAnchor = isOrgPage ? 'membership' : isAccountPage ? 'profileSection' : 'profile';
           isActive = currentHash === `#${itemAnchor}` ||
                     (itemAnchor === defaultAnchor && (!currentHash || currentHash === ''));
         } else if (!itemAnchor) {
@@ -580,10 +603,12 @@
         let href = itemHref;
         if (orgId) {
           if (itemAnchor && !isAnchorPage) {
-            // e.g., /dashboard#profile -> /dashboard?org=xyz#profile
-            href = `/dashboard?org=${orgId}#${itemAnchor}`;
+            // e.g., /organization#membership -> /organization?org=xyz#membership
+            const [baseHref, hashFragment] = itemHref.split('#');
+            const targetHash = hashFragment || itemAnchor;
+            href = `${baseHref}?org=${orgId}#${targetHash}`;
           } else if (!itemAnchor && !href.includes('?org=')) {
-            // e.g., /dashboard/settings -> /dashboard/settings?org=xyz
+            // e.g., /account -> /account?org=xyz
             // Handle hrefs that contain a hash fragment
             if (href.includes('#')) {
               href = href.replace('#', `?org=${orgId}#`);
@@ -610,7 +635,7 @@
     }).join('');
 
     // Org switcher for users with multiple orgs
-    const orgSwitcherHTML = showOrgSwitcher ? `
+    const orgSwitcherHTML = showOrgSwitcher && !accountOnly ? `
       <div class="dashboard-org-switcher">
         <button class="dashboard-org-btn" onclick="DashboardNav.toggleOrgDropdown()">
           <span class="dashboard-org-name" id="dashboardOrgName">${escapeHtml(currentOrgName)}</span>
@@ -816,7 +841,7 @@
 
     navItems.forEach(item => {
       const anchor = item.getAttribute('data-anchor');
-      const defaultAnchor = isOrgPage ? 'membership' : 'profile';
+      const defaultAnchor = isOrgPage ? 'membership' : isAccountPage ? 'profileSection' : 'profile';
       const isActive = currentHash === `#${anchor}` ||
                       (anchor === defaultAnchor && (!currentHash || currentHash === ''));
       item.classList.toggle('active', isActive);
@@ -830,7 +855,7 @@
   if (isAnchorPage) {
     // Set up intersection observer for sections to update nav on scroll
     document.addEventListener('DOMContentLoaded', () => {
-      const sections = document.querySelectorAll('.dashboard-section[id]');
+      const sections = document.querySelectorAll('.dashboard-section[id], .settings-section[id]');
       if (sections.length === 0) return;
 
       const observer = new IntersectionObserver((entries) => {

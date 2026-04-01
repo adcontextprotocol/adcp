@@ -420,7 +420,7 @@ function renderConfirmPage(res: Response, opts: { targetEmail: string; hasMerge:
     ${mergeWarning}
     <form method="POST" action="/verify-email-link" class="actions">
       <input type="hidden" name="token" value="${escapeHtml(opts.token)}">
-      <a href="/dashboard/settings" class="btn btn-secondary">Cancel</a>
+      <a href="/account" class="btn btn-secondary">Cancel</a>
       <button type="submit" class="btn btn-primary">Confirm</button>
     </form>
   </div>
@@ -477,7 +477,7 @@ function renderVerifyPage(res: Response, opts: { success: boolean; message: stri
     <h1>${escapeHtml(title)}</h1>
     <p>${opts.message}</p>
     <div class="actions">
-      <a href="/dashboard/settings">Go to Dashboard Settings</a>
+      <a href="/account">Go to Account</a>
     </div>
   </div>
 </body>

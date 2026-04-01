@@ -1596,17 +1596,37 @@ export class HTTPServer {
       }
     };
 
-    this.app.get('/dashboard/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
-    this.app.get('/dashboard/team', (req, res) => serveDashboardPage(req, res, 'team.html'));
-    this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
-    this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
+    this.app.get('/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
+    this.app.get('/account', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
+    this.app.get('/dashboard/organization', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}`);
+    });
+    this.app.get('/dashboard/team', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}#team`);
+    });
+    this.app.get('/dashboard/settings', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/account${query}`);
+    });
+    this.app.get('/dashboard/membership', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}#membership`);
+    });
     // Redirect old billing path to new membership path
     this.app.get('/dashboard/billing', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/dashboard/membership${query}`);
+      res.redirect(301, `/organization${query}#membership`);
     });
-    this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
-    this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
+    this.app.get('/dashboard/emails', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/account${query}#notifications`);
+    });
+    this.app.get('/dashboard/api-keys', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/organization${query}#agents`);
+    });
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // My Content - unified CMS for all authenticated users
@@ -1956,8 +1976,8 @@ export class HTTPServer {
     });
 
     // Member hub
-    this.app.get("/member-hub", (req, res) => {
-      res.redirect(302, '/dashboard/organization');
+    this.app.get("/member-hub", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'membership/hub.html');
     });
 
     // Persona assessment
@@ -4932,18 +4952,25 @@ Disallow: /api/admin/
       try {
         const pool = getPool();
         const authored = req.query.authored === 'true';
+        const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 100);
         const result = await pool.query(
           `SELECT
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
             p.external_url, p.external_site_name,
             p.author_name, p.author_title, p.featured_image_url,
+            u.slug as author_slug,
+            u.avatar_url as author_avatar_url,
+            u.headline as author_headline,
             p.published_at, p.display_order, p.tags, p.like_count
           FROM perspectives p
+          LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.status = 'published'
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
             ${authored ? "AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))" : ''}
-          ORDER BY p.published_at DESC NULLS LAST`
+          ORDER BY p.published_at DESC NULLS LAST
+          LIMIT $1`,
+          [limit]
         );
 
         res.json(result.rows);
@@ -4965,8 +4992,12 @@ Disallow: /api/admin/
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
             p.content, p.external_url, p.external_site_name,
             p.author_name, p.author_title, p.featured_image_url,
+            u.slug as author_slug,
+            u.avatar_url as author_avatar_url,
+            u.headline as author_headline,
             p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
           FROM perspectives p
+          LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.slug = $1 AND p.status = 'published'
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
@@ -5213,7 +5244,7 @@ Disallow: /api/admin/
       try {
         // Dev mode: show dev login page
         if (isDevModeEnabled()) {
-          const returnTo = req.query.return_to as string || '/dashboard/organization';
+          const returnTo = req.query.return_to as string || '/member-hub';
           return res.redirect(`/dev-login.html?return_to=${encodeURIComponent(returnTo)}`);
         }
 
@@ -5305,7 +5336,7 @@ Disallow: /api/admin/
       }
 
       // Validate return_to is a relative path to prevent open redirect
-      let safeReturnTo = '/dashboard/organization';
+      let safeReturnTo = '/member-hub';
       if (return_to && typeof return_to === 'string' && return_to.startsWith('/') && !return_to.startsWith('//')) {
         safeReturnTo = return_to;
       }
@@ -5564,7 +5595,7 @@ Disallow: /api/admin/
         }
 
         // Parse return_to, slack_user_id, and native mode from state
-        let returnTo = '/dashboard/organization';
+        let returnTo = '/member-hub';
         let slackUserIdToLink: string | undefined;
         let isNativeMode = false;
         let nativeRedirectUri = 'addie://auth/callback';
