@@ -48,6 +48,7 @@ export interface DigestContent {
   newMembers: DigestNewMember[];
   conversations: DigestConversation[];
   workingGroups: DigestWorkingGroup[];
+  perspectives?: DigestPerspective[];
   socialPostIdeas?: DigestSocialPostIdea[];
   spotlightAction?: DigestSpotlightAction;
   editorsNote?: string;
@@ -304,6 +305,7 @@ export async function getRecentMemberPerspectivesForDigest(
      LEFT JOIN working_groups wg ON wg.id = p.working_group_id
      WHERE p.status = 'published'
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
+       AND (p.content_origin IS NULL OR p.content_origin != 'official')
        AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
        AND p.published_at IS NOT NULL
        AND p.published_at > NOW() - make_interval(days => $1)

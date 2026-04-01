@@ -101,6 +101,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'list_perspectives',
       'create_working_group_post',
       'propose_content',
+      'attach_content_asset',
       'get_my_content',
       'bookmark_resource',
       'set_outreach_preference',

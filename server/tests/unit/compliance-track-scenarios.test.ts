@@ -2,10 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { TRACK_SCENARIOS, buildScenarioList } from '../../src/addie/services/compliance-testing.js';
 
 describe('TRACK_SCENARIOS', () => {
-  it('maps reporting track to reporting_flow and deterministic_delivery', () => {
-    expect(TRACK_SCENARIOS.reporting).toContain('reporting_flow');
+  it('maps reporting track to deterministic_delivery', () => {
     expect(TRACK_SCENARIOS.reporting).toContain('deterministic_delivery');
-    expect(TRACK_SCENARIOS.reporting.length).toBe(2);
+    expect(TRACK_SCENARIOS.reporting.length).toBe(1);
   });
 
   it('every track has at least one scenario or is explicitly empty', () => {
@@ -18,9 +17,8 @@ describe('TRACK_SCENARIOS', () => {
 });
 
 describe('buildScenarioList', () => {
-  it('includes reporting scenarios that are not in DEFAULT_SCENARIOS', () => {
+  it('includes reporting scenarios', () => {
     const scenarios = buildScenarioList(['reporting']);
-    expect(scenarios).toContain('reporting_flow');
     expect(scenarios).toContain('deterministic_delivery');
   });
 

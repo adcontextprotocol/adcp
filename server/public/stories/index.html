@@ -367,11 +367,22 @@
     </div>
   </section>
 
-  <!-- Perspectives -->
+  <!-- Reports & Research (official AAO content) -->
+  <section class="content-section" id="research-section">
+    <div class="content-inner">
+      <div class="section-header">
+        <h2 class="section-heading">Reports &amp; Research</h2>
+      </div>
+      <p class="section-desc">Official reports, white papers, and analysis from the Agentic Advertising Organization.</p>
+      <div class="card-grid" id="research-grid"></div>
+    </div>
+  </section>
+
+  <!-- Member Perspectives -->
   <section class="content-section" id="perspectives-section">
     <div class="content-inner">
       <div class="section-header">
-        <h2 class="section-heading">Perspectives</h2>
+        <h2 class="section-heading">Member Perspectives</h2>
       </div>
       <p class="section-desc">Analysis and commentary from the people building agentic advertising.</p>
       <div class="carousel-track" id="perspectives-carousel"></div>
@@ -491,7 +502,17 @@
         });
         document.getElementById('stories-section').hidden = storiesVisible === 0;
 
-        // Filter perspectives
+        // Filter research (official content)
+        var researchVisible = 0;
+        document.querySelectorAll('#research-grid .card').forEach(function(card) {
+          var show = matchesTopic(card.getAttribute('data-topics'), topic);
+          card.hidden = !show;
+          if (show) researchVisible++;
+        });
+        var researchSection = document.getElementById('research-section');
+        if (researchSection) researchSection.hidden = researchVisible === 0;
+
+        // Filter member perspectives
         var perspectivesVisible = 0;
         document.querySelectorAll('#perspectives-carousel .carousel-card').forEach(function(card) {
           var show = matchesTopic(card.getAttribute('data-topics'), topic);
@@ -537,80 +558,97 @@
         });
       }
 
-      // Load perspectives
+      // Build a perspective card (shared between research grid and member carousel)
+      function buildPerspectiveCard(item, className) {
+        var topics = (item.tags || []).join(',');
+        registerTopics(topics);
+
+        var card = document.createElement('a');
+        card.href = item.external_url || ('/perspectives/' + item.slug);
+        card.className = className;
+        card.setAttribute('data-topics', topics);
+        if (item.external_url) {
+          card.target = '_blank';
+          card.rel = 'noopener';
+        }
+
+        var imageUrl = item.featured_image_url
+          || '/api/perspectives/' + item.slug + '/card.png';
+        var cover = document.createElement('img');
+        cover.src = imageUrl;
+        cover.alt = '';
+        cover.className = 'card-cover';
+        cover.loading = 'lazy';
+        cover.onerror = function() { this.style.display = 'none'; };
+        card.appendChild(cover);
+
+        var body = document.createElement('div');
+        body.className = 'card-body';
+
+        var badge = document.createElement('span');
+        badge.className = 'card-badge';
+        badge.textContent = item.category || 'Perspective';
+        if (isNew(item.published_at)) {
+          var newTag = document.createElement('span');
+          newTag.className = 'new-badge';
+          newTag.textContent = 'New';
+          badge.appendChild(newTag);
+        }
+        body.appendChild(badge);
+
+        var title = document.createElement('h3');
+        title.className = 'card-title';
+        title.textContent = item.title || 'Untitled';
+        body.appendChild(title);
+
+        var excerptText = item.excerpt || item.subtitle || '';
+        if (excerptText) {
+          var excerpt = document.createElement('p');
+          excerpt.className = 'card-excerpt';
+          excerpt.textContent = excerptText;
+          body.appendChild(excerpt);
+        }
+
+        var meta = document.createElement('span');
+        meta.className = 'card-meta';
+        var authorName = item.author_name || (item.authors && item.authors.length > 0 ? item.authors.map(function(a){return a.display_name}).join(' & ') : '');
+        meta.textContent = authorName;
+        if (meta.textContent) body.appendChild(meta);
+
+        card.appendChild(body);
+        return card;
+      }
+
+      // Load perspectives and split into official (research) and member sections
       (async function() {
         try {
           var res = await fetch('/api/perspectives?authored=true');
           if (!res.ok) return;
           var data = await res.json();
           var items = Array.isArray(data) ? data : (data.perspectives || data.items || []);
-          if (!items.length) {
-            document.getElementById('perspectives-section').hidden = true;
-            return;
+
+          var official = items.filter(function(i) { return i.content_origin === 'official'; });
+          var member = items.filter(function(i) { return i.content_origin !== 'official'; });
+
+          // Render official content in research grid
+          var researchGrid = document.getElementById('research-grid');
+          if (official.length > 0) {
+            official.forEach(function(item) {
+              researchGrid.appendChild(buildPerspectiveCard(item, 'card'));
+            });
+          } else {
+            document.getElementById('research-section').hidden = true;
           }
 
+          // Render member content in perspectives carousel
           var carousel = document.getElementById('perspectives-carousel');
-
-          items.forEach(function(item) {
-            // Register topics from tags
-            var topics = (item.tags || []).join(',');
-            registerTopics(topics);
-
-            var card = document.createElement('a');
-            card.href = item.external_url || ('/perspectives/' + item.slug + '?from=stories');
-            card.className = 'carousel-card';
-            card.setAttribute('data-topics', topics);
-            if (item.external_url) {
-              card.target = '_blank';
-              card.rel = 'noopener';
-            }
-
-            var imageUrl = item.featured_image_url
-              || '/api/perspectives/' + item.slug + '/card.png';
-            var cover = document.createElement('img');
-            cover.src = imageUrl;
-            cover.alt = '';
-            cover.className = 'card-cover';
-            cover.loading = 'lazy';
-            cover.onerror = function() { this.style.display = 'none'; };
-            card.appendChild(cover);
-
-            var body = document.createElement('div');
-            body.className = 'card-body';
-
-            var badge = document.createElement('span');
-            badge.className = 'card-badge';
-            badge.textContent = item.category || 'Perspective';
-            if (isNew(item.published_at)) {
-              var newTag = document.createElement('span');
-              newTag.className = 'new-badge';
-              newTag.textContent = 'New';
-              badge.appendChild(newTag);
-            }
-            body.appendChild(badge);
-
-            var title = document.createElement('h3');
-            title.className = 'card-title';
-            title.textContent = item.title || 'Untitled';
-            body.appendChild(title);
-
-            var excerptText = item.excerpt || item.subtitle || '';
-            if (excerptText) {
-              var excerpt = document.createElement('p');
-              excerpt.className = 'card-excerpt';
-              excerpt.textContent = excerptText;
-              body.appendChild(excerpt);
-            }
-
-            var meta = document.createElement('span');
-            meta.className = 'card-meta';
-            var authorName = item.author_name || (item.authors && item.authors.length > 0 ? item.authors.map(function(a){return a.display_name}).join(' & ') : '');
-            meta.textContent = authorName;
-            if (meta.textContent) body.appendChild(meta);
-
-            card.appendChild(body);
-            carousel.appendChild(card);
-          });
+          if (member.length > 0) {
+            member.forEach(function(item) {
+              carousel.appendChild(buildPerspectiveCard(item, 'carousel-card'));
+            });
+          } else {
+            document.getElementById('perspectives-section').hidden = true;
+          }
 
           // Rebuild pills with perspective topics added
           buildPills();

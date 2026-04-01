@@ -1058,10 +1058,20 @@
             </div>`
           : '';
 
+        const imageUrl = perspective.featured_image_url
+          || '/api/perspectives/' + perspective.slug + '/card.png';
+        const imageHtml = `<img src="${escapeHtml(imageUrl)}" alt="" class="article-card-image" loading="lazy" onerror="this.style.display='none'">`;
+
+        const originBadge = perspective.content_origin === 'official'
+          ? '<span class="article-badge-official">AAO</span>'
+          : '';
+
         html += `
           <a href="${escapeHtml(href)}" class="article-card"${target}>
+            ${imageHtml}
             <div class="article-card-content">
               <div class="article-meta">
+                ${originBadge}
                 ${perspective.category ? `<span class="article-category">${escapeHtml(perspective.category)}</span>` : ''}
                 ${isNew ? '<span class="article-badge-new">New</span>' : ''}
               </div>

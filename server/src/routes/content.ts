@@ -9,6 +9,7 @@
  */
 
 import { Router } from 'express';
+import multer from 'multer';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
@@ -17,7 +18,9 @@ import { sendChannelMessage } from '../slack/client.js';
 import { notifyPublishedPost, sendSocialAmplificationDM } from '../notifications/slack.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
+import { createAsset } from '../db/perspective-asset-db.js';
 import { fetchPathPageviewCounts } from '../services/posthog-query.js';
+import { safeFetch } from '../utils/url-security.js';
 
 const logger = createLogger('content-routes');
 
@@ -30,6 +33,7 @@ interface ContentAuthor {
 
 interface ProposeContentRequest {
   title: string;
+  subtitle?: string;
   content?: string;
   content_type?: 'article' | 'link';
   external_url?: string;
@@ -37,6 +41,9 @@ interface ProposeContentRequest {
   excerpt?: string;
   category?: string;
   tags?: string[];
+  author_title?: string;
+  featured_image_url?: string;
+  content_origin?: 'official' | 'member';
   collection: {
     type?: 'personal' | 'committee';  // Deprecated - kept for backwards compatibility
     committee_slug?: string;
@@ -164,6 +171,7 @@ export async function proposeContentForUser(
 ): Promise<ProposeContentResult> {
   const {
     title,
+    subtitle,
     content,
     content_type = 'article',
     external_url,
@@ -171,6 +179,9 @@ export async function proposeContentForUser(
     excerpt,
     category,
     tags = [],
+    author_title: requestAuthorTitle,
+    featured_image_url,
+    content_origin = 'member',
     collection,
     authors,
   } = request;
@@ -230,6 +241,9 @@ export async function proposeContentForUser(
     }
   }
 
+  // Only admins can mark content as official AAO content
+  const effectiveOrigin = (content_origin === 'official' && !userIsAdmin) ? 'member' : content_origin;
+
   // Determine if user can publish directly (leads and admins only)
   const canPublishDirectly = userIsLead || userIsAdmin;
 
@@ -253,18 +267,20 @@ export async function proposeContentForUser(
   // Insert the content
   const result = await pool.query(
     `INSERT INTO perspectives (
-      slug, content_type, title, content, excerpt,
+      slug, content_type, title, subtitle, content, excerpt,
       external_url, external_site_name, category, tags,
       author_name, author_title, author_user_id,
+      featured_image_url, content_origin,
       proposer_user_id, proposed_at,
       working_group_id, status, published_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
     RETURNING *`,
     [
-      slug, content_type, title, content, excerpt,
+      slug, content_type, title, subtitle || null, content, excerpt,
       external_url, external_site_name, category, tags,
-      authorName, null, user.id,
+      authorName, requestAuthorTitle || null, user.id,
+      featured_image_url || null, effectiveOrigin,
       user.id, proposedAt,
       committeeId, status, publishedAt,
     ]
@@ -685,20 +701,13 @@ export function createContentRouter(): Router {
         });
       }
 
-      // Validate URL protocol to prevent SSRF with non-HTTP schemes
-      const parsedUrl = new URL(url);
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        return res.status(400).json({ error: 'Only http and https URLs are supported' });
-      }
-
-      // Fetch the page
-      // CodeQL: authenticated endpoint, URL protocol validated above
-      const response = await fetch(url, { // lgtm[js/request-forgery]
+      // SSRF-safe fetch: validates URL, DNS resolution, and all redirect hops
+      const response = await safeFetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
           'Accept': 'text/html,application/xhtml+xml',
         },
-        redirect: 'follow',
+        maxRedirects: 5,
       });
 
       if (!response.ok) {
@@ -846,6 +855,118 @@ export function createContentRouter(): Router {
       res.status(500).json({
         error: 'Failed to reject content',
       });
+    }
+  });
+
+  // =========================================================================
+  // PERSPECTIVE ASSET UPLOAD
+  // =========================================================================
+
+  const ALLOWED_ASSET_TYPES = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'application/pdf',
+  ]);
+
+  const assetUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+    fileFilter: (_req, file, cb) => {
+      if (ALLOWED_ASSET_TYPES.has(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only JPEG, PNG, WebP, GIF, and PDF files are accepted'));
+      }
+    },
+  });
+
+  // POST /api/content/:slug/assets - Upload asset for a perspective
+  router.post('/:slug/assets', requireAuth, (req: any, res: any, next: any) => {
+    assetUpload.single('file')(req, res, (err: any) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'File too large', message: 'Maximum file size is 50MB' });
+        }
+        return res.status(400).json({ error: 'Upload error', message: err.message });
+      }
+      if (err) {
+        return res.status(400).json({ error: 'Invalid file type', message: err.message });
+      }
+      next();
+    });
+  }, async (req: any, res: any) => {
+    try {
+      const { slug } = req.params;
+      const user = req.user!;
+      const file = req.file;
+      const assetType = req.body.asset_type as string;
+
+      if (!file) {
+        return res.status(400).json({ error: 'A file is required' });
+      }
+      if (!assetType || !['cover_image', 'report', 'attachment'].includes(assetType)) {
+        return res.status(400).json({ error: 'asset_type must be cover_image, report, or attachment' });
+      }
+
+      // Image size limit (10MB)
+      if (file.mimetype.startsWith('image/') && file.size > 10 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Image files must be under 10MB' });
+      }
+
+      const pool = getPool();
+      const perspResult = await pool.query(
+        `SELECT id FROM perspectives WHERE slug = $1`,
+        [slug]
+      );
+      if (perspResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Perspective not found' });
+      }
+
+      const perspectiveId = perspResult.rows[0].id;
+
+      // Check permission: must be author, proposer, or admin
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      if (!userIsAdmin) {
+        const authorCheck = await pool.query(
+          `SELECT 1 FROM perspectives WHERE id = $1 AND (author_user_id = $2 OR proposer_user_id = $2)
+           UNION SELECT 1 FROM content_authors WHERE perspective_id = $1 AND user_id = $2`,
+          [perspectiveId, user.id]
+        );
+        if (authorCheck.rows.length === 0) {
+          return res.status(403).json({ error: 'You must be an author or admin to upload assets' });
+        }
+      }
+
+      const sanitizedFilename = file.originalname.replace(/[^\w.\-() ]/g, '_').slice(0, 200);
+
+      const asset = await createAsset({
+        perspective_id: perspectiveId,
+        asset_type: assetType as 'cover_image' | 'report' | 'attachment',
+        file_name: sanitizedFilename,
+        file_mime_type: file.mimetype,
+        file_data: file.buffer,
+        uploaded_by_user_id: user.id,
+      });
+
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+      const assetUrl = `${baseUrl}/api/perspectives/${slug}/assets/${encodeURIComponent(sanitizedFilename)}`;
+
+      // Auto-update featured_image_url for cover images
+      if (assetType === 'cover_image') {
+        await pool.query(
+          `UPDATE perspectives SET featured_image_url = $1, updated_at = NOW() WHERE id = $2`,
+          [assetUrl, perspectiveId]
+        );
+      }
+
+      logger.info({ assetId: asset.id, slug, assetType, fileName: sanitizedFilename }, 'Perspective asset uploaded');
+
+      res.status(201).json({ asset: { ...asset, url: assetUrl } });
+    } catch (error) {
+      logger.error({ err: error }, 'Upload perspective asset error');
+      res.status(500).json({ error: 'Failed to upload asset' });
     }
   });
 

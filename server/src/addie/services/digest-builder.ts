@@ -10,6 +10,7 @@ import {
   type DigestNewMember,
   type DigestConversation,
   type DigestWorkingGroup,
+  type DigestPerspective,
   type DigestSocialPostIdea,
   type DigestSpotlightAction,
 } from '../../db/digest-db.js';
@@ -33,12 +34,13 @@ const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agentica
 export async function buildDigestContent(): Promise<DigestContent> {
   logger.info('Building weekly digest content');
 
-  const [memberPerspectives, news, newMembers, conversations, workingGroups, socialPostIdeas, spotlightAction] = await Promise.all([
+  const [memberPerspectives, news, newMembers, conversations, workingGroups, perspectives, socialPostIdeas, spotlightAction] = await Promise.all([
     buildMemberPerspectivesSection(),
     buildNewsSection(),
     buildNewMembersSection(),
     buildConversationsSection(),
     buildWorkingGroupsSection(),
+    buildPerspectivesSection(),
     buildSocialPostIdeasSection(),
     buildSpotlightAction(),
   ]);
@@ -52,6 +54,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
     newMembers,
     conversations,
     workingGroups,
+    ...(perspectives.length > 0 ? { perspectives } : {}),
     ...(socialPostIdeas.length > 0 ? { socialPostIdeas } : {}),
     ...(spotlightAction ? { spotlightAction } : {}),
     generatedAt: new Date().toISOString(),
@@ -64,6 +67,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
       newMemberCount: newMembers.length,
       conversationCount: conversations.length,
       workingGroupCount: workingGroups.length,
+      perspectiveCount: perspectives.length,
       socialPostIdeasCount: socialPostIdeas.length,
     },
     'Digest content built',
@@ -78,6 +82,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
 export function hasMinimumContent(content: DigestContent): boolean {
   const totalItems =
     (content.memberPerspectives?.length || 0) +
+    (content.perspectives?.length || 0) +
     content.news.length +
     content.conversations.length +
     content.workingGroups.length;
@@ -97,6 +102,40 @@ async function buildMemberPerspectivesSection(): Promise<DigestMemberPerspective
     authorName: perspective.author_name || 'Community member',
     publishedAt: perspective.published_at ? perspective.published_at.toISOString() : null,
   }));
+}
+
+// --- Official Perspectives Section ---
+
+async function buildPerspectivesSection(): Promise<DigestPerspective[]> {
+  try {
+    const result = await query<{
+      title: string;
+      slug: string;
+      excerpt: string | null;
+      author_name: string | null;
+      published_at: Date | null;
+    }>(
+      `SELECT title, slug, excerpt, author_name, published_at
+       FROM perspectives
+       WHERE status = 'published'
+         AND content_origin = 'official'
+         AND published_at >= NOW() - INTERVAL '7 days'
+         AND content_type = 'article'
+       ORDER BY published_at DESC
+       LIMIT 5`
+    );
+
+    return result.rows.map((row) => ({
+      slug: row.slug,
+      title: row.title,
+      excerpt: row.excerpt,
+      author_name: row.author_name,
+      published_at: row.published_at,
+    }));
+  } catch (error) {
+    logger.warn({ error }, 'Failed to build official perspectives section');
+    return [];
+  }
 }
 
 // --- News Section ---

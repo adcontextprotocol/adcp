@@ -37,7 +37,7 @@
           { href: '/admin/events', label: 'Events', icon: '📅' },
           { href: '/admin/meetings', label: 'Meetings', icon: '🗓️' },
           { href: '/admin/working-groups', label: 'Working Groups', icon: '🏛️' },
-          { href: '/admin/perspectives', label: 'Perspectives', icon: '💡' },
+          { href: '/admin/perspectives', label: 'Content', icon: '📝' },
         ]
       },
       {
