@@ -1,4 +1,18 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+
+// Mock WorkOS client before any imports that depend on it
+vi.mock('../../src/auth/workos-client.js', () => ({
+  workos: {
+    userManagement: {
+      getUser: vi.fn().mockResolvedValue({ id: 'user_test_assets', email: 'test@example.com', firstName: 'Test', lastName: 'User' }),
+      listUsers: vi.fn().mockResolvedValue({ data: [], listMetadata: {} }),
+    },
+    organizations: {
+      getOrganization: vi.fn().mockResolvedValue({ id: 'org_test', name: 'Test Org' }),
+    },
+  },
+}));
+
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';

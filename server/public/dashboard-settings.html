@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Settings - Dashboard</title>
+  <title>Account - Dashboard</title>
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -67,6 +67,33 @@
       padding: 24px;
     }
 
+    .helper-card {
+      background: var(--color-info-50);
+      border: 1px solid var(--color-info-200);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 24px;
+    }
+
+    .helper-card h2 {
+      margin: 0 0 6px 0;
+      font-size: 16px;
+      color: var(--color-text-heading);
+    }
+
+    .helper-card p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+
+    .helper-card__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
     .settings-row {
       display: flex;
       justify-content: space-between;
@@ -99,6 +126,230 @@
       margin: 0;
       font-size: 13px;
       color: var(--color-text-secondary);
+    }
+
+    .section-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .email-category {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .email-category:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .email-category:first-child {
+      padding-top: 0;
+    }
+
+    .email-category-info {
+      flex: 1;
+      padding-right: 24px;
+    }
+
+    .email-category-name {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .email-category-desc {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .toggle {
+      position: relative;
+      width: 48px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: var(--color-gray-300);
+      transition: 0.3s;
+      border-radius: 26px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .toggle input:checked + .toggle-slider {
+      background-color: var(--color-brand);
+    }
+
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(22px);
+    }
+
+    .toggle input:disabled + .toggle-slider {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .unsubscribed-banner {
+      background: var(--color-warning-50);
+      border: 1px solid var(--color-warning-300);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .unsubscribed-banner-text {
+      flex: 1;
+    }
+
+    .unsubscribed-banner h3 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      color: var(--color-warning-800);
+    }
+
+    .unsubscribed-banner p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-warning-700);
+    }
+
+    .key-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+      gap: 16px;
+    }
+
+    .key-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .key-info h3 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .key-info p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 28px 20px;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state p {
+      margin: 8px 0;
+      font-size: 14px;
+    }
+
+    .created-key-display {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .created-key-display label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+    }
+
+    .created-key-value {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .created-key-value code {
+      flex: 1;
+      font-family: monospace;
+      font-size: 13px;
+      background: var(--color-bg-card);
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      word-break: break-all;
+    }
+
+    .created-key-warning {
+      margin-top: 12px;
+      padding: 12px;
+      background: var(--color-warning-50);
+      border-left: 4px solid var(--color-warning-500);
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--color-warning-700);
+    }
+
+    .usage-hint {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-top: 16px;
+    }
+
+    .usage-hint h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: var(--color-text-heading);
+    }
+
+    .usage-hint pre {
+      margin: 0;
+      padding: 12px;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 12px;
+      overflow-x: auto;
+      line-height: 1.5;
     }
 
     .settings-value {
@@ -391,81 +642,89 @@
     </div>
   </div>
 
+  <!-- Create API key modal -->
+  <div id="createModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Create API key</h2>
+      <div id="createForm">
+        <div class="form-group">
+          <label for="keyName">Key name</label>
+          <input type="text" id="keyName" placeholder="e.g., Production SDK, CI pipeline">
+        </div>
+        <div class="modal-buttons">
+          <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+          <button class="btn btn-primary" id="createBtn" onclick="createKey()">Create key</button>
+        </div>
+      </div>
+      <div id="createResult" style="display: none;">
+        <div class="created-key-display">
+          <label>API key</label>
+          <div class="created-key-value">
+            <code id="createdKeyValue"></code>
+            <button class="btn btn-secondary btn-sm" onclick="copyKey()">Copy</button>
+          </div>
+          <div class="created-key-warning">
+            Copy this key now. You won't be able to see it again.
+          </div>
+        </div>
+        <div class="modal-buttons">
+          <button class="btn btn-primary" onclick="closeCreateModal(); loadKeys();">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revoke API key modal -->
+  <div id="revokeModal" class="modal-overlay">
+    <div class="modal">
+      <h2 style="color: var(--color-error-600);">Revoke API key</h2>
+      <p style="color: var(--color-text-secondary); margin-bottom: 16px;">
+        Are you sure you want to revoke <strong id="revokeKeyName"></strong>? Any applications using this key will lose access immediately.
+      </p>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeRevokeModal()">Cancel</button>
+        <button class="btn btn-danger" id="revokeBtn" onclick="confirmRevoke()">Revoke key</button>
+      </div>
+    </div>
+  </div>
+
   <div class="page-header">
-    <h1>Settings</h1>
-    <p>Manage your organization settings and preferences</p>
+    <h1>Account</h1>
+    <p>Your profile, linked emails, and notification preferences</p>
   </div>
 
   <div class="page-content">
     <div id="loading" class="loading">Loading settings...</div>
 
     <div id="content" style="display: none;">
-      <!-- Organization Settings -->
-      <div class="settings-section">
-        <div class="settings-section-header">
-          <h2>Organization</h2>
-          <p>Basic organization information</p>
-        </div>
-        <div class="settings-section-body">
-          <div class="settings-row">
-            <div class="settings-label">
-              <h3>Organization Name</h3>
-              <p id="currentOrgName">Loading...</p>
-            </div>
-            <div class="settings-value">
-              <button class="btn btn-secondary btn-sm" onclick="openRenameModal()">Rename</button>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div class="settings-label">
-              <h3>Account Type</h3>
-              <p id="workspaceType">Loading...</p>
-              <p id="workspaceTypeHint" style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px;"></p>
-            </div>
-            <div class="settings-value">
-              <button class="btn btn-secondary btn-sm" id="convertToTeamBtn" onclick="showConvertToTeamModal()" style="display: none;">Switch to Company</button>
-              <button class="btn btn-secondary btn-sm" id="convertToIndividualBtn" onclick="showConvertToIndividualModal()" style="display: none;">Switch to Individual</button>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div class="settings-label">
-              <h3>Organization ID</h3>
-              <p id="orgId" style="font-family: monospace; font-size: 12px;">Loading...</p>
-            </div>
-          </div>
+      <div id="organizationToolsCard" class="helper-card" style="display: none;">
+        <h2>Organization tools live in a separate workspace view</h2>
+        <p>Membership, billing, team management, agents, and workspace-level developer access are managed on the organization page.</p>
+        <div class="helper-card__actions">
+          <a id="organizationToolsLink" href="/organization" class="btn btn-secondary btn-sm">Go to organization</a>
         </div>
       </div>
 
-      <!-- Business Information (Company accounts only) -->
-      <div id="businessInfoSection" class="settings-section" style="display: none;">
+      <div class="settings-section" id="profileSection">
         <div class="settings-section-header">
-          <h2>Business Information</h2>
-          <p>Used for membership pricing and directory listing</p>
+          <h2>Profile</h2>
+          <p>Manage your public identity, portrait, expertise, and visibility</p>
         </div>
         <div class="settings-section-body">
-          <div class="settings-row">
-            <div class="settings-label">
-              <h3>Company Type</h3>
-              <p id="currentCompanyType">Not set</p>
-            </div>
-            <div class="settings-value">
-              <button class="btn btn-secondary btn-sm" onclick="openBusinessInfoModal()">Edit</button>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div class="settings-label">
-              <h3>Revenue Tier</h3>
-              <p id="currentRevenueTier">Not set</p>
-              <p style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px;">Determines membership pricing</p>
-            </div>
+          <p style="margin: 0; color: var(--color-text-secondary); font-size: 14px;">
+            Your public profile controls how you appear in the community and how other members discover your work.
+          </p>
+          <div class="section-actions">
+            <a href="/community/profile/edit" class="btn btn-primary btn-sm">Edit your profile</a>
+            <a href="/community/people" class="btn btn-secondary btn-sm">Browse community</a>
           </div>
         </div>
       </div>
 
       <!-- Linked Emails -->
-      <div class="settings-section">
+      <div class="settings-section" id="linked-emails">
         <div class="settings-section-header">
-          <h2>Linked Emails</h2>
+          <h2>Linked emails</h2>
           <p>Link additional email addresses to consolidate duplicate accounts</p>
         </div>
         <div class="settings-section-body">
@@ -476,22 +735,39 @@
         </div>
       </div>
 
-      <!-- Danger Zone -->
-      <div id="dangerZone" class="settings-section danger-section" style="display: none;">
+      <div class="settings-section" id="notifications">
         <div class="settings-section-header">
-          <h2>Danger Zone</h2>
-          <p>Irreversible actions</p>
+          <h2>Notifications</h2>
+          <p>Choose which emails you want to receive from AgenticAdvertising.org</p>
         </div>
         <div class="settings-section-body">
-          <div class="settings-row">
-            <div class="settings-label">
-              <h3>Delete Workspace</h3>
-              <p>Permanently delete this workspace and all its data</p>
+          <div id="unsubscribedBanner" class="unsubscribed-banner" style="display: none;">
+            <div class="unsubscribed-banner-text">
+              <h3>You're unsubscribed from all emails</h3>
+              <p>You won't receive any marketing or community emails. Transactional emails such as password resets and billing notices will still be sent.</p>
             </div>
-            <div class="settings-value">
-              <button class="btn btn-danger btn-sm" onclick="openDeleteModal()">Delete</button>
-            </div>
+            <button class="btn btn-primary btn-sm" onclick="resubscribe()">Resubscribe</button>
           </div>
+          <div id="categoriesContainer">
+            <p style="color: var(--color-text-secondary); font-size: 13px;">Loading...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <h2>Transactional emails</h2>
+        </div>
+        <div class="settings-section-body">
+          <p style="margin: 0; font-size: 13px; color: var(--color-text-secondary);">
+            Some emails can't be unsubscribed from because they're essential for your account.
+          </p>
+          <ul style="margin: 12px 0 0; padding-left: 20px; font-size: 13px; color: var(--color-text-secondary);">
+            <li>Password reset and security emails</li>
+            <li>Billing receipts and payment issues</li>
+            <li>Important account notifications</li>
+            <li>Verification emails for linked accounts</li>
+          </ul>
         </div>
       </div>
     </div>
@@ -499,6 +775,11 @@
 
   <script>
     let currentOrg = null;
+    let canManageOrg = false;
+    let userData = null;
+    let preferences = null;
+    let isGloballyUnsubscribed = false;
+    let revokeKeyId = null;
 
     // Show toast notification
     function showToast(message, isError = false) {
@@ -521,38 +802,22 @@
         }
 
         const data = await response.json();
-        const { org, needsSelection } = DashboardNav.resolveOrg(data.organizations);
+        userData = data;
+        const { org } = DashboardNav.resolveOrg(data.organizations);
+        currentOrg = org || data.organizations?.[0] || null;
 
-        if (needsSelection) {
-          DashboardNav.init({ currentOrgName: 'Select organization' });
-          DashboardNav.renderOrgPicker(data.organizations, document.getElementById('loading'));
-          return;
-        }
-
-        if (!org) {
-          document.getElementById('loading').innerHTML = 'No organization found';
-          return;
-        }
-
-        currentOrg = org;
-
-        // Initialize sidebar with org info
+        // Initialize sidebar in account-only mode.
         DashboardNav.init({
-          showOrgSwitcher: data.organizations?.length > 1,
-          currentOrgName: currentOrg.name,
-          showAdmin: data.isAdmin,
-          orgId: currentOrg.id
+          currentOrgName: 'Your account',
+          showAdmin: data.user?.isAdmin || data.isAdmin,
+          accountOnly: true,
         });
 
-        // Set up org switcher if multiple orgs
-        if (data.organizations?.length > 1) {
-          DashboardNav.setOrgOptions(data.organizations, currentOrg.id, (newOrgId) => {
-            localStorage.setItem('selectedOrgId', newOrgId);
-            window.location.href = '/dashboard/settings?org=' + newOrgId;
-          });
-        }
-
-        renderSettings();
+        await renderSettings();
+        await Promise.all([
+          loadLinkedEmails(),
+          loadPreferences(),
+        ]);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -563,52 +828,249 @@
     }
 
     async function renderSettings() {
-      document.getElementById('currentOrgName').textContent = currentOrg.name;
-      document.getElementById('orgId').textContent = currentOrg.id;
+      const toolsCard = document.getElementById('organizationToolsCard');
+      const toolsLink = document.getElementById('organizationToolsLink');
 
-      const isPersonal = currentOrg.is_personal;
-      const workspaceTypeEl = document.getElementById('workspaceType');
-      const workspaceHintEl = document.getElementById('workspaceTypeHint');
-      const convertToTeamBtn = document.getElementById('convertToTeamBtn');
-      const convertToIndividualBtn = document.getElementById('convertToIndividualBtn');
-
-      if (isPersonal) {
-        workspaceTypeEl.textContent = 'Individual account';
-        workspaceHintEl.textContent = 'For consultants, academics, and independent professionals';
-        convertToTeamBtn.style.display = 'block';
-        convertToIndividualBtn.style.display = 'none';
-        document.getElementById('businessInfoSection').style.display = 'none';
-      } else {
-        workspaceTypeEl.textContent = 'Company account';
-        workspaceHintEl.textContent = 'For organizations with team members';
-        convertToTeamBtn.style.display = 'none';
-        convertToIndividualBtn.style.display = 'block';
-
-        // Disable "Switch to Individual" if org has other team members
-        try {
-          const teamRes = await fetch(`/api/organizations/${currentOrg.id}/team`, { credentials: 'include' });
-          if (teamRes.ok) {
-            const teamData = await teamRes.json();
-            const memberCount = teamData.members?.length || 0;
-            if (memberCount > 1) {
-              convertToIndividualBtn.disabled = true;
-              convertToIndividualBtn.style.opacity = '0.5';
-              convertToIndividualBtn.style.cursor = 'not-allowed';
-              convertToIndividualBtn.onclick = null;
-              convertToIndividualBtn.title = 'Remove all other team members first';
-              workspaceHintEl.textContent = 'Remove all other team members before switching to individual';
-            }
-          }
-        } catch (e) { console.warn('Could not check team size:', e); }
-
-        // Load business info for company accounts
-        loadBillingInfo();
+      if (!currentOrg) {
+        toolsCard.style.display = 'none';
+        return;
       }
 
-      // Show danger zone for owners
-      if (currentOrg.role === 'owner') {
-        document.getElementById('dangerZone').style.display = 'block';
+      toolsLink.href = `/organization?org=${encodeURIComponent(currentOrg.id)}`;
+      toolsCard.style.display = 'block';
+    }
+
+    async function loadPreferences() {
+      try {
+        const response = await fetch('/api/email-preferences', { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load preferences');
+        preferences = await response.json();
+        isGloballyUnsubscribed = preferences.global_unsubscribe || false;
+        renderPreferences();
+      } catch (error) {
+        console.error('Error loading preferences:', error);
+        document.getElementById('categoriesContainer').innerHTML = '<p style="color: var(--color-text-secondary); font-size: 13px;">Failed to load notification preferences.</p>';
       }
+    }
+
+    function renderPreferences() {
+      const container = document.getElementById('categoriesContainer');
+      const banner = document.getElementById('unsubscribedBanner');
+      banner.style.display = isGloballyUnsubscribed ? 'flex' : 'none';
+
+      if (!preferences?.categories?.length) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary); font-size: 13px;">No email categories available.</p>';
+        return;
+      }
+
+      container.innerHTML = preferences.categories.map(cat => `
+        <div class="email-category">
+          <div class="email-category-info">
+            <h3 class="email-category-name">${escapeHtml(cat.category_name)}</h3>
+            <p class="email-category-desc">${escapeHtml(cat.category_description || '')}</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox"
+                   ${cat.enabled ? 'checked' : ''}
+                   ${isGloballyUnsubscribed ? 'disabled' : ''}
+                   onchange="toggleCategory('${cat.category_id}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      `).join('');
+    }
+
+    async function toggleCategory(categoryId, enabled) {
+      try {
+        const response = await fetch('/api/email-preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category_id: categoryId, enabled }),
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to update preference');
+        const category = preferences.categories.find(c => c.category_id === categoryId);
+        if (category) category.enabled = enabled;
+        showToast(enabled ? 'Subscribed' : 'Unsubscribed');
+      } catch (error) {
+        showToast('Failed to update preference', true);
+        renderPreferences();
+      }
+    }
+
+    async function resubscribe() {
+      try {
+        const response = await fetch('/api/email-preferences/resubscribe-me', {
+          method: 'POST',
+          credentials: 'include'
+        });
+        if (!response.ok) throw new Error('Failed to resubscribe');
+        isGloballyUnsubscribed = false;
+        renderPreferences();
+        showToast('You have been resubscribed to emails');
+      } catch (error) {
+        showToast('Failed to resubscribe', true);
+      }
+    }
+
+    async function loadKeys() {
+      const unavailableEl = document.getElementById('apiKeysUnavailable');
+      const keysList = document.getElementById('keysList');
+      const usageHint = document.getElementById('apiUsageHint');
+      const createBtn = document.getElementById('createApiKeyBtn');
+
+      if (!currentOrg) {
+        unavailableEl.style.display = 'block';
+        keysList.innerHTML = '';
+        usageHint.style.display = 'none';
+        createBtn.style.display = 'none';
+        return;
+      }
+
+      unavailableEl.style.display = 'none';
+      usageHint.style.display = 'block';
+      createBtn.style.display = 'inline-flex';
+      document.getElementById('apiKeysSubtitle').textContent = `Manage API keys for programmatic access on behalf of ${currentOrg.name}`;
+
+      try {
+        const response = await fetch(`/api/me/api-keys?org=${encodeURIComponent(currentOrg.id)}`, {
+          credentials: 'include',
+        });
+        if (!response.ok) throw new Error('Failed to load API keys');
+
+        const data = await response.json();
+        const keys = data.data || [];
+
+        if (keys.length === 0) {
+          keysList.innerHTML = `
+            <div class="empty-state">
+              <p>No API keys yet.</p>
+              <p>Create a key to access the registry API programmatically for ${escapeHtml(currentOrg.name)}.</p>
+            </div>
+          `;
+          return;
+        }
+
+        keysList.innerHTML = keys.map(key => `
+          <div class="key-row">
+            <div class="key-info">
+              <h3>${escapeHtml(key.name)}</h3>
+              <p>Created ${formatDate(key.created_at)}${key.last_used_at ? ` · Last used ${formatDate(key.last_used_at)}` : ''}</p>
+            </div>
+            <button class="btn btn-danger btn-sm" data-key-id="${escapeHtml(key.id)}" data-key-name="${escapeHtml(key.name)}">Revoke</button>
+          </div>
+        `).join('');
+
+        keysList.querySelectorAll('[data-key-id]').forEach(btn => {
+          btn.addEventListener('click', () => openRevokeModal(btn.dataset.keyId, btn.dataset.keyName));
+        });
+      } catch (error) {
+        console.error('Error loading API keys:', error);
+        keysList.innerHTML = '<div class="empty-state"><p>Failed to load API keys.</p></div>';
+      }
+    }
+
+    function openCreateModal() {
+      if (!currentOrg) return;
+      document.getElementById('keyName').value = '';
+      document.getElementById('createForm').style.display = 'block';
+      document.getElementById('createResult').style.display = 'none';
+      document.getElementById('createBtn').disabled = false;
+      document.getElementById('createBtn').textContent = 'Create key';
+      document.getElementById('createModal').classList.add('show');
+      document.getElementById('keyName').focus();
+    }
+
+    function closeCreateModal() {
+      document.getElementById('createdKeyValue').textContent = '';
+      document.getElementById('createModal').classList.remove('show');
+    }
+
+    async function createKey() {
+      const name = document.getElementById('keyName').value.trim();
+      if (!name || !currentOrg) {
+        showToast('Key name is required', true);
+        return;
+      }
+
+      const btn = document.getElementById('createBtn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        const response = await fetch(`/api/me/api-keys?org=${encodeURIComponent(currentOrg.id)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name, permissions: [] }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || data.error || 'Failed to create key');
+        }
+
+        const data = await response.json();
+        document.getElementById('createdKeyValue').textContent = data.value || '(key not returned)';
+        document.getElementById('createForm').style.display = 'none';
+        document.getElementById('createResult').style.display = 'block';
+      } catch (error) {
+        showToast(error.message || 'Failed to create API key', true);
+        btn.disabled = false;
+        btn.textContent = 'Create key';
+      }
+    }
+
+    function copyKey() {
+      const keyValue = document.getElementById('createdKeyValue').textContent;
+      navigator.clipboard.writeText(keyValue).then(() => {
+        showToast('API key copied to clipboard');
+      }).catch(() => {
+        showToast('Failed to copy key', true);
+      });
+    }
+
+    function openRevokeModal(keyId, keyName) {
+      revokeKeyId = keyId;
+      document.getElementById('revokeKeyName').textContent = keyName;
+      document.getElementById('revokeBtn').disabled = false;
+      document.getElementById('revokeBtn').textContent = 'Revoke key';
+      document.getElementById('revokeModal').classList.add('show');
+    }
+
+    function closeRevokeModal() {
+      document.getElementById('revokeModal').classList.remove('show');
+      revokeKeyId = null;
+    }
+
+    async function confirmRevoke() {
+      if (!revokeKeyId || !currentOrg) return;
+
+      const btn = document.getElementById('revokeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Revoking...';
+
+      try {
+        const response = await fetch(`/api/me/api-keys/${revokeKeyId}?org=${encodeURIComponent(currentOrg.id)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (!response.ok) throw new Error('Failed to revoke key');
+
+        closeRevokeModal();
+        showToast('API key revoked');
+        await loadKeys();
+      } catch (error) {
+        showToast(error.message || 'Failed to revoke API key', true);
+        btn.disabled = false;
+        btn.textContent = 'Revoke key';
+      }
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
     // Rename modal
@@ -679,7 +1141,7 @@
         if (!response.ok) throw new Error('Failed to delete');
 
         localStorage.removeItem('selectedOrgId');
-        window.location.href = '/dashboard';
+        window.location.href = '/organization';
       } catch (error) {
         showToast('Failed to delete workspace', true);
       }
@@ -964,9 +1426,14 @@
       }
     }
 
-    // Initialize
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeCreateModal();
+        closeRevokeModal();
+      }
+    });
+
     loadSettings();
-    loadLinkedEmails();
   </script>
 </body>
 </html>

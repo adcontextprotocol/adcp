@@ -2959,7 +2959,7 @@ export function createMemberToolHandlers(
       output += `### Capability Tracks\n\n`;
       output += `**Summary:** ${result.summary.headline}\n\n`;
 
-      const statusLabel: Record<string, string> = { pass: 'PASS', fail: 'FAIL', partial: 'PARTIAL', skip: 'SKIP', expected: 'EXPECTED' };
+      const statusLabel: Record<string, string> = { pass: 'PASS', fail: 'FAIL', partial: 'PARTIAL', skip: 'SKIP' };
       for (const track of result.tracks) {
         const status = statusLabel[track.status] ?? track.status.toUpperCase();
         const scenarioCount = track.scenarios.length;
@@ -2967,8 +2967,6 @@ export function createMemberToolHandlers(
 
         if (track.status === 'skip') {
           output += `- **${track.label}** [${status}] — not applicable\n`;
-        } else if (track.status === 'expected') {
-          output += `- **${track.label}** [${status}] — expected for this platform type but not yet implemented\n`;
         } else {
           output += `- **${track.label}** [${status}] — ${passedCount}/${scenarioCount} scenarios pass (${(track.duration_ms / 1000).toFixed(1)}s)\n`;
           for (const scenario of track.scenarios) {

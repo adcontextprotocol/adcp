@@ -2,9 +2,11 @@ import { createLogger } from '../../logger.js';
 import { complete, isLLMConfigured } from '../../utils/llm.js';
 import {
   getRecentArticlesForDigest,
+  getRecentMemberPerspectivesForDigest,
   getNewOrganizations,
   type DigestContent,
   type DigestNewsItem,
+  type DigestMemberPerspective,
   type DigestNewMember,
   type DigestConversation,
   type DigestWorkingGroup,
@@ -32,7 +34,8 @@ const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agentica
 export async function buildDigestContent(): Promise<DigestContent> {
   logger.info('Building weekly digest content');
 
-  const [news, newMembers, conversations, workingGroups, perspectives, socialPostIdeas, spotlightAction] = await Promise.all([
+  const [memberPerspectives, news, newMembers, conversations, workingGroups, perspectives, socialPostIdeas, spotlightAction] = await Promise.all([
+    buildMemberPerspectivesSection(),
     buildNewsSection(),
     buildNewMembersSection(),
     buildConversationsSection(),
@@ -42,10 +45,11 @@ export async function buildDigestContent(): Promise<DigestContent> {
     buildSpotlightAction(),
   ]);
 
-  const intro = await generateIntro(news, newMembers, conversations, workingGroups);
+  const intro = await generateIntro(memberPerspectives, news, newMembers, conversations, workingGroups);
 
   const content: DigestContent = {
     intro,
+    ...(memberPerspectives.length > 0 ? { memberPerspectives } : {}),
     news,
     newMembers,
     conversations,
@@ -58,6 +62,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
 
   logger.info(
     {
+      memberPerspectiveCount: memberPerspectives.length,
       newsCount: news.length,
       newMemberCount: newMembers.length,
       conversationCount: conversations.length,
@@ -75,11 +80,31 @@ export async function buildDigestContent(): Promise<DigestContent> {
  * Check if there's enough content to justify sending a digest this week.
  */
 export function hasMinimumContent(content: DigestContent): boolean {
-  const totalItems = content.news.length + content.conversations.length + content.workingGroups.length + (content.perspectives?.length || 0);
+  const totalItems =
+    (content.memberPerspectives?.length || 0) +
+    (content.perspectives?.length || 0) +
+    content.news.length +
+    content.conversations.length +
+    content.workingGroups.length;
   return totalItems >= 2;
 }
 
-// --- Perspectives Section ---
+// --- Member Perspectives Section ---
+
+async function buildMemberPerspectivesSection(): Promise<DigestMemberPerspective[]> {
+  const perspectives = await getRecentMemberPerspectivesForDigest(7, 4);
+
+  return perspectives.map((perspective) => ({
+    slug: perspective.slug,
+    title: perspective.title,
+    url: `${BASE_URL}/perspectives/${perspective.slug}`,
+    excerpt: perspective.excerpt || '',
+    authorName: perspective.author_name || 'Community member',
+    publishedAt: perspective.published_at ? perspective.published_at.toISOString() : null,
+  }));
+}
+
+// --- Official Perspectives Section ---
 
 async function buildPerspectivesSection(): Promise<DigestPerspective[]> {
   try {
@@ -88,12 +113,12 @@ async function buildPerspectivesSection(): Promise<DigestPerspective[]> {
       slug: string;
       excerpt: string | null;
       author_name: string | null;
-      category: string | null;
-      content_origin: string | null;
+      published_at: Date | null;
     }>(
-      `SELECT title, slug, excerpt, author_name, category, content_origin
+      `SELECT title, slug, excerpt, author_name, published_at
        FROM perspectives
        WHERE status = 'published'
+         AND content_origin = 'official'
          AND published_at >= NOW() - INTERVAL '7 days'
          AND content_type = 'article'
        ORDER BY published_at DESC
@@ -101,15 +126,14 @@ async function buildPerspectivesSection(): Promise<DigestPerspective[]> {
     );
 
     return result.rows.map((row) => ({
-      title: row.title,
       slug: row.slug,
-      excerpt: row.excerpt || '',
-      authorName: row.author_name || 'AAO',
-      category: row.category || 'Perspective',
-      contentOrigin: row.content_origin || 'member',
+      title: row.title,
+      excerpt: row.excerpt,
+      author_name: row.author_name,
+      published_at: row.published_at,
     }));
   } catch (error) {
-    logger.warn({ error }, 'Failed to build perspectives section');
+    logger.warn({ error }, 'Failed to build official perspectives section');
     return [];
   }
 }
@@ -142,13 +166,13 @@ async function buildNewsSection(): Promise<DigestNewsItem[]> {
     .join('\n');
 
   const result = await complete({
-    system: `You are Addie, the AI assistant for AgenticAdvertising.org (AAO), a membership organization building the Ad Context Protocol (AdCP) for agentic advertising.
+    system: `You are Addie, the AI assistant for AgenticAdvertising.org, a membership organization building the Ad Context Protocol (AdCP) for agentic advertising.
 
 Select the 3 most relevant articles for our weekly digest and write a brief "why it matters" take for each.
 
 Editorial guidelines:
-- Frame every "why it matters" from AAO's perspective — how does this affect our members, our protocol work, or the agentic advertising ecosystem?
-- Do NOT promote competitor organizations' initiatives (e.g., IAB Tech Lab, AAMP) as industry leadership. If covering competitor news, frame it in terms of what it means for AAO members and where AAO's approach differs.
+- Frame every "why it matters" from AgenticAdvertising.org's perspective — how does this affect our members, our protocol work, or the agentic advertising ecosystem?
+- Do NOT promote competitor organizations' initiatives (e.g., IAB Tech Lab, AAMP) as industry leadership. If covering competitor news, frame it in terms of what it means for AgenticAdvertising.org members and where our approach differs.
 - Prefer articles about trends, adoption, and real-world applications of agentic advertising over articles about other organizations' announcements.
 - Be direct and opinionated. Our members are practitioners who want signal, not press releases.
 
@@ -328,24 +352,26 @@ async function buildWorkingGroupsSection(): Promise<DigestWorkingGroup[]> {
 // --- Intro Generation ---
 
 async function generateIntro(
+  memberPerspectives: DigestMemberPerspective[],
   news: DigestNewsItem[],
   newMembers: DigestNewMember[],
   conversations: DigestConversation[],
   workingGroups: DigestWorkingGroup[],
 ): Promise<string> {
   if (!isLLMConfigured()) {
-    return `This week at AgenticAdvertising.org: ${workingGroups.length} working group updates, ${newMembers.length} new members, ${conversations.length} notable conversations, and ${news.length} industry stories.`;
+    return `This week at AgenticAdvertising.org: ${workingGroups.length} working group updates, ${memberPerspectives.length} member perspective${memberPerspectives.length === 1 ? '' : 's'}, ${newMembers.length} new members, ${conversations.length} notable conversations, and ${news.length} industry stories.`;
   }
 
   // Lead with community activity, industry news last
   const context = [];
   if (workingGroups.length > 0) context.push(`${workingGroups.length} working group update${workingGroups.length > 1 ? 's' : ''}`);
+  if (memberPerspectives.length > 0) context.push(`${memberPerspectives.length} member perspective${memberPerspectives.length > 1 ? 's' : ''}`);
   if (newMembers.length > 0) context.push(`${newMembers.length} new member${newMembers.length > 1 ? 's' : ''}`);
   if (conversations.length > 0) context.push(`${conversations.length} notable conversation${conversations.length > 1 ? 's' : ''}`);
   if (news.length > 0) context.push(`${news.length} industry stories`);
 
   const result = await complete({
-    system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org (AAO). Write a 1-2 sentence intro for the weekly digest. Lead with what's happening in our community — working groups, members, conversations. Mention industry news second. Be warm, concise, and specific. No emojis.`,
+    system: `You are Addie, the friendly AI assistant for AgenticAdvertising.org. Write a 1-2 sentence intro for the weekly digest. Lead with what's happening in our community — working groups, member perspectives, and conversations. Mention industry news second. Be warm, concise, and specific. No emojis.`,
     prompt: `Write an intro for this week's digest. Content: ${context.join(', ')}.`,
     maxTokens: 150,
     model: 'fast',
@@ -419,28 +445,37 @@ export function generateDigestSubject(content: DigestContent): string {
     return content.emailSubject;
   }
 
-  // Template: "This week: [single concrete thing] | AAO Weekly"
+  // Template: "This week: [single concrete thing] | AgenticAdvertising.org Weekly"
   // Pick the most specific item available
   if (content.spotlightAction) {
-    // e.g., "This week: Measurement WG meets Thursday | AAO Weekly"
+    // e.g., "This week: Measurement WG meets Thursday | AgenticAdvertising.org Weekly"
     const short = content.spotlightAction.text
       .replace(/^This week:\s*/i, '')
       .replace(/\.\s*$/, '');
     if (short.length <= 50) {
-      return `This week: ${short} | AAO Weekly`;
+      return `This week: ${short} | AgenticAdvertising.org Weekly`;
     }
   }
 
   if (content.workingGroups.length > 0) {
     const topWG = content.workingGroups[0].name;
     if (content.workingGroups.length === 1) {
-      return `This week: ${topWG} update | AAO Weekly`;
+      return `This week: ${topWG} update | AgenticAdvertising.org Weekly`;
     }
-    return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AAO Weekly`;
+    return `This week: ${topWG} + ${content.workingGroups.length - 1} more updates | AgenticAdvertising.org Weekly`;
+  }
+
+  if (content.memberPerspectives && content.memberPerspectives.length > 0) {
+    const topPerspective = content.memberPerspectives[0];
+    const author = topPerspective.authorName || 'A member';
+    const shortTitle = topPerspective.title.length > 44
+      ? `${topPerspective.title.slice(0, 41)}...`
+      : topPerspective.title;
+    return `This week: ${author} on ${shortTitle} | AgenticAdvertising.org Weekly`;
   }
 
   if (content.newMembers.length > 0) {
-    return `This week: ${content.newMembers.length} new members joined | AAO Weekly`;
+    return `This week: ${content.newMembers.length} new members joined | AgenticAdvertising.org Weekly`;
   }
 
   return 'This week at AgenticAdvertising.org';

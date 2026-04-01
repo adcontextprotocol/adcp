@@ -85,15 +85,15 @@ export function renderDigestEmail(
 
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
-    <!-- Perspectives -->
+    <!-- Official Perspectives -->
     ${content.perspectives && content.perspectives.length > 0 ? `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">New Perspectives</h2>
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Reports &amp; Research</h2>
     ${content.perspectives.map((p, i) => `
-    <div style="margin-bottom: 16px; padding: 12px; background: ${p.contentOrigin === 'official' ? '#f0fdf4' : '#f8f9fa'}; border-radius: 6px;${p.contentOrigin === 'official' ? ' border-left: 4px solid #047857;' : ''}">
+    <div style="margin-bottom: 16px; padding: 12px; background: #f0fdf4; border-radius: 6px; border-left: 4px solid #047857;">
       <h3 style="font-size: 15px; margin: 0 0 4px 0;">
         <a href="${t(`perspective_${i}`, `${BASE_URL}/perspectives/${p.slug}`)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(p.title)}</a>
       </h3>
-      <p style="font-size: 13px; color: #666; margin: 2px 0 6px 0;">by ${escapeHtml(p.authorName)}${p.contentOrigin === 'official' ? ' &middot; AAO Official' : ''}</p>
+      <p style="font-size: 13px; color: #666; margin: 2px 0 6px 0;">by ${escapeHtml(p.author_name || 'AAO')} &middot; AAO Official</p>
       ${p.excerpt ? `<p style="font-size: 14px; color: #555; margin: 4px 0;">${escapeHtml(p.excerpt.slice(0, 200))}${p.excerpt.length > 200 ? '...' : ''}</p>` : ''}
     </div>
     `).join('')}
@@ -102,6 +102,20 @@ export function renderDigestEmail(
 
     <!-- Working Group Updates -->
     ${renderWorkingGroupsHtml(content.workingGroups, userWorkingGroupNames)}
+
+    <!-- Member Perspectives -->
+    ${content.memberPerspectives && content.memberPerspectives.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">From members</h2>
+    ${content.memberPerspectives.map((item, i) => `
+    <div style="margin-bottom: 18px;">
+      <h3 style="font-size: 15px; margin: 0 0 4px 0;">
+        <a href="${t(`member_perspective_${i}`, item.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(item.title)}</a>
+      </h3>
+      <p style="font-size: 13px; color: #666; margin: 4px 0 6px 0;">by ${escapeHtml(item.authorName)}${item.publishedAt ? ` · ${escapeHtml(formatDate(item.publishedAt.slice(0, 10)))}` : ''}</p>
+      ${item.excerpt ? `<p style="font-size: 14px; color: #555; margin: 0;">${escapeHtml(item.excerpt)}</p>` : ''}
+    </div>
+    `).join('')}
+    ` : ''}
 
     <!-- New Members -->
     ${content.newMembers.length > 0 ? `
@@ -310,6 +324,17 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
     }
   }
 
+  if (content.memberPerspectives && content.memberPerspectives.length > 0) {
+    lines.push('--- FROM MEMBERS ---', '');
+    for (const item of content.memberPerspectives) {
+      lines.push(`* ${item.title}`);
+      lines.push(`  by ${item.authorName}`);
+      if (item.excerpt) lines.push(`  ${item.excerpt}`);
+      lines.push(`  ${item.url}`);
+      lines.push('');
+    }
+  }
+
   if (content.newMembers.length > 0) {
     lines.push('--- NEW MEMBERS ---', '');
     lines.push(`Welcome to ${content.newMembers.map((m) => m.name).join(', ')} who joined this week.`);
@@ -412,6 +437,9 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
 
   // Community summary
   const communityParts: string[] = [];
+  if (content.memberPerspectives && content.memberPerspectives.length > 0) {
+    communityParts.push(`${content.memberPerspectives.length} member perspective${content.memberPerspectives.length > 1 ? 's' : ''}`);
+  }
   if (content.newMembers.length > 0) {
     communityParts.push(`${content.newMembers.length} new member${content.newMembers.length > 1 ? 's' : ''} joined this week`);
   }
@@ -424,6 +452,17 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Community Pulse*\n${communityParts.join(' · ')}` },
+    });
+  }
+
+  if (content.memberPerspectives && content.memberPerspectives.length > 0) {
+    const memberText = content.memberPerspectives
+      .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _by ${escapeSlackMrkdwn(item.authorName)}_`)
+      .join('\n\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*From members*\n\n${memberText}` },
     });
   }
 
