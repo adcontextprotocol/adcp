@@ -2,7 +2,7 @@
 -- Events are written in the same transaction as the mutations they describe.
 -- Consumers poll the feed via cursor (UUID v7 ordering).
 
-CREATE TABLE catalog_events (
+CREATE TABLE IF NOT EXISTS catalog_events (
   event_id    UUID PRIMARY KEY,               -- UUID v7, time-ordered
   event_type  TEXT NOT NULL,                   -- e.g. property.created, authorization.granted
   entity_type TEXT NOT NULL,                   -- property, agent, publisher, authorization, catalog
@@ -14,6 +14,6 @@ CREATE TABLE catalog_events (
 
 -- Feed query: WHERE event_id > $cursor ORDER BY event_id LIMIT $n
 -- UUID v7 ordering matches created_at ordering by construction.
-CREATE INDEX idx_catalog_events_type ON catalog_events (event_type text_pattern_ops);
-CREATE INDEX idx_catalog_events_entity ON catalog_events (entity_type, entity_id);
-CREATE INDEX idx_catalog_events_created ON catalog_events (created_at);
+CREATE INDEX IF NOT EXISTS idx_catalog_events_type ON catalog_events (event_type text_pattern_ops);
+CREATE INDEX IF NOT EXISTS idx_catalog_events_entity ON catalog_events (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_catalog_events_created ON catalog_events (created_at);

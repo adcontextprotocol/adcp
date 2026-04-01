@@ -3143,9 +3143,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // ── Registry Feed ───────────────────────────────────────────────
 
   if (config.eventsDb) {
+    if (!authMiddleware) throw new Error('requireAuth middleware is required when eventsDb is provided');
     const eventsDb = config.eventsDb;
 
-    router.get("/registry/feed", authMiddleware ?? ((_req, _res, next) => next()), async (req, res) => {
+    router.get("/registry/feed", authMiddleware, async (req, res) => {
       try {
         const cursor = (req.query.cursor as string) || null;
         const typesParam = req.query.types as string | undefined;
@@ -3188,9 +3189,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // ── Agent Search ──────────────────────────────────────────────
 
   if (config.profilesDb) {
+    if (!authMiddleware) throw new Error('requireAuth middleware is required when profilesDb is provided');
     const profilesDb = config.profilesDb;
 
-    router.get("/registry/agents/search", authMiddleware ?? ((_req, _res, next) => next()), async (req, res) => {
+    router.get("/registry/agents/search", authMiddleware, async (req, res) => {
       try {
         const MAX_FILTER_VALUES = 100;
         const parseCSV = (param: string | undefined): string[] | undefined => {
@@ -3259,7 +3261,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   }, CRAWL_RATE_LIMIT_MS);
   rateLimitCleanupInterval.unref(); // Don't prevent process exit
 
-  router.post("/registry/crawl-request", authMiddleware ?? ((_req, _res, next) => next()), async (req, res) => {
+  if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
+  router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
     try {
       const { domain } = req.body;
       if (!domain || typeof domain !== 'string') {
@@ -3274,9 +3277,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       // DNS resolution check — reject domains resolving to private/reserved IPs
+      // Force IPv4 to avoid IPv6 SSRF bypass (::1, fc00::/7, etc.)
       try {
         const { lookup } = await import('node:dns/promises');
-        const { address } = await lookup(normalizedDomain);
+        const { address } = await lookup(normalizedDomain, { family: 4 });
         const parts = address.split('.').map(Number);
         const isPrivate =
           parts[0] === 10 ||
@@ -3292,7 +3296,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "Domain could not be resolved" });
       }
 
-      const memberId = (req as any).member?.id || 'anonymous';
+      const memberId = req.user?.id || 'anonymous';
 
       // Per-domain rate limit
       const lastCrawl = crawlRequestRateLimits.get(normalizedDomain);
