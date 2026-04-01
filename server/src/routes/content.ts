@@ -241,6 +241,9 @@ export async function proposeContentForUser(
     }
   }
 
+  // Only admins can mark content as official AAO content
+  const effectiveOrigin = (content_origin === 'official' && !userIsAdmin) ? 'member' : content_origin;
+
   // Determine if user can publish directly (leads and admins only)
   const canPublishDirectly = userIsLead || userIsAdmin;
 
@@ -277,7 +280,7 @@ export async function proposeContentForUser(
       slug, content_type, title, subtitle || null, content, excerpt,
       external_url, external_site_name, category, tags,
       authorName, requestAuthorTitle || null, user.id,
-      featured_image_url || null, content_origin,
+      featured_image_url || null, effectiveOrigin,
       user.id, proposedAt,
       committeeId, status, publishedAt,
     ]
