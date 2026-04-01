@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TRACK_SCENARIOS } from '../../src/addie/services/compliance-testing.js';
+import { TRACK_SCENARIOS, buildScenarioList } from '../../src/addie/services/compliance-testing.js';
 
 describe('TRACK_SCENARIOS', () => {
   it('maps reporting track to reporting_flow and deterministic_delivery', () => {
@@ -12,8 +12,24 @@ describe('TRACK_SCENARIOS', () => {
     const emptyTracks = Object.entries(TRACK_SCENARIOS)
       .filter(([, scenarios]) => scenarios.length === 0)
       .map(([track]) => track);
-    // Tracks without scenarios get 'skip' status.
-    // Reporting should not be in this list — it was previously stuck at 'expected'.
+    // Every track with scenarios gets tested; tracks without scenarios get 'skip' status.
     expect(emptyTracks).not.toContain('reporting');
+  });
+});
+
+describe('buildScenarioList', () => {
+  it('includes reporting scenarios that are not in DEFAULT_SCENARIOS', () => {
+    const scenarios = buildScenarioList(['reporting']);
+    expect(scenarios).toContain('reporting_flow');
+    expect(scenarios).toContain('deterministic_delivery');
+  });
+
+  it('includes all track scenarios when no tracks specified', () => {
+    const scenarios = buildScenarioList();
+    for (const [, trackScenarios] of Object.entries(TRACK_SCENARIOS)) {
+      for (const scenario of trackScenarios) {
+        expect(scenarios).toContain(scenario);
+      }
+    }
   });
 });

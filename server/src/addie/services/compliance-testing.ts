@@ -268,7 +268,7 @@ export function getPlatformProfile(platformType: PlatformType): PlatformProfile 
   return PLATFORM_PROFILES[platformType];
 }
 
-function buildScenarioList(tracks?: ComplianceTrack[]): TestScenario[] {
+export function buildScenarioList(tracks?: ComplianceTrack[]): TestScenario[] {
   const requestedTracks = tracks?.length ? tracks : (Object.keys(TRACK_SCENARIOS) as ComplianceTrack[]);
   const scenarios = new Set<TestScenario>();
   for (const track of requestedTracks) {
@@ -276,7 +276,13 @@ function buildScenarioList(tracks?: ComplianceTrack[]): TestScenario[] {
       scenarios.add(scenario);
     }
   }
-  return DEFAULT_SCENARIOS.filter((scenario) => scenarios.has(scenario));
+  // Start with DEFAULT_SCENARIOS order for shared scenarios, then append
+  // track-specific scenarios that aren't in DEFAULT_SCENARIOS.
+  const ordered = DEFAULT_SCENARIOS.filter((scenario) => scenarios.has(scenario));
+  for (const scenario of scenarios) {
+    if (!ordered.includes(scenario)) ordered.push(scenario);
+  }
+  return ordered;
 }
 
 function buildTrackResults(
