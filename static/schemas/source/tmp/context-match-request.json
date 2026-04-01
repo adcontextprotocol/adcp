@@ -69,7 +69,7 @@
     },
     "geo": {
       "type": "object",
-      "description": "Geographic context for this impression. Publisher controls granularity — country is sufficient for volume filtering and regulatory compliance, finer granularity helps with valuation. This describes where the ad is serving, not where the user is (user location is identity data). All fields optional.",
+      "description": "Coarse geographic location of the viewer. Publisher controls granularity — country is sufficient for regulatory compliance and volume filtering, region or metro helps with campaign targeting and valuation. Coarsened to prevent user identification: no postcode, no coordinates. All fields optional.",
       "properties": {
         "country": {
           "type": "string",
