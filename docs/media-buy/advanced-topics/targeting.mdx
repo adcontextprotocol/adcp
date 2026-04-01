@@ -139,6 +139,62 @@ When publishers return products, they include targeting information buyers need:
 }
 ```
 
+## Product Filters vs Targeting Overlays
+
+Some targeting dimensions appear in both `get_products` filters and `create_media_buy` targeting overlays. These serve different purposes at different stages:
+
+| Filter (`get_products`) | Overlay (`create_media_buy`) | Filter: what it does | Overlay: what it does |
+|---|---|---|---|
+| `countries` | `geo_countries` / `_exclude` | Show products serving these countries | Deliver only in these countries |
+| `regions` | `geo_regions` / `_exclude` | Show products serving these regions | Deliver only in these regions |
+| `metros` | `geo_metros` / `_exclude` | Show products serving these metros | Deliver only in these metros |
+| `postal_areas` | `geo_postal_areas` / `_exclude` | Show products serving these postal codes | Deliver only in these postal codes |
+| `geo_proximity` | `geo_proximity` | Show products with inventory near this point | Deliver only to users near this point |
+| `keywords` | `keyword_targets` / `negative_keywords` | Show products supporting these search terms | Bid on these specific terms |
+
+**Filters** tell the sell-side agent what matters to the buyer so it can curate relevant products. Without a proximity filter, a seller might recommend products that don't support geo_proximity — and the buyer wouldn't discover the gap until `create_media_buy`.
+
+**Overlays** apply the precise functional constraint at execution time. The overlay is what the seller's ad server enforces.
+
+Value filters (`countries`, `regions`, `metros`, `postal_areas`, `geo_proximity`, `keywords`) narrow by coverage area — "show me inventory in these places." Capability filters (`required_geo_targeting`, `required_features`) narrow by what the seller can enforce — "only sellers that support zip-level targeting." These compose: use both when you need inventory in a specific area from sellers that can target at that granularity.
+
+For buyers: pass filters at discovery time, then apply the same values (or refined versions) as overlays at buy time. Note that overlay schemas are stricter — for example, `keyword_targets` requires `match_type` while the `keywords` filter defaults to `broad`.
+
+### Example: discovery to buy
+
+```json
+// Step 1: get_products — signal intent with filters
+{
+  "brief": "Coffee shop promotion in downtown Seattle",
+  "filters": {
+    "geo_proximity": [{
+      "lat": 47.6062,
+      "lng": -122.3321,
+      "label": "Downtown Seattle",
+      "radius": { "value": 5, "unit": "mi" }
+    }],
+    "keywords": [{ "keyword": "coffee" }]
+  }
+}
+```
+
+```json
+// Step 2: create_media_buy — apply precise constraints as overlays
+{
+  "targeting": {
+    "geo_proximity": [{
+      "lat": 47.6062,
+      "lng": -122.3321,
+      "label": "Downtown Seattle",
+      "radius": { "value": 5, "unit": "mi" }
+    }],
+    "keyword_targets": [{ "keyword": "coffee", "match_type": "broad" }]
+  }
+}
+```
+
+Note that `keywords` (filter) becomes `keyword_targets` (overlay), and `match_type` becomes required.
+
 ## When to Use Targeting Overlays
 
 Targeting overlays in `create_media_buy` and `update_media_buy` are **rare** and should only be used for:

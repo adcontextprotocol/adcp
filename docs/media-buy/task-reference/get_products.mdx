@@ -163,8 +163,13 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `end_date` | string | Campaign end date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
-| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (case-insensitive, e.g., `["US", "CA", "GB"]`) |
+| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (e.g., `["US", "CA", "GB"]`) |
+| `regions` | string[] | Filter by region coverage using ISO 3166-2 codes (e.g., `["US-NY", "GB-SCT"]`). Best for locally-bound inventory |
+| `metros` | object[] | Filter by metro coverage. Each entry: `{ system, code }` (e.g., `[{ "system": "nielsen_dma", "code": "501" }]`) |
 | `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
+| `postal_areas` | object[] | Filter by postal area coverage. Each entry: `{ system, values }` (e.g., `[{ "system": "us_zip", "values": ["10001"] }]`) |
+| `geo_proximity` | object[] | Filter by proximity to geographic points. Each entry uses exactly one boundary method: `radius`, `travel_time` + `transport_mode`, or `geometry` |
+| `keywords` | object[] | Filter by keyword relevance for search/retail media. Each entry: `{ keyword, match_type? }`. `match_type` defaults to `broad` if omitted |
 
 ### Budget Range Object
 

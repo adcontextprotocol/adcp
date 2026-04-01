@@ -651,25 +651,42 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
-      if (!profile) {
-        return res.status(404).json({ error: 'Profile not found', message: 'No member profile exists for your organization.' });
+
+      // Resolve org name for brand_json (profile display_name if available, else org table)
+      let displayName: string;
+      if (profile?.display_name) {
+        displayName = profile.display_name;
+      } else {
+        const org = await orgDb.getOrganization(targetOrgId);
+        if (!org?.name) {
+          return res.status(404).json({ error: 'Organization not found', message: 'Could not resolve your organization.' });
+        }
+        displayName = org.name;
       }
 
-      // Derive brand domain
-      let brandDomain = profile.primary_brand_domain;
+      // Derive brand domain: profile fields first, then logo URL hostname
+      let brandDomain = profile?.primary_brand_domain;
+      if (!brandDomain && profile?.contact_website) {
+        try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
+      }
+      if (!brandDomain && logo_url) {
+        try {
+          const candidate = new URL(logo_url).hostname;
+          const existingBrand = await brandDb.getHostedBrandByDomain(candidate);
+          if (!existingBrand || !existingBrand.workos_organization_id || existingBrand.workos_organization_id === targetOrgId) {
+            brandDomain = candidate;
+          }
+        } catch { /* ignore */ }
+      }
       if (!brandDomain) {
-        if (profile.contact_website) {
-          try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
-        }
-        if (!brandDomain) {
-          return res.status(400).json({
-            error: 'No brand domain',
-            message: 'Set a website URL in your profile first.',
-          });
-        }
+        return res.status(400).json({
+          error: 'No brand domain',
+          message: 'Provide a logo URL hosted on your own domain so we can determine your brand domain.',
+        });
       }
+      brandDomain = brandDomain.toLowerCase();
 
-      // Transaction: update/create hosted brand + link profile
+      // Transaction: update/create hosted brand + link profile if it exists
       const pool = getPool();
       const client = await pool.connect();
       try {
@@ -683,7 +700,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         const existing = existingResult.rows[0] || null;
 
         // Ownership check: don't let one org overwrite another org's brand
-        if (existing && existing.workos_organization_id && existing.workos_organization_id !== profile.workos_organization_id) {
+        if (existing && existing.workos_organization_id && existing.workos_organization_id !== targetOrgId) {
           throw Object.assign(new Error('This brand domain is managed by another organization.'), { statusCode: 403 });
         }
 
@@ -704,22 +721,22 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             bj.brands = [primaryBrand, ...brands.slice(1)];
           } else {
             bj.brands = [{
-              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: profile.display_name }],
+              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: displayName }],
               logos: logo_url ? [{ url: logo_url }] : [],
               colors: brand_color ? { primary: brand_color } : {},
             }];
           }
           await client.query(
-            'UPDATE hosted_brands SET brand_json = $1, updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(bj), existing.id]
+            'UPDATE hosted_brands SET brand_json = $1, workos_organization_id = COALESCE(workos_organization_id, $3), updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(bj), existing.id, targetOrgId]
           );
         } else {
           const brandJson = {
-            house: { domain: brandDomain, name: profile.display_name },
+            house: { domain: brandDomain, name: displayName },
             brands: [{
-              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-              names: [{ en: profile.display_name }],
+              id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: displayName }],
               logos: logo_url ? [{ url: logo_url }] : [],
               colors: brand_color ? { primary: brand_color } : {},
             }],
@@ -727,11 +744,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           await client.query(
             `INSERT INTO hosted_brands (workos_organization_id, brand_domain, brand_json, is_public)
              VALUES ($1, $2, $3, $4)`,
-            [profile.workos_organization_id, brandDomain, JSON.stringify(brandJson), true]
+            [targetOrgId, brandDomain, JSON.stringify(brandJson), true]
           );
         }
 
-        if (!profile.primary_brand_domain) {
+        // Link brand domain back to profile if profile exists and doesn't have one
+        if (profile && !profile.primary_brand_domain) {
           await client.query(
             'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
             [brandDomain, profile.id]
@@ -750,7 +768,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       invalidateMemberContextCache();
 
       const duration = Date.now() - startTime;
-      logger.info({ profileId: profile.id, brandDomain, durationMs: duration }, 'Brand identity updated');
+      logger.info({ profileId: profile?.id, orgId: targetOrgId, brandDomain, durationMs: duration }, 'Brand identity updated');
 
       res.json({ brand: resolvedBrand, brand_domain: brandDomain });
     } catch (error: any) {

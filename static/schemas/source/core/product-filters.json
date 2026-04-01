@@ -207,6 +207,165 @@
         "$ref": "/schemas/core/signal-targeting.json"
       },
       "minItems": 1
+    },
+    "postal_areas": {
+      "type": "array",
+      "description": "Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, local campaigns). Use when products have postal-area-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/enums/postal-system.json",
+            "description": "Postal code system (e.g., 'us_zip', 'gb_outward')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "geo_proximity": {
+      "type": "array",
+      "description": "Filter by proximity to geographic points. Returns products with inventory coverage near these locations. Follows the same format as the targeting overlay — each entry uses exactly one method: travel_time + transport_mode, radius, or geometry. For locally-bound inventory (DOOH, radio), filters to products with coverage in the area. For digital inventory, filters to products from sellers supporting geo_proximity targeting.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Latitude in decimal degrees (WGS 84)"
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Longitude in decimal degrees (WGS 84)"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label (e.g., 'Düsseldorf', 'Heathrow Airport')"
+          },
+          "travel_time": {
+            "type": "object",
+            "description": "Travel time limit for isochrone calculation",
+            "properties": {
+              "value": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Travel time limit"
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["min", "hr"],
+                "description": "Time unit"
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "transport_mode": {
+            "$ref": "/schemas/enums/transport-mode.json",
+            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
+          },
+          "radius": {
+            "type": "object",
+            "description": "Simple radius from the point",
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Radius distance"
+              },
+              "unit": {
+                "$ref": "/schemas/enums/distance-unit.json",
+                "description": "Distance unit"
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "geometry": {
+            "type": "object",
+            "description": "Pre-computed GeoJSON geometry defining the proximity boundary",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Polygon", "MultiPolygon"],
+                "description": "GeoJSON geometry type"
+              },
+              "coordinates": {
+                "type": "array",
+                "description": "GeoJSON coordinates array"
+              }
+            },
+            "required": ["type", "coordinates"],
+            "additionalProperties": false
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["lat", "lng", "travel_time", "transport_mode"],
+            "not": {
+              "anyOf": [
+                { "required": ["radius"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["lat", "lng", "radius"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["geometry"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["radius"] }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "keywords": {
+      "type": "array",
+      "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "default": "broad",
+            "description": "Desired match type: broad matches related queries, phrase matches queries containing the keyword phrase, exact matches the query exactly. Defaults to broad."
+          }
+        },
+        "required": ["keyword"],
+        "additionalProperties": false
+      },
+      "minItems": 1
     }
   },
   "additionalProperties": true

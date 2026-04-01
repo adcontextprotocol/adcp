@@ -56,9 +56,9 @@ describe('AddieRouter.quickMatch', () => {
     });
   });
 
-  describe('react patterns', () => {
-    it('should react with wave to greetings', () => {
-      const plan = router.quickMatch(makeCtx({ message: 'hello' }));
+  describe('react patterns (channel messages only)', () => {
+    it('should react with wave to greetings in channels', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'hello', source: 'channel' }));
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('react');
       if (plan!.action === 'react') {
@@ -66,8 +66,8 @@ describe('AddieRouter.quickMatch', () => {
       }
     });
 
-    it('should react with tada to welcome messages', () => {
-      const plan = router.quickMatch(makeCtx({ message: 'welcome!' }));
+    it('should react with tada to welcome messages in channels', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'welcome!', source: 'channel' }));
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('react');
       if (plan!.action === 'react') {
@@ -75,8 +75,8 @@ describe('AddieRouter.quickMatch', () => {
       }
     });
 
-    it('should react with heart to thanks', () => {
-      const plan = router.quickMatch(makeCtx({ message: 'thanks!' }));
+    it('should react with heart to thanks in channels', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'thanks!', source: 'channel' }));
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('react');
       if (plan!.action === 'react') {
@@ -84,12 +84,34 @@ describe('AddieRouter.quickMatch', () => {
       }
     });
 
+    it('should not react in DMs — let LLM respond conversationally', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'hello', source: 'dm' }));
+      expect(plan).toBeNull();
+    });
+
+    it('should not react in channel threads — let LLM handle with context', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'thanks!', source: 'channel', isThread: true }));
+      expect(plan).toBeNull();
+    });
+
     it('should only match short messages for react patterns', () => {
-      // Long message containing "hello" should not quick-match
       const plan = router.quickMatch(
-        makeCtx({ message: 'hello, can you help me understand the adcp protocol?' }),
+        makeCtx({ message: 'hello, can you help me understand the adcp protocol?', source: 'channel' }),
       );
       expect(plan).toBeNull();
+    });
+  });
+
+  describe('thread context bypasses ignore', () => {
+    it('should not ignore acknowledgments in threads', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'yes', isThread: true }));
+      expect(plan).toBeNull();
+    });
+
+    it('should still ignore acknowledgments in standalone messages', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'ok', source: 'channel' }));
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('ignore');
     });
   });
 

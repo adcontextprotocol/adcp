@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import {
   isMoltbookEnabled,
@@ -182,8 +183,9 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
         const formatted = result.posts.map((post, i) => `${i + 1}. ${formatPost(post)}`);
         return `Found ${result.posts.length} posts for "${query}":\n\n${formatted.join('\n\n---\n\n')}`;
       } catch (err) {
+        if (err instanceof ToolError) throw err;
         logger.error({ err, query }, 'Failed to search Moltbook');
-        return `Error searching Moltbook: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        throw new ToolError(`Failed to search Moltbook: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     },
 
@@ -210,8 +212,9 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
 
         return lines.join('\n');
       } catch (err) {
+        if (err instanceof ToolError) throw err;
         logger.error({ err, postId }, 'Failed to get Moltbook thread');
-        return `Error getting thread: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        throw new ToolError(`Failed to get Moltbook thread: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     },
 
@@ -234,7 +237,7 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
         const result = await createPost(title, content, undefined, url);
 
         if (!result.success) {
-          return `Failed to post: ${result.error}`;
+          throw new ToolError(`Failed to post: ${result.error}`);
         }
 
         // Record activity
@@ -242,8 +245,9 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
 
         return `Successfully posted to Moltbook!\n\nTitle: ${title}\n${result.post?.permalink ? `View: ${result.post.permalink}` : ''}`;
       } catch (err) {
+        if (err instanceof ToolError) throw err;
         logger.error({ err, title }, 'Failed to post to Moltbook');
-        return `Error posting: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        throw new ToolError(`Failed to post to Moltbook: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     },
 
@@ -266,7 +270,7 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
         const result = await createComment(postId, content, parentId);
 
         if (!result.success) {
-          return `Failed to comment: ${result.error}`;
+          throw new ToolError(`Failed to comment: ${result.error}`);
         }
 
         // Record activity
@@ -274,8 +278,9 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
 
         return `Successfully commented on post ${postId}`;
       } catch (err) {
+        if (err instanceof ToolError) throw err;
         logger.error({ err, postId }, 'Failed to comment on Moltbook');
-        return `Error commenting: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        throw new ToolError(`Failed to comment on Moltbook: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     },
 
@@ -307,8 +312,9 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
 
         return lines.join('\n');
       } catch (err) {
+        if (err instanceof ToolError) throw err;
         logger.error({ err }, 'Failed to get Moltbook stats');
-        return `Error getting stats: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        throw new ToolError(`Failed to get Moltbook stats: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     },
 
@@ -330,8 +336,9 @@ export function createMoltbookToolHandlers(): Record<string, (input: Record<stri
         const formatted = result.posts.map((post, i) => `${i + 1}. ${formatPost(post)}`);
         return `**Moltbook ${sort.charAt(0).toUpperCase() + sort.slice(1)} Feed**\n\n${formatted.join('\n\n---\n\n')}`;
       } catch (err) {
+        if (err instanceof ToolError) throw err;
         logger.error({ err, sort }, 'Failed to get Moltbook feed');
-        return `Error getting feed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        throw new ToolError(`Failed to get Moltbook feed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     },
   };

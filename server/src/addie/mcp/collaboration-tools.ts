@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../logger.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { SlackDatabase } from '../../db/slack-db.js';
@@ -256,11 +257,12 @@ export function createCollaborationToolHandlers(
           error: result.error,
         }, 'Failed to send member DM via Addie');
 
-        return `Failed to send message: ${result.error || 'Unknown error'}`;
+        throw new ToolError(`Failed to send message: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
+      if (error instanceof ToolError) throw error;
       logger.error({ error, email, name, slackUserId: recipientSlackId }, 'Error in send_member_dm');
-      return `Error sending message: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      throw new ToolError(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   });
 

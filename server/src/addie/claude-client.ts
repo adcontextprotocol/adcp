@@ -16,6 +16,7 @@ import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, type MessageTurn } from '../utils/token-limiter.js';
 import { notifyToolError } from './error-notifier.js';
+import { ToolError } from './tool-error.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -960,23 +961,14 @@ export class AddieClaudeClient {
                 });
               }
             } else {
-              // Regular text result
-              // Log if the result indicates an error (tool returned error string rather than throwing)
-              const looksLikeError = result.startsWith('Error:') ||
-                result.startsWith('Failed to') ||
-                result.includes('not found') ||
-                result.includes('need to be logged in');
-              if (looksLikeError) {
-                logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie: Tool returned error result');
-                notifyToolError({ toolName, errorMessage: result.substring(0, 500), toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: false });
-              }
+              // Regular text result — always a success since tools throw on failure
               toolResults.push({ tool_use_id: toolUseId, content: result });
               toolExecutions.push({
                 tool_name: toolName,
                 parameters: toolInput,
                 result,
                 result_summary: this.summarizeToolResult(toolName, result),
-                is_error: looksLikeError,
+                is_error: false,
                 duration_ms: durationMs,
                 sequence: executionSequence,
               });
@@ -984,17 +976,23 @@ export class AddieClaudeClient {
           } catch (error) {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw exception');
-            notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+            const isExpected = error instanceof ToolError;
+            const errorResult = `Error: ${errorMessage}`;
+            if (isExpected) {
+              logger.warn({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool returned expected error');
+            } else {
+              logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw unexpected exception');
+              notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+            }
             toolResults.push({
               tool_use_id: toolUseId,
-              content: `Error: ${errorMessage}`,
+              content: errorResult,
               is_error: true,
             });
             toolExecutions.push({
               tool_name: toolName,
               parameters: toolInput,
-              result: `Error: ${errorMessage}`,
+              result: errorResult,
               is_error: true,
               duration_ms: durationMs,
               sequence: executionSequence,
@@ -1436,33 +1434,30 @@ export class AddieClaudeClient {
                   yield { type: 'tool_end', tool_name: toolName, result: 'Error: Failed to process file content', is_error: true };
                 }
               } else {
-                // Regular text result — detect error strings
-                const looksLikeError = result.startsWith('Error:') ||
-                  result.startsWith('Failed to') ||
-                  result.includes('not found') ||
-                  result.includes('need to be logged in');
-                if (looksLikeError) {
-                  logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie Stream: Tool returned error result');
-                  notifyToolError({ toolName, errorMessage: result.substring(0, 500), toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: false });
-                }
+                // Regular text result — always a success since tools throw on failure
                 toolResults.push({ tool_use_id: toolUseId, content: result });
                 toolExecutions.push({
                   tool_name: toolName,
                   parameters: toolInput,
                   result,
                   result_summary: this.summarizeToolResult(toolName, result),
-                  is_error: looksLikeError,
+                  is_error: false,
                   duration_ms: durationMs,
                   sequence: executionSequence,
                 });
-                yield { type: 'tool_end', tool_name: toolName, result, is_error: looksLikeError };
+                yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
               }
             } catch (error) {
               const durationMs = Date.now() - startTime;
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              const isExpected = error instanceof ToolError;
               const errorResult = `Error: ${errorMessage}`;
-              logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool threw exception');
-              notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+              if (isExpected) {
+                logger.warn({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool returned expected error');
+              } else {
+                logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool threw unexpected exception');
+                notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+              }
               toolResults.push({
                 tool_use_id: toolUseId,
                 content: errorResult,

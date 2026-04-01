@@ -1031,7 +1031,10 @@
               ${isFreeTier ? `
                 <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-primary" style="width: 100%; text-align: center; cursor: pointer;">Upgrade membership</button>
               ` : `
-                <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
+                <div style="display: flex; align-items: center; gap: var(--space-3);">
+                  <button onclick="openBillingPortal('${escapeHtml(orgId)}')" class="btn btn-ghost btn-sm" style="cursor: pointer;">Manage billing</button>
+                  <a href="/aao-w9.pdf" download="AAO-W9.pdf" class="btn btn-ghost btn-sm" style="cursor: pointer;">Download W-9</a>
+                </div>
               `}
             </div>
 

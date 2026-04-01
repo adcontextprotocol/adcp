@@ -10,6 +10,7 @@
 
 import { logger } from '../../logger.js';
 import { validateFetchUrl, validateRedirectTarget } from '../../utils/url-security.js';
+import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 
 // Maximum content size to prevent memory issues (500KB for text, 20MB for images/PDFs)
@@ -150,13 +151,13 @@ async function fetchUrlContent(
   try {
     parsedUrl = new URL(url);
   } catch {
-    return `Error: Invalid URL format: ${url}`;
+    throw new ToolError(`Invalid URL format: ${url}`);
   }
 
   try {
     await validateFetchUrl(parsedUrl);
   } catch (err) {
-    return `Error: ${err instanceof Error ? err.message : 'URL validation failed'}`;
+    throw new ToolError(err instanceof Error ? err.message : 'URL validation failed');
   }
 
   try {
@@ -190,13 +191,13 @@ async function fetchUrlContent(
     clearTimeout(timeout);
 
     if (!response.ok) {
-      return `Error: HTTP ${response.status} ${response.statusText}`;
+      throw new ToolError(`HTTP ${response.status} ${response.statusText}`);
     }
 
     // Check content length
     const contentLength = response.headers.get('content-length');
     if (contentLength && parseInt(contentLength) > MAX_CONTENT_SIZE) {
-      return `Error: Content too large (${Math.round(parseInt(contentLength) / 1024)}KB > ${MAX_CONTENT_SIZE / 1024}KB limit)`;
+      throw new ToolError(`Content too large (${Math.round(parseInt(contentLength) / 1024)}KB > ${MAX_CONTENT_SIZE / 1024}KB limit)`);
     }
 
     // Get content type
@@ -205,7 +206,7 @@ async function fetchUrlContent(
     // Read content with size limit
     const reader = response.body?.getReader();
     if (!reader) {
-      return 'Error: Could not read response body';
+      throw new ToolError('Could not read response body');
     }
 
     const chunks: Uint8Array[] = [];
@@ -218,7 +219,7 @@ async function fetchUrlContent(
       totalSize += value.length;
       if (totalSize > MAX_CONTENT_SIZE) {
         reader.cancel();
-        return `Error: Content too large (exceeded ${MAX_CONTENT_SIZE / 1024}KB limit during download)`;
+        throw new ToolError(`Content too large (exceeded ${MAX_CONTENT_SIZE / 1024}KB limit during download)`);
       }
       chunks.push(value);
     }
@@ -246,11 +247,11 @@ async function fetchUrlContent(
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
-        return `Error: Request timed out after ${FETCH_TIMEOUT_MS / 1000} seconds`;
+        throw new ToolError(`Request timed out after ${FETCH_TIMEOUT_MS / 1000} seconds`);
       }
-      return `Error: ${error.message}`;
+      throw new ToolError(error.message);
     }
-    return 'Error: Unknown fetch error';
+    throw new ToolError('Unknown fetch error');
   }
 }
 
@@ -613,6 +614,9 @@ export function createUrlToolHandlers(slackBotToken?: string): Record<string, (i
       logger.info({ fileUrl, fileName }, 'Addie: Reading Slack file');
 
       const result = await readSlackFile(fileUrl, fileName, slackBotToken);
+      if (result.error) {
+        throw new ToolError(result.error);
+      }
       const formatted = formatFileResult(result);
 
       // Only truncate text content, not multimodal markers
