@@ -1,6 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import { csrfProtection } from "./middleware/csrf.js";
+import { slowResponseTracker } from "./middleware/slow-response.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
 import path from "path";
@@ -466,6 +467,9 @@ export class HTTPServer {
 
       next();
     });
+
+    // Track slow API responses and alert ops
+    this.app.use(slowResponseTracker);
 
     // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
