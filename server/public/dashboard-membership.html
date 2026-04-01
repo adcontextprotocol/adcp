@@ -676,6 +676,26 @@
       color: var(--color-text-muted);
     }
 
+    .product-card-price .original-price {
+      font-size: 18px;
+      font-weight: 400;
+      text-decoration: line-through;
+      color: var(--color-text-muted);
+      margin-right: 8px;
+    }
+
+    .product-card-price .discount-badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-success, #16a34a);
+      background: var(--color-success-bg, #f0fdf4);
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
     .product-card-tier {
       font-size: 12px;
       color: var(--color-text-muted);
@@ -1132,6 +1152,32 @@
       }).format(amountCents / 100);
     }
 
+    // Apply org discount to a price and return { discountedCents, html }
+    function applyOrgDiscount(amountCents) {
+      const discount = currentOrg?.billing;
+      if (!discount) return { discountedCents: amountCents, html: formatCurrency(amountCents) };
+
+      let discountedCents = amountCents;
+      let label = '';
+
+      if (discount.discount_percent) {
+        discountedCents = Math.round(amountCents * (1 - discount.discount_percent / 100));
+        label = `${discount.discount_percent}% off`;
+      } else if (discount.discount_amount_cents) {
+        discountedCents = Math.max(0, amountCents - discount.discount_amount_cents);
+        label = `${formatCurrency(discount.discount_amount_cents)} off`;
+      }
+
+      if (discountedCents === amountCents) {
+        return { discountedCents: amountCents, html: formatCurrency(amountCents) };
+      }
+
+      return {
+        discountedCents,
+        html: `<span class="original-price">${formatCurrency(amountCents)}</span>${formatCurrency(discountedCents)}<span class="discount-badge">${label}</span>`
+      };
+    }
+
     // Load billing data
     async function loadBilling() {
       try {
@@ -1469,12 +1515,13 @@
       });
 
       const cardsHtml = uniqueProducts.map(product => {
+        const pricing = applyOrgDiscount(product.amount_cents);
         return `
           <div class="product-card" data-lookup-key="${product.lookup_key}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
             ${product.description ? `<div class="product-card-description">${escapeHtml(product.description)}</div>` : ''}
             <div class="product-card-price">
-              ${formatCurrency(product.amount_cents)}
+              ${pricing.html}
               <span class="period">/year</span>
             </div>
             <div class="product-card-actions">
@@ -1527,12 +1574,14 @@
         // Store for use by selectProduct/openInvoiceRequestForProduct
         membershipProducts = allProducts;
 
-        const cardsHtml = upgradeProducts.map(product => `
+        const cardsHtml = upgradeProducts.map(product => {
+          const pricing = applyOrgDiscount(product.amount_cents);
+          return `
           <div class="product-card" data-lookup-key="${escapeHtml(product.lookup_key)}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
             ${product.description ? `<div class="product-card-description">${escapeHtml(product.description)}</div>` : ''}
             <div class="product-card-price">
-              ${formatCurrency(product.amount_cents)}
+              ${pricing.html}
               <span class="period">/year</span>
             </div>
             <div class="product-card-actions">
@@ -1540,7 +1589,7 @@
               <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${escapeHtml(product.lookup_key)}')">Request Invoice</button>
             </div>
           </div>
-        `).join('');
+        `}).join('');
 
         container.innerHTML = `<div class="products-grid">${cardsHtml}</div>`;
         upgradeCard.style.display = 'block';
@@ -1555,9 +1604,14 @@
       selectedProduct = membershipProducts.find(p => p.lookup_key === lookupKey);
       if (!selectedProduct) return;
 
-      // Update modal info
-      document.getElementById('selectedProductInfo').textContent =
-        `${selectedProduct.display_name} - ${formatCurrency(selectedProduct.amount_cents)}/year`;
+      // Update modal info with discount if applicable
+      const modalPricing = applyOrgDiscount(selectedProduct.amount_cents);
+      const infoEl = document.getElementById('selectedProductInfo');
+      if (modalPricing.discountedCents !== selectedProduct.amount_cents) {
+        infoEl.innerHTML = `${escapeHtml(selectedProduct.display_name)} - ${modalPricing.html}<span class="period">/year</span>`;
+      } else {
+        infoEl.textContent = `${selectedProduct.display_name} - ${formatCurrency(selectedProduct.amount_cents)}/year`;
+      }
 
       // Reset checkbox
       document.getElementById('modalAgreementCheckbox').checked = false;
