@@ -31,7 +31,7 @@ function shouldCheck(url) {
   return !SKIPPED_PATH_PREFIXES.some((prefix) => parsed.pathname.startsWith(prefix));
 }
 
-async function fetchStatus(url, method, retries = 2) {
+async function fetchStatus(url, method, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, {
@@ -41,10 +41,14 @@ async function fetchStatus(url, method, retries = 2) {
           'User-Agent': 'adcp-owned-link-check/1.0',
         },
       });
+      if (response.status >= 500 && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
       return response.status;
     } catch (err) {
       if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
         continue;
       }
       throw err;
