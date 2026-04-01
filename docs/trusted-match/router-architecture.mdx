@@ -159,7 +159,7 @@ TEE auction infrastructure (AWS Nitro Enclaves, attestation, key management) is 
 
 ## Deployment
 
-The TMP Router is a single Go binary. It reads a configuration file listing providers and their capabilities, then exposes a single HTTP/2 endpoint. The request `type` field distinguishes Context Match from Identity Match — the router uses type-based dispatch, not URL paths.
+The TMP Router is a single Go binary built on [adcp-go](https://github.com/adcontextprotocol/adcp-go). It reads a configuration file listing providers and their capabilities, then exposes a single HTTP/2 endpoint. The request `type` field distinguishes Context Match from Identity Match — the router uses type-based dispatch, not URL paths.
 
 ### Configuration
 

@@ -20,6 +20,8 @@ A buyer agent exposes two HTTP endpoints:
 
 Both endpoints must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
+The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides Go types, request parsing, and response builders for both endpoints.
+
 ## Prerequisites
 
 Before TMP requests arrive, your packages must exist. A media buy contains one or more packages — TMP operates at the package level.
