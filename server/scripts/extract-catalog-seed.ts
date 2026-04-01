@@ -1,266 +1,133 @@
 /**
- * Extract property catalog seed data from Scope3 BigQuery.
+ * Export Scope3 property catalog data from BigQuery directly to GCS.
  *
- * Produces JSONL files for the catalog-seed service:
- *   1. ad-infra.jsonl     — 23K+ ad tech domains classified as ad_infra
- *   2. properties-web.jsonl — 1.7M web domains as property identities
- *   3. properties-app.jsonl — 550K+ app identifiers as property identities
- *   4. links.jsonl          — identifier links from publisher-organized properties
+ * No data passes through the local machine. BigQuery writes CSV files
+ * directly to gs://aao-catalog-seed/, where the server's POST /seed/gcs
+ * endpoint reads them.
  *
- * Usage: npx tsx server/scripts/extract-catalog-seed.ts [--output-dir /path]
+ * Produces:
+ *   1. ad-infra-000000000000.csv       — ad tech domains for ad_infra classification
+ *   2. web-properties-000000000000.csv  — web domains as property identities
+ *   3. app-properties-000000000000.csv  — app identifiers as property identities
  *
- * Prerequisites: gcloud auth (bokelley@scope3.com)
+ * Usage:
+ *   npx tsx server/scripts/extract-catalog-seed.ts
+ *   npx tsx server/scripts/extract-catalog-seed.ts --bucket gs://my-bucket
+ *
+ * Prerequisites:
+ *   gcloud auth (bokelley@scope3.com) with BigQuery + GCS write access
+ *
+ * After export, trigger the import from the server:
+ *   curl -X POST https://adcp.dev/api/registry/catalog/seed/gcs
  */
 
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFileSync } from 'child_process';
 
 const PROJECT = 'swift-catfish-337215';
+const DEFAULT_BUCKET = 'gs://aao-catalog-seed';
 
-function bqQuery(sql: string): unknown[] {
-  const escaped = sql.replace(/'/g, "'\\''");
-  const cmd = `bq query --project_id=${PROJECT} --use_legacy_sql=false --max_rows=10000000 --format=json '${escaped}'`;
-  const result = execSync(cmd, { maxBuffer: 2 * 1024 * 1024 * 1024, encoding: 'utf-8' });
-  const trimmed = result.trim();
-  if (!trimmed || trimmed === '[]') return [];
-  return JSON.parse(trimmed);
+const bucket = process.argv.includes('--bucket')
+  ? process.argv[process.argv.indexOf('--bucket') + 1]
+  : DEFAULT_BUCKET;
+
+if (!/^gs:\/\/[a-z0-9][-a-z0-9_.]*[a-z0-9](\/[a-z0-9][-a-z0-9_.]*)*$/.test(bucket)) {
+  console.error(`Invalid bucket URI: ${bucket}`);
+  process.exit(1);
 }
 
-function mapInventoryType(inventoryType: string, value: string): { type: string; value: string } | null {
-  switch (inventoryType) {
-    case 'SITE':
-      return { type: 'domain', value: value.toLowerCase() };
-    case 'GOOGLE_PLAY_STORE':
-      if (/^[a-z]/.test(value) && value.includes('.')) {
-        return { type: 'android_package', value: value.toLowerCase() };
-      }
-      return { type: 'google_play_id', value };
-    case 'APPLE_APP_STORE':
-      if (/^\d+$/.test(value)) {
-        return { type: 'apple_app_store_id', value };
-      }
-      return { type: 'ios_bundle', value: value.toLowerCase() };
-    case 'ROKU':
-      return { type: 'roku_store_id', value };
-    case 'SAMSUNG':
-      return { type: 'samsung_app_id', value };
-    case 'AMAZON':
-      return { type: 'fire_tv_asin', value };
-    default:
-      return null;
-  }
+function bqExport(description: string, sql: string): void {
+  console.log(description);
+  execFileSync('bq', ['query', `--project_id=${PROJECT}`, '--use_legacy_sql=false', sql], {
+    stdio: 'inherit',
+    encoding: 'utf-8',
+  });
 }
 
-// ─── Parse args ──────────────────────────────────────────────────
+// ─── Find latest inventory snapshot date ─────────────────────────
 
-const outputDir = process.argv.includes('--output-dir')
-  ? process.argv[process.argv.indexOf('--output-dir') + 1]
-  : path.join(process.cwd(), 'server', 'data', 'catalog-seed');
-
-fs.mkdirSync(outputDir, { recursive: true });
+console.log('Finding latest inventory snapshot...');
+const ymdResult = execFileSync('bq', [
+  'query', `--project_id=${PROJECT}`, '--use_legacy_sql=false', '--format=json',
+  `SELECT MAX(ymd) as ymd FROM \`${PROJECT}.organizations.property_inventory_mappings\``,
+], { encoding: 'utf-8' });
+const latestYmd = JSON.parse(ymdResult.trim())[0]?.ymd;
+if (!latestYmd || !/^\d{4}-\d{2}-\d{2}$/.test(latestYmd)) {
+  console.error(`Unexpected ymd value: ${latestYmd}`);
+  process.exit(1);
+}
+console.log(`  Using snapshot from ${latestYmd}\n`);
 
 // ─── Step 1: Ad Infrastructure Domains ───────────────────────────
 
-console.log('Step 1: Extracting ad tech domains for ad_infra classification...');
-
-const adTechRows = bqQuery(`
-  SELECT DISTINCT d.domain
+bqExport('Step 1: Exporting ad tech domains → ad-infra-*.csv', `
+  EXPORT DATA OPTIONS(
+    uri='${bucket}/ad-infra-*.csv',
+    format='CSV',
+    overwrite=true,
+    header=true
+  ) AS
+  SELECT DISTINCT LOWER(d.domain) AS domain
   FROM \`${PROJECT}.postgres_datastream.public_adtech_platform\` atp
   JOIN \`${PROJECT}.postgres_datastream.public_organization\` o ON atp.organization_id = o.id
   JOIN \`${PROJECT}.postgres_datastream.public_domain\` d ON d.organization_id = o.id
   WHERE atp.is_generic = false
-  AND d.domain IS NOT NULL
-  AND d.domain_type = 'SITE'
-`) as Array<{ domain: string }>;
-
-const adInfraPath = path.join(outputDir, 'ad-infra.jsonl');
-const adInfraStream = fs.createWriteStream(adInfraPath);
-let adInfraCount = 0;
-
-for (const row of adTechRows) {
-  const domain = row.domain.trim().toLowerCase();
-  if (!domain || !domain.includes('.')) continue;
-
-  // Skip domains that are clearly publisher properties being sold through ad tech
-  // (e.g., cnn.com shows up under Alphabet because GAM serves their ads)
-  // We only want the serving/tracking/tag domains
-  if (domain.match(/\.(doubleclick|googlesyndication|adsystem|adform|criteo|adnxs|pubmatic|rubiconproject|casalemedia|openx|sharethrough|flashtalking|sizmek|innovid|spotx|moat|doubleverify|integral)\./)) {
-    adInfraStream.write(JSON.stringify({
-      type: 'classification',
-      identifier: { type: 'domain', value: domain },
-      classification: 'ad_infra',
-      reason: 'Scope3 ad tech platform domain (serving/tracking)',
-    }) + '\n');
-    adInfraCount++;
-    continue;
-  }
-
-  // Domains containing ad-tech-specific subdomain patterns
-  if (domain.match(/^(ad[sx]?|pixel|tag|track|beacon|sync|match|bid|rtb|imp|stats|static|cdn|js|sdk)\./)) {
-    adInfraStream.write(JSON.stringify({
-      type: 'classification',
-      identifier: { type: 'domain', value: domain },
-      classification: 'ad_infra',
-      reason: 'Scope3 ad tech platform subdomain pattern',
-    }) + '\n');
-    adInfraCount++;
-    continue;
-  }
-
-  // For base domains of ad tech platforms, classify the domain itself
-  adInfraStream.write(JSON.stringify({
-    type: 'classification',
-    identifier: { type: 'domain', value: domain },
-    classification: 'ad_infra',
-    reason: 'Scope3 ad tech platform domain',
-  }) + '\n');
-  adInfraCount++;
-}
-
-adInfraStream.end();
-console.log(`  Wrote ${adInfraCount} ad_infra classifications to ${adInfraPath}`);
+    AND d.domain IS NOT NULL
+    AND d.domain_type = 'SITE'
+    AND STRPOS(d.domain, '.') > 0
+`);
 
 // ─── Step 2: Web Domain Properties ───────────────────────────────
+// Excludes domains already classified as ad infrastructure.
 
-console.log('Step 2: Extracting web domains...');
-
-const latestYmd = (bqQuery(`
-  SELECT MAX(ymd) as ymd FROM \`${PROJECT}.organizations.property_inventory_mappings\`
-`) as Array<{ ymd: string }>)[0].ymd;
-
-console.log(`  Using inventory snapshot from ${latestYmd}`);
-
-const webRows = bqQuery(`
-  SELECT DISTINCT inventory_identifier as domain
-  FROM \`${PROJECT}.organizations.property_inventory_mappings\`
-  WHERE ymd = '${latestYmd}'
-  AND channel IN ('DISPLAY-WEB', 'STREAMING-VIDEO', 'DIGITAL-AUDIO')
-  AND inventory_type = 'SITE'
-  AND inventory_identifier IS NOT NULL
-  AND LENGTH(TRIM(inventory_identifier)) > 3
+bqExport('Step 2: Exporting web domains → web-properties-*.csv', `
+  EXPORT DATA OPTIONS(
+    uri='${bucket}/web-properties-*.csv',
+    format='CSV',
+    overwrite=true,
+    header=true
+  ) AS
+  WITH ad_infra AS (
+    SELECT DISTINCT LOWER(d.domain) AS domain
+    FROM \`${PROJECT}.postgres_datastream.public_adtech_platform\` atp
+    JOIN \`${PROJECT}.postgres_datastream.public_organization\` o ON atp.organization_id = o.id
+    JOIN \`${PROJECT}.postgres_datastream.public_domain\` d ON d.organization_id = o.id
+    WHERE atp.is_generic = false
+      AND d.domain IS NOT NULL
+      AND d.domain_type = 'SITE'
+  )
+  SELECT DISTINCT LOWER(pim.inventory_identifier) AS domain
+  FROM \`${PROJECT}.organizations.property_inventory_mappings\` pim
+  LEFT JOIN ad_infra ai ON LOWER(pim.inventory_identifier) = ai.domain
+  WHERE pim.ymd = '${latestYmd}'
+    AND pim.channel IN ('DISPLAY-WEB', 'STREAMING-VIDEO', 'DIGITAL-AUDIO')
+    AND pim.inventory_type = 'SITE'
+    AND pim.inventory_identifier IS NOT NULL
+    AND LENGTH(TRIM(pim.inventory_identifier)) > 3
+    AND ai.domain IS NULL
   ORDER BY domain
-`) as Array<{ domain: string }>;
+`);
 
-const webPath = path.join(outputDir, 'properties-web.jsonl');
-const webStream = fs.createWriteStream(webPath);
-let webCount = 0;
+// ─── Step 3: App Properties ──────────────────────────────────────
 
-// Build ad_infra set for exclusion
-const adInfraSet = new Set(adTechRows.map(r => r.domain.trim().toLowerCase()));
-
-for (const row of webRows) {
-  const domain = row.domain.trim().toLowerCase();
-  if (!domain || !domain.includes('.')) continue;
-  if (adInfraSet.has(domain)) continue; // Skip domains already classified as ad_infra
-
-  webStream.write(JSON.stringify({
-    type: 'property',
-    identifiers: [{ type: 'domain', value: domain }],
-    classification: 'property',
-  }) + '\n');
-  webCount++;
-}
-
-webStream.end();
-console.log(`  Wrote ${webCount} web property records to ${webPath}`);
-
-// ─── Step 3: App Properties ─────────────────────────────────────
-
-console.log('Step 3: Extracting app identifiers...');
-
-const appRows = bqQuery(`
-  SELECT DISTINCT inventory_identifier, inventory_type, channel
+bqExport('Step 3: Exporting app identifiers → app-properties-*.csv', `
+  EXPORT DATA OPTIONS(
+    uri='${bucket}/app-properties-*.csv',
+    format='CSV',
+    overwrite=true,
+    header=true
+  ) AS
+  SELECT DISTINCT inventory_type, inventory_identifier AS identifier
   FROM \`${PROJECT}.organizations.property_inventory_mappings\`
   WHERE ymd = '${latestYmd}'
-  AND inventory_type IN ('GOOGLE_PLAY_STORE', 'APPLE_APP_STORE', 'ROKU', 'SAMSUNG', 'AMAZON')
-  AND inventory_identifier IS NOT NULL
-  AND LENGTH(TRIM(inventory_identifier)) > 1
-  ORDER BY inventory_type, inventory_identifier
-`) as Array<{ inventory_identifier: string; inventory_type: string; channel: string }>;
+    AND inventory_type IN ('GOOGLE_PLAY_STORE', 'APPLE_APP_STORE', 'ROKU', 'SAMSUNG', 'AMAZON')
+    AND inventory_identifier IS NOT NULL
+    AND LENGTH(TRIM(inventory_identifier)) > 1
+  ORDER BY inventory_type, identifier
+`);
 
-const appPath = path.join(outputDir, 'properties-app.jsonl');
-const appStream = fs.createWriteStream(appPath);
-let appCount = 0;
+// ─── Done ────────────────────────────────────────────────────────
 
-for (const row of appRows) {
-  const mapped = mapInventoryType(row.inventory_type, row.inventory_identifier.trim());
-  if (!mapped) continue;
-
-  appStream.write(JSON.stringify({
-    type: 'property',
-    identifiers: [mapped],
-    classification: 'property',
-  }) + '\n');
-  appCount++;
-}
-
-appStream.end();
-console.log(`  Wrote ${appCount} app property records to ${appPath}`);
-
-// ─── Step 4: Publisher-Organized Links ───────────────────────────
-
-console.log('Step 4: Extracting publisher-organized identifier links...');
-
-// Get properties with multiple identifiers (these create linking facts)
-const linkRows = bqQuery(`
-  SELECT
-    organization_id as org_id,
-    property_name,
-    channel,
-    ARRAY_AGG(STRUCT(inventory_type, inventory_identifier)) as identifiers
-  FROM \`${PROJECT}.organizations.property_inventory_mappings\`
-  WHERE ymd = '${latestYmd}'
-  AND inventory_identifier IS NOT NULL
-  AND organization_id IS NOT NULL
-  GROUP BY organization_id, property_name, channel
-  HAVING COUNT(*) > 1 AND COUNT(*) <= 50
-  ORDER BY org_id, property_name
-`) as Array<{
-  org_id: string;
-  property_name: string;
-  channel: string;
-  identifiers: Array<{ inventory_type: string; inventory_identifier: string }>;
-}>;
-
-const linksPath = path.join(outputDir, 'links.jsonl');
-const linksStream = fs.createWriteStream(linksPath);
-let linkCount = 0;
-
-for (const row of linkRows) {
-  const mapped = row.identifiers
-    .map(i => mapInventoryType(i.inventory_type, i.inventory_identifier.trim()))
-    .filter((m): m is { type: string; value: string } => m !== null);
-
-  // Deduplicate
-  const seen = new Set<string>();
-  const unique = mapped.filter(m => {
-    const key = `${m.type}:${m.value}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
-  if (unique.length < 2) continue;
-
-  linksStream.write(JSON.stringify({
-    type: 'link',
-    identifiers: unique,
-  }) + '\n');
-  linkCount++;
-}
-
-linksStream.end();
-console.log(`  Wrote ${linkCount} link records to ${linksPath}`);
-
-// ─── Summary ─────────────────────────────────────────────────────
-
-console.log('\n=== Catalog Seed Summary ===');
-console.log(`  Ad infra classifications: ${adInfraCount.toLocaleString()}`);
-console.log(`  Web property identities:  ${webCount.toLocaleString()}`);
-console.log(`  App property identities:  ${appCount.toLocaleString()}`);
-console.log(`  Identifier links:         ${linkCount.toLocaleString()}`);
-console.log(`  Total records:            ${(adInfraCount + webCount + appCount + linkCount).toLocaleString()}`);
-console.log(`  Output directory:         ${outputDir}`);
+console.log('\n=== Export Complete ===');
+console.log(`Files written to ${bucket}/`);
 console.log('\nTo import into the catalog:');
-console.log(`  cat ${outputDir}/*.jsonl | npx tsx server/scripts/import-catalog-seed.ts`);
+console.log('  curl -X POST https://adcp.dev/api/registry/catalog/seed/gcs');

@@ -245,69 +245,116 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
   }, ...adminMiddleware, async (req, res) => {
     const GCS_BASE = 'https://storage.googleapis.com/aao-catalog-seed';
     const actor = 'system:scope3_seed';
+    // PostgreSQL max 65535 params. Worst case: 5 (property) + 6 (identifier) = 11 per row.
+    // floor(65535 / 11) = 5957. Use 5000 for safety.
+    const BATCH = 5000;
+    const MAX_SEED_BYTES = 150 * 1024 * 1024; // 150MB per shard (1GB Fly machine)
+
+    const { getClient } = await import('../db/client.js');
+    const { uuidv7 } = await import('../db/uuid.js');
+    const { normalizeIdentifier } = await import('../services/identifier-normalization.js');
+
+    // Stream newline-delimited JSON progress to keep Fly proxy alive
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Cache-Control', 'no-cache');
+    function progress(data: Record<string, unknown>): void {
+      res.write(JSON.stringify(data) + '\n');
+    }
 
     try {
       const results: Record<string, unknown> = {};
 
-      // Helper: stream CSV from GCS, parse lines, process in batches
-      async function processGcsFile(
-        fileName: string,
+      // Fetch a GCS shard, process CSV lines in batches
+      async function processGcsShard(
+        response: Response,
+        url: string,
+        prefix: string,
+        shard: number,
         processor: (lines: string[]) => Promise<number>
-      ): Promise<{ rows: number; time_ms: number }> {
-        const start = Date.now();
-        const url = `${GCS_BASE}/${fileName}`;
-        logger.info(`Fetching ${url}`);
-
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
-
+      ): Promise<number> {
         const contentLength = response.headers.get('content-length');
-        const MAX_SEED_BYTES = 500 * 1024 * 1024; // 500MB
         if (contentLength && parseInt(contentLength, 10) > MAX_SEED_BYTES) {
           throw new Error(`Seed file too large: ${contentLength} bytes (max ${MAX_SEED_BYTES})`);
         }
 
         const text = await response.text();
         const lines = text.split('\n').filter(l => l.trim().length > 0);
-        // Skip CSV header
-        const dataLines = lines.slice(1);
+        const dataLines = lines.slice(1); // skip CSV header
 
         let totalRows = 0;
-        const BATCH = 5000;
         for (let i = 0; i < dataLines.length; i += BATCH) {
-          const batch = dataLines.slice(i, i + BATCH);
-          totalRows += await processor(batch);
-          if (i % 50000 === 0 && i > 0) {
-            logger.info(`  ${fileName}: ${i.toLocaleString()}/${dataLines.length.toLocaleString()} rows`);
+          totalRows += await processor(dataLines.slice(i, i + BATCH));
+          if (i > 0 && i % 50000 === 0) {
+            progress({ step: prefix, shard, rows: totalRows, batch: i });
           }
+        }
+        return totalRows;
+      }
+
+      // Iterate BigQuery EXPORT DATA shards (prefix-000000000000.csv, -000000000001.csv, ...)
+      async function processGcsFile(
+        prefix: string,
+        processor: (lines: string[]) => Promise<number>
+      ): Promise<{ rows: number; time_ms: number }> {
+        const start = Date.now();
+        let totalRows = 0;
+        let shard = 0;
+
+        while (true) {
+          const shardId = String(shard).padStart(12, '0');
+          const url = `${GCS_BASE}/${prefix}-${shardId}.csv`;
+          logger.info(`Fetching ${url}`);
+
+          const response = await fetch(url);
+          if (response.status === 404) break;
+          if (!response.ok) {
+            throw new Error(`GCS fetch failed for ${url}: ${response.status} ${response.statusText}`);
+          }
+
+          totalRows += await processGcsShard(response, url, prefix, shard, processor);
+          progress({ step: prefix, shard, rows: totalRows, status: 'shard_done' });
+          logger.info(`  ${prefix}: shard ${shard} done (${totalRows.toLocaleString()} rows so far)`);
+          shard++;
+        }
+
+        if (shard === 0) {
+          throw new Error(`No shards found for ${prefix} at ${GCS_BASE}`);
         }
 
         return { rows: totalRows, time_ms: Date.now() - start };
       }
 
-      // 1. Ad infra classifications
-      results.ad_infra = await processGcsFile('ad-infra.csv', async (lines) => {
-        const { getClient } = await import('../db/client.js');
-        const { uuidv7 } = await import('../db/uuid.js');
+      // 1. Ad infra classifications (bulk insert)
+      results.ad_infra = await processGcsFile('ad-infra', async (lines) => {
         const client = await getClient();
         try {
           await client.query('BEGIN');
-          let count = 0;
+          const values: unknown[] = [];
+          let idx = 0;
+
           for (const line of lines) {
             const domain = line.trim().toLowerCase();
             if (!domain || !domain.includes('.')) continue;
+            values.push(uuidv7(), `domain:${domain}`, actor);
+            idx++;
+          }
 
-            // Record classification fact
+          if (idx > 0) {
+            const placeholders = Array.from({ length: idx }, (_, i) => {
+              const base = i * 3;
+              return `($${base + 1}, 'classification', 'identifier', $${base + 2}, 'classified_as', 'ad_infra', 'data_partner', 'strong', $${base + 3})`;
+            }).join(',');
+
             await client.query(
               `INSERT INTO catalog_facts (fact_id, fact_type, subject_type, subject_value, predicate, object_value, source, confidence, actor)
-               VALUES ($1, 'classification', 'identifier', $2, 'classified_as', 'ad_infra', 'data_partner', 'strong', $3)
+               VALUES ${placeholders}
                ON CONFLICT DO NOTHING`,
-              [uuidv7(), `domain:${domain}`, actor]
+              values
             );
-            count++;
           }
+
           await client.query('COMMIT');
-          return count;
+          return idx;
         } catch (err) {
           await client.query('ROLLBACK');
           throw err;
@@ -317,20 +364,13 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
       });
 
       // 2. Web properties
-      results.web_properties = await processGcsFile('web-properties-000000000000.csv', async (lines) => {
-        const { getClient } = await import('../db/client.js');
-        const { uuidv7 } = await import('../db/uuid.js');
-        const { normalizeIdentifier } = await import('../services/identifier-normalization.js');
+      results.web_properties = await processGcsFile('web-properties', async (lines) => {
         const client = await getClient();
         try {
           await client.query('BEGIN');
-          let count = 0;
-
-          // Build multi-row insert for properties and identifiers
           const propValues: unknown[] = [];
           const identValues: unknown[] = [];
           let propIdx = 0;
-          let identIdx = 0;
 
           for (const line of lines) {
             const domain = line.trim().toLowerCase();
@@ -342,12 +382,9 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
             propValues.push(rid, 'property', 'contributed', 'active', actor);
             identValues.push(uuidv7(), rid, norm.type, norm.value, 'data_partner', 'strong');
             propIdx++;
-            identIdx++;
-            count++;
           }
 
           if (propIdx > 0) {
-            // Bulk insert properties
             const propPlaceholders = Array.from({ length: propIdx }, (_, i) => {
               const base = i * 5;
               return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
@@ -360,8 +397,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
               propValues
             );
 
-            // Bulk insert identifiers
-            const identPlaceholders = Array.from({ length: identIdx }, (_, i) => {
+            const identPlaceholders = Array.from({ length: propIdx }, (_, i) => {
               const base = i * 6;
               return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
             }).join(',');
@@ -375,7 +411,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
           }
 
           await client.query('COMMIT');
-          return count;
+          return propIdx;
         } catch (err) {
           await client.query('ROLLBACK');
           throw err;
@@ -385,28 +421,21 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
       });
 
       // 3. App properties
-      results.app_properties = await processGcsFile('app-properties-000000000000.csv', async (lines) => {
-        const { getClient } = await import('../db/client.js');
-        const { uuidv7 } = await import('../db/uuid.js');
-        const { normalizeIdentifier } = await import('../services/identifier-normalization.js');
+      results.app_properties = await processGcsFile('app-properties', async (lines) => {
         const client = await getClient();
         try {
           await client.query('BEGIN');
-          let count = 0;
-
           const propValues: unknown[] = [];
           const identValues: unknown[] = [];
           let propIdx = 0;
 
           for (const line of lines) {
-            // CSV: inventory_type,identifier
             const comma = line.indexOf(',');
             if (comma === -1) continue;
             const inventoryType = line.substring(0, comma).trim();
             const identifier = line.substring(comma + 1).trim();
             if (!identifier) continue;
 
-            // Map Scope3 inventory types to AdCP identifier types
             let identType: string;
             let identValue: string;
             switch (inventoryType) {
@@ -444,7 +473,6 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
             propValues.push(rid, 'property', 'contributed', 'active', actor);
             identValues.push(uuidv7(), rid, norm.type, norm.value, 'data_partner', 'strong');
             propIdx++;
-            count++;
           }
 
           if (propIdx > 0) {
@@ -474,7 +502,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
           }
 
           await client.query('COMMIT');
-          return count;
+          return propIdx;
         } catch (err) {
           await client.query('ROLLBACK');
           throw err;
@@ -484,10 +512,12 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
       });
 
       logger.info(`GCS seed complete: ${JSON.stringify(results)}`);
-      return res.json({ status: 'complete', results });
+      progress({ status: 'complete', results });
+      res.end();
     } catch (err) {
       logger.error(`GCS seed error: ${err instanceof Error ? err.message : String(err)}`);
-      return res.status(500).json({ error: 'Seed import failed' });
+      progress({ status: 'error', error: err instanceof Error ? err.message : 'Seed import failed' });
+      res.end();
     }
   });
 
