@@ -1,4 +1,4 @@
-import { query, getClient } from './client.js';
+import { query, getClient, escapeLikePattern } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { createLogger } from '../logger.js';
 
@@ -130,8 +130,8 @@ export class CatalogEventsDatabase {
 
     if (types && types.length > 0) {
       const typeConditions = types.map(t => {
-        // Escape _ (single-char wildcard in LIKE) before converting * to %
-        const pattern = t.replace(/_/g, '\\_').replace(/\*/g, '%');
+        // Escape LIKE metacharacters (\, %, _) then convert glob * to %
+        const pattern = escapeLikePattern(t).replace(/\*/g, '%');
         params.push(pattern);
         return `event_type LIKE $${paramIdx++}`;
       });

@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../src/db/client.js', () => ({
-  query: vi.fn(),
-  getClient: vi.fn(),
-}));
+vi.mock('../../src/db/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/db/client.js')>();
+  return {
+    query: vi.fn(),
+    getClient: vi.fn(),
+    escapeLikePattern: actual.escapeLikePattern,
+  };
+});
 
 vi.mock('../../src/db/uuid.js', () => ({
   uuidv7: vi.fn(),
