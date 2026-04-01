@@ -968,7 +968,7 @@
     var DEFAULT_TIER = { label: 'Explorer', contributor: 0, community: 1, price: 'Free' };
 
     function renderTeamCertProgress(summary) {
-      if (!summary || !summary.total_members) return '';
+      if (!summary || !summary.total_members || summary.members_with_credentials == null) return '';
       const pct = Math.round((summary.members_with_credentials / summary.total_members) * 100);
       return `
         <div style="border-left: 1px solid var(--color-border); padding-left: var(--space-6);">
