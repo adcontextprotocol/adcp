@@ -712,11 +712,22 @@ export function createContentRouter(): Router {
       let fetchUrl = sanitizeUrl(parsedUrl);
 
       // Fetch the page with manual redirect handling for SSRF protection
-      const MAX_REDIRECTS = 5;
-      let response: Response;
-      let redirectCount = 0;
+      let response = await fetch(fetchUrl, { // CodeQL: fetchUrl is from sanitizeUrl(validated parsedUrl), not user input
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+        redirect: 'manual',
+      });
 
-      while (true) {
+      // Follow up to 5 redirects with SSRF validation on each target
+      for (let i = 0; i < 5 && [301, 302, 303, 307, 308].includes(response.status); i++) {
+        const location = response.headers.get('location');
+        if (!location) {
+          return res.status(400).json({ error: 'Redirect with no Location header' });
+        }
+        const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+        fetchUrl = sanitizeUrl(redirectUrl);
         response = await fetch(fetchUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
@@ -724,20 +735,6 @@ export function createContentRouter(): Router {
           },
           redirect: 'manual',
         });
-        if ([301, 302, 303, 307, 308].includes(response.status)) {
-          if (++redirectCount > MAX_REDIRECTS) {
-            return res.status(400).json({ error: 'Too many redirects' });
-          }
-          const location = response.headers.get('location');
-          if (!location) {
-            return res.status(400).json({ error: 'Redirect with no Location header' });
-          }
-          const redirectUrl = await validateRedirectTarget(location, fetchUrl);
-          // Reconstruct from validated redirect to break CodeQL taint chain
-          fetchUrl = sanitizeUrl(redirectUrl);
-          continue;
-        }
-        break;
       }
 
       if (!response.ok) {
