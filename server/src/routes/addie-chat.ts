@@ -758,6 +758,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           requestContext,
           maxMessages: hasCertificationContext ? 50 : undefined,
           threadId: thread.thread_id,
+          userDisplayName: displayName || undefined,
         });
       } catch (error) {
         // Provide user-friendly error message based on error type
@@ -1009,6 +1010,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         requestContext,
         maxMessages: hasCertCtx ? 50 : undefined,
         threadId: thread.thread_id,
+        userDisplayName: displayName || undefined,
       })) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {
