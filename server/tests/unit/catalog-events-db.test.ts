@@ -238,7 +238,6 @@ describe('CatalogEventsDatabase', () => {
     });
 
     it('returns cursor_expired for old cursors', async () => {
-      // Cursor expiration check returns 'expired'
       mockedQuery.mockResolvedValueOnce(mockResult([{ status: 'expired' }]));
 
       const result = await db.queryFeed('old-cursor', null);
@@ -247,6 +246,17 @@ describe('CatalogEventsDatabase', () => {
       if ('error' in result) {
         expect(result.error).toBe('cursor_expired');
         expect(result.message).toContain('Re-bootstrap');
+      }
+    });
+
+    it('returns cursor_expired for unknown cursors (deleted by cleanup)', async () => {
+      mockedQuery.mockResolvedValueOnce(mockResult([{ status: 'unknown' }]));
+
+      const result = await db.queryFeed('deleted-cursor', null);
+
+      expect('error' in result).toBe(true);
+      if ('error' in result) {
+        expect(result.error).toBe('cursor_expired');
       }
     });
   });

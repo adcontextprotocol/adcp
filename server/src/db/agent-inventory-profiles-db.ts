@@ -123,8 +123,53 @@ export class AgentInventoryProfilesDatabase {
   }
 
   async upsertProfiles(inputs: ProfileUpsertInput[]): Promise<void> {
-    for (const input of inputs) {
-      await this.upsertProfile(input);
+    if (inputs.length === 0) return;
+
+    // Batch upserts in a single transaction to avoid N round-trips
+    const { getClient } = await import('./client.js');
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      for (const input of inputs) {
+        const sql = `INSERT INTO agent_inventory_profiles (
+          agent_url, channels, property_types, markets, categories, tags,
+          delivery_types, format_ids, property_count, publisher_count, has_tmp,
+          category_taxonomy, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+        ON CONFLICT (agent_url) DO UPDATE SET
+          channels = EXCLUDED.channels,
+          property_types = EXCLUDED.property_types,
+          markets = EXCLUDED.markets,
+          categories = EXCLUDED.categories,
+          tags = EXCLUDED.tags,
+          delivery_types = EXCLUDED.delivery_types,
+          format_ids = EXCLUDED.format_ids,
+          property_count = EXCLUDED.property_count,
+          publisher_count = EXCLUDED.publisher_count,
+          has_tmp = EXCLUDED.has_tmp,
+          category_taxonomy = EXCLUDED.category_taxonomy,
+          updated_at = NOW()`;
+        await client.query(sql, [
+          input.agent_url,
+          input.channels ?? [],
+          input.property_types ?? [],
+          input.markets ?? [],
+          input.categories ?? [],
+          input.tags ?? [],
+          input.delivery_types ?? [],
+          JSON.stringify(input.format_ids ?? []),
+          input.property_count ?? 0,
+          input.publisher_count ?? 0,
+          input.has_tmp ?? false,
+          input.category_taxonomy ?? null,
+        ]);
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   }
 
@@ -141,6 +186,9 @@ export class AgentInventoryProfilesDatabase {
    * AND across dimensions. Returns results ranked by relevance score.
    *
    * Relevance = matched_dimensions / total_query_dimensions + ln(property_count+1) * 0.1 + (has_tmp ? 0.05 : 0)
+   *
+   * Known limitation: cursor pagination on computed scores means rows can be
+   * skipped or duplicated if profiles are updated between pages.
    */
   async search(searchQuery: SearchQuery): Promise<SearchResponse> {
     const limit = Math.min(Math.max(1, searchQuery.limit ?? DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT);

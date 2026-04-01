@@ -68,19 +68,34 @@ export class FeedPoller {
 
   private async bootstrap(): Promise<void> {
     try {
-      // Bootstrap agents from search endpoint
-      const agentsRes = await this.apiFetch('/registry/agents/search?limit=200');
-      if (agentsRes.ok) {
-        const data = await agentsRes.json() as { results?: unknown[] };
-        this.callbacks.onBootstrapAgents(data.results ?? []);
-      }
+      // Bootstrap agents — paginate through all results
+      let agentCursor: string | undefined;
+      do {
+        const params = new URLSearchParams({ limit: '200' });
+        if (agentCursor) params.set('cursor', agentCursor);
+        const res = await this.apiFetch(`/registry/agents/search?${params}`);
+        if (!res.ok) break;
+        const data = await res.json() as { results?: unknown[]; cursor?: string; has_more?: boolean };
+        if (data.results?.length) {
+          this.callbacks.onBootstrapAgents(data.results);
+        }
+        agentCursor = data.has_more ? (data.cursor ?? undefined) : undefined;
+      } while (agentCursor);
 
-      // Bootstrap properties from catalog sync
-      const propsRes = await this.apiFetch('/catalog/sync?limit=1000');
-      if (propsRes.ok) {
-        const data = await propsRes.json() as { properties?: unknown[] };
-        this.callbacks.onBootstrapProperties(data.properties ?? []);
-      }
+      // Bootstrap properties — paginate through all results
+      let propOffset = 0;
+      const PROP_PAGE = 1000;
+      let propCount: number;
+      do {
+        const res = await this.apiFetch(`/catalog/sync?limit=${PROP_PAGE}&offset=${propOffset}`);
+        if (!res.ok) break;
+        const data = await res.json() as { properties?: unknown[] };
+        propCount = data.properties?.length ?? 0;
+        if (propCount > 0) {
+          this.callbacks.onBootstrapProperties(data.properties!);
+        }
+        propOffset += propCount;
+      } while (propCount === PROP_PAGE);
 
       this.backoffMs = 1000;
     } catch (err) {

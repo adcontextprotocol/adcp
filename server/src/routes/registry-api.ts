@@ -3033,10 +3033,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
     router.get("/registry/agents/search", authMiddleware ?? ((_req, _res, next) => next()), async (req, res) => {
       try {
+        const MAX_FILTER_VALUES = 100;
         const parseCSV = (param: string | undefined): string[] | undefined => {
           if (!param) return undefined;
           const values = param.split(',').map(v => v.trim()).filter(Boolean);
-          return values.length > 0 ? values : undefined;
+          if (values.length === 0) return undefined;
+          return values.slice(0, MAX_FILTER_VALUES);
         };
 
         const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
@@ -3077,6 +3079,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Crawl Request ─────────────────────────────────────────────
 
+  // In-memory rate limits: reset on deploy, not shared across instances.
+  // Move to Redis or Postgres before scaling to multiple instances.
   const crawlRequestRateLimits = new Map<string, number>();  // domain -> last request timestamp
   const memberCrawlCounts = new Map<string, { count: number; windowStart: number }>();
   const CRAWL_RATE_LIMIT_MS = 5 * 60 * 1000;  // 5 minutes per domain
@@ -3108,6 +3112,25 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // Validate domain format to prevent SSRF via internal hostnames
       if (!DOMAIN_RE.test(normalizedDomain)) {
         return res.status(400).json({ error: "Invalid domain format" });
+      }
+
+      // DNS resolution check — reject domains resolving to private/reserved IPs
+      try {
+        const { lookup } = await import('node:dns/promises');
+        const { address } = await lookup(normalizedDomain);
+        const parts = address.split('.').map(Number);
+        const isPrivate =
+          parts[0] === 10 ||
+          parts[0] === 127 ||
+          (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+          (parts[0] === 192 && parts[1] === 168) ||
+          (parts[0] === 169 && parts[1] === 254) ||
+          address === '0.0.0.0';
+        if (isPrivate) {
+          return res.status(400).json({ error: "Domain resolves to a private/reserved IP address" });
+        }
+      } catch {
+        return res.status(400).json({ error: "Domain could not be resolved" });
       }
 
       const memberId = (req as any).member?.id || 'anonymous';

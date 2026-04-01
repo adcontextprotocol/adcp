@@ -109,7 +109,7 @@ export class CatalogEventsDatabase {
         END AS status`,
         [cursor, RETENTION_DAYS_DEFAULT]
       );
-      if (check.rows[0].status === 'expired') {
+      if (check.rows[0].status === 'expired' || check.rows[0].status === 'unknown') {
         return {
           error: 'cursor_expired',
           message: `Cursor is older than ${RETENTION_DAYS_DEFAULT}-day retention window. Re-bootstrap from /registry/agents/search and /catalog/sync.`,

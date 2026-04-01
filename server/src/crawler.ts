@@ -92,11 +92,11 @@ export class CrawlerService {
       // Populate federated index from PropertyIndex and adagents.json files
       const crawledDomains = await this.populateFederatedIndex(agents);
 
-      // Diff and produce events
-      await this.produceEventsFromDiff(preCrawlAgents);
-
       // Build and upsert inventory profiles
-      await this.buildInventoryProfiles();
+      const builtProfiles = await this.buildInventoryProfiles();
+
+      // Diff and produce events (after profiles are built so discovery events include profile data)
+      await this.produceEventsFromDiff(preCrawlAgents, builtProfiles);
 
       // Scan brand.json for all crawled domains + all hosted brand domains
       const hostedDomains = await this.brandDb.listAllHostedBrandDomains();
@@ -530,21 +530,37 @@ export class CrawlerService {
   }
 
   private async produceEventsFromDiff(
-    preCrawlAgents: Map<string, { domains: Set<string> }>
+    preCrawlAgents: Map<string, { domains: Set<string> }>,
+    profiles: Map<string, ProfileUpsertInput>
   ): Promise<void> {
     if (!this.eventsDb) return;
 
     const events: WriteEventInput[] = [];
     const postCrawlAgents = await this.snapshotAgentState();
 
-    // Detect new agents
+    // Detect new agents — include full profile in the event so RegistrySync
+    // clients get a complete agent without waiting for next bootstrap
     for (const [url] of postCrawlAgents) {
       if (!preCrawlAgents.has(url)) {
+        const profile = profiles.get(url);
         events.push({
           event_type: 'agent.discovered',
           entity_type: 'agent',
           entity_id: url,
-          payload: { agent_url: url },
+          payload: {
+            agent_url: url,
+            ...(profile ? {
+              channels: profile.channels,
+              property_types: profile.property_types,
+              markets: profile.markets,
+              categories: profile.categories,
+              tags: profile.tags,
+              delivery_types: profile.delivery_types,
+              property_count: profile.property_count,
+              publisher_count: profile.publisher_count,
+              has_tmp: profile.has_tmp,
+            } : {}),
+          },
           actor: 'pipeline:crawler',
         });
       }
@@ -593,25 +609,6 @@ export class CrawlerService {
           });
         }
       }
-
-      // Detect adagents_changed for domains where agent was present before and after
-      // but authorization details may have changed
-      if (preState && postState.domains.size !== preDomains.size) {
-        // Find publisher domains that had changes
-        const changedDomains = new Set<string>();
-        for (const d of postState.domains) if (!preDomains.has(d)) changedDomains.add(d);
-        for (const d of preDomains) if (!postState.domains.has(d)) changedDomains.add(d);
-
-        for (const domain of changedDomains) {
-          events.push({
-            event_type: 'publisher.adagents_changed',
-            entity_type: 'publisher',
-            entity_id: domain,
-            payload: { publisher_domain: domain },
-            actor: 'pipeline:crawler',
-          });
-        }
-      }
     }
 
     if (events.length > 0) {
@@ -622,8 +619,9 @@ export class CrawlerService {
 
   // ── Inventory Profile Building ───────────────────────────────────
 
-  private async buildInventoryProfiles(): Promise<void> {
-    if (!this.profilesDb) return;
+  private async buildInventoryProfiles(): Promise<Map<string, ProfileUpsertInput>> {
+    const profileMap = new Map<string, ProfileUpsertInput>();
+    if (!this.profilesDb) return profileMap;
 
     const agents = await this.federatedIndex.listAllAgents();
     const profiles: ProfileUpsertInput[] = [];
@@ -655,7 +653,7 @@ export class CrawlerService {
       if (propertyTypes.has('audio_stream') || propertyTypes.has('podcast')) channels.add('audio');
       if (propertyTypes.has('dooh_screen')) channels.add('dooh');
 
-      profiles.push({
+      const profile: ProfileUpsertInput = {
         agent_url: agent.url,
         channels: [...channels],
         property_types: [...propertyTypes],
@@ -666,7 +664,9 @@ export class CrawlerService {
         property_count: propertyCount,
         publisher_count: publisherDomains.size,
         has_tmp: false,  // Updated when TMP registration data is available
-      });
+      };
+      profiles.push(profile);
+      profileMap.set(agent.url, profile);
     }
 
     if (profiles.length > 0) {
@@ -678,6 +678,8 @@ export class CrawlerService {
       }
       log.info({ profileCount: profiles.length }, 'Inventory profiles updated');
     }
+
+    return profileMap;
   }
 
   // ── Single Domain Crawl ──────────────────────────────────────────

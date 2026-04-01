@@ -142,16 +142,16 @@ export class RegistrySync extends EventEmitter {
         if (this.agents && payload.agent_url) {
           this.agents.upsert({
             agent_url: payload.agent_url as string,
-            channels: [],
-            property_types: [],
-            markets: [],
-            categories: [],
-            tags: [],
-            delivery_types: [],
+            channels: (payload.channels as string[]) ?? [],
+            property_types: (payload.property_types as string[]) ?? [],
+            markets: (payload.markets as string[]) ?? [],
+            categories: (payload.categories as string[]) ?? [],
+            tags: (payload.tags as string[]) ?? [],
+            delivery_types: (payload.delivery_types as string[]) ?? [],
             format_ids: [],
-            property_count: 0,
-            publisher_count: 0,
-            has_tmp: false,
+            property_count: (payload.property_count as number) ?? 0,
+            publisher_count: (payload.publisher_count as number) ?? 0,
+            has_tmp: (payload.has_tmp as boolean) ?? false,
             category_taxonomy: null,
             updated_at: event.created_at.toString(),
           });
@@ -200,8 +200,24 @@ export class RegistrySync extends EventEmitter {
         break;
 
       case 'authorization.granted':
-        if (this.authorizations && payload.agent_url && payload.publisher_domain) {
-          this.authorizations.addEntry(payload as unknown as AuthorizationEntry);
+        if (this.authorizations && payload.agent_url && payload.publisher_domain && payload.authorization_type) {
+          this.authorizations.addEntry({
+            agent_url: payload.agent_url as string,
+            publisher_domain: payload.publisher_domain as string,
+            authorization_type: payload.authorization_type as string,
+            authorized_for: payload.authorized_for as string | undefined,
+            property_ids: payload.property_ids as string[] | undefined,
+            property_tags: payload.property_tags as string[] | undefined,
+            placement_ids: payload.placement_ids as string[] | undefined,
+            placement_tags: payload.placement_tags as string[] | undefined,
+            collections: payload.collections as Array<{ publisher_domain: string; collection_id: string }> | undefined,
+            countries: payload.countries as string[] | undefined,
+            delegation_type: payload.delegation_type as string | undefined,
+            exclusive: payload.exclusive as boolean | undefined,
+            effective_from: payload.effective_from as string | undefined,
+            effective_until: payload.effective_until as string | undefined,
+            signing_keys: payload.signing_keys as AuthorizationEntry['signing_keys'],
+          });
         }
         break;
 
