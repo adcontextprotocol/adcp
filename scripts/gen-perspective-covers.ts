@@ -22,10 +22,10 @@ async function main() {
      ORDER BY published_at DESC`
   );
 
-  // Filter to those without a cover image file on disk
+  // Filter to those without a cover image file on disk (.png or .jpg)
   const missing = rows.filter((p: any) => {
-    const coverPath = path.join(OUTPUT_DIR, `cover-${p.slug}.png`);
-    return !fs.existsSync(coverPath);
+    const base = path.join(OUTPUT_DIR, `cover-${p.slug}`);
+    return !fs.existsSync(`${base}.png`) && !fs.existsSync(`${base}.jpg`);
   });
 
   if (missing.length === 0) {

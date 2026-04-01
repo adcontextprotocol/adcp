@@ -667,8 +667,9 @@
       authorRole.style.display = title ? 'block' : 'none';
 
       avatarText.textContent = getInitials(article.author_name);
-      if (article.author_avatar_url) {
-        avatar.innerHTML = `<img src="${escapeHtml(article.author_avatar_url)}" alt="${escapeHtml(article.author_name)}">`;
+      const avatarUrl = article.author_avatar_url;
+      if (avatarUrl && (avatarUrl.startsWith('/') || avatarUrl.startsWith('https://'))) {
+        avatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(article.author_name)}">`;
       } else {
         avatar.innerHTML = `<span id="authorAvatarText" class="author-avatar-text">${escapeHtml(getInitials(article.author_name))}</span>`;
       }
@@ -677,12 +678,14 @@
     }
 
     function renderFeaturedImage(article) {
-      if (!article.featured_image_url) return;
+      const url = article.featured_image_url;
+      if (!url) return;
+      if (!url.startsWith('/') && !url.startsWith('https://')) return;
 
       const feature = document.getElementById('articleFeature');
       const image = document.getElementById('articleFeatureImage');
 
-      image.src = article.featured_image_url;
+      image.src = url;
       image.alt = article.title || 'Perspective image';
       feature.hidden = false;
     }
@@ -737,32 +740,6 @@
         }
       } catch (error) {
         console.error('Error loading related content:', error);
-      }
-    }
-
-    function applyBackContext() {
-      const params = new URLSearchParams(window.location.search);
-      const fromStories = params.get('from') === 'stories';
-      if (!fromStories) return;
-
-      const backHref = '/stories';
-      const backLabel = 'Stories';
-
-      const heroBackLink = document.getElementById('heroBackLink');
-      const articleBackLink = document.getElementById('articleBackLink');
-      const articleBackLabel = document.getElementById('articleBackLabel');
-
-      if (heroBackLink) {
-        heroBackLink.href = backHref;
-        heroBackLink.textContent = backLabel;
-      }
-
-      if (articleBackLink) {
-        articleBackLink.href = backHref;
-      }
-
-      if (articleBackLabel) {
-        articleBackLabel.textContent = `Back to ${backLabel}`;
       }
     }
 
@@ -996,7 +973,6 @@
     }
 
     // Load article when page loads
-    applyBackContext();
     loadArticle();
   </script>
 </body>
