@@ -69,7 +69,6 @@
   const isAnchorPage = isDashboardPage || isOrgPage || isAccountPage;
 
   const NAV_CONFIG = {
-    logo: isOrgPage ? 'Member settings' : 'Account settings',
     sections: [
       {
         label: 'Organization',
