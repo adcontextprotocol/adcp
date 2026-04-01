@@ -339,13 +339,12 @@ TMP messages are small (200-600 bytes per request/response). At these sizes, ser
 
 ## Transport
 
-- Baseline: JSON over HTTP/2 POST. Implementations MUST support this.
+- JSON over HTTP/2 POST. All implementations MUST use this transport.
 - The router calls each provider's configured endpoint URL.
 - The request type is distinguished by a `type` field in the message, not by URL path.
 - Connections SHOULD be reused via HTTP/2 multiplexing.
 - The router SHOULD maintain a connection pool to each buyer agent.
-- HTTP/3 (QUIC) is a recommended upgrade path — 0-RTT connection establishment and multiplexing without head-of-line blocking improve fan-out performance.
-- Binary serialization (protobuf, Cap'n Proto) MAY be used for high-throughput deployments by mutual agreement between router and provider.
+- The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides the reference client and server implementation. Conformance tests validate compatibility — implementations in other languages MUST pass the same test suite.
 
 ## Latency
 
