@@ -16,6 +16,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
+import { publishDigestAsPerspective } from '../services/digest-publisher.js';
 
 const logger = createLogger('weekly-digest');
 const workingGroupDb = new WorkingGroupDatabase();
@@ -232,6 +233,11 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
   // Mark as sent
   if (stats.email_count > 0 || stats.slack_count > 0) {
     await markSent(digest.id, stats);
+
+    // Publish as perspective for SEO/discoverability (non-blocking)
+    publishDigestAsPerspective(digest.id, content, editionDate, subject).catch((err) => {
+      logger.warn({ error: err, digestId: digest.id }, 'Failed to publish digest as perspective');
+    });
   } else {
     logger.error({ editionDate, batchResult }, 'The Prompt delivery failed — leaving as approved for retry');
   }
