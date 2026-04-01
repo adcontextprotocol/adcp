@@ -21,7 +21,7 @@
  *   curl -X POST https://adcp.dev/api/registry/catalog/seed/gcs
  */
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 const PROJECT = 'swift-catfish-337215';
 const DEFAULT_BUCKET = 'gs://aao-catalog-seed';
@@ -37,19 +37,19 @@ if (!/^gs:\/\/[a-z0-9][-a-z0-9_.]*[a-z0-9](\/[a-z0-9][-a-z0-9_.]*)*$/.test(bucke
 
 function bqExport(description: string, sql: string): void {
   console.log(description);
-  const escaped = sql.replace(/'/g, "'\\''");
-  const cmd = `bq query --project_id=${PROJECT} --use_legacy_sql=false '${escaped}'`;
-  execSync(cmd, { stdio: 'inherit', encoding: 'utf-8' });
+  execFileSync('bq', ['query', `--project_id=${PROJECT}`, '--use_legacy_sql=false', sql], {
+    stdio: 'inherit',
+    encoding: 'utf-8',
+  });
 }
 
 // ─── Find latest inventory snapshot date ─────────────────────────
 
 console.log('Finding latest inventory snapshot...');
-const ymdResult = execSync(
-  `bq query --project_id=${PROJECT} --use_legacy_sql=false --format=json ` +
-  `'SELECT MAX(ymd) as ymd FROM \`${PROJECT}.organizations.property_inventory_mappings\`'`,
-  { encoding: 'utf-8' },
-);
+const ymdResult = execFileSync('bq', [
+  'query', `--project_id=${PROJECT}`, '--use_legacy_sql=false', '--format=json',
+  `SELECT MAX(ymd) as ymd FROM \`${PROJECT}.organizations.property_inventory_mappings\``,
+], { encoding: 'utf-8' });
 const latestYmd = JSON.parse(ymdResult.trim())[0]?.ymd;
 if (!latestYmd || !/^\d{4}-\d{2}-\d{2}$/.test(latestYmd)) {
   console.error(`Unexpected ymd value: ${latestYmd}`);
