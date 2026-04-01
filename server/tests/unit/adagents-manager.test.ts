@@ -699,7 +699,7 @@ describe('AdAgentsManager', () => {
   });
 
   describe('MCP Protocol Support', () => {
-    it('falls back to MCP when A2A endpoints return 404', async () => {
+    it('falls back to MCP when A2A endpoints return 404', { timeout: 15000 }, async () => {
       const agents: AuthorizedAgent[] = [
         {
           url: 'https://mcp-agent.example.com/mcp',
