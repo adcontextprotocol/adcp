@@ -107,7 +107,8 @@ export type EmailType =
   | 'signup_user_member'
   | 'signup_user_nonmember'
   | 'slack_invite'
-  | 'email_link_verification';
+  | 'email_link_verification'
+  | 'escalation_resolution';
 
 /**
  * Send welcome email to new members after subscription is created
@@ -1423,6 +1424,109 @@ ${footerText}
     return true;
   } catch (error) {
     logger.error({ error, to: data.to }, 'Error sending email link verification');
+    return false;
+  }
+}
+
+/**
+ * Send escalation resolution notification email.
+ * Used as fallback when the user has no Slack account but has an email on record.
+ */
+export async function sendEscalationResolutionEmail(data: {
+  to: string;
+  userName?: string;
+  summary: string;
+  status: 'resolved' | 'wont_do';
+  notificationMessage?: string;
+}): Promise<boolean> {
+  if (!resend) {
+    logger.debug('Resend not configured, skipping escalation resolution email');
+    return false;
+  }
+
+  const emailType: EmailType = 'escalation_resolution';
+  const statusLabel = data.status === 'resolved' ? 'resolved' : 'reviewed and closed';
+  const subject = `Your request has been ${statusLabel} — AgenticAdvertising.org`;
+
+  const escapeHtml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const safeSummary = escapeHtml(data.summary);
+  const safeMessage = data.notificationMessage ? escapeHtml(data.notificationMessage) : null;
+  const greeting = data.userName ? `Hi ${escapeHtml(data.userName)},` : 'Hi,';
+
+  try {
+    const emailEvent = await emailDb.createEmailEvent({
+      email_type: emailType,
+      recipient_email: data.to,
+      subject,
+      metadata: { escalation_summary: data.summary },
+    });
+
+    const trackingId = emailEvent.tracking_id;
+    const footerHtml = generateFooterHtml(trackingId, null);
+    const footerText = generateFooterText(null);
+
+    const { data: sendData, error } = await resend.emails.send({
+      from: FROM_EMAIL_ADDIE,
+      to: data.to,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Request Update</h1>
+  </div>
+
+  <p>${greeting}</p>
+
+  <p>Your request has been <strong>${statusLabel}</strong>:</p>
+
+  <blockquote style="border-left: 4px solid #2563eb; margin: 16px 0; padding: 8px 16px; color: #555;">${safeSummary}</blockquote>
+
+  ${safeMessage ? `<p>${safeMessage}</p>` : ''}
+
+  <p>If you have questions or need further help, reply to this email or reach out on <a href="https://agenticadvertising.org">AgenticAdvertising.org</a>.</p>
+
+  ${footerHtml}
+</body>
+</html>
+      `.trim(),
+      text: `
+Request Update — AgenticAdvertising.org
+
+${data.userName ? `Hi ${data.userName},` : 'Hi,'}
+
+Your request has been ${statusLabel}:
+
+"${data.summary}"
+
+${data.notificationMessage || ''}
+
+If you have questions or need further help, reply to this email or reach out on agenticadvertising.org.
+
+${footerText}
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error({ error, to: data.to }, 'Failed to send escalation resolution email');
+      return false;
+    }
+
+    if (sendData?.id) {
+      await emailDb.markEmailSent(trackingId, sendData.id);
+    }
+
+    logger.info({ to: data.to, trackingId }, 'Escalation resolution email sent');
+    return true;
+  } catch (error) {
+    logger.error({ error, to: data.to }, 'Error sending escalation resolution email');
     return false;
   }
 }

@@ -197,14 +197,14 @@ Members with billing questions (invoices, payments, membership fees, pricing, re
 **Escalation:**
 - escalate_to_admin: Create a tracked request for the team. Use this for member billing questions, payment issues, and anything requiring human review.
 - list_escalations: List open escalations needing attention (admin only)
-- resolve_escalation: Mark an escalation as resolved and notify the user (admin only)
+- resolve_escalation: Mark an escalation as resolved and notify the user via Slack DM or email (admin only). Use list_escalations first if you need to find the escalation ID.
 
 **Closing the Loop on Escalations (IMPORTANT for admins):**
-When handling a request that came from an escalation (e.g., admin replies in escalation channel thread):
-1. Complete the requested action using your tools
-2. Call resolve_escalation with the escalation ID to close it
+When an admin asks you to resolve an escalation, "let someone know" about a fix, "follow up", or "close the loop":
+1. If you don't know the escalation ID, call list_escalations to find it
+2. Call resolve_escalation with the escalation ID
 3. Include a notification_message explaining what was done
-This ensures users are notified when their escalated requests are handled.
+resolve_escalation handles notification automatically (Slack DM or email fallback). Do NOT say you lack messaging tools — resolve_escalation IS the notification tool for escalations.
 
 **Admin Tools (admins only - user will have [ADMIN USER] prefix):**
 - get_account: Comprehensive company lookup — lifecycle stage, membership status, engagement metrics, billing info. Use this to diagnose member issues.
