@@ -26,16 +26,14 @@ const doc = generator.generateDocument({
   info: {
     title: "AgenticAdvertising.org Registry API",
     description: [
-      "Public REST API for the AgenticAdvertising.org registry. Resolve brands,",
+      "REST API for the AgenticAdvertising.org registry. Resolve brands,",
       "discover properties, look up agents, and validate authorization in the",
       "AdCP ecosystem.",
       "",
-      "All endpoints listed here are public and require no authentication.",
+      "Most endpoints are public and require no authentication. Endpoints marked",
+      "with a lock icon require a Bearer token — see [Authentication](https://agenticadvertising.org/docs/registry/index#authentication).",
       "",
       "**Base URL:** `https://agenticadvertising.org`",
-      "",
-      "**Rate limits:** Bulk resolve endpoints are limited to 20 requests per minute",
-      "per IP address. All other endpoints are unmetered.",
     ].join("\n"),
     version: "1.0.0",
     contact: {
@@ -50,13 +48,23 @@ const doc = generator.generateDocument({
     },
   ],
   security: [],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        description: "API key issued to an AgenticAdvertising.org member organization.",
+      },
+    },
+  },
 });
 
 // Tag descriptions for the generated spec
 const TAG_DESCRIPTIONS: Record<string, string> = {
   "Brand Resolution": "Resolve advertiser domains to canonical brand identities.",
   "Property Resolution": "Resolve publisher domains to their property configurations and authorized agents.",
-  "Agent Discovery": "Browse the federated agent network, publisher index, and registry statistics.",
+  "Agent Discovery": "Browse the federated agent network, search agent inventory profiles, publisher index, and registry statistics.",
+  "Change Feed": "Poll cursor-based registry change events for local sync.",
   "Lookups & Authorization": "Look up agents by domain or property, and validate ad-serving authorization.",
   "Validation Tools": "Validate publisher adagents.json files and generate compliant configurations.",
   "Search": "Cross-entity search across brands, publishers, agents, and properties.",
