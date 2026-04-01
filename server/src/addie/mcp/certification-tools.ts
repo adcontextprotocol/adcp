@@ -868,22 +868,24 @@ function getIllustrations(topics: string[]): { alt: string; url: string }[] {
 const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
   A1: ['protocol-overview'],
   A2: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
-  A3: ['protocol-overview', 'governance', 'creative-workflow', 'signals'],
+  A3: ['protocol-overview', 'governance', 'creative-workflow', 'signals', 'trusted-match'],
   B2: ['creative-formats', 'creative-manifests', 'creative-workflow', 'sync-creatives'],
-  B3: ['signals', 'governance', 'delivery', 'creative-delivery'],
-  C1: ['media-buy', 'media-buy-lifecycle'],
+  B3: ['signals', 'governance', 'delivery', 'creative-delivery', 'trusted-match'],
+  C1: ['media-buy', 'media-buy-lifecycle', 'trusted-match'],
   C2: ['governance', 'campaign-governance'],
   C3: ['creative-workflow', 'generative-creative', 'creative-delivery', 'orchestration'],
   C4: ['orchestration', 'multi-agent', 'sync-creatives'],
+  S1: ['media-buy', 'media-buy-lifecycle', 'trusted-match', 'orchestration'],
   S2: ['creative-formats', 'creative-manifests', 'generative-creative', 'orchestration'],
   S4: ['governance', 'campaign-governance'],
+  D3: ['trusted-match', 'protocol-overview'],
 };
 
 // =====================================================
 // LEARNING RESOURCES — links Addie can share with learners
 // =====================================================
 
-const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
+export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track A: Basics (all free)
   A1: [
     { label: 'Introduction to AdCP and agentic advertising', url: `${DOCS_BASE}/docs/intro` },
@@ -905,6 +907,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
     { label: 'Signals walkthrough', url: `${DOCS_BASE}/docs/signals/overview` },
     { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
+    { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
   ],
@@ -935,6 +938,10 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   B3: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
     { label: 'Signals walkthrough', url: `${DOCS_BASE}/docs/signals/overview` },
+    { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
+    { label: 'TMP web surface integration', url: `${DOCS_BASE}/docs/trusted-match/surfaces/web` },
+    { label: 'Context Match and Identity Match', url: `${DOCS_BASE}/docs/trusted-match/context-and-identity` },
+    { label: 'TMP Router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
     { label: 'Delivery reporting', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_media_buy_delivery` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
     { label: 'Campaign governance — seller perspective', url: `${DOCS_BASE}/docs/governance/campaign` },
@@ -955,6 +962,7 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
   C2: [
@@ -1022,7 +1030,11 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   ],
   D3: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
-    { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/protocol-comparison` },
+    { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/adcp-vs-openrtb` },
+    { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
+    { label: 'TMP specification', url: `${DOCS_BASE}/docs/trusted-match/specification` },
+    { label: 'TMP router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
+    { label: 'TMP AI mediation', url: `${DOCS_BASE}/docs/trusted-match/ai-mediation` },
   ],
   D4: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
@@ -1038,6 +1050,10 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'Targeting strategies', url: `${DOCS_BASE}/docs/media-buy/advanced-topics/targeting` },
+    { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
+    { label: 'Context Match and Identity Match', url: `${DOCS_BASE}/docs/trusted-match/context-and-identity` },
+    { label: 'TMP Router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
+    { label: 'AdCP and OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/adcp-vs-openrtb` },
   ],
   S2: [
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },

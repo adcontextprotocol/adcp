@@ -5,6 +5,11 @@
   "description": "Response from router or provider with offers for matched packages. An empty offers array means no packages matched. For simple GAM integration, package_id flows as a macro via signals. For rich integrations, the offer includes brand, price, summary, and optionally an inline creative manifest.",
   "type": "object",
   "properties": {
+    "type": {
+      "type": "string",
+      "const": "context_match_response",
+      "description": "Message type discriminator for deserialization."
+    },
     "request_id": {
       "type": "string",
       "description": "Echoed request identifier from the context match request"
@@ -15,6 +20,12 @@
       "items": {
         "$ref": "/schemas/tmp/offer.json"
       }
+    },
+    "cache_ttl": {
+      "type": "integer",
+      "description": "Optional override for the default 5-minute cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching (e.g., when targeting configuration has just changed).",
+      "minimum": 0,
+      "maximum": 86400
     },
     "signals": {
       "type": "object",
@@ -54,6 +65,7 @@
     }
   },
   "required": [
+    "type",
     "request_id",
     "offers"
   ],

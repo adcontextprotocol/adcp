@@ -26,12 +26,13 @@ When a user sends a message in a conversation, the AI platform sends a Context M
 
 ```json
 {
+  "type": "context_match_request",
   "request_id": "ctx-a1b2c3d4",
   "property_rid": "01916f3a-f8cb-7000-8000-000000000050",
   "property_id": "chatplatform-assistant",
   "property_type": "ai_assistant",
   "placement_id": "chat-inline-recommendation",
-  "artifacts": [
+  "artifact_refs": [
     { "type": "custom", "value": "turn:b3c9e2" }
   ],
   "context_signals": {
@@ -48,12 +49,13 @@ When a user sends a message in a conversation, the AI platform sends a Context M
 }
 ```
 
-The `artifacts` reference a conversation turn by ID. For ephemeral content like conversation turns, the platform sends `context_signals` with pre-computed classifier outputs (topics, sentiment, keywords, summary, embedding) so the buyer can evaluate relevance without needing a pre-synced artifact registry. For static content (articles, episodes), the buyer resolves artifact metadata from its own cache. No user identity is present.
+Conversation turns are ephemeral — there's no public reference a buyer could independently resolve, so `artifact_refs` are typically limited to opaque turn identifiers (e.g., `turn:b3c9e2`). The platform sends `context_signals` with pre-computed classifier outputs (topics, sentiment, keywords, summary) so the buyer can evaluate relevance without seeing the raw conversation. No user identity is present. Platforms can also send the full conversation as an `artifact` for buyers that evaluate content directly — the same artifact schema used for content standards evaluation.
 
 The buyer agent responds with an offer:
 
 ```json
 {
+  "type": "context_match_response",
   "request_id": "ctx-a1b2c3d4",
   "offers": [
     {
@@ -64,9 +66,9 @@ The buyer agent responds with an offer:
       "creative_manifest": {
         "format_id": { "agent_url": "https://chatplatform.example.com", "id": "sponsored_recommendation" },
         "assets": {
-          "headline": { "asset_type": "text", "text": "Trending for spring" },
-          "body": { "asset_type": "text", "text": "Apex Classic Low — clean lines, tons of colorways. Free shipping this month." },
-          "product_catalog": { "asset_type": "catalog", "catalog_id": "catalog-sneakers", "ids": ["sku-classic-low", "sku-runner-x"] }
+          "headline": { "content": "Trending for spring" },
+          "body": { "content": "Apex Classic Low — clean lines, tons of colorways. Free shipping this month." },
+          "product_catalog": { "catalog_id": "catalog-sneakers", "ids": ["sku-classic-low", "sku-runner-x"] }
         }
       },
       "macros": {
@@ -89,29 +91,31 @@ The platform sends an Identity Match request with a session token. The `package_
 
 ```json
 {
+  "type": "identity_match_request",
   "request_id": "id-e5f6g7h8",
   "user_token": "tok_session_k2f8",
+  "uid_type": "publisher_first_party",
   "package_ids": ["pkg-sneaker-reco", "pkg-fashion-native", "pkg-athletic-wear", "pkg-outdoor-gear", "pkg-accessories-promo", "pkg-seasonal-sale"]
 }
 ```
 
-The buyer responds with eligibility per package. Each entry contains `eligible` (boolean) and optionally `intent_score` (0.0-1.0). The buyer computes eligibility from frequency caps, audience membership, and other signals — the reasons are opaque to the publisher.
+The buyer responds with the IDs of eligible packages and a TTL. The buyer computes eligibility from frequency caps, audience membership, and other signals — the reasons are opaque to the publisher.
 
 ```json
 {
+  "type": "identity_match_response",
   "request_id": "id-e5f6g7h8",
-  "eligibility": [
-    { "package_id": "pkg-sneaker-reco", "eligible": true, "intent_score": 0.89 },
-    { "package_id": "pkg-fashion-native", "eligible": false },
-    { "package_id": "pkg-athletic-wear", "eligible": true, "intent_score": 0.45 },
-    { "package_id": "pkg-outdoor-gear", "eligible": true, "intent_score": 0.32 },
-    { "package_id": "pkg-accessories-promo", "eligible": false },
-    { "package_id": "pkg-seasonal-sale", "eligible": true, "intent_score": 0.61 }
-  ]
+  "eligible_package_ids": [
+    "pkg-sneaker-reco",
+    "pkg-athletic-wear",
+    "pkg-outdoor-gear",
+    "pkg-seasonal-sale"
+  ],
+  "ttl_sec": 120
 }
 ```
 
-The platform intersects these results locally: only packages that appeared in both the context match offers and are `eligible: true` in the identity response are activated.
+The platform intersects these results locally: only packages that appeared in both the context match offers and the `eligible_package_ids` list are activated.
 
 ## Activation
 
@@ -126,7 +130,7 @@ TMP tells the platform **what** sponsored content is available and relevant. The
 
 ## Why This Matters
 
-AI assistants are the fastest-growing ad surface, but they lack the infrastructure that web and mobile have built over decades. TMP provides:
+AI assistants are a new ad surface that lacks the infrastructure web and mobile have built over decades. TMP provides:
 
 - **Standard buyer integration**: Any buyer agent that speaks TMP can activate packages on any AI platform that supports TMP. No bespoke integrations per platform.
 - **Privacy by default**: The conversation content never leaves the platform as raw text. The buyer sees classified signals and topic IDs. The user's identity is handled in a separate request.
@@ -145,8 +149,8 @@ User message: "What are the best sneakers for spring?"
   → Router returns merged response
 
   → (300ms later) Platform sends Identity Match with ALL buyer's active packages
-  → Apex Athletics agent: pkg-sneaker-reco eligible=true, intent_score=0.89
-  → Router returns eligibility
+  → Response: eligible_package_ids includes pkg-sneaker-reco, ttl_sec: 120
+  → Router caches eligibility
 
   → Platform joins: pkg-sneaker-reco offer is eligible
   → Platform includes offer's creative manifest in generation context
@@ -157,3 +161,17 @@ User message: "What are the best sneakers for spring?"
      if you want more cushion..."
   → Sponsored content label applied per platform policy
 ```
+
+## Billing and Measurement
+
+**Impression definition.** An impression occurs when the platform's LLM incorporates a creative manifest into its response to the user. This is analogous to a viewable impression on web — the content was rendered and presented.
+
+**Engagement events.** Follow-up questions about the sponsored product ("where can I buy those?", "what colors are available?") are engagement events. The platform tracks these and reports them via `get_media_buy_delivery`.
+
+**Click-through.** If the response includes a product URL and the user navigates to it, this is a click event. The platform tracks click-throughs using the URLs from the creative manifest's assets.
+
+**Billing model.** Most AI assistant packages use CPM (cost per thousand impressions) or CPA (cost per action). The platform reports delivery via `get_media_buy_delivery` like any other surface.
+
+**Measurement challenges.** Unlike web where viewability is standardized (MRC), AI assistant impressions don't have an industry-standard viewability definition yet. AdCP defines an impression as "creative manifest content presented to the user in the LLM's response."
+
+**Frequency counting.** Each impression counts toward the package's cross-publisher frequency cap. The platform reports impressions via delivery reporting; the buyer agent updates its exposure store. A user who sees a recommendation in an AI assistant and then visits a web page will have that AI impression reflected in the Identity Match eligibility check — provided the buyer's exposure store is current.

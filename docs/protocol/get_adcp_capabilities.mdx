@@ -13,7 +13,7 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 - **AdCP discovery** - Does this agent support AdCP? Which versions?
 - **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative)?
 - **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
-- **Detailed capabilities** - Features, AXE integrations, geo targeting, portfolio
+- **Detailed capabilities** - Features, execution integrations, geo targeting, portfolio
 
 **Request Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-request.json)
 **Response Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json)
@@ -136,7 +136,8 @@ Technical execution capabilities:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `axe_integrations` | string[] | Agentic ad exchange (AXE) URLs this seller can execute through. See [axe_integrations](#axe_integrations) below. |
+| `trusted_match` | object | [TMP](/docs/trusted-match) support. When present, this seller supports real-time contextual and/or identity matching. Check individual products for per-product TMP capabilities. |
+| `axe_integrations` | string[] | Deprecated. Legacy AXE URLs this seller can execute through. Use `trusted_match` for new integrations. |
 | `creative_specs` | object | Creative specification support (VAST versions, MRAID, etc.) |
 | `targeting` | object | Targeting capabilities (geo granularity) |
 
@@ -365,7 +366,7 @@ This tells buyers:
 - `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST honor them
 - `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
 - `media_buy.features.content_standards: true` → Seller MUST apply content standards when provided
-- AXE URL in `media_buy.execution.axe_integrations` → Seller can execute through that exchange
+- AXE URL in `media_buy.execution.axe_integrations` → Seller can execute through that exchange (legacy — new integrations use [TMP](/docs/trusted-match))
 
 No silent ignoring. If a seller can't support a capability, they should declare `false` or omit it.
 
@@ -398,7 +399,7 @@ if (result.supported_protocols.includes('media_buy')) {
     console.log('Content standards supported');
   }
 
-  // Check AXE integrations
+  // Check AXE integrations (legacy — new integrations use TMP via trusted_match on products)
   if (mediaBuy.execution?.axe_integrations?.includes('https://agentic.scope3.com')) {
     console.log('Scope3 AXE integration available');
   }
@@ -449,7 +450,7 @@ async function findCompatibleSellers(sellers, requirements) {
 
     const mediaBuy = caps.media_buy;
 
-    // Check AXE integration requirement
+    // Check AXE integration requirement (legacy — new integrations use TMP)
     if (requirements.axeIntegration) {
       if (!mediaBuy.execution?.axe_integrations?.includes(requirements.axeIntegration)) {
         continue;
@@ -512,7 +513,7 @@ const products = await client.getProducts({
     required_geo_targeting: [
       { level: 'postal_area', system: 'us_zip' }
     ],
-    // Only include if seller supports this AXE
+    // Only include if seller supports this AXE (legacy — new integrations use TMP)
     required_axe_integrations: ['https://agentic.scope3.com']
   }
 });

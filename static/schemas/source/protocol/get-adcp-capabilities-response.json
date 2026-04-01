@@ -136,9 +136,28 @@
           "type": "object",
           "description": "Technical execution capabilities for media buying",
           "properties": {
+            "trusted_match": {
+              "type": "object",
+              "description": "Trusted Match Protocol (TMP) support. When present, this seller supports real-time contextual and/or identity matching. Check individual products via get_products for per-product TMP capabilities.",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "description": "Whether this seller has TMP infrastructure deployed.",
+                  "default": false
+                },
+                "surfaces": {
+                  "type": "array",
+                  "description": "Surface types this seller supports via TMP.",
+                  "items": {
+                    "type": "string",
+                    "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio", "ai_assistant"]
+                  }
+                }
+              }
+            },
             "axe_integrations": {
               "type": "array",
-              "description": "Agentic ad exchange (AXE) integrations supported. URLs are canonical identifiers for exchanges this seller can execute through.",
+              "description": "Deprecated. Legacy AXE integrations. Use trusted_match for new integrations.",
               "items": {
                 "type": "string",
                 "format": "uri"

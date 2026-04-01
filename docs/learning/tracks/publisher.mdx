@@ -122,6 +122,12 @@ How to expose delivery data, measurement signals, and optimization levers throug
   <Card title="Signals overview" icon="signal" href="/docs/signals/overview">
     The signals protocol: audience segments, contextual signals, measurement data.
   </Card>
+  <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
+    How publishers support impression-time execution for buyer use cases like cross-publisher frequency capping.
+  </Card>
+  <Card title="TMP Router architecture" icon="diagram-project" href="/docs/trusted-match/router-architecture">
+    Deployment, fan-out, and provider configuration for publishers.
+  </Card>
   <Card title="get_signals task" icon="code" href="/docs/signals/tasks/get_signals">
     Signal discovery: what measurement data is available and how to expose it.
   </Card>
@@ -144,9 +150,14 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Delivery reporting** — accurate, timely delivery data via `get_media_buy_delivery`
 - **Signals framework** — `get_signals` and `activate_signal` replace fragmented measurement vendor integrations
 - **Audience handling** — `sync_audiences` for accepting buyer audience data
+- **Execution integration** — publishers participate in TMP by sending Context Match requests (page content + available packages) and Identity Match requests (user token + package IDs) to the TMP Router, then joining the results locally. This enables cross-publisher frequency capping and impression-time activation without exposing user identity and page context to the buyer simultaneously
 - **Account management** — `sync_accounts`, `list_accounts` for managing buyer relationships
 - **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `media_buy_id` + `planned_delivery` before confirming media buys
 - **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
+
+### Exercise
+
+Given sample Context Match and Identity Match responses, determine which packages the publisher activates and what targeting key-values to set.
 
 <Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module B3."

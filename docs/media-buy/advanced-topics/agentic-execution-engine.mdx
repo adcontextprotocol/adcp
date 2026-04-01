@@ -11,6 +11,8 @@ AXE is deprecated. The [Trusted Match Protocol (TMP)](/docs/trusted-match) repla
 
 The Agentic eXecution Engine (AXE) is AdCP's original real-time execution layer that enables dynamic audience targeting, brand suitability enforcement, and frequency management at impression time.
 
+AXE is how AdCP reaches impression-time execution. It enables cross-publisher frequency capping the same way OpenRTB enables programmatic decisioning: by giving the buyer or orchestrator a real-time look at each impression before the ad server decides whether to serve.
+
 ## Two-Phase Workflow
 
 AXE operates in two distinct phases: **offline campaign setup** and **real-time ad serving**.
@@ -204,6 +206,34 @@ Unlike publisher-side caps, AXE tracks exposure across:
 
 AXE enforces frequency caps and returns segment decisions to the ad server. The ad server doesn't know *why* a segment matched or didn't match—it just knows whether to serve.
 
+### How Cross-Publisher Frequency Capping Works
+
+<Note>
+Cross-publisher frequency capping is now handled by the [Trusted Match Protocol (TMP)](/docs/trusted-match), which uses structurally separated Context Match and Identity Match operations. The AXE segment model maps to TMP's offers and eligibility responses.
+</Note>
+
+In the AXE model, every eligible impression is checked in real time against shared exposure state:
+
+```mermaid
+flowchart LR
+    pubA["**Publisher A**<br/>Impression opportunity"]
+    pubB["**Publisher B**<br/>Impression opportunity"]
+    pubC["**Publisher C**<br/>Impression opportunity"]
+    req["**OpenRTB-style request**<br/>user, placement, context"]
+    axe["**AXE**<br/>Evaluate cap eligibility"]
+    state["**Exposure store**<br/>cross-publisher history"]
+    decision["**Decision**<br/>serve or suppress"]
+
+    pubA --> req
+    pubB --> req
+    pubC --> req
+    req --> axe
+    state --> axe
+    axe --> decision
+```
+
+In TMP, this same pattern is achieved with structural privacy: the Identity Match path handles frequency caps (the buyer checks exposure history without knowing what page the user is on), and the Context Match path handles content relevance (the buyer evaluates packages without knowing who the user is). The publisher joins both responses locally.
+
 ### 4. First-Party Data Activation
 
 Activate your customer data without sharing PII:
@@ -271,7 +301,7 @@ AXE is a protocol-level concept. **Orchestrators implement AXE** and integrate i
 | **Proprietary ad platform** | AXE runs as a container or secure enclave within the platform's infrastructure | Platform-native integration |
 | **Server-side** | AXE endpoint called server-to-server by the ad platform before decisioning | Custom ad server integration |
 
-The common thread: whatever the integration path, AXE evaluates segments and returns `axei`/`axex`/`axem` decisions that the ad platform uses for targeting.
+The common thread: whatever the integration path, AXE evaluates segments and returns `axei`/`axex`/`axem` decisions that the ad platform uses for targeting. For cross-publisher frequency capping, those impression-time calls are what let the buyer apply shared exposure rules across sellers instead of relying on one publisher's local ad server counter.
 
 ### The Chain: Orchestrator → AXE Endpoint → Segment Targeting
 

@@ -310,9 +310,11 @@ Products describe what's available. Packages describe what you're buying.
 - **Delivery type**: `"guaranteed"` vs `"non_guaranteed"` (whether impressions are guaranteed)
 - **Distribution**: How creatives are distributed to ad servers (covered by creative agents, not media buying)
 
-### Q: What's "AXE" mentioned in the docs?
+### Q: What's "TMP" / "Trusted Match Protocol"?
 
-**A:** **Agentic eXecution Engine (AXE)** - the real-time execution layer between orchestrators and decisioning platforms. AXE handles dynamic audience targeting (buyers bringing their own segments), brand suitability enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for complete details.
+**A:** The **[Trusted Match Protocol (TMP)](/docs/trusted-match)** is AdCP's real-time execution layer. It determines which pre-negotiated packages activate at impression time using two structurally separated operations: **Context Match** (content relevance, no user identity) and **Identity Match** (user eligibility, no page context). The publisher joins both responses locally. TMP enables cross-publisher frequency capping, brand suitability, and audience targeting across web, mobile, CTV, AI assistants, and retail media.
+
+You may also see references to **AXE** (Agentic eXecution Engine) — that was TMP's predecessor. Existing AXE integrations still work, but new implementations should use TMP. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for legacy reference.
 
 ## Need More Help?
 

@@ -5,6 +5,11 @@
   "description": "Error response from a TMP provider or router. Returned instead of a normal response when the provider cannot process the request. Distinguishes errors from empty results (an empty offers array is a valid response meaning no matches, not an error).",
   "type": "object",
   "properties": {
+    "type": {
+      "type": "string",
+      "const": "error",
+      "description": "Message type discriminator for deserialization."
+    },
     "request_id": {
       "type": "string",
       "description": "Echoed request identifier from the original request"
@@ -27,6 +32,7 @@
     }
   },
   "required": [
+    "type",
     "request_id",
     "code"
   ],

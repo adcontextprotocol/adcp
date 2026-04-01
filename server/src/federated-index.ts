@@ -204,6 +204,23 @@ export class FederatedIndexService {
     return authorizations.map(auth => auth.publisher_domain);
   }
 
+  /**
+   * Get all agent→domain pairs in a single query (for bulk snapshots).
+   */
+  async getAllAgentDomainPairs(): Promise<Map<string, Set<string>>> {
+    const pairs = await this.db.getAllAgentDomainPairs();
+    const result = new Map<string, Set<string>>();
+    for (const { agent_url, publisher_domain } of pairs) {
+      let domains = result.get(agent_url);
+      if (!domains) {
+        domains = new Set();
+        result.set(agent_url, domains);
+      }
+      domains.add(publisher_domain);
+    }
+    return result;
+  }
+
   // ============================================
   // Recording discoveries (for crawler)
   // ============================================
