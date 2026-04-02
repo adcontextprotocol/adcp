@@ -236,7 +236,7 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
 
     // Publish as perspective for SEO/discoverability (non-blocking)
     publishDigestAsPerspective(digest.id, content, editionDate, subject).catch((err) => {
-      logger.warn({ error: err, digestId: digest.id }, 'Failed to publish digest as perspective');
+      logger.error({ error: err, digestId: digest.id }, 'Failed to publish digest as perspective');
     });
   } else {
     logger.error({ editionDate, batchResult }, 'The Prompt delivery failed — leaving as approved for retry');

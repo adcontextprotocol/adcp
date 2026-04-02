@@ -31,8 +31,6 @@ export async function publishDigestAsPerspective(
   editionDate: string,
   subject: string,
 ): Promise<string | null> {
-  const slug = `the-prompt-${editionDate}`;
-
   try {
     // Create the perspective
     const result = await proposeContentForUser(ADDIE_USER, {
@@ -53,7 +51,7 @@ export async function publishDigestAsPerspective(
     });
 
     if (!result.success || !result.id) {
-      logger.error({ error: result.error, slug }, 'Failed to create perspective for digest');
+      logger.error({ error: result.error, editionDate }, 'Failed to create perspective for digest');
       return null;
     }
 
@@ -70,7 +68,7 @@ export async function publishDigestAsPerspective(
 
     return perspectiveId;
   } catch (err) {
-    logger.error({ error: err, slug }, 'Failed to publish digest as perspective');
+    logger.error({ error: err, editionDate }, 'Failed to publish digest as perspective');
     return null;
   }
 }

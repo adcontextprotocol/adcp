@@ -1,7 +1,7 @@
 import type { DigestContent, DigestInsiderGroup } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
-import { markdownToEmailHtmlInline } from '../../utils/markdown.js';
+
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
@@ -228,7 +228,7 @@ function renderInsiderHtml(
       return `
       <div style="margin-bottom: 16px;${borderStyle}">
         <p style="font-size: 14px; margin: 0;">
-          <strong>${escapeHtml(group.name)}</strong>: ${markdownToEmailHtmlInline(group.summary.slice(0, 200))}
+          <strong>${escapeHtml(group.name)}</strong>: ${escapeHtml(group.summary.slice(0, 200))}
           ${group.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(group.nextMeeting)}</span>` : ''}
         </p>
         ${group.meetingRecaps.length > 0 ? group.meetingRecaps.map((recap) => `
@@ -252,7 +252,7 @@ function renderInsiderHtml(
     return `
     <div style="margin-bottom: 12px;${borderStyle}">
       <p style="font-size: 14px; margin: 0;">
-        <strong>${escapeHtml(group.name)}</strong>: ${markdownToEmailHtmlInline(group.summary.slice(0, 150))}
+        <strong>${escapeHtml(group.name)}</strong>: ${escapeHtml(group.summary.slice(0, 150))}
         ${group.nextMeeting ? `<br><span style="font-size: 13px; color: #666;">Next: ${escapeHtml(group.nextMeeting)}</span>` : ''}
       </p>
     </div>`;
