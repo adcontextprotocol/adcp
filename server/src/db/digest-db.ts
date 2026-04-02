@@ -460,7 +460,7 @@ export async function getNewOrganizations(days: number = 7): Promise<Array<{
 
 /**
  * Get users eligible to receive The Prompt email.
- * Returns users with email who haven't opted out of the weekly_digest category.
+ * Returns users with email who haven't opted out of the_prompt (or legacy weekly_digest) category.
  */
 export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]> {
   const result = await query<DigestEmailRecipient>(
@@ -482,7 +482,7 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
          SELECT 1 FROM user_email_preferences uep
          JOIN user_email_category_preferences uecp ON uecp.user_preference_id = uep.id
          WHERE uep.workos_user_id = u.workos_user_id
-           AND uecp.category_id = 'weekly_digest'
+           AND uecp.category_id IN ('the_prompt', 'weekly_digest')
            AND uecp.enabled = FALSE
        )
        AND NOT EXISTS (

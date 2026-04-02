@@ -217,7 +217,7 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
         const { html, text } = renderDigestEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs, cluster);
         return { htmlContent: html, textContent: text };
       },
-      category: 'weekly_digest',
+      category: 'the_prompt',
       workosUserId: recipient.workos_user_id,
       metadata: { edition_date: editionDate, segment },
     });
