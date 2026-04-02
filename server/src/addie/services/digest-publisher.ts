@@ -62,7 +62,7 @@ export async function publishDigestAsPerspective(
     logger.info({ digestId, perspectiveId, slug: result.slug }, 'Digest published as perspective');
 
     // Generate cover image (non-blocking — don't fail the publish if this errors)
-    generateCoverImage(perspectiveId, subject, content.openingTake).catch((err) => {
+    generateCoverImage(perspectiveId, subject, content.openingTake, editionDate).catch((err) => {
       logger.warn({ error: err, perspectiveId }, 'Failed to generate digest cover image');
     });
 
@@ -166,11 +166,13 @@ async function generateCoverImage(
   perspectiveId: string,
   title: string,
   excerpt: string,
+  editionDate?: string,
 ): Promise<void> {
   const { imageBuffer, promptUsed } = await generateIllustration({
     title,
     category: 'The Prompt',
     excerpt,
+    editionDate,
   });
 
   const illustration = await createIllustration({
