@@ -1160,12 +1160,15 @@
       let discountedCents = amountCents;
       let label = '';
 
-      if (discount.discount_percent) {
-        discountedCents = Math.round(amountCents * (1 - discount.discount_percent / 100));
-        label = `${discount.discount_percent}% off`;
-      } else if (discount.discount_amount_cents) {
-        discountedCents = Math.max(0, amountCents - discount.discount_amount_cents);
-        label = `${formatCurrency(discount.discount_amount_cents)} off`;
+      const pct = Number(discount.discount_percent) || 0;
+      const flatCents = Number(discount.discount_amount_cents) || 0;
+
+      if (pct > 0 && pct <= 100) {
+        discountedCents = Math.round(amountCents * (1 - pct / 100));
+        label = `${pct}% off`;
+      } else if (flatCents > 0) {
+        discountedCents = Math.max(0, amountCents - flatCents);
+        label = `${formatCurrency(flatCents)} off`;
       }
 
       if (discountedCents === amountCents) {
@@ -1235,7 +1238,7 @@
         if (data.organizations?.length > 1) {
           DashboardNav.setOrgOptions(data.organizations, currentOrg.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
-            window.location.href = '/dashboard/membership?org=' + newOrgId;
+            window.location.href = '/dashboard-membership?org=' + newOrgId;
           });
         }
 
