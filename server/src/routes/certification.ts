@@ -927,6 +927,69 @@ export function createCertificationRouters() {
     }
   });
 
+  // POST /api/admin/certification/attempts/:attemptId/resolve — resolve a stuck attempt
+  adminRouter.post('/attempts/:attemptId/resolve', async (req, res) => {
+    try {
+      const { attemptId } = req.params;
+      const { action, scores, reason } = req.body as {
+        action: 'cancel' | 'complete';
+        scores?: Record<string, number>;
+        reason: string;
+      };
+
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({ error: 'reason is required' });
+      }
+      if (action !== 'cancel' && action !== 'complete') {
+        return res.status(400).json({ error: 'action must be "cancel" or "complete"' });
+      }
+
+      // Verify attempt exists and is in_progress
+      const attempt = await certDb.getAttempt(attemptId);
+      if (!attempt) {
+        return res.status(404).json({ error: 'Attempt not found' });
+      }
+      if (attempt.status !== 'in_progress') {
+        return res.status(409).json({ error: `Attempt is already ${attempt.status}` });
+      }
+
+      if (action === 'cancel') {
+        const updated = await certDb.cancelAttempt(attemptId, reason);
+        return res.json({ attempt: updated });
+      }
+
+      // action === 'complete'
+      if (!scores || typeof scores !== 'object' || Object.keys(scores).length === 0) {
+        return res.status(400).json({ error: 'scores are required for complete action' });
+      }
+      const overallScore = Math.round(
+        Object.values(scores).reduce((sum, s) => sum + s, 0) / Object.values(scores).length
+      );
+      const passing = Object.values(scores).every(s => s >= 70) && overallScore >= 70;
+
+      const updated = await certDb.adminCompleteAttempt(attemptId, scores, overallScore, passing, reason);
+
+      // If passing, also mark the module as completed and check credentials
+      if (passing && updated.module_id) {
+        try {
+          await certDb.completeModule(updated.workos_user_id, updated.module_id, scores);
+        } catch (modError) {
+          logger.error({ error: modError, attemptId, moduleId: updated.module_id }, 'Failed to mark module complete after admin resolve');
+        }
+        try {
+          await certDb.checkAndAwardCredentials(updated.workos_user_id);
+        } catch (credError) {
+          logger.error({ error: credError, attemptId }, 'Failed to check credentials after admin resolve');
+        }
+      }
+
+      return res.json({ attempt: updated });
+    } catch (error) {
+      logger.error({ error, attemptId: req.params.attemptId }, 'Failed to resolve stuck attempt');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /api/admin/certification/learners/:userId — individual learner detail
   adminRouter.get('/learners/:userId', async (req, res) => {
     try {
