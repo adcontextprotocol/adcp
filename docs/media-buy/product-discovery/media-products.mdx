@@ -823,6 +823,7 @@ The `forecast_range_unit` field tells consumers how to interpret the points arra
 - **`reach_freq`** — points at ascending reach/frequency targets. Used in broadcast planning where the publisher shows how cost scales with frequency goals.
 - **`weekly`** / **`daily`** — metrics are per-period values. Budget refers to total campaign spend. A frequency of 3.2 with `weekly` means 3.2 exposures per week.
 - **`clicks`** / **`conversions`** — points at ascending outcome targets. Used in goal-based planning (e.g., "tell me your conversion goal, I'll tell you the budget").
+- **`package`** — each point represents a distinct inventory package (e.g., Good/Better/Best tiers). Points are separate products with different inventory compositions, not levels on a spend curve. Used by broadcast TV, audio, and DOOH sellers.
 
 A spend curve and a reach/frequency curve may contain identical data — the difference is the publisher's intent. A spend curve says "here's what different budgets buy." A reach/frequency curve says "here's what it costs to hit different frequency targets." Consumers can read either curve in either direction.
 
@@ -835,6 +836,10 @@ Forecasts can appear at two levels:
 Allocation-level forecasts may not sum to the proposal-level forecast due to audience overlap and frequency capping. When both are present, the proposal-level forecast is authoritative for total delivery estimation.
 
 For cross-channel planning, forecasts declare a `reach_unit` (individuals, households, devices, accounts, cookies) so buyers can compare reach across publishers. GRP-based forecasts (linear TV, radio) use `demographic_system` and `demographic` to specify the target demo, following the same pattern as CPP pricing.
+
+When a forecast is based on third-party measurement, the `measurement_source` field declares which provider's data was used to produce the numbers. This is distinct from `demographic_system`, which specifies demographic notation — `measurement_source` identifies whose data produced the forecast numbers. A forecast can use Nielsen demographic codes (`demographic_system: "nielsen"`) while the impression numbers come from VideoAmp (`measurement_source: "videoamp"`).
+
+Sellers who guarantee delivery against a named third-party currency can use the `guaranteed_impressions` metric to express contractually committed delivery, distinct from `impressions` which represents estimated delivery without a guarantee. When using `guaranteed_impressions`, include `measurement_source` so the buyer agent knows which currency the guarantee is denominated in.
 
 #### Budget Curve
 
@@ -901,7 +906,7 @@ The buyer agent can compare available impressions against budget requirements to
 
 #### CTV with GRP Demographics
 
-TV and audio forecasts use `demographic_system` and `demographic` to specify the target demo. This ensures buyer and seller agree on the measurement notation:
+TV and audio forecasts use `demographic_system` and `demographic` to specify the target demo, and `measurement_source` to declare whose audience data the forecast is modeled against:
 
 ```json
 {
@@ -917,6 +922,7 @@ TV and audio forecasts use `demographic_system` and `demographic` to specify the
     }
   ],
   "method": "modeled",
+  "measurement_source": "nielsen",
   "currency": "USD",
   "demographic_system": "nielsen",
   "demographic": "P18-49",
@@ -924,7 +930,7 @@ TV and audio forecasts use `demographic_system` and `demographic` to specify the
 }
 ```
 
-The `reach_unit: "households"` tells buyers this CTV publisher counts reach by household, not individual. A display publisher reporting `reach_unit: "devices"` is measuring something different — buyers should not directly compare the two reach numbers.
+The `measurement_source: "nielsen"` tells the buyer agent that the GRP and impression numbers are modeled against Nielsen data. The `reach_unit: "households"` tells buyers this CTV publisher counts reach by household, not individual. A display publisher reporting `reach_unit: "devices"` is measuring something different — buyers should not directly compare the two reach numbers.
 
 #### Retail Media with Outcome Forecasts
 
@@ -1150,6 +1156,53 @@ The `forecast_range_unit: "weekly"` on each forecast tells the buyer that all me
 The `daypart_targets` on each allocation specify the publisher's recommended time windows. These are the same structure used in `targeting` for hard daypart constraints — here the publisher is prescribing the spot plan rather than the buyer constraining it.
 
 Note that allocation-level reach doesn't sum to the proposal level (180K + 120K + 80K > 280K) because of audience overlap across dayparts — the same listener may hear morning drive and afternoon drive spots. The proposal-level forecast accounts for this overlap.
+
+#### Broadcast TV Package Forecast
+
+Broadcast TV sellers offer distinct inventory packages rather than impressions at variable spend levels. The `forecast_range_unit: "package"` tells the buyer that each point is a separate package, not a position on a spend curve:
+
+```json
+{
+  "points": [
+    {
+      "budget": 50000,
+      "metrics": {
+        "guaranteed_impressions": { "mid": 800000 },
+        "grps": { "mid": 35 },
+        "reach": { "mid": 220000 },
+        "frequency": { "mid": 2.1 }
+      }
+    },
+    {
+      "budget": 85000,
+      "metrics": {
+        "guaranteed_impressions": { "mid": 1400000 },
+        "grps": { "mid": 58 },
+        "reach": { "mid": 340000 },
+        "frequency": { "mid": 3.4 }
+      }
+    },
+    {
+      "budget": 150000,
+      "metrics": {
+        "guaranteed_impressions": { "mid": 2600000 },
+        "grps": { "mid": 95 },
+        "reach": { "mid": 480000 },
+        "frequency": { "mid": 5.2 }
+      }
+    }
+  ],
+  "forecast_range_unit": "package",
+  "method": "modeled",
+  "measurement_source": "nielsen",
+  "currency": "USD",
+  "demographic_system": "nielsen",
+  "demographic": "P18-49",
+  "reach_unit": "households"
+}
+```
+
+Each point represents a distinct package — different dayparts, unit types, and flight structures — not the same product at three spend levels. The `measurement_source: "nielsen"` tells the buyer agent that the impression and GRP numbers are modeled against Nielsen data, not the broadcaster's own measurement. The `guaranteed_impressions` metric indicates the broadcaster guarantees delivery against that currency.
 
 ## Integration with Discovery
 

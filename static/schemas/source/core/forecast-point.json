@@ -26,7 +26,8 @@
         "engagements": { "$ref": "/schemas/core/forecast-range.json" },
         "follows": { "$ref": "/schemas/core/forecast-range.json" },
         "saves": { "$ref": "/schemas/core/forecast-range.json" },
-        "profile_visits": { "$ref": "/schemas/core/forecast-range.json" }
+        "profile_visits": { "$ref": "/schemas/core/forecast-range.json" },
+        "guaranteed_impressions": { "$ref": "/schemas/core/forecast-range.json" }
       },
       "additionalProperties": {
         "$ref": "/schemas/core/forecast-range.json"
