@@ -985,12 +985,65 @@ export async function backfillUsers(): Promise<{
   logger.info('Starting users backfill from WorkOS');
 
   try {
-    // Get all organizations from our database
+    const processedUserIds = new Set<string>();
+
+    // Upsert helper shared by both passes
+    async function upsertUser(user: { id: string; email: string; firstName: string | null; lastName: string | null; emailVerified: boolean; createdAt: string; updatedAt: string }) {
+      if (processedUserIds.has(user.id)) return;
+      processedUserIds.add(user.id);
+
+      try {
+        await pool.query(
+          `INSERT INTO users (
+            workos_user_id, email, first_name, last_name,
+            email_verified, workos_created_at, workos_updated_at,
+            created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+          ON CONFLICT (workos_user_id) DO UPDATE SET
+            email = EXCLUDED.email,
+            first_name = EXCLUDED.first_name,
+            last_name = EXCLUDED.last_name,
+            email_verified = EXCLUDED.email_verified,
+            workos_updated_at = EXCLUDED.workos_updated_at,
+            updated_at = NOW()`,
+          [user.id, user.email, user.firstName, user.lastName,
+           user.emailVerified, user.createdAt, user.updatedAt]
+        );
+        result.usersCreated++;
+      } catch (userError) {
+        result.errors.push(`Failed to upsert user ${user.id}: ${userError}`);
+        logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
+      }
+      result.usersProcessed++;
+    }
+
+    // Pass 1: Enumerate ALL WorkOS users (catches users not in any org)
+    logger.info('Backfill: pass 1 — enumerating all WorkOS users');
+    let after: string | undefined;
+    do {
+      const usersResponse = await workos.userManagement.listUsers({
+        limit: 100,
+        after,
+      });
+
+      for (const user of usersResponse.data) {
+        await upsertUser(user);
+      }
+
+      after = usersResponse.data.length === 100
+        ? usersResponse.data[usersResponse.data.length - 1].id
+        : undefined;
+    } while (after);
+
+    logger.info({ count: processedUserIds.size }, 'Backfill: pass 1 complete');
+
+    // Pass 2: Enumerate users per org (catches any users pass 1 might miss
+    // due to WorkOS pagination edge cases with org-scoped users)
+    logger.info('Backfill: pass 2 — enumerating users per org');
     const orgsResult = await pool.query(
       `SELECT workos_organization_id FROM organizations`
     );
 
-    const processedUserIds = new Set<string>();
     const BATCH_SIZE = 10;
     const orgs = orgsResult.rows;
 
@@ -999,66 +1052,22 @@ export async function backfillUsers(): Promise<{
 
       await Promise.all(batch.map(async (org) => {
         try {
-          // Fetch users for this org from WorkOS
-          let after: string | undefined;
+          let orgAfter: string | undefined;
           do {
             const usersResponse = await workos.userManagement.listUsers({
               organizationId: org.workos_organization_id,
               limit: 100,
-              after,
+              after: orgAfter,
             });
 
             for (const user of usersResponse.data) {
-              // Skip if we've already processed this user (they may be in multiple orgs)
-              if (processedUserIds.has(user.id)) {
-                continue;
-              }
-              processedUserIds.add(user.id);
-
-              try {
-                await pool.query(
-                  `INSERT INTO users (
-                    workos_user_id,
-                    email,
-                    first_name,
-                    last_name,
-                    email_verified,
-                    workos_created_at,
-                    workos_updated_at,
-                    created_at,
-                    updated_at
-                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-                  ON CONFLICT (workos_user_id) DO UPDATE SET
-                    email = EXCLUDED.email,
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name,
-                    email_verified = EXCLUDED.email_verified,
-                    workos_updated_at = EXCLUDED.workos_updated_at,
-                    updated_at = NOW()`,
-                  [
-                    user.id,
-                    user.email,
-                    user.firstName,
-                    user.lastName,
-                    user.emailVerified,
-                    user.createdAt,
-                    user.updatedAt,
-                  ]
-                );
-                result.usersCreated++;
-              } catch (userError) {
-                const msg = `Failed to upsert user ${user.id}: ${userError}`;
-                result.errors.push(msg);
-                logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
-              }
-
-              result.usersProcessed++;
+              await upsertUser(user);
             }
 
-            after = usersResponse.data.length === 100
+            orgAfter = usersResponse.data.length === 100
               ? usersResponse.data[usersResponse.data.length - 1].id
               : undefined;
-          } while (after);
+          } while (orgAfter);
         } catch (orgError) {
           const msg = `Failed to fetch users for org ${org.workos_organization_id}: ${orgError}`;
           result.errors.push(msg);
@@ -1067,9 +1076,11 @@ export async function backfillUsers(): Promise<{
       }));
     }
 
+    logger.info({ count: processedUserIds.size }, 'Backfill: pass 2 complete');
+
     // Remove local users that no longer exist in WorkOS.
-    // Verify each candidate against WorkOS directly — a user may exist
-    // in WorkOS without being in any org (e.g. individual members).
+    // After both passes, candidates should be rare. Still verify each
+    // against WorkOS directly as a safety net before deleting.
     if (processedUserIds.size > 0) {
       const localUsers = await pool.query<{ workos_user_id: string }>(
         `SELECT workos_user_id FROM users`,
