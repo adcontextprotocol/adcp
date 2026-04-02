@@ -814,6 +814,8 @@ This lets sellers forecast both delivery ("1.2M impressions") and outcomes ("1,8
 - **`modeled`** — derived from predictive models or historical data
 - **`guaranteed`** — contractually committed delivery levels backed by reserved inventory
 
+Each metric value is a ForecastRange object. Provide `mid` for a point estimate, `low` and `high` for a range, or all three. At minimum, either `mid` or both `low` and `high` must be present.
+
 #### Forecast Range Units
 
 The `forecast_range_unit` field tells consumers how to interpret the points array — what axis the curve represents:
@@ -839,7 +841,11 @@ For cross-channel planning, forecasts declare a `reach_unit` (individuals, house
 
 When a forecast is based on third-party measurement, the `measurement_source` field declares which provider's data was used to produce the numbers. This is distinct from `demographic_system`, which specifies demographic notation — `measurement_source` identifies whose data produced the forecast numbers. A forecast can use Nielsen demographic codes (`demographic_system: "nielsen"`) while the impression numbers come from VideoAmp (`measurement_source: "videoamp"`).
 
-Sellers who guarantee delivery against a named third-party currency can use the `guaranteed_impressions` metric to express contractually committed delivery, distinct from `impressions` which represents estimated delivery without a guarantee. When using `guaranteed_impressions`, include `measurement_source` so the buyer agent knows which currency the guarantee is denominated in.
+Sellers who guarantee delivery against a named third-party currency can use the `guaranteed_impressions` metric to express contractually committed delivery, distinct from `impressions` which represents estimated delivery without a guarantee. When using `guaranteed_impressions`, include `measurement_source` so the buyer agent knows which currency the guarantee is denominated in. Sellers may include both `guaranteed_impressions` and `impressions` in the same point when total estimated delivery exceeds the guarantee (bonus impressions). When only guaranteed delivery is relevant, omit `impressions`.
+
+A fully specified guaranteed forecast combines three fields: `method: "guaranteed"` marks the forecast as contractual, `guaranteed_impressions` in each point's metrics states the committed delivery number, and `measurement_source` declares whose measurement determines whether the guarantee was met. The `impressions` metric may also be present as ad-server-estimated delivery that differs from the guaranteed currency.
+
+Podcast sellers use `downloads` as their primary delivery currency per IAB Podcast Measurement guidelines, in place of or alongside `impressions`.
 
 #### Budget Curve
 
@@ -931,6 +937,8 @@ TV and audio forecasts use `demographic_system` and `demographic` to specify the
 ```
 
 The `measurement_source: "nielsen"` tells the buyer agent that the GRP and impression numbers are modeled against Nielsen data. The `reach_unit: "households"` tells buyers this CTV publisher counts reach by household, not individual. A display publisher reporting `reach_unit: "devices"` is measuring something different — buyers should not directly compare the two reach numbers.
+
+Note that `measurement_source` and `demographic_system` can differ. A CTV publisher might use Nielsen's demographic notation (`demographic_system: "nielsen"`, `demographic: "P18-49"`) while the underlying audience data comes from VideoAmp (`measurement_source: "videoamp"`). The demographic system specifies the notation; the measurement source specifies whose numbers produced the forecast.
 
 #### Retail Media with Outcome Forecasts
 
@@ -1159,12 +1167,13 @@ Note that allocation-level reach doesn't sum to the proposal level (180K + 120K 
 
 #### Broadcast TV Package Forecast
 
-Broadcast TV sellers offer distinct inventory packages rather than impressions at variable spend levels. The `forecast_range_unit: "package"` tells the buyer that each point is a separate package, not a position on a spend curve:
+Broadcast TV sellers offer distinct inventory packages rather than impressions at variable spend levels. The `forecast_range_unit: "package"` tells the buyer that each point is a separate package, not a position on a spend curve. Each point includes a `label` so the buyer agent can identify and reference individual packages. A broadcaster might offer a daytime rotator, a prime-access + daytime bundle, and a full prime package:
 
 ```json
 {
   "points": [
     {
+      "label": "Daytime Rotator",
       "budget": 50000,
       "metrics": {
         "guaranteed_impressions": { "mid": 800000 },
@@ -1174,20 +1183,22 @@ Broadcast TV sellers offer distinct inventory packages rather than impressions a
       }
     },
     {
+      "label": "Prime Access + Daytime",
       "budget": 85000,
       "metrics": {
         "guaranteed_impressions": { "mid": 1400000 },
         "grps": { "mid": 58 },
-        "reach": { "mid": 340000 },
+        "reach": { "low": 290000, "high": 390000 },
         "frequency": { "mid": 3.4 }
       }
     },
     {
+      "label": "Full Prime",
       "budget": 150000,
       "metrics": {
         "guaranteed_impressions": { "mid": 2600000 },
         "grps": { "mid": 95 },
-        "reach": { "mid": 480000 },
+        "reach": { "low": 420000, "high": 540000 },
         "frequency": { "mid": 5.2 }
       }
     }
@@ -1202,7 +1213,11 @@ Broadcast TV sellers offer distinct inventory packages rather than impressions a
 }
 ```
 
-Each point represents a distinct package — different dayparts, unit types, and flight structures — not the same product at three spend levels. The `measurement_source: "nielsen"` tells the buyer agent that the impression and GRP numbers are modeled against Nielsen data, not the broadcaster's own measurement. The `guaranteed_impressions` metric indicates the broadcaster guarantees delivery against that currency.
+Each point represents a distinct package — different dayparts, unit types, and flight structures — not the same product at three spend levels. The `label` field lets buyer agents reference packages by name when negotiating or requesting specific options. The `measurement_source: "nielsen"` tells the buyer agent that the impression and GRP numbers are modeled against Nielsen data, not the broadcaster's own measurement. The `guaranteed_impressions` metric indicates the broadcaster guarantees delivery against that currency.
+
+If packages share the same inventory pool and differ only in volume or mix, use `package` forecast points on one product. If they represent fundamentally different inventory (different shows, properties, or dayparts with no overlap), create separate products with their own forecasts.
+
+Sellers expressing the same inventory in multiple measurement currencies (e.g., both Nielsen and VideoAmp) should provide separate DeliveryForecast objects, one per `measurement_source`.
 
 ## Integration with Discovery
 

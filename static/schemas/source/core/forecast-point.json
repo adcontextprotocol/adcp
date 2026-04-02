@@ -5,6 +5,12 @@
   "description": "A forecast data point. When budget is present, the point pairs a spend level with expected delivery — multiple points at ascending budgets form a curve. When budget is omitted, the point represents total available inventory for the requested targeting and dates, independent of spend.",
   "type": "object",
   "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Human-readable name for this forecast point. Required when forecast_range_unit is 'package' so buyer agents can identify and reference individual packages. Optional for other forecast types.",
+      "examples": ["Primetime", "Morning Drive", "Large Format Transit"]
+    },
     "budget": {
       "type": "number",
       "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory.",
@@ -27,7 +33,8 @@
         "follows": { "$ref": "/schemas/core/forecast-range.json" },
         "saves": { "$ref": "/schemas/core/forecast-range.json" },
         "profile_visits": { "$ref": "/schemas/core/forecast-range.json" },
-        "guaranteed_impressions": { "$ref": "/schemas/core/forecast-range.json" }
+        "guaranteed_impressions": { "$ref": "/schemas/core/forecast-range.json" },
+        "downloads": { "$ref": "/schemas/core/forecast-range.json" }
       },
       "additionalProperties": {
         "$ref": "/schemas/core/forecast-range.json"

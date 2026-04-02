@@ -18,7 +18,8 @@
     "follows",
     "saves",
     "profile_visits",
-    "guaranteed_impressions"
+    "guaranteed_impressions",
+    "downloads"
   ],
   "enumDescriptions": {
     "audience_size": "Estimated addressable audience size",
@@ -34,6 +35,7 @@
     "follows": "Estimated new followers, page likes, or channel subscribes",
     "saves": "Estimated saves, bookmarks, playlist adds, or pins",
     "profile_visits": "Estimated visits to the brand's in-platform page or profile",
-    "guaranteed_impressions": "Contractually guaranteed impression delivery. Used by sellers who guarantee delivery against a named third-party currency (see measurement_source on DeliveryForecast). Distinct from impressions, which represents estimated delivery without a guarantee."
+    "guaranteed_impressions": "Contractually guaranteed impression delivery. Used by sellers who guarantee delivery against a named third-party currency (see measurement_source on DeliveryForecast). Distinct from impressions, which represents estimated delivery without a guarantee.",
+    "downloads": "Estimated downloads. Primary currency for podcast advertising per IAB Podcast Measurement guidelines."
   }
 }
