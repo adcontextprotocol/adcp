@@ -1610,6 +1610,7 @@ export class HTTPServer {
 
     this.app.get('/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
     this.app.get('/account', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
+    this.app.get('/dashboard-membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
     this.app.get('/dashboard/organization', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/organization${query}`);
