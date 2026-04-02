@@ -1627,6 +1627,9 @@
       document.getElementById('agreementModal').style.display = 'flex';
     }
 
+    // Cached agreement version from the server (set by loadAgreementContent)
+    let loadedAgreementVersion = null;
+
     // Load agreement content for modal
     async function loadAgreementContent() {
       const contentEl = document.getElementById('modalAgreementContent');
@@ -1637,6 +1640,7 @@
 
         const data = await response.json();
         const content = data.text || 'Agreement not available.';
+        loadedAgreementVersion = data.version || null;
 
         // Render markdown
         const html = DOMPurify.sanitize(marked.parse(content));
@@ -1694,6 +1698,24 @@
       btn.textContent = 'Redirecting...';
 
       try {
+        // Store pending agreement so the webhook can record acceptance atomically
+        if (loadedAgreementVersion) {
+          try {
+            await fetch(`/api/organizations/${currentOrg.id}/pending-agreement`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                agreement_version: loadedAgreementVersion,
+                agreement_accepted_at: new Date().toISOString(),
+              }),
+            });
+          } catch (error) {
+            console.error('Failed to store pending agreement:', error);
+            // Continue anyway - webhook will fall back to current version
+          }
+        }
+
         const checkoutBody = {
           priceId: selectedProduct.price_id,
           orgId: currentOrg.id,

@@ -1,8 +1,8 @@
 ---
 ---
 
-fix: prevent agreement recording failure from blocking membership activation
+fix: store pending agreement before checkout on membership page
 
-- Agreement recording errors in the subscription webhook are now non-blocking so the subscription sync (status, tier, period) always completes
-- Non-subscription membership renewals now update subscription_current_period_end even when already active
-- Added missing escapeHtml on product lookup_key in new-subscriber checkout cards
+The dashboard-membership page skipped the pending-agreement API call before
+redirecting to Stripe checkout. This meant the webhook could not find the
+agreement version the user accepted, falling back to a generic lookup.
