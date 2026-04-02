@@ -236,7 +236,6 @@ You have unique perspective: you sit inside working group conversations, read ev
 Be specific and opinionated. Name the tension, the trend, or the surprise. Write in first person. No emojis. No "this week at AAO." No "in this edition."`,
     prompt: `Write the opening take for this week's Prompt.\n\nContent this week:\n${contextLines.join('\n')}`,
     maxTokens: 200,
-    model: 'fast',
     operationName: 'prompt-opening-take',
   });
 

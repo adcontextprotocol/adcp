@@ -131,12 +131,6 @@ export function renderDigestEmail(
     </div>
     ` : ''}
 
-    ${content.newMembers.length > 0 ? `
-    <p style="font-size: 14px; color: #555; margin: 12px 0;">
-      Welcome to ${content.newMembers.map((m) => `<strong>${escapeHtml(m.name)}</strong>`).join(', ')} who joined this week.
-    </p>
-    ` : ''}
-
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
     <!-- What to Watch -->
@@ -170,6 +164,12 @@ export function renderDigestEmail(
     </div>
     `).join('')}
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
+    ${content.newMembers.length > 0 ? `
+    <p style="font-size: 14px; color: #555; margin: 0 0 16px 0;">
+      Welcome to ${content.newMembers.map((m) => `<strong>${escapeHtml(m.name)}</strong>`).join(', ')} who joined this week.
+    </p>
     ` : ''}
 
     <!-- Sign-off + CTA -->
