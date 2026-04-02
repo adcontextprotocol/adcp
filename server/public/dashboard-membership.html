@@ -1520,7 +1520,7 @@
       const cardsHtml = uniqueProducts.map(product => {
         const pricing = applyOrgDiscount(product.amount_cents);
         return `
-          <div class="product-card" data-lookup-key="${product.lookup_key}">
+          <div class="product-card" data-lookup-key="${escapeHtml(product.lookup_key)}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
             ${product.description ? `<div class="product-card-description">${escapeHtml(product.description)}</div>` : ''}
             <div class="product-card-price">
@@ -1528,8 +1528,8 @@
               <span class="period">/year</span>
             </div>
             <div class="product-card-actions">
-              <button class="btn btn-primary" onclick="selectProduct('${product.lookup_key}')">Pay Now</button>
-              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${product.lookup_key}')">Request Invoice</button>
+              <button class="btn btn-primary" onclick="selectProduct('${escapeHtml(product.lookup_key)}')">Pay Now</button>
+              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${escapeHtml(product.lookup_key)}')">Request Invoice</button>
             </div>
           </div>
         `;
@@ -1747,7 +1747,7 @@
         const subscriptionProducts = membershipProducts.filter(p => p.billing_type === 'subscription');
         subscriptionProducts.forEach(product => {
           const price = formatCurrency(product.amount_cents);
-          productSelect.innerHTML += `<option value="${product.lookup_key}">${escapeHtml(product.display_name)} - ${price}/year</option>`;
+          productSelect.innerHTML += `<option value="${escapeHtml(product.lookup_key)}">${escapeHtml(product.display_name)} - ${price}/year</option>`;
         });
       }
 

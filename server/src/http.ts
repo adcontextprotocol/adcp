@@ -3316,16 +3316,17 @@ export class HTTPServer {
                         // Note: IP and user-agent not available in webhook context
                       });
                     } catch (agreementError) {
-                      // CRITICAL: Agreement recording failed but subscription already exists
-                      // This needs manual intervention to fix the inconsistent state
+                      // Agreement recording failed but subscription already exists in Stripe.
+                      // Log for manual follow-up but do NOT re-throw — the subscription sync
+                      // (status, tier, period) must still proceed so the member isn't left in
+                      // a "paid but inactive" state.
                       logger.error({
                         error: agreementError,
                         orgId: org.workos_organization_id,
                         subscriptionId: subscription.id,
                         userEmail,
                         agreementVersion,
-                      }, 'CRITICAL: Failed to record agreement acceptance - subscription exists but agreement not recorded. Manual intervention required.');
-                      throw agreementError; // Re-throw to prevent further operations
+                      }, 'Failed to record agreement acceptance - subscription sync will continue. Manual agreement reconciliation required.');
                     }
 
                     // Update organization record
@@ -3758,8 +3759,7 @@ export class HTTPServer {
                    SET subscription_status = 'active',
                        subscription_current_period_end = $1,
                        updated_at = NOW()
-                   WHERE workos_organization_id = $2
-                     AND (subscription_status IS NULL OR subscription_status != 'active')`,
+                   WHERE workos_organization_id = $2`,
                   [periodEnd, org.workos_organization_id]
                 );
 
