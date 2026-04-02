@@ -961,10 +961,9 @@ export async function backfillOrganizationMemberships(): Promise<{
 
 /**
  * Backfill users table from WorkOS
- * Fetches all users from all organizations and upserts them into the users table.
- *
- * Also removes local user rows for users confirmed deleted from WorkOS
- * (verified via individual getUser calls).
+ * Two-pass enumeration: first lists all WorkOS users (catches users not in
+ * any org), then lists users per org as a safety net. Removes local rows
+ * for users confirmed deleted from WorkOS (verified via getUser).
  */
 export async function backfillUsers(): Promise<{
   usersProcessed: number;
@@ -985,12 +984,73 @@ export async function backfillUsers(): Promise<{
   logger.info('Starting users backfill from WorkOS');
 
   try {
-    // Get all organizations from our database
+    const processedUserIds = new Set<string>();
+
+    // Upsert helper shared by both passes
+    async function upsertUser(user: { id: string; email: string; firstName: string | null; lastName: string | null; emailVerified: boolean; createdAt: string; updatedAt: string }) {
+      if (processedUserIds.has(user.id)) return;
+      processedUserIds.add(user.id);
+
+      try {
+        await pool.query(
+          `INSERT INTO users (
+            workos_user_id, email, first_name, last_name,
+            email_verified, workos_created_at, workos_updated_at,
+            created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+          ON CONFLICT (workos_user_id) DO UPDATE SET
+            email = EXCLUDED.email,
+            first_name = EXCLUDED.first_name,
+            last_name = EXCLUDED.last_name,
+            email_verified = EXCLUDED.email_verified,
+            workos_updated_at = EXCLUDED.workos_updated_at,
+            updated_at = NOW()`,
+          [user.id, user.email, user.firstName, user.lastName,
+           user.emailVerified, user.createdAt, user.updatedAt]
+        );
+        result.usersCreated++;
+      } catch (userError) {
+        logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
+        result.errors.push(`Failed to upsert user ${user.id}`);
+      }
+      result.usersProcessed++;
+    }
+
+    // Pass 1: Enumerate ALL WorkOS users (catches users not in any org)
+    let pass1Complete = false;
+    logger.info('Backfill: pass 1 — enumerating all WorkOS users');
+    try {
+      let after: string | undefined;
+      do {
+        const usersResponse = await workos.userManagement.listUsers({
+          limit: 100,
+          after,
+        });
+
+        for (const user of usersResponse.data) {
+          await upsertUser(user);
+        }
+
+        after = usersResponse.data.length === 100
+          ? usersResponse.data[usersResponse.data.length - 1].id
+          : undefined;
+      } while (after);
+
+      pass1Complete = true;
+      logger.info({ count: processedUserIds.size }, 'Backfill: pass 1 complete');
+    } catch (pass1Err) {
+      result.errors.push(`Pass 1 enumeration failed partway through`);
+      logger.error({ error: pass1Err, usersFoundSoFar: processedUserIds.size }, 'Backfill: pass 1 failed, deletion phase will be skipped');
+    }
+
+    // Pass 2: Enumerate users per org as a safety net. In practice,
+    // pass 1 covers all users; this guards against undocumented
+    // WorkOS pagination inconsistencies.
+    logger.info('Backfill: pass 2 — enumerating users per org');
     const orgsResult = await pool.query(
       `SELECT workos_organization_id FROM organizations`
     );
 
-    const processedUserIds = new Set<string>();
     const BATCH_SIZE = 10;
     const orgs = orgsResult.rows;
 
@@ -999,78 +1059,35 @@ export async function backfillUsers(): Promise<{
 
       await Promise.all(batch.map(async (org) => {
         try {
-          // Fetch users for this org from WorkOS
-          let after: string | undefined;
+          let orgAfter: string | undefined;
           do {
             const usersResponse = await workos.userManagement.listUsers({
               organizationId: org.workos_organization_id,
               limit: 100,
-              after,
+              after: orgAfter,
             });
 
             for (const user of usersResponse.data) {
-              // Skip if we've already processed this user (they may be in multiple orgs)
-              if (processedUserIds.has(user.id)) {
-                continue;
-              }
-              processedUserIds.add(user.id);
-
-              try {
-                await pool.query(
-                  `INSERT INTO users (
-                    workos_user_id,
-                    email,
-                    first_name,
-                    last_name,
-                    email_verified,
-                    workos_created_at,
-                    workos_updated_at,
-                    created_at,
-                    updated_at
-                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-                  ON CONFLICT (workos_user_id) DO UPDATE SET
-                    email = EXCLUDED.email,
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name,
-                    email_verified = EXCLUDED.email_verified,
-                    workos_updated_at = EXCLUDED.workos_updated_at,
-                    updated_at = NOW()`,
-                  [
-                    user.id,
-                    user.email,
-                    user.firstName,
-                    user.lastName,
-                    user.emailVerified,
-                    user.createdAt,
-                    user.updatedAt,
-                  ]
-                );
-                result.usersCreated++;
-              } catch (userError) {
-                const msg = `Failed to upsert user ${user.id}: ${userError}`;
-                result.errors.push(msg);
-                logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
-              }
-
-              result.usersProcessed++;
+              await upsertUser(user);
             }
 
-            after = usersResponse.data.length === 100
+            orgAfter = usersResponse.data.length === 100
               ? usersResponse.data[usersResponse.data.length - 1].id
               : undefined;
-          } while (after);
+          } while (orgAfter);
         } catch (orgError) {
-          const msg = `Failed to fetch users for org ${org.workos_organization_id}: ${orgError}`;
-          result.errors.push(msg);
           logger.warn({ error: orgError, orgId: org.workos_organization_id }, 'Backfill: failed to fetch org users');
+          result.errors.push(`Failed to fetch users for org ${org.workos_organization_id}`);
         }
       }));
     }
 
+    logger.info({ count: processedUserIds.size }, 'Backfill: pass 2 complete');
+
     // Remove local users that no longer exist in WorkOS.
-    // Verify each candidate against WorkOS directly — a user may exist
-    // in WorkOS without being in any org (e.g. individual members).
-    if (processedUserIds.size > 0) {
+    // Only safe when pass 1 completed fully — a partial enumeration
+    // would produce false deletion candidates.
+    if (pass1Complete && processedUserIds.size > 0) {
       const localUsers = await pool.query<{ workos_user_id: string }>(
         `SELECT workos_user_id FROM users`,
       );
