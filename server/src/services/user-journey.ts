@@ -9,7 +9,7 @@
  */
 
 import { query } from '../db/client.js';
-import { getTrackProgress, getUserCredentials, getProgress } from '../db/certification-db.js';
+import { getTrackProgress, getProgress } from '../db/certification-db.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('user-journey');

@@ -1412,11 +1412,6 @@
       // Org context for social proof
       const orgCtx = journey?.org_context || null;
 
-      let ringColor;
-      if (points < 100)      ringColor = 'var(--color-gray-400)';
-      else if (points < 200) ringColor = 'var(--color-brand)';
-      else                   ringColor = 'var(--color-success-500)';
-
       const primaryAction = getPrimaryAction({ profile, milestones, contentItems, currentGroupCount: current_group_count, stage: tier, score: points, activity, certification, seatType });
 
       el.innerHTML = `
