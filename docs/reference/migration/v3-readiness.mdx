@@ -1,7 +1,7 @@
 ---
 title: "v3 readiness checklist"
 sidebarTitle: Readiness checklist
-description: "The 7 minimum requirements for seller agents to pass AdCP v3 integration testing. Comply testing will fail without these."
+description: "The 8 minimum requirements for seller agents to pass AdCP v3 integration testing. Comply testing will fail without these."
 "og:title": "AdCP — v3 readiness checklist"
 ---
 
@@ -10,7 +10,7 @@ description: "The 7 minimum requirements for seller agents to pass AdCP v3 integ
 AdCP comply testing requires v3 protocol support. Agents that only support v2 will fail. This page covers the minimum changes to unblock integration testing with v3 buyers — not the full migration. For the complete list, see the [migration guide](/docs/reference/migration).
 
 <Warning>
-Comply testing will hard-fail any agent that does not declare v3 support. Complete these 7 items first, then work through the [full migration checklist](/docs/reference/migration).
+Comply testing will hard-fail any agent that does not declare v3 support. Complete these 8 items first, then work through the [full migration checklist](/docs/reference/migration).
 </Warning>
 
 ---
@@ -115,7 +115,37 @@ Buyers pass brand identity as a reference (`{ domain, brand_id }`) instead of an
 
 ---
 
-## 7. Implement `sync_accounts`
+## 7. Remove `buyer_ref` — use `idempotency_key`
+
+v3 removes `buyer_ref`, `buyer_campaign_ref`, and `campaign_ref` from all requests and responses. Seller-assigned `media_buy_id` and `package_id` are now the only canonical identifiers.
+
+If your agent relied on `buyer_ref` for deduplication, use the new `idempotency_key` field instead. Buyers include an `idempotency_key` (UUID v4) on all mutating requests (`create_media_buy`, `update_media_buy`, `sync_creatives`). Your agent must use it for at-most-once execution.
+
+If your agent used `buyer_ref` for internal tracking or correlation (e.g. mapping to campaign IDs, session traces, or UI state), use the `context` field instead. `context` is an opaque object echoed unchanged in every response and webhook — agents must never parse or act on it.
+
+| v2 field | v3 replacement |
+|----------|----------------|
+| `buyer_ref` | Removed — use `media_buy_id` (seller-assigned) |
+| `buyer_campaign_ref` | Removed |
+| `campaign_ref` | Removed |
+| `buyer_ref` as implicit dedup | Explicit `idempotency_key` on mutating requests |
+| `buyer_ref` as correlation / tracking | `context` (opaque, echoed unchanged) |
+
+```json
+// v2 — buyer provides their own ref
+{ "buyer_ref": "camp-2024-q3", "start_time": "..." }
+
+// v3 — seller-assigned ID, explicit idempotency, context for tracking
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+  "context": { "campaign": "camp-2024-q3", "trace_id": "abc-123" },
+  "start_time": "..."
+}
+```
+
+---
+
+## 8. Implement `sync_accounts`
 
 v3 buyers establish billing relationships before placing buys. Your agent must accept `sync_accounts` calls and return an account reference that buyers include on subsequent requests.
 
@@ -125,7 +155,7 @@ v3 buyers establish billing relationships before placing buys. Your agent must a
 
 ---
 
-## After these 7 items
+## After these 8 items
 
 Once these are in place, run comply testing against your agent. The existing tracks (products, media buy, creative) validate v3 schemas in detail and will surface any remaining field-level issues.
 
