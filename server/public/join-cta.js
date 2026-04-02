@@ -392,7 +392,7 @@ async function renderJoinCta(options = {}) {
 
   const explorerBenefits = [
     '1 community-only seat — Addie, certification, training',
-    'Start your first certification module free',
+    'All three certification tiers (Basics, Practitioner, Specialist)',
     'Newsletter and industry updates'
   ];
 
