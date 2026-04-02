@@ -382,6 +382,138 @@
 
     .level-step--completed:not(:last-child)::after { background: var(--color-brand); }
 
+    /* Tier progress bar */
+    .tier-progress-bar {
+      height: 6px;
+      background: var(--color-gray-200);
+      border-radius: var(--radius-full);
+      margin-bottom: var(--space-1);
+      overflow: hidden;
+    }
+
+    .tier-progress-fill {
+      height: 100%;
+      background: var(--color-brand);
+      border-radius: var(--radius-full);
+      transition: width 0.4s ease;
+    }
+
+    .tier-progress-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+      margin-bottom: var(--space-4);
+    }
+
+    .tier-org-context {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-4);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-primary-50);
+      background: color-mix(in srgb, var(--color-primary-100) 40%, white);
+      border-radius: var(--radius-md);
+      display: inline-block;
+    }
+
+    /* What changed (returning user) */
+    .what-changed {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--card-radius);
+      padding: var(--space-4) var(--space-5);
+      margin-bottom: var(--space-5);
+    }
+
+    .what-changed-title {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+    }
+
+    .what-changed-items {
+      display: flex;
+      gap: var(--space-4);
+      flex-wrap: wrap;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .what-changed-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    /* Milestone celebration */
+    .milestone-banner {
+      background: linear-gradient(135deg, var(--color-success-50) 0%, color-mix(in srgb, var(--color-primary-100) 60%, white) 100%);
+      background: linear-gradient(135deg, var(--color-success-50) 0%, var(--color-primary-50) 100%);
+      border: 1px solid var(--color-success-200);
+      border-radius: calc(var(--card-radius) + 2px);
+      padding: var(--space-5) var(--space-6);
+      margin-bottom: var(--space-5);
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .milestone-icon {
+      font-size: var(--text-3xl);
+      flex-shrink: 0;
+    }
+
+    .milestone-body { flex: 1; }
+
+    .milestone-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .milestone-detail {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+    }
+
+    .milestone-actions {
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    /* Social proof */
+    .social-proof {
+      display: flex;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-lg);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      flex-wrap: wrap;
+    }
+
+    .social-proof-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .social-proof-item:hover {
+      color: var(--color-brand);
+    }
+
+    .social-proof-num {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+
     /* Achievements grid */
     .achievements-grid {
       display: grid;
@@ -1147,7 +1279,7 @@
 
     async function loadHub() {
       try {
-        const [engRes, meRes, communityRes, certRes, tracksRes, contentRes, perspectivesRes] = await Promise.all([
+        const [engRes, meRes, communityRes, certRes, tracksRes, contentRes, perspectivesRes, journeyRes] = await Promise.all([
           fetch('/api/me/engagement'),
           fetch('/api/me', { credentials: 'include' }),
           fetch('/api/me/community/hub', { credentials: 'include' }),
@@ -1155,6 +1287,7 @@
           fetch('/api/certification/tracks'),
           fetch('/api/me/content?limit=6', { credentials: 'include' }),
           fetch('/api/perspectives?authored=true&limit=6', { credentials: 'include' }),
+          fetch('/api/me/journey', { credentials: 'include' }),
         ]);
 
         if (!engRes.ok) {
@@ -1184,6 +1317,7 @@
         const tracksData = tracksRes.ok ? await tracksRes.json() : null;
         const contentData = contentRes.ok ? await contentRes.json() : null;
         const perspectivesData = perspectivesRes.ok ? await perspectivesRes.json() : null;
+        const journeyData = journeyRes.ok ? await journeyRes.json() : null;
 
         renderHub({
           engagement: data,
@@ -1193,6 +1327,7 @@
           tracks: tracksData,
           contentItems: contentData?.items || [],
           latestPerspectives: Array.isArray(perspectivesData) ? perspectivesData : [],
+          journey: journeyData,
         });
       } catch (err) {
         console.error('Hub load error:', err);
@@ -1205,33 +1340,24 @@
     // Constants
     // =========================================================================
 
-    const STAGES = [
-      'aware', 'evaluating', 'joined', 'onboarding',
-      'participating', 'contributing', 'leading', 'advocating',
-    ];
+    // Tier progression (individual, point-based)
+    const TIERS = ['explorer', 'connector', 'champion', 'pioneer'];
 
-    const STAGE_DESCS = {
-      aware:         'Just getting started',
-      evaluating:    'Exploring what\'s possible',
-      joined:        'Welcome to AgenticAdvertising.org',
-      onboarding:    'Getting oriented',
-      participating: 'Active in working groups',
-      contributing:  'Creating content and sharing expertise',
-      leading:       'Taking on leadership',
-      advocating:    'Championing the community externally',
+    const TIER_LABELS = {
+      explorer:  'Explorer',
+      connector: 'Connector',
+      champion:  'Champion',
+      pioneer:   'Pioneer',
     };
 
-    // What earns you the NEXT stage transition — tied to milestone checks in journey-computation.ts
-    const NEXT_LEVEL_REQUIREMENTS = {
-      aware:         'Learn about AgenticAdvertising.org membership plans',
-      evaluating:    'Subscribe to a membership plan to join',
-      joined:        'Join a working group to become a Participant',
-      onboarding:    'Join a working group before your onboarding window closes',
-      participating: 'Propose or publish content to become a Contributor',
-      contributing:  'Take on a working group leadership role to become a Leader',
-      leading:       'Introduce a colleague to AgenticAdvertising.org to become an Advocate',
-      advocating:    'Thank you for leading and growing the community',
+    const TIER_DESCS = {
+      explorer:  'Getting started in the community',
+      connector: 'Building connections and learning',
+      champion:  'Active contributor and collaborator',
+      pioneer:   'Leading and shaping the community',
     };
+
+    const TIER_THRESHOLDS = { explorer: 0, connector: 50, champion: 200, pioneer: 500 };
 
     const TRIGGER_LABELS = {
       milestone_achieved:   'Milestone achieved',
@@ -1257,9 +1383,10 @@
         tracks,
         contentItems,
         latestPerspectives,
+        journey,
       } = payload;
       const {
-        organization_name, journey_stage, engagement_score,
+        organization_name,
         milestones, recommended_groups, current_group_count,
         activity, journey_history,
       } = data;
@@ -1272,24 +1399,25 @@
       const el = document.getElementById('hub-content');
       el.style.display = 'block';
 
-      // Members with no computed stage default to 'joined' — aware/evaluating are pre-membership
-      const stage     = (!journey_stage || journey_stage === 'aware' || journey_stage === 'evaluating')
-                          ? 'joined'
-                          : journey_stage;
-      const score     = engagement_score || 0;
-      const stageIdx  = STAGES.indexOf(stage);
-      const levelNum  = stageIdx + 1;
-      const stageDesc = STAGE_DESCS[stage] || '';
-      const nextReq   = seatType === 'community_only'
-        ? 'Build fluency in Academy and publish what you are learning'
-        : (NEXT_LEVEL_REQUIREMENTS[stage] || '');
+      // Personal tier from journey API (falls back to engagement score)
+      const tier      = journey?.tier?.tier || 'explorer';
+      const points    = journey?.tier?.points || data.community_points || 0;
+      const tierIdx   = TIERS.indexOf(tier);
+      const tierLabel = TIER_LABELS[tier] || 'Explorer';
+      const tierDesc  = TIER_DESCS[tier] || '';
+      const nextTier  = journey?.tier?.next_tier || null;
+      const nextAt    = journey?.tier?.next_tier_at || null;
+      const progressPct = journey?.tier?.progress_pct || 0;
+
+      // Org context for social proof
+      const orgCtx = journey?.org_context || null;
 
       let ringColor;
-      if (score < 30)       ringColor = 'var(--color-gray-400)';
-      else if (score < 60)  ringColor = 'var(--color-brand)';
-      else                  ringColor = 'var(--color-success-500)';
+      if (points < 100)      ringColor = 'var(--color-gray-400)';
+      else if (points < 200) ringColor = 'var(--color-brand)';
+      else                   ringColor = 'var(--color-success-500)';
 
-      const primaryAction = getPrimaryAction({ profile, milestones, contentItems, currentGroupCount: current_group_count, stage, score, activity, certification, seatType });
+      const primaryAction = getPrimaryAction({ profile, milestones, contentItems, currentGroupCount: current_group_count, stage: tier, score: points, activity, certification, seatType });
 
       el.innerHTML = `
         <!-- Header -->
@@ -1301,10 +1429,10 @@
             <div class="hub-header-meta">
               <span class="hub-meta-pill">🏢 ${escapeHtml(organization_name || 'Member workspace')}</span>
               <span class="level-badge">
-                <span class="level-badge-num">Lvl ${levelNum}</span>&nbsp;${escapeHtml(stage)}
+                ${escapeHtml(tierLabel)}
               </span>
-              <span class="stage-desc">${escapeHtml(stageDesc)}</span>
-              <span class="hub-meta-pill">⚡ Score ${score}</span>
+              <span class="stage-desc">${escapeHtml(tierDesc)}</span>
+              <span class="hub-meta-pill">⚡ ${points} points</span>
             </div>
             <div class="hub-hero-actions">
               <a href="${primaryAction.href}" class="btn btn-primary">${escapeHtml(primaryAction.label)}</a>
@@ -1320,20 +1448,24 @@
             </div>
             <div class="hub-focus-footer">
               <a href="${primaryAction.href}" class="btn btn-primary btn-sm">Do this now</a>
-              <div class="hub-mini-score" title="Engagement score: ${score}/100">
-                <strong>${score}</strong>
-                <span>Engagement score</span>
+              <div class="hub-mini-score" title="${points} community points — ${tierLabel}">
+                <strong>${points}</strong>
+                <span>points</span>
               </div>
             </div>
           </aside>
         </div>
 
+        ${renderMilestoneBanner(journey?.recent_milestone)}
+        ${renderWhatChanged(journey?.what_changed)}
+
         <div class="hub-action-grid">
           ${renderQuickActions(current_group_count, contentItems, seatType)}
         </div>
 
-        <!-- Level progress -->
-        ${renderLevelProgress(stage, stageIdx, levelNum, nextReq, milestones)}
+        <!-- Tier progress + social proof -->
+        ${renderSocialProof(journey?.community_stats)}
+        ${renderTierProgress(tier, tierIdx, points, nextTier, nextAt, progressPct, orgCtx, milestones)}
 
         <!-- Grid row 1: Academy + Groups -->
         <div class="hub-grid">
@@ -1370,9 +1502,9 @@
         };
       }
 
-      const earlyStage = ['aware', 'evaluating', 'joined', 'onboarding'].includes(stage);
+      const earlyTier = stage === 'explorer';
       const completedModules = (certification?.progress || []).filter(function (p) { return p.status === 'completed'; }).length;
-      if (earlyStage || score < 30 || completedModules === 0) {
+      if (earlyTier || score < 100 || completedModules === 0) {
         return {
           label: 'Start Academy',
           href: '/certification',
@@ -1484,25 +1616,104 @@
 
     // -------------------------------------------------------------------------
 
-    function renderLevelProgress(stage, stageIdx, levelNum, nextReq, milestones) {
-      const steps = STAGES.map((s, i) => {
+    function renderWhatChanged(whatChanged) {
+      if (!whatChanged) return '';
+      const items = [];
+      if (whatChanged.new_credentials_community > 0) {
+        items.push(`<span class="what-changed-item">${whatChanged.new_credentials_community} credentials earned across the community</span>`);
+      }
+      if (whatChanged.new_perspectives > 0) {
+        items.push(`<span class="what-changed-item">${whatChanged.new_perspectives} new perspectives published</span>`);
+      }
+      if (whatChanged.new_working_groups > 0) {
+        items.push(`<span class="what-changed-item">${whatChanged.new_working_groups} new working group${whatChanged.new_working_groups > 1 ? 's' : ''} formed</span>`);
+      }
+      if (items.length === 0) return '';
+      return `
+        <div class="what-changed">
+          <div class="what-changed-title">While you were away (${whatChanged.days_away} days)</div>
+          <div class="what-changed-items">${items.join('')}</div>
+        </div>
+      `;
+    }
+
+    function renderMilestoneBanner(milestone) {
+      if (!milestone) return '';
+
+      const linkedInUrl = 'https://www.linkedin.com/sharing/share-offsite/?url=' +
+        encodeURIComponent('https://agenticadvertising.org/certification');
+
+      return `
+        <div class="milestone-banner">
+          <div class="milestone-icon">🎉</div>
+          <div class="milestone-body">
+            <div class="milestone-title">${escapeHtml(milestone.label)}</div>
+            <div class="milestone-detail">${escapeHtml(milestone.detail)}</div>
+            <div class="milestone-actions">
+              <a href="${linkedInUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Share on LinkedIn</a>
+              <a href="/community/profile/edit" class="btn btn-ghost btn-sm">Update profile</a>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSocialProof(stats) {
+      if (!stats) return '';
+      const items = [];
+      if (stats.credentials_earned_30d > 0) {
+        items.push(`<a href="/certification" class="social-proof-item"><span class="social-proof-num">${stats.credentials_earned_30d}</span> people earned credentials this month</a>`);
+      }
+      if (stats.perspectives_published_30d > 0) {
+        items.push(`<a href="/perspectives" class="social-proof-item"><span class="social-proof-num">${stats.perspectives_published_30d}</span> perspectives published this month</a>`);
+      }
+      if (stats.new_members_30d > 0) {
+        items.push(`<a href="/community/people" class="social-proof-item"><span class="social-proof-num">${stats.new_members_30d}</span> new members joined</a>`);
+      }
+      if (items.length === 0) return '';
+      return `<div class="social-proof">${items.join('')}</div>`;
+    }
+
+    function renderTierProgress(tier, tierIdx, points, nextTier, nextAt, progressPct, orgCtx, milestones) {
+      // Show only current tier and next tier (not the full mountain)
+      const visibleTiers = [tier];
+      if (nextTier) visibleTiers.push(nextTier);
+
+      const steps = visibleTiers.map((t, i) => {
+        const isCurrent = t === tier;
         let cls = 'level-step';
-        if (i < stageIdx) cls += ' level-step--completed';
-        else if (i === stageIdx) cls += ' level-step--current';
-        const icon = i < stageIdx ? '✓' : (i === stageIdx ? levelNum : i + 1);
+        if (isCurrent) cls += ' level-step--current';
+        const icon = isCurrent ? TIER_LABELS[t].charAt(0) : TIER_LABELS[t].charAt(0);
         return `
           <div class="${cls}">
             <div class="level-step-dot">${icon}</div>
-            <span class="level-step-label">${escapeHtml(s)}</span>
+            <span class="level-step-label">${escapeHtml(TIER_LABELS[t])}</span>
           </div>`;
       }).join('');
 
+      const nextHint = nextTier && nextAt
+        ? `${nextAt - points} more points to ${TIER_LABELS[nextTier]}`
+        : tier === 'pioneer' ? 'You\'ve reached the highest tier' : '';
+
+      // Org context line ("You're one of N certified at Company")
+      const orgLine = orgCtx && orgCtx.certified_count > 0
+        ? `<div class="tier-org-context">You're one of ${orgCtx.certified_count} certified ${orgCtx.certified_count === 1 ? 'person' : 'people'} at ${escapeHtml(orgCtx.org_name)}</div>`
+        : '';
+
+      // Progress bar toward next tier
+      const progressBar = nextTier ? `
+        <div class="tier-progress-bar" role="progressbar" aria-valuenow="${points}" aria-valuemin="0" aria-valuemax="${nextAt}" aria-label="Progress to ${TIER_LABELS[nextTier]}">
+          <div class="tier-progress-fill" style="width: ${progressPct}%"></div>
+        </div>
+        <div class="tier-progress-label">${points} / ${nextAt} points</div>
+      ` : '';
+
       const ms = milestones || {};
       const achievements = [
-        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',    desc: 'Joined at least one working group',      stage: 'Participant',   href: '/committees?type=working_group', action: 'Browse groups' },
-        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',     desc: 'Proposed or published content',           stage: 'Contributor',   href: '/my-content',                   action: 'Propose content' },
-        { key: 'has_leadership',          icon: '⭐',  label: 'Group leader',            desc: 'Chair or vice-chair of a working group', stage: 'Leader',        href: '/committees?type=working_group', action: 'View openings' },
-        { key: 'has_recruiting_activity', icon: '📣',  label: 'Community advocate',      desc: 'Introduced a colleague to AgenticAdvertising.org', stage: 'Advocate', href: '/community/people', action: 'Introduce a colleague' },
+        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',    desc: 'Joined at least one working group',      href: '/committees?type=working_group', action: 'Browse groups' },
+        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',     desc: 'Proposed or published content',           href: '/my-content',                   action: 'Propose content' },
+        { key: 'has_leadership',          icon: '⭐',  label: 'Group leader',            desc: 'Chair or vice-chair of a working group', href: '/committees?type=working_group', action: 'View openings' },
+        { key: 'has_recruiting_activity', icon: '📣',  label: 'Community advocate',      desc: 'Introduced a colleague',                 href: '/community/people',             action: 'Introduce a colleague' },
       ];
 
       const achHtml = achievements.map(a => {
@@ -1513,7 +1724,6 @@
             <div class="achievement-body">
               <div class="achievement-name">${a.label}</div>
               <div class="achievement-desc">${a.desc}</div>
-              ${!earned ? `<div class="achievement-unlocks">Unlocks: ${a.stage}</div>` : ''}
             </div>
             ${!earned ? `<a href="${a.href}" class="achievement-action">${a.action} →</a>` : ''}
           </div>`;
@@ -1522,10 +1732,12 @@
       return `
         <div class="journey-card">
           <div class="journey-card-header">
-            <span class="journey-card-title">Membership journey</span>
-            ${nextReq ? `<span class="next-level-hint">${escapeHtml(nextReq)}</span>` : ''}
+            <span class="journey-card-title">Your progress</span>
+            ${nextHint ? `<span class="next-level-hint">${escapeHtml(nextHint)}</span>` : ''}
           </div>
           <div class="level-stepper">${steps}</div>
+          ${progressBar}
+          ${orgLine}
           <div class="achievements-grid">${achHtml}</div>
         </div>`;
     }

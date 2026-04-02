@@ -85,6 +85,8 @@ import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRo
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
+import { createUserJourneyRouter } from "./routes/user-journey.js";
+import { createOrgHealthRouter } from "./routes/org-health.js";
 import { createNotificationRouter } from "./routes/notifications.js";
 import { CommunityDatabase } from "./db/community-db.js";
 import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
@@ -1071,6 +1073,10 @@ export class HTTPServer {
     const workingGroupDb = new WorkingGroupDatabase();
     const engagementRouter = createEngagementRouter({ orgDb, orgKnowledgeDb, workingGroupDb });
     this.app.use('/api/me/engagement', engagementRouter);
+
+    // Mount individual journey and org health routes
+    this.app.use('/api/me/journey', createUserJourneyRouter());
+    this.app.use('/api/me/org-health', createOrgHealthRouter());
 
     // Mount notification routes
     this.app.use('/api/notifications', notificationRateLimiter, createNotificationRouter());
