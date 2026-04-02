@@ -401,7 +401,7 @@ model.
 
 ### Empty state
 
-New users with <2 completed actions should not see a scorecard of zeros. Lead
+New users with fewer than 2 completed actions should not see a scorecard of zeros. Lead
 with "here's what to do first" and minimize the progress display. The empty
 state is an invitation, not a report card.
 
