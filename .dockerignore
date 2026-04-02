@@ -5,6 +5,10 @@ npm-debug.log*
 # Build outputs (rebuilt inside Docker)
 build
 dist
+!dist/schemas
+dist/schemas/latest
+dist/schemas/v*
+dist/schemas/registry.*
 .docusaurus
 
 # Development files
