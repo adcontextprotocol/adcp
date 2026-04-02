@@ -103,14 +103,61 @@
         },
         "fonts": {
           "type": "object",
-          "description": "Brand typography. Shape matches brand.json fonts definition.",
+          "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with family name and font files. Shape matches brand.json fonts definition.",
           "properties": {
-            "primary": { "type": "string", "description": "Primary font family" },
-            "secondary": { "type": "string", "description": "Secondary font family" },
-            "font_urls": {
-              "type": "array",
-              "items": { "type": "string", "format": "uri" },
-              "description": "URLs to web font files"
+            "primary": {
+              "description": "Primary font family",
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "family": { "type": "string", "description": "CSS font-family name" },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": { "type": "string", "format": "uri", "description": "URL to the font file" },
+                          "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight" },
+                          "style": { "type": "string", "enum": ["normal", "italic", "oblique"], "description": "CSS font-style" }
+                        },
+                        "required": ["url"],
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "required": ["family"],
+                  "additionalProperties": true
+                }
+              ]
+            },
+            "secondary": {
+              "description": "Secondary font family",
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "family": { "type": "string", "description": "CSS font-family name" },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": { "type": "string", "format": "uri", "description": "URL to the font file" },
+                          "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight" },
+                          "style": { "type": "string", "enum": ["normal", "italic", "oblique"], "description": "CSS font-style" }
+                        },
+                        "required": ["url"],
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "required": ["family"],
+                  "additionalProperties": true
+                }
+              ]
             }
           },
           "additionalProperties": true

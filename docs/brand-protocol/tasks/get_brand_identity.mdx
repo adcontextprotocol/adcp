@@ -115,9 +115,14 @@ If a request includes `fields` that require authorization the caller does not ha
     "accent": "#FBA007"
   },
   "fonts": {
-    "primary": "Montserrat",
-    "secondary": "Open Sans",
-    "font_urls": ["https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700"]
+    "primary": {
+      "family": "Montserrat",
+      "files": [
+        { "url": "https://cdn.example.com/fonts/montserrat-400.woff2", "weight": 400, "style": "normal" },
+        { "url": "https://cdn.example.com/fonts/montserrat-700.woff2", "weight": 700, "style": "normal" }
+      ]
+    },
+    "secondary": "Open Sans"
   },
   "visual_guidelines": {
     "photography": {
@@ -182,7 +187,7 @@ The response mirrors the brand.json brand definition, extended with dynamic data
 | `keller_type` | string | No | Brand architecture type: `master`, `sub_brand`, `endorsed`, `independent` |
 | `logos` | object[] | No | Brand logos (matches brand.json logo shape: `url`, `variant`, `orientation`, `background`, `tags`) |
 | `colors` | object | No | Brand color palette with structured roles (`primary`, `secondary`, `accent`, `background`, `text`) |
-| `fonts` | object | No | Brand typography (`primary`, `secondary`, `font_urls`) |
+| `fonts` | object | No | Brand typography. Keys are role names (`primary`, `secondary`). Values are a CSS font-family string or an object with `family` and `files` (array of `{url, weight, style}`) |
 | `visual_guidelines` | object | No | Photography, graphic style, colorways, type scale, motion rules, restrictions |
 | `tone` | object | No | Brand voice and messaging guidelines. Sub-fields: `voice` (personality adjectives), `attributes` (prompt guidance traits), `dos` (approved approaches), `donts` (prohibited topics) |
 | `tagline` | string | No | Brand tagline or slogan |

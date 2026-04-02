@@ -91,19 +91,49 @@
       },
       "additionalProperties": true
     },
-    "fonts": {
+    "font_file": {
       "type": "object",
-      "description": "Brand typography",
+      "description": "A font file with weight and style metadata",
       "properties": {
-        "primary": { "type": "string", "description": "Primary font family" },
-        "secondary": { "type": "string", "description": "Secondary font family" },
-        "font_urls": {
-          "type": "array",
-          "items": { "type": "string", "format": "uri" },
-          "description": "URLs to web font files"
+        "url": { "type": "string", "format": "uri", "description": "URL to the font file (WOFF2, TTF, or OTF)" },
+        "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight (100-900)" },
+        "style": {
+          "type": "string",
+          "enum": ["normal", "italic", "oblique"],
+          "description": "CSS font-style"
         }
       },
+      "required": ["url"],
       "additionalProperties": true
+    },
+    "font_role": {
+      "description": "A font role entry. Either a CSS font-family string (simple) or a structured object with family name and font files (rich).",
+      "oneOf": [
+        { "type": "string", "description": "CSS font-family name (e.g., 'Montserrat', 'Arial, sans-serif')" },
+        {
+          "type": "object",
+          "description": "Structured font with family name and downloadable font files",
+          "properties": {
+            "family": { "type": "string", "description": "CSS font-family name (e.g., 'Brand Sans')" },
+            "files": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/font_file" },
+              "description": "Font files for different weights and styles"
+            }
+          },
+          "required": ["family"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "fonts": {
+      "type": "object",
+      "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with font files for reliable resolution.",
+      "properties": {
+        "primary": { "$ref": "#/definitions/font_role", "description": "Primary font family" },
+        "secondary": { "$ref": "#/definitions/font_role", "description": "Secondary font family" }
+      },
+      "additionalProperties": { "$ref": "#/definitions/font_role" }
     },
     "asset": {
       "type": "object",
@@ -796,7 +826,7 @@
       "properties": {
         "font": {
           "type": "string",
-          "description": "Font family reference (e.g., 'primary', 'secondary', or a specific family name)"
+          "description": "Font reference. Use a key from the fonts object (e.g., 'primary', 'secondary') to reference a defined font role, or a literal CSS font-family string as a fallback."
         },
         "size": { "type": "string", "description": "Font size (e.g., '48px', '2rem')" },
         "weight": { "type": "string", "description": "Font weight (e.g., '700', 'bold')" },
