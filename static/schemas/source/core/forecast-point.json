@@ -33,8 +33,9 @@
         "follows": { "$ref": "/schemas/core/forecast-range.json" },
         "saves": { "$ref": "/schemas/core/forecast-range.json" },
         "profile_visits": { "$ref": "/schemas/core/forecast-range.json" },
-        "guaranteed_impressions": { "$ref": "/schemas/core/forecast-range.json" },
-        "downloads": { "$ref": "/schemas/core/forecast-range.json" }
+        "measured_impressions": { "$ref": "/schemas/core/forecast-range.json" },
+        "downloads": { "$ref": "/schemas/core/forecast-range.json" },
+        "plays": { "$ref": "/schemas/core/forecast-range.json" }
       },
       "additionalProperties": {
         "$ref": "/schemas/core/forecast-range.json"

@@ -18,8 +18,9 @@
     "follows",
     "saves",
     "profile_visits",
-    "guaranteed_impressions",
-    "downloads"
+    "measured_impressions",
+    "downloads",
+    "plays"
   ],
   "enumDescriptions": {
     "audience_size": "Estimated addressable audience size",
@@ -35,7 +36,8 @@
     "follows": "Estimated new followers, page likes, or channel subscribes",
     "saves": "Estimated saves, bookmarks, playlist adds, or pins",
     "profile_visits": "Estimated visits to the brand's in-platform page or profile",
-    "guaranteed_impressions": "Contractually guaranteed impression delivery. Used by sellers who guarantee delivery against a named third-party currency (see measurement_source on DeliveryForecast). Distinct from impressions, which represents estimated delivery without a guarantee.",
-    "downloads": "Estimated downloads. Primary currency for podcast advertising per IAB Podcast Measurement guidelines."
+    "measured_impressions": "Impressions as counted by the third-party measurement provider specified in measurement_source on DeliveryForecast. Distinct from impressions, which represents ad-server or first-party estimated delivery. Use with method 'guaranteed' for contractually committed delivery, or with method 'modeled' for third-party-measured estimates without a guarantee.",
+    "downloads": "Estimated downloads. Primary currency for podcast advertising per IAB Podcast Measurement guidelines.",
+    "plays": "Number of times the ad creative is displayed on a DOOH screen or played in a loop. Raw play count before any impression multiplier is applied. Use alongside impressions or measured_impressions when buyers need both the play count and the multiplied audience figure."
   }
 }

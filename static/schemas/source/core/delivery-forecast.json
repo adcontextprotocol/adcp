@@ -38,7 +38,7 @@
       "type": "string",
       "maxLength": 64,
       "pattern": "^[a-z0-9_]+$",
-      "description": "Third-party measurement provider whose data was used to produce this forecast. Distinct from demographic_system, which specifies demographic notation — measurement_source identifies whose data produced the forecast numbers. Should be present when guaranteed_impressions is used. Lowercase slug format.",
+      "description": "Third-party measurement provider whose data was used to produce this forecast. Distinct from demographic_system, which specifies demographic notation — measurement_source identifies whose data produced the forecast numbers. Should be present when measured_impressions is used. Lowercase slug format.",
       "examples": ["nielsen", "videoamp", "comscore", "geopath", "barb", "agf", "oztam", "kantar", "barc", "route", "rajar", "triton"]
     },
     "reach_unit": {
