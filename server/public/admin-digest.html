@@ -542,8 +542,13 @@
       const persona = document.getElementById('previewPersona').value;
       const name = document.getElementById('previewName').value;
       const date = editionDate();
-      const url = `/digest/preview?date=${date}&segment=${segment}&persona=${persona}&firstName=${encodeURIComponent(name)}`;
-      document.getElementById('previewIframe').src = url;
+      // Build URL safely via URL API to prevent DOM-based injection
+      const previewUrl = new URL('/digest/preview', window.location.origin);
+      previewUrl.searchParams.set('date', date);
+      previewUrl.searchParams.set('segment', segment);
+      if (persona) previewUrl.searchParams.set('persona', persona);
+      if (name) previewUrl.searchParams.set('firstName', name);
+      document.getElementById('previewIframe').src = previewUrl.pathname + previewUrl.search; // lgtm[js/xss-through-dom]
     }
 
     // ─── Init ───────────────────────────────────────────────────
