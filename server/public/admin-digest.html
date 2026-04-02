@@ -101,7 +101,7 @@
     <div id="emptyState" style="display:none;" class="empty-state">
       <h2>No draft this week</h2>
       <p>Generate a new draft to start editing.</p>
-      <button class="btn btn-primary" onclick="generateDraft()">Generate Draft</button>
+      <button class="btn btn-primary" onclick="generateDraft(event)">Generate Draft</button>
     </div>
 
     <div id="editorContent" style="display:none;">
@@ -233,7 +233,7 @@
     function esc(s) {
       const d = document.createElement('div');
       d.textContent = s || '';
-      return d.innerHTML;
+      return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // ─── Load ───────────────────────────────────────────────────
@@ -268,9 +268,9 @@
       // Header actions
       const actions = document.getElementById('headerActions');
       actions.innerHTML = `
-        <span class="status-badge status-${status}">${status}</span>
-        ${status === 'draft' ? `<button class="btn btn-success" onclick="approveDigest()">Approve & Queue</button>` : ''}
-        <a href="/digest/preview?date=${editionDate()}" target="_blank" class="btn btn-secondary">Open Preview</a>
+        <span class="status-badge status-${esc(status)}">${esc(status)}</span>
+        ${status === 'draft' ? `<button class="btn btn-success" onclick="approveDigest()">Approve &amp; Queue</button>` : ''}
+        <a href="/digest/preview?date=${encodeURIComponent(editionDate())}" target="_blank" class="btn btn-secondary">Open Preview</a>
       `;
 
       // Subject
@@ -491,8 +491,8 @@
     }
 
     // ─── Generate Draft ─────────────────────────────────────────
-    async function generateDraft() {
-      const btn = event.target;
+    async function generateDraft(evt) {
+      const btn = evt.target;
       btn.disabled = true;
       btn.textContent = 'Generating...';
       try {

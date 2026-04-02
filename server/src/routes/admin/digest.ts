@@ -133,6 +133,14 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
       const { field, value, instruction } = req.body;
       const editorName = req.user?.email || 'admin';
 
+      // Input length limits
+      if (typeof value === 'string' && value.length > 10000) {
+        return res.status(400).json({ error: 'Value too long (max 10000 characters)' });
+      }
+      if (typeof instruction === 'string' && instruction.length > 2000) {
+        return res.status(400).json({ error: 'Instruction too long (max 2000 characters)' });
+      }
+
       // Direct field edit (from inline editing)
       if (field && value !== undefined) {
         const digest = await getCurrentWeekDigest();
@@ -255,7 +263,13 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
       if (title !== undefined) article.title = String(title);
       if (summary !== undefined) article.summary = String(summary);
       if (whyItMatters !== undefined) article.whyItMatters = String(whyItMatters);
-      if (url !== undefined) article.url = String(url);
+      if (url !== undefined) {
+        const urlStr = String(url);
+        if (urlStr && !urlStr.startsWith('https://') && !urlStr.startsWith('http://')) {
+          return res.status(400).json({ error: 'Article URL must use HTTP(S)' });
+        }
+        article.url = urlStr;
+      }
       content.whatToWatch = [...content.whatToWatch];
       content.whatToWatch[index] = article;
 
