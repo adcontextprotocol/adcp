@@ -1520,7 +1520,7 @@
       const cardsHtml = uniqueProducts.map(product => {
         const pricing = applyOrgDiscount(product.amount_cents);
         return `
-          <div class="product-card" data-lookup-key="${product.lookup_key}">
+          <div class="product-card" data-lookup-key="${escapeHtml(product.lookup_key)}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
             ${product.description ? `<div class="product-card-description">${escapeHtml(product.description)}</div>` : ''}
             <div class="product-card-price">
@@ -1528,8 +1528,8 @@
               <span class="period">/year</span>
             </div>
             <div class="product-card-actions">
-              <button class="btn btn-primary" onclick="selectProduct('${product.lookup_key}')">Pay Now</button>
-              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${product.lookup_key}')">Request Invoice</button>
+              <button class="btn btn-primary" onclick="selectProduct('${escapeHtml(product.lookup_key)}')">Pay Now</button>
+              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${escapeHtml(product.lookup_key)}')">Request Invoice</button>
             </div>
           </div>
         `;
@@ -1627,6 +1627,9 @@
       document.getElementById('agreementModal').style.display = 'flex';
     }
 
+    // Cached agreement version from the server (set by loadAgreementContent)
+    let loadedAgreementVersion = null;
+
     // Load agreement content for modal
     async function loadAgreementContent() {
       const contentEl = document.getElementById('modalAgreementContent');
@@ -1637,6 +1640,7 @@
 
         const data = await response.json();
         const content = data.text || 'Agreement not available.';
+        loadedAgreementVersion = data.version || null;
 
         // Render markdown
         const html = DOMPurify.sanitize(marked.parse(content));
@@ -1694,6 +1698,24 @@
       btn.textContent = 'Redirecting...';
 
       try {
+        // Store pending agreement so the webhook can record acceptance atomically
+        if (loadedAgreementVersion) {
+          try {
+            await fetch(`/api/organizations/${currentOrg.id}/pending-agreement`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                agreement_version: loadedAgreementVersion,
+                agreement_accepted_at: new Date().toISOString(),
+              }),
+            });
+          } catch (error) {
+            console.error('Failed to store pending agreement:', error);
+            // Continue anyway - webhook will fall back to current version
+          }
+        }
+
         const checkoutBody = {
           priceId: selectedProduct.price_id,
           orgId: currentOrg.id,
@@ -1747,7 +1769,7 @@
         const subscriptionProducts = membershipProducts.filter(p => p.billing_type === 'subscription');
         subscriptionProducts.forEach(product => {
           const price = formatCurrency(product.amount_cents);
-          productSelect.innerHTML += `<option value="${product.lookup_key}">${escapeHtml(product.display_name)} - ${price}/year</option>`;
+          productSelect.innerHTML += `<option value="${escapeHtml(product.lookup_key)}">${escapeHtml(product.display_name)} - ${price}/year</option>`;
         });
       }
 
