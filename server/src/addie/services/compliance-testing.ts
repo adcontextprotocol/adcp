@@ -101,6 +101,7 @@ export interface ComplyResult {
   total_duration_ms: number;
   dry_run: boolean;
   platform_coherence?: PlatformCoherence;
+  v3_gate_failed?: boolean;
 }
 
 const TRACK_LABELS: Record<ComplianceTrack, string> = {
@@ -424,19 +425,36 @@ export async function comply(agentUrl: string, options: ComplyOptions = {}): Pro
   const tracks_partial = trackResults.filter((track) => track.status === 'partial').length;
   const tracks_skipped = trackResults.filter((track) => track.status === 'skip').length;
 
+  const observations = buildObservations(trackResults);
+  const headline = `${tracks_passed} track${tracks_passed === 1 ? '' : 's'} passed, ${tracks_failed} failed, ${tracks_partial} partial, ${tracks_skipped} skipped`;
+
+  // Hard-fail agents that do not support v3
+  const agentVersion = suite.agent_profile.adcp_version;
+  const v3GateFailed = !agentVersion || agentVersion === 'v2';
+  if (v3GateFailed) {
+    observations.push({
+      severity: 'error',
+      category: 'v3_readiness',
+      message:
+        'Agent does not support AdCP v3. Comply testing requires v3 protocol support. See the v3 readiness checklist: https://adcontextprotocol.org/docs/reference/migration/v3-readiness',
+      evidence: { detected_version: agentVersion ?? 'unknown' },
+    });
+  }
+
   return {
     agent_profile: suite.agent_profile,
     tracks: trackResults,
     summary: {
-      headline: `${tracks_passed} track${tracks_passed === 1 ? '' : 's'} passed, ${tracks_failed} failed, ${tracks_partial} partial, ${tracks_skipped} skipped`,
+      headline: v3GateFailed ? `v3 required — ${headline}` : headline,
       tracks_passed,
       tracks_failed,
       tracks_partial,
       tracks_skipped,
     },
-    observations: buildObservations(trackResults),
+    observations,
     total_duration_ms: suite.total_duration_ms,
     dry_run: suite.dry_run,
     platform_coherence: buildPlatformCoherence(options.platform_type, trackResults),
+    v3_gate_failed: v3GateFailed || undefined,
   };
 }

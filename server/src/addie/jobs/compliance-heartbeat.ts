@@ -74,7 +74,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       // Derive overall status from track counts
       const { tracks_passed, tracks_failed, tracks_partial } = complianceResult.summary;
       let overallStatus: OverallRunStatus;
-      if (tracks_failed === 0 && tracks_partial === 0) {
+      if (tracks_failed === 0 && tracks_partial === 0 && !complianceResult.v3_gate_failed) {
         overallStatus = 'passing';
       } else if (tracks_passed > 0 || tracks_partial > 0) {
         overallStatus = 'partial';
