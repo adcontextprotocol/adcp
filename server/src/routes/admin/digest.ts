@@ -13,6 +13,8 @@ import {
 import { applyDigestEdit } from '../../addie/services/digest-editor.js';
 import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '../../addie/services/digest-builder.js';
 import { createDigest } from '../../db/digest-db.js';
+import { renderDigestEmail, type DigestSegment } from '../../addie/templates/weekly-digest.js';
+import { sendMarketingEmail } from '../../notifications/email.js';
 
 const logger = createLogger('admin-digest');
 
@@ -333,6 +335,50 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
     } catch (error) {
       logger.error({ err: error }, 'Failed to remove article');
       res.status(500).json({ error: 'Failed to remove article' });
+    }
+  });
+
+  // POST /api/admin/digests/:id/test-send - Send a test email to a specific address
+  apiRouter.post('/digests/:id/test-send', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid digest ID' });
+      }
+
+      const { email } = req.body;
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ error: 'Valid email address required' });
+      }
+
+      const digest = await getCurrentWeekDigest();
+      if (!digest || digest.id !== id) {
+        return res.status(404).json({ error: 'Digest not found' });
+      }
+      if (isLegacyContent(digest.content)) {
+        return res.status(400).json({ error: 'Cannot send legacy digest' });
+      }
+
+      const content = digest.content;
+      const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
+      const subject = `[TEST] ${generateDigestSubject(content)}`;
+      const segment: DigestSegment = 'both';
+      const { html, text } = renderDigestEmail(content, 'test', editionDate, segment, 'Test');
+
+      await sendMarketingEmail({
+        to: email,
+        subject,
+        htmlContent: html,
+        textContent: text,
+        category: 'weekly_digest',
+        workosUserId: req.user?.id || 'admin',
+      });
+
+      logger.info({ id, email, sentBy: req.user?.email }, 'Digest test email sent');
+      res.json({ success: true, email });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to send test email');
+      res.status(500).json({ error: 'Failed to send test email' });
     }
   });
 }

@@ -44,9 +44,12 @@
     .edit-area { width: 100%; min-height: 60px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; }
     .edit-area:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
 
-    .instruction-bar { display: flex; gap: 8px; margin-top: 16px; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb; }
+    .instruction-bar { display: flex; gap: 8px; padding: 16px; background: #f8fafc; border-top: 1px solid #e5e7eb; position: sticky; bottom: 0; z-index: 10; }
     .instruction-bar input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
     .instruction-bar input:focus { outline: none; border-color: #2563eb; }
+
+    .locked-banner { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 14px; color: #92400e; display: flex; align-items: center; gap: 8px; }
+    .locked-banner strong { font-weight: 600; }
 
     .edit-history { font-size: 12px; color: #888; }
     .edit-history li { margin-bottom: 4px; }
@@ -113,6 +116,7 @@
 
       <!-- EDIT TAB -->
       <div id="panelEdit">
+        <div id="lockedBanner"></div>
         <div id="subjectLine" class="subject-line"></div>
 
         <!-- Opening Take -->
@@ -265,16 +269,28 @@
       const c = currentDigest.content;
       const status = currentDigest.status;
 
+      const isDraft = status === 'draft';
+
       // Header actions
       const actions = document.getElementById('headerActions');
       actions.innerHTML = `
         <span class="status-badge status-${esc(status)}">${esc(status)}</span>
-        ${status === 'draft' ? `<button class="btn btn-success" onclick="approveDigest()">Approve &amp; Queue</button>` : ''}
+        <button class="btn btn-secondary" onclick="sendTestEmail()">Send Test</button>
+        ${isDraft ? `<button class="btn btn-success" onclick="approveDigest()">Approve &amp; Queue</button>` : ''}
         <a href="/digest/preview?date=${encodeURIComponent(editionDate())}" target="_blank" class="btn btn-secondary">Open Preview</a>
       `;
 
-      // Subject
-      document.getElementById('subjectLine').innerHTML = `<strong>Subject:</strong> ${esc(currentSubject)}`;
+      // Locked banner for non-draft
+      const banner = document.getElementById('lockedBanner');
+      if (!isDraft) {
+        banner.innerHTML = `<div class="locked-banner"><strong>Locked.</strong> This edition is ${esc(status)}. Editing is disabled.</div>`;
+      } else {
+        banner.innerHTML = '';
+      }
+
+      // Subject (editable)
+      document.getElementById('subjectLine').innerHTML = `<strong>Subject:</strong> <span class="editable" id="editSubject" contenteditable="false" style="display:inline;">${esc(currentSubject)}</span>`;
+      document.getElementById('editSubject').onclick = function() { startEdit(this, 'emailSubject'); };
 
       // Opening take
       document.getElementById('editOpening').textContent = c.openingTake || '';
@@ -337,6 +353,10 @@
         document.getElementById('sectionMembers').style.display = 'block';
         document.getElementById('membersList').innerHTML = c.newMembers.map(m => `<strong>${esc(m.name)}</strong>`).join(', ');
       }
+
+      // Hide instruction bar when locked
+      const instructionBar = document.querySelector('.instruction-bar');
+      if (instructionBar) instructionBar.style.display = isDraft ? 'flex' : 'none';
 
       // History
       const history = c.editHistory || [];
@@ -549,6 +569,23 @@
       if (persona) previewUrl.searchParams.set('persona', persona);
       if (name) previewUrl.searchParams.set('firstName', name);
       document.getElementById('previewIframe').src = previewUrl.pathname + previewUrl.search; // lgtm[js/xss-through-dom]
+    }
+
+    // ─── Send Test Email ───────────────────────────────────────
+    async function sendTestEmail() {
+      const email = prompt('Send test email to:', window.__APP_CONFIG__?.user?.email || '');
+      if (!email) return;
+      try {
+        const res = await api(`/digests/${currentDigest.id}/test-send`, {
+          method: 'POST',
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        toast('Test sent to ' + email);
+      } catch (err) {
+        toast('Send failed: ' + err.message);
+      }
     }
 
     // ─── Init ───────────────────────────────────────────────────
