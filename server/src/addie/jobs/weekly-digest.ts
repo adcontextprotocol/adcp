@@ -8,6 +8,7 @@ import {
   getDigestEmailRecipients,
   getUserWorkingGroupMap,
   isLegacyContent,
+  getPersonaCluster,
   type DigestContent,
   type DigestRecord,
   type DigestSendStats,
@@ -207,12 +208,13 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
   for (const recipient of recipients) {
     const segment: DigestSegment = recipient.has_slack ? 'both' : 'website_only';
     const userWGs = userWGMap.get(recipient.workos_user_id);
+    const cluster = getPersonaCluster(recipient.persona);
 
     emailBatch.push({
       to: recipient.email,
       subject,
       render: (trackingId: string) => {
-        const { html, text } = renderDigestEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs);
+        const { html, text } = renderDigestEmail(content, trackingId, editionDate, segment, recipient.first_name || undefined, userWGs, cluster);
         return { htmlContent: html, textContent: text };
       },
       category: 'weekly_digest',

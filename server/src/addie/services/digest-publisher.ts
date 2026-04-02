@@ -102,6 +102,14 @@ function buildFullMarkdown(content: DigestContent): string {
     }
   }
 
+  // What shipped
+  if (content.whatShipped && content.whatShipped.length > 0) {
+    sections.push('## What shipped');
+    for (const item of content.whatShipped) {
+      sections.push(`- [${item.title}](${item.url})${item.summary ? ` — ${item.summary}` : ''}`);
+    }
+  }
+
   // From the inside
   if (content.fromTheInside.length > 0) {
     sections.push('## From the inside');
@@ -125,6 +133,11 @@ function buildFullMarkdown(content: DigestContent): string {
     for (const item of content.voices) {
       sections.push(`### [${item.title}](${item.url})\n\nby ${item.authorName}${item.excerpt ? `\n\n${item.excerpt}` : ''}`);
     }
+  }
+
+  // Shareable take
+  if (content.shareableTake) {
+    sections.push(`> *"${content.shareableTake}"*\n>\n> — Share this take`);
   }
 
   // Sign-off

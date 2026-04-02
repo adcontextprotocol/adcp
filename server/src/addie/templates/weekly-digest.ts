@@ -1,4 +1,4 @@
-import type { DigestContent, DigestInsiderGroup } from '../../db/digest-db.js';
+import type { DigestContent, DigestInsiderGroup, PersonaCluster } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
 
@@ -101,6 +101,7 @@ export function renderDigestEmail(
   segment: DigestSegment,
   firstName?: string,
   userWorkingGroupNames?: string[],
+  personaCluster?: PersonaCluster,
 ): { html: string; text: string } {
   const t = (linkTag: string, url: string) => trackLink(trackingId, linkTag, url);
   const viewInBrowserUrl = t('view_browser', `${BASE_URL}/perspectives/the-prompt-${editionDate}`);
@@ -121,6 +122,12 @@ export function renderDigestEmail(
     <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
 
     ${greeting ? `<p style="font-size: 15px; color: #333; margin-bottom: 0;">${greeting}</p>` : ''}
+
+    ${personaCluster === 'newcomer' && !greeting ? `
+    <p style="font-size: 14px; color: #555; margin-bottom: 12px;">
+      New here? The Prompt is your weekly guide to what's happening in agentic advertising. Start with "What to watch" and explore from there.
+    </p>
+    ` : ''}
 
     <!-- Opening Take -->
     <p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.openingTake)}</p>
@@ -148,6 +155,20 @@ export function renderDigestEmail(
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
+    <!-- What Shipped -->
+    ${content.whatShipped && content.whatShipped.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">What shipped</h2>
+    ${content.whatShipped.map((item, i) => `
+    <div style="margin-bottom: 14px;">
+      <p style="font-size: 14px; margin: 0;">
+        <a href="${t(`shipped_${i}`, item.url)}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${escapeHtml(item.title)}</a>
+        ${item.summary ? ` — ${escapeHtml(item.summary)}` : ''}
+      </p>
+    </div>
+    `).join('')}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
     <!-- From the Inside -->
     ${renderInsiderHtml(content.fromTheInside, userWorkingGroupNames, t, segment)}
 
@@ -164,6 +185,14 @@ export function renderDigestEmail(
     </div>
     `).join('')}
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
+    <!-- Shareable Take -->
+    ${content.shareableTake ? `
+    <div style="margin: 0 0 20px 0; padding: 16px 20px; background: #f8f9fa; border-radius: 6px; text-align: center;">
+      <p style="font-size: 14px; color: #1a1a2e; margin: 0 0 8px 0; font-style: italic;">"${escapeHtml(content.shareableTake)}"</p>
+      <p style="font-size: 12px; color: #888; margin: 0;">Copy and share this take</p>
+    </div>
     ` : ''}
 
     ${content.newMembers.length > 0 ? `

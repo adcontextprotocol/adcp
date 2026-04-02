@@ -9,10 +9,18 @@ export interface DigestContent {
   fromTheInside: DigestInsiderGroup[];
   voices: DigestMemberPerspective[];
   newMembers: DigestNewMember[];
+  shareableTake?: string;
+  whatShipped?: DigestShipment[];
   editorsNote?: string;
   emailSubject?: string;
   editHistory?: DigestEditEntry[];
   generatedAt: string;
+}
+
+export interface DigestShipment {
+  title: string;
+  url: string;
+  summary: string;
 }
 
 export interface DigestInsiderGroup {
@@ -155,6 +163,29 @@ export interface DigestEmailRecipient {
   email: string;
   first_name: string | null;
   has_slack: boolean;
+  persona: string | null;
+  journey_stage: string | null;
+}
+
+/**
+ * Persona clusters for email personalization.
+ * Groups 7 personas into 3 clusters to avoid over-segmentation.
+ */
+export type PersonaCluster = 'builder' | 'strategist' | 'newcomer';
+
+const PERSONA_CLUSTERS: Record<string, PersonaCluster> = {
+  molecule_builder: 'builder',
+  pragmatic_builder: 'builder',
+  data_decoder: 'strategist',
+  resops_integrator: 'strategist',
+  ladder_climber: 'strategist',
+  pureblood_protector: 'strategist',
+  simple_starter: 'newcomer',
+};
+
+export function getPersonaCluster(persona: string | null): PersonaCluster {
+  if (!persona) return 'newcomer';
+  return PERSONA_CLUSTERS[persona] || 'newcomer';
 }
 
 export interface DigestArticle {
@@ -437,8 +468,14 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        u.workos_user_id,
        u.email,
        u.first_name,
-       (u.primary_slack_user_id IS NOT NULL) AS has_slack
+       (u.primary_slack_user_id IS NOT NULL) AS has_slack,
+       o.persona,
+       o.journey_stage
      FROM users u
+     LEFT JOIN organization_memberships om
+       ON om.workos_user_id = u.workos_user_id
+     LEFT JOIN organizations o
+       ON o.workos_organization_id = om.workos_organization_id
      WHERE u.email IS NOT NULL
        AND u.email != ''
        AND NOT EXISTS (

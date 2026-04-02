@@ -1,5 +1,6 @@
 import { createLogger } from '../../logger.js';
 import { complete, isLLMConfigured } from '../../utils/llm.js';
+import { query } from '../../db/client.js';
 import {
   getRecentArticlesForDigest,
   getRecentMemberPerspectivesForDigest,
@@ -9,6 +10,7 @@ import {
   type DigestMemberPerspective,
   type DigestNewMember,
   type DigestInsiderGroup,
+  type DigestShipment,
 } from '../../db/digest-db.js';
 import { buildWgDigestContent, getDigestEligibleGroups } from './wg-digest-builder.js';
 
@@ -24,14 +26,18 @@ const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 export async function buildDigestContent(): Promise<DigestContent> {
   logger.info('Building The Prompt content');
 
-  const [whatToWatch, fromTheInside, voices, newMembers] = await Promise.all([
+  const [whatToWatch, fromTheInside, voices, newMembers, whatShipped] = await Promise.all([
     buildWhatToWatch(),
     buildInsiderSection(),
     buildVoicesSection(),
     buildNewMembersSection(),
+    buildWhatShippedSection(),
   ]);
 
-  const openingTake = await generateOpeningTake(whatToWatch, fromTheInside, voices, newMembers);
+  const [openingTake, shareableTake] = await Promise.all([
+    generateOpeningTake(whatToWatch, fromTheInside, voices, newMembers),
+    generateShareableTake(whatToWatch),
+  ]);
 
   const content: DigestContent = {
     contentVersion: 2,
@@ -40,6 +46,8 @@ export async function buildDigestContent(): Promise<DigestContent> {
     fromTheInside,
     voices,
     newMembers,
+    shareableTake: shareableTake || undefined,
+    whatShipped: whatShipped.length > 0 ? whatShipped : undefined,
     generatedAt: new Date().toISOString(),
   };
 
@@ -277,4 +285,53 @@ export function generateDigestSubject(content: DigestContent): string {
   }
 
   return 'The Prompt — This week in agentic advertising';
+}
+
+// ─── What Shipped ──────────────────────────────────────────────────────
+
+/**
+ * Build the "What shipped" section from recent changelog entries.
+ * Queries addie_knowledge for release/changelog content published this week.
+ */
+async function buildWhatShippedSection(): Promise<DigestShipment[]> {
+  try {
+    const result = await query<{ title: string; source_url: string; summary: string }>(
+      `SELECT title, source_url, summary
+       FROM addie_knowledge
+       WHERE source_type IN ('changelog', 'release')
+         AND created_at > NOW() - INTERVAL '7 days'
+         AND quality_score >= 3
+       ORDER BY created_at DESC
+       LIMIT 3`,
+    );
+    return result.rows.map((row) => ({
+      title: row.title,
+      url: row.source_url,
+      summary: row.summary || '',
+    }));
+  } catch {
+    logger.warn('Failed to fetch what shipped items');
+    return [];
+  }
+}
+
+// ─── Shareable Take ────────────────────────────────────────────────────
+
+/**
+ * Generate a single shareable take for social media.
+ * A one-liner readers can copy-paste to LinkedIn/X.
+ */
+async function generateShareableTake(whatToWatch: DigestNewsItem[]): Promise<string | null> {
+  if (whatToWatch.length === 0 || !isLLMConfigured()) return null;
+
+  const topStory = whatToWatch[0];
+  const result = await complete({
+    system: `Write a single sentence take on an agentic advertising news story. The take should be opinionated, specific, and shareable on LinkedIn or X. No hashtags. No emojis. Under 200 characters.`,
+    prompt: `Story: "${topStory.title.slice(0, 120)}"\nContext: ${topStory.whyItMatters.slice(0, 200)}`,
+    maxTokens: 60,
+    model: 'fast',
+    operationName: 'prompt-shareable-take',
+  });
+
+  return result.text.trim() || null;
 }
