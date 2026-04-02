@@ -8,6 +8,12 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createLogger } from '../logger.js';
+import { getAllNewsletters } from '../newsletters/registry.js';
+import type { NewsletterConfig } from '../newsletters/config.js';
+
+function findNewsletterByCategory(category: string): NewsletterConfig | null {
+  return getAllNewsletters().find((n) => n.perspectiveCategory === category) || null;
+}
 
 const logger = createLogger('illustration-generator');
 
@@ -55,18 +61,19 @@ const CAST_MEMBERS = [
 
 /**
  * Pick 1-2 cast members for a newsletter cover, rotating to avoid repetition.
+ * Accepts a custom cast array for per-newsletter character pools.
  */
-function pickCastForEdition(editionDate: string): string {
-  // Use edition date as a seed for deterministic but varied selection
+function pickCastForEdition(editionDate: string, cast?: string[]): string {
+  const members = cast && cast.length > 0 ? cast : CAST_MEMBERS;
   const dateNum = editionDate.replace(/-/g, '');
   const seed = parseInt(dateNum, 10);
-  const primary = seed % CAST_MEMBERS.length;
-  const secondary = (seed + 3) % CAST_MEMBERS.length;
+  const primary = seed % members.length;
+  const secondary = (seed + 3) % members.length;
 
   if (primary === secondary) {
-    return `Feature ${CAST_MEMBERS[primary]} as the main character in the scene.`;
+    return `Feature ${members[primary]} as the main character in the scene.`;
   }
-  return `Feature ${CAST_MEMBERS[primary]} as the main character, with ${CAST_MEMBERS[secondary]} in a supporting role.`;
+  return `Feature ${members[primary]} as the main character, with ${members[secondary]} in a supporting role.`;
 }
 
 export interface GenerateIllustrationOptions {
@@ -101,18 +108,20 @@ function sanitize(s: string, maxLen: number): string {
 
 export async function generateIllustration(options: GenerateIllustrationOptions): Promise<GenerateIllustrationResult> {
   const { title, category, excerpt, authorDescription, editionDate } = options;
-  const isNewsletter = category === 'The Prompt';
+
+  // Check if this is a registered newsletter cover
+  const newsletterConfig = category ? findNewsletterByCategory(category) : null;
 
   let prompt: string;
 
-  if (isNewsletter) {
-    // Newsletter covers use graphic novel style with the site's cast
-    prompt = `${NEWSLETTER_STYLE_PROMPT}\n\n`;
+  if (newsletterConfig) {
+    // Newsletter covers use graphic novel style with the newsletter's cast
+    prompt = `${newsletterConfig.illustrationStylePrompt}\n\n`;
     prompt += `Newsletter edition: ${sanitize(title, 200)}\n`;
     if (excerpt) prompt += `This week's theme: ${sanitize(excerpt, 500)}\n`;
     prompt += '\n';
-    prompt += pickCastForEdition(editionDate || new Date().toISOString().split('T')[0]);
-    prompt += '\n\nCreate a scene that captures the theme of this week\'s newsletter. The characters should be doing something related to the topic — not just posing. Remember: absolutely no text, words, or letters in the image.';
+    prompt += pickCastForEdition(editionDate || new Date().toISOString().split('T')[0], newsletterConfig.illustrationCast);
+    prompt += '\n\nCreate a scene that captures the theme of this edition. The characters should be doing something related to the topic — not just posing. Remember: absolutely no text, words, or letters in the image.';
   } else {
     // Standard perspective articles use amber editorial style
     prompt = `${STYLE_PROMPT}\n\n`;
