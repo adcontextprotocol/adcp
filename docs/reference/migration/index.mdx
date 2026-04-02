@@ -39,6 +39,11 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Signals | Delivery flattening, pricing restructure | Restructure | [Signals migration](/docs/reference/migration/signals) |
 | Audiences | `external_id` promoted to required top-level field | Restructure | [Audiences migration](/docs/reference/migration/audiences) |
 | Attribution | Integer day counts → `Duration` objects | Restructure | [Attribution migration](/docs/reference/migration/attribution) |
+| Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
+
+<Warning>
+**Comply-blocking requirement:** `buying_mode` on `get_products` is checked by comply testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
+</Warning>
 
 ## New in v3 — required vs optional
 
@@ -46,7 +51,7 @@ These capabilities are new in v3. None existed in v2, so there's nothing to migr
 
 | Capability | Required? | Who needs it |
 |---|---|---|
-| Accounts protocol (`sync_accounts`, `list_accounts`) | Required if `require_operator_auth: true` on any seller you connect to | All buyers working with walled gardens (AI platforms, social, retail media) |
+| Accounts protocol (`sync_accounts`, `list_accounts`) | Required for all buyers — use `sync_accounts` when `require_operator_auth: false` (implicit accounts), `list_accounts` when `true` (explicit accounts) | All buyers — the seller's `require_operator_auth` flag determines which task to call, not whether accounts are needed |
 | Brand Protocol (`brand.json`) | Recommended | All buyers — provides brand identity for creative generation |
 | Governance (content standards, property lists) | Optional | Buyers who need brand suitability enforcement |
 | Sponsored Intelligence | Optional | Buyers working with AI platforms that support conversational handoffs |
