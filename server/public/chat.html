@@ -2414,6 +2414,7 @@
         <textarea
           id="siModalInput"
           class="si-modal-input"
+          dir="auto"
           placeholder="Type a message..."
           rows="1"
         ></textarea>
@@ -2557,6 +2558,7 @@
           <textarea
             class="chat-input"
             id="chatInput"
+            dir="auto"
             placeholder="Ask Addie anything..."
             rows="1"
           ></textarea>
@@ -3636,6 +3638,7 @@
 
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
+        contentDiv.dir = 'auto';
         contentDiv.innerHTML = renderMessage(content);
         setupChatImages(contentDiv);
 
@@ -3686,7 +3689,7 @@
               <span class="feedback-tag" data-tag="off_topic">Off topic</span>
             </div>
             <label>How could we improve? (optional)</label>
-            <textarea class="feedback-suggestion" placeholder="Tell us what would make this answer better..."></textarea>
+            <textarea class="feedback-suggestion" dir="auto" placeholder="Tell us what would make this answer better..."></textarea>
             <button class="feedback-submit" disabled>Submit Feedback</button>
             <div class="feedback-success" style="display:none;">Thank you for your feedback!</div>
           </div>
@@ -3861,6 +3864,7 @@
 
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
+        contentDiv.dir = 'auto';
         contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
 
         messageDiv.appendChild(avatarDiv);
@@ -3899,6 +3903,7 @@
 
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
+        contentDiv.dir = 'auto';
         contentDiv.innerHTML = '<span class="streaming-cursor">|</span>';
 
         messageDiv.appendChild(avatarDiv);
@@ -4336,7 +4341,7 @@
       });
 
       chatInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
           e.preventDefault();
           sendMessage();
         }
@@ -4600,6 +4605,7 @@
 
         const contentDiv = document.createElement('div');
         contentDiv.className = 'si-message-content';
+        contentDiv.dir = 'auto';
 
         // Parse markdown for assistant messages
         if (role === 'assistant' && window.marked) {
@@ -5279,6 +5285,7 @@
         messageDiv.className = 'si-message assistant';
         const contentDiv = document.createElement('div');
         contentDiv.className = 'si-message-content';
+        contentDiv.dir = 'auto';
         messageDiv.appendChild(contentDiv);
         siModalMessages.appendChild(messageDiv);
 
@@ -5394,7 +5401,7 @@
       siModalSend.addEventListener('click', siSendMessage);
 
       siModalInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
           e.preventDefault();
           siSendMessage();
         }
