@@ -680,7 +680,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           if (row.last_name?.trim()) lastName = row.last_name;
         }
       } catch (err) {
-        logger.debug({ err, userId: result.user.id }, 'Name lookup failed — using WorkOS values');
+        logger.warn({ err, userId: result.user.id }, 'Name lookup failed — using WorkOS values');
       }
     }
 
