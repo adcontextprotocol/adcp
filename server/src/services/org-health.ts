@@ -165,6 +165,18 @@ export function suggestActions(
     });
   }
 
+  if (breakdown.seat_utilization_pct < 60 && contributorCount > 2) {
+    const inactiveCount = Math.round((1 - breakdown.seat_utilization_pct / 100) * contributorCount);
+    if (inactiveCount > 0) {
+      actions.push({
+        action: 'reassign_seats',
+        label: `${inactiveCount} seat${inactiveCount > 1 ? 's' : ''} haven't been used in 30 days — consider reassigning`,
+        impact: 'Free up seats for team members who will use them',
+        url: '/dashboard/team',
+      });
+    }
+  }
+
   if (breakdown.tech_integration.agents_registered === 0) {
     const label = persona === 'molecule_builder' || persona === 'resops_integrator'
       ? 'Register a buyer agent to start testing'

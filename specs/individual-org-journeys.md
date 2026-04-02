@@ -417,12 +417,21 @@ Users returning after inactivity should see "what changed since you were here"
 (new working groups, new cert tracks, community activity) rather than evidence
 of absence. Don't lead with "you haven't done anything in 45 days."
 
+This content can tie into The Agent newsletter — the digest builder already
+assembles community highlights. Returning-user content and newsletter content
+share the same source: what happened in the community recently.
+
 ### Social proof (not leaderboards)
 
-Surface anonymous community activity to create momentum without competition:
+Surface community-wide activity to create momentum without competition:
 "12 people earned Practitioner this month," "3 new perspectives published this
 week." These appear alongside next step suggestions to reinforce that others
 are doing these things too.
+
+Community-wide stats work better than org-scoped ones because many users will
+be the first person from their company. Org-scoped social proof ("You're one
+of 3 certified at Acme") only appears when there are multiple certified people
+at the same org — it supplements, doesn't replace, community-wide stats.
 
 ### Milestone moments
 
