@@ -2,8 +2,9 @@
 node_modules
 npm-debug.log*
 
-# Build outputs
+# Build outputs (rebuilt inside Docker)
 build
+dist
 .docusaurus
 
 # Development files
@@ -11,6 +12,16 @@ build
 .github
 *.md
 !README.md
+.venv
+.conductor
+.context
+.changeset
+.gemini-clipboard
+
+# Not needed in server build
+images
+logo
+apps
 
 # IDE files
 .vscode
