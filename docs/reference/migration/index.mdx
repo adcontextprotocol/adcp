@@ -39,6 +39,11 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Signals | Delivery flattening, pricing restructure | Restructure | [Signals migration](/docs/reference/migration/signals) |
 | Audiences | `external_id` promoted to required top-level field | Restructure | [Audiences migration](/docs/reference/migration/audiences) |
 | Attribution | Integer day counts → `Duration` objects | Restructure | [Attribution migration](/docs/reference/migration/attribution) |
+| Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
+
+<Warning>
+**Comply-blocking requirement:** `buying_mode` on `get_products` is checked by comply testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
+</Warning>
 
 ## New in v3 — required vs optional
 
