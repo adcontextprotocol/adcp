@@ -51,7 +51,7 @@ These capabilities are new in v3. None existed in v2, so there's nothing to migr
 
 | Capability | Required? | Who needs it |
 |---|---|---|
-| Accounts protocol (`sync_accounts`, `list_accounts`) | Required if `require_operator_auth: true` on any seller you connect to | All buyers working with walled gardens (AI platforms, social, retail media) |
+| Accounts protocol (`sync_accounts`, `list_accounts`) | Required for all buyers — use `sync_accounts` when `require_operator_auth: false` (implicit accounts), `list_accounts` when `true` (explicit accounts) | All buyers — the seller's `require_operator_auth` flag determines which task to call, not whether accounts are needed |
 | Brand Protocol (`brand.json`) | Recommended | All buyers — provides brand identity for creative generation |
 | Governance (content standards, property lists) | Optional | Buyers who need brand suitability enforcement |
 | Sponsored Intelligence | Optional | Buyers working with AI platforms that support conversational handoffs |
