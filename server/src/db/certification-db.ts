@@ -370,6 +370,57 @@ export async function getActiveAttempt(userId: string, trackId: string): Promise
   return result.rows[0] || null;
 }
 
+/**
+ * Administratively cancel an in_progress attempt, marking it as failed.
+ * Used to unblock learners when an attempt is stuck.
+ */
+export async function cancelAttempt(
+  attemptId: string,
+  reason: string
+): Promise<CertificationAttempt> {
+  const result = await query<CertificationAttempt>(
+    `UPDATE certification_attempts
+     SET status = 'failed', completed_at = NOW(),
+         scores = $2
+     WHERE id = $1 AND status = 'in_progress'
+     RETURNING *`,
+    [attemptId, JSON.stringify({ _admin_cancelled: true, _reason: reason })]
+  );
+  if (!result.rows[0]) {
+    throw new Error(`Attempt ${attemptId} not found or not in_progress`);
+  }
+  logger.info({ attemptId, reason }, 'Administratively cancelled certification attempt');
+  return result.rows[0];
+}
+
+/**
+ * Administratively complete an in_progress attempt with provided scores.
+ * Used when a learner has demonstrated competency but the attempt is stuck.
+ */
+export async function adminCompleteAttempt(
+  attemptId: string,
+  scores: Record<string, number>,
+  overallScore: number,
+  passing: boolean,
+  reason: string
+): Promise<CertificationAttempt> {
+  const scoresWithMeta = { ...scores, _admin_completed: true, _reason: reason };
+  const status = passing ? 'passed' : 'failed';
+  const result = await query<CertificationAttempt>(
+    `UPDATE certification_attempts
+     SET status = $2, completed_at = NOW(), scores = $3,
+         overall_score = $4, passing = $5
+     WHERE id = $1 AND status = 'in_progress'
+     RETURNING *`,
+    [attemptId, status, JSON.stringify(scoresWithMeta), overallScore, passing]
+  );
+  if (!result.rows[0]) {
+    throw new Error(`Attempt ${attemptId} not found or not in_progress`);
+  }
+  logger.info({ attemptId, status, overallScore, reason }, 'Administratively completed certification attempt');
+  return result.rows[0];
+}
+
 // =====================================================
 // CREDENTIALS
 // =====================================================
