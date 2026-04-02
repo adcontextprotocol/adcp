@@ -769,7 +769,7 @@ See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for 
 The `context` field is an opaque object that sellers echo unchanged in responses and webhooks. Use it to map seller-assigned IDs back to your internal systems without needing to maintain a separate lookup table.
 
 Context works at two levels:
-- **Media buy level** — echoed in the `create_media_buy` response and all subsequent responses for that buy
+- **Media buy level** — echoed in the `create_media_buy` response
 - **Package level** — echoed in each package's response, useful for mapping `package_id` back to your internal line items
 
 **Mapping to internal campaign and line item IDs:**
@@ -778,7 +778,7 @@ Context works at two levels:
 {
   "brand": { "domain": "acmecorp.com" },
   "context": {
-    "campaign_id": "camp-2024-q3-awareness",
+    "campaign_id": "camp-2026-q3-awareness",
     "planner": "media-team-west",
     "trace_id": "req-8f3a-4b2c"
   },
@@ -815,7 +815,7 @@ The seller's response echoes your context back alongside the seller-assigned IDs
 {
   "media_buy_id": "mb_12345",
   "context": {
-    "campaign_id": "camp-2024-q3-awareness",
+    "campaign_id": "camp-2026-q3-awareness",
     "planner": "media-team-west",
     "trace_id": "req-8f3a-4b2c"
   },
