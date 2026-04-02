@@ -1011,34 +1011,42 @@ export async function backfillUsers(): Promise<{
         );
         result.usersCreated++;
       } catch (userError) {
-        result.errors.push(`Failed to upsert user ${user.id}: ${userError}`);
         logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
+        result.errors.push(`Failed to upsert user ${user.id}`);
       }
       result.usersProcessed++;
     }
 
     // Pass 1: Enumerate ALL WorkOS users (catches users not in any org)
+    let pass1Complete = false;
     logger.info('Backfill: pass 1 — enumerating all WorkOS users');
-    let after: string | undefined;
-    do {
-      const usersResponse = await workos.userManagement.listUsers({
-        limit: 100,
-        after,
-      });
+    try {
+      let after: string | undefined;
+      do {
+        const usersResponse = await workos.userManagement.listUsers({
+          limit: 100,
+          after,
+        });
 
-      for (const user of usersResponse.data) {
-        await upsertUser(user);
-      }
+        for (const user of usersResponse.data) {
+          await upsertUser(user);
+        }
 
-      after = usersResponse.data.length === 100
-        ? usersResponse.data[usersResponse.data.length - 1].id
-        : undefined;
-    } while (after);
+        after = usersResponse.data.length === 100
+          ? usersResponse.data[usersResponse.data.length - 1].id
+          : undefined;
+      } while (after);
 
-    logger.info({ count: processedUserIds.size }, 'Backfill: pass 1 complete');
+      pass1Complete = true;
+      logger.info({ count: processedUserIds.size }, 'Backfill: pass 1 complete');
+    } catch (pass1Err) {
+      result.errors.push(`Pass 1 enumeration failed partway through`);
+      logger.error({ error: pass1Err, usersFoundSoFar: processedUserIds.size }, 'Backfill: pass 1 failed, deletion phase will be skipped');
+    }
 
-    // Pass 2: Enumerate users per org (catches any users pass 1 might miss
-    // due to WorkOS pagination edge cases with org-scoped users)
+    // Pass 2: Enumerate users per org as a safety net. In practice,
+    // pass 1 covers all users; this guards against undocumented
+    // WorkOS pagination inconsistencies.
     logger.info('Backfill: pass 2 — enumerating users per org');
     const orgsResult = await pool.query(
       `SELECT workos_organization_id FROM organizations`
@@ -1069,9 +1077,8 @@ export async function backfillUsers(): Promise<{
               : undefined;
           } while (orgAfter);
         } catch (orgError) {
-          const msg = `Failed to fetch users for org ${org.workos_organization_id}: ${orgError}`;
-          result.errors.push(msg);
           logger.warn({ error: orgError, orgId: org.workos_organization_id }, 'Backfill: failed to fetch org users');
+          result.errors.push(`Failed to fetch users for org ${org.workos_organization_id}`);
         }
       }));
     }
@@ -1079,9 +1086,9 @@ export async function backfillUsers(): Promise<{
     logger.info({ count: processedUserIds.size }, 'Backfill: pass 2 complete');
 
     // Remove local users that no longer exist in WorkOS.
-    // After both passes, candidates should be rare. Still verify each
-    // against WorkOS directly as a safety net before deleting.
-    if (processedUserIds.size > 0) {
+    // Only safe when pass 1 completed fully — a partial enumeration
+    // would produce false deletion candidates.
+    if (pass1Complete && processedUserIds.size > 0) {
       const localUsers = await pool.query<{ workos_user_id: string }>(
         `SELECT workos_user_id FROM users`,
       );
