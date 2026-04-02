@@ -764,6 +764,84 @@ When executing a proposal:
 
 See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for the complete workflow.
 
+### Context for Correlation
+
+The `context` field is an opaque object that sellers echo unchanged in responses and webhooks. Use it to map seller-assigned IDs back to your internal systems without needing to maintain a separate lookup table.
+
+Context works at two levels:
+- **Media buy level** — echoed in the `create_media_buy` response and all subsequent responses for that buy
+- **Package level** — echoed in each package's response, useful for mapping `package_id` back to your internal line items
+
+**Mapping to internal campaign and line item IDs:**
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "context": {
+    "campaign_id": "camp-2024-q3-awareness",
+    "planner": "media-team-west",
+    "trace_id": "req-8f3a-4b2c"
+  },
+  "packages": [
+    {
+      "product_id": "prod_d979b543",
+      "pricing_option_id": "cpm_usd_auction",
+      "budget": 15000,
+      "bid_price": 5.00,
+      "context": {
+        "line_item_id": "li-001",
+        "flight": "june-awareness"
+      }
+    },
+    {
+      "product_id": "prod_e8fd6012",
+      "pricing_option_id": "cpm_usd_auction",
+      "budget": 10000,
+      "bid_price": 4.50,
+      "context": {
+        "line_item_id": "li-002",
+        "flight": "june-retargeting"
+      }
+    }
+  ],
+  "start_time": "2026-06-01T00:00:00Z",
+  "end_time": "2026-08-31T23:59:59Z"
+}
+```
+
+The seller's response echoes your context back alongside the seller-assigned IDs:
+
+```json test=false
+{
+  "media_buy_id": "mb_12345",
+  "context": {
+    "campaign_id": "camp-2024-q3-awareness",
+    "planner": "media-team-west",
+    "trace_id": "req-8f3a-4b2c"
+  },
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "product_id": "prod_d979b543",
+      "context": {
+        "line_item_id": "li-001",
+        "flight": "june-awareness"
+      }
+    },
+    {
+      "package_id": "pkg_002",
+      "product_id": "prod_e8fd6012",
+      "context": {
+        "line_item_id": "li-002",
+        "flight": "june-retargeting"
+      }
+    }
+  ]
+}
+```
+
+Sellers must never parse or act on context data — it exists purely for the buyer's internal use.
+
 ## Error Handling
 
 Common errors and resolutions:
