@@ -119,3 +119,34 @@ INSERT INTO addie_knowledge (
   '{"author": "Benjamin Masse", "source": "community_discussion"}',
   'system'
 ) ON CONFLICT (source_url) DO NOTHING;
+
+-- Link perspective ownership to Ben's user account so it appears in his "My Content"
+WITH ben_user AS (
+  SELECT om.workos_user_id
+  FROM member_profiles mp
+  JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
+  WHERE mp.slug = 'ben-masse'
+  LIMIT 1
+)
+UPDATE perspectives p
+SET author_user_id = bu.workos_user_id,
+    proposer_user_id = COALESCE(p.proposer_user_id, bu.workos_user_id)
+FROM ben_user bu
+WHERE p.slug = 'signals-planning-sleeper-use-case'
+  AND (
+    p.author_user_id IS DISTINCT FROM bu.workos_user_id
+    OR p.proposer_user_id IS NULL
+  );
+
+INSERT INTO content_authors (perspective_id, user_id, display_name, display_title, display_order)
+SELECT
+  p.id,
+  om.workos_user_id,
+  'Benjamin Masse',
+  p.author_title,
+  0
+FROM perspectives p
+JOIN member_profiles mp ON mp.slug = 'ben-masse'
+JOIN organization_memberships om ON om.workos_organization_id = mp.workos_organization_id
+WHERE p.slug = 'signals-planning-sleeper-use-case'
+ON CONFLICT (perspective_id, user_id) DO NOTHING;
