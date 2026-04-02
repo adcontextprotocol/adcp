@@ -4996,11 +4996,14 @@ Disallow: /api/admin/
       }
     });
 
-    // GET /api/perspectives/:slug - Get single published perspective by slug
-    this.app.get('/api/perspectives/:slug', async (req, res) => {
+    // GET /api/perspectives/:slug - Get perspective by slug
+    // Published perspectives are public; drafts are visible to their author/co-authors
+    this.app.get('/api/perspectives/:slug', optionalAuth, async (req, res) => {
       try {
         const { slug } = req.params;
         const pool = getPool();
+        const userId = req.user?.id ?? null;
+
         const result = await pool.query(
           `SELECT
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
@@ -5009,23 +5012,33 @@ Disallow: /api/admin/
             u.slug as author_slug,
             u.avatar_url as author_avatar_url,
             u.headline as author_headline,
-            p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
+            p.status, p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
           FROM perspectives p
           LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-          WHERE p.slug = $1 AND p.status = 'published'
-            AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
-          [slug]
+          WHERE p.slug = $1
+            AND (
+              (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+              OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
+                p.author_user_id = $2
+                OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
+              ))
+            )`,
+          [slug, userId]
         );
 
         if (result.rows.length === 0) {
           return res.status(404).json({
             error: 'Perspective not found',
-            message: `No published perspective found with slug ${slug}`
           });
         }
 
-        res.json(result.rows[0]);
+        const row = result.rows[0];
+        // Only expose status to authenticated authors viewing their own draft
+        if (!userId || row.status === 'published') {
+          delete row.status;
+        }
+        res.json(row);
       } catch (error) {
         logger.error({ err: error }, 'Get perspective by slug error:');
         res.status(500).json({
@@ -5092,17 +5105,24 @@ Disallow: /api/admin/
       'image/gif': 'image/gif',
       'application/pdf': 'application/pdf',
     };
-    this.app.get('/api/perspectives/:slug/assets/:filename', async (req, res) => {
+    this.app.get('/api/perspectives/:slug/assets/:filename', optionalAuth, async (req, res) => {
       try {
         const { slug, filename } = req.params;
         const pool = getPool();
+        const userId = req.user?.id ?? null;
 
         const perspResult = await pool.query(
           `SELECT p.id FROM perspectives p
            LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-           WHERE p.slug = $1 AND p.status = 'published'
-             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
-          [slug]
+           WHERE p.slug = $1
+             AND (
+               (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+               OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
+                 p.author_user_id = $2
+                 OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
+               ))
+             )`,
+          [slug, userId]
         );
         if (perspResult.rows.length === 0) {
           return res.status(404).send('Not found');
