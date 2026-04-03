@@ -337,7 +337,9 @@ export async function triageEmailDomain(
   };
 
   // 6. Log the decision (including skips)
-  logTriageDecision(normalizedDomain, result, context?.source, wasEnriched).catch(() => {});
+  logTriageDecision(normalizedDomain, result, context?.source, wasEnriched).catch((err) => {
+    logger.error({ err, domain: normalizedDomain }, 'Failed to log triage decision');
+  });
 
   return result;
 }

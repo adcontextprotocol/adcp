@@ -1885,7 +1885,7 @@ export class HTTPServer {
       } catch (dbErr) {
         checks.database = false;
         const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-        console.error('Database health check failed:', errMsg);
+        logger.error({ err: dbErr }, 'Database health check failed');
         notifySystemError({
           source: 'health-check',
           errorMessage: `Database health check failed: ${errMsg}`,

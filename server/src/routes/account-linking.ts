@@ -330,7 +330,9 @@ export function handleEmailLinkVerification(app: {
         await query(
           `UPDATE email_link_tokens SET status = 'pending' WHERE id = $1`,
           [tokenRecord.id]
-        ).catch(() => {});
+        ).catch((resetErr) => {
+          logger.error({ error: resetErr, tokenId: tokenRecord.id }, 'Failed to reset token status after merge error — user cannot retry');
+        });
         throw mergeError;
       }
 

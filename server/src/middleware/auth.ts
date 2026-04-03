@@ -562,7 +562,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           setSessionCookie(res, refreshResult.sealedSession);
 
           // Store in DB so other machines can find this refreshed session
-          storeRefreshedSession(cacheKey, refreshResult.sealedSession).catch(() => {});
+          storeRefreshedSession(cacheKey, refreshResult.sealedSession).catch((err) => {
+            logger.error({ err }, 'Failed to store refreshed session — other instances may force re-auth');
+          });
 
           // Re-authenticate with the new session (local validation)
           const newSession = workos.userManagement.loadSealedSession({
@@ -612,7 +614,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
                   logger.info({ path: req.path }, 'Shared session refresh succeeded');
                   newSealedSession = sharedRefresh.sealedSession;
                   setSessionCookie(res, sharedRefresh.sealedSession);
-                  storeRefreshedSession(cacheKey, sharedRefresh.sealedSession).catch(() => {});
+                  storeRefreshedSession(cacheKey, sharedRefresh.sealedSession).catch((err) => {
+                    logger.error({ err }, 'Failed to store refreshed session — other instances may force re-auth');
+                  });
 
                   const refreshedObj = workos.userManagement.loadSealedSession({
                     sessionData: sharedRefresh.sealedSession,
@@ -1277,7 +1281,9 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           logger.debug('Session refreshed successfully (optional auth)');
           newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
-          storeRefreshedSession(cacheKey, refreshResult.sealedSession).catch(() => {});
+          storeRefreshedSession(cacheKey, refreshResult.sealedSession).catch((err) => {
+            logger.error({ err }, 'Failed to store refreshed session — other instances may force re-auth');
+          });
 
           const newSession = workos.userManagement.loadSealedSession({
             sessionData: refreshResult.sealedSession,
@@ -1312,7 +1318,9 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
                 if (sharedRefresh.authenticated && sharedRefresh.sealedSession) {
                   newSealedSession = sharedRefresh.sealedSession;
                   setSessionCookie(res, sharedRefresh.sealedSession);
-                  storeRefreshedSession(cacheKey, sharedRefresh.sealedSession).catch(() => {});
+                  storeRefreshedSession(cacheKey, sharedRefresh.sealedSession).catch((err) => {
+                    logger.error({ err }, 'Failed to store refreshed session — other instances may force re-auth');
+                  });
                   const refreshedObj = workos.userManagement.loadSealedSession({
                     sessionData: sharedRefresh.sealedSession,
                     cookiePassword: WORKOS_COOKIE_PASSWORD,
