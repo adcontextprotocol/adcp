@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeEmail, getGoogleEmailAliases, getEmailDomain, isFreeEmail } from '../../src/utils/email-domain.js';
+import { normalizeEmail, getGoogleEmailAliases } from '../../src/utils/email-domain.js';
 
 describe('normalizeEmail', () => {
   it('normalizes googlemail.com to gmail.com', () => {
