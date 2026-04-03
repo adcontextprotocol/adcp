@@ -104,7 +104,7 @@ interface TalentEntry {
   tagline: string;
   logos: Logo[];
   colors?: Record<string, string>;
-  fonts?: Record<string, string | { family: string; files?: Array<{ url: string; weight?: number; style?: string }> }>;
+  fonts?: Record<string, string | { family: string; files?: Array<{ url: string; weight?: number; weight_range?: [number, number]; style?: string }>; opentype_features?: string[]; fallbacks?: string[] }>;
   tone: Tone;
   voice_synthesis?: VoiceSynthesis;
   visual_guidelines?: VisualGuidelines;

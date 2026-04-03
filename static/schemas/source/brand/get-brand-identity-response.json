@@ -104,6 +104,7 @@
         "fonts": {
           "type": "object",
           "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with family name and font files. Shape matches brand.json fonts definition.",
+          "maxProperties": 20,
           "definitions": {
             "font_role": {
               "oneOf": [
@@ -121,7 +122,7 @@
                           "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight" },
                           "weight_range": {
                             "type": "array",
-                            "items": { "type": "integer", "minimum": 1, "maximum": 999 },
+                            "items": { "type": "integer", "minimum": 100, "maximum": 900 },
                             "minItems": 2,
                             "maxItems": 2,
                             "description": "Variable font weight axis range as [min, max]"
@@ -136,11 +137,13 @@
                     "opentype_features": {
                       "type": "array",
                       "items": { "type": "string", "pattern": "^[a-z0-9]{4}$" },
+                      "maxItems": 20,
                       "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum'])"
                     },
                     "fallbacks": {
                       "type": "array",
-                      "items": { "type": "string" },
+                      "items": { "type": "string", "maxLength": 100 },
+                      "maxItems": 10,
                       "description": "Ordered fallback font-family names for script coverage"
                     }
                   },

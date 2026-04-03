@@ -1562,7 +1562,7 @@
           if (!value) continue;
           const isStructured = typeof value === 'object' && value.family;
           const familyName = isStructured ? value.family : String(value);
-          const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+          const roleLabel = role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
           html += `
             <div class="font-item">
               <div class="font-label">${escapeHtml(roleLabel)} font</div>
