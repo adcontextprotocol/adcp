@@ -60,6 +60,37 @@
       background: var(--color-gray-100);
     }
 
+    .report-cta-wrap {
+      position: relative;
+      display: block;
+      text-decoration: none;
+      color: inherit;
+    }
+    .report-cta-wrap:hover .report-cta-btn {
+      background: var(--color-brand);
+      transform: translateY(-1px);
+    }
+    .report-cta-wrap:hover img {
+      filter: brightness(0.95);
+    }
+    .report-cta-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 1rem 1.25rem 1.25rem;
+      padding: 0.75rem 1.5rem;
+      background: #047857;
+      color: white;
+      font-size: var(--text-base);
+      font-weight: 600;
+      border-radius: var(--radius-lg);
+      transition: background 0.15s, transform 0.15s;
+    }
+    .report-cta-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
     .article-meta-card {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -662,7 +693,9 @@
 
       const title = article.author_title || article.author_headline || '';
       primaryName.textContent = article.author_name;
-      primaryName.href = `/stories?author=${encodeURIComponent(article.author_name)}`;
+      primaryName.href = article.author_slug
+        ? `/community/people/${encodeURIComponent(article.author_slug)}`
+        : '/community/';
       authorRole.textContent = title;
       authorRole.style.display = title ? 'block' : 'none';
 
@@ -687,6 +720,22 @@
 
       image.src = url;
       image.alt = article.title || 'Perspective image';
+
+      if (article.report_url) {
+        const reportHref = `/api/perspectives/${encodeURIComponent(article.slug)}/report`;
+        const wrap = document.createElement('a');
+        wrap.href = reportHref;
+        wrap.className = 'report-cta-wrap';
+        wrap.target = '_blank';
+        wrap.rel = 'noopener';
+        image.parentNode.insertBefore(wrap, image);
+        wrap.appendChild(image);
+        const btn = document.createElement('div');
+        btn.className = 'report-cta-btn';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg> Read the Report';
+        wrap.appendChild(btn);
+      }
+
       feature.hidden = false;
     }
 
