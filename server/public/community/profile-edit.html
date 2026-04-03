@@ -1096,6 +1096,12 @@
     }
 
     async function initPortraitWidget() {
+      // Portrait UI elements must be in the DOM
+      const generateEl = document.getElementById('portrait-generate');
+      const ineligibleEl = document.getElementById('portrait-ineligible');
+      const ineligibleMsg = document.getElementById('portrait-ineligible-msg');
+      if (!generateEl) return;
+
       const url = portraitUrl();
 
       try {
@@ -1103,8 +1109,8 @@
         if (!resp.ok) {
           if (resp.status === 402 || resp.status === 404) {
             // Keep avatar preview, hide generation controls
-            document.getElementById('portrait-ineligible').style.display = '';
-            document.getElementById('portrait-ineligible-msg').textContent =
+            if (ineligibleEl) ineligibleEl.style.display = '';
+            if (ineligibleMsg) ineligibleMsg.textContent =
               'Paid members can generate an illustrated portrait.';
           }
           return;
@@ -1112,22 +1118,27 @@
 
         const data = await resp.json();
         if (!data.canGenerate) {
-          document.getElementById('portrait-ineligible').style.display = '';
-          document.getElementById('portrait-ineligible-msg').textContent =
+          if (ineligibleEl) ineligibleEl.style.display = '';
+          if (ineligibleMsg) ineligibleMsg.textContent =
             'Active membership required to generate an illustrated portrait.';
           return;
         }
 
         const remaining = data.maxMonthlyGenerations - data.generationsThisMonth;
 
-        document.getElementById('portrait-generate').style.display = '';
-        document.getElementById('portrait-gen-count').textContent =
-          remaining + ' of ' + data.maxMonthlyGenerations + ' generations left this month';
+        generateEl.style.display = '';
+        const genCountEl = document.getElementById('portrait-gen-count');
+        if (genCountEl) {
+          genCountEl.textContent = remaining + ' of ' + data.maxMonthlyGenerations + ' generations left this month';
+        }
 
         if (remaining <= 0) {
-          document.getElementById('portrait-generate-btn').disabled = true;
-          document.getElementById('portrait-generate-btn').style.opacity = '0.5';
-          document.getElementById('portrait-generate-btn').style.cursor = 'not-allowed';
+          const genBtn = document.getElementById('portrait-generate-btn');
+          if (genBtn) {
+            genBtn.disabled = true;
+            genBtn.style.opacity = '0.5';
+            genBtn.style.cursor = 'not-allowed';
+          }
         }
 
         initPortraitEvents();
@@ -1396,30 +1407,37 @@
       saveBtn.textContent = 'Saving...';
 
       try {
+        // Verify critical form elements are present before submitting
+        const requiredEls = ['field-is-public', 'field-slug'];
+        const missingEls = requiredEls.filter(id => !document.getElementById(id));
+        if (missingEls.length > 0) {
+          throw new Error('Page error: missing form fields. Please reload and try again.');
+        }
+
         const payload = {
-          is_public: document.getElementById('field-is-public').checked,
-          slug: document.getElementById('field-slug').value.trim() || undefined,
-          headline: document.getElementById('field-headline').value.trim() || undefined,
-          bio: document.getElementById('field-bio').value.trim() || undefined,
+          is_public: fieldChecked('field-is-public'),
+          slug: fieldValue('field-slug') || undefined,
+          headline: fieldValue('field-headline') || undefined,
+          bio: fieldValue('field-bio') || undefined,
           expertise: expertiseTags,
           interests: interestsTags,
-          city: document.getElementById('field-city').value.trim() || undefined,
-          linkedin_url: document.getElementById('field-linkedin-url').value.trim() || undefined,
-          twitter_url: document.getElementById('field-twitter-url').value.trim() || undefined,
-          github_username: document.getElementById('field-github-username').value.trim() || undefined,
-          open_to_coffee_chat: document.getElementById('field-coffee-chat').checked,
-          open_to_intros: document.getElementById('field-intros').checked,
+          city: fieldValue('field-city') || undefined,
+          linkedin_url: fieldValue('field-linkedin-url') || undefined,
+          twitter_url: fieldValue('field-twitter-url') || undefined,
+          github_username: fieldValue('field-github-username') || undefined,
+          open_to_coffee_chat: fieldChecked('field-coffee-chat'),
+          open_to_intros: fieldChecked('field-intros'),
         };
 
         // Include member directory fields for individual accounts
         if (isPersonalAccount) {
           const offerings = [];
-          if (document.getElementById('offering-consulting').checked) offerings.push('consulting');
-          if (document.getElementById('offering-other').checked) offerings.push('other');
+          if (fieldChecked('offering-consulting')) offerings.push('consulting');
+          if (fieldChecked('offering-other')) offerings.push('other');
           payload.offerings = offerings;
-          payload.contact_email = document.getElementById('field-contact-email').value.trim() || undefined;
-          payload.contact_phone = document.getElementById('field-contact-phone').value.trim() || undefined;
-          payload.contact_website = document.getElementById('field-contact-website').value.trim() || undefined;
+          payload.contact_email = fieldValue('field-contact-email') || undefined;
+          payload.contact_phone = fieldValue('field-contact-phone') || undefined;
+          payload.contact_website = fieldValue('field-contact-website') || undefined;
         }
 
         const response = await fetch('/api/me/community-profile', {
@@ -1507,12 +1525,12 @@
       const cityGroup = cityEl.closest('.form-group');
 
       // Move offerings out of Member directory
-      const offeringsGroup = document.getElementById('offering-consulting').closest('.form-group');
+      const offeringsGroup = document.getElementById('offering-consulting')?.closest('.form-group');
 
       // Move contact fields out of Member directory
-      const contactEmail = document.getElementById('field-contact-email').closest('.form-group');
-      const contactPhone = document.getElementById('field-contact-phone').closest('.form-group');
-      const contactWebsite = document.getElementById('field-contact-website').closest('.form-group');
+      const contactEmail = document.getElementById('field-contact-email')?.closest('.form-group');
+      const contactPhone = document.getElementById('field-contact-phone')?.closest('.form-group');
+      const contactWebsite = document.getElementById('field-contact-website')?.closest('.form-group');
 
       // Move visibility toggle out and update its label for combined context
       const visibilityToggle = visibilitySection.querySelector('.toggle-row');
@@ -1613,17 +1631,29 @@
       visibilitySection.remove();
       memberDirSection.remove();
 
+      // Preserve portrait and addie sections before clearing
+      const portraitSection = document.getElementById('section-portrait-and-addie');
+      const addieSection = document.getElementById('addie-setup-section');
+
       // Remove all remaining sections from form
       Array.from(form.querySelectorAll('.edit-section')).forEach(s => s.remove());
 
-      // Re-insert in new order before save bar (Social links before Networking)
-      const newOrder = [aboutSection, expertiseSection, publicListingSection, socialSection, prefsSection];
+      // Re-insert in new order before save bar (portrait first, then content sections)
+      const newOrder = [portraitSection, addieSection, aboutSection, expertiseSection, publicListingSection, socialSection, prefsSection].filter(Boolean);
       newOrder.forEach(section => {
         form.insertBefore(section, saveBar);
       });
     }
 
     // Helpers
+    function fieldValue(id) {
+      const el = document.getElementById(id);
+      return el ? el.value.trim() : '';
+    }
+    function fieldChecked(id) {
+      const el = document.getElementById(id);
+      return el ? el.checked : false;
+    }
     function escapeHtml(str) {
       if (!str) return '';
       const div = document.createElement('div');
