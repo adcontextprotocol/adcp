@@ -204,7 +204,12 @@ export const thePromptConfig: NewsletterConfig = {
     shouldRunToday: () => {
       const now = new Date();
       const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-      return et.getDay() === 2; // Tuesday
+      if (et.getDay() !== 2) return false; // Tuesday only
+
+      // Biweekly: count weeks from a known send-day Tuesday
+      const epoch = new Date(2026, 0, 6); // 2026-01-06, a Tuesday
+      const diffWeeks = Math.round((et.getTime() - epoch.getTime()) / (7 * 86400000));
+      return diffWeeks % 2 === 0;
     },
   },
   perspectiveSlugPrefix: 'the-prompt',

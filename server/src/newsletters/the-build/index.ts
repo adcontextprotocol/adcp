@@ -185,15 +185,15 @@ function extractTags(content: unknown): string[] {
 
 // ─── Cadence ───────────────────────────────────────────────────────────
 
-function isBiweeklyWednesday(): boolean {
+function isTriweeklyWednesday(): boolean {
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   if (et.getDay() !== 3) return false; // Wednesday only
 
-  // Fixed-epoch biweekly: count weeks from a known send-day Wednesday
+  // Triweekly: count weeks from a known send-day Wednesday, send every 3rd week
   const epoch = new Date(2026, 0, 7); // 2026-01-07, a Wednesday
   const diffWeeks = Math.round((et.getTime() - epoch.getTime()) / (7 * 86400000));
-  return diffWeeks % 2 === 0;
+  return diffWeeks % 3 === 0;
 }
 
 // ─── Registration ──────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ export const theBuildConfig: NewsletterConfig = {
   cadence: {
     generateHourET: 7,
     sendHourET: 9,
-    shouldRunToday: isBiweeklyWednesday,
+    shouldRunToday: isTriweeklyWednesday,
   },
   perspectiveSlugPrefix: 'the-build',
   perspectiveCategory: 'The Build',
