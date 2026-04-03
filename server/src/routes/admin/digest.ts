@@ -347,7 +347,8 @@ export function setupDigestAdminRoutes(apiRouter: Router): void {
       }
 
       const { email } = req.body;
-      if (!email || typeof email !== 'string' || !email.includes('@')) {
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || typeof email !== 'string' || !EMAIL_RE.test(email)) {
         return res.status(400).json({ error: 'Valid email address required' });
       }
 

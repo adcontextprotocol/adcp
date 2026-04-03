@@ -7,6 +7,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { createLogger } from '../logger.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import type { NewsletterConfig } from './config.js';
 
 const logger = createLogger('newsletter-admin');
@@ -19,7 +20,7 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
   const router = Router();
 
   // GET /editions — list recent editions
-  router.get('/editions', async (_req: Request, res: Response) => {
+  router.get('/editions', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
     try {
       const editions = await config.db.getRecent(20);
       res.json({ editions });
@@ -30,7 +31,7 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
   });
 
   // GET /editions/current — get current week's edition
-  router.get('/editions/current', async (_req: Request, res: Response) => {
+  router.get('/editions/current', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
     try {
       const edition = await config.db.getCurrent();
       if (!edition) {
@@ -45,7 +46,7 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
   });
 
   // POST /editions/generate — build a new draft
-  router.post('/editions/generate', async (_req: Request, res: Response) => {
+  router.post('/editions/generate', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
     try {
       const editionDate = new Date().toISOString().split('T')[0];
       const existing = await config.db.getByDate(editionDate);
@@ -72,7 +73,7 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
   });
 
   // POST /editions/:id/edit — edit content (direct field or LLM instruction)
-  router.post('/editions/:id/edit', async (req: Request, res: Response) => {
+  router.post('/editions/:id/edit', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid edition ID' });
@@ -111,7 +112,7 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
   });
 
   // POST /editions/:id/approve — approve for sending
-  router.post('/editions/:id/approve', async (req: Request, res: Response) => {
+  router.post('/editions/:id/approve', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid edition ID' });

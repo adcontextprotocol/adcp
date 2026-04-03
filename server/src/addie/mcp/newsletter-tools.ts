@@ -51,8 +51,13 @@ export function createNewsletterToolHandlers(
   handlers.set('suggest_newsletter_content', async (input) => {
     const newsletterId = input.newsletter as string;
     const title = (input.title as string).slice(0, 200);
-    const url = input.url as string | undefined;
+    const rawUrl = input.url as string | undefined;
+    const url = rawUrl && (rawUrl.startsWith('https://') || rawUrl.startsWith('http://')) ? rawUrl : undefined;
     const reason = input.reason ? (input.reason as string).slice(0, 500) : undefined;
+
+    if (rawUrl && !url) {
+      return JSON.stringify({ success: false, error: 'URL must use https:// or http://' });
+    }
 
     const userId = memberContext?.workos_user?.workos_user_id || slackUserId || 'unknown';
     const userName = memberContext?.workos_user?.first_name
