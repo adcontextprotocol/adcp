@@ -761,9 +761,9 @@
 
       // Tier config
       const tierConfig = {
-        'Explorer':  { color: 'explorer',  next: 'Connector', threshold: 100 },
-        'Connector': { color: 'connector', next: 'Champion',  threshold: 500 },
-        'Champion':  { color: 'champion',  next: 'Pioneer',   threshold: 1500 },
+        'Explorer':  { color: 'explorer',  next: 'Connector', threshold: 50 },
+        'Connector': { color: 'connector', next: 'Champion',  threshold: 200 },
+        'Champion':  { color: 'champion',  next: 'Pioneer',   threshold: 500 },
         'Pioneer':   { color: 'pioneer',   next: null,        threshold: null }
       };
       const tc = tierConfig[tier] || tierConfig['Explorer'];

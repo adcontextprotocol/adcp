@@ -369,6 +369,12 @@
       font-weight: var(--font-medium);
     }
 
+    .level-step-threshold {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+
     .level-step:not(:last-child)::after {
       content: '';
       position: absolute;
@@ -594,6 +600,61 @@
     }
 
     .achievement-action:hover { text-decoration: underline; }
+
+    .achievement-pts {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Ways to earn points */
+    .ways-to-earn {
+      margin-top: var(--space-4);
+    }
+
+    .ways-to-earn-toggle {
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      cursor: pointer;
+      font-weight: var(--font-medium);
+      list-style: none;
+    }
+
+    .ways-to-earn-toggle::-webkit-details-marker { display: none; }
+
+    .ways-to-earn-toggle::before {
+      content: '▸ ';
+    }
+
+    details[open] > .ways-to-earn-toggle::before {
+      content: '▾ ';
+    }
+
+    .ways-to-earn-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: var(--space-1) var(--space-4);
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+    }
+
+    .ways-to-earn-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      padding: var(--space-1) 0;
+    }
+
+    .ways-to-earn-pts {
+      font-weight: var(--font-medium);
+      color: var(--color-brand);
+      font-size: var(--text-xs);
+    }
 
     /* =========================================================================
        Grid
@@ -1670,19 +1731,22 @@
     }
 
     function renderTierProgress(tier, tierIdx, points, nextTier, nextAt, progressPct, orgCtx, milestones) {
-      // Show only current tier and next tier (not the full mountain)
-      const visibleTiers = [tier];
-      if (nextTier) visibleTiers.push(nextTier);
-
-      const steps = visibleTiers.map((t, i) => {
+      // Show all tiers so users can see the full progression
+      const steps = TIERS.map((t) => {
+        const tIdx = TIERS.indexOf(t);
         const isCurrent = t === tier;
+        const isCompleted = tIdx < tierIdx;
         let cls = 'level-step';
         if (isCurrent) cls += ' level-step--current';
-        const icon = isCurrent ? TIER_LABELS[t].charAt(0) : TIER_LABELS[t].charAt(0);
+        else if (isCompleted) cls += ' level-step--completed';
+        const icon = isCompleted ? '✓' : TIER_LABELS[t].charAt(0);
+        const threshold = TIER_THRESHOLDS[t];
+        const thresholdLabel = threshold > 0 ? `${threshold} pts` : '';
         return `
-          <div class="${cls}">
+          <div class="${cls}" title="${escapeHtml(TIER_DESCS[t])}">
             <div class="level-step-dot">${icon}</div>
             <span class="level-step-label">${escapeHtml(TIER_LABELS[t])}</span>
+            ${thresholdLabel ? `<span class="level-step-threshold">${thresholdLabel}</span>` : ''}
           </div>`;
       }).join('');
 
@@ -1705,10 +1769,10 @@
 
       const ms = milestones || {};
       const achievements = [
-        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',    desc: 'Joined at least one working group',      href: '/committees?type=working_group', action: 'Browse groups' },
-        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',     desc: 'Proposed or published content',           href: '/my-content',                   action: 'Propose content' },
-        { key: 'has_leadership',          icon: '⭐',  label: 'Group leader',            desc: 'Chair or vice-chair of a working group', href: '/committees?type=working_group', action: 'View openings' },
-        { key: 'has_recruiting_activity', icon: '📣',  label: 'Community advocate',      desc: 'Introduced a colleague',                 href: '/community/people',             action: 'Introduce a colleague' },
+        { key: 'has_working_groups',      icon: '👥', label: 'Working group member',    desc: 'Joined at least one working group',      href: '/committees?type=working_group', action: 'Browse groups',          pts: 10 },
+        { key: 'has_content_proposals',   icon: '✍',  label: 'Content contributor',     desc: 'Proposed or published content',           href: '/my-content',                   action: 'Propose content',        pts: 50 },
+        { key: 'has_leadership',          icon: '⭐',  label: 'Group leader',            desc: 'Chair or vice-chair of a working group', href: '/committees?type=working_group', action: 'View openings',          pts: 30 },
+        { key: 'has_recruiting_activity', icon: '📣',  label: 'Community advocate',      desc: 'Introduced a colleague',                 href: '/community/people',             action: 'Introduce a colleague',  pts: 10 },
       ];
 
       const achHtml = achievements.map(a => {
@@ -1720,9 +1784,34 @@
               <div class="achievement-name">${a.label}</div>
               <div class="achievement-desc">${a.desc}</div>
             </div>
-            ${!earned ? `<a href="${a.href}" class="achievement-action">${a.action} →</a>` : ''}
+            ${!earned
+              ? `<a href="${a.href}" class="achievement-action">${a.action} →</a>`
+              : `<span class="achievement-pts">+${a.pts} pts</span>`}
           </div>`;
       }).join('');
+
+      const waysList = [
+        { action: 'Publish a perspective',    pts: 50 },
+        { action: 'Attend an event',          pts: 25 },
+        { action: 'Join a working group',     pts: 10 },
+        { action: 'Make a connection',        pts: 10 },
+        { action: 'Link your GitHub',         pts: 10 },
+        { action: 'RSVP to a meeting',        pts: 5 },
+        { action: 'Register for an event',    pts: 5 },
+        { action: 'Daily visit',              pts: 2 },
+      ];
+      const waysHtml = `
+        <details class="ways-to-earn">
+          <summary class="ways-to-earn-toggle">How to earn points</summary>
+          <div class="ways-to-earn-list">
+            ${waysList.map(w => `
+              <div class="ways-to-earn-item">
+                <span>${w.action}</span>
+                <span class="ways-to-earn-pts">+${w.pts}</span>
+              </div>
+            `).join('')}
+          </div>
+        </details>`;
 
       return `
         <div class="journey-card">
@@ -1734,6 +1823,7 @@
           ${progressBar}
           ${orgLine}
           <div class="achievements-grid">${achHtml}</div>
+          ${waysHtml}
         </div>`;
     }
 
