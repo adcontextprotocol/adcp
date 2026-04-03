@@ -91,6 +91,24 @@
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: var(--space-6);
     }
+    /* Horizontal scroll track for featured/report sections */
+    .scroll-track {
+      display: flex;
+      gap: var(--space-6);
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: var(--space-2);
+    }
+    .scroll-track::-webkit-scrollbar { display: none; }
+    .scroll-track .card {
+      flex: 0 0 340px;
+      scroll-snap-align: start;
+    }
+    @media (max-width: 600px) {
+      .scroll-track .card { flex: 0 0 280px; }
+    }
     .card {
       background: var(--color-bg-card);
       border: 1px solid var(--color-border);
@@ -369,7 +387,7 @@
         <h2 class="section-heading">Reports &amp; Research</h2>
       </div>
       <p class="section-desc">Official reports, white papers, and analysis from the Agentic Advertising Organization.</p>
-      <div class="card-grid" id="research-grid"></div>
+      <div class="scroll-track" id="research-grid"></div>
     </div>
   </section>
 
