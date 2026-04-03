@@ -54,6 +54,8 @@ function injectJoinCtaStyles() {
       border: 3px solid var(--color-border);
       transition: var(--transition-all);
       position: relative;
+      display: flex;
+      flex-direction: column;
     }
 
     .join-cta-card:hover {
@@ -157,6 +159,7 @@ function injectJoinCtaStyles() {
       list-style: none;
       padding: 0;
       margin: 0 0 var(--space-5) 0;
+      flex: 1;
     }
 
     .join-cta-benefits-list li {
@@ -430,7 +433,7 @@ async function renderJoinCta(options = {}) {
 
   // All tiers use the same signup flow
   const signupUrl = userContext.isLoggedIn
-    ? `/dashboard/membership${userContext.orgId ? `?org=${encodeURIComponent(userContext.orgId)}` : ''}`
+    ? `/dashboard-membership${userContext.orgId ? `?org=${encodeURIComponent(userContext.orgId)}` : ''}`
     : '/auth/signup?return_to=/onboarding?signup=true';
 
   // Determine current subscription amount for upgrade logic
@@ -459,8 +462,9 @@ async function renderJoinCta(options = {}) {
       }
       return '';
     }
-    // Higher tier — show upgrade
-    const upgradeUrl = `/dashboard/membership${userContext.orgId ? `?org=${encodeURIComponent(userContext.orgId)}` : ''}`;
+    // Higher tier — show upgrade (use hyphenated path to reach the checkout page,
+    // not /dashboard/membership which redirects to /organization#membership)
+    const upgradeUrl = `/dashboard-membership${userContext.orgId ? `?org=${encodeURIComponent(userContext.orgId)}` : ''}`;
     return `<a href="${upgradeUrl}" class="btn btn-primary">Upgrade</a>`;
   }
 
@@ -637,7 +641,7 @@ function renderMemberConfirmation(userContext, showContactLine) {
         </ul>
       </div>
       <div class="join-cta-member-actions">
-        <a href="/dashboard/membership?org=${encodeURIComponent(userContext.orgId || '')}" class="btn btn-primary">Manage Membership</a>
+        <a href="/dashboard-membership?org=${encodeURIComponent(userContext.orgId || '')}" class="btn btn-primary">Manage Membership</a>
         <a href="/account#profileSection" class="btn btn-secondary">Edit your profile</a>
       </div>
     </div>

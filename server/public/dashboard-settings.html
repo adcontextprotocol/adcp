@@ -705,6 +705,36 @@
         </div>
       </div>
 
+      <div class="settings-section" id="nameSection">
+        <div class="settings-section-header">
+          <h2>Display name</h2>
+          <p>How your name appears across the platform</p>
+        </div>
+        <div class="settings-section-body">
+          <div id="nameDisplay" style="display: flex; align-items: center; gap: 12px;">
+            <span id="currentName" style="font-size: 16px; font-weight: 500; color: var(--color-text-heading);"></span>
+            <button class="btn btn-secondary btn-sm" onclick="showNameEdit()">Edit</button>
+          </div>
+          <div id="nameEdit" style="display: none;">
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+              <div style="flex: 1;">
+                <label for="firstNameInput" style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">First name</label>
+                <input type="text" id="firstNameInput" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+              </div>
+              <div style="flex: 1;">
+                <label for="lastNameInput" style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">Last name</label>
+                <input type="text" id="lastNameInput" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-primary btn-sm" onclick="saveName()">Save</button>
+              <button class="btn btn-secondary btn-sm" onclick="cancelNameEdit()">Cancel</button>
+            </div>
+            <div id="nameError" style="display: none; color: var(--color-error); font-size: 13px; margin-top: 8px;"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-section" id="profileSection">
         <div class="settings-section-header">
           <h2>Profile</h2>
@@ -813,6 +843,7 @@
           accountOnly: true,
         });
 
+        renderName();
         await renderSettings();
         await Promise.all([
           loadLinkedEmails(),
@@ -824,6 +855,62 @@
       } catch (error) {
         console.error('Error loading settings:', error);
         document.getElementById('loading').innerHTML = 'Error loading settings. Please refresh.';
+      }
+    }
+
+    function renderName() {
+      const first = userData?.user?.first_name || '';
+      const last = userData?.user?.last_name || '';
+      const fullName = [first, last].filter(Boolean).join(' ') || userData?.user?.email || '';
+      document.getElementById('currentName').textContent = fullName;
+      document.getElementById('firstNameInput').value = first;
+      document.getElementById('lastNameInput').value = last;
+    }
+
+    function showNameEdit() {
+      document.getElementById('nameDisplay').style.display = 'none';
+      document.getElementById('nameEdit').style.display = 'block';
+      document.getElementById('nameError').style.display = 'none';
+      document.getElementById('firstNameInput').focus();
+    }
+
+    function cancelNameEdit() {
+      document.getElementById('nameDisplay').style.display = 'flex';
+      document.getElementById('nameEdit').style.display = 'none';
+      renderName();
+    }
+
+    async function saveName() {
+      const firstName = document.getElementById('firstNameInput').value.trim();
+      const lastName = document.getElementById('lastNameInput').value.trim();
+      const errorEl = document.getElementById('nameError');
+
+      if (!firstName) {
+        errorEl.textContent = 'First name is required.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/me/name', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ first_name: firstName, last_name: lastName || null }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to update name');
+        }
+
+        userData.user.first_name = firstName;
+        userData.user.last_name = lastName || null;
+        renderName();
+        cancelNameEdit();
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
       }
     }
 

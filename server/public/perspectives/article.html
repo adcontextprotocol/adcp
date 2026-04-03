@@ -881,7 +881,7 @@
       }
 
       try {
-        const response = await fetch(`/api/perspectives/${slug}`);
+        const response = await fetch(`/api/perspectives/${slug}`, { credentials: 'same-origin' });
 
         if (!response.ok) {
           showError();
@@ -954,6 +954,17 @@
             document.getElementById('authorTitle').textContent = `, ${article.author_title}`;
           }
           document.getElementById('authorInfo').style.display = 'block';
+        }
+
+        // Show draft banner for unpublished content
+        if (article.status && article.status !== 'published') {
+          const banner = document.createElement('div');
+          banner.style.cssText = 'background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:12px 24px;text-align:center;font-weight:500;font-size:14px;';
+          banner.textContent = article.status === 'draft'
+            ? 'Draft — not publicly visible'
+            : 'Pending review — not publicly visible';
+          const hero = document.getElementById('heroSection');
+          hero.parentNode.insertBefore(banner, hero);
         }
 
         // Show content

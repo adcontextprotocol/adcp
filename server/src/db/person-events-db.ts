@@ -32,7 +32,8 @@ export type PersonEventType =
   | 'email_clicked'
   | 'email_bounced'
   | 'slack_dm_delivered'
-  | 'preference_changed';
+  | 'preference_changed'
+  | 'admin_nudge_requested';
 
 export interface PersonEvent {
   id: number;

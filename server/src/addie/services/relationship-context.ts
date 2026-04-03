@@ -2,6 +2,10 @@ import { query } from '../../db/client.js';
 import * as relationshipDb from '../../db/relationship-db.js';
 import { getMemberCapabilities, hasRelevantUpcomingEvents } from '../../db/outbound-db.js';
 import * as certDb from '../../db/certification-db.js';
+import { computeUserTier, type TierName } from '../../services/user-journey.js';
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('relationship-context');
 import type { PersonRelationship } from '../../db/relationship-db.js';
 import type { MemberCapabilities } from '../types.js';
 import type { CertificationSummary } from './engagement-planner.js';
@@ -19,6 +23,15 @@ async function getCachedCertAggregateStats() {
 // TYPES
 // =====================================================
 
+export interface JourneyContext {
+  tier: TierName;
+  points: number;
+  working_groups: string[];
+  credentials: string[];
+  contribution_count: number;
+  notable_colleagues: Array<{ name: string; highlights: string[] }>;
+}
+
 export interface RelationshipContext {
   relationship: PersonRelationship;
   recentMessages: CrossSurfaceMessage[];
@@ -28,6 +41,7 @@ export interface RelationshipContext {
   };
   certification: CertificationSummary | null;
   community?: CommunityContext;
+  journey?: JourneyContext;
 }
 
 export interface CrossSurfaceMessage {
@@ -72,7 +86,7 @@ export async function loadRelationshipContext(
   const { slack_user_id, workos_user_id, prospect_org_id } = relationship;
 
   // Fan out all independent queries in parallel
-  const [messages, capabilities, company, certification, community] = await Promise.all([
+  const [messages, capabilities, company, certification, community, journey] = await Promise.all([
     // Recent messages across all surfaces
     loadRecentMessages(personId),
 
@@ -93,6 +107,11 @@ export async function loadRelationshipContext(
     options?.includeCommunity
       ? loadCommunityContext(workos_user_id, slack_user_id)
       : Promise.resolve(undefined),
+
+    // Journey context (tier, groups, credentials, notable colleagues)
+    workos_user_id
+      ? loadJourneyContext(workos_user_id)
+      : Promise.resolve(undefined),
   ]);
 
   return {
@@ -104,6 +123,7 @@ export async function loadRelationshipContext(
     },
     certification,
     community,
+    journey,
   };
 }
 
@@ -279,6 +299,86 @@ async function loadCommunityContext(
   };
 }
 
+async function loadJourneyContext(workosUserId: string): Promise<JourneyContext | undefined> {
+  try {
+    const [pointsResult, groupsResult, credsResult, contribResult, colleaguesResult] = await Promise.all([
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(points), 0) as total FROM community_points WHERE workos_user_id = $1`,
+        [workosUserId]
+      ),
+      query<{ name: string }>(
+        `SELECT wg.name FROM working_groups wg
+         JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+         WHERE wgm.workos_user_id = $1 AND wgm.status = 'active'`,
+        [workosUserId]
+      ),
+      query<{ name: string }>(
+        `SELECT cc.name FROM user_credentials uc
+         JOIN certification_credentials cc ON cc.id = uc.credential_id
+         WHERE uc.workos_user_id = $1`,
+        [workosUserId]
+      ),
+      query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM perspectives
+         WHERE (author_user_id = $1 OR proposer_user_id = $1) AND status = 'published'`,
+        [workosUserId]
+      ),
+      // Notable colleagues at same org (top 3 most engaged, excluding self)
+      query<{ name: string; credentials: string | null; groups: string | null; contribution_count: string }>(
+        `SELECT
+           COALESCE(u.first_name || ' ' || u.last_name, u.email) as name,
+           (SELECT string_agg(DISTINCT cc.name, ', ')
+            FROM user_credentials uc
+            JOIN certification_credentials cc ON cc.id = uc.credential_id
+            WHERE uc.workos_user_id = om2.workos_user_id) as credentials,
+           (SELECT string_agg(DISTINCT wg.name, ', ')
+            FROM working_group_memberships wgm
+            JOIN working_groups wg ON wg.id = wgm.working_group_id
+            WHERE wgm.workos_user_id = om2.workos_user_id AND wgm.status = 'active') as groups,
+           (SELECT COUNT(*) FROM perspectives p
+            WHERE (p.author_user_id = om2.workos_user_id OR p.proposer_user_id = om2.workos_user_id)
+              AND p.status = 'published') as contribution_count
+         FROM organization_memberships om1
+         JOIN organization_memberships om2 ON om2.workos_organization_id = om1.workos_organization_id
+         JOIN organizations o ON o.workos_organization_id = om1.workos_organization_id
+         JOIN users u ON u.workos_user_id = om2.workos_user_id
+         WHERE om1.workos_user_id = $1
+           AND om2.workos_user_id != $1
+           AND o.is_personal = false
+         ORDER BY (SELECT COALESCE(SUM(cp.points), 0) FROM community_points cp WHERE cp.workos_user_id = om2.workos_user_id) DESC
+         LIMIT 3`,
+        [workosUserId]
+      ),
+    ]);
+
+    const points = parseInt(pointsResult.rows[0]?.total || '0', 10);
+    const tier = computeUserTier(points);
+
+    const colleagues = colleaguesResult.rows
+      .filter(c => c.credentials || c.groups || parseInt(c.contribution_count) > 0)
+      .map(c => {
+        const highlights: string[] = [];
+        if (c.credentials) highlights.push(`${c.credentials} certified`);
+        if (c.groups) highlights.push(`In ${c.groups}`);
+        const count = parseInt(c.contribution_count);
+        if (count > 0) highlights.push(`${count} contribution${count > 1 ? 's' : ''}`);
+        return { name: c.name, highlights };
+      });
+
+    return {
+      tier: tier.tier,
+      points,
+      working_groups: groupsResult.rows.map(r => r.name),
+      credentials: credsResult.rows.map(r => r.name),
+      contribution_count: parseInt(contribResult.rows[0]?.count || '0', 10),
+      notable_colleagues: colleagues,
+    };
+  } catch (err) {
+    logger.error({ err, workosUserId }, 'Failed to load journey context');
+    return undefined;
+  }
+}
+
 // =====================================================
 // PROMPT FORMATTING
 // =====================================================
@@ -338,6 +438,29 @@ export function formatContextForPrompt(ctx: RelationshipContext): string {
         ? msg.content.slice(0, 200) + '...'
         : msg.content;
       lines.push(`**${msg.channel} ${date}** ${msg.role}: ${truncated}`);
+    }
+  }
+
+  // Journey context
+  if (ctx.journey) {
+    lines.push('');
+    lines.push('### Journey');
+    lines.push(`- **Tier**: ${ctx.journey.tier} (${ctx.journey.points} points)`);
+    if (ctx.journey.credentials.length > 0) {
+      lines.push(`- **Credentials**: ${ctx.journey.credentials.join(', ')}`);
+    }
+    if (ctx.journey.working_groups.length > 0) {
+      lines.push(`- **Working groups**: ${ctx.journey.working_groups.join(', ')}`);
+    }
+    if (ctx.journey.contribution_count > 0) {
+      lines.push(`- **Published content**: ${ctx.journey.contribution_count}`);
+    }
+    if (ctx.journey.notable_colleagues.length > 0) {
+      lines.push('');
+      lines.push('### Notable colleagues');
+      for (const c of ctx.journey.notable_colleagues) {
+        lines.push(`- ${c.name}: ${c.highlights.join(', ')}`);
+      }
     }
   }
 

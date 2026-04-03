@@ -2929,7 +2929,7 @@ export function createMemberToolHandlers(
             await agentContextDb.recordTest({
               agent_context_id: context.id,
               scenario: 'quality_evaluation',
-              overall_passed: result.summary.tracks_failed === 0,
+              overall_passed: result.summary.tracks_failed === 0 && !result.v3_gate_failed,
               steps_passed: result.summary.tracks_passed,
               steps_failed: result.summary.tracks_failed,
               total_duration_ms: result.total_duration_ms,

@@ -516,6 +516,7 @@ export async function runRelationshipOrchestratorCycle(options: {
         company: context.profile.company,
         recentMessages: context.recentMessages,
         certification: context.certification,
+        journey: context.journey,
       }, decision.reason);
 
       // 6. Compose message via Sonnet
@@ -676,6 +677,7 @@ export async function sendRelationshipMessage(
     company: context.profile.company,
     recentMessages: context.recentMessages,
     certification: context.certification,
+    journey: context.journey,
   });
   const channel: 'slack' | 'email' = relationship.contact_preference
     ?? (relationship.slack_user_id ? 'slack' : 'email');

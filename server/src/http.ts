@@ -87,6 +87,8 @@ import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRo
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
+import { createUserJourneyRouter } from "./routes/user-journey.js";
+import { createOrgHealthRouter } from "./routes/org-health.js";
 import { createNotificationRouter } from "./routes/notifications.js";
 import { CommunityDatabase } from "./db/community-db.js";
 import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
@@ -1083,6 +1085,10 @@ export class HTTPServer {
     const engagementRouter = createEngagementRouter({ orgDb, orgKnowledgeDb, workingGroupDb });
     this.app.use('/api/me/engagement', engagementRouter);
 
+    // Mount individual journey and org health routes
+    this.app.use('/api/me/journey', createUserJourneyRouter());
+    this.app.use('/api/me/org-health', createOrgHealthRouter());
+
     // Mount notification routes
     this.app.use('/api/notifications', notificationRateLimiter, createNotificationRouter());
 
@@ -1610,6 +1616,7 @@ export class HTTPServer {
 
     this.app.get('/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
     this.app.get('/account', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
+    this.app.get('/dashboard-membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
     this.app.get('/dashboard/organization', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/organization${query}`);
@@ -4995,11 +5002,14 @@ Disallow: /api/admin/
       }
     });
 
-    // GET /api/perspectives/:slug - Get single published perspective by slug
-    this.app.get('/api/perspectives/:slug', async (req, res) => {
+    // GET /api/perspectives/:slug - Get perspective by slug
+    // Published perspectives are public; drafts are visible to their author/co-authors
+    this.app.get('/api/perspectives/:slug', optionalAuth, async (req, res) => {
       try {
         const { slug } = req.params;
         const pool = getPool();
+        const userId = req.user?.id ?? null;
+
         const result = await pool.query(
           `SELECT
             p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
@@ -5008,23 +5018,33 @@ Disallow: /api/admin/
             u.slug as author_slug,
             u.avatar_url as author_avatar_url,
             u.headline as author_headline,
-            p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
+            p.status, p.published_at, p.tags, p.metadata, p.like_count, p.updated_at
           FROM perspectives p
           LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-          WHERE p.slug = $1 AND p.status = 'published'
-            AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
-          [slug]
+          WHERE p.slug = $1
+            AND (
+              (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+              OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
+                p.author_user_id = $2
+                OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
+              ))
+            )`,
+          [slug, userId]
         );
 
         if (result.rows.length === 0) {
           return res.status(404).json({
             error: 'Perspective not found',
-            message: `No published perspective found with slug ${slug}`
           });
         }
 
-        res.json(result.rows[0]);
+        const row = result.rows[0];
+        // Only expose status to authenticated authors viewing their own draft
+        if (!userId || row.status === 'published') {
+          delete row.status;
+        }
+        res.json(row);
       } catch (error) {
         logger.error({ err: error }, 'Get perspective by slug error:');
         res.status(500).json({
@@ -5091,17 +5111,24 @@ Disallow: /api/admin/
       'image/gif': 'image/gif',
       'application/pdf': 'application/pdf',
     };
-    this.app.get('/api/perspectives/:slug/assets/:filename', async (req, res) => {
+    this.app.get('/api/perspectives/:slug/assets/:filename', optionalAuth, async (req, res) => {
       try {
         const { slug, filename } = req.params;
         const pool = getPool();
+        const userId = req.user?.id ?? null;
 
         const perspResult = await pool.query(
           `SELECT p.id FROM perspectives p
            LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-           WHERE p.slug = $1 AND p.status = 'published'
-             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
-          [slug]
+           WHERE p.slug = $1
+             AND (
+               (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+               OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
+                 p.author_user_id = $2
+                 OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
+               ))
+             )`,
+          [slug, userId]
         );
         if (perspResult.rows.length === 0) {
           return res.status(404).send('Not found');
@@ -6152,6 +6179,39 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get user info',
         });
+      }
+    });
+
+    // PUT /api/me/name - Update current user's display name
+    this.app.put('/api/me/name', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const firstName = (req.body.first_name as string)?.trim();
+        const lastName = (req.body.last_name as string | null)?.trim() || null;
+
+        if (!firstName) {
+          return res.status(400).json({ error: 'first_name is required' });
+        }
+
+        const pool = getPool();
+
+        // Update users table
+        await pool.query(
+          `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+          [firstName, lastName, user.id]
+        );
+
+        // Update across all memberships
+        await pool.query(
+          `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+          [firstName, lastName, user.id]
+        );
+
+        logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
+        res.json({ first_name: firstName, last_name: lastName });
+      } catch (error) {
+        logger.error({ err: error }, 'Update user name error');
+        res.status(500).json({ error: 'Failed to update name' });
       }
     });
 
