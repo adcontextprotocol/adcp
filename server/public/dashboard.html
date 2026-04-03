@@ -4711,6 +4711,49 @@
         newUrl.searchParams.delete('profile_created');
         window.history.replaceState({}, '', newUrl);
       }
+
+      // Google email alias accounts were auto-merged at login
+      const mergedEmail = params.get('accounts_merged');
+      if (mergedEmail) {
+        const banner = document.createElement('div');
+        banner.style.cssText = 'background: #D1FAE5; border: 1px solid #10B981; border-radius: 8px; padding: 14px 18px; margin: 0 0 16px; display: flex; align-items: center; gap: 12px; font-size: 14px;';
+        banner.innerHTML = `
+          <span style="font-size: 18px;">&#10003;</span>
+          <div style="flex: 1;">
+            <strong>Accounts merged.</strong>
+            Your account for <strong>${escapeHtml(mergedEmail)}</strong> has been merged into this one. All your data is here now.
+          </div>
+          <button onclick="this.parentElement.remove();"
+            style="background: none; border: none; cursor: pointer; font-size: 18px; color: #065F46; padding: 4px;">&times;</button>
+        `;
+        const main = document.querySelector('.dashboard-content') || document.querySelector('main') || document.body;
+        main.prepend(banner);
+        const newUrl2 = new URL(window.location);
+        newUrl2.searchParams.delete('accounts_merged');
+        window.history.replaceState({}, '', newUrl2);
+      }
+
+      // Duplicate Google email alias detected but auto-merge failed — manual fallback
+      const duplicateEmail = params.get('duplicate_email');
+      if (duplicateEmail && !sessionStorage.getItem('dismissedDuplicateEmail')) {
+        const banner = document.createElement('div');
+        banner.style.cssText = 'background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 14px 18px; margin: 0 0 16px; display: flex; align-items: center; gap: 12px; font-size: 14px;';
+        banner.innerHTML = `
+          <span style="font-size: 18px;">&#9888;&#65039;</span>
+          <div style="flex: 1;">
+            <strong>You may have two accounts.</strong>
+            It looks like <strong>${escapeHtml(duplicateEmail)}</strong> is another account linked to the same email inbox.
+            You can merge them in <a href="/dashboard-settings.html#linked-emails" style="color: #B45309; font-weight: 600;">Settings &rarr; Linked Emails</a>.
+          </div>
+          <button onclick="this.parentElement.remove(); sessionStorage.setItem('dismissedDuplicateEmail', 'true');"
+            style="background: none; border: none; cursor: pointer; font-size: 18px; color: #92400E; padding: 4px;">&times;</button>
+        `;
+        const main = document.querySelector('.dashboard-content') || document.querySelector('main') || document.body;
+        main.prepend(banner);
+        const newUrl2 = new URL(window.location);
+        newUrl2.searchParams.delete('duplicate_email');
+        window.history.replaceState({}, '', newUrl2);
+      }
     });
 
     // =========================================================================
