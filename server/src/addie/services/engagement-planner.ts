@@ -57,6 +57,14 @@ interface EngagementContext {
     created_at: Date;
   }>;
   certification: CertificationSummary | null;
+  journey?: {
+    tier: string;
+    points: number;
+    working_groups: string[];
+    credentials: string[];
+    contribution_count: number;
+    notable_colleagues: Array<{ name: string; highlights: string[] }>;
+  };
 }
 
 interface RelationshipContext {
@@ -894,6 +902,66 @@ const OPPORTUNITY_CATALOG: CatalogEntry[] = [
     condition: (ctx) => {
       if (!ctx.certification) return false;
       return ctx.certification.expectationStatus === 'completed' && !ctx.certification.completionCelebrated;
+    },
+  },
+
+  // -- Admin-targeted (org health) --
+  {
+    id: 'org_health_review',
+    description: 'Share a brief org health update with the admin. Reference specific people and metrics, not abstract scores. Frame it as "here\'s how your team is showing up" not "here\'s your score."',
+    keywords: ['org health', 'team engagement', 'admin'],
+    dimension: 'recognition',
+    baseScore: 55,
+    minStage: 'exploring',
+    condition: (ctx) => !!ctx.capabilities?.is_org_admin,
+  },
+  {
+    id: 'team_certification_push',
+    description: 'Suggest the admin encourage team members to get certified. Name specific uncertified people if known from notable colleagues context. Keep it collaborative, not demanding.',
+    keywords: ['team certification', 'certify team', 'admin cert'],
+    dimension: 'engagement',
+    baseScore: 50,
+    minStage: 'exploring',
+    condition: (ctx) => {
+      if (!ctx.capabilities?.is_org_admin) return false;
+      const teamCert = ctx.certification?.teamCertProgress;
+      return !!teamCert && teamCert.total > 1 && (teamCert.certified / teamCert.total) < 0.5;
+    },
+  },
+  {
+    id: 'next_certification_tier',
+    description: 'Suggest the next certification tier after completing the current one. Frame it as a natural progression, not a hard sell.',
+    keywords: ['next tier', 'practitioner', 'specialist'],
+    dimension: 'engagement',
+    baseScore: 45,
+    minStage: 'participating',
+    condition: (ctx) => {
+      if (!ctx.certification) return false;
+      return ctx.certification.credentialsEarned.length > 0 && !ctx.certification.hasInProgressTrack;
+    },
+  },
+  {
+    id: 'second_working_group',
+    description: 'Suggest joining a second working group after they\'re active in one. Reference their current group and suggest a complementary one.',
+    keywords: ['second group', 'another group', 'related group'],
+    dimension: 'engagement',
+    baseScore: 40,
+    minStage: 'participating',
+    condition: (ctx) => {
+      if (!ctx.journey) return false;
+      return ctx.journey.working_groups.length === 1;
+    },
+  },
+  {
+    id: 'first_contribution',
+    description: 'Encourage them to share their first perspective or article. Reference their expertise area from credentials or working groups.',
+    keywords: ['first perspective', 'publish', 'share expertise'],
+    dimension: 'engagement',
+    baseScore: 40,
+    minStage: 'participating',
+    condition: (ctx) => {
+      if (!ctx.journey) return false;
+      return ctx.journey.contribution_count === 0 && ctx.journey.credentials.length > 0;
     },
   },
 ];
