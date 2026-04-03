@@ -690,7 +690,7 @@ export class CatalogDatabase {
   // Internal helpers
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async batchLookupIdentifiers(
+  async batchLookupIdentifiers(
     identifiers: Array<{ type: string; value: string }>
   ): Promise<Map<string, { property_rid: string; classification: string; source: string } | null>> {
     if (identifiers.length === 0) return new Map();
@@ -745,7 +745,7 @@ export class CatalogDatabase {
    * Batch classification lookup — single query for all identifiers.
    * Returns the highest-confidence classification for each identifier value.
    */
-  private async batchGetClassifications(
+  async batchGetClassifications(
     identifierValues: string[]
   ): Promise<Map<string, string>> {
     if (identifierValues.length === 0) return new Map();

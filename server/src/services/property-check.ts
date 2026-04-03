@@ -1,5 +1,6 @@
 import { DomainClassificationsDatabase } from '../db/domain-classifications-db.js';
 import { PropertyDatabase } from '../db/property-db.js';
+import { CatalogDatabase } from '../db/catalog-db.js';
 
 export interface CheckResultRemove {
   input: string;
@@ -40,6 +41,7 @@ export interface CheckResult {
 
 const domainClassificationsDb = new DomainClassificationsDatabase();
 const propertyDb = new PropertyDatabase();
+const catalogDb = new CatalogDatabase();
 
 interface NormalizeResult {
   canonical: string;
@@ -140,13 +142,32 @@ export class PropertyCheckService {
       };
     }
 
-    // Step 3: bulk check against registry (two queries total, not N+1)
-    const registryResults = await propertyDb.checkDomainsInRegistry(afterBlockedCheck);
+    // Step 3: check against catalog + legacy registry
+    const catalogInput = afterBlockedCheck.map(d => ({ type: 'domain', value: d }));
+    const [catalogResults, catalogClassifications, registryResults] = await Promise.all([
+      catalogDb.batchLookupIdentifiers(catalogInput),
+      catalogDb.batchGetClassifications(afterBlockedCheck.map(d => `domain:${d}`)),
+      propertyDb.checkDomainsInRegistry(afterBlockedCheck),
+    ]);
 
     for (const canonical of afterBlockedCheck) {
-      const source = registryResults.get(canonical);
-      if (source) {
-        ok.push({ domain: canonical, source });
+      const catalogMatch = catalogResults.get(`domain:${canonical}`);
+      const classification = catalogClassifications.get(`domain:${canonical}`);
+      const registrySource = registryResults.get(canonical);
+
+      // Catalog says ad_infra → remove
+      if (catalogMatch?.classification === 'ad_infra' || catalogMatch?.classification === 'publisher_mask' ||
+          classification === 'ad_infra' || classification === 'publisher_mask') {
+        remove.push({
+          input: canonicalToFirstInput.get(canonical) ?? canonical,
+          canonical,
+          reason: 'blocked',
+          domain_type: catalogMatch?.classification || classification || 'ad_infra',
+        });
+      } else if (registrySource) {
+        ok.push({ domain: canonical, source: registrySource });
+      } else if (catalogMatch) {
+        ok.push({ domain: canonical, source: 'catalog' });
       } else {
         assess.push({ domain: canonical });
       }
