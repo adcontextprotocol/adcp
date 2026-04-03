@@ -676,6 +676,12 @@ export class HTTPServer {
       });
     });
 
+    // OpenAPI spec discovery
+    this.app.get('/.well-known/openapi.yaml', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.redirect(302, '/openapi/registry.yaml');
+    });
+
     // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../static")
