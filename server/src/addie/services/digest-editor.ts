@@ -104,12 +104,12 @@ async function interpretAndApplyEdit(
 Given the current content and an editor's instruction, return a JSON object describing the edit to apply.
 
 Available operations:
-- {"op": "remove_article", "index": 0} — Remove a "What to watch" article by index (0-based)
+- {"op": "remove_article", "index": 0} — Remove a "Worth your time" article by index (0-based)
 - {"op": "update_opening_take", "guidance": "..."} — Regenerate the opening take with specific guidance
 - {"op": "set_editors_note", "text": "..."} — Set or update the editor's note
 - {"op": "clear_editors_note"} — Remove the editor's note
 - {"op": "set_subject", "text": "..."} — Set a custom email subject line
-- {"op": "reorder_articles", "indices": [2, 0, 1]} — Reorder "What to watch" articles
+- {"op": "reorder_articles", "indices": [2, 0, 1]} — Reorder "Worth your time" articles
 - {"op": "update_why_it_matters", "index": 0, "text": "..."} — Update a specific article's take
 - {"op": "multiple", "edits": [...]} — Apply multiple operations (max 5, no nesting)
 
@@ -163,7 +163,7 @@ async function executeEdit(
       if (idx >= 0 && idx < updated.whatToWatch.length) {
         const removed = updated.whatToWatch.splice(idx, 1)[0];
         const content = addEditEntry(updated, editorName, `Removed article: ${removed.title}`);
-        return { content, summary: `Removed "${removed.title}" from What to watch.` };
+        return { content, summary: `Removed "${removed.title}" from Worth your time.` };
       }
       return { content: current, summary: `Article index ${idx} is out of range (${current.whatToWatch.length} articles).` };
     }
@@ -287,7 +287,7 @@ function summarizeForEdit(content: DigestContent): string {
   }
 
   if (content.whatToWatch.length > 0) {
-    parts.push('What to watch:');
+    parts.push('Worth your time:');
     content.whatToWatch.forEach((item, i) => {
       parts.push(`  [${i}] "${item.title}" — ${item.whyItMatters}`);
     });

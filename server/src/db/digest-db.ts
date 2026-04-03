@@ -54,6 +54,7 @@ export interface DigestNewsItem {
   whyItMatters: string;
   tags: string[];
   knowledgeId?: number;
+  suggestionId?: number;
 }
 
 export interface DigestNewMember {

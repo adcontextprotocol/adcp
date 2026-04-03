@@ -125,7 +125,7 @@ export function renderDigestEmail(
 
     ${personaCluster === 'newcomer' && !greeting ? `
     <p style="font-size: 14px; color: #555; margin-bottom: 12px;">
-      New here? The Prompt is your weekly guide to what's happening in agentic advertising. Start with "What to watch" and explore from there.
+      New here? The Prompt is your weekly guide to what's happening in agentic advertising. Start with "Worth your time" and explore from there.
     </p>
     ` : ''}
 
@@ -142,7 +142,7 @@ export function renderDigestEmail(
 
     <!-- What to Watch -->
     ${content.whatToWatch.length > 0 ? `
-    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">What to watch</h2>
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 16px;">Worth your time</h2>
     ${content.whatToWatch.map((item, i) => `
     <div style="margin-bottom: 20px;">
       <h3 style="font-size: 15px; margin: 0 0 4px 0;">
@@ -434,7 +434,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     });
   }
 
-  // What to watch
+  // Worth your time
   if (content.whatToWatch.length > 0) {
     const watchText = content.whatToWatch
       .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
@@ -442,7 +442,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*What to watch*\n\n${watchText}` },
+      text: { type: 'mrkdwn', text: `*Worth your time*\n\n${watchText}` },
     });
   }
 

@@ -61,6 +61,10 @@ import {
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
 import {
+  NEWSLETTER_TOOLS,
+  createNewsletterToolHandlers,
+} from './mcp/newsletter-tools.js';
+import {
   ADCP_TOOLS,
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
@@ -871,6 +875,14 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: Escalation tools enabled');
+
+  // Add newsletter suggestion tools for all users
+  const newsletterHandlers = createNewsletterToolHandlers(memberContext, slackUserId);
+  allTools.push(...NEWSLETTER_TOOLS);
+  for (const [name, handler] of newsletterHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Newsletter suggestion tools enabled');
 
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)
   const adcpHandlers = createAdcpToolHandlers(memberContext);

@@ -142,7 +142,7 @@ function buildPromptMarkdown(content: unknown): string {
     sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined this week.`);
   }
   if (c.whatToWatch.length > 0) {
-    sections.push('## What to watch');
+    sections.push('## Worth your time');
     for (const item of c.whatToWatch) {
       sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
     }

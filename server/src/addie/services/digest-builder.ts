@@ -13,6 +13,7 @@ import {
   type DigestShipment,
 } from '../../db/digest-db.js';
 import { buildWgDigestContent, getDigestEligibleGroups } from './wg-digest-builder.js';
+import { getPendingSuggestions, markSuggestionsIncluded } from '../../db/newsletter-suggestions-db.js';
 
 const logger = createLogger('digest-builder');
 
@@ -73,12 +74,34 @@ export function hasMinimumContent(content: DigestContent): boolean {
 
 // ─── What to Watch (industry stories) ───────────────────────────────────
 
+/**
+ * Build the "Worth Your Time" section (internally still whatToWatch for compat).
+ * Merges community suggestions with auto-scraped articles, prioritizing suggestions.
+ */
 async function buildWhatToWatch(): Promise<DigestNewsItem[]> {
-  const articles = await getRecentArticlesForDigest(7, 12);
+  const [articles, suggestions] = await Promise.all([
+    getRecentArticlesForDigest(7, 12),
+    getPendingSuggestions('the_prompt'),
+  ]);
 
-  if (articles.length === 0) {
-    logger.info('No recent articles for The Prompt');
+  // Convert suggestions to DigestNewsItem format (prioritized)
+  const suggestedItems: DigestNewsItem[] = suggestions.slice(0, 3).map((s) => ({
+    title: s.title,
+    url: s.url || '',
+    summary: s.description || '',
+    whyItMatters: s.suggested_by_name ? `Suggested by ${s.suggested_by_name}` : 'Community suggestion',
+    tags: ['community-suggestion'],
+    suggestionId: s.id,
+  }));
+
+  if (articles.length === 0 && suggestedItems.length === 0) {
+    logger.info('No recent articles or suggestions for The Prompt');
     return [];
+  }
+
+  // If we have suggestions but no LLM, return suggestions + top articles
+  if (suggestedItems.length > 0 && articles.length === 0) {
+    return suggestedItems;
   }
 
   if (!isLLMConfigured()) {

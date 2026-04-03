@@ -94,9 +94,9 @@ function buildFullMarkdown(content: DigestContent): string {
     sections.push(`Welcome to ${names} who joined this week.`);
   }
 
-  // What to watch
+  // Worth your time
   if (content.whatToWatch.length > 0) {
-    sections.push('## What to watch');
+    sections.push('## Worth your time');
     for (const item of content.whatToWatch) {
       sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
     }
