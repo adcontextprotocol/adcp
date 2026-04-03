@@ -370,6 +370,141 @@ export async function getActiveAttempt(userId: string, trackId: string): Promise
   return result.rows[0] || null;
 }
 
+/**
+ * Get an active (in_progress) attempt for a user and specific module.
+ * Unlike getActiveAttempt (track-level), this scopes to a single module
+ * so that e.g. an S1 attempt does not block starting S4.
+ */
+export async function getActiveAttemptForModule(userId: string, moduleId: string): Promise<CertificationAttempt | null> {
+  // First try exact module_id match
+  const exact = await query<CertificationAttempt>(
+    `SELECT * FROM certification_attempts
+     WHERE workos_user_id = $1 AND module_id = $2 AND status = 'in_progress'
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId, moduleId]
+  );
+  if (exact.rows[0]) return exact.rows[0];
+
+  // Fall back to track-level for old attempts with NULL module_id
+  const trackId = moduleId.replace(/[0-9]+$/, '').toUpperCase();
+  const fallback = await query<CertificationAttempt>(
+    `SELECT * FROM certification_attempts
+     WHERE workos_user_id = $1 AND track_id = $2 AND module_id IS NULL AND status = 'in_progress'
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId, trackId]
+  );
+  return fallback.rows[0] || null;
+}
+
+/**
+ * Expire stale in_progress attempts (older than staleDays).
+ * Called on access from start_certification_exam so no cron is needed.
+ */
+export async function expireStaleAttempts(userId: string, moduleId: string, staleDays: number = 30): Promise<number> {
+  const trackId = moduleId.replace(/[0-9]+$/, '').toUpperCase();
+  const result = await query(
+    `UPDATE certification_attempts
+     SET status = 'failed', completed_at = NOW(),
+         scores = '{"_auto_expired": true, "_reason": "Stale attempt expired after inactivity"}'::jsonb
+     WHERE workos_user_id = $1
+       AND (module_id = $2 OR (module_id IS NULL AND track_id = $3))
+       AND status = 'in_progress'
+       AND started_at < NOW() - make_interval(days => $4)
+     RETURNING id`,
+    [userId, moduleId, trackId, staleDays]
+  );
+  return result.rowCount || 0;
+}
+
+/**
+ * Get stuck attempts (in_progress for longer than staleDays) across all users.
+ * Used by admin dashboard.
+ */
+export async function getStuckAttempts(staleDays: number = 7): Promise<Array<{
+  id: string;
+  workos_user_id: string;
+  name: string;
+  email: string;
+  track_id: string;
+  module_id: string | null;
+  started_at: string;
+  days_stuck: number;
+}>> {
+  const result = await query<{
+    id: string;
+    workos_user_id: string;
+    name: string;
+    email: string;
+    track_id: string;
+    module_id: string | null;
+    started_at: string;
+    days_stuck: number;
+  }>(
+    `SELECT ca.id, ca.workos_user_id,
+            COALESCE(u.first_name || ' ' || u.last_name, u.email) AS name,
+            u.email, ca.track_id, ca.module_id, ca.started_at,
+            EXTRACT(DAY FROM NOW() - ca.started_at)::int AS days_stuck
+     FROM certification_attempts ca
+     JOIN users u ON u.workos_user_id = ca.workos_user_id
+     WHERE ca.status = 'in_progress'
+       AND ca.started_at < NOW() - make_interval(days => $1)
+     ORDER BY ca.started_at ASC`,
+    [staleDays]
+  );
+  return result.rows;
+}
+
+/**
+ * Administratively cancel an in_progress attempt, marking it as failed.
+ * Used to unblock learners when an attempt is stuck.
+ */
+export async function cancelAttempt(
+  attemptId: string,
+  reason: string
+): Promise<CertificationAttempt> {
+  const result = await query<CertificationAttempt>(
+    `UPDATE certification_attempts
+     SET status = 'failed', completed_at = NOW(),
+         scores = $2
+     WHERE id = $1 AND status = 'in_progress'
+     RETURNING *`,
+    [attemptId, JSON.stringify({ _admin_cancelled: true, _reason: reason })]
+  );
+  if (!result.rows[0]) {
+    throw new Error(`Attempt ${attemptId} not found or not in_progress`);
+  }
+  logger.info({ attemptId, reason }, 'Administratively cancelled certification attempt');
+  return result.rows[0];
+}
+
+/**
+ * Administratively complete an in_progress attempt with provided scores.
+ * Used when a learner has demonstrated competency but the attempt is stuck.
+ */
+export async function adminCompleteAttempt(
+  attemptId: string,
+  scores: Record<string, number>,
+  overallScore: number,
+  passing: boolean,
+  reason: string
+): Promise<CertificationAttempt> {
+  const scoresWithMeta = { ...scores, _admin_completed: true, _reason: reason };
+  const status = passing ? 'passed' : 'failed';
+  const result = await query<CertificationAttempt>(
+    `UPDATE certification_attempts
+     SET status = $2, completed_at = NOW(), scores = $3,
+         overall_score = $4, passing = $5
+     WHERE id = $1 AND status = 'in_progress'
+     RETURNING *`,
+    [attemptId, status, JSON.stringify(scoresWithMeta), overallScore, passing]
+  );
+  if (!result.rows[0]) {
+    throw new Error(`Attempt ${attemptId} not found or not in_progress`);
+  }
+  logger.info({ attemptId, status, overallScore, reason }, 'Administratively completed certification attempt');
+  return result.rows[0];
+}
+
 // =====================================================
 // CREDENTIALS
 // =====================================================
@@ -1012,6 +1147,7 @@ export interface AdminOverviewMetrics {
     modules_started: number;
     abandoned: number;
     total_sessions: number;
+    stuck_attempts: number;
   };
   credentials_by_tier: Array<{ tier: number; name: string; count: number; badges_issued: number }>;
   module_completion: Array<{
@@ -1035,7 +1171,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
   const totalsResult = await query<{
     learners: string; credentials_issued: string;
     modules_completed: string; modules_started: string; abandoned: string;
-    total_sessions: string;
+    total_sessions: string; stuck_attempts: string;
   }>(
     `SELECT
        (SELECT COUNT(DISTINCT workos_user_id) FROM learner_progress)::text AS learners,
@@ -1048,7 +1184,10 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
              WHERE tc.workos_user_id = lp.workos_user_id AND tc.module_id = lp.module_id),
             lp.started_at
           ) < NOW() - INTERVAL '3 days')::text AS abandoned,
-       (SELECT COUNT(DISTINCT thread_id) FROM teaching_checkpoints)::text AS total_sessions`
+       (SELECT COUNT(DISTINCT thread_id) FROM teaching_checkpoints)::text AS total_sessions,
+       (SELECT COUNT(*) FROM certification_attempts
+        WHERE status = 'in_progress'
+          AND started_at < NOW() - INTERVAL '7 days')::text AS stuck_attempts`
   );
   const t = totalsResult.rows[0];
 
@@ -1129,6 +1268,7 @@ export async function getAdminOverviewMetrics(): Promise<AdminOverviewMetrics> {
       modules_started: parseInt(t.modules_started),
       abandoned: parseInt(t.abandoned),
       total_sessions: parseInt(t.total_sessions),
+      stuck_attempts: parseInt(t.stuck_attempts),
     },
     credentials_by_tier: credResult.rows.map(r => ({
       tier: r.tier, name: r.name, count: parseInt(r.count), badges_issued: parseInt(r.badges_issued),

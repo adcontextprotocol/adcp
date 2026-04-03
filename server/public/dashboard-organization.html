@@ -91,6 +91,100 @@
     .score-ring-value { font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--color-text-heading); line-height: var(--leading-none); }
     .score-ring-caption { font-size: 10px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wider); }
 
+    /* Health score layout */
+    .health-score-layout {
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+      margin-bottom: var(--space-5);
+    }
+    .health-score-number {
+      text-align: center;
+      min-width: 80px;
+    }
+    .health-score-value {
+      font-size: var(--text-4xl);
+      font-weight: var(--font-bold);
+      line-height: var(--leading-none);
+    }
+    .health-score-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .health-score-status {
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      margin-top: var(--space-1);
+    }
+    .health-signal-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-2);
+    }
+    .health-signal-card {
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      text-align: center;
+    }
+    .health-signal-value {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+    }
+    .health-signal-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .health-action-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-3) 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .health-action-label {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .health-action-impact {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* People table */
+    .people-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+    .people-table thead tr { border-bottom: 2px solid var(--color-border); text-align: left; }
+    .people-table th { padding: var(--space-2) var(--space-3); color: var(--color-text-secondary); font-weight: var(--font-medium); }
+    .people-table tbody tr { border-bottom: 1px solid var(--color-border); }
+    .people-table tbody td { padding: var(--space-2) var(--space-3); }
+    .people-table tbody tr:hover { background: var(--color-bg-subtle); }
+
+    /* Champions */
+    .champion-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: var(--space-3);
+    }
+    .champion-card {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-success-50);
+      border: 1px solid var(--color-success-200);
+      border-radius: var(--radius-lg);
+    }
+    .champion-name {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .champion-highlights {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
     /* =========================================================================
        Journey card with levels
        ========================================================================= */
@@ -772,6 +866,17 @@
       .content-table tr { padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border); }
       .content-table td { padding: var(--space-1) var(--space-3); border-bottom: none; }
       .content-table td::before { content: attr(data-label); font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); display: block; margin-bottom: var(--space-0.5); }
+
+      .health-score-layout { flex-direction: column; align-items: flex-start; }
+      .health-signal-grid { grid-template-columns: repeat(2, 1fr); }
+
+      .people-table thead { display: none; }
+      .people-table, .people-table tbody, .people-table tr, .people-table td { display: block; }
+      .people-table tr { padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border); }
+      .people-table td { padding: var(--space-1) var(--space-3); border-bottom: none; }
+      .people-table td::before { content: attr(data-label); font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); display: block; margin-bottom: var(--space-0.5); }
+
+      .champion-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -800,9 +905,10 @@
 
     async function loadHub() {
       try {
-        const [meRes, engRes] = await Promise.all([
+        const [meRes, engRes, healthRes] = await Promise.all([
           fetch('/api/me', { credentials: 'include' }),
           fetch('/api/me/engagement', { credentials: 'include' }),
+          fetch('/api/me/org-health', { credentials: 'include' }),
         ]);
 
         if (!engRes.ok) {
@@ -885,8 +991,10 @@
           }
         }
 
+        const healthData = healthRes.ok ? await healthRes.json() : null;
+
         currentOrgId = currentOrg?.id || null;
-        renderHub(data, profileData?.profile || null, currentOrgId, certSummary, agentCompliance);
+        renderHub(data, profileData?.profile || null, currentOrgId, certSummary, agentCompliance, healthData);
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
@@ -978,7 +1086,7 @@
         </div>`;
     }
 
-    function renderHub(data, profile, orgId, certSummary, agentCompliance) {
+    function renderHub(data, profile, orgId, certSummary, agentCompliance, healthData) {
       const {
         organization_name,
         membership_tier, team_size,
@@ -1010,6 +1118,8 @@
             </div>
           </div>
         </div>
+
+        ${healthData ? renderHealthScore(healthData) : ''}
 
         <!-- ===== Membership ===== -->
         <section id="membership" class="dashboard-section">
@@ -1058,6 +1168,8 @@
               </div>
               ${teamCertHtml}
             </div>
+            ${healthData?.people ? renderPeopleTable(healthData.people) : ''}
+            ${healthData?.champions?.length ? renderChampions(healthData.champions) : ''}
           </div>
         </section>
 
@@ -1085,6 +1197,165 @@
             ${renderAgentsSection(profile?.agents || [], agentCompliance, orgId)}
           </div>
         </section>
+      `;
+    }
+
+    // -------------------------------------------------------------------------
+
+    function renderTrajectory(trajectory) {
+      if (!trajectory || trajectory.previous === null) return '';
+      const delta = trajectory.current - trajectory.previous;
+      if (delta === 0) return '';
+      const arrow = delta > 0 ? '↑' : '↓';
+      const color = delta > 0 ? 'var(--color-success-500)' : 'var(--color-warning-500)';
+      const prevDate = trajectory.previous_date
+        ? new Date(trajectory.previous_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : '';
+      return `<div style="font-size: var(--text-xs); color: ${color}; margin-top: var(--space-1);">${arrow} ${Math.abs(delta)} since ${prevDate}</div>`;
+    }
+
+    function renderHealthScore(health) {
+      const score = health.health_score || 0;
+      const bd = health.health_breakdown || {};
+
+      const signals = [
+        { label: 'Certified', value: `${bd.certification_pct || 0}%`, color: bd.certification_pct >= 50 ? 'var(--color-success-500)' : 'var(--color-warning-500)' },
+        { label: 'In working groups', value: `${bd.working_group_pct || 0}%`, color: bd.working_group_pct >= 30 ? 'var(--color-success-500)' : 'var(--color-warning-500)' },
+        { label: 'Active (30d)', value: `${bd.active_pct || 0}%`, color: bd.active_pct >= 50 ? 'var(--color-success-500)' : 'var(--color-warning-500)' },
+        { label: 'Contributions', value: bd.content_contributions || 0, color: bd.content_contributions > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)' },
+        { label: 'Leadership roles', value: bd.leadership_roles || 0, color: bd.leadership_roles > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)' },
+        { label: 'Agents registered', value: bd.tech_integration?.agents_registered || 0, color: bd.tech_integration?.agents_registered > 0 ? 'var(--color-success-500)' : 'var(--color-gray-400)' },
+      ];
+
+      const signalCards = signals.map(s => `
+        <div class="health-signal-card">
+          <div class="health-signal-value" style="color: ${s.color};">${s.value}</div>
+          <div class="health-signal-label">${s.label}</div>
+        </div>
+      `).join('');
+
+      const actionsHtml = (health.suggested_actions || []).map(a => `
+        <div class="health-action-item">
+          <div style="flex: 1;">
+            <div class="health-action-label">${escapeHtml(a.label)}</div>
+            <div class="health-action-impact">${escapeHtml(a.impact)}</div>
+          </div>
+          ${a.url ? `<a href="${a.url}" class="btn btn-ghost btn-sm">Do this</a>` : ''}
+        </div>
+      `).join('');
+
+      let scoreColor, statusLabel;
+      if (score < 30)      { scoreColor = 'var(--color-gray-400)';    statusLabel = 'Getting started'; }
+      else if (score < 60) { scoreColor = 'var(--color-warning-500)'; statusLabel = 'Building momentum'; }
+      else                 { scoreColor = 'var(--color-success-500)'; statusLabel = 'Healthy'; }
+
+      return `
+        <section class="dashboard-section">
+          <div class="hub-grid">
+            <div class="hub-card">
+              <div class="hub-card-header">
+                <span class="hub-card-title">Organization health</span>
+              </div>
+              <div class="health-score-layout">
+                <div class="health-score-number">
+                  <div class="health-score-value" style="color: ${scoreColor};">${score}</div>
+                  <div class="health-score-label">Health score</div>
+                  <div class="health-score-status" style="color: ${scoreColor};">${statusLabel}</div>
+                  ${renderTrajectory(health.health_trajectory)}
+                </div>
+                <div class="health-signal-grid">
+                  ${signalCards}
+                </div>
+              </div>
+            </div>
+            ${actionsHtml ? `
+              <div class="hub-card">
+                <div class="hub-card-header">
+                  <span class="hub-card-title">Suggested actions</span>
+                </div>
+                ${actionsHtml}
+              </div>
+            ` : ''}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderPeopleTable(people) {
+      if (!people || people.length === 0) return '';
+
+      function timeAgo(dateStr) {
+        if (!dateStr) return 'Never';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const days = Math.floor((now - d) / 86400000);
+        if (days === 0) return 'Today';
+        if (days === 1) return 'Yesterday';
+        if (days < 30) return days + 'd ago';
+        if (days < 365) return Math.floor(days / 30) + 'mo ago';
+        return Math.floor(days / 365) + 'y ago';
+      }
+
+      const emptyCell = '<span style="color: var(--color-text-muted);">—</span>';
+
+      const rows = people.map(p => {
+        const isInactive = !p.last_active || (new Date() - new Date(p.last_active)) > 14 * 86400000;
+        const nudgeBtn = isInactive
+          ? `<button class="btn btn-ghost btn-sm nudge-btn" data-user-id="${escapeHtml(p.workos_user_id)}" title="Ask Addie to reach out">Nudge</button>`
+          : '';
+        return `
+          <tr>
+            <td data-label="Person" style="font-weight: var(--font-medium);">${escapeHtml(p.name)}</td>
+            <td data-label="Certified">${p.credentials.length > 0 ? escapeHtml(p.credentials.join(', ')) : emptyCell}</td>
+            <td data-label="Working groups">${p.working_groups.length > 0 ? escapeHtml(p.working_groups.join(', ')) : emptyCell}</td>
+            <td data-label="Last active">${timeAgo(p.last_active)}</td>
+            <td data-label="Content">${p.contribution_count > 0 ? p.contribution_count : emptyCell}</td>
+            <td data-label="">${nudgeBtn}</td>
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <div style="margin-top: var(--space-5); overflow-x: auto;">
+          <table class="people-table">
+            <thead>
+              <tr>
+                <th>Person</th>
+                <th>Certified</th>
+                <th>Working groups</th>
+                <th>Last active</th>
+                <th>Content</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderChampions(champions) {
+      if (!champions || champions.length === 0) return '';
+
+      const cards = champions.map(c => `
+        <div class="champion-card">
+          <div style="font-size: var(--text-lg);">⭐</div>
+          <div>
+            <div class="champion-name">${escapeHtml(c.name)}</div>
+            <div class="champion-highlights">${c.highlights.map(h => escapeHtml(h)).join(' · ')}</div>
+          </div>
+        </div>
+      `).join('');
+
+      return `
+        <div style="margin-top: var(--space-5);">
+          <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-3);">Champions</div>
+          <div class="champion-grid">
+            ${cards}
+          </div>
+        </div>
       `;
     }
 
@@ -1742,6 +2013,39 @@
         alert('Unable to open billing portal. Please try again.');
       }
     }
+
+    // Event delegation for nudge buttons (avoids inline onclick XSS risk)
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.nudge-btn');
+      if (!btn) return;
+
+      const targetUserId = btn.dataset.userId;
+      if (!targetUserId) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const res = await fetch('/api/me/org-health/nudge', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_user_id: targetUserId, topic: 'certification' }),
+        });
+        if (res.ok) {
+          btn.textContent = 'Sent';
+          btn.style.color = 'var(--color-success-500)';
+        } else {
+          const err = await res.json().catch(() => ({}));
+          btn.textContent = 'Failed';
+          btn.disabled = false;
+          console.error('Nudge failed:', err);
+        }
+      } catch (e) {
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+        console.error('Nudge error:', e);
+      }
+    });
 
     function escapeHtml(str) {
       if (!str) return '';
