@@ -76,6 +76,7 @@
       letter-spacing: var(--tracking-widest);
       color: var(--color-text-secondary);
       margin: 0;
+      white-space: nowrap;
     }
     .section-desc {
       font-size: var(--text-sm);
@@ -87,7 +88,7 @@
     /* Card grid */
     .card-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: var(--space-6);
     }
     .card {
@@ -286,15 +287,11 @@
       padding: var(--space-3) var(--space-6);
     }
 
-    @media (max-width: 1024px) {
-      .card-grid { grid-template-columns: repeat(2, 1fr); }
-    }
     @media (max-width: 600px) {
       .stories-hero { padding: var(--space-8) var(--space-4) var(--space-3); }
       .stories-hero h1 { font-size: var(--text-2xl); }
-      .card-grid { grid-template-columns: 1fr; }
       .content-section { padding-left: var(--space-4); padding-right: var(--space-4); }
-.pill-tabs { justify-content: flex-start; }
+      .pill-tabs { justify-content: flex-start; }
     }
   </style>
 </head>
