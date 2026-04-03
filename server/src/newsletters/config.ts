@@ -87,9 +87,9 @@ export interface NewsletterEditionDB {
 // ─── Newsletter Config ─────────────────────────────────────────────────
 
 export interface NewsletterConfig {
-  /** Machine identifier: 'the_prompt', 'the_changelog' */
+  /** Machine identifier: 'the_prompt', 'the_build' */
   id: string;
-  /** Display name: "The Prompt", "The Changelog" */
+  /** Display name: "The Prompt", "The Build" */
   name: string;
   /** Author agent name: "Addie", "Sage" */
   author: string;

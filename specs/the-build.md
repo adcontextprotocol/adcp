@@ -1,4 +1,4 @@
-# The Changelog
+# The Build
 
 A contributor briefing from Sage covering what's happening across working groups, protocol development, governance, and community contributions.
 
@@ -8,7 +8,7 @@ The Prompt covers the industry narrative for everyone. Contributors need somethi
 
 ## Vision
 
-The Changelog is Sage's biweekly dispatch to everyone doing the work. Not just developers — policy writers, measurement specialists, creative standards authors, governance participants. Anyone with a contributor seat is building the future of agentic advertising, whether they're writing code or writing specs.
+The Build is Sage's biweekly dispatch to everyone doing the work. Not just developers — policy writers, measurement specialists, creative standards authors, governance participants. Anyone with a contributor seat is building the future of agentic advertising, whether they're writing code or writing specs.
 
 Sage doesn't editorialize about industry trends — she tells you what changed, what was decided, and where your input is needed.
 
@@ -20,11 +20,11 @@ Published as a perspective for SEO. Teal palette. Sage's voice.
 
 Anyone with a **contributor seat** on their organization's membership. This is the distinguishing signal — contributor seats are allocated by organizations for people actively participating in the work.
 
-Email category: `the_changelog`
+Email category: `the_build`
 
-### The Prompt vs. The Changelog
+### The Prompt vs. The Build
 
-| | The Prompt (Addie) | The Changelog (Sage) |
+| | The Prompt (Addie) | The Build (Sage) |
 |---|---|---|
 | **For** | Everyone following agentic advertising | Everyone contributing to it |
 | **Framing** | "Here's what's happening in the industry" | "Here's what we decided and built" |
@@ -106,7 +106,7 @@ docs.adcontextprotocol.org
 
 ## Sage's voice
 
-| Dimension | Addie (The Prompt) | Sage (The Changelog) |
+| Dimension | Addie (The Prompt) | Sage (The Build) |
 |-----------|-------------------|---------------------|
 | Perspective | First person, opinionated | First person, precise |
 | Tone | "Here's what I'm watching" | "Here's what changed" |
@@ -120,24 +120,24 @@ Sage never uses "exciting", "amazing", or "incredible." She respects her readers
 
 ## Data model
 
-### ChangelogContent
+### BuildContent
 
 ```typescript
-interface ChangelogContent {
+interface BuildContent {
   contentVersion: 1;
   statusLine: string;
-  decisions: ChangelogDecision[];
-  whatShipped: ChangelogRelease[];
-  deepDive: ChangelogDeepDive | null;
-  helpNeeded: ChangelogHelpItem[];
-  contributorSpotlight: ChangelogContributor[];
+  decisions: BuildDecision[];
+  whatShipped: BuildRelease[];
+  deepDive: BuildDeepDive | null;
+  helpNeeded: BuildHelpItem[];
+  contributorSpotlight: BuildContributor[];
   editorsNote?: string;
   emailSubject?: string;
-  editHistory?: ChangelogEditEntry[];
+  editHistory?: BuildEditEntry[];
   generatedAt: string;
 }
 
-interface ChangelogDecision {
+interface BuildDecision {
   workingGroup: string;
   workingGroupId: string;
   title: string;
@@ -147,7 +147,7 @@ interface ChangelogDecision {
   commentDeadline?: string;        // ISO date, for open proposals
 }
 
-interface ChangelogRelease {
+interface BuildRelease {
   repo: string;
   version: string;
   releaseDate: string;
@@ -157,14 +157,14 @@ interface ChangelogRelease {
   migrationNote: string | null;
 }
 
-interface ChangelogDeepDive {
+interface BuildDeepDive {
   title: string;
   slug: string;
   body: string;                    // markdown
   relatedDocs: string[];
 }
 
-interface ChangelogHelpItem {
+interface BuildHelpItem {
   title: string;
   url: string;
   source: string;                  // WG name or repo
@@ -172,14 +172,14 @@ interface ChangelogHelpItem {
   context: string;
 }
 
-interface ChangelogContributor {
+interface BuildContributor {
   name: string;
   handle?: string;                 // GitHub handle if applicable
   contribution: string;            // one sentence
   url?: string;                    // PR, doc, or meeting link
 }
 
-interface ChangelogEditEntry {
+interface BuildEditEntry {
   editedBy: string;
   editedAt: string;
   description: string;
@@ -189,7 +189,7 @@ interface ChangelogEditEntry {
 ### Database
 
 ```sql
-CREATE TABLE changelog_editions (
+CREATE TABLE build_editions (
   id SERIAL PRIMARY KEY,
   edition_date DATE NOT NULL UNIQUE,
   content JSONB NOT NULL,
@@ -204,13 +204,13 @@ CREATE TABLE changelog_editions (
   approved_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_changelog_editions_status ON changelog_editions(status);
-CREATE INDEX idx_changelog_editions_date ON changelog_editions(edition_date DESC);
+CREATE INDEX idx_build_editions_status ON changelog_editions(status);
+CREATE INDEX idx_build_editions_date ON changelog_editions(edition_date DESC);
 ```
 
 ```sql
 INSERT INTO email_categories (name, description, default_opted_in)
-VALUES ('the_changelog', 'The Changelog — Sage''s contributor briefing', false);
+VALUES ('the_build', 'The Build — Sage''s contributor briefing', false);
 ```
 
 ## Cover illustration
@@ -219,14 +219,14 @@ Teal palette (#0d9488 primary) with the full cast — not just technical charact
 
 ## Email template
 
-- Header: "The Changelog" in teal (#0d9488)
+- Header: "The Build" in teal (#0d9488)
 - Subheader: "from Sage"
-- Subject format: `The Changelog: [top decision or release]`
+- Subject format: `The Build: [top decision or release]`
 - Shared layout grid with The Prompt, teal accent color replaces blue
 
 ## Admin workflow
 
-Same layout as `/admin/digest`. Admin editor at `/admin/changelog`.
+Same layout as `/admin/digest`. Admin editor at `/admin/the-build`.
 
 ## Cadence
 
