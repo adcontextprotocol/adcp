@@ -260,7 +260,7 @@
         document.getElementById('editorContent').style.display = 'block';
         render();
       } catch (err) {
-        document.getElementById('loading').textContent = 'Failed to load: ' + err.message;
+        document.getElementById('loading').textContent = 'Failed to load: ' + esc(err.message);
       }
     }
 
@@ -417,7 +417,7 @@
         render();
         toast('Saved');
       } catch (err) {
-        toast('Save failed: ' + err.message);
+        toast('Save failed: ' + esc(err.message));
         render();
       }
     }
@@ -460,7 +460,7 @@
         render();
         toast('Article saved');
       } catch (err) {
-        toast('Save failed: ' + err.message);
+        toast('Save failed: ' + esc(err.message));
       }
     }
 
@@ -476,7 +476,7 @@
         render();
         toast('Article removed');
       } catch (err) {
-        toast('Remove failed: ' + err.message);
+        toast('Remove failed: ' + esc(err.message));
       }
     }
 
@@ -503,7 +503,7 @@
         input.value = '';
         toast(data.summary || 'Edit applied');
       } catch (err) {
-        toast('Edit failed: ' + err.message);
+        toast('Edit failed: ' + esc(err.message));
       } finally {
         btn.disabled = false;
         btn.textContent = 'Apply';
@@ -526,7 +526,7 @@
         render();
         toast('Draft generated');
       } catch (err) {
-        toast('Generate failed: ' + err.message);
+        toast('Generate failed: ' + esc(err.message));
         btn.disabled = false;
         btn.textContent = 'Generate Draft';
       }
@@ -543,7 +543,7 @@
         render();
         toast('Approved! Will send on next scheduled run.');
       } catch (err) {
-        toast('Approve failed: ' + err.message);
+        toast('Approve failed: ' + esc(err.message));
       }
     }
 
@@ -584,7 +584,7 @@
         if (!res.ok) throw new Error(data.error);
         toast('Test sent to ' + email);
       } catch (err) {
-        toast('Send failed: ' + err.message);
+        toast('Send failed: ' + esc(err.message));
       }
     }
 

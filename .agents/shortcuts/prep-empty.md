@@ -12,6 +12,7 @@ should carry an empty changeset.
    - **Playwright** (for scripted flows): use the `/playwright-skill` skill
 3. Run code review and address the suggestions.
 4. Prepare the PR.
+5. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and fix any CodeQL findings before merge.
 
 ## Output Shape
 

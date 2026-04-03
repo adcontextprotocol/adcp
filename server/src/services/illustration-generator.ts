@@ -32,39 +32,12 @@ Rich but not busy — clean composition with breathing room.`;
  * Blue palette (Addie's colors) as the anchor, with the cast depicted in scenes
  * related to the week's top story.
  */
-const NEWSLETTER_STYLE_PROMPT = `Create a purely visual illustration — NO TEXT OF ANY KIND.
-CRITICAL: Do not render any words, letters, titles, labels, captions, watermarks, numbers, or logos. The image must contain zero text.
-Landscape aspect ratio (1200x630, roughly 1.9:1).
-
-STYLE: Flat illustration, graphic novel style with clean minimal linework and subtle gradients. NOT painterly or photorealistic — think modern editorial illustration for a tech publication.
-COLOR PALETTE: Blue-led (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with warm amber highlights (#D4A017, #F4C430). Deep navy backgrounds (#0f172a, #1e293b). High contrast, limited palette.
-
-CHARACTERS — pick 1-2 from this recurring cast to feature in the scene:
-- Alex Reeves: Black woman, early 40s, locs pulled back, tortoiseshell reading glasses on head, structured blazer. Media operations leader.
-- Sam Adeyemi: Nigerian-British man, early 30s, dark skin, close-cropped hair with sharp fade, clean-shaven, silver watch, rolled-up sleeves. Media buyer.
-- Maya Johal: British-Indian woman, late 20s, long dark hair in loose braid, bold patterned scarf, chunky rings. Creative strategist.
-- Priya Nair: Indian-American woman, late 30s, dark brown skin, short asymmetric black bob, rectangular dark-framed glasses. Ad products director.
-- Dayo Mensah: Ghanaian-American, early-to-mid 20s, dark skin, short natural hair, bright expression, messenger bag. Ad tech fellow.
-- Addie: Sleek blue rounded robot with expressive face and AgenticAdvertising.org emblem. The newsletter's author.
-
-Show characters in a SPECIFIC scene related to the article topic — at a desk with screens, in a meeting room, reviewing data, discussing strategy. The scene should feel like a moment from their workday. Characters should be recognizable by their distinguishing features even at small sizes.
-Vary composition: sometimes a close-up of one character studying a screen, sometimes two characters in conversation, sometimes a wide shot of a workspace.`;
-
-const CAST_MEMBERS = [
-  'Alex Reeves (Black woman, locs, blazer)',
-  'Sam Adeyemi (Nigerian-British man, sharp fade, rolled sleeves)',
-  'Maya Johal (British-Indian woman, braided hair, patterned scarf)',
-  'Priya Nair (Indian-American woman, asymmetric bob, dark glasses)',
-  'Dayo Mensah (Ghanaian-American, short natural hair, messenger bag)',
-  'Addie (sleek blue robot with expressive face)',
-];
-
 /**
  * Pick 1-2 cast members for a newsletter cover, rotating to avoid repetition.
  * Accepts a custom cast array for per-newsletter character pools.
  */
 function pickCastForEdition(editionDate: string, cast?: string[]): string {
-  const members = cast && cast.length > 0 ? cast : CAST_MEMBERS;
+  const members = cast && cast.length > 0 ? cast : ['a character'];
   const dateNum = editionDate.replace(/-/g, '');
   const seed = parseInt(dateNum, 10);
   const primary = seed % members.length;

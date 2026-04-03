@@ -22,7 +22,6 @@ import {
   getRecentDigests,
   getDigestEmailRecipients,
   getUserWorkingGroupMap,
-  isLegacyContent,
   type DigestContent,
   type DigestRecord,
 } from '../../db/digest-db.js';

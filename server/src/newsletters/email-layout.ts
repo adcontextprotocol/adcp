@@ -10,7 +10,6 @@ import type { NewsletterPalette } from './config.js';
 import { trackedUrl } from '../notifications/email.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
-const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
 
 // ─── Utilities ─────────────────────────────────────────────────────────
 

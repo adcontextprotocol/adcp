@@ -13,7 +13,7 @@ import {
   type DigestShipment,
 } from '../../db/digest-db.js';
 import { buildWgDigestContent, getDigestEligibleGroups } from './wg-digest-builder.js';
-import { getPendingSuggestions, markSuggestionsIncluded } from '../../db/newsletter-suggestions-db.js';
+import { getPendingSuggestions } from '../../db/newsletter-suggestions-db.js';
 
 const logger = createLogger('digest-builder');
 

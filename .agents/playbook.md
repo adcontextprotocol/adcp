@@ -396,6 +396,16 @@ Walkthrough pages use progressive disclosure — grouped by reader intent:
 
 Apply this pattern when restructuring protocol sections.
 
+## PR Preparation Checklist
+
+Before creating or updating a PR, always:
+
+1. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and look for CodeQL findings. These are the most common CI blockers and must be resolved before merge.
+2. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
+3. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
+4. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
+5. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
+
 ## Cross-Agent Integration
 
 - **Role definitions** live in `.agents/roles/*.md` (markdown with frontmatter).
