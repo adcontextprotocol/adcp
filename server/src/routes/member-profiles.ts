@@ -453,6 +453,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       delete updates.created_at;
       delete updates.updated_at;
       delete updates.featured; // Only admins can set featured
+      delete updates.is_founding_member; // Only admins can set founding status
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 

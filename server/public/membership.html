@@ -78,38 +78,6 @@
       line-height: var(--leading-relaxed);
     }
 
-    /* Founding Member Banner */
-    .founding-banner {
-      background: linear-gradient(135deg, var(--color-warning-50) 0%, var(--color-warning-100) 100%);
-      border: var(--border-2) solid var(--color-warning-400);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      margin-bottom: var(--space-6);
-    }
-    .founding-pill {
-      display: inline-block;
-      background: var(--color-warning-600);
-      color: white;
-      padding: var(--space-1) var(--space-3);
-      border-radius: var(--radius-full);
-      font-size: var(--text-xs);
-      font-weight: var(--font-bold);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: var(--space-3);
-    }
-    .founding-banner h3 {
-      color: var(--color-warning-800);
-      font-size: var(--text-xl);
-      margin: 0 0 var(--space-3) 0;
-    }
-    .founding-banner p {
-      color: var(--color-warning-800);
-      font-size: var(--text-base);
-      line-height: var(--leading-normal);
-      margin: 0;
-    }
-
     /* Pricing Tables */
     .pricing-grid {
       display: grid;
@@ -518,7 +486,7 @@
         var first = (config.user.name || '').split(' ')[0] || 'there';
         document.getElementById('membership-hero-title').textContent = 'Your membership';
         document.getElementById('membership-hero-subtitle').textContent =
-          'Thanks for being a founding member, ' + first + '. Here\u2019s what your membership includes and how to make the most of it.';
+          'Welcome back, ' + first + '. Here\u2019s what your membership includes and how to make the most of it.';
       }
     })();
   </script>
@@ -549,14 +517,8 @@
         AgenticAdvertising.org is where that work happens. We're a member organization &mdash; brands, agencies, publishers, ad tech companies, and individual practitioners &mdash; building the open infrastructure for agentic advertising together.
       </p>
       <p>
-        This is early. There's no legacy to navigate, no entrenched interests to work around. The people who join now are founding members, with real influence over the protocol, the governance, and the direction of the organization.
+        This is early. There's no legacy to navigate, no entrenched interests to work around. The organizations and practitioners who join now have real influence over the protocol, the governance, and the direction of the organization.
       </p>
-
-      <div class="founding-banner">
-        <div class="founding-pill">Founding member window</div>
-        <h3>Founding member pricing ends March 31, 2026</h3>
-        <p>Everyone who joins before this date gets founding member status and locked-in pricing. These benefits are permanent &mdash; they stay with you as long as you remain a member.</p>
-      </div>
     </section>
 
     <!-- Section 2: What members get -->
@@ -782,13 +744,6 @@
       </div>
 
       <div class="faq-item">
-        <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a3">What happens after the founding member window closes?</div>
-        <div class="faq-answer" aria-hidden="true" id="faq-a3" role="region">
-          Pricing will increase and new tier structures will be introduced. Founding members keep their rates as long as they maintain continuous membership. The Advisory Council and board voting rights earned during the founding period are permanent member benefits.
-        </div>
-      </div>
-
-      <div class="faq-item">
         <div class="faq-question" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a4">Can I pay monthly instead of annually?</div>
         <div class="faq-answer" aria-hidden="true" id="faq-a4" role="region">
           Currently, we only offer annual memberships. This helps us plan and invest in programs that benefit the community. Monthly billing may be available in the future.
@@ -886,14 +841,6 @@
   <script>
     // Initialize join CTA component
     // Script is at end of body, so DOM is already loaded - call directly
-    // Hide founding-period content after March 31, 2026
-    var isFoundingPeriod = new Date() < new Date('2026-04-01T04:00:00Z');
-    if (!isFoundingPeriod) {
-      document.querySelectorAll('.founding-banner').forEach(function(el) {
-        el.style.display = 'none';
-      });
-    }
-
     renderJoinCta({
       containerId: 'join-cta-container',
       showContactLine: true

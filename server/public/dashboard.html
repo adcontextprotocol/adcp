@@ -1737,7 +1737,7 @@
         membershipCard.style.display = 'block';
         inlinePricingSection.style.display = 'none';
 
-        const productName = org.billing.product_name || 'Founding Member';
+        const productName = org.billing.product_name || 'Member';
         const renewalDate = org.billing.current_period_end
           ? new Date(org.billing.current_period_end * 1000).toLocaleDateString()
           : '';
@@ -1848,7 +1848,7 @@
             <div style="text-align: center; padding: 16px 0; border-bottom: 1px solid var(--color-border);">
               <div style="font-size: 14px; color: var(--color-text-secondary); margin-bottom: 4px;">Your membership</div>
               <div style="font-size: 36px; font-weight: 700; color: var(--color-brand);">${price}<span style="font-size: 16px; font-weight: 400; color: var(--color-text-muted);">/year</span></div>
-              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 4px;">Founding member rate through March 31, 2026</div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 4px;">Annual membership</div>
             </div>
 
             <!-- Benefits summary -->
@@ -1965,7 +1965,7 @@
       }
     }
 
-    // Render promo banner for non-members (founding member pricing)
+    // Render promo banner for non-members
     // Shows exact price when revenue tier is known, otherwise shows range
     async function renderJoinPromoBanner(org) {
       const promoBanner = document.getElementById('promoBanner');
@@ -1992,7 +1992,7 @@
               // Use the first matching product's price
               const exactPrice = escapeHtml(formatCurrency(products[0].amount_cents, products[0].currency));
               priceMessage = `<span class="promo-banner-price">${exactPrice}</span><span style="font-size: 14px; font-weight: normal;">/year</span>`;
-              subtext = 'Founding member rate';
+              subtext = 'Annual membership';
             }
           }
         } catch (e) {
@@ -2014,9 +2014,9 @@
         <div class="promo-banner">
           <div class="promo-banner-content">
             <div class="promo-banner-text">
-              <span class="promo-banner-badge">Founding Member Pricing</span>
+              <span class="promo-banner-badge">Membership</span>
               <h3>Join the Agentic Advertising Organization</h3>
-              <p>Lock in founding member rates. Offer valid through March 31, 2026.</p>
+              <p>Shape the standards for how AI agents buy, sell, and measure media.</p>
             </div>
             <div class="promo-banner-action">
               <div>

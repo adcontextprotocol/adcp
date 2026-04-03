@@ -1,6 +1,5 @@
 import type { DigestContent } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
-import { FOUNDING_DEADLINE } from '../founding-deadline.js';
 import { trackedUrl } from '../../notifications/email.js';
 import { markdownToEmailHtmlInline } from '../../utils/markdown.js';
 
@@ -173,7 +172,7 @@ export function renderDigestEmail(
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
 
-    <!-- CTA (founding member merged with segment CTA when deadline active) -->
+    <!-- CTA -->
     ${renderCta(segment, trackingId)}
 
     <!-- Feedback -->
@@ -227,11 +226,6 @@ function renderWorkingGroupsHtml(
 
 function renderCta(segment: DigestSegment, trackingId: string): string {
   const t = (tag: string, url: string) => trackLink(trackingId, tag, url);
-  // If founding deadline is active, merge it into the CTA
-  const foundingDays = getFoundingDaysRemaining();
-  if (foundingDays !== null) {
-    return renderFoundingCtaHtml(segment, t, foundingDays);
-  }
 
   switch (segment) {
     case 'website_only':
@@ -265,38 +259,6 @@ function renderCta(segment: DigestSegment, trackingId: string): string {
         </p>
       </div>`;
   }
-}
-
-/**
- * Merged founding member + segment CTA. One ask per email.
- */
-function renderFoundingCtaHtml(
-  segment: DigestSegment,
-  t: (tag: string, url: string) => string,
-  daysRemaining: number,
-): string {
-  const urgency = daysRemaining <= 7
-    ? `Founding member enrollment closes in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}`
-    : 'Founding member enrollment closes March 31';
-
-  const secondaryText = segment === 'website_only'
-    ? 'Lock in current pricing and join 1,400+ members in Slack.'
-    : segment === 'slack_only'
-      ? 'Lock in current pricing and get listed in the member directory.'
-      : 'Lock in current pricing permanently. After March 31, membership rates increase.';
-
-  return `
-    <div style="text-align: center; padding: 20px; background: #fef9e7; border: 1px solid #f0d060; border-radius: 8px;">
-      <p style="font-size: 16px; color: #1a1a2e; margin: 0 0 8px 0; font-weight: 600;">
-        ${urgency}
-      </p>
-      <p style="font-size: 14px; color: #555; margin: 0 0 12px 0;">
-        ${secondaryText}
-      </p>
-      <a href="${t('cta_founding', `${BASE_URL}/join`)}" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
-        Join as a founding member
-      </a>
-    </div>`;
 }
 
 function renderDigestText(content: DigestContent, editionDate: string, segment: DigestSegment, firstName?: string): string {
@@ -373,11 +335,6 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
       lines.push('');
     }
     lines.push('Want a version tailored to your company? Ask Addie in Slack or web chat.', '');
-  }
-
-  const deadlineBannerText = renderFoundingDeadlineBannerText();
-  if (deadlineBannerText) {
-    lines.push('---', '', deadlineBannerText, '');
   }
 
   lines.push(`View in browser: ${BASE_URL}/digest/${editionDate}`);
@@ -490,13 +447,6 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     });
   }
 
-  // Founding deadline banner
-  const deadlineBannerSlack = renderFoundingDeadlineBannerSlack();
-  if (deadlineBannerSlack) {
-    blocks.push({ type: 'divider' });
-    blocks.push(deadlineBannerSlack);
-  }
-
   // Read more link
   blocks.push({ type: 'divider' });
   blocks.push({
@@ -566,41 +516,6 @@ export function renderDigestWebPage(content: DigestContent, editionDate: string)
   </p>
 </body>
 </html>`;
-}
-
-// ─── Founding member deadline banner (expires April 1 2026) ─────────────
-
-function getFoundingDaysRemaining(): number | null {
-  const days = Math.ceil((FOUNDING_DEADLINE.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  return days > 0 ? days : null;
-}
-
-function renderFoundingDeadlineBannerSlack(): SlackBlock | null {
-  const days = getFoundingDaysRemaining();
-  if (days === null) return null;
-
-  const headline = days <= 7
-    ? `*Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}*`
-    : '*Founding member enrollment closes March 31*';
-
-  return {
-    type: 'section',
-    text: {
-      type: 'mrkdwn',
-      text: `${headline} \u2014 lock in current pricing permanently. <${BASE_URL}/join|Join as a founding member>`,
-    },
-  };
-}
-
-function renderFoundingDeadlineBannerText(): string | null {
-  const days = getFoundingDaysRemaining();
-  if (days === null) return null;
-
-  const headline = days <= 7
-    ? `Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}.`
-    : 'Founding member enrollment closes March 31.';
-
-  return `${headline} Lock in current pricing permanently: ${BASE_URL}/join`;
 }
 
 function formatDate(editionDate: string): string {
