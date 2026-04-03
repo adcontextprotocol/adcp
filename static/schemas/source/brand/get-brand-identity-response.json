@@ -104,9 +104,8 @@
         "fonts": {
           "type": "object",
           "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with family name and font files. Shape matches brand.json fonts definition.",
-          "properties": {
-            "primary": {
-              "description": "Primary font family",
+          "definitions": {
+            "font_role": {
               "oneOf": [
                 { "type": "string" },
                 {
@@ -118,40 +117,31 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "url": { "type": "string", "format": "uri", "description": "URL to the font file" },
+                          "url": { "type": "string", "format": "uri", "pattern": "^https://", "description": "HTTPS URL to the font file" },
                           "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight" },
+                          "weight_range": {
+                            "type": "array",
+                            "items": { "type": "integer", "minimum": 1, "maximum": 999 },
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "description": "Variable font weight axis range as [min, max]"
+                          },
                           "style": { "type": "string", "enum": ["normal", "italic", "oblique"], "description": "CSS font-style" }
                         },
                         "required": ["url"],
                         "additionalProperties": true
-                      }
-                    }
-                  },
-                  "required": ["family"],
-                  "additionalProperties": true
-                }
-              ]
-            },
-            "secondary": {
-              "description": "Secondary font family",
-              "oneOf": [
-                { "type": "string" },
-                {
-                  "type": "object",
-                  "properties": {
-                    "family": { "type": "string", "description": "CSS font-family name" },
-                    "files": {
+                      },
+                      "maxItems": 36
+                    },
+                    "opentype_features": {
                       "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "url": { "type": "string", "format": "uri", "description": "URL to the font file" },
-                          "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight" },
-                          "style": { "type": "string", "enum": ["normal", "italic", "oblique"], "description": "CSS font-style" }
-                        },
-                        "required": ["url"],
-                        "additionalProperties": true
-                      }
+                      "items": { "type": "string", "pattern": "^[a-z0-9]{4}$" },
+                      "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum'])"
+                    },
+                    "fallbacks": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Ordered fallback font-family names for script coverage"
                     }
                   },
                   "required": ["family"],
@@ -160,7 +150,11 @@
               ]
             }
           },
-          "additionalProperties": true
+          "properties": {
+            "primary": { "$ref": "#/oneOf/0/properties/fonts/definitions/font_role", "description": "Primary font family" },
+            "secondary": { "$ref": "#/oneOf/0/properties/fonts/definitions/font_role", "description": "Secondary font family" }
+          },
+          "additionalProperties": { "$ref": "#/oneOf/0/properties/fonts/definitions/font_role" }
         },
         "visual_guidelines": {
           "type": "object",

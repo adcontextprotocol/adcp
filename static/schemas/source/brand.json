@@ -93,10 +93,17 @@
     },
     "font_file": {
       "type": "object",
-      "description": "A font file with weight and style metadata",
+      "description": "A font file with weight, style, and variable font metadata",
       "properties": {
-        "url": { "type": "string", "format": "uri", "description": "URL to the font file (WOFF2, TTF, or OTF)" },
-        "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight (100-900)" },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://", "description": "HTTPS URL to the font file (WOFF2, TTF, or OTF)" },
+        "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight for static fonts (100-900)" },
+        "weight_range": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1, "maximum": 999 },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Variable font weight axis range as [min, max] (e.g., [100, 900]). Use instead of weight for variable fonts."
+        },
         "style": {
           "type": "string",
           "enum": ["normal", "italic", "oblique"],
@@ -112,13 +119,24 @@
         { "type": "string", "description": "CSS font-family name (e.g., 'Montserrat', 'Arial, sans-serif')" },
         {
           "type": "object",
-          "description": "Structured font with family name and downloadable font files",
+          "description": "Structured font with family name, downloadable font files, and typographic metadata",
           "properties": {
             "family": { "type": "string", "description": "CSS font-family name (e.g., 'Brand Sans')" },
             "files": {
               "type": "array",
               "items": { "$ref": "#/definitions/font_file" },
+              "maxItems": 36,
               "description": "Font files for different weights and styles"
+            },
+            "opentype_features": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z0-9]{4}$" },
+              "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum', 'cv01']). These are four-character tags per the OpenType spec."
+            },
+            "fallbacks": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Ordered fallback font-family names for when the primary font is unavailable or does not support the required script (e.g., ['Noto Sans Arabic', 'Noto Sans SC', 'sans-serif'])"
             }
           },
           "required": ["family"],
