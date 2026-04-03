@@ -3,7 +3,7 @@
 
 CREATE TABLE newsletter_suggestions (
   id SERIAL PRIMARY KEY,
-  newsletter_id TEXT NOT NULL,              -- 'the_prompt' or 'the_build'
+  newsletter_id TEXT NOT NULL CHECK (newsletter_id IN ('the_prompt', 'the_build')),
   suggested_by_user_id TEXT NOT NULL,       -- workos_user_id of suggester
   suggested_by_name TEXT,                   -- display name at time of suggestion
   title TEXT NOT NULL,                      -- article/content title

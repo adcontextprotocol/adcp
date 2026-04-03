@@ -7,7 +7,7 @@ CREATE TABLE build_editions (
   content JSONB NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft', 'approved', 'sent', 'skipped')),
-  perspective_id UUID,
+  perspective_id UUID REFERENCES perspectives(id),
   review_channel_id TEXT,
   review_message_ts TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

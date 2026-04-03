@@ -465,7 +465,7 @@ export async function getNewOrganizations(days: number = 7): Promise<Array<{
  */
 export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]> {
   const result = await query<DigestEmailRecipient>(
-    `SELECT
+    `SELECT DISTINCT ON (u.workos_user_id)
        u.workos_user_id,
        u.email,
        u.first_name,

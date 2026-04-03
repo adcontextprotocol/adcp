@@ -48,8 +48,13 @@ export function createNewsletterToolHandlers(
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
+  const VALID_NEWSLETTERS = new Set(['the_prompt', 'the_build']);
+
   handlers.set('suggest_newsletter_content', async (input) => {
     const newsletterId = input.newsletter as string;
+    if (!VALID_NEWSLETTERS.has(newsletterId)) {
+      return JSON.stringify({ success: false, error: 'Invalid newsletter ID' });
+    }
     const title = (input.title as string).slice(0, 200);
     const rawUrl = input.url as string | undefined;
     const url = rawUrl && (rawUrl.startsWith('https://') || rawUrl.startsWith('http://')) ? rawUrl : undefined;

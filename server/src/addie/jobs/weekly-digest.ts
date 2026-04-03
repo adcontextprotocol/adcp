@@ -18,6 +18,7 @@ import { sendChannelMessage } from '../../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
 import { publishDigestAsPerspective } from '../services/digest-publisher.js';
+import { markSuggestionsIncluded } from '../../db/newsletter-suggestions-db.js';
 
 const logger = createLogger('weekly-digest');
 const workingGroupDb = new WorkingGroupDatabase();
@@ -116,6 +117,14 @@ async function generateDraft(editionDate: string): Promise<WeeklyDigestResult> {
     return result;
   }
   result.generated = true;
+
+  // Mark included suggestions so they don't appear in future drafts
+  const includedSuggestionIds = content.whatToWatch
+    .filter((item) => item.suggestionId)
+    .map((item) => item.suggestionId!);
+  if (includedSuggestionIds.length > 0) {
+    await markSuggestionsIncluded(includedSuggestionIds, editionDate);
+  }
 
   // Post to Editorial working group channel for review
   const editorial = await workingGroupDb.getWorkingGroupBySlug(EDITORIAL_SLUG);
