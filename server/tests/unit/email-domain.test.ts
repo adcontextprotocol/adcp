@@ -10,10 +10,6 @@ describe('normalizeEmail', () => {
     expect(normalizeEmail('user@googlemail.co.uk')).toBe('user@gmail.com');
   });
 
-  it('normalizes gmail.co.uk to gmail.com', () => {
-    expect(normalizeEmail('user@gmail.co.uk')).toBe('user@gmail.com');
-  });
-
   it('leaves gmail.com as-is', () => {
     expect(normalizeEmail('user@gmail.com')).toBe('user@gmail.com');
   });
@@ -34,6 +30,10 @@ describe('normalizeEmail', () => {
   it('handles emails with no @ gracefully', () => {
     expect(normalizeEmail('nope')).toBe('nope');
   });
+
+  it('does not treat gmail.co.uk as a Google alias', () => {
+    expect(normalizeEmail('user@gmail.co.uk')).toBe('user@gmail.co.uk');
+  });
 });
 
 describe('getGoogleEmailAliases', () => {
@@ -41,27 +41,24 @@ describe('getGoogleEmailAliases', () => {
     const aliases = getGoogleEmailAliases('user@googlemail.com');
     expect(aliases).toContain('user@gmail.com');
     expect(aliases).toContain('user@googlemail.co.uk');
-    expect(aliases).toContain('user@gmail.co.uk');
     expect(aliases).not.toContain('user@googlemail.com');
-    expect(aliases).toHaveLength(3);
+    expect(aliases).toHaveLength(2);
   });
 
   it('returns all aliases for gmail.com addresses', () => {
     const aliases = getGoogleEmailAliases('user@gmail.com');
     expect(aliases).toContain('user@googlemail.com');
     expect(aliases).toContain('user@googlemail.co.uk');
-    expect(aliases).toContain('user@gmail.co.uk');
     expect(aliases).not.toContain('user@gmail.com');
-    expect(aliases).toHaveLength(3);
+    expect(aliases).toHaveLength(2);
   });
 
   it('returns all aliases for googlemail.co.uk addresses', () => {
     const aliases = getGoogleEmailAliases('user@googlemail.co.uk');
     expect(aliases).toContain('user@gmail.com');
     expect(aliases).toContain('user@googlemail.com');
-    expect(aliases).toContain('user@gmail.co.uk');
     expect(aliases).not.toContain('user@googlemail.co.uk');
-    expect(aliases).toHaveLength(3);
+    expect(aliases).toHaveLength(2);
   });
 
   it('returns empty array for non-Google addresses', () => {
@@ -72,10 +69,14 @@ describe('getGoogleEmailAliases', () => {
   it('is case-insensitive', () => {
     const aliases = getGoogleEmailAliases('User@Gmail.COM');
     expect(aliases).toContain('user@googlemail.com');
-    expect(aliases).toHaveLength(3);
+    expect(aliases).toHaveLength(2);
   });
 
   it('returns empty array for invalid emails', () => {
     expect(getGoogleEmailAliases('nope')).toEqual([]);
+  });
+
+  it('does not treat gmail.co.uk as a Google alias', () => {
+    expect(getGoogleEmailAliases('user@gmail.co.uk')).toEqual([]);
   });
 });

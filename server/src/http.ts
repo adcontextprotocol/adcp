@@ -5564,12 +5564,13 @@ Disallow: /api/admin/
           const aliasEmails = getGoogleEmailAliases(user.email);
           if (aliasEmails.length > 0) {
             const pool = getPool();
-            const aliasResult = await pool.query<{ workos_user_id: string; email: string; created_at: Date }>(
-              `SELECT u.workos_user_id, u.email, u.created_at FROM users u
+            // Find a duplicate account, skipping emails already claimed by any user
+            const aliasResult = await pool.query<{ workos_user_id: string; email: string }>(
+              `SELECT u.workos_user_id, u.email FROM users u
                WHERE LOWER(u.email) = ANY($1::text[]) AND u.workos_user_id != $2
                AND NOT EXISTS (
                  SELECT 1 FROM user_email_aliases a
-                 WHERE a.workos_user_id = $2 AND LOWER(a.email) = ANY($1::text[])
+                 WHERE LOWER(a.email) = LOWER(u.email)
                )
                LIMIT 1`,
               [aliasEmails, user.id]
@@ -5578,11 +5579,12 @@ Disallow: /api/admin/
               const existing = aliasResult.rows[0];
               duplicateAliasEmail = existing.email;
 
-              // Claim the alias atomically to prevent concurrent merges
+              // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
+              // two users from claiming the same target concurrently.
               const claimResult = await pool.query(
                 `INSERT INTO user_email_aliases (workos_user_id, email)
                  VALUES ($1, $2)
-                 ON CONFLICT (workos_user_id, email) DO NOTHING
+                 ON CONFLICT DO NOTHING
                  RETURNING 1`,
                 [user.id, existing.email]
               );
@@ -5603,6 +5605,11 @@ Disallow: /api/admin/
                     'Auto-merged duplicate Google email alias accounts'
                   );
                 } catch (mergeError) {
+                  // Roll back the claim so the merge can be retried on next login
+                  await pool.query(
+                    'DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = LOWER($2)',
+                    [user.id, existing.email]
+                  ).catch(() => {});
                   logger.error(
                     { err: mergeError, primaryUserId: primaryId, secondaryUserId: secondaryId },
                     'Failed to auto-merge Google email alias accounts — user will see manual banner'

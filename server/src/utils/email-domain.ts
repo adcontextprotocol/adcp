@@ -8,7 +8,7 @@ const freeDomainsSet = new Set(freeEmailDomains);
  * `googlemail.com` was the default in several countries (e.g. Germany, UK)
  * before Google secured the `gmail.com` trademark there.
  */
-const GMAIL_ALIASES = new Set(['googlemail.com', 'googlemail.co.uk', 'gmail.co.uk']);
+const GMAIL_ALIASES = new Set(['googlemail.com', 'googlemail.co.uk']);
 
 /**
  * Normalize an email address so that known provider aliases resolve to
@@ -36,8 +36,8 @@ export function normalizeEmail(email: string): string {
  * Returns all Google email alias variants for the given address, excluding
  * the address itself. Returns an empty array for non-Google addresses.
  *
- *   twiegle@googlemail.com → [twiegle@gmail.com, twiegle@googlemail.co.uk, twiegle@gmail.co.uk]
- *   twiegle@gmail.com      → [twiegle@googlemail.com, twiegle@googlemail.co.uk, twiegle@gmail.co.uk]
+ *   twiegle@googlemail.com → [twiegle@gmail.com, twiegle@googlemail.co.uk]
+ *   twiegle@gmail.com      → [twiegle@googlemail.com, twiegle@googlemail.co.uk]
  */
 const ALL_GOOGLE_DOMAINS = ['gmail.com', ...GMAIL_ALIASES];
 
