@@ -210,6 +210,72 @@ describe('AddieRouter.quickMatch', () => {
     });
   });
 
+  describe('admin task management quick-match', () => {
+    it('should route "my tasks" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'my tasks', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['admin']);
+      }
+    });
+
+    it('should route "what\'s on my plate" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: "what's on my plate", isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "that moloco task is done" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'that moloco task is done', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "mark that as complete" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'mark that as complete', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should route "set a reminder" to admin tools for admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'set a reminder to follow up with Acme', isAAOAdmin: true }),
+      );
+      expect(plan).not.toBeNull();
+      expect(plan!.action).toBe('respond');
+    });
+
+    it('should NOT route task queries for non-admins', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'my tasks' }),
+      );
+      expect(plan).toBeNull();
+    });
+
+    it('should NOT match general "done" phrases without task vocabulary', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'that presentation is done', isAAOAdmin: true }),
+      );
+      expect(plan).toBeNull();
+    });
+
+    it('should NOT match project status questions containing "done"', () => {
+      const plan = router.quickMatch(
+        makeCtx({ message: 'is this project done yet', isAAOAdmin: true }),
+      );
+      expect(plan).toBeNull();
+    });
+  });
+
   describe('substantive messages fall through to LLM router', () => {
     it('should return null for protocol questions', () => {
       const plan = router.quickMatch(
