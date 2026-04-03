@@ -25,7 +25,7 @@ import {
   type UpdateProductInput,
   type PendingInvoice,
 } from "../billing/stripe-client.js";
-import { OrganizationDatabase } from "../db/organization-db.js";
+import { OrganizationDatabase, inferMembershipTier } from "../db/organization-db.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 
 const logger = createLogger("billing-routes");
@@ -650,7 +650,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
       // Verify org exists
       const orgResult = await pool.query(
-        "SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1",
+        "SELECT workos_organization_id, name, stripe_customer_id, is_personal FROM organizations WHERE workos_organization_id = $1",
         [org_id]
       );
 
@@ -725,6 +725,13 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
             if (subscriptions && subscriptions.data.length > 0) {
               const subscription = subscriptions.data[0];
               const priceData = subscription.items?.data?.[0]?.price;
+              const membershipTier = subscription.status === 'active'
+                ? inferMembershipTier(
+                    priceData?.unit_amount ?? null,
+                    priceData?.recurring?.interval ?? null,
+                    org.is_personal ?? false,
+                  )
+                : null;
 
               await pool.query(
                 `UPDATE organizations
@@ -734,8 +741,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
                      subscription_currency = $4,
                      subscription_current_period_end = $5,
                      subscription_canceled_at = $6,
+                     stripe_subscription_id = $7,
+                     membership_tier = $8,
                      updated_at = NOW()
-                 WHERE workos_organization_id = $7`,
+                 WHERE workos_organization_id = $9`,
                 [
                   subscription.status,
                   priceData?.unit_amount || null,
@@ -747,6 +756,8 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
                   subscription.canceled_at
                     ? new Date(subscription.canceled_at * 1000)
                     : null,
+                  subscription.id,
+                  membershipTier,
                   org_id,
                 ]
               );
