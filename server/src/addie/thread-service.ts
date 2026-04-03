@@ -33,6 +33,8 @@ export interface ThreadContext {
   viewing_channel_working_group_slug?: string;
   viewing_channel_working_group_name?: string;
   viewing_channel_working_group_id?: string;
+  // System channel role (prospect, escalation, billing, error, admin)
+  viewing_channel_system_role?: 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
   team_id?: string;
   enterprise_id?: string;
 
