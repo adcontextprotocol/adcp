@@ -264,14 +264,20 @@ export function createCertificationRouters() {
         return res.status(404).json({ error: 'Track not found' });
       }
 
-      // Check for existing active attempt
-      const active = await certDb.getActiveAttempt(userId, track_id);
+      // Verify all track modules are completed
+      const modules = await certDb.getModulesForTrack(track_id);
+      const capstoneMod = modules.find(m => m.format === 'capstone' || m.format === 'exam');
+      if (!capstoneMod) {
+        return res.status(400).json({ error: 'No capstone module found for this track' });
+      }
+
+      // Auto-expire stale attempts, then check for existing active attempt
+      await certDb.expireStaleAttempts(userId, capstoneMod.id);
+      const active = await certDb.getActiveAttemptForModule(userId, capstoneMod.id);
       if (active) {
         return res.json(active);
       }
 
-      // Verify all track modules are completed
-      const modules = await certDb.getModulesForTrack(track_id);
       const progress = await certDb.getProgress(userId);
       const completedModules = new Set(
         progress.filter(p => p.status === 'completed').map(p => p.module_id)
@@ -283,11 +289,6 @@ export function createCertificationRouters() {
           incomplete: incomplete.map(m => m.id),
           message: `Complete these modules first: ${incomplete.map(m => m.id).join(', ')}`,
         });
-      }
-
-      const capstoneMod = modules.find(m => m.format === 'capstone' || m.format === 'exam');
-      if (!capstoneMod) {
-        return res.status(400).json({ error: 'No capstone module found for this track' });
       }
 
       const attempt = await certDb.createAttempt(userId, track_id, addie_thread_id, capstoneMod.id);
@@ -923,6 +924,116 @@ export function createCertificationRouters() {
       res.json(result);
     } catch (error) {
       logger.error({ error }, 'Failed to get admin learner list');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/certification/stuck-attempts — list stuck attempts
+  adminRouter.get('/stuck-attempts', async (req, res) => {
+    try {
+      const rawDays = parseInt(req.query.days as string);
+      const days = Number.isFinite(rawDays) && rawDays >= 1 && rawDays <= 365 ? rawDays : 7;
+      const attempts = await certDb.getStuckAttempts(days);
+      res.json({ attempts });
+    } catch (error) {
+      logger.error({ error }, 'Failed to get stuck attempts');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/certification/attempts/:attemptId/resolve — resolve a stuck attempt
+  adminRouter.post('/attempts/:attemptId/resolve', async (req, res) => {
+    try {
+      const { attemptId } = req.params;
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(attemptId)) {
+        return res.status(400).json({ error: 'Invalid attempt ID format' });
+      }
+
+      const { action, scores, reason } = req.body as {
+        action: 'cancel' | 'complete';
+        scores?: Record<string, number>;
+        reason: string;
+      };
+
+      if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+        return res.status(400).json({ error: 'reason is required' });
+      }
+      if (reason.length > 1000) {
+        return res.status(400).json({ error: 'reason must be under 1000 characters' });
+      }
+      if (action !== 'cancel' && action !== 'complete') {
+        return res.status(400).json({ error: 'action must be "cancel" or "complete"' });
+      }
+
+      // Verify attempt exists and is in_progress
+      const attempt = await certDb.getAttempt(attemptId);
+      if (!attempt) {
+        return res.status(404).json({ error: 'Attempt not found' });
+      }
+      if (attempt.status !== 'in_progress') {
+        return res.status(409).json({ error: `Attempt is already ${attempt.status}` });
+      }
+
+      if (action === 'cancel') {
+        try {
+          const updated = await certDb.cancelAttempt(attemptId, reason.trim());
+          return res.json({ attempt: updated });
+        } catch (err) {
+          if (err instanceof Error && err.message.includes('not in_progress')) {
+            return res.status(409).json({ error: 'Attempt is no longer in_progress' });
+          }
+          throw err;
+        }
+      }
+
+      // action === 'complete'
+      if (!scores || Array.isArray(scores) || typeof scores !== 'object' || Object.keys(scores).length === 0) {
+        return res.status(400).json({ error: 'scores must be a non-empty object' });
+      }
+      const scoreValues = Object.values(scores);
+      if (!scoreValues.every(s => typeof s === 'number' && Number.isFinite(s))) {
+        return res.status(400).json({ error: 'All score values must be finite numbers' });
+      }
+      if (!scoreValues.every(s => s >= 0 && s <= 100)) {
+        return res.status(400).json({ error: 'Score values must be between 0 and 100' });
+      }
+
+      const overallScore = Math.round(
+        scoreValues.reduce((sum, s) => sum + s, 0) / scoreValues.length
+      );
+      const passing = scoreValues.every(s => s >= 70) && overallScore >= 70;
+
+      let updated;
+      try {
+        updated = await certDb.adminCompleteAttempt(attemptId, scores, overallScore, passing, reason.trim());
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('not in_progress')) {
+          return res.status(409).json({ error: 'Attempt is no longer in_progress' });
+        }
+        throw err;
+      }
+
+      // If passing, also mark the module as completed and check credentials
+      const warnings: string[] = [];
+      if (passing && updated.module_id) {
+        try {
+          await certDb.completeModule(updated.workos_user_id, updated.module_id, scores);
+        } catch (modError) {
+          warnings.push('Module completion failed — run backfill');
+          logger.error({ error: modError, attemptId, moduleId: updated.module_id }, 'Failed to mark module complete after admin resolve');
+        }
+        try {
+          await certDb.checkAndAwardCredentials(updated.workos_user_id);
+        } catch (credError) {
+          warnings.push('Credential check failed — run backfill');
+          logger.error({ error: credError, attemptId }, 'Failed to check credentials after admin resolve');
+        }
+      }
+
+      return res.json({ attempt: updated, ...(warnings.length > 0 && { warnings }) });
+    } catch (error) {
+      logger.error({ error, attemptId: req.params.attemptId }, 'Failed to resolve stuck attempt');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

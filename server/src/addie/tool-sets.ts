@@ -38,6 +38,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'web_search',          // Built-in Claude tool, always available
   'set_outreach_preference', // Users can always opt out of proactive outreach
   'search_image_library', // Illustrations to enrich explanations — not topic-dependent
+  'draft_github_issue',  // Bug reports & feature requests should always be possible
 ];
 
 /**

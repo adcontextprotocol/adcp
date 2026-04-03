@@ -447,6 +447,7 @@ export function createAdminUsersRouter(): Router {
         users_processed: result.usersProcessed,
         users_created: result.usersCreated,
         users_removed: result.usersRemoved,
+        users_skipped: result.usersSkipped,
         errors: result.errors,
       });
     } catch (error) {
@@ -658,6 +659,57 @@ export function createAdminUsersRouter(): Router {
       res.status(500).json({
         error: 'Failed to send Slack invites',
       });
+    }
+  });
+
+  // PUT /api/admin/users/:userId/name - Update a user's display name
+  router.put('/:userId/name', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const firstName = (req.body.first_name as string)?.trim();
+      const lastName = (req.body.last_name as string | null)?.trim() || null;
+
+      if (!firstName) {
+        return res.status(400).json({ error: 'first_name is required' });
+      }
+
+      const pool = getPool();
+
+      // Verify user exists
+      const userResult = await pool.query(
+        `SELECT email, first_name, last_name FROM users WHERE workos_user_id = $1`,
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const oldName = [userResult.rows[0].first_name, userResult.rows[0].last_name].filter(Boolean).join(' ') || '(empty)';
+
+      // Update users table
+      await pool.query(
+        `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+        [firstName, lastName, userId]
+      );
+
+      // Update across all memberships
+      await pool.query(
+        `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+        [firstName, lastName, userId]
+      );
+
+      logger.info({
+        adminEmail: req.user!.email,
+        userId,
+        oldName,
+        newName: [firstName, lastName].filter(Boolean).join(' '),
+      }, 'Admin updated user display name');
+
+      res.json({ first_name: firstName, last_name: lastName });
+    } catch (error) {
+      logger.error({ err: error }, 'Admin update user name error');
+      res.status(500).json({ error: 'Failed to update name' });
     }
   });
 

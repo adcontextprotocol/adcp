@@ -23,6 +23,18 @@ import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
 
+/** Stripe-defined subscription statuses (safe to interpolate into prompts). */
+const KNOWN_SUBSCRIPTION_STATUSES = new Set([
+  'active', 'past_due', 'canceled', 'incomplete',
+  'incomplete_expired', 'trialing', 'unpaid', 'paused', 'none',
+]);
+
+/** Sanitize subscription_status before interpolating into LLM prompts. */
+export function safeSubscriptionStatus(status: string | null | undefined): string | null {
+  if (!status) return null;
+  return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
+}
+
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
 const orgDb = new OrganizationDatabase();
@@ -1019,6 +1031,10 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
         lines.push('They are an active AgenticAdvertising.org individual member.');
       } else {
         lines.push('They are not currently an AgenticAdvertising.org member.');
+        const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
+        if (subStatus && subStatus !== 'none') {
+          lines.push(`Subscription status: ${subStatus} (requires "active" for membership).`);
+        }
       }
     } else {
       lines.push(`They work at ${context.organization.name}.`);
@@ -1027,6 +1043,11 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
         lines.push('Their organization is an active AgenticAdvertising.org member.');
       } else {
         lines.push('Their organization is not currently an AgenticAdvertising.org member.');
+        // Include subscription status when available to help diagnose membership issues
+        const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
+        if (subStatus && subStatus !== 'none') {
+          lines.push(`Subscription status: ${subStatus} (requires "active" for membership).`);
+        }
       }
     }
   }
@@ -1125,10 +1146,10 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     }
   }
 
-  // Organization membership details
+  // Organization role details (user's role within their org, not AAO membership)
   if (context.org_membership) {
     lines.push('');
-    lines.push('### Organization Membership');
+    lines.push('### Organization Role');
     lines.push(`Role: ${context.org_membership.role}`);
     lines.push(`Organization size: ${context.org_membership.member_count} users`);
     if (context.org_membership.joined_at) {
@@ -1137,7 +1158,7 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
         month: 'long',
         day: 'numeric',
       });
-      lines.push(`Member since: ${joinDate}`);
+      lines.push(`Joined organization: ${joinDate}`);
     }
   }
 

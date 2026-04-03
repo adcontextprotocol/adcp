@@ -1391,7 +1391,7 @@
           const usersResp = await fetch('/api/admin/users/sync-users', { method: 'POST' });
           if (usersResp.ok) {
             const r = await usersResp.json();
-            summary.push(`Users: ${r.users_created} synced, ${r.users_removed || 0} removed`);
+            summary.push(`Users: ${r.users_created} synced, ${r.users_removed || 0} removed, ${r.users_skipped || 0} retained`);
             if (!r.success) errors.push(...(r.errors || []));
           } else {
             errors.push('Users sync request failed');
@@ -2117,6 +2117,71 @@
       await showUserContext(userId, type, name);
     }
 
+    function showAdminNameEdit(userId, firstName, lastName) {
+      const modal = document.getElementById('contextModalBody');
+      const existing = document.getElementById('adminNameEditForm');
+      if (existing) existing.remove();
+
+      const form = document.createElement('div');
+      form.id = 'adminNameEditForm';
+      form.style.cssText = 'background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);';
+      form.innerHTML = `
+        <h3 style="margin: 0 0 var(--space-3) 0; font-size: var(--text-sm);">Edit Display Name</h3>
+        <div style="display: flex; gap: var(--space-3); margin-bottom: var(--space-3);">
+          <div style="flex: 1;">
+            <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">First name</label>
+            <input type="text" id="adminFirstName" value="${escapeHtml(firstName)}" style="width: 100%; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Last name</label>
+            <input type="text" id="adminLastName" value="${escapeHtml(lastName)}" style="width: 100%; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+          </div>
+        </div>
+        <div style="display: flex; gap: var(--space-2);">
+          <button class="btn btn-primary btn-small" onclick="saveAdminName('${escapeJs(userId)}')">Save</button>
+          <button class="btn btn-secondary btn-small" onclick="document.getElementById('adminNameEditForm').remove()">Cancel</button>
+        </div>
+        <div id="adminNameError" style="display: none; color: var(--color-error); font-size: 12px; margin-top: var(--space-2);"></div>
+      `;
+      modal.insertBefore(form, modal.firstChild);
+      document.getElementById('adminFirstName').focus();
+    }
+
+    async function saveAdminName(userId) {
+      const firstName = document.getElementById('adminFirstName').value.trim();
+      const lastName = document.getElementById('adminLastName').value.trim();
+      const errorEl = document.getElementById('adminNameError');
+
+      if (!firstName) {
+        errorEl.textContent = 'First name is required.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/admin/users/${userId}/name`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ first_name: firstName, last_name: lastName || null }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to update name');
+        }
+
+        // Refresh the context panel
+        document.getElementById('adminNameEditForm').remove();
+        const type = currentContextUser?.workos_user?.workos_user_id ? 'workos' : 'slack';
+        const newName = [firstName, lastName].filter(Boolean).join(' ');
+        await showUserContext(userId, type, newName);
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+      }
+    }
+
     function closeContextModal(event) {
       if (event && event.target !== event.currentTarget) return;
       document.getElementById('contextModal').classList.add('hidden');
@@ -2298,7 +2363,9 @@
       if (context.workos_user) {
         html += renderContextItem('Email', context.workos_user.email);
         const name = `${context.workos_user.first_name || ''} ${context.workos_user.last_name || ''}`.trim();
-        if (name) html += renderContextItem('Name', name);
+        const nameDisplay = name || '<span style="color: var(--color-text-muted); font-style: italic;">Not set</span>';
+        const editBtn = `<button class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; margin-left: 8px;" onclick="showAdminNameEdit('${escapeJs(context.workos_user.workos_user_id)}', '${escapeJs(context.workos_user.first_name || '')}', '${escapeJs(context.workos_user.last_name || '')}')">Edit</button>`;
+        html += `<div class="context-item"><div class="context-item-label">Name</div><div class="context-item-value">${nameDisplay}${editBtn}</div></div>`;
       }
 
       if (context.slack_user && !context.workos_user) {

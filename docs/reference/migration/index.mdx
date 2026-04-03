@@ -7,32 +7,11 @@ description: "A complete guide to migrating AdCP integrations from v2.x to v3.0,
 
 # Migrating from v2 to v3
 
-This page is your single entry point for migrating an AdCP 2.x integration to 3.0. Every breaking change is listed below with effort estimates and links to detailed migration pages.
+This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades).
 
-For the full list of new features (not just breaking changes), see [What's new in v3](/docs/reference/whats-new-in-v3).
-
-## Upgrading prerelease integrations (rc.1 to rc.2)
-
-This guide primarily covers 2.x → 3.0 migration. If you already adopted `3.0.0-rc.1`, review the rc.2 deltas below before upgrading.
-
-### Potentially breaking for rc.1 adopters
-
-| Area | rc.1 | rc.2 | What to do |
-|---|---|---|---|
-| Account auth model | `account_resolution` capability | Removed — `require_operator_auth` now determines account model | Update capability parsing and auth/account branching logic |
-| Creative library task boundary | `list_creatives` / `sync_creatives` documented under Media Buy | Creative library operations live in the Creative Protocol | Route library reads/writes through Creative Protocol assumptions, even when a sales agent implements both protocols |
-| Sandbox capability discovery | `media_buy.features.sandbox` | `account.sandbox` | Read sandbox support from the account capability block |
-| DOOH flat rate parameters | `flat_rate.parameters` without discriminator | `flat_rate.parameters.type: "dooh"` required when parameters are present | Add the discriminator in request builders and validators |
-| Deprecated governance task docs | `delete_content_standards`, `get_property_features` documented | Removed | Use `update_content_standards`, property lists, and `get_adcp_capabilities` instead |
-
-### High-value additive changes in rc.2
-
-- **Creative generation and preview** — `build_creative` adds `include_preview`, `preview_inputs`, `preview_quality`, `preview_output_format`, `quality`, `item_limit`, and multi-format `target_format_ids`. Buyers can now preview inline, choose draft vs production generation, and request multiple output formats in one call.
-- **Creative library retrieval** — `build_creative` also supports library retrieval using `creative_id`, optional `concept_id`, `media_buy_id`, `package_id`, and `macro_values`, so ad servers and creative platforms can resolve stored creatives into delivery-ready manifests.
-- **Creative capability discovery** — Creative agents can declare `supports_generation`, `supports_transformation`, and `has_creative_library`. `list_creatives` now uses library-oriented fields like `include_snapshot`, `has_served`, and `items`.
-- **Product discovery and planning** — `get_products` adds `exclusivity`, `preferred_delivery_types`, and `time_budget`, with `incomplete` in the response. Products may omit `delivery_measurement`, and packages can now carry per-package `start_time` / `end_time`.
-- **Compliance and governance** — Creative disclosures add persistence semantics, and campaign governance introduces `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`.
-- **Accounts and sandbox ergonomics** — `sync_accounts` adds `payment_terms`, and sandbox now participates in the natural account key for implicit account references.
+<Info>
+**Starting from v2?** See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for the 7 minimum requirements to pass comply testing before working through this full migration.
+</Info>
 
 ## Migration checklist
 
@@ -60,6 +39,11 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Signals | Delivery flattening, pricing restructure | Restructure | [Signals migration](/docs/reference/migration/signals) |
 | Audiences | `external_id` promoted to required top-level field | Restructure | [Audiences migration](/docs/reference/migration/audiences) |
 | Attribution | Integer day counts → `Duration` objects | Restructure | [Attribution migration](/docs/reference/migration/attribution) |
+| Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
+
+<Warning>
+**Comply-blocking requirement:** `buying_mode` on `get_products` is checked by comply testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
+</Warning>
 
 ## New in v3 — required vs optional
 
@@ -67,7 +51,7 @@ These capabilities are new in v3. None existed in v2, so there's nothing to migr
 
 | Capability | Required? | Who needs it |
 |---|---|---|
-| Accounts protocol (`sync_accounts`, `list_accounts`) | Required if `require_operator_auth: true` on any seller you connect to | All buyers working with walled gardens (AI platforms, social, retail media) |
+| Accounts protocol (`sync_accounts`, `list_accounts`) | Required for all buyers — use `sync_accounts` when `require_operator_auth: false` (implicit accounts), `list_accounts` when `true` (explicit accounts) | All buyers — the seller's `require_operator_auth` flag determines which task to call, not whether accounts are needed |
 | Brand Protocol (`brand.json`) | Recommended | All buyers — provides brand identity for creative generation |
 | Governance (content standards, property lists) | Optional | Buyers who need brand suitability enforcement |
 | Sponsored Intelligence | Optional | Buyers working with AI platforms that support conversational handoffs |
@@ -76,7 +60,7 @@ These capabilities are new in v3. None existed in v2, so there's nothing to migr
 
 ## Running v2 and v3 side by side
 
-AdCP does not define a version negotiation mechanism at the transport level. To run v2 and v3 integrations in parallel during migration:
+During migration, you can run v2 and v3 handlers in parallel. AdCP does not define a version negotiation mechanism at the transport level.
 
 1. **Check seller capabilities** — Call `get_adcp_capabilities` on each seller. If it succeeds, the seller supports v3. If the seller only exposes v2 tools (no `get_adcp_capabilities`), use your v2 code path.
 2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.

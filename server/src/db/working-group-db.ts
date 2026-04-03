@@ -1,6 +1,7 @@
 import { query } from './client.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from './community-db.js';
+import { createLogger } from '../logger.js';
 import type {
   WorkingGroup,
   WorkingGroupLeader,
@@ -22,6 +23,8 @@ import type {
   DocumentActivityType,
   DocumentIndexStatus,
 } from '../types.js';
+
+const logger = createLogger('working-group-db');
 
 /**
  * Escape LIKE pattern wildcards to prevent SQL injection
@@ -471,7 +474,7 @@ export class WorkingGroupDatabase {
     )).rows[0]?.workos_organization_id;
     if (orgId) {
       computeJourneyStage(orgId, 'membership_change', `working_group:${input.working_group_id}`)
-        .catch(() => {});
+        .catch((err) => { logger.error({ err, workingGroupId: input.working_group_id }, 'Journey stage computation failed'); });
     }
 
     return result.rows[0];
@@ -496,7 +499,7 @@ export class WorkingGroupDatabase {
     );
     if (orgResult.rows[0]) {
       computeJourneyStage(orgResult.rows[0].workos_organization_id, 'membership_change', `working_group:${workingGroupId}`)
-        .catch(() => {});
+        .catch((err) => { logger.error({ err, workingGroupId }, 'Journey stage computation failed'); });
     }
 
     return (result.rowCount || 0) > 0;
@@ -520,7 +523,7 @@ export class WorkingGroupDatabase {
     );
     if (orgResult.rows[0]) {
       computeJourneyStage(orgResult.rows[0].workos_organization_id, 'membership_change', `working_group:${workingGroupId}`)
-        .catch(() => {});
+        .catch((err) => { logger.error({ err, workingGroupId }, 'Journey stage computation failed'); });
     }
 
     return (result.rowCount || 0) > 0;
@@ -814,7 +817,7 @@ export class WorkingGroupDatabase {
       );
       for (const row of orgResults.rows) {
         computeJourneyStage(row.workos_organization_id, 'leadership_change', `working_group:${workingGroupId}`)
-          .catch(() => {});
+          .catch((err) => { logger.error({ err, workingGroupId }, 'Journey stage computation failed'); });
       }
     }
   }
@@ -843,12 +846,12 @@ export class WorkingGroupDatabase {
     );
     if (orgResult.rows[0]) {
       computeJourneyStage(orgResult.rows[0].workos_organization_id, 'leadership_change', `working_group:${workingGroupId}`)
-        .catch(() => {});
+        .catch((err) => { logger.error({ err, workingGroupId }, 'Journey stage computation failed'); });
     }
 
     // Award community points for leadership (fire-and-forget)
     new CommunityDatabase().awardPoints(canonicalUserId, 'wg_leadership', 30, workingGroupId, 'working_group')
-      .catch(() => {});
+      .catch((err) => { logger.error({ err, workingGroupId }, 'Failed to award leadership points'); });
   }
 
   /**
@@ -868,7 +871,7 @@ export class WorkingGroupDatabase {
     );
     if (orgResult.rows[0]) {
       computeJourneyStage(orgResult.rows[0].workos_organization_id, 'leadership_change', `working_group:${workingGroupId}`)
-        .catch(() => {});
+        .catch((err) => { logger.error({ err, workingGroupId }, 'Journey stage computation failed'); });
     }
   }
 

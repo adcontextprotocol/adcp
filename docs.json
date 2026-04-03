@@ -81,7 +81,9 @@
                     "expanded": false,
                     "pages": [
                       "docs/reference/whats-new-in-v3",
+                      "docs/reference/migration/v3-readiness",
                       "docs/reference/migration/index",
+                      "docs/reference/migration/prerelease-upgrades",
                       "docs/reference/migration/channels",
                       "docs/reference/migration/pricing",
                       "docs/reference/migration/geo-targeting",
@@ -552,7 +554,9 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/v3-readiness",
                   "docs/reference/migration/index",
+                  "docs/reference/migration/prerelease-upgrades",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
