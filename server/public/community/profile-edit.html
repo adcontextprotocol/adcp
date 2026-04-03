@@ -1436,7 +1436,7 @@
         showToast('Profile saved', 'success');
       } catch (error) {
         console.error('Save error:', error);
-        showToast(error.message, 'error');
+        showToast(error?.message || 'Failed to save profile', 'error');
       } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save changes';
@@ -1497,9 +1497,14 @@
       const slugGroup = slugField.closest('.form-group');
       const slugPreview = slugGroup.querySelector('.slug-preview');
 
-      // Move expertise and interests out of About you
-      const expertiseGroup = document.getElementById('expertise-container').closest('.form-group');
-      const interestsGroup = document.getElementById('interests-container').closest('.form-group');
+      // Move expertise, interests, and city out of Expertise & location
+      const expertiseEl = document.getElementById('expertise-container');
+      const interestsEl = document.getElementById('interests-container');
+      const cityEl = document.getElementById('field-city');
+      if (!expertiseEl || !interestsEl || !cityEl) return;
+      const expertiseGroup = expertiseEl.closest('.form-group');
+      const interestsGroup = interestsEl.closest('.form-group');
+      const cityGroup = cityEl.closest('.form-group');
 
       // Move offerings out of Member directory
       const offeringsGroup = document.getElementById('offering-consulting').closest('.form-group');
@@ -1523,10 +1528,12 @@
 
       // -- Build new sections --
 
-      // Section 1: About you (keep headline, bio, avatar, city — slug/expertise/interests removed)
+      // Section 1: About you (keep headline, bio, avatar — move slug/expertise/interests out, move city in)
       slugGroup.remove();
       expertiseGroup.remove();
       interestsGroup.remove();
+      cityGroup.remove();
+      aboutSection.appendChild(cityGroup);
 
       // Section 2: Expertise and interests (new)
       const expertiseSection = document.createElement('div');

@@ -85,6 +85,9 @@ export async function previewUserMerge(
       { name: 'working_group_topic_subscriptions', col: 'workos_user_id' },
       { name: 'meeting_attendees', col: 'workos_user_id' },
       { name: 'organization_join_requests', col: 'workos_user_id' },
+      { name: 'known_media_contacts', col: 'added_by' },
+      { name: 'member_portraits', col: 'user_id' },
+      { name: 'seat_upgrade_requests', col: 'workos_user_id' },
     ];
 
     for (const table of tables) {
@@ -344,6 +347,7 @@ export async function mergeUsers(
     await mergeWithUpdate('action_items');
     await mergeWithUpdate('member_insights');
     await mergeWithUpdate('organization_join_requests');
+    await mergeWithUpdate('seat_upgrade_requests');
 
     // connections: has CHECK(requester_user_id != recipient_user_id) and
     // UNIQUE(requester_user_id, recipient_user_id). Must handle self-connections
@@ -428,6 +432,62 @@ export async function mergeUsers(
       rows_moved: wgLeaderResult.rows.length,
       rows_skipped_duplicate: 0,
     });
+
+    // known_media_contacts: FK added_by REFERENCES users(workos_user_id) — no CASCADE
+    const mediaContactResult = await client.query(
+      `UPDATE known_media_contacts SET added_by = $1 WHERE added_by = $2 RETURNING 1`,
+      [primaryUserId, secondaryUserId]
+    );
+    summary.tables_merged.push({
+      table_name: 'known_media_contacts',
+      rows_moved: mediaContactResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // member_portraits: FK user_id REFERENCES users(workos_user_id) — no CASCADE
+    // Keep primary's portrait if it exists, delete secondary's
+    const primaryPortrait = await client.query(
+      `SELECT 1 FROM member_portraits WHERE user_id = $1`,
+      [primaryUserId]
+    );
+    if (primaryPortrait.rows.length > 0) {
+      // Clear the users.portrait_id FK before deleting the portrait
+      await client.query(
+        `UPDATE users SET portrait_id = NULL WHERE workos_user_id = $1
+         AND portrait_id IN (SELECT id FROM member_portraits WHERE user_id = $1)`,
+        [secondaryUserId]
+      );
+      const deletedPortraits = await client.query(
+        `DELETE FROM member_portraits WHERE user_id = $1 RETURNING 1`,
+        [secondaryUserId]
+      );
+      summary.tables_merged.push({
+        table_name: 'member_portraits',
+        rows_moved: 0,
+        rows_skipped_duplicate: deletedPortraits.rows.length,
+      });
+    } else {
+      await client.query(
+        `UPDATE member_portraits SET user_id = $1 WHERE user_id = $2`,
+        [primaryUserId, secondaryUserId]
+      );
+      // Also update the portrait_id reference on the primary user
+      const movedPortrait = await client.query(
+        `SELECT id FROM member_portraits WHERE user_id = $1`,
+        [primaryUserId]
+      );
+      if (movedPortrait.rows.length > 0) {
+        await client.query(
+          `UPDATE users SET portrait_id = $1 WHERE workos_user_id = $2`,
+          [movedPortrait.rows[0].id, primaryUserId]
+        );
+      }
+      summary.tables_merged.push({
+        table_name: 'member_portraits',
+        rows_moved: movedPortrait.rows.length,
+        rows_skipped_duplicate: 0,
+      });
+    }
 
     // =====================================================
     // 3. Update champion references in organizations

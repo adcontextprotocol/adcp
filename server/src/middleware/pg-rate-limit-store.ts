@@ -73,7 +73,7 @@ export class PostgresStore implements Store {
         resetTime: row.reset_at,
       };
     } catch (err) {
-      logger.warn({ err, key: prefixedKey }, 'Rate limit increment failed');
+      logger.warn({ err, key: prefixedKey }, 'Rate limit increment failed — rate limiting disabled for this request');
       // Permit on error to avoid blocking requests due to DB issues
       return { totalHits: 0, resetTime: undefined };
     }

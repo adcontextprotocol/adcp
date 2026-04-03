@@ -233,6 +233,44 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
 async function upsertUser(user: UserData): Promise<void> {
   const pool = getPool();
 
+  // Resolve names: prefer WorkOS values, but when WorkOS sends empty names,
+  // preserve existing DB values or backfill from Slack mapping
+  let firstName = user.first_name;
+  let lastName = user.last_name;
+
+  if (!firstName?.trim() || !lastName?.trim()) {
+    const existing = await pool.query<{
+      first_name: string | null;
+      last_name: string | null;
+      slack_real_name: string | null;
+      slack_display_name: string | null;
+    }>(
+      `SELECT u.first_name, u.last_name, sm.slack_real_name, sm.slack_display_name
+       FROM users u
+       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = u.primary_slack_user_id
+       WHERE u.workos_user_id = $1`,
+      [user.id]
+    );
+
+    if (existing.rows.length > 0) {
+      const row = existing.rows[0];
+
+      // Keep existing DB names if WorkOS sends empty
+      if (!firstName?.trim()) firstName = row.first_name;
+      if (!lastName?.trim()) lastName = row.last_name;
+
+      // Backfill from Slack if still empty
+      if (!firstName?.trim() && !lastName?.trim()) {
+        const slackName = row.slack_real_name || row.slack_display_name;
+        if (slackName) {
+          const parts = slackName.trim().split(/\s+/);
+          firstName = parts[0];
+          lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
+        }
+      }
+    }
+  }
+
   await pool.query(
     `INSERT INTO users (
       workos_user_id,
@@ -247,16 +285,16 @@ async function upsertUser(user: UserData): Promise<void> {
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
     ON CONFLICT (workos_user_id) DO UPDATE SET
       email = EXCLUDED.email,
-      first_name = EXCLUDED.first_name,
-      last_name = EXCLUDED.last_name,
+      first_name = COALESCE(NULLIF(TRIM(EXCLUDED.first_name), ''), users.first_name),
+      last_name = COALESCE(NULLIF(TRIM(EXCLUDED.last_name), ''), users.last_name),
       email_verified = EXCLUDED.email_verified,
       workos_updated_at = EXCLUDED.workos_updated_at,
       updated_at = NOW()`,
     [
       user.id,
       user.email,
-      user.first_name,
-      user.last_name,
+      firstName,
+      lastName,
       user.email_verified,
       user.created_at,
       user.updated_at,
@@ -282,16 +320,24 @@ async function deleteUser(userId: string): Promise<void> {
 }
 
 /**
- * Update user details across all their memberships
+ * Update user details across all their memberships.
+ * Reads the resolved name from the users table (which may have been enriched
+ * from Slack) rather than using raw WorkOS data that might be empty.
  */
 async function updateUserAcrossMemberships(user: UserData): Promise<void> {
   const pool = getPool();
 
   const result = await pool.query(
-    `UPDATE organization_memberships
-     SET email = $1, first_name = $2, last_name = $3, synced_at = NOW(), updated_at = NOW()
-     WHERE workos_user_id = $4`,
-    [user.email, user.first_name, user.last_name, user.id]
+    `UPDATE organization_memberships om
+     SET email = $1,
+         first_name = COALESCE(NULLIF(TRIM(u.first_name), ''), om.first_name),
+         last_name = COALESCE(NULLIF(TRIM(u.last_name), ''), om.last_name),
+         synced_at = NOW(),
+         updated_at = NOW()
+     FROM users u
+     WHERE u.workos_user_id = $2
+       AND om.workos_user_id = $2`,
+    [user.email, user.id]
   );
 
   logger.info({
@@ -1000,8 +1046,8 @@ export async function backfillUsers(): Promise<{
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
           ON CONFLICT (workos_user_id) DO UPDATE SET
             email = EXCLUDED.email,
-            first_name = EXCLUDED.first_name,
-            last_name = EXCLUDED.last_name,
+            first_name = COALESCE(NULLIF(TRIM(EXCLUDED.first_name), ''), users.first_name),
+            last_name = COALESCE(NULLIF(TRIM(EXCLUDED.last_name), ''), users.last_name),
             email_verified = EXCLUDED.email_verified,
             workos_updated_at = EXCLUDED.workos_updated_at,
             updated_at = NOW()`,

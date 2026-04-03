@@ -54,6 +54,8 @@ function injectJoinCtaStyles() {
       border: 3px solid var(--color-border);
       transition: var(--transition-all);
       position: relative;
+      display: flex;
+      flex-direction: column;
     }
 
     .join-cta-card:hover {
@@ -157,6 +159,7 @@ function injectJoinCtaStyles() {
       list-style: none;
       padding: 0;
       margin: 0 0 var(--space-5) 0;
+      flex: 1;
     }
 
     .join-cta-benefits-list li {

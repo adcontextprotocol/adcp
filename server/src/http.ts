@@ -39,7 +39,7 @@ import { SlackDatabase } from "./db/slack-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
-import { getCompanyDomain } from "./utils/email-domain.js";
+import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
@@ -87,6 +87,8 @@ import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRo
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
+import { createUserJourneyRouter } from "./routes/user-journey.js";
+import { createOrgHealthRouter } from "./routes/org-health.js";
 import { createNotificationRouter } from "./routes/notifications.js";
 import { CommunityDatabase } from "./db/community-db.js";
 import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
@@ -1083,6 +1085,10 @@ export class HTTPServer {
     const engagementRouter = createEngagementRouter({ orgDb, orgKnowledgeDb, workingGroupDb });
     this.app.use('/api/me/engagement', engagementRouter);
 
+    // Mount individual journey and org health routes
+    this.app.use('/api/me/journey', createUserJourneyRouter());
+    this.app.use('/api/me/org-health', createOrgHealthRouter());
+
     // Mount notification routes
     this.app.use('/api/notifications', notificationRateLimiter, createNotificationRouter());
 
@@ -1885,7 +1891,7 @@ export class HTTPServer {
       } catch (dbErr) {
         checks.database = false;
         const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-        console.error('Database health check failed:', errMsg);
+        logger.error({ err: dbErr }, 'Database health check failed');
         notifySystemError({
           source: 'health-check',
           errorMessage: `Database health check failed: ${errMsg}`,
@@ -5575,6 +5581,75 @@ Disallow: /api/admin/
           logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
         }
 
+        // Auto-merge duplicate accounts caused by Google email aliases.
+        // googlemail.com and gmail.com deliver to the same inbox, so we can
+        // merge without requiring email verification — WorkOS already verified
+        // ownership of the mailbox during signup.
+        let duplicateAliasEmail: string | null = null;
+        let autoMerged = false;
+        try {
+          const aliasEmails = getGoogleEmailAliases(user.email);
+          if (aliasEmails.length > 0) {
+            const pool = getPool();
+            // Find a duplicate account, skipping emails already claimed by any user
+            const aliasResult = await pool.query<{ workos_user_id: string; email: string }>(
+              `SELECT u.workos_user_id, u.email FROM users u
+               WHERE LOWER(u.email) = ANY($1::text[]) AND u.workos_user_id != $2
+               AND NOT EXISTS (
+                 SELECT 1 FROM user_email_aliases a
+                 WHERE LOWER(a.email) = LOWER(u.email)
+               )
+               LIMIT 1`,
+              [aliasEmails, user.id]
+            );
+            if (aliasResult.rows.length > 0) {
+              const existing = aliasResult.rows[0];
+              duplicateAliasEmail = existing.email;
+
+              // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
+              // two users from claiming the same target concurrently.
+              const claimResult = await pool.query(
+                `INSERT INTO user_email_aliases (workos_user_id, email)
+                 VALUES ($1, $2)
+                 ON CONFLICT DO NOTHING
+                 RETURNING 1`,
+                [user.id, existing.email]
+              );
+
+              if (claimResult.rows.length > 0) {
+                // The currently-logging-in user must be primary — mergeUsers
+                // deletes the secondary's WorkOS account, which would invalidate
+                // the session we just created if the current user were secondary.
+                const primaryId = user.id;
+                const secondaryId = existing.workos_user_id;
+
+                try {
+                  const { mergeUsers } = await import('./db/user-merge-db.js');
+                  const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge', workos!);
+                  autoMerged = true;
+                  logger.info(
+                    { primaryUserId: primaryId, secondaryUserId: secondaryId, tables: summary.tables_merged.length },
+                    'Auto-merged duplicate Google email alias accounts'
+                  );
+                } catch (mergeError) {
+                  // Roll back the claim so the merge can be retried on next login
+                  await pool.query(
+                    'DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = LOWER($2)',
+                    [user.id, existing.email]
+                  ).catch(() => {});
+                  logger.error(
+                    { err: mergeError, primaryUserId: primaryId, secondaryUserId: secondaryId },
+                    'Failed to auto-merge Google email alias accounts — user will see manual banner'
+                  );
+                }
+              }
+              // else: another concurrent login already claimed this alias — skip
+            }
+          }
+        } catch (aliasCheckError) {
+          logger.warn({ error: aliasCheckError }, 'Failed to check for Google email alias duplicates');
+        }
+
         // Check if user needs to accept (or re-accept) ToS and Privacy Policy
         // This happens when:
         // 1. User has never accepted them, OR
@@ -5849,6 +5924,17 @@ Disallow: /api/admin/
             }
           } catch (linkError) {
             logger.warn({ error: linkError, workosUserId: user.id }, 'Failed to email auto-link on login');
+          }
+        }
+
+        // If a Google email alias duplicate was detected, append status to the redirect.
+        // Auto-merged: show success notice. Failed: show manual merge banner.
+        if (duplicateAliasEmail && returnTo.startsWith('/')) {
+          const sep = returnTo.includes('?') ? '&' : '?';
+          if (autoMerged) {
+            returnTo = `${returnTo}${sep}accounts_merged=${encodeURIComponent(duplicateAliasEmail)}`;
+          } else {
+            returnTo = `${returnTo}${sep}duplicate_email=${encodeURIComponent(duplicateAliasEmail)}`;
           }
         }
 
@@ -6173,6 +6259,39 @@ Disallow: /api/admin/
         res.status(500).json({
           error: 'Failed to get user info',
         });
+      }
+    });
+
+    // PUT /api/me/name - Update current user's display name
+    this.app.put('/api/me/name', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const firstName = (req.body.first_name as string)?.trim();
+        const lastName = (req.body.last_name as string | null)?.trim() || null;
+
+        if (!firstName) {
+          return res.status(400).json({ error: 'first_name is required' });
+        }
+
+        const pool = getPool();
+
+        // Update users table
+        await pool.query(
+          `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+          [firstName, lastName, user.id]
+        );
+
+        // Update across all memberships
+        await pool.query(
+          `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+          [firstName, lastName, user.id]
+        );
+
+        logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
+        res.json({ first_name: firstName, last_name: lastName });
+      } catch (error) {
+        logger.error({ err: error }, 'Update user name error');
+        res.status(500).json({ error: 'Failed to update name' });
       }
     });
 

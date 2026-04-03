@@ -295,7 +295,7 @@ export async function proposeContentForUser(
   );
   if (userOrgResult.rows[0]) {
     computeJourneyStage(userOrgResult.rows[0].workos_organization_id, 'content_contribution', `perspective:${perspective.id}`)
-      .catch(() => {});
+      .catch((err) => { logger.error({ err, perspectiveId: perspective.id }, 'Journey stage computation failed'); });
   }
 
   // Create content_authors records

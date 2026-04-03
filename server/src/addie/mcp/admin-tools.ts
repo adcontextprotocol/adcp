@@ -892,6 +892,22 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   },
 
   {
+    name: 'update_user_name',
+    description: `Update a user's display name (first and last name). Use this when a user's name is showing incorrectly (e.g., as their email prefix) and needs manual correction.`,
+    usage_hints: 'Get user_id from get_account or escalation context. Provide the correct first_name and optionally last_name.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        user_id: { type: 'string', description: 'WorkOS user ID (user_...)' },
+        email: { type: 'string', description: 'User email (alternative to user_id for lookup)' },
+        first_name: { type: 'string', description: 'First name' },
+        last_name: { type: 'string', description: 'Last name' },
+      },
+      required: ['first_name'],
+    },
+  },
+
+  {
     name: 'rename_working_group',
     description: `Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").`,
     usage_hints: 'Look up current slug first with list_working_groups or list_chapters.',
@@ -5441,6 +5457,65 @@ Use add_committee_leader to assign a leader.`;
       logger.error({ error, orgId, userId, role }, 'Error updating org member role');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return `❌ Failed to update role: ${errorMessage}`;
+    }
+  });
+
+  handlers.set('update_user_name', async (input) => {
+    const userId = (input.user_id as string)?.trim();
+    const email = (input.email as string)?.trim().toLowerCase();
+    const firstName = (input.first_name as string)?.trim();
+    const lastName = (input.last_name as string)?.trim() || null;
+
+    if (!userId && !email) {
+      return '❌ Provide either user_id or email to identify the user.';
+    }
+    if (!firstName) {
+      return '❌ first_name is required.';
+    }
+
+    const pool = getPool();
+
+    try {
+      // Look up user
+      const userResult = await pool.query<{
+        workos_user_id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+      }>(
+        userId
+          ? `SELECT workos_user_id, email, first_name, last_name FROM users WHERE workos_user_id = $1`
+          : `SELECT workos_user_id, email, first_name, last_name FROM users WHERE LOWER(email) = $1`,
+        [userId || email]
+      );
+
+      if (userResult.rows.length === 0) {
+        return `❌ No user found for ${userId || email}.`;
+      }
+
+      const user = userResult.rows[0];
+      const oldName = [user.first_name, user.last_name].filter(Boolean).join(' ') || '(empty)';
+      const newName = [firstName, lastName].filter(Boolean).join(' ');
+
+      // Update users table
+      await pool.query(
+        `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+        [firstName, lastName, user.workos_user_id]
+      );
+
+      // Update across all memberships
+      await pool.query(
+        `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+        [firstName, lastName, user.workos_user_id]
+      );
+
+      logger.info({ userId: user.workos_user_id, oldName, newName }, 'Addie: Updated user display name');
+
+      return `✅ Updated display name for ${user.email}: "${oldName}" → "${newName}"`;
+    } catch (error) {
+      logger.error({ error, userId, email }, 'Error updating user name');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to update name: ${errorMessage}`;
     }
   });
 
