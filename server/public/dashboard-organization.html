@@ -800,9 +800,28 @@
 
     async function loadHub() {
       try {
-        const [meRes, engRes] = await Promise.all([
-          fetch('/api/me', { credentials: 'include' }),
-          fetch('/api/me/engagement', { credentials: 'include' }),
+        // Fetch user data first to resolve which org to show
+        const meRes = await fetch('/api/me', { credentials: 'include' });
+        if (!meRes.ok) {
+          if (meRes.status === 401) {
+            window.location.href = '/auth/login?return_to=/organization';
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+        const meData = await meRes.json();
+        const orgs = meData?.organizations || [];
+        let { org: currentOrg } = DashboardNav.resolveOrg(orgs);
+        // On the org dashboard, default to the first non-personal org
+        if (!currentOrg && orgs.length > 0) {
+          currentOrg = orgs.find(o => !o.is_personal) || orgs[0];
+        }
+
+        // Now fetch engagement + profile scoped to the selected org
+        const orgParam = currentOrg?.id ? `?org=${encodeURIComponent(currentOrg.id)}` : '';
+        const [engRes, profileRes] = await Promise.all([
+          fetch(`/api/me/engagement${orgParam}`, { credentials: 'include' }),
+          fetch(`/api/me/member-profile${orgParam}`, { credentials: 'include' }),
         ]);
 
         if (!engRes.ok) {
@@ -820,19 +839,6 @@
         }
 
         const data = await engRes.json();
-
-        // Init dashboard sidebar — resolve org first so profile fetch uses the right org
-        const meData = meRes.ok ? await meRes.json() : null;
-        const orgs = meData?.organizations || [];
-        let { org: currentOrg } = DashboardNav.resolveOrg(orgs);
-        // On the org dashboard, default to the first non-personal org
-        if (!currentOrg && orgs.length > 0) {
-          currentOrg = orgs.find(o => !o.is_personal) || orgs[0];
-        }
-
-        // Fetch profile with org context
-        const profileParam = currentOrg?.id ? `?org=${encodeURIComponent(currentOrg.id)}` : '';
-        const profileRes = await fetch(`/api/me/member-profile${profileParam}`, { credentials: 'include' });
         const profileData = profileRes.ok ? await profileRes.json() : null;
         DashboardNav.init({
           showOrgSwitcher: orgs.length > 1,
@@ -1314,7 +1320,7 @@
     // -------------------------------------------------------------------------
 
     function renderProfileCard(profile, orgId) {
-      const profileUrl = orgId ? `/member-profile?org=${orgId}` : '/member-profile';
+      const profileUrl = orgId ? `/member-profile?org=${encodeURIComponent(orgId)}` : '/member-profile';
       const hdr = '';
 
       if (!profile) {
