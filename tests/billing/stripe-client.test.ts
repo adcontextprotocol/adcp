@@ -1,15 +1,18 @@
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, vi, beforeEach, type MockedClass } from 'vitest';
 import type Stripe from 'stripe';
 
-// Mock the Stripe module
-jest.mock('stripe');
+// Mock the Stripe module with a constructor that stores the latest mock instance
+vi.mock('stripe', () => {
+  const MockStripe = vi.fn();
+  return { default: MockStripe };
+});
 
 describe('stripe-client', () => {
   beforeEach(() => {
     // Clear all mocks before each test
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     // Reset modules to get fresh imports
-    jest.resetModules();
+    vi.resetModules();
   });
 
   describe('getStripeSubscriptionInfo', () => {
@@ -36,15 +39,15 @@ describe('stripe-client', () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
       // Mock Stripe SDK
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             deleted: true,
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       // Re-import module to get mocked version
       const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
@@ -61,10 +64,10 @@ describe('stripe-client', () => {
     test('returns status "none" for customer with no subscriptions', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             deleted: false,
             subscriptions: {
               data: [],
@@ -72,7 +75,7 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
@@ -84,10 +87,10 @@ describe('stripe-client', () => {
     test('returns subscription info for active subscription', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             deleted: false,
             subscriptions: {
               data: [{
@@ -97,7 +100,7 @@ describe('stripe-client', () => {
           }),
         },
         subscriptions: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             status: 'active',
             current_period_end: 1234567890,
             cancel_at_period_end: false,
@@ -118,7 +121,7 @@ describe('stripe-client', () => {
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
@@ -136,13 +139,13 @@ describe('stripe-client', () => {
     test('handles errors gracefully and returns null', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          retrieve: jest.fn<any>().mockRejectedValue(new Error('Stripe API error')),
+          retrieve: vi.fn<any>().mockRejectedValue(new Error('Stripe API error')),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
@@ -169,16 +172,16 @@ describe('stripe-client', () => {
     test('creates customer and returns customer ID when no existing customer', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          list: jest.fn<any>().mockResolvedValue({ data: [] }),
-          create: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({ data: [] }),
+          create: vi.fn<any>().mockResolvedValue({
             id: 'cus_new123',
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
 
@@ -203,17 +206,17 @@ describe('stripe-client', () => {
     test('returns existing customer ID when customer already exists', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          list: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({
             data: [{ id: 'cus_existing123', metadata: { existing_key: 'value' } }],
           }),
-          update: jest.fn<any>().mockResolvedValue({ id: 'cus_existing123' }),
-          create: jest.fn(),
+          update: vi.fn<any>().mockResolvedValue({ id: 'cus_existing123' }),
+          create: vi.fn(),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
 
@@ -238,13 +241,13 @@ describe('stripe-client', () => {
     test('handles errors and returns null', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          list: jest.fn<any>().mockRejectedValue(new Error('Stripe API error')),
+          list: vi.fn<any>().mockRejectedValue(new Error('Stripe API error')),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
 
@@ -259,18 +262,18 @@ describe('stripe-client', () => {
     test('searches by workos_organization_id metadata before email', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          search: jest.fn<any>().mockResolvedValue({
+          search: vi.fn<any>().mockResolvedValue({
             data: [{ id: 'cus_orgmatch', metadata: { workos_organization_id: 'org_abc' } }],
           }),
-          update: jest.fn<any>().mockResolvedValue({ id: 'cus_orgmatch' }),
-          list: jest.fn(),
-          create: jest.fn(),
+          update: vi.fn<any>().mockResolvedValue({ id: 'cus_orgmatch' }),
+          list: vi.fn(),
+          create: vi.fn(),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
 
@@ -293,15 +296,15 @@ describe('stripe-client', () => {
     test('falls through to email check when org metadata search returns empty', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          search: jest.fn<any>().mockResolvedValue({ data: [] }),
-          list: jest.fn<any>().mockResolvedValue({ data: [] }),
-          create: jest.fn<any>().mockResolvedValue({ id: 'cus_new456' }),
+          search: vi.fn<any>().mockResolvedValue({ data: [] }),
+          list: vi.fn<any>().mockResolvedValue({ data: [] }),
+          create: vi.fn<any>().mockResolvedValue({ id: 'cus_new456' }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
 
@@ -335,17 +338,17 @@ describe('stripe-client', () => {
     test('creates portal session and returns URL', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         billingPortal: {
           sessions: {
-            create: jest.fn<any>().mockResolvedValue({
+            create: vi.fn<any>().mockResolvedValue({
               url: 'https://billing.stripe.com/session/test',
             }),
           },
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createCustomerPortalSession } = await import('../../server/src/billing/stripe-client.js');
 
@@ -373,15 +376,15 @@ describe('stripe-client', () => {
     test('creates customer session and returns client secret', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customerSessions: {
-          create: jest.fn<any>().mockResolvedValue({
+          create: vi.fn<any>().mockResolvedValue({
             client_secret: 'cs_test_secret123',
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
 
@@ -427,47 +430,47 @@ describe('stripe-client', () => {
     test('creates subscription with invoice billing and returns invoice details', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
-          list: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({
             data: [{ id: 'price_abc123' }],
           }),
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'price_abc123',
             unit_amount: 1000000, // $10,000
             currency: 'usd',
           }),
         },
         customers: {
-          list: jest.fn<any>().mockResolvedValue({ data: [] }),
-          create: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({ data: [] }),
+          create: vi.fn<any>().mockResolvedValue({
             id: 'cus_new123',
             email: 'ruben.schreurs@ebiquity.com',
           }),
-          update: jest.fn<any>().mockResolvedValue({
+          update: vi.fn<any>().mockResolvedValue({
             id: 'cus_new123',
             email: 'ruben.schreurs@ebiquity.com',
           }),
         },
         subscriptions: {
-          create: jest.fn<any>().mockResolvedValue({
+          create: vi.fn<any>().mockResolvedValue({
             id: 'sub_xyz789',
             latest_invoice: 'in_abc123',
           }),
         },
         invoices: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'in_abc123',
             amount_due: 1000000,
           }),
-          sendInvoice: jest.fn<any>().mockResolvedValue({
+          sendInvoice: vi.fn<any>().mockResolvedValue({
             id: 'in_abc123',
             hosted_invoice_url: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
 
@@ -494,31 +497,31 @@ describe('stripe-client', () => {
     test('returns null when price has zero amount', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
-          list: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({
             data: [{ id: 'price_abc123' }],
           }),
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'price_abc123',
             unit_amount: 0, // Zero amount - should fail
             currency: 'usd',
           }),
         },
         customers: {
-          list: jest.fn<any>().mockResolvedValue({ data: [] }),
-          create: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({ data: [] }),
+          create: vi.fn<any>().mockResolvedValue({
             id: 'cus_new123',
             email: 'test@example.com',
           }),
-          update: jest.fn<any>().mockResolvedValue({ id: 'cus_new123' }),
+          update: vi.fn<any>().mockResolvedValue({ id: 'cus_new123' }),
         },
         subscriptions: {
-          create: jest.fn(),
+          create: vi.fn(),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
 
@@ -532,41 +535,41 @@ describe('stripe-client', () => {
     test('cancels subscription when invoice has zero amount', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
-          list: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({
             data: [{ id: 'price_abc123' }],
           }),
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'price_abc123',
             unit_amount: 1000000, // Valid price
             currency: 'usd',
           }),
         },
         customers: {
-          list: jest.fn<any>().mockResolvedValue({ data: [] }),
-          create: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({ data: [] }),
+          create: vi.fn<any>().mockResolvedValue({
             id: 'cus_new123',
             email: 'test@example.com',
           }),
-          update: jest.fn<any>().mockResolvedValue({ id: 'cus_new123' }),
+          update: vi.fn<any>().mockResolvedValue({ id: 'cus_new123' }),
         },
         subscriptions: {
-          create: jest.fn<any>().mockResolvedValue({
+          create: vi.fn<any>().mockResolvedValue({
             id: 'sub_xyz789',
             latest_invoice: 'in_abc123',
           }),
-          cancel: jest.fn<any>().mockResolvedValue({ id: 'sub_xyz789' }),
+          cancel: vi.fn<any>().mockResolvedValue({ id: 'sub_xyz789' }),
         },
         invoices: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'in_abc123',
             amount_due: 0, // Zero amount invoice - should cancel subscription
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
 
@@ -580,15 +583,15 @@ describe('stripe-client', () => {
     test('returns null when lookup key not found', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
-          list: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({
             data: [], // No prices found
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
 
@@ -603,46 +606,46 @@ describe('stripe-client', () => {
     test('uses existing customer when found by email', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         prices: {
-          list: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({
             data: [{ id: 'price_abc123' }],
           }),
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'price_abc123',
             unit_amount: 1000000,
             currency: 'usd',
           }),
         },
         customers: {
-          list: jest.fn<any>().mockResolvedValue({
+          list: vi.fn<any>().mockResolvedValue({
             data: [{ id: 'cus_existing123', email: 'ruben.schreurs@ebiquity.com' }],
           }),
-          update: jest.fn<any>().mockResolvedValue({
+          update: vi.fn<any>().mockResolvedValue({
             id: 'cus_existing123',
             email: 'ruben.schreurs@ebiquity.com',
           }),
-          create: jest.fn(),
+          create: vi.fn(),
         },
         subscriptions: {
-          create: jest.fn<any>().mockResolvedValue({
+          create: vi.fn<any>().mockResolvedValue({
             id: 'sub_xyz789',
             latest_invoice: 'in_abc123',
           }),
         },
         invoices: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'in_abc123',
             amount_due: 1000000,
           }),
-          sendInvoice: jest.fn<any>().mockResolvedValue({
+          sendInvoice: vi.fn<any>().mockResolvedValue({
             id: 'in_abc123',
             hosted_invoice_url: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
           }),
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
 
@@ -659,25 +662,25 @@ describe('stripe-client', () => {
     test('includes subscription_data.metadata with org ID for subscription-mode checkout', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockSession = {
         id: 'cs_test_123',
         url: 'https://checkout.stripe.com/test',
       };
       const mockStripeInstance = {
         prices: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'price_test',
             recurring: { interval: 'year' },
           }),
         },
         checkout: {
           sessions: {
-            create: jest.fn<any>().mockResolvedValue(mockSession),
+            create: vi.fn<any>().mockResolvedValue(mockSession),
           },
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
 
@@ -700,25 +703,25 @@ describe('stripe-client', () => {
     test('does not include subscription_data for one-time payment checkout', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
-      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockSession = {
         id: 'cs_test_456',
         url: 'https://checkout.stripe.com/test2',
       };
       const mockStripeInstance = {
         prices: {
-          retrieve: jest.fn<any>().mockResolvedValue({
+          retrieve: vi.fn<any>().mockResolvedValue({
             id: 'price_onetime',
             recurring: null,
           }),
         },
         checkout: {
           sessions: {
-            create: jest.fn<any>().mockResolvedValue(mockSession),
+            create: vi.fn<any>().mockResolvedValue(mockSession),
           },
         },
       };
-      StripeMock.mockImplementation(() => mockStripeInstance as any);
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
 
       const { createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
 

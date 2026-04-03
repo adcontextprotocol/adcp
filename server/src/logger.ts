@@ -66,7 +66,10 @@ const hooks: pino.LoggerOptions['hooks'] = {
     const args = inputArgs as unknown[];
     let message = '';
     let error: Error | undefined;
-    let context: Record<string, unknown> = {};
+    // Start with child logger bindings so module/context from createLogger() is available
+    let context: Record<string, unknown> = typeof this.bindings === 'function'
+      ? { ...this.bindings() }
+      : {};
 
     // Parse Pino's flexible argument format
     for (const arg of args) {

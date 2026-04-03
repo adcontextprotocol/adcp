@@ -30,24 +30,26 @@ vi.mock('../../src/db/migrate.js', () => ({
 }));
 
 // Mock member database to return test agents
-const mockMemberData = {
-  id: 'test-member-1',
-  slug: 'test-member',
-  display_name: 'Test Member',
-  is_public: true,
-  agents: [
-    {
-      url: 'https://creative.test',
-      is_public: true,
-      name: 'Test Creative Agent',
-      type: 'creative',
-    }
-  ],
-  contact_email: 'test@example.com',
-  contact_website: 'https://example.com',
-  created_at: new Date('2024-01-01'),
-  description: 'Test description',
-};
+const { mockMemberData } = vi.hoisted(() => ({
+  mockMemberData: {
+    id: 'test-member-1',
+    slug: 'test-member',
+    display_name: 'Test Member',
+    is_public: true,
+    agents: [
+      {
+        url: 'https://creative.test',
+        is_public: true,
+        name: 'Test Creative Agent',
+        type: 'creative',
+      }
+    ],
+    contact_email: 'test@example.com',
+    contact_website: 'https://example.com',
+    created_at: new Date('2024-01-01'),
+    description: 'Test description',
+  },
+}));
 
 vi.mock('../../src/db/member-db.js', () => {
   return {

@@ -11,7 +11,7 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "types": ["jest", "node"]
+    "types": ["node"]
   },
   "include": ["server/src/**/*"],
   "exclude": ["node_modules", "dist", "docs", "tests/**/*", "server/tests/**/*"]

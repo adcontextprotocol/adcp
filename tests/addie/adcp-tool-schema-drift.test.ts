@@ -6,10 +6,10 @@
  * - Protocol → Tool: every protocol property exists in the tool
  * - Tool → Protocol: every tool property exists in the protocol (or is in ADDIE_ONLY)
  *
- * Run with: npx jest tests/addie/adcp-tool-schema-drift.test.ts
+ * Run with: npx vitest run tests/addie/adcp-tool-schema-drift.test.ts
  */
 
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, test } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import {

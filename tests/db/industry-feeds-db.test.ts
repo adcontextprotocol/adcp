@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { normalizeUrl } from '../../server/src/db/industry-feeds-db.js';
 
 describe('normalizeUrl', () => {
