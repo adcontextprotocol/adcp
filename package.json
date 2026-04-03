@@ -36,7 +36,7 @@
     "test:docs-nav": "node tests/docs-nav-validation.test.cjs",
     "test": "npm run test:docs-nav && npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:migrations && npm run test:hmac-vectors && npm run test:transport-errors && npm run test:unit && npm run test:server-unit && npm run test:openapi && npm run typecheck",
     "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
-    "precommit": "npm run test:unit && npm run test:server-unit && npm run typecheck",
+    "precommit": "npm run test:unit && npm run typecheck",
     "prepare": "husky",
     "changeset": "changeset",
     "version": "changeset version && npm run build:schemas -- --release",
