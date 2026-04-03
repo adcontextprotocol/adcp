@@ -5562,7 +5562,8 @@ Disallow: /api/admin/
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
         // Ensure user exists in local users table (webhooks may have been missed).
-        // WorkOS is the source of truth for name/email — always sync on login.
+        // On INSERT, use WorkOS values. On UPDATE, preserve user-set names:
+        // only fill in names that are currently empty in the DB.
         try {
           const pool = getPool();
           await pool.query(
@@ -5570,8 +5571,8 @@ Disallow: /api/admin/
              VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
              ON CONFLICT (workos_user_id) DO UPDATE SET
                email = EXCLUDED.email,
-               first_name = EXCLUDED.first_name,
-               last_name = EXCLUDED.last_name,
+               first_name = COALESCE(NULLIF(TRIM(users.first_name), ''), EXCLUDED.first_name),
+               last_name = COALESCE(NULLIF(TRIM(users.last_name), ''), EXCLUDED.last_name),
                email_verified = EXCLUDED.email_verified,
                workos_updated_at = EXCLUDED.workos_updated_at,
                updated_at = NOW()`,
@@ -6215,28 +6216,44 @@ Disallow: /api/admin/
         // Check if user is admin
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
-        // Check Slack sync status and seat type
+        // Check Slack sync status, seat type, and read DB names (user may have
+        // set a display name that differs from the WorkOS session values)
         let isLinkedToSlack = false;
         let seatType: SeatType | null = null;
+        let dbFirstName: string | null = null;
+        let dbLastName: string | null = null;
         try {
           const slackDb = new SlackDatabase();
-          const [slackMapping, userSeatType] = await Promise.all([
+          const pool = getPool();
+          const [slackMapping, userSeatType, nameResult] = await Promise.all([
             slackDb.getByWorkosUserId(user.id),
             getUserSeatType(user.id),
+            pool.query<{ first_name: string | null; last_name: string | null }>(
+              'SELECT first_name, last_name FROM users WHERE workos_user_id = $1',
+              [user.id]
+            ),
           ]);
           isLinkedToSlack = !!slackMapping?.slack_user_id;
           seatType = userSeatType;
+          if (nameResult.rows.length > 0) {
+            dbFirstName = nameResult.rows[0].first_name;
+            dbLastName = nameResult.rows[0].last_name;
+          }
         } catch {
           // Default to not linked if lookup fails
         }
+
+        // Prefer DB names (user-set) over WorkOS session names
+        const firstName = dbFirstName?.trim() || user.firstName;
+        const lastName = dbLastName?.trim() || user.lastName;
 
         // Build response with optional impersonation info
         const response: Record<string, unknown> = {
           user: {
             id: user.id,
             email: user.email,
-            first_name: user.firstName,
-            last_name: user.lastName,
+            first_name: firstName,
+            last_name: lastName,
             isAdmin,
             isLinkedToSlack,
             seat_type: seatType,
