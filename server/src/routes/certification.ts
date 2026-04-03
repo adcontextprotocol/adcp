@@ -264,14 +264,20 @@ export function createCertificationRouters() {
         return res.status(404).json({ error: 'Track not found' });
       }
 
-      // Check for existing active attempt
-      const active = await certDb.getActiveAttempt(userId, track_id);
+      // Verify all track modules are completed
+      const modules = await certDb.getModulesForTrack(track_id);
+      const capstoneMod = modules.find(m => m.format === 'capstone' || m.format === 'exam');
+      if (!capstoneMod) {
+        return res.status(400).json({ error: 'No capstone module found for this track' });
+      }
+
+      // Auto-expire stale attempts, then check for existing active attempt
+      await certDb.expireStaleAttempts(userId, capstoneMod.id);
+      const active = await certDb.getActiveAttemptForModule(userId, capstoneMod.id);
       if (active) {
         return res.json(active);
       }
 
-      // Verify all track modules are completed
-      const modules = await certDb.getModulesForTrack(track_id);
       const progress = await certDb.getProgress(userId);
       const completedModules = new Set(
         progress.filter(p => p.status === 'completed').map(p => p.module_id)
@@ -283,11 +289,6 @@ export function createCertificationRouters() {
           incomplete: incomplete.map(m => m.id),
           message: `Complete these modules first: ${incomplete.map(m => m.id).join(', ')}`,
         });
-      }
-
-      const capstoneMod = modules.find(m => m.format === 'capstone' || m.format === 'exam');
-      if (!capstoneMod) {
-        return res.status(400).json({ error: 'No capstone module found for this track' });
       }
 
       const attempt = await certDb.createAttempt(userId, track_id, addie_thread_id, capstoneMod.id);
@@ -923,6 +924,19 @@ export function createCertificationRouters() {
       res.json(result);
     } catch (error) {
       logger.error({ error }, 'Failed to get admin learner list');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/certification/stuck-attempts — list stuck attempts
+  adminRouter.get('/stuck-attempts', async (req, res) => {
+    try {
+      const rawDays = parseInt(req.query.days as string);
+      const days = Number.isFinite(rawDays) && rawDays >= 1 && rawDays <= 365 ? rawDays : 7;
+      const attempts = await certDb.getStuckAttempts(days);
+      res.json({ attempts });
+    } catch (error) {
+      logger.error({ error }, 'Failed to get stuck attempts');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

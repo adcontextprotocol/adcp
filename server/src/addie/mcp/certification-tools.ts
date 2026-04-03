@@ -1736,8 +1736,14 @@ export function createCertificationToolHandlers(
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
-      // Check for existing active attempt
-      const active = await certDb.getActiveAttempt(userId, mod.track_id);
+      // Auto-expire stale attempts (30+ days old) so they don't block forever
+      const expired = await certDb.expireStaleAttempts(userId, moduleId);
+      if (expired > 0) {
+        logger.info({ userId, moduleId, expired }, 'Auto-expired stale certification attempts');
+      }
+
+      // Check for existing active attempt (module-scoped so S1 doesn't block S4)
+      const active = await certDb.getActiveAttemptForModule(userId, moduleId);
       if (active) {
         return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}`;
       }
@@ -1865,15 +1871,11 @@ export function createCertificationToolHandlers(
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID
         logger.warn({ attemptId, userId }, 'complete_certification_exam received module ID instead of UUID, resolving');
-        const trackPrefix = attemptId.replace(/[0-9]+$/, '').toUpperCase();
-        if (!/^[A-Z]{1,2}$/.test(trackPrefix)) {
+        const normalized = attemptId.toUpperCase();
+        if (!/^[A-Z]{1,2}[0-9]+$/.test(normalized)) {
           return `Invalid attempt_id "${attemptId}". Provide the UUID returned by start_certification_exam.`;
         }
-        attempt = await certDb.getActiveAttempt(userId, trackPrefix);
-        if (attempt && attempt.module_id?.toUpperCase() !== attemptId.toUpperCase()) {
-          logger.warn({ attemptId, attemptModuleId: attempt.module_id }, 'Active attempt module_id does not match, discarding');
-          attempt = null;
-        }
+        attempt = await certDb.getActiveAttemptForModule(userId, normalized);
       }
       if (!attempt) return 'Exam attempt not found.';
       if (attempt.workos_user_id !== userId) return 'This exam attempt belongs to a different user.';

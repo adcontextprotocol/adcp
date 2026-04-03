@@ -336,6 +336,24 @@
         </table>
       </div>
 
+      <!-- Stuck attempts -->
+      <div class="section" id="stuck-section" style="display:none;">
+        <h2>Stuck attempts</h2>
+        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:16px;">Capstone attempts in progress for 7+ days. These block learners from starting new exams.</p>
+        <table id="stuck-table">
+          <thead>
+            <tr>
+              <th>Learner</th>
+              <th>Module</th>
+              <th>Started</th>
+              <th class="text-right">Days stuck</th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <!-- Learners -->
       <div class="section">
         <h2>Learners</h2>
@@ -436,6 +454,12 @@
             <div class="metric-value">${data.totals.abandoned}</div>
             <div class="metric-sub">Inactive 7+ days</div>
           </div>
+          ${data.totals.stuck_attempts > 0 ? `
+          <div class="metric-card" style="border-left:3px solid var(--color-warning-600);">
+            <div class="metric-label">Stuck attempts</div>
+            <div class="metric-value">${data.totals.stuck_attempts}</div>
+            <div class="metric-sub">Blocking learners</div>
+          </div>` : ''}
         `;
 
         // Credentials by tier
@@ -497,6 +521,63 @@
         document.getElementById('loading').style.display = 'none';
         document.getElementById('error').textContent = 'Error loading certification data. Please try again.';
         document.getElementById('error').style.display = 'block';
+      }
+    }
+
+    async function loadStuckAttempts() {
+      try {
+        const response = await AdminSidebar.fetch('/api/admin/certification/stuck-attempts');
+        if (!response.ok) return;
+        const data = await response.json();
+        const section = document.getElementById('stuck-section');
+        if (!data.attempts || data.attempts.length === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+        const tbody = document.querySelector('#stuck-table tbody');
+        tbody.innerHTML = data.attempts.map(a => `
+          <tr id="stuck-row-${escapeHtml(a.id)}">
+            <td>${escapeHtml(a.name)}<br><span style="font-size:12px;color:var(--color-text-secondary);">${escapeHtml(a.email)}</span></td>
+            <td>${escapeHtml(a.module_id || a.track_id)}</td>
+            <td>${new Date(a.started_at).toLocaleDateString()}</td>
+            <td class="text-right"><span class="badge badge-stuck">${escapeHtml(String(a.days_stuck))}d</span></td>
+            <td class="text-right">
+              <button data-attempt-id="${escapeHtml(a.id)}" class="cancel-stuck-btn" style="padding:6px 12px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:13px;">Cancel</button>
+            </td>
+          </tr>
+        `).join('');
+        tbody.addEventListener('click', (e) => {
+          const btn = e.target.closest('.cancel-stuck-btn');
+          if (btn) cancelStuckAttempt(btn.dataset.attemptId);
+        });
+      } catch (err) {
+        console.error('Error loading stuck attempts:', err);
+      }
+    }
+
+    async function cancelStuckAttempt(attemptId) {
+      if (!confirm('Cancel this stuck attempt? The learner will be able to start a new one.')) return;
+      try {
+        const response = await AdminSidebar.fetch(`/api/admin/certification/attempts/${encodeURIComponent(attemptId)}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'cancel', reason: 'Admin cancelled stuck attempt from dashboard' }),
+        });
+        if (!response.ok) {
+          const err = await response.json();
+          alert(err.error || 'Failed to cancel attempt');
+          return;
+        }
+        const row = document.getElementById(`stuck-row-${attemptId}`);
+        if (row) row.remove();
+        const tbody = document.querySelector('#stuck-table tbody');
+        if (!tbody.children.length) {
+          document.getElementById('stuck-section').style.display = 'none';
+        }
+        loadOverview();
+      } catch (err) {
+        alert('Failed to cancel attempt');
       }
     }
 
@@ -712,6 +793,7 @@
 
     // Load data
     loadOverview();
+    loadStuckAttempts();
     loadLearners();
   </script>
 </body>
