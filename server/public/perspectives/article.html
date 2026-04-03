@@ -66,8 +66,14 @@
       text-decoration: none;
       color: inherit;
     }
-    .report-cta-wrap:hover .report-cta-btn {
-      background: var(--color-brand);
+    .report-cta-wrap:focus-visible {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+      border-radius: 20px;
+    }
+    .report-cta-wrap:hover .report-cta-btn,
+    .report-cta-wrap:focus-visible .report-cta-btn {
+      background: var(--color-success-600, #059669);
       transform: translateY(-1px);
     }
     .report-cta-wrap:hover img {
@@ -79,7 +85,7 @@
       gap: 0.5rem;
       margin: 1rem 1.25rem 1.25rem;
       padding: 0.75rem 1.5rem;
-      background: #047857;
+      background: var(--color-success-700, #047857);
       color: white;
       font-size: var(--text-base);
       font-weight: 600;
@@ -701,10 +707,17 @@
 
       avatarText.textContent = getInitials(article.author_name);
       const avatarUrl = article.author_avatar_url;
+      avatar.textContent = '';
       if (avatarUrl && (avatarUrl.startsWith('/') || avatarUrl.startsWith('https://'))) {
-        avatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(article.author_name)}">`;
+        const img = document.createElement('img');
+        img.src = avatarUrl;
+        img.alt = article.author_name || '';
+        avatar.appendChild(img);
       } else {
-        avatar.innerHTML = `<span id="authorAvatarText" class="author-avatar-text">${escapeHtml(getInitials(article.author_name))}</span>`;
+        const span = document.createElement('span');
+        span.className = 'author-avatar-text';
+        span.textContent = getInitials(article.author_name);
+        avatar.appendChild(span);
       }
 
       metaCard.style.display = 'grid';

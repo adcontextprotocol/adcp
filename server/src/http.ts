@@ -5009,13 +5009,16 @@ Disallow: /api/admin/
             u.avatar_url as author_avatar_url,
             u.headline as author_headline,
             p.published_at, p.tags, p.metadata, p.like_count, p.updated_at,
-            CASE WHEN pa_report.file_name IS NOT NULL
-              THEN '/api/perspectives/' || p.slug || '/assets/' || pa_report.file_name
-              ELSE NULL END as report_url
+            pa_report.report_url
           FROM perspectives p
           LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-          LEFT JOIN perspective_assets pa_report ON pa_report.perspective_id = p.id AND pa_report.asset_type = 'report'
+          LEFT JOIN LATERAL (
+            SELECT '/api/perspectives/' || p.slug || '/assets/' || pa.file_name as report_url
+            FROM perspective_assets pa
+            WHERE pa.perspective_id = p.id AND pa.asset_type = 'report'
+            ORDER BY pa.created_at DESC LIMIT 1
+          ) pa_report ON true
           WHERE p.slug = $1 AND p.status = 'published'
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
           [slug]
@@ -5062,18 +5065,9 @@ Disallow: /api/admin/
         // Track download via PostHog (fire and forget)
         try {
           const { captureEvent } = await import('./utils/posthog.js');
-          const distinctId = (req as any).user?.id || req.ip || 'anonymous';
+          const distinctId = req.ip || 'anonymous';
           captureEvent(distinctId, 'report_downloaded', { slug, filename: file_name });
         } catch { /* PostHog not configured */ }
-
-        // Track for authenticated users via person events
-        const user = (req as any).user;
-        if (user?.personId) {
-          personEvents.recordEvent(user.personId, 'file_downloaded', {
-            channel: 'web',
-            data: { slug, filename: file_name },
-          }).catch(() => { /* best effort */ });
-        }
 
         res.redirect(302, assetUrl);
       } catch (error) {

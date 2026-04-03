@@ -149,13 +149,6 @@
       font-size: var(--text-xs);
       color: var(--color-text-muted);
     }
-    .card-meta-link {
-      text-decoration: none;
-    }
-    .card-meta-link:hover {
-      color: var(--color-brand);
-    }
-
     /* News list */
     .news-list {
       display: flex;
@@ -661,15 +654,8 @@
 
         var authorName = item.author_name || (item.authors && item.authors.length > 0 ? item.authors.map(function(a){return a.display_name}).join(' & ') : '');
         if (authorName) {
-          var meta;
-          if (item.author_slug) {
-            meta = document.createElement('a');
-            meta.href = '/community/people/' + encodeURIComponent(item.author_slug);
-            meta.className = 'card-meta card-meta-link';
-          } else {
-            meta = document.createElement('span');
-            meta.className = 'card-meta';
-          }
+          var meta = document.createElement('span');
+          meta.className = 'card-meta';
           meta.textContent = authorName;
           body.appendChild(meta);
         }
