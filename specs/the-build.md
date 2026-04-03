@@ -204,8 +204,8 @@ CREATE TABLE build_editions (
   approved_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_build_editions_status ON changelog_editions(status);
-CREATE INDEX idx_build_editions_date ON changelog_editions(edition_date DESC);
+CREATE INDEX idx_build_editions_status ON build_editions(status);
+CREATE INDEX idx_build_editions_date ON build_editions(edition_date DESC);
 ```
 
 ```sql

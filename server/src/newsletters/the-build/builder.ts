@@ -3,12 +3,16 @@
  *
  * Assembles biweekly content: WG decisions, releases, help needed,
  * contributor spotlights. Generates Sage's status line last.
+ *
+ * WG content is fetched once and shared across section builders
+ * to avoid redundant DB queries.
  */
 
 import { createLogger } from '../../logger.js';
 import { complete, isLLMConfigured } from '../../utils/llm.js';
 import { query } from '../../db/client.js';
 import { buildWgDigestContent, getDigestEligibleGroups } from '../../addie/services/wg-digest-builder.js';
+import type { WgDigestContent } from '../../db/wg-digest-db.js';
 import type {
   BuildContent,
   BuildDecision,
@@ -19,16 +23,33 @@ import type {
 
 const logger = createLogger('build-builder');
 
+interface WgEntry {
+  groupId: string;
+  groupName: string;
+  content: WgDigestContent;
+}
+
 /**
  * Build all content sections for The Build.
+ * Fetches WG content once and passes it to section builders.
  */
 export async function buildBuildContent(): Promise<BuildContent> {
   logger.info('Building The Build content');
 
+  // Fetch all WG content once — shared across decisions and help needed
+  const groups = await getDigestEligibleGroups();
+  const wgEntries: WgEntry[] = [];
+  for (const group of groups) {
+    const content = await buildWgDigestContent(group.id);
+    if (content) {
+      wgEntries.push({ groupId: group.id, groupName: content.groupName, content });
+    }
+  }
+
   const [decisions, whatShipped, helpNeeded, contributorSpotlight] = await Promise.all([
-    buildDecisionsSection(),
+    buildDecisionsSection(wgEntries),
     buildReleasesSection(),
-    buildHelpNeededSection(),
+    buildHelpNeededSection(wgEntries),
     buildContributorSpotlight(),
   ]);
 
@@ -71,14 +92,12 @@ export function hasBuildMinimumContent(content: BuildContent): boolean {
 export function generateBuildSubject(content: BuildContent): string {
   if (content.emailSubject) return content.emailSubject;
 
-  // Lead with top decision
   if (content.decisions.length > 0) {
     const top = content.decisions[0];
     const prefix = top.status === 'decided' ? 'Decided' : 'Open for comment';
     return `The Build: ${prefix} — ${top.title.slice(0, 45)}`;
   }
 
-  // Lead with release
   if (content.whatShipped.length > 0) {
     const top = content.whatShipped[0];
     return `The Build: ${top.repo} ${top.version}${top.breaking ? ' (breaking)' : ''}`;
@@ -87,50 +106,118 @@ export function generateBuildSubject(content: BuildContent): string {
   return 'The Build — What contributors are working on';
 }
 
-// ─── Decisions ─────────────────────────────────────────────────────────
+// ─── Decisions (LLM-classified) ────────────────────────────────────────
 
-async function buildDecisionsSection(): Promise<BuildDecision[]> {
-  const groups = await getDigestEligibleGroups();
-  const decisions: BuildDecision[] = [];
+/**
+ * Extract decisions and proposals from WG activity using LLM classification.
+ * Sends meeting recaps and high-engagement threads through an LLM to identify
+ * actual decisions vs noise, avoiding false positives from keyword matching.
+ */
+async function buildDecisionsSection(wgEntries: WgEntry[]): Promise<BuildDecision[]> {
+  // Gather all candidate items from WG activity
+  const candidates: Array<{
+    workingGroup: string;
+    workingGroupId: string;
+    title: string;
+    summary: string;
+    url: string;
+    source: 'meeting' | 'thread';
+  }> = [];
 
-  for (const group of groups) {
-    const wgContent = await buildWgDigestContent(group.id);
-    if (!wgContent) continue;
-
-    // Extract decisions from meeting recaps and active threads
-    for (const recap of wgContent.meetingRecaps) {
-      if (recap.summary && (
-        recap.summary.toLowerCase().includes('decided') ||
-        recap.summary.toLowerCase().includes('approved') ||
-        recap.summary.toLowerCase().includes('voted')
-      )) {
-        decisions.push({
-          workingGroup: wgContent.groupName,
-          workingGroupId: group.id,
+  for (const entry of wgEntries) {
+    for (const recap of entry.content.meetingRecaps) {
+      if (recap.summary) {
+        candidates.push({
+          workingGroup: entry.groupName,
+          workingGroupId: entry.groupId,
           title: recap.title,
-          status: 'decided',
           summary: recap.summary,
           url: recap.meetingUrl,
+          source: 'meeting',
         });
       }
     }
 
-    // Active threads with high engagement = open discussions
-    for (const thread of wgContent.activeThreads) {
-      if (thread.replyCount >= 5) {
-        decisions.push({
-          workingGroup: wgContent.groupName,
-          workingGroupId: group.id,
-          title: thread.summary.slice(0, 100),
-          status: 'under_review',
-          summary: `${thread.replyCount} replies from ${thread.participantCount || 'multiple'} participants`,
+    for (const thread of entry.content.activeThreads) {
+      if (thread.replyCount >= 4) {
+        candidates.push({
+          workingGroup: entry.groupName,
+          workingGroupId: entry.groupId,
+          title: thread.summary.slice(0, 150),
+          summary: `${thread.replyCount} replies${thread.starter ? ` started by ${thread.starter}` : ''}`,
           url: thread.threadUrl,
+          source: 'thread',
         });
       }
     }
   }
 
-  return decisions.slice(0, 8);
+  if (candidates.length === 0) return [];
+
+  // Use LLM to classify candidates as decisions, proposals, or noise
+  if (!isLLMConfigured()) {
+    // Fallback: treat meetings as decided, threads as under review
+    return candidates.slice(0, 8).map((c) => ({
+      workingGroup: c.workingGroup,
+      workingGroupId: c.workingGroupId,
+      title: c.title,
+      status: c.source === 'meeting' ? 'decided' as const : 'under_review' as const,
+      summary: c.summary,
+      url: c.url,
+    }));
+  }
+
+  const candidateList = candidates.map((c, i) =>
+    `${i + 1}. [${c.source}] ${c.workingGroup}: "${c.title}" — ${c.summary}`
+  ).join('\n');
+
+  const result = await complete({
+    system: `You are classifying working group activity for a contributor newsletter.
+
+For each item, determine if it is:
+- "decided": A substantive decision was made (policy adopted, spec approved, vote concluded). NOT procedural (agenda approved, meeting scheduled).
+- "open_for_comment": A proposal or draft is seeking feedback. Someone is asking for input on a specific question.
+- "noise": General discussion, status updates, logistics, or items that don't represent a decision or proposal.
+
+Respond in JSON: [{"index": N, "status": "decided"|"open_for_comment"|"noise", "title": "cleaned up title (max 80 chars)"}]
+Only include items that are NOT noise. Be conservative — if unclear, classify as noise.`,
+    prompt: `Classify these working group items:\n\n${candidateList}`,
+    maxTokens: 800,
+    model: 'fast',
+    operationName: 'build-decision-classification',
+  });
+
+  try {
+    const cleaned = result.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '');
+    const classifications: Array<{ index: number; status: string; title: string }> = JSON.parse(cleaned);
+
+    return classifications
+      .filter((c) => c.status === 'decided' || c.status === 'open_for_comment')
+      .slice(0, 8)
+      .map((c) => {
+        const candidate = candidates[c.index - 1];
+        if (!candidate) return null;
+        return {
+          workingGroup: candidate.workingGroup,
+          workingGroupId: candidate.workingGroupId,
+          title: c.title || candidate.title,
+          status: c.status as BuildDecision['status'],
+          summary: candidate.summary,
+          url: candidate.url,
+        };
+      })
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+  } catch {
+    logger.warn('Failed to parse LLM decision classification, using source-based fallback');
+    return candidates.slice(0, 8).map((c) => ({
+      workingGroup: c.workingGroup,
+      workingGroupId: c.workingGroupId,
+      title: c.title,
+      status: c.source === 'meeting' ? 'decided' as const : 'under_review' as const,
+      summary: c.summary,
+      url: c.url,
+    }));
+  }
 }
 
 // ─── Releases ──────────────────────────────────────────────────────────
@@ -157,7 +244,6 @@ async function buildReleasesSection(): Promise<BuildRelease[]> {
     return result.rows.map((row) => {
       const isBreaking = row.title.toLowerCase().includes('breaking') ||
         (row.addie_notes || '').toLowerCase().includes('breaking');
-      // Extract repo and version from title if possible
       const versionMatch = row.title.match(/v?(\d+\.\d+\.\d+)/);
       return {
         repo: row.relevance_tags?.[0] || 'adcontextprotocol',
@@ -177,22 +263,17 @@ async function buildReleasesSection(): Promise<BuildRelease[]> {
 
 // ─── Help Needed ───────────────────────────────────────────────────────
 
-async function buildHelpNeededSection(): Promise<BuildHelpItem[]> {
-  // Pull from WG activity — threads asking for help or review
-  const groups = await getDigestEligibleGroups();
+async function buildHelpNeededSection(wgEntries: WgEntry[]): Promise<BuildHelpItem[]> {
   const items: BuildHelpItem[] = [];
 
-  for (const group of groups) {
-    const wgContent = await buildWgDigestContent(group.id);
-    if (!wgContent) continue;
-
-    for (const thread of wgContent.activeThreads) {
+  for (const entry of wgEntries) {
+    for (const thread of entry.content.activeThreads) {
       const lower = thread.summary.toLowerCase();
       if (lower.includes('help') || lower.includes('review') || lower.includes('feedback') || lower.includes('volunteer')) {
         items.push({
           title: thread.summary.slice(0, 120),
           url: thread.threadUrl,
-          source: wgContent.groupName,
+          source: entry.groupName,
           type: lower.includes('review') ? 'review' : lower.includes('writing') ? 'writing' : 'expertise',
           context: `${thread.replyCount} replies — ${thread.starter || 'A contributor'} is looking for input`,
         });
@@ -207,7 +288,6 @@ async function buildHelpNeededSection(): Promise<BuildHelpItem[]> {
 
 async function buildContributorSpotlight(): Promise<BuildContributor[]> {
   try {
-    // Find recently active contributors from community points or perspective authors
     const result = await query<{
       first_name: string;
       last_name: string;

@@ -28,7 +28,7 @@ import type { EditionRecord, NewsletterEditionDB, SendStats, NewsletterRecipient
 
 // ─── Palette ───────────────────────────────────────────────────────────
 
-const BUILD_PALETTE = {
+export const BUILD_PALETTE = {
   primary: '#0d9488',
   light: '#f0fdfa',
   dark: '#1a1a2e',
@@ -190,10 +190,10 @@ function isBiweeklyWednesday(): boolean {
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   if (et.getDay() !== 3) return false; // Wednesday only
 
-  // Biweekly: use ISO week number, send on odd weeks
-  const jan1 = new Date(et.getFullYear(), 0, 1);
-  const weekNum = Math.ceil(((et.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
-  return weekNum % 2 === 1;
+  // Fixed-epoch biweekly: count weeks from a known send-day Wednesday
+  const epoch = new Date(2026, 0, 7); // 2026-01-07, a Wednesday
+  const diffWeeks = Math.round((et.getTime() - epoch.getTime()) / (7 * 86400000));
+  return diffWeeks % 2 === 0;
 }
 
 // ─── Registration ──────────────────────────────────────────────────────

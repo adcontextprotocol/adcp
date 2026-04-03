@@ -19,3 +19,8 @@ CREATE TABLE build_editions (
 
 CREATE INDEX idx_build_editions_status ON build_editions(status);
 CREATE INDEX idx_build_editions_date ON build_editions(edition_date DESC);
+
+-- Email category for opt-out (default off — contributor seats auto-receive)
+INSERT INTO email_categories (id, name, description, default_enabled, sort_order)
+VALUES ('the_build', 'The Build', 'Sage''s biweekly contributor briefing — WG decisions, releases, and help needed', false, 30)
+ON CONFLICT (id) DO NOTHING;

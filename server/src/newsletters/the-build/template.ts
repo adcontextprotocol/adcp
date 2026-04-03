@@ -8,12 +8,7 @@
 import type { BuildContent } from '../../db/build-db.js';
 import type { SlackBlockMessage } from '../../slack/types.js';
 import { escapeHtml, trackLink, formatDate, renderEmailShell } from '../email-layout.js';
-
-const BUILD_PALETTE = {
-  primary: '#0d9488',
-  light: '#f0fdfa',
-  dark: '#1a1a2e',
-};
+import { BUILD_PALETTE } from './index.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
@@ -89,18 +84,7 @@ export function renderBuildEmail(
     sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
   }
 
-  // Deep Dive
-  if (content.deepDive) {
-    sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Deep dive: ${escapeHtml(content.deepDive.title)}</h2>`);
-    // Show excerpt, not full body — link to the perspective
-    const excerpt = content.deepDive.body.slice(0, 300).trim();
-    sections.push(`
-    <p style="font-size: 14px; color: #555; line-height: 1.6; margin: 0 0 8px 0;">${escapeHtml(excerpt)}...</p>
-    <a href="${t('deep_dive', `${BASE_URL}/perspectives/${content.deepDive.slug}`)}" style="font-size: 14px; color: ${BUILD_PALETTE.primary};">Read the full deep dive &rarr;</a>`);
-    sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
-  }
-
-  // Help Needed
+  // Help Needed (above Deep Dive — highest-action section for contributors)
   if (content.helpNeeded.length > 0) {
     sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Help needed</h2>`);
     for (const item of content.helpNeeded) {
@@ -114,6 +98,16 @@ export function renderBuildEmail(
         <p style="font-size: 13px; color: #666; margin: 4px 0;">${escapeHtml(item.source)} — ${escapeHtml(item.context)}</p>
       </div>`);
     }
+    sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
+  }
+
+  // Deep Dive
+  if (content.deepDive) {
+    sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">Deep dive: ${escapeHtml(content.deepDive.title)}</h2>`);
+    const excerpt = content.deepDive.body.slice(0, 300).trim();
+    sections.push(`
+    <p style="font-size: 14px; color: #555; line-height: 1.6; margin: 0 0 8px 0;">${escapeHtml(excerpt)}...</p>
+    <a href="${t('deep_dive', `${BASE_URL}/perspectives/${content.deepDive.slug}`)}" style="font-size: 14px; color: ${BUILD_PALETTE.primary};">Read the full deep dive &rarr;</a>`);
     sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
   }
 
