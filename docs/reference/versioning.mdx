@@ -1,0 +1,98 @@
+---
+title: Versioning & Governance
+description: "How AdCP versions releases, manages schema changes, and governs protocol evolution."
+"og:title": "AdCP — Versioning & Governance"
+---
+
+AdCP uses a three-tier numbering system: **VERSION.RELEASE.PATCH** (e.g., 3.1.2).
+
+---
+
+## Version tiers
+
+| Tier | Example | Description |
+|------|---------|-------------|
+| **Version** | 3.0 → 4.0 | A new generation of the protocol. Reflects accumulated architectural change across the previous cycle, not any single feature. Signals a clean baseline for the ecosystem. |
+| **Release** | 3.0 → 3.1 | New fields, new capabilities, or small schema changes that don't alter the protocol's architecture. May affect existing implementations at the margins. |
+| **Patch** | 3.1 → 3.1.1 | Bug fixes, clarifications, and corrections. Always safe to upgrade. A patch corrects behavior that diverged from the spec but introduces no new capabilities. |
+
+### What distinguishes a release from a new version?
+
+A new version (4.0) ships when the changes are architectural, when cumulative drift from the previous version is large enough that a clean baseline serves the ecosystem, or when there is a strategic reason to signal a new generation.
+
+A release (3.x) can change schema at the margins — a field's required/optional status, renamed fields with documented aliases, tightened validation, deprecating an object with a replacement available in the same release. These are changes a builder can absorb with targeted updates.
+
+### Forward compatibility
+
+Implementations built against 3.0 will continue to function against any 3.x release. Schema changes within a version are designed to be absorbed with targeted updates, not rewrites.
+
+---
+
+## Schema changes in releases: scope and limits
+
+Schema changes are accepted in releases under the following conditions:
+
+**In scope for a release:**
+
+- Changing a field from optional to required (or vice versa)
+- Renaming a field with a documented alias and migration note in the same release
+- Tightening validation rules on an existing parameter (documented with before/after examples)
+- Deprecating an object or method when a replacement ships in the same release
+
+**Out of scope — version-level changes only:**
+
+- Architectural or structural redesign of the protocol
+- Removing fields or methods without a prior deprecation release
+- Changes to authentication, transport, or core security requirements
+- Changes that alter fundamental behavioral semantics
+
+### Deprecation policy
+
+Deprecated features remain functional for at least one full release cycle after deprecation. Deprecated features are never removed within the same version — a feature deprecated in 3.x will not be removed until 4.0 at the earliest.
+
+Every release with schema changes is called out in the changelog, release notes, and inline documentation. Every release with schema changes ships with a migration guide.
+
+---
+
+## Release cadence
+
+AdCP releases frequently early in a version cycle (every 6–8 weeks) and stretches toward quarterly as the version stabilizes. This gives builders fast iteration when they need it and predictability when they don't.
+
+Version cycles lengthen over time. The 3.x cycle is expected to last roughly a year, with 4.0 targeted for early 2027. Future version cycles may run 18 months to two years. Longer cycles mean builders can plan further ahead and invest in implementations with confidence.
+
+The number of releases within a version is not predetermined. It depends on what builders need and what the working groups surface.
+
+### Planned releases
+
+| Release | Target | Notes |
+|---------|--------|-------|
+| **3.0** | April 2026 | GA release |
+| **3.1** | Late June 2026 | |
+| **3.2** | Late September 2026 | |
+
+Further 3.x releases will be scheduled based on implementation feedback and working group priorities, with at least 8 weeks between releases.
+
+---
+
+## Governance
+
+AdCP development is organized around **working groups**, each focused on a specific protocol domain (creative, governance, media buy, signals, etc.). Working groups drive feature proposals, surface implementation feedback, and shape the direction of their area.
+
+Cross-cutting design decisions are made by the **architecture committee**, led by [Brian O'Kelley](https://www.linkedin.com/in/brianokelley/). The committee ensures consistency across domains, resolves conflicts between working groups, and owns cross-cutting design decisions.
+
+Working groups contribute through:
+
+- **GitHub Discussions** for proposals and technical debate
+- **Slack channels** for real-time collaboration
+- **Member feedback** from organizations building on AdCP
+- **Reference implementations** that validate design decisions
+
+As the protocol and its implementation base mature, domain leads will take increasing ownership of their areas.
+
+---
+
+## Additional resources
+
+- **[Roadmap](/docs/reference/roadmap)** — Planned features and milestones
+- **[Release Notes](/docs/reference/release-notes)** — What shipped, with migration guides
+- **[Changelog](/docs/reference/changelog)** — Technical change history
