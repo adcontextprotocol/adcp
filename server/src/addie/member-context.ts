@@ -23,6 +23,18 @@ import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
 
+/** Stripe-defined subscription statuses (safe to interpolate into prompts). */
+const KNOWN_SUBSCRIPTION_STATUSES = new Set([
+  'active', 'past_due', 'canceled', 'incomplete',
+  'incomplete_expired', 'trialing', 'unpaid', 'paused', 'none',
+]);
+
+/** Sanitize subscription_status before interpolating into LLM prompts. */
+export function safeSubscriptionStatus(status: string | null | undefined): string | null {
+  if (!status) return null;
+  return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
+}
+
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
 const orgDb = new OrganizationDatabase();
@@ -1019,8 +1031,9 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
         lines.push('They are an active AgenticAdvertising.org individual member.');
       } else {
         lines.push('They are not currently an AgenticAdvertising.org member.');
-        if (context.organization.subscription_status && context.organization.subscription_status !== 'none') {
-          lines.push(`Subscription status: ${context.organization.subscription_status} (requires "active" for membership).`);
+        const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
+        if (subStatus && subStatus !== 'none') {
+          lines.push(`Subscription status: ${subStatus} (requires "active" for membership).`);
         }
       }
     } else {
@@ -1031,8 +1044,9 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       } else {
         lines.push('Their organization is not currently an AgenticAdvertising.org member.');
         // Include subscription status when available to help diagnose membership issues
-        if (context.organization.subscription_status && context.organization.subscription_status !== 'none') {
-          lines.push(`Subscription status: ${context.organization.subscription_status} (requires "active" for membership).`);
+        const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
+        if (subStatus && subStatus !== 'none') {
+          lines.push(`Subscription status: ${subStatus} (requires "active" for membership).`);
         }
       }
     }

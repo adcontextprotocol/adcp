@@ -189,7 +189,7 @@ describe('formatMemberContextForPrompt', () => {
       },
       organization: {
         workos_organization_id: 'org_456',
-        name: 'Dentsu Group',
+        name: 'Pinnacle Media',
         subscription_status: 'past_due',
         is_personal: false,
       },

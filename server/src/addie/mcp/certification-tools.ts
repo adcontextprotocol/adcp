@@ -7,6 +7,17 @@
 
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+
+/** Stripe-defined subscription statuses (safe to interpolate into prompts). */
+const KNOWN_SUBSCRIPTION_STATUSES = new Set([
+  'active', 'past_due', 'canceled', 'incomplete',
+  'incomplete_expired', 'trialing', 'unpaid', 'paused', 'none',
+]);
+
+function safeSubscriptionStatus(status: string | null | undefined): string | null {
+  if (!status) return null;
+  return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
+}
 import * as certDb from '../../db/certification-db.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
@@ -30,7 +41,7 @@ function membershipRequiredMessage(moduleId: string, memberContext: MemberContex
       + `Use find_membership_products with customer_type "individual" to show them their options and help them sign up.`;
   }
 
-  const subStatus = memberContext?.organization?.subscription_status;
+  const subStatus = safeSubscriptionStatus(memberContext?.organization?.subscription_status);
   const statusNote = subStatus && subStatus !== 'none' && subStatus !== 'active'
     ? `Their organization's subscription status is "${subStatus}" — this may indicate a billing or activation issue that needs admin attention. `
     : '';
