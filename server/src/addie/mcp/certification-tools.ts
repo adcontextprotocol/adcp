@@ -30,8 +30,14 @@ function membershipRequiredMessage(moduleId: string, memberContext: MemberContex
       + `Use find_membership_products with customer_type "individual" to show them their options and help them sign up.`;
   }
 
+  const subStatus = memberContext?.organization?.subscription_status;
+  const statusNote = subStatus && subStatus !== 'none' && subStatus !== 'active'
+    ? `Their organization's subscription status is "${subStatus}" — this may indicate a billing or activation issue that needs admin attention. `
+    : '';
+
   return `Module ${moduleId} requires AgenticAdvertising.org membership. `
     + `This user works at ${orgName || 'a company'} which is not yet a member. `
+    + statusNote
     + `Company membership covers everyone at the organization. `
     + `Use find_membership_products with customer_type "company" to show pricing. `
     + `Help this person become an internal champion — give them the value proposition and pricing they need to make the case internally. `

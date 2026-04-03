@@ -146,9 +146,15 @@ const ANONYMOUS_MAX_ITERATIONS = 5;
 function buildTieredAccess(memberTools: RequestTools, isAuth: boolean) {
   let requestTools = memberTools;
   if (isAuth && authenticatedOnlyTools) {
+    // Per-request member tools (with memberContext) must override cached auth tools
+    // (without memberContext) — spread member handlers LAST so they win on duplicates.
+    // Deduplicate tools by name so the API doesn't receive duplicate definitions.
+    const mergedHandlers = new Map([...authenticatedOnlyTools.handlers, ...memberTools.handlers]);
+    const seen = new Set(memberTools.tools.map(t => t.name));
+    const dedupedAuthTools = authenticatedOnlyTools.tools.filter(t => !seen.has(t.name));
     requestTools = {
-      tools: [...memberTools.tools, ...authenticatedOnlyTools.tools],
-      handlers: new Map([...memberTools.handlers, ...authenticatedOnlyTools.handlers]),
+      tools: [...dedupedAuthTools, ...memberTools.tools],
+      handlers: mergedHandlers,
     };
   }
   const processOptions = isAuth

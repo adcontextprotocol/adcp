@@ -173,6 +173,54 @@ describe('formatMemberContextForPrompt', () => {
 
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('not currently an AgenticAdvertising.org member');
+    // subscription_status is null, so no diagnostic line
+    expect(result).not.toContain('Subscription status:');
+  });
+
+  it('should include subscription status diagnostic for non-members with subscription data', () => {
+    const context: MemberContext = {
+      is_mapped: true,
+      is_member: false,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_123',
+        email: 'tom@example.com',
+        first_name: 'Tom',
+      },
+      organization: {
+        workos_organization_id: 'org_456',
+        name: 'Dentsu Group',
+        subscription_status: 'past_due',
+        is_personal: false,
+      },
+    };
+
+    const result = formatMemberContextForPrompt(context);
+    expect(result).toContain('not currently an AgenticAdvertising.org member');
+    expect(result).toContain('Subscription status: past_due (requires "active" for membership).');
+  });
+
+  it('should include subscription status diagnostic for non-member individual accounts', () => {
+    const context: MemberContext = {
+      is_mapped: true,
+      is_member: false,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_789',
+        email: 'jane@example.com',
+        first_name: 'Jane',
+      },
+      organization: {
+        workos_organization_id: 'org_789',
+        name: 'Jane Personal',
+        subscription_status: 'incomplete',
+        is_personal: true,
+      },
+    };
+
+    const result = formatMemberContextForPrompt(context);
+    expect(result).toContain('not currently an AgenticAdvertising.org member');
+    expect(result).toContain('Subscription status: incomplete (requires "active" for membership).');
   });
 
   it('should include member profile details', () => {
@@ -322,7 +370,7 @@ describe('formatMemberContextForPrompt', () => {
     };
 
     const result = formatMemberContextForPrompt(context);
-    expect(result).toContain('### Organization Membership');
+    expect(result).toContain('### Organization Role');
     expect(result).toContain('admin');
     expect(result).toContain('5 users');
   });
@@ -566,7 +614,7 @@ describe('MemberContext interface completeness', () => {
     expect(result).toContain('### Subscription Details');
     expect(result).toContain('### Organization Engagement');
     expect(result).toContain('### Slack Activity (Last 30 Days)');
-    expect(result).toContain('### Organization Membership');
+    expect(result).toContain('### Organization Role');
     expect(result).toContain('### Working Groups');
     expect(result).toContain('### Email Preferences');
     // Addie history was removed from context formatter
