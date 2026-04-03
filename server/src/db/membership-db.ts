@@ -75,8 +75,8 @@ export async function upsertOrganizationMembership(
     DO UPDATE SET
       workos_membership_id = EXCLUDED.workos_membership_id,
       email = EXCLUDED.email,
-      first_name = EXCLUDED.first_name,
-      last_name = EXCLUDED.last_name,
+      first_name = COALESCE(NULLIF(TRIM(organization_memberships.first_name), ''), EXCLUDED.first_name),
+      last_name = COALESCE(NULLIF(TRIM(organization_memberships.last_name), ''), EXCLUDED.last_name),
       role = EXCLUDED.role,
       seat_type = CASE
         WHEN $9::boolean THEN EXCLUDED.seat_type

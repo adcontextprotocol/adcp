@@ -1162,7 +1162,9 @@ export function setupOrganizationRoutes(
                (workos_user_id, workos_organization_id, email, first_name, last_name)
                VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT (workos_user_id, workos_organization_id)
-               DO UPDATE SET email = EXCLUDED.email, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
+               DO UPDATE SET email = EXCLUDED.email,
+                 first_name = COALESCE(NULLIF(TRIM(organization_memberships.first_name), ''), EXCLUDED.first_name),
+                 last_name = COALESCE(NULLIF(TRIM(organization_memberships.last_name), ''), EXCLUDED.last_name)`,
               [userId, orgId, user.email, user.first_name, user.last_name]
             );
 
