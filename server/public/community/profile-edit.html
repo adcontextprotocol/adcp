@@ -1643,6 +1643,19 @@
       newOrder.forEach(section => {
         form.insertBefore(section, saveBar);
       });
+
+      // Verify all form fields survived the restructure
+      const expectedIds = [
+        'field-is-public', 'field-slug', 'field-headline', 'field-bio',
+        'field-city', 'field-linkedin-url', 'field-twitter-url',
+        'field-github-username', 'field-coffee-chat', 'field-intros',
+        'field-contact-email', 'field-contact-phone', 'field-contact-website',
+        'portrait-generate', 'offering-consulting', 'offering-other',
+      ];
+      const missing = expectedIds.filter(id => !document.getElementById(id));
+      if (missing.length > 0) {
+        console.error('restructureForIndividual: fields lost during DOM restructure:', missing);
+      }
     }
 
     // Helpers
